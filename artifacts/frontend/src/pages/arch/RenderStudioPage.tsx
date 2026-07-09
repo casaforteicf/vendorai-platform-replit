@@ -2,10 +2,13 @@
 // Standalone (não usa ArqWorkspace shell): topbar própria + sidebar esquerda +
 // canvas central + painel direito + barra de status inferior.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { useArqProject } from "@/modules/arqdor/hooks/useArqProject";
 import { WorkspaceProvider } from "@/modules/arqdor/workspace/WorkspaceContext";
 import { ArqdorThemeProvider } from "@/modules/arqdor/theme/ArqdorThemeProvider";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ─── Tokens ──────────────────────────────────────────────────────────────────
 const C = {
@@ -60,6 +63,26 @@ const ESCRITORIO_ITEMS = [
   { id: "marketing", label: "Marketing", icon: "📣" },
 ] as const;
 
+// Route map for ESCRITÓRIO items
+const ESCRITORIO_ROUTES: Record<string, string> = {
+  crm:       "/leads",
+  clientes:  "/leads",
+  propostas: "/propostas",
+  contratos: "/propostas",
+  financeiro:"/financeiro",
+  agenda:    "/agenda",
+  relatorios:"/analytics",
+  marketing: "/leads",
+};
+
+// Route map for studio NAV_ITEMS that have dedicated pages
+const STUDIO_ROUTES: Record<string, string> = {
+  biblioteca:     "/arch/catalogo",
+  especificacoes: "/arch/projetos",
+  producao:       "/arch/projetos",
+  entrega:        "/arch/projetos",
+};
+
 const CANVAS_TABS = ["Storyboard", "Versões", "Comentários", "Memória", "Histórico", "IA"] as const;
 
 const STORYBOARD_ITEMS = [
@@ -72,7 +95,21 @@ const STORYBOARD_ITEMS = [
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function TopBar({ projectName, environmentName }: { projectName: string; environmentName: string }) {
+function TopBar({
+  projectName,
+  environmentName,
+  onNextStep,
+  onSearch,
+  onCopilot,
+  onNotifications,
+}: {
+  projectName: string;
+  environmentName: string;
+  onNextStep: () => void;
+  onSearch: () => void;
+  onCopilot: () => void;
+  onNotifications: () => void;
+}) {
   return (
     <div style={{
       height: 48, flexShrink: 0, display: "flex", alignItems: "center", gap: 0,
@@ -109,11 +146,13 @@ function TopBar({ projectName, environmentName }: { projectName: string; environ
 
       {/* CTA */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <button style={{
-          display: "flex", flexDirection: "column", alignItems: "center",
-          background: C.purple, border: "none", borderRadius: 10, cursor: "pointer",
-          padding: "6px 20px", gap: 1, boxShadow: "0 2px 12px rgba(124,58,237,0.45)",
-        }}>
+        <button
+          onClick={onNextStep}
+          style={{
+            display: "flex", flexDirection: "column", alignItems: "center",
+            background: C.purple, border: "none", borderRadius: 10, cursor: "pointer",
+            padding: "6px 20px", gap: 1, boxShadow: "0 2px 12px rgba(124,58,237,0.45)",
+          }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", letterSpacing: "0.01em" }}>✦ Próxima Etapa</span>
           <span style={{ fontSize: 9, color: "#C4B5FD", fontWeight: 500 }}>Gerar Storyboard</span>
         </button>
@@ -122,21 +161,27 @@ function TopBar({ projectName, environmentName }: { projectName: string; environ
       {/* Right actions */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 16px", height: "100%", borderLeft: `1px solid ${C.topbarBorder}` }}>
         {/* Search */}
-        <button style={{ padding: "6px 10px", background: "none", border: "none", cursor: "pointer", color: "#64748B", fontSize: 15, borderRadius: 6, display: "flex", alignItems: "center", gap: 5 }}>
+        <button
+          onClick={onSearch}
+          style={{ padding: "6px 10px", background: "none", border: "none", cursor: "pointer", color: "#64748B", fontSize: 15, borderRadius: 6, display: "flex", alignItems: "center", gap: 5 }}>
           <span>🔍</span>
         </button>
 
         {/* ⌘K */}
-        <button style={{
-          padding: "4px 8px", background: "#1E2330", border: `1px solid ${C.topbarBorder}`,
-          borderRadius: 6, cursor: "pointer", color: "#94A3B8", fontSize: 9, fontWeight: 600,
-          display: "flex", alignItems: "center", gap: 4, fontFamily: "monospace",
-        }}>
+        <button
+          onClick={onSearch}
+          style={{
+            padding: "4px 8px", background: "#1E2330", border: `1px solid ${C.topbarBorder}`,
+            borderRadius: 6, cursor: "pointer", color: "#94A3B8", fontSize: 9, fontWeight: 600,
+            display: "flex", alignItems: "center", gap: 4, fontFamily: "monospace",
+          }}>
           ⌘K
         </button>
 
         {/* Copilot */}
-        <button style={{ position: "relative", padding: "6px 10px", background: "none", border: "none", cursor: "pointer", color: "#94A3B8", fontSize: 18, borderRadius: 6 }}>
+        <button
+          onClick={onCopilot}
+          style={{ position: "relative", padding: "6px 10px", background: "none", border: "none", cursor: "pointer", color: "#94A3B8", fontSize: 18, borderRadius: 6 }}>
           🤖
           <span style={{
             position: "absolute", top: 4, right: 4, width: 8, height: 8,
@@ -145,7 +190,9 @@ function TopBar({ projectName, environmentName }: { projectName: string; environ
         </button>
 
         {/* Notifications */}
-        <button style={{ position: "relative", padding: "6px 10px", background: "none", border: "none", cursor: "pointer", color: "#94A3B8", fontSize: 18, borderRadius: 6 }}>
+        <button
+          onClick={onNotifications}
+          style={{ position: "relative", padding: "6px 10px", background: "none", border: "none", cursor: "pointer", color: "#94A3B8", fontSize: 18, borderRadius: 6 }}>
           🔔
           <span style={{
             position: "absolute", top: 4, right: 4, width: 8, height: 8,
@@ -170,7 +217,14 @@ function TopBar({ projectName, environmentName }: { projectName: string; environ
   );
 }
 
-function LeftSidebar({ activeNav, onNavigate }: { activeNav: string; onNavigate: (id: string) => void }) {
+function LeftSidebar({
+  activeNav,
+  onNavigate,
+}: {
+  activeNav: string;
+  onNavigate: (id: string) => void;
+}) {
+  const { toast } = useToast();
   return (
     <div style={{
       width: 168, flexShrink: 0, background: C.sidebar, borderRight: `1px solid ${C.sidebarBdr}`,
@@ -179,11 +233,13 @@ function LeftSidebar({ activeNav, onNavigate }: { activeNav: string; onNavigate:
       {/* Project selector */}
       <div style={{ padding: "12px 12px 8px", borderBottom: `1px solid ${C.border}` }}>
         <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: C.textDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Projeto</p>
-        <button style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
-          padding: "6px 8px", borderRadius: 8, background: C.inputBg, border: `1px solid ${C.inputBdr}`,
-          cursor: "pointer", marginTop: 4,
-        }}>
+        <button
+          onClick={() => toast({ description: "Seleção de projeto em desenvolvimento" })}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+            padding: "6px 8px", borderRadius: 8, background: C.inputBg, border: `1px solid ${C.inputBdr}`,
+            cursor: "pointer", marginTop: 4,
+          }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: C.text }}>Residência Silva</span>
           <span style={{ fontSize: 9, color: C.textDim }}>▾</span>
         </button>
@@ -237,11 +293,13 @@ function LeftSidebar({ activeNav, onNavigate }: { activeNav: string; onNavigate:
 
       {/* Bottom: Config */}
       <div style={{ padding: "8px", borderTop: `1px solid ${C.border}` }}>
-        <button style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
-          padding: "7px 8px", borderRadius: 8, border: "none", cursor: "pointer",
-          background: "transparent", color: C.textSub, fontSize: 12,
-        }}>
+        <button
+          onClick={() => toast({ description: "Configurações do projeto em desenvolvimento" })}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+            padding: "7px 8px", borderRadius: 8, border: "none", cursor: "pointer",
+            background: "transparent", color: C.textSub, fontSize: 12,
+          }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 12 }}>⚙️</span>
             Configurações
@@ -253,45 +311,55 @@ function LeftSidebar({ activeNav, onNavigate }: { activeNav: string; onNavigate:
   );
 }
 
-function CanvasToolbar() {
+function CanvasToolbar({ onAction }: { onAction: (action: string) => void }) {
   return (
     <div style={{
       height: 40, flexShrink: 0, display: "flex", alignItems: "center", gap: 2,
       padding: "0 12px", background: C.surface, borderBottom: `1px solid ${C.border}`,
     }}>
       {/* Navigation */}
-      {["←", "→"].map(icon => (
-        <button key={icon} style={toolBtn}>{icon}</button>
+      {(["←", "→"] as const).map(icon => (
+        <button key={icon} onClick={() => onAction(icon === "←" ? "back" : "forward")} style={toolBtn}>{icon}</button>
       ))}
       <div style={divider} />
       {/* Undo/Redo */}
-      {["↺", "↻"].map(icon => (
-        <button key={icon} style={toolBtn}>{icon}</button>
+      {(["↺", "↻"] as const).map(icon => (
+        <button key={icon} onClick={() => onAction(icon === "↺" ? "undo" : "redo")} style={toolBtn}>{icon}</button>
       ))}
       <div style={divider} />
       {/* Tools */}
-      {["⊡", "⤢"].map(icon => (
-        <button key={icon} style={toolBtn}>{icon}</button>
+      {(["⊡", "⤢"] as const).map(icon => (
+        <button key={icon} onClick={() => onAction("tool")} style={toolBtn}>{icon}</button>
       ))}
       <div style={divider} />
 
       <div style={{ flex: 1 }} />
 
       {/* HD dropdown */}
-      <button style={{
-        ...toolBtn,
-        display: "flex", alignItems: "center", gap: 4, padding: "4px 10px",
-        border: `1px solid ${C.border}`, borderRadius: 6,
-      }}>
+      <button
+        onClick={() => onAction("quality")}
+        style={{
+          ...toolBtn,
+          display: "flex", alignItems: "center", gap: 4, padding: "4px 10px",
+          border: `1px solid ${C.border}`, borderRadius: 6,
+        }}>
         <span style={{ fontSize: 10, fontWeight: 700 }}>HD</span>
         <span style={{ fontSize: 9 }}>▾</span>
       </button>
 
       {/* Camera */}
-      <button style={toolBtn}>📷</button>
+      <button onClick={() => onAction("screenshot")} style={toolBtn}>📷</button>
 
       {/* Fullscreen */}
-      <button style={toolBtn}>⛶</button>
+      <button
+        onClick={() => {
+          if (document.fullscreenElement) {
+            void document.exitFullscreen();
+          } else {
+            void document.documentElement.requestFullscreen();
+          }
+        }}
+        style={toolBtn}>⛶</button>
     </div>
   );
 }
@@ -305,14 +373,36 @@ const divider: React.CSSProperties = {
   width: 1, height: 18, background: C.border, margin: "0 4px",
 };
 
-function RenderCanvas({ renderUrl }: { renderUrl?: string }) {
-  const [tooltip, setTooltip] = useState(true);
+function RenderCanvas({
+  renderUrl,
+  onGenerate,
+  onImageUpload,
+  isGenerating,
+}: {
+  renderUrl?: string;
+  onGenerate: () => void;
+  onImageUpload: (file: File) => void;
+  isGenerating: boolean;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
 
   return (
     <div style={{
       flex: 1, background: C.canvas, borderRadius: 16, overflow: "hidden",
       position: "relative", minHeight: 0, margin: "12px",
     }}>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) onImageUpload(file);
+          e.target.value = "";
+        }}
+      />
+
       {/* Image or placeholder */}
       {renderUrl ? (
         <img src={renderUrl} alt="Render atual" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -356,29 +446,60 @@ function RenderCanvas({ renderUrl }: { renderUrl?: string }) {
               display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24,
             }}>✨</div>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#E2E8F0" }}>Sala de Estar — Render principal</p>
-            <p style={{ margin: "6px 0 0", fontSize: 12, color: "#64748B", lineHeight: 1.5 }}>
+            <p style={{ margin: "6px 0 16px", fontSize: 12, color: "#64748B", lineHeight: 1.5 }}>
               Selecione um objeto no render para ativar materiais, fornecedores e produção
             </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <button
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, border: `1px solid rgba(255,255,255,0.2)`,
+                  background: "rgba(255,255,255,0.08)", color: "#E2E8F0", fontSize: 11,
+                  fontWeight: 600, cursor: "pointer",
+                }}>
+                📁 Carregar Imagem
+              </button>
+              <button
+                onClick={onGenerate}
+                disabled={isGenerating}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, border: "none",
+                  background: isGenerating ? "#4B5563" : C.purple, color: "#fff", fontSize: 11,
+                  fontWeight: 700, cursor: isGenerating ? "not-allowed" : "pointer",
+                  boxShadow: isGenerating ? "none" : "0 2px 12px rgba(124,58,237,0.45)",
+                }}>
+                {isGenerating ? "⏳ Gerando..." : "✨ Gerar Render"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Tooltip overlay */}
-      {tooltip && (
+      {/* Overlay actions when render exists */}
+      {renderUrl && (
         <div style={{
-          position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
-          background: "rgba(15,23,42,0.85)", backdropFilter: "blur(6px)",
-          border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12,
-          padding: "10px 16px", color: "#fff", fontSize: 11, fontWeight: 500,
-          textAlign: "center", pointerEvents: "none",
-          boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+          position: "absolute", bottom: 12, right: 12,
+          display: "flex", gap: 6,
         }}>
-          Clique em um objeto para editar ou alterar
-          <div style={{
-            width: 20, height: 20, borderRadius: "50%", background: C.purple,
-            border: "3px solid rgba(124,58,237,0.4)", position: "absolute",
-            top: -10, left: -10,
-          }} />
+          <button
+            onClick={() => fileRef.current?.click()}
+            style={{
+              padding: "6px 12px", borderRadius: 8, border: `1px solid rgba(255,255,255,0.2)`,
+              background: "rgba(15,23,42,0.75)", backdropFilter: "blur(6px)",
+              color: "#E2E8F0", fontSize: 10, fontWeight: 600, cursor: "pointer",
+            }}>
+            📁 Nova Imagem
+          </button>
+          <button
+            onClick={onGenerate}
+            disabled={isGenerating}
+            style={{
+              padding: "6px 12px", borderRadius: 8, border: "none",
+              background: isGenerating ? "#4B5563" : C.purple, color: "#fff", fontSize: 10,
+              fontWeight: 700, cursor: isGenerating ? "not-allowed" : "pointer",
+            }}>
+            {isGenerating ? "⏳ Gerando..." : "✨ Melhorar Render"}
+          </button>
         </div>
       )}
     </div>
@@ -386,6 +507,9 @@ function RenderCanvas({ renderUrl }: { renderUrl?: string }) {
 }
 
 function CanvasTabs({ activeTab, onTab }: { activeTab: string; onTab: (t: string) => void }) {
+  const { toast } = useToast();
+  const [compareOn, setCompareOn] = useState(false);
+
   return (
     <div style={{
       height: 36, flexShrink: 0, display: "flex", alignItems: "center", gap: 0,
@@ -422,12 +546,21 @@ function CanvasTabs({ activeTab, onTab }: { activeTab: string; onTab: (t: string
       {/* Compare toggle */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontSize: 10, color: C.textSub }}>Comparar</span>
-        <div style={{
-          width: 32, height: 18, borderRadius: 9, background: C.border, position: "relative", cursor: "pointer",
-        }}>
+        <div
+          onClick={() => {
+            setCompareOn(v => !v);
+            toast({ description: compareOn ? "Modo comparação desativado" : "Modo comparação ativado" });
+          }}
+          style={{
+            width: 32, height: 18, borderRadius: 9,
+            background: compareOn ? C.purple : C.border,
+            position: "relative", cursor: "pointer",
+            transition: "background 0.2s ease",
+          }}>
           <div style={{
             width: 14, height: 14, borderRadius: "50%", background: "#fff",
-            position: "absolute", top: 2, left: 2, transition: "left 0.2s ease",
+            position: "absolute", top: 2, left: compareOn ? 16 : 2,
+            transition: "left 0.2s ease",
             boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
           }} />
         </div>
@@ -436,7 +569,7 @@ function CanvasTabs({ activeTab, onTab }: { activeTab: string; onTab: (t: string
   );
 }
 
-function StoryboardGrid() {
+function StoryboardGrid({ onNewStoryboard }: { onNewStoryboard: () => void }) {
   const [selected, setSelected] = useState("05");
 
   return (
@@ -445,12 +578,14 @@ function StoryboardGrid() {
       display: "flex", alignItems: "center", gap: 8, padding: "0 12px", overflowX: "auto",
     }}>
       {/* New storyboard */}
-      <button style={{
-        flexShrink: 0, width: 88, height: 96, borderRadius: 12,
-        border: `2px dashed ${C.border}`, background: C.inputBg,
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        cursor: "pointer", gap: 4, color: C.textDim,
-      }}>
+      <button
+        onClick={onNewStoryboard}
+        style={{
+          flexShrink: 0, width: 88, height: 96, borderRadius: 12,
+          border: `2px dashed ${C.border}`, background: C.inputBg,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", gap: 4, color: C.textDim,
+        }}>
         <span style={{ fontSize: 20, color: C.purple }}>+</span>
         <span style={{ fontSize: 9, fontWeight: 600, textAlign: "center", lineHeight: 1.3 }}>
           Novo<br />Storyboard
@@ -517,9 +652,40 @@ function DimInput({ label, value }: { label: string; value: string }) {
   );
 }
 
-function RightPanel() {
+function RightPanel({ onSubstituir, onTestar, onIgnorar }: {
+  onSubstituir: () => void;
+  onTestar: () => void;
+  onIgnorar: () => void;
+}) {
+  const { toast } = useToast();
   const [tab, setTab] = useState<"propriedades" | "camadas">("propriedades");
   const [visible, setVisible] = useState(true);
+  const [copilotMsg, setCopilotMsg] = useState("");
+
+  const objActions: { icon: string; label: string; action: string }[] = [
+    { icon: "↺", label: "Rotacionar", action: "rotate" },
+    { icon: "⧉", label: "Duplicar", action: "duplicate" },
+    { icon: "⬇", label: "Baixar", action: "download" },
+    { icon: "🗑", label: "Excluir", action: "delete" },
+    { icon: "⋯", label: "Mais opções", action: "more" },
+  ];
+
+  function handleObjAction(action: string) {
+    const labels: Record<string, string> = {
+      rotate: "Rotação do objeto em desenvolvimento",
+      duplicate: "Objeto duplicado",
+      download: "Download do objeto em desenvolvimento",
+      delete: "Exclusão de objeto em desenvolvimento",
+      more: "Mais opções em desenvolvimento",
+    };
+    toast({ description: labels[action] ?? "Ação em desenvolvimento" });
+  }
+
+  function sendCopilot() {
+    if (!copilotMsg.trim()) return;
+    toast({ description: `Copilot: "${copilotMsg}" — processando...` });
+    setCopilotMsg("");
+  }
 
   return (
     <div style={{
@@ -567,12 +733,16 @@ function RightPanel() {
 
           {/* Action buttons */}
           <div style={{ display: "flex", gap: 4, marginTop: 10 }}>
-            {["↺", "⧉", "⬇", "🗑", "⋯"].map((icon, i) => (
-              <button key={i} style={{
-                flex: 1, height: 28, border: `1px solid ${C.border}`, background: C.inputBg,
-                borderRadius: 6, cursor: "pointer", fontSize: 12, color: C.textSub,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>{icon}</button>
+            {objActions.map((a) => (
+              <button
+                key={a.action}
+                title={a.label}
+                onClick={() => handleObjAction(a.action)}
+                style={{
+                  flex: 1, height: 28, border: `1px solid ${C.border}`, background: C.inputBg,
+                  borderRadius: 6, cursor: "pointer", fontSize: 12, color: C.textSub,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>{a.icon}</button>
             ))}
           </div>
         </div>
@@ -650,11 +820,13 @@ function RightPanel() {
 
         {/* Substituir objeto */}
         <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}` }}>
-          <button style={{
-            width: "100%", padding: "8px", border: `1px solid ${C.border}`,
-            borderRadius: 8, background: C.surface, cursor: "pointer",
-            fontSize: 11, fontWeight: 600, color: C.text,
-          }}>
+          <button
+            onClick={onSubstituir}
+            style={{
+              width: "100%", padding: "8px", border: `1px solid ${C.border}`,
+              borderRadius: 8, background: C.surface, cursor: "pointer",
+              fontSize: 11, fontWeight: 600, color: C.text,
+            }}>
             Substituir objeto
           </button>
         </div>
@@ -675,14 +847,18 @@ function RightPanel() {
           </p>
 
           <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-            <button style={{
-              flex: 1, padding: "6px", border: "none", borderRadius: 6,
-              background: C.purple, color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer",
-            }}>Testar</button>
-            <button style={{
-              flex: 1, padding: "6px", border: `1px solid ${C.border}`, borderRadius: 6,
-              background: C.surface, color: C.textSub, fontSize: 10, cursor: "pointer",
-            }}>Ignorar</button>
+            <button
+              onClick={onTestar}
+              style={{
+                flex: 1, padding: "6px", border: "none", borderRadius: 6,
+                background: C.purple, color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer",
+              }}>Testar</button>
+            <button
+              onClick={onIgnorar}
+              style={{
+                flex: 1, padding: "6px", border: `1px solid ${C.border}`, borderRadius: 6,
+                background: C.surface, color: C.textSub, fontSize: 10, cursor: "pointer",
+              }}>Ignorar</button>
           </div>
 
           {/* Input */}
@@ -692,17 +868,22 @@ function RightPanel() {
             background: C.inputBg,
           }}>
             <input
+              value={copilotMsg}
+              onChange={e => setCopilotMsg(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") sendCopilot(); }}
               placeholder="Pergunte algo ou dê um comando…"
               style={{
                 flex: 1, border: "none", background: "transparent", outline: "none",
                 fontSize: 9, color: C.text, minWidth: 0,
               }}
             />
-            <button style={{
-              width: 20, height: 20, border: "none", borderRadius: "50%",
-              background: C.purple, color: "#fff", fontSize: 10, cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-            }}>→</button>
+            <button
+              onClick={sendCopilot}
+              style={{
+                width: 20, height: 20, border: "none", borderRadius: "50%",
+                background: C.purple, color: "#fff", fontSize: 10, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}>→</button>
           </div>
         </div>
       </div>
@@ -710,7 +891,15 @@ function RightPanel() {
   );
 }
 
-function StatusBar({ environmentName }: { environmentName: string }) {
+function StatusBar({
+  environmentName,
+  onShortcuts,
+  onHelp,
+}: {
+  environmentName: string;
+  onShortcuts: () => void;
+  onHelp: () => void;
+}) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
@@ -737,21 +926,168 @@ function StatusBar({ environmentName }: { environmentName: string }) {
       <div style={{ width: 1, height: 12, background: C.border, margin: "0 10px" }} />
       <span>Pé direito: <strong style={{ color: C.text }}>2,80 m</strong></span>
       <div style={{ width: 1, height: 12, background: C.border, margin: "0 10px" }} />
-      <button style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 10, color: C.textSub, padding: 0 }}>Atalhos</button>
+      <button onClick={onShortcuts} style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 10, color: C.textSub, padding: 0 }}>Atalhos</button>
       <div style={{ width: 1, height: 12, background: C.border, margin: "0 10px" }} />
-      <button style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 10, color: C.textSub, padding: 0 }}>? Ajuda</button>
+      <button onClick={onHelp} style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 10, color: C.textSub, padding: 0 }}>? Ajuda</button>
+    </div>
+  );
+}
+
+// ─── Canvas area content switcher ────────────────────────────────────────────
+function NavContent({
+  activeNav,
+  renderUrl,
+  onGenerate,
+  onImageUpload,
+  isGenerating,
+}: {
+  activeNav: string;
+  renderUrl?: string;
+  onGenerate: () => void;
+  onImageUpload: (file: File) => void;
+  isGenerating: boolean;
+}) {
+  if (activeNav === "studio" || activeNav === "storyboard") {
+    return (
+      <RenderCanvas
+        renderUrl={renderUrl}
+        onGenerate={onGenerate}
+        onImageUpload={onImageUpload}
+        isGenerating={isGenerating}
+      />
+    );
+  }
+  const labels: Record<string, string> = {
+    ambientes:      "Ambientes",
+    execucao:       "Execução",
+    evolucao:       "Evolução",
+  };
+  return (
+    <div style={{
+      flex: 1, margin: "12px", borderRadius: 16,
+      background: C.surface, border: `1px solid ${C.border}`,
+      display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12,
+    }}>
+      <div style={{ fontSize: 32 }}>🚧</div>
+      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text }}>
+        {labels[activeNav] ?? activeNav}
+      </p>
+      <p style={{ margin: 0, fontSize: 12, color: C.textSub }}>Módulo em desenvolvimento</p>
     </div>
   );
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 function RenderStudioInner() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const arqState = useArqProject();
+  const { user } = useAuth();
   const [activeNav, setActiveNav] = useState("studio");
   const [activeTab, setActiveTab] = useState("Storyboard");
+  const [renderUrl, setRenderUrl] = useState<string | undefined>();
+  const [imageUrl, setImageUrl] = useState<string | undefined>();
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const projectName = arqState.projectMeta?.titulo || arqState.projects[0]?.titulo || "Residência Silva";
   const environmentName = "Sala de Estar";
+
+  function handleNavigate(id: string) {
+    // ESCRITÓRIO: navigate to real routes
+    if (id in ESCRITORIO_ROUTES) {
+      setLocation(ESCRITORIO_ROUTES[id]!);
+      return;
+    }
+    // Studio items with dedicated routes
+    if (id in STUDIO_ROUTES) {
+      setLocation(STUDIO_ROUTES[id]!);
+      return;
+    }
+    // Local nav (studio, ambientes, storyboard, execucao, evolucao)
+    setActiveNav(id);
+    if (id === "storyboard") {
+      setActiveTab("Storyboard");
+    }
+    if (id !== "studio" && id !== "storyboard") {
+      const item = NAV_ITEMS.find(n => n.id === id);
+      toast({ description: `Módulo ${item?.label ?? id} em desenvolvimento` });
+    }
+  }
+
+  function handleToolAction(action: string) {
+    const messages: Record<string, string> = {
+      back:       "Navegação: voltar",
+      forward:    "Navegação: avançar",
+      undo:       "Desfazer em desenvolvimento",
+      redo:       "Refazer em desenvolvimento",
+      tool:       "Ferramenta de seleção em desenvolvimento",
+      quality:    "Qualidade de render em desenvolvimento",
+      screenshot: "Captura de tela em desenvolvimento",
+    };
+    toast({ description: messages[action] ?? "Ferramenta em desenvolvimento" });
+  }
+
+  function handleImageUpload(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImageUrl(e.target?.result as string);
+      setRenderUrl(undefined);
+      toast({ description: "Imagem carregada. Clique em Gerar Render para continuar." });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleGenerate() {
+    if (!imageUrl && !renderUrl) {
+      toast({ variant: "destructive", description: "Carregue uma imagem primeiro." });
+      return;
+    }
+    const tenantId = user?.tenantId;
+    if (!tenantId) {
+      toast({ variant: "destructive", description: "Tenant não identificado." });
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+      const token = localStorage.getItem("vendorai_token") ?? "";
+      const res = await fetch(`${base}/api/arch/ai-render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          original_image_url: renderUrl ?? imageUrl,
+          mode: "preservar",
+          ambiente: "sala",
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).error ?? `Erro ${res.status}`);
+      }
+      const { render_id } = await res.json();
+      let attempts = 0;
+      while (attempts < 90) {
+        await new Promise(r => setTimeout(r, 2000));
+        const poll = await fetch(`${base}/api/arch/ai-render/${render_id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!poll.ok) break;
+        const data = await poll.json();
+        if (data.status === "concluido" && data.result_image_url) {
+          setRenderUrl(data.result_image_url);
+          toast({ description: "✨ Render concluído!" });
+          return;
+        }
+        if (data.status === "erro") throw new Error(data.erro_msg ?? "Erro no render");
+        attempts++;
+      }
+      throw new Error("Tempo esgotado aguardando o render.");
+    } catch (err: unknown) {
+      toast({ variant: "destructive", description: err instanceof Error ? err.message : "Erro ao gerar render." });
+    } finally {
+      setIsGenerating(false);
+    }
+  }
 
   return (
     <div style={{
@@ -761,27 +1097,55 @@ function RenderStudioInner() {
       boxSizing: "border-box",
     }}>
       {/* Top bar */}
-      <TopBar projectName={projectName} environmentName={environmentName} />
+      <TopBar
+        projectName={projectName}
+        environmentName={environmentName}
+        onNextStep={() => toast({ description: "Gerar Storyboard em desenvolvimento" })}
+        onSearch={() => toast({ description: "Busca em desenvolvimento" })}
+        onCopilot={() => toast({ description: "Copilot: aberto no painel direito" })}
+        onNotifications={() => toast({ description: "Nenhuma notificação no momento" })}
+      />
 
       {/* Body row */}
       <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", minHeight: 0 }}>
         {/* Left sidebar */}
-        <LeftSidebar activeNav={activeNav} onNavigate={setActiveNav} />
+        <LeftSidebar activeNav={activeNav} onNavigate={handleNavigate} />
 
         {/* Center: toolbar + canvas + tabs + storyboard */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: C.bg }}>
-          <CanvasToolbar />
-          <RenderCanvas />
+          <CanvasToolbar onAction={handleToolAction} />
+          <NavContent
+            activeNav={activeNav}
+            renderUrl={renderUrl}
+            onGenerate={handleGenerate}
+            onImageUpload={handleImageUpload}
+            isGenerating={isGenerating}
+          />
           <CanvasTabs activeTab={activeTab} onTab={setActiveTab} />
-          <StoryboardGrid />
+          <StoryboardGrid
+            onNewStoryboard={() => toast({ description: "Criação de novo storyboard em desenvolvimento" })}
+          />
         </div>
 
         {/* Right panel */}
-        <RightPanel />
+        <RightPanel
+          onSubstituir={() => toast({ description: "Abrindo fluxo de substituição de objeto..." })}
+          onTestar={() => {
+            toast({ description: "✨ Testando sugestão IA — aguarde..." });
+            void handleGenerate();
+          }}
+          onIgnorar={() => toast({ description: "Sugestão IA ignorada" })}
+        />
       </div>
 
       {/* Status bar */}
-      <StatusBar environmentName={environmentName} />
+      <StatusBar
+        environmentName={environmentName}
+        onShortcuts={() => toast({
+          description: "Atalhos: ⌘Z desfazer · ⌘Y refazer · ⌘S salvar · F11 tela cheia",
+        })}
+        onHelp={() => toast({ description: "Documentação disponível em arqdor.ai/docs" })}
+      />
     </div>
   );
 }

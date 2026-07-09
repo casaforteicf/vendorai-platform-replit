@@ -1,0 +1,133 @@
+URGENTE — /arch/render está visualmente correto, mas está sem funcionalidade.
+
+Problema:
+Nenhum botão funciona na tela /arch/render.
+Isso indica que a tela atual virou um protótipo visual/mock e não está conectada aos handlers reais.
+
+Não criar layout novo.
+Não criar módulo novo.
+Não mexer em backend.
+Não mexer em tema.
+Agora é somente wiring funcional.
+
+Objetivo:
+Manter o layout atual do Render Studio, mas conectar todos os botões e navegações aos módulos reais.
+
+Investigar:
+1. Identificar qual componente está renderizando /arch/render agora.
+2. Verificar se ele substituiu RealRenderGalleryStudio por uma tela hardcoded/mock.
+3. Verificar todos os botões sem onClick.
+4. Verificar se onNavigate está sendo passado.
+5. Verificar se o estado arqState está chegando.
+6. Verificar se projectId, ambienteId, renderId e selectedObject estão sendo usados.
+7. Verificar se os cards de storyboard são estáticos ou têm estado real.
+8. Verificar console do navegador ao clicar.
+
+Correção obrigatória:
+A tela /arch/render precisa usar componentes reais ou handlers reais da Sprint 029:
+
+- RealRenderGalleryStudio
+- useRealRenderGallery
+- RenderPreviewCard
+- RenderVersionTimeline
+- MaterialChangePanel
+- PostRenderAdjustmentPanel
+- SelectedRenderInspector
+- ApprovedRenderToSpecPanel
+
+Se o layout novo for mantido, ele deve ser apenas o shell visual.
+Dentro dele, conectar os módulos funcionais reais.
+
+Botões que precisam funcionar:
+1. Sidebar interna:
+   - Studio
+   - Ambientes
+   - Storyboard
+   - Biblioteca
+   - Especificações
+   - Produção
+   - Execução
+   - Entrega
+   - Evolução
+   - CRM
+   - Clientes
+   - Propostas
+   - Contratos
+   - Financeiro
+   - Agenda
+   - Relatórios
+   - Marketing
+
+2. Topbar:
+   - Próxima Etapa
+   - busca
+   - notificações
+   - usuário/menu
+
+3. Canvas/render:
+   - selecionar objeto
+   - abrir edição de objeto
+   - alterar material
+   - substituir objeto
+   - zoom/visualização se existir
+
+4. Storyboard inferior:
+   - Novo Storyboard
+   - selecionar cards
+   - Versões
+   - Comentários
+   - Memória
+   - Histórico
+   - IA
+   - Comparar
+
+5. Painel direito:
+   - alterar dimensões
+   - alterar posição
+   - alterar rotação
+   - alterar escala
+   - alterar material/acabamento
+   - visibilidade
+   - substituir objeto
+   - Testar sugestão IA
+   - Ignorar sugestão IA
+   - enviar pergunta no Copilot
+
+6. Render real:
+   - Atualizar galeria
+   - gerar render
+   - melhorar render
+   - alterar material
+   - aprovar render
+   - enviar para especificação
+
+Regra:
+Não pode deixar botão visual sem ação.
+Se a função ainda não existir, o botão deve:
+- abrir modal informando "em desenvolvimento";
+- ou navegar para o módulo correto;
+- ou chamar handler existente;
+mas nunca ficar sem resposta.
+
+Critério de aceite:
+1. Clicar em qualquer item da sidebar interna muda a tela ou mostra ação.
+2. Clicar em Storyboard seleciona o card.
+3. Clicar em Versões muda a aba.
+4. Clicar em Biblioteca abre biblioteca/catálogo.
+5. Clicar em Especificações navega para especificação.
+6. Clicar em Produção navega para produção.
+7. Clicar em Substituir objeto abre fluxo de substituição.
+8. Clicar em Testar executa ou mostra feedback.
+9. Clicar em Próxima Etapa executa ação ou abre confirmação.
+10. Nenhum botão fica morto.
+
+Rodar:
+pnpm typecheck
+
+Retornar:
+1. qual componente estava mockado;
+2. quais botões estavam sem onClick;
+3. arquivos corrigidos;
+4. lista de botões testados;
+5. resultado do pnpm typecheck;
+6. vídeo curto ou print mostrando clique funcionando.
