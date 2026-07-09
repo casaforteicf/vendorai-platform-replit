@@ -197,21 +197,26 @@ router.get("/tenants/:tenantId/analytics/channels", async (req, res) => {
       )
       .groupBy(messagesTable.canal),
 
-    // Tempo médio de resposta (mensagens saída - entrada anterior)
-    db
-      .select({
-        canal: messagesTable.canal,
-        avgSeconds: sql<string>`avg(extract(epoch from (${messagesTable.createdAt} - lag(${messagesTable.createdAt}) over (partition by ${messagesTable.conversationId} order by ${messagesTable.createdAt}))))::text`,
-      })
-      .from(messagesTable)
-      .where(
-        and(
-          eq(messagesTable.tenantId, tid),
-          eq(messagesTable.direcao, "saida"),
-          gte(messagesTable.createdAt, thirtyDaysAgo),
-        ),
-      )
-      .groupBy(messagesTable.canal),
+    // Tempo médio de resposta — window fn (lag) calculado em subquery,
+    // avg aplicado na query externa para evitar "aggregate over window function"
+    db.execute<{ canal: string; avgSeconds: string | null }>(sql`
+      SELECT canal, avg(diff_seconds)::text AS "avgSeconds"
+      FROM (
+        SELECT
+          canal,
+          extract(epoch from (
+            created_at - lag(created_at) OVER (
+              PARTITION BY conversation_id ORDER BY created_at
+            )
+          )) AS diff_seconds
+        FROM messages
+        WHERE tenant_id = ${tid}
+          AND direcao = 'saida'
+          AND created_at >= ${thirtyDaysAgo}
+      ) rt_sub
+      WHERE diff_seconds IS NOT NULL
+      GROUP BY canal
+    `),
   ]);
 
   res.json({
@@ -231,9 +236,9 @@ router.get("/tenants/:tenantId/analytics/channels", async (req, res) => {
       entrada: Number(r.entrada),
       saida: Number(r.saida),
     })),
-    avgResponseTimeSeconds: avgResponseTime.map((r) => ({
-      canal: r.canal ?? "desconhecido",
-      avgSeconds: r.avgSeconds ? Number(Number(r.avgSeconds).toFixed(0)) : null,
+    avgResponseTimeSeconds: avgResponseTime.rows.map((r) => ({
+      canal: (r.canal as string) ?? "desconhecido",
+      avgSeconds: r.avgSeconds ? Number(Number(r.avgSeconds as string).toFixed(0)) : null,
     })),
   });
 });
@@ -272,12 +277,13 @@ router.get("/tenants/:tenantId/analytics/intelligence", async (req, res) => {
       .where(and(eq(customerIntelligenceTable.tenantId, tid), isNotNull(customerIntelligenceTable.journeyStage)))
       .groupBy(customerIntelligenceTable.journeyStage),
 
-    // Score médio de comportamento
+    // Score médio de comportamento — cast seguro jsonb→numeric via CASE WHEN
+    // (avg/max/min não existem para jsonb no PostgreSQL)
     db
       .select({
-        avg: sql<string>`avg(${customerIntelligenceTable.behaviorScore})::text`,
-        max: sql<string>`max(${customerIntelligenceTable.behaviorScore})::text`,
-        min: sql<string>`min(${customerIntelligenceTable.behaviorScore})::text`,
+        avg: sql<string>`avg(CASE WHEN jsonb_typeof(${customerIntelligenceTable.behaviorScore}) = 'number' THEN (${customerIntelligenceTable.behaviorScore}::text)::numeric ELSE NULL END)::text`,
+        max: sql<string>`max(CASE WHEN jsonb_typeof(${customerIntelligenceTable.behaviorScore}) = 'number' THEN (${customerIntelligenceTable.behaviorScore}::text)::numeric ELSE NULL END)::text`,
+        min: sql<string>`min(CASE WHEN jsonb_typeof(${customerIntelligenceTable.behaviorScore}) = 'number' THEN (${customerIntelligenceTable.behaviorScore}::text)::numeric ELSE NULL END)::text`,
       })
       .from(customerIntelligenceTable)
       .where(and(eq(customerIntelligenceTable.tenantId, tid), isNotNull(customerIntelligenceTable.behaviorScore))),
