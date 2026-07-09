@@ -36,16 +36,25 @@ export async function detectEscalationTrigger(
     .join("\n");
 
   const prompt =
-    `Você é um classificador de escalação de atendimento. Analise se a mensagem abaixo justifica transferência para um atendente humano.\n` +
+    `Você é um classificador CONSERVADOR de escalação de atendimento. Seu objetivo é evitar falsos positivos.\n` +
+    `Escalação só deve ocorrer quando o sinal for INEQUÍVOCO e FORTE. Em caso de dúvida, NÃO escale.\n` +
     `\n` +
-    `Critérios de escalação:\n` +
-    `- falar_com_pessoa: lead pede explicitamente para falar com humano/atendente/pessoa\n` +
-    `- sentimento_negativo: raiva, frustração intensa, ameaça de cancelar/processar/reclamar\n` +
-    `- objection_unresolved: lead repete a mesma objeção ou dúvida sem resolução após 2+ tentativas\n` +
+    `CRITÉRIOS que JUSTIFICAM escalação:\n` +
+    `- falar_com_pessoa: lead pede EXPLICITAMENTE falar com humano/atendente/pessoa real (ex: "quero falar com uma pessoa", "me passa um atendente", "quero um humano")\n` +
+    `- sentimento_negativo: raiva intensa e clara, ameaça explícita de cancelar/processar/reclamar, insultos diretos, ou frustração REPETIDA (2+ vezes na conversa sem resolução)\n` +
+    `- objection_unresolved: lead repete a MESMA objeção ou pergunta específica 3+ vezes sem resolução — não basta 2 vezes\n` +
     `\n` +
-    `Regras:\n` +
-    `- Só escalade se tiver ALTA confiança (confidence >= 0.7)\n` +
-    `- Se nenhum critério for claro, retorne escalate: false\n` +
+    `NÃO ESCALE (falsos positivos comuns a evitar):\n` +
+    `- Impaciência leve ou frase seca em uma conversa que fluía normalmente (ex: "não sei qual é a dificuldade de entender", "vai logo", "já disse isso")\n` +
+    `- Tom impaciente em mensagem isolada, sem histórico negativo\n` +
+    `- Dúvida ou objeção mencionada pela primeira ou segunda vez\n` +
+    `- Curiosidade ou pressão por preço/prazo (comportamento normal de negociação)\n` +
+    `- Reclamação genérica sem indicação de querer parar ou falar com humano\n` +
+    `\n` +
+    `Regras de decisão:\n` +
+    `- Exija confidence >= 0.85 para escalar. Abaixo disso: escalate false.\n` +
+    `- Analise o HISTÓRICO: uma única frase difícil em conversa saudável = NÃO escalação\n` +
+    `- Se nenhum critério for CLARO E FORTE, retorne escalate: false\n` +
     `\n` +
     `Histórico recente:\n` +
     `${recent || "(sem histórico)"}\n` +
@@ -82,7 +91,7 @@ export async function detectEscalationTrigger(
         ? (parsed.reason as Reason)
         : null;
 
-    if (parsed.escalate === true && confidence >= 0.7 && reason !== null) {
+    if (parsed.escalate === true && confidence >= 0.85 && reason !== null) {
       log.info({ tenantId, reason, confidence }, "escalation: trigger detected");
       return { triggered: true, reason, confidence };
     }
