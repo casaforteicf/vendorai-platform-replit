@@ -293,7 +293,7 @@ export default function ParceirosPage() {
           <div className="flex gap-6 text-sm text-[#8880a8]">
             <Link href="/" className="hover:text-[#f0eeff] transition">Site principal</Link>
             <Link href="/#planos" className="hover:text-[#f0eeff] transition">Planos</Link>
-            <a href="https://wa.me/554931913565" target="_blank" rel="noopener" className="hover:text-[#f0eeff] transition">WhatsApp</a>
+            <a href="https://wa.me/5549980809269" target="_blank" rel="noopener" className="hover:text-[#f0eeff] transition">WhatsApp</a>
           </div>
         </div>
       </footer>
