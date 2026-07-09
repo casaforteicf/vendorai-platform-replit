@@ -79,6 +79,7 @@ import RealBudgetEngineStudio from './real-budget-engine/RealBudgetEngineStudio'
 import ClientPortalApprovalStudio from './client-portal-approval/ClientPortalApprovalStudio'
 import ProductionProcurementExecutionStudio from './production-procurement-execution/ProductionProcurementExecutionStudio'
 import PostSaleDeliverySuccessStudio from './post-sale-delivery-success/PostSaleDeliverySuccessStudio'
+import SystemConsolidationQAStudio from './system-consolidation-qa/SystemConsolidationQAStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -122,6 +123,7 @@ export type ModuleId =
   | 'client-portal-approval' | 'proposal-delivery' | 'portal-aprovacao'
   | 'execution' | 'production-procurement'
   | 'post-sale' | 'pos-venda' | 'delivery-success' | 'customer-success' | 'success'
+  | 'system-consolidation-qa' | 'qa' | 'system-qa' | 'consolidation-qa'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -265,6 +267,10 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'delivery-success':   { icon:'🌟', label:'Entrega & Sucesso'        },
   'customer-success':   { icon:'🌟', label:'Customer Success'         },
   'success':            { icon:'🌟', label:'Sucesso do Cliente'       },
+  'system-consolidation-qa': { icon:'🔬', label:'QA / Release'           },
+  'qa':                      { icon:'🔬', label:'QA / Release'           },
+  'system-qa':               { icon:'🔬', label:'System QA'              },
+  'consolidation-qa':        { icon:'🔬', label:'Consolidation QA'       },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -489,6 +495,10 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'consolidation':
     case 'system-consolidation':
     case 'real-integration': return <SystemConsolidationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'system-consolidation-qa':
+    case 'qa':
+    case 'system-qa':
+    case 'consolidation-qa': return <SystemConsolidationQAStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'real-render-gallery':
     case 'render-gallery':
     case 'post-render': return <RealRenderGalleryStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />

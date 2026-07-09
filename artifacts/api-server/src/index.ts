@@ -795,6 +795,27 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: scout_oportunidades.sinais_bot skipped (may already exist)");
   }
+
+  // Sprint 035 — System Consolidation & QA: arch_release_gates table
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS arch_release_gates (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id   UUID        NULL,
+        gate_id     TEXT        NOT NULL UNIQUE,
+        status      TEXT        NOT NULL DEFAULT 'pending',
+        evidence    TEXT        NULL,
+        owner       TEXT        NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_arch_release_gates_tenant ON arch_release_gates (tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_arch_release_gates_status ON arch_release_gates (status)`);
+    logger.info("startup migrations: arch_release_gates OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: arch_release_gates skipped (may already exist)");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
