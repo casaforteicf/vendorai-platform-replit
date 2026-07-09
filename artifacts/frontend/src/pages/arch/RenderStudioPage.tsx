@@ -2,7 +2,7 @@
 // Standalone (não usa ArqWorkspace shell): topbar própria + sidebar esquerda +
 // canvas central + painel direito + barra de status inferior.
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useArqProject } from "@/modules/arqdor/hooks/useArqProject";
 import { WorkspaceProvider } from "@/modules/arqdor/workspace/WorkspaceContext";
@@ -201,12 +201,14 @@ function TopBar({
         </button>
 
         {/* Avatar */}
-        <div style={{
-          width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg, #7C3AED, #A78BFA)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer", flexShrink: 0,
-          border: "2px solid #2D3348",
-        }}>MV</div>
+        <button
+          onClick={onNotifications}
+          style={{
+            width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg, #7C3AED, #A78BFA)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer", flexShrink: 0,
+            border: "2px solid #2D3348",
+          }}>MV</button>
 
         <div style={{ marginLeft: 4 }}>
           <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "#E2E8F0", lineHeight: 1 }}>Marcos Vinicius</p>
