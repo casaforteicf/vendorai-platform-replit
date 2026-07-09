@@ -55,6 +55,7 @@ import FacilityManagementCenter from './facility-management/FacilityManagementCe
 import IntegrationHub from './integration-hub/IntegrationHub'
 import DataSyncCenter from './integration-hub/data-sync/DataSyncCenter'
 import UnifiedCopilotCenter from './integration-hub/unified-copilot/UnifiedCopilotCenter'
+import MigrationAuditCenter from './integration-hub/migration-audit/MigrationAuditCenter'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -89,6 +90,7 @@ export type ModuleId =
   | 'integration' | 'integration-hub'
   | 'data-sync' | 'api-connectors' | 'event-bus'
   | 'unified-copilot' | 'copilot' | 'ai-copilot'
+  | 'migration' | 'migration-audit' | 'mock-migration'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -180,6 +182,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'unified-copilot':    { icon:'🤖', label:'Unified Copilot'  },
   'copilot':            { icon:'🤖', label:'Copilot'          },
   'ai-copilot':         { icon:'🤖', label:'AI Copilot'       },
+  'migration':          { icon:'🗺️', label:'Migration'        },
+  'migration-audit':    { icon:'🗺️', label:'Migration Audit'  },
+  'mock-migration':     { icon:'🗺️', label:'Mock Migration'   },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -373,6 +378,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'unified-copilot':
     case 'copilot':
     case 'ai-copilot':       return <UnifiedCopilotCenter onNavigate={m => setActive(m as ModuleId)} />
+    case 'migration':
+    case 'migration-audit':
+    case 'mock-migration':   return <MigrationAuditCenter onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':
