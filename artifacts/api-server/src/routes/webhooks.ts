@@ -518,20 +518,28 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   if (!_zapiApptHandled) {
     // ── 9. Auto-quote pipeline for Z-API channel leads ───────────────────
     if (lead.source === "whatsapp") {
-      const { generated, message: quoteMessage } = await runAutoQuotePipeline({
-        tenantId,
-        leadId: lead.id,
-        mensagem,
-        log: req.log,
-      });
+      let autoQuoteHandled = false;
+      try {
+        const { generated, message: quoteMessage } = await runAutoQuotePipeline({
+          tenantId,
+          leadId: lead.id,
+          mensagem,
+          log: req.log,
+        });
 
-      if (generated) {
-        await sendOutgoingMessage(
-          { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" },
-          req.log
-        );
-        req.log.info({ leadId: lead.id }, "zapi-webhook: auto-quote sent");
-      } else {
+        if (generated) {
+          await sendOutgoingMessage(
+            { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" },
+            req.log
+          );
+          req.log.info({ leadId: lead.id }, "zapi-webhook: auto-quote sent");
+          autoQuoteHandled = true;
+        }
+      } catch (autoQuoteErr) {
+        req.log.error({ err: autoQuoteErr, leadId: lead.id }, "zapi-webhook: auto-quote pipeline failed — falling back to agent dispatch");
+      }
+
+      if (!autoQuoteHandled) {
         dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
         req.log.info({ messageId: message.id, leadId: lead.id }, "zapi-webhook: agent dispatched");
       }

@@ -55,6 +55,7 @@ type FoundProduct = {
 
 const INTENT_JSON_SCHEMA = {
   type: "object" as const,
+  additionalProperties: false as const,
   properties: {
     intent: {
       type: "string" as const,
@@ -65,15 +66,16 @@ const INTENT_JSON_SCHEMA = {
       type: "array" as const,
       items: {
         type: "object" as const,
+        additionalProperties: false as const,
         properties: {
           name: { type: "string" as const, description: "Nome do produto identificado" },
           quantity: { type: "number" as const, description: "Quantidade solicitada" },
-          width: { type: "string" as const, description: "Largura, se mencionada" },
-          height: { type: "string" as const, description: "Altura, se mencionada" },
-          color: { type: "string" as const, description: "Cor, se mencionada" },
-          specs: { type: "string" as const, description: "Outras especificações relevantes" },
+          width: { type: ["string", "null"] as const, description: "Largura, se mencionada" },
+          height: { type: ["string", "null"] as const, description: "Altura, se mencionada" },
+          color: { type: ["string", "null"] as const, description: "Cor, se mencionada" },
+          specs: { type: ["string", "null"] as const, description: "Outras especificações relevantes" },
         },
-        required: ["name", "quantity"],
+        required: ["name", "quantity", "width", "height", "color", "specs"],
       },
     },
     missingInformation: {
