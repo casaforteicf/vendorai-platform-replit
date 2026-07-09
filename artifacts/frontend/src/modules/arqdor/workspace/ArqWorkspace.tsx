@@ -29,6 +29,7 @@ import { SettingsModule }        from './modules/SettingsModule'
 import { ProjectModule }         from './modules/ProjectModule'
 import { ArqHubView }            from '../arqhub/ArqHubView'
 import { AIEDashboard }          from '../engines/aie/dashboard/AIEDashboard'
+import AIEnterpriseCore from './ai-enterprise/AIEnterpriseCore'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
 import { RenderProgressModal } from './project-experience/ProjectHomePhoenix'
 import { InstantRenderZone } from './project-experience/InstantRenderZone'
@@ -71,7 +72,7 @@ export type ModuleId =
   | 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'cliente'
   | 'especificacao'
   | 'ai-review' | 'correcoes' | 'memoria' | 'config'
-  | 'arqhub' | 'ai-intel' | 'integracao-legado' | 'ecosystem' | 'knowledge' | 'office'
+  | 'arqhub' | 'ai-intel' | 'ai-enterprise' | 'ai' | 'integracao-legado' | 'ecosystem' | 'knowledge' | 'office'
   | 'orcamento' | 'orcamento-pro'
   | 'ux-alignment'
   | 'specification' | 'especificacao-produto'
@@ -134,6 +135,8 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'config':     { icon:'⚙️', label:'Config'        },
   'arqhub':     { icon:'🏛️', label:'ARQ HUB'      },
   'ai-intel':   { icon:'🧠', label:'AI Intel'      },
+  'ai-enterprise': { icon:'🤖', label:'AI Enterprise' },
+  'ai':            { icon:'🤖', label:'AI'            },
   'integracao-legado': { icon:'🔗', label:'Integração (Legado)' },
   'ecosystem':  { icon:'🌐', label:'Parceiros'     },
   'knowledge':  { icon:'🧠', label:'Knowledge'     },
@@ -346,7 +349,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'marketplace':
     case 'arq-marketplace': return <MarketplaceEnterprise arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'arqhub':        return <ArqHubView/>
-    case 'ai-intel':      return <AIEDashboard/>
+    case 'ai-intel':
+    case 'ai-enterprise':
+    case 'ai':            return <AIEnterpriseCore arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'integracao-legado': return <IntegrationModule/>
     case 'cliente':
     case 'client':
