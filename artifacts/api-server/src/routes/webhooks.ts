@@ -343,8 +343,46 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   }
 
   // ── 2. Parse payload ───────────────────────────────────────────────────────
-  const parsed = zapiNativeBody.safeParse(req.body);
+  // express.json() only fires when Content-Type is application/json.
+  // Z-API media callbacks (audio, image, document) often arrive with no
+  // Content-Type or a different one, leaving req.body as undefined.
+  // Collect the raw stream and attempt JSON.parse as a fallback so these
+  // messages are not silently dropped before any business logic runs.
+  let bodyToValidate: unknown = req.body;
+  if (bodyToValidate === undefined || bodyToValidate === null) {
+    try {
+      const rawText = await new Promise<string>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (chunk: unknown) =>
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string))
+        );
+        req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+        req.on("error", reject);
+      });
+      bodyToValidate = JSON.parse(rawText);
+      req.log.info(
+        { contentType: req.headers["content-type"] ?? "none", bodyLength: rawText.length },
+        "zapi-webhook: body parsed from raw stream (Content-Type was not application/json)"
+      );
+    } catch {
+      // stream error or non-JSON — Zod will reject below and we log there
+    }
+  }
+
+  const parsed = zapiNativeBody.safeParse(bodyToValidate);
   if (!parsed.success) {
+    req.log.warn(
+      {
+        reason: "invalid_payload",
+        bodyType: typeof bodyToValidate,
+        contentType: req.headers["content-type"] ?? "none",
+        bodyPreview: typeof bodyToValidate === "string"
+          ? bodyToValidate.slice(0, 300)
+          : JSON.stringify(bodyToValidate)?.slice(0, 300),
+        zodIssues: parsed.error.issues.slice(0, 5),
+      },
+      "zapi-webhook: payload validation failed — body did not match expected schema"
+    );
     res.status(200).json({ ignored: true, reason: "invalid_payload" });
     return;
   }
