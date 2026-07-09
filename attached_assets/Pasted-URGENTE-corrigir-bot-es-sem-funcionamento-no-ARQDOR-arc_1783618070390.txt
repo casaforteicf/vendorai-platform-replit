@@ -1,0 +1,76 @@
+URGENTE — corrigir botões sem funcionamento no ARQDOR /arch/render.
+
+Problema:
+Na tela /arch/render nenhum botão está funcionando. Isso é bloqueador.
+
+Não mexer em layout novo agora.
+Não criar módulo novo.
+Não alterar backend.
+Primeiro corrigir interação/click.
+
+Investigar:
+1. Verificar se existe algum overlay invisível cobrindo a tela.
+2. Verificar z-index e pointer-events dos wrappers principais.
+3. Verificar canvas central, camadas absolute/fixed/inset-0 e overlays.
+4. Verificar se algum elemento está com pointer-events-none ou pointer-events-auto aplicado errado.
+5. Verificar se o wrapper do ARQDOR está bloqueando eventos.
+6. Verificar se a sidebar global ou interna está com camada por cima.
+7. Verificar se os botões possuem onClick real.
+8. Verificar se onNavigate está sendo passado corretamente.
+9. Verificar se botões estão disabled por loading, projectId vazio ou estado inválido.
+10. Verificar erros no console do navegador.
+
+Arquivos para revisar:
+- ArqdorPage.tsx
+- ArqWorkspace
+- RealRenderGalleryStudio
+- RenderPreviewCard
+- MaterialChangePanel
+- PostRenderAdjustmentPanel
+- SelectedRenderInspector
+- Navigation/sidebar interna ARQDOR
+- arqdor-theme.css
+- arqdor-theme-extensions.css
+
+Correção esperada:
+1. Todos os botões devem voltar a receber clique.
+2. Menu interno ARQDOR deve navegar.
+3. Botão Próxima Etapa deve funcionar.
+4. Botões da sidebar interna devem funcionar.
+5. Botões do painel direito devem funcionar.
+6. Botões de render, melhoria, alterar material, atualizar galeria e especificação devem responder.
+7. Nenhuma camada invisível deve bloquear clique.
+
+Testar no navegador:
+- clicar em Studio;
+- clicar em Ambientes;
+- clicar em Storyboard;
+- clicar em Biblioteca;
+- clicar em Especificações;
+- clicar em Produção;
+- clicar no botão Próxima Etapa;
+- clicar nos botões do painel direito;
+- clicar em Atualizar galeria;
+- clicar em Specification.
+
+Debug sugerido:
+No console do navegador, usar:
+document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
+
+E também clicar sobre um botão e verificar qual elemento está por cima.
+
+Se houver overlay cobrindo:
+- remover;
+- reduzir z-index;
+- aplicar pointer-events-none somente no overlay decorativo;
+- manter pointer-events-auto nos botões e painéis interativos.
+
+Depois rodar:
+pnpm typecheck
+
+Retornar:
+1. causa exata do clique não funcionar;
+2. arquivo corrigido;
+3. quais botões foram testados;
+4. print ou vídeo curto mostrando clique funcionando;
+5. resultado do pnpm typecheck.

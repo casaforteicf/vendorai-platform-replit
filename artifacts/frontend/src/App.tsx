@@ -220,6 +220,23 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   );
 }
 
+// Fullscreen route — auth check only, NO SidebarLayout wrapper.
+// Use for pages that ship their own complete shell (e.g. RenderStudioPage).
+function FullscreenProtectedRoute({ component: Component, ...rest }: any) {
+  const { token, user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      setLocation("/login");
+    }
+  }, [token, isLoading, setLocation]);
+
+  if (isLoading || !token || !user) return <Spinner />;
+
+  return <Component {...rest} />;
+}
+
 function SuperAdminRoute({ component: Component, ...rest }: any) {
   const { token, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -592,7 +609,7 @@ function AppRoutes() {
           {() => <ProtectedRoute component={ArchMarketplace} />}
         </Route>
         <Route path="/arch/render">
-          {() => <ProtectedRoute component={ArchRender} />}
+          {() => <FullscreenProtectedRoute component={ArchRender} />}
         </Route>
         <Route path="/arch/portal/:token">
           {() => <ArchPortalCliente />}
