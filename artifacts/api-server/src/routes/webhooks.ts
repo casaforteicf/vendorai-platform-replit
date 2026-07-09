@@ -343,30 +343,25 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   }
 
   // ── 2. Parse payload ───────────────────────────────────────────────────────
-  // express.json() only fires when Content-Type is application/json.
-  // Z-API media callbacks (audio, image, document) often arrive with no
-  // Content-Type or a different one, leaving req.body as undefined.
-  // Collect the raw stream and attempt JSON.parse as a fallback so these
-  // messages are not silently dropped before any business logic runs.
+  // DIAGNÓSTICO TEMPORÁRIO — o middleware zapi-raw-capture em app.ts já consumiu
+  // o stream bruto, logou tudo incondicionalmente e tentou JSON.parse antes de
+  // express.json() rodar. req.body agora é: objeto JSON (parse OK), string crua
+  // (parse falhou mas body não era vazio), ou undefined (body vazio).
+  // Não tentamos ler o stream aqui pois ele já foi consumido.
+  const rawBodyStr = (req as Request & { _zapiRawBody?: string })._zapiRawBody ?? "";
   let bodyToValidate: unknown = req.body;
+
+  // Se req.body ainda for undefined/null após o middleware, há algo muito errado —
+  // logamos como evidência adicional.
   if (bodyToValidate === undefined || bodyToValidate === null) {
-    try {
-      const rawText = await new Promise<string>((resolve, reject) => {
-        const chunks: Buffer[] = [];
-        req.on("data", (chunk: unknown) =>
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string))
-        );
-        req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-        req.on("error", reject);
-      });
-      bodyToValidate = JSON.parse(rawText);
-      req.log.info(
-        { contentType: req.headers["content-type"] ?? "none", bodyLength: rawText.length },
-        "zapi-webhook: body parsed from raw stream (Content-Type was not application/json)"
-      );
-    } catch {
-      // stream error or non-JSON — Zod will reject below and we log there
-    }
+    req.log.warn(
+      {
+        contentType: req.headers["content-type"] ?? "AUSENTE",
+        rawBodyStr: rawBodyStr.slice(0, 300),
+        note: "middleware zapi-raw-capture rodou mas req.body ainda é undefined/null",
+      },
+      "zapi-webhook: req.body vazio após middleware de captura — body provavelmente foi enviado vazio pela Z-API"
+    );
   }
 
   const parsed = zapiNativeBody.safeParse(bodyToValidate);

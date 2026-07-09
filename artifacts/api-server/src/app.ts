@@ -54,6 +54,54 @@ app.use(
   }),
 );
 
+// DIAGNÓSTICO TEMPORÁRIO — remover após identificar causa raiz do problema de áudio/imagem Z-API
+// Este middleware captura o body BRUTO (buffer) de TODA requisição que chegar em /webhooks/zapi,
+// ANTES de express.json() ter qualquer chance de consumir ou ignorar o stream.
+// express.raw({ type: '*/*' }) lê o stream independente de Content-Type e seta req._body=true,
+// o que faz express.json() (logo abaixo) pular a re-leitura do stream (comportamento body-parser).
+// Após captura: loga tudo incondicionalmente, tenta JSON.parse e seta req.body para o handler.
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  if (!/\/webhooks\/zapi/.test(req.url)) return next();
+
+  express.raw({ type: '*/*', limit: '20mb' })(req, _res, (rawErr?: unknown) => {
+    const rawBuf = Buffer.isBuffer(req.body) ? req.body : null;
+    const rawStr = rawBuf ? rawBuf.toString('utf-8') : '';
+
+    // Log incondicional — acontece ANTES de auth, JSON.parse e Zod
+    logger.warn(
+      {
+        zapiRawCapture: true,
+        method: req.method,
+        path: req.url?.split('?')[0],
+        contentType: req.headers['content-type'] ?? 'AUSENTE',
+        contentLength: req.headers['content-length'] ?? 'AUSENTE',
+        bodyByteLength: rawBuf ? rawBuf.length : 0,
+        bodyPreview: rawStr.slice(0, 500),
+        allHeaders: req.headers,
+        rawReadErr: rawErr ? String(rawErr) : undefined,
+      },
+      'zapi-raw-capture: requisição interceptada — body bruto + headers antes de qualquer parser ou auth'
+    );
+
+    // Tenta JSON.parse para que o handler receba objeto em vez de Buffer.
+    // Se parse falhar, passa a string crua para o handler poder inspecionar via Zod.
+    if (rawStr) {
+      try {
+        req.body = JSON.parse(rawStr);
+      } catch {
+        req.body = rawStr; // string crua — Zod vai rejeitar e logar detalhes
+      }
+    } else {
+      req.body = undefined;
+    }
+
+    // Guarda string bruta em propriedade auxiliar para diagnóstico no handler
+    (req as Request & { _zapiRawBody: string })._zapiRawBody = rawStr;
+
+    next();
+  });
+});
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
