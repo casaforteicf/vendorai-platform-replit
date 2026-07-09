@@ -70,7 +70,7 @@ export type ModuleId =
   | 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'cliente'
   | 'especificacao'
   | 'ai-review' | 'correcoes' | 'memoria' | 'config'
-  | 'arqhub' | 'ai-intel' | 'integracao' | 'ecosystem' | 'knowledge' | 'office'
+  | 'arqhub' | 'ai-intel' | 'integracao-legado' | 'ecosystem' | 'knowledge' | 'office'
   | 'orcamento' | 'orcamento-pro'
   | 'ux-alignment'
   | 'specification' | 'especificacao-produto'
@@ -132,7 +132,7 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'config':     { icon:'⚙️', label:'Config'        },
   'arqhub':     { icon:'🏛️', label:'ARQ HUB'      },
   'ai-intel':   { icon:'🧠', label:'AI Intel'      },
-  'integracao': { icon:'🔗', label:'Integração'    },
+  'integracao-legado': { icon:'🔗', label:'Integração (Legado)' },
   'ecosystem':  { icon:'🌐', label:'Parceiros'     },
   'knowledge':  { icon:'🧠', label:'Knowledge'     },
   'office':     { icon:'🏢', label:'Office OS'     },
@@ -341,7 +341,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'arq-marketplace': return <MarketplaceEnterprise arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'arqhub':        return <ArqHubView/>
     case 'ai-intel':      return <AIEDashboard/>
-    case 'integracao':    return <IntegrationModule/>
+    case 'integracao-legado': return <IntegrationModule/>
     case 'cliente':
     case 'client':
     case 'portal-cliente': return <ClientExperience arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
@@ -370,8 +370,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'facility-management':
     case 'manutencao':       return <FacilityManagementCenter arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'integration':
-    case 'integration-hub':
-    case 'integracao':       return <IntegrationHub arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'integration-hub':  return <IntegrationHub arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'data-sync':
     case 'api-connectors':
     case 'event-bus':        return <DataSyncCenter onNavigate={m => setActive(m as ModuleId)} />
