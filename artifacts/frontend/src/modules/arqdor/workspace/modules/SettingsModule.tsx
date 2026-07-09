@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { AVAILABLE_PLUGINS, PROVIDER_TYPE_LABELS, PROVIDER_TYPE_ICONS, buildRegistry } from '../../plugins/plugin-registry'
 import type { PluginRegistration } from '../../shared/platform-types'
 import { T } from '../../shared/arqdor-theme'
+import { ArqdorThemeSettingsPanel } from '../../theme/ArqdorThemeSettingsPanel'
 
 const BASE = '/api'
 function authHeaders(): Record<string, string> {
@@ -142,6 +143,9 @@ export function SettingsModule() {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' as const, padding: '16px 20px', display: 'flex', flexDirection: 'column' as const, gap: 20 }}>
+
+        {/* Aparência — tema claro/escuro/automático */}
+        <ArqdorThemeSettingsPanel />
 
         {/* Render config (backend-persisted) */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>

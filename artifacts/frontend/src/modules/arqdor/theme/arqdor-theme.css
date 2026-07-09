@@ -1,0 +1,321 @@
+:root {
+  color-scheme: light;
+
+  --arq-background: #F7F7F8;
+  --arq-foreground: #0F172A;
+  --arq-muted: #64748B;
+  --arq-card: #FFFFFF;
+  --arq-card-soft: #F8FAFC;
+  --arq-border: #E5E7EB;
+
+  --arq-accent: #7C3AED;
+  --arq-accent-dark: #A78BFA;
+  --arq-accent-contrast: #FFFFFF;
+
+  --arq-success: #059669;
+  --arq-warning: #D97706;
+  --arq-danger: #E11D48;
+  --arq-info: #2563EB;
+
+  --arq-render-bg: #0B0D12;
+  --arq-render-card: #111827;
+  --arq-render-border: #1F2937;
+  --arq-render-text: #F8FAFC;
+
+  --arq-radius-lg: 28px;
+  --arq-radius-xl: 34px;
+  --arq-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+:root[data-arqdor-theme="dark"] {
+  color-scheme: dark;
+
+  --arq-background: #050607;
+  --arq-foreground: #F8FAFC;
+  --arq-muted: #94A3B8;
+  --arq-card: #111318;
+  --arq-card-soft: #181B22;
+  --arq-border: #252A34;
+
+  --arq-success: #34D399;
+  --arq-warning: #FBBF24;
+  --arq-danger: #FB7185;
+  --arq-info: #60A5FA;
+
+  --arq-render-bg: #030405;
+  --arq-render-card: #0B0D12;
+  --arq-render-border: #1E293B;
+  --arq-render-text: #F8FAFC;
+
+  --arq-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.arq-page {
+  min-height: 100vh;
+  background: var(--arq-background);
+  color: var(--arq-foreground);
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.arq-container {
+  width: 100%;
+  max-width: 1760px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.arq-card {
+  background: var(--arq-card);
+  color: var(--arq-foreground);
+  border: 1px solid var(--arq-border);
+  border-radius: var(--arq-radius-lg);
+  box-shadow: var(--arq-shadow);
+}
+
+.arq-card-lg {
+  border-radius: var(--arq-radius-xl);
+  padding: 20px;
+}
+
+.arq-soft {
+  background: var(--arq-card-soft);
+  border: 1px solid var(--arq-border);
+  border-radius: 24px;
+}
+
+.arq-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.arq-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.arq-eyebrow {
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--arq-accent);
+  margin: 0;
+}
+
+.arq-title {
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  margin: 6px 0 0;
+  color: var(--arq-foreground);
+}
+
+.arq-hero-title {
+  font-size: 32px;
+  line-height: 1.1;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  margin: 6px 0 0;
+  color: var(--arq-foreground);
+}
+
+.arq-subtitle {
+  color: var(--arq-muted);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 8px 0 0;
+}
+
+.arq-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.arq-divider {
+  height: 1px;
+  background: var(--arq-border);
+  margin: 22px 0;
+}
+
+.arq-button {
+  border: 0;
+  border-radius: 16px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+}
+
+.arq-button:hover {
+  transform: translateY(-1px);
+}
+
+.arq-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.arq-button-primary {
+  background: var(--arq-accent);
+  color: var(--arq-accent-contrast);
+}
+
+.arq-button-secondary {
+  background: var(--arq-card-soft);
+  color: var(--arq-foreground);
+  border: 1px solid var(--arq-border);
+}
+
+.arq-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.arq-option-card {
+  text-align: left;
+  border: 1px solid var(--arq-border);
+  background: var(--arq-card-soft);
+  color: var(--arq-foreground);
+  border-radius: 24px;
+  padding: 16px;
+  cursor: pointer;
+}
+
+.arq-option-card span {
+  display: block;
+  font-weight: 750;
+  margin-bottom: 6px;
+}
+
+.arq-option-card small {
+  color: var(--arq-muted);
+  line-height: 1.5;
+}
+
+.arq-option-card.is-selected {
+  border-color: var(--arq-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--arq-accent) 14%, transparent);
+}
+
+.arq-theme-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 18px;
+  background: var(--arq-card-soft);
+  border: 1px solid var(--arq-border);
+}
+
+.arq-theme-toggle button {
+  border: 0;
+  border-radius: 14px;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--arq-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.arq-theme-toggle button.is-active {
+  background: var(--arq-card);
+  color: var(--arq-foreground);
+  box-shadow: var(--arq-shadow);
+}
+
+.arq-accent-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.arq-accent-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--arq-border);
+  background: var(--arq-card-soft);
+  color: var(--arq-foreground);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.arq-accent-option span {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.arq-accent-option.is-selected {
+  border-color: var(--arq-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--arq-accent) 14%, transparent);
+}
+
+.arq-switch-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--arq-card-soft);
+  border: 1px solid var(--arq-border);
+  border-radius: 24px;
+  padding: 16px;
+  margin-top: 22px;
+  color: var(--arq-foreground);
+  cursor: pointer;
+}
+
+.arq-switch-row small {
+  display: block;
+  color: var(--arq-muted);
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.arq-alert {
+  border-radius: 18px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 16px;
+}
+
+.arq-alert-warning {
+  background: color-mix(in srgb, var(--arq-warning) 14%, transparent);
+  color: var(--arq-warning);
+}
+
+.arq-render-workspace {
+  min-height: 100%;
+  background: var(--arq-render-bg);
+  color: var(--arq-render-text);
+  border: 1px solid var(--arq-render-border);
+  border-radius: var(--arq-radius-xl);
+  padding: 20px;
+}
+
+@media (max-width: 920px) {
+  .arq-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .arq-container {
+    padding: 16px;
+  }
+}

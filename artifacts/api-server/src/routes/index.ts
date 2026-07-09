@@ -64,6 +64,7 @@ import archClientPortalApprovalRouter from "./arch_client_portal_approval";
 import archProductionProcurementRouter from "./arch_production_procurement";
 import archPostSaleRouter from "./arch_post_sale";
 import { createSystemConsolidationRouter } from "./arch_system_consolidation";
+import archThemePreferencesRouter from "./arch_theme_preferences";
 import financeiroObraRouter from "./financeiro_obra";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
@@ -280,6 +281,7 @@ router.use(archClientPortalApprovalRouter);
 router.use(archProductionProcurementRouter);
 router.use(archPostSaleRouter);
 router.use(createSystemConsolidationRouter());
+router.use(archThemePreferencesRouter);
 
 // Beauty (Salão de Beleza) Hub
 router.use(sdrTemplatesRouter);

@@ -73,6 +73,9 @@ import BillingSubscriptionStudio from './billing-subscription-studio/BillingSubs
 import TenantAdminProvisioningStudio from './tenant-admin-provisioning-studio/TenantAdminProvisioningStudio'
 import IntegrationAutomationStudio from './integration-automation-studio/IntegrationAutomationStudio'
 import SystemConsolidationStudio from './system-consolidation-studio/SystemConsolidationStudio'
+import ThemeSystemStudio from './theme-system/ThemeSystemStudio'
+import { ArqdorThemeProvider } from '../theme/ArqdorThemeProvider'
+import { ArqdorThemeToggle } from '../theme/ArqdorThemeToggle'
 import RealRenderGalleryStudio from './real-render-gallery/RealRenderGalleryStudio'
 import RealSpecificationCatalogStudio from './real-specification-catalog/RealSpecificationCatalogStudio'
 import RealBudgetEngineStudio from './real-budget-engine/RealBudgetEngineStudio'
@@ -124,6 +127,7 @@ export type ModuleId =
   | 'execution' | 'production-procurement'
   | 'post-sale' | 'pos-venda' | 'delivery-success' | 'customer-success' | 'success'
   | 'system-consolidation-qa' | 'qa' | 'system-qa' | 'consolidation-qa'
+  | 'theme-system' | 'appearance' | 'aparencia' | 'dark-mode'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -271,6 +275,10 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'qa':                      { icon:'🔬', label:'QA / Release'           },
   'system-qa':               { icon:'🔬', label:'System QA'              },
   'consolidation-qa':        { icon:'🔬', label:'Consolidation QA'       },
+  'theme-system':            { icon:'🎨', label:'Tema do Sistema'         },
+  'appearance':              { icon:'🎨', label:'Aparência'               },
+  'aparencia':               { icon:'🎨', label:'Aparência'               },
+  'dark-mode':               { icon:'🌙', label:'Dark Mode'               },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -530,6 +538,10 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'compras':       return <ProcurementStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'orcamento-pro': return <BudgetDisciplinesProposal />
     case 'ux-alignment':  return <AlignedStudioShell />
+    case 'theme-system':
+    case 'appearance':
+    case 'aparencia':
+    case 'dark-mode':    return <ThemeSystemStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
   }
 }
 
@@ -778,9 +790,11 @@ function StatusBadge({ arqState }: { arqState: ArqProjectState }) {
 // ─── Main export ──────────────────────────────────────────────────────────────
 export default function ArqWorkspace() {
   return (
-    <WorkspaceProvider>
-      <WorkspaceInner />
-    </WorkspaceProvider>
+    <ArqdorThemeProvider>
+      <WorkspaceProvider>
+        <WorkspaceInner />
+      </WorkspaceProvider>
+    </ArqdorThemeProvider>
   )
 }
 
@@ -931,6 +945,9 @@ function WorkspaceInner() {
             }}>
               {overallScore}
             </span>
+
+            {/* Theme toggle */}
+            <ArqdorThemeToggle compact />
 
             {/* ⌘K search */}
             <button

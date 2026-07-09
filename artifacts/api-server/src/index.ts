@@ -796,6 +796,28 @@ async function runStartupMigrations() {
     logger.warn({ err }, "startup migrations: scout_oportunidades.sinais_bot skipped (may already exist)");
   }
 
+  // Sprint 036 — Theme System: arch_theme_preferences table
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS arch_theme_preferences (
+        id                       UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id                UUID        NULL,
+        user_id                  UUID        NULL,
+        mode                     TEXT        NOT NULL DEFAULT 'light',
+        accent                   TEXT        NOT NULL DEFAULT 'violet',
+        use_dark_render_workspace BOOLEAN     NOT NULL DEFAULT true,
+        created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (tenant_id, user_id)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_arch_theme_prefs_tenant ON arch_theme_preferences (tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_arch_theme_prefs_user   ON arch_theme_preferences (user_id)`);
+    logger.info("startup migrations: arch_theme_preferences OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: arch_theme_preferences skipped (may already exist)");
+  }
+
   // Sprint 035 — System Consolidation & QA: arch_release_gates table
   try {
     await db.execute(sql`
