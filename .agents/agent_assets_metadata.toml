@@ -65,3 +65,9 @@ id = "4-hz1PWCY-DiU4wMvkEdJ"
 uri = "file://attached_assets/arqdor-files-para-rewrite.zip"
 type = "unspecified"
 title = "arqdor-files-para-rewrite.zip"
+
+[[outputs]]
+id = "WzL3Ivlea1H7Rg5O4T9uD"
+uri = "file://arqdor-current-render-files.zip"
+type = "unspecified"
+title = "arqdor-current-render-files.zip"
