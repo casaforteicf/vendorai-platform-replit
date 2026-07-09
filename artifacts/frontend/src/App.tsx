@@ -94,7 +94,7 @@ const ArchProjetoDetalhe = lazy(() => import("@/pages/arch/ProjetoDetalhe"));
 const ArchCatalogo       = lazy(() => import("@/pages/arch/Catalogo"));
 const ArchMarketplace    = lazy(() => import("@/pages/arch/Marketplace"));
 const ArchPortalCliente  = lazy(() => import("@/pages/arch/PortalCliente"));
-const ArchRender         = lazy(() => import("@/modules/arqdor/workspace/ArqWorkspace"));
+const ArchRender         = lazy(() => import("@/pages/arch/RenderStudioPage"));
 
 // Construção
 const Obras              = lazy(() => import("@/pages/Obras"));

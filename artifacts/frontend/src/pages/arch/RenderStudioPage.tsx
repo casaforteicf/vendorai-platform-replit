@@ -750,10 +750,8 @@ function RenderStudioInner() {
   const [activeNav, setActiveNav] = useState("studio");
   const [activeTab, setActiveTab] = useState("Storyboard");
 
-  const project = arqState?.currentProject || arqState?.projects?.[0] || null;
-  const projectName = project?.titulo || project?.title || project?.name || "Residência Silva";
-  const environment = project?.ambientes?.[0];
-  const environmentName = environment?.nome || environment?.name || "Sala de Estar";
+  const projectName = arqState.projectMeta?.titulo || arqState.projects[0]?.titulo || "Residência Silva";
+  const environmentName = "Sala de Estar";
 
   return (
     <div style={{
