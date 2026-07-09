@@ -50,8 +50,18 @@
   --arq-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
+/* Box-sizing reset for all ARQDOR elements */
+.arq-page *,
+.arq-page *::before,
+.arq-page *::after {
+  box-sizing: border-box;
+}
+
 .arq-page {
-  min-height: 100vh;
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background: var(--arq-background);
   color: var(--arq-foreground);
   transition: background 180ms ease, color 180ms ease;
@@ -59,12 +69,19 @@
 
 .arq-container {
   width: 100%;
-  max-width: 1760px;
-  margin: 0 auto;
+  max-width: 100%;
+  margin: 0;
   padding: 24px;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* Prevent grid children from blowing out container width */
+.arq-container > *,
+.arq-page .arq-grid > * {
+  min-width: 0;
 }
 
 .arq-card {

@@ -1010,31 +1010,33 @@ function WorkspaceInner() {
         <SubStepNav activeModule={activeModule} activeFlow={activeFlow} onNavigate={setActiveModule} />
 
         {/* ══════════════════════════════════════════════════════════
-            BODY — content area
-            Cada módulo preenche sua área com seu próprio background.
+            BODY ROW — content area + copilot sidebar side by side
             ══════════════════════════════════════════════════════════ */}
-        <div style={{ flex:1, overflow:'hidden', position:'relative' }}>
-          <div key={activeModule} className="phx-module-wrap" style={{ height:'100%', overflow:'hidden' }}>
-            <Suspense fallback={
-              <div style={{
-                height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
-                background:PHX.bg, gap:10, flexDirection:'column',
-              }}>
-                <div style={{ width:32, height:32, border:`3px solid ${PHX.border}`, borderTopColor:PHX.purple, borderRadius:'50%', animation:'phx-spin 0.8s linear infinite' }} />
-                <p style={{ margin:0, fontSize:12, color:PHX.dim }}>Carregando…</p>
-              </div>
-            }>
-              {renderModule(activeModule, arqState, setActiveModule)}
-            </Suspense>
+        <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'row', minHeight:0 }}>
+          {/* ── module content ── */}
+          <div style={{ flex:1, overflow:'hidden', position:'relative', minWidth:0 }}>
+            <div key={activeModule} className="phx-module-wrap" style={{ height:'100%', overflow:'hidden' }}>
+              <Suspense fallback={
+                <div style={{
+                  height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
+                  background:PHX.bg, gap:10, flexDirection:'column',
+                }}>
+                  <div style={{ width:32, height:32, border:`3px solid ${PHX.border}`, borderTopColor:PHX.purple, borderRadius:'50%', animation:'phx-spin 0.8s linear infinite' }} />
+                  <p style={{ margin:0, fontSize:12, color:PHX.dim }}>Carregando…</p>
+                </div>
+              }>
+                {renderModule(activeModule, arqState, setActiveModule)}
+              </Suspense>
+            </div>
           </div>
-        </div>
 
-        {/* ── ARQ COPILOT (sidebar style) ── */}
-        <ArqCopilot
-          collapsed={copilotCollapsed}
-          onToggle={() => setCopilotCollapsed(p => !p)}
-          nextAction={computeNextAction(arqState, 0)}
-        />
+          {/* ── ARQ COPILOT sidebar (right, same row as content) ── */}
+          <ArqCopilot
+            collapsed={copilotCollapsed}
+            onToggle={() => setCopilotCollapsed(p => !p)}
+            nextAction={computeNextAction(arqState, 0)}
+          />
+        </div>
 
         {/* ── COMMAND PALETTE ── */}
         <ArqCommandPalette

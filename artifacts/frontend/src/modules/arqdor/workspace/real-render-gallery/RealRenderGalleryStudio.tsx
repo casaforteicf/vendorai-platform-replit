@@ -60,8 +60,8 @@ export default function RealRenderGalleryStudio({ arqState, onNavigate }: RealRe
   }
 
   return (
-    <div className="min-h-screen bg-[var(--arq-background)] text-[var(--arq-foreground)]">
-      <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
+    <div className="h-full overflow-x-hidden overflow-y-auto bg-[var(--arq-background)] text-[var(--arq-foreground)]">
+      <div className="flex w-full max-w-full flex-col gap-5 px-6 py-6">
         <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
