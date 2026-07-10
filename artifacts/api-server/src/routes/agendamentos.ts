@@ -136,7 +136,7 @@ router.post("/agendamentos", async (req, res) => {
   // contains the real meetLink before the agent dispatch reads it. Previously the
   // sync ran async after the response, causing a race condition where the scheduler
   // agent could read meetLink=null and reproduce the placeholder verbatim.
-  req.log.info({ agendaId: agendamento.agendaId, agendamentoId: agendamento.id }, "agendamento: starting Google Calendar sync");
+  req.log?.info({ agendaId: agendamento.agendaId, agendamentoId: agendamento.id }, "agendamento: starting Google Calendar sync");
 
   // calendarLead is stored here so the async WhatsApp block (after response) can
   // reference it without an extra DB round-trip.
@@ -149,7 +149,7 @@ router.post("/agendamentos", async (req, res) => {
         .from(agendasTable)
         .where(eq(agendasTable.id, agendamento.agendaId));
 
-      req.log.info({ agendaId: agendamento.agendaId, hasRefreshToken: !!agenda?.googleRefreshToken }, "agendamento: agenda lookup done");
+      req.log?.info({ agendaId: agendamento.agendaId, hasRefreshToken: !!agenda?.googleRefreshToken }, "agendamento: agenda lookup done");
 
       if (agenda?.googleRefreshToken) {
         const [fetchedLead] = await db
