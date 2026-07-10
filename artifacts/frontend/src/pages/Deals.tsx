@@ -1103,7 +1103,7 @@ function EditSaasDealSheet({
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent className="w-[420px] overflow-y-auto">
+      <SheetContent className="w-full sm:w-[420px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="text-base flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-indigo-600" />
@@ -1448,7 +1448,7 @@ function EditDealSheet({
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent className="w-[400px]">
+      <SheetContent className="w-full sm:w-[400px]">
         <SheetHeader>
           <SheetTitle className="text-base">Editar Negócio</SheetTitle>
         </SheetHeader>

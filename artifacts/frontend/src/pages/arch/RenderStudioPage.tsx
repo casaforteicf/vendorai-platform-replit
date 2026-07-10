@@ -1916,6 +1916,28 @@ function RenderStudioInner() {
 // ─── Page export ───────────────────────────────────────────────────────────────
 
 export default function RenderStudioPage() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 900);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  if (isMobile) {
+    return (
+      <ArqdorThemeProvider>
+        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center", background: "#0f1117", color: "#fff", gap: 16 }}>
+          <div style={{ fontSize: 48 }}>🖥️</div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>ARQDOR Render Studio</h1>
+          <p style={{ fontSize: 14, opacity: 0.6, maxWidth: 300, lineHeight: 1.6, margin: 0 }}>
+            Este módulo requer uma tela maior. Abra em um computador ou tablet para usar todos os recursos do Render Studio.
+          </p>
+        </div>
+      </ArqdorThemeProvider>
+    );
+  }
+
   return (
     <ArqdorThemeProvider>
       <WorkspaceProvider>

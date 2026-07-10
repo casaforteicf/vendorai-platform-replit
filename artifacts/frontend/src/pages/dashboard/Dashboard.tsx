@@ -259,6 +259,7 @@ function AgentesEmExecucaoSection() {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -279,7 +280,7 @@ function AgentesEmExecucaoSection() {
                     <TableCell className="font-medium">{row.nome}</TableCell>
                     <TableCell className="text-muted-foreground">{row.telefone ?? "—"}</TableCell>
                     <TableCell>{formatValorLead(row.valor)}</TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground whitespace-nowrap">
                       {formatConversationStart(row.conversationStartedAt)}
                     </TableCell>
                     <TableCell>
@@ -295,6 +296,7 @@ function AgentesEmExecucaoSection() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

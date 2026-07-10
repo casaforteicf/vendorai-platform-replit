@@ -471,6 +471,7 @@ function AnalysisLogTab({ tenantId }: { tenantId: string }) {
           </div>
         ) : (
           <>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -514,6 +515,7 @@ function AnalysisLogTab({ tenantId }: { tenantId: string }) {
                 ))}
               </TableBody>
             </Table>
+            </div>
 
             {/* Pagination */}
             {totalPages > 1 && (
@@ -1615,7 +1617,8 @@ export default function Configuracoes() {
           if (tab !== "integracoes") setIntegracoesUnlocked(false);
         }}
       >
-        <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-10" : isTenantAdmin ? "grid-cols-9" : showFaturamento ? "grid-cols-8" : "grid-cols-7")}>
+        <div className="overflow-x-auto pb-0.5">
+        <TabsList className={cn("grid w-max sm:w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-10" : isTenantAdmin ? "grid-cols-9" : showFaturamento ? "grid-cols-8" : "grid-cols-7")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -1663,6 +1666,7 @@ export default function Configuracoes() {
             </TabsTrigger>
           )}
         </TabsList>
+        </div>
 
         {/* ── Tab: Perfil da Empresa ──────────────────────────────────────── */}
         <TabsContent value="perfil">
