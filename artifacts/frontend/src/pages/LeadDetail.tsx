@@ -932,6 +932,8 @@ export default function LeadDetail() {
   // Anexo
   const [newActivityAnexoFile, setNewActivityAnexoFile] = useState<File | null>(null);
   const [newActivityAnexoCategoria, setNewActivityAnexoCategoria] = useState<"projeto" | "imagem" | "documento" | "outras_informacoes">("documento");
+  const [newActivityFalouComDecisor, setNewActivityFalouComDecisor] = useState(true);
+  const [newActivityNomeGatekeeper, setNewActivityNomeGatekeeper] = useState("");
   const [isUploadingAnexo, setIsUploadingAnexo] = useState(false);
   const anexoInputRef = useRef<HTMLInputElement>(null);
 
@@ -958,6 +960,8 @@ export default function LeadDetail() {
         setNewActivityGerarMeet(false);
         setNewActivityAnexoFile(null);
         setNewActivityAnexoCategoria("documento");
+        setNewActivityFalouComDecisor(true);
+        setNewActivityNomeGatekeeper("");
         toast({ title: "Atividade criada." });
       },
       onError: () => {
@@ -978,6 +982,8 @@ export default function LeadDetail() {
     setNewActivityGerarMeet(false);
     setNewActivityAnexoFile(null);
     setNewActivityAnexoCategoria("documento");
+    setNewActivityFalouComDecisor(true);
+    setNewActivityNomeGatekeeper("");
     setIsNewActivityOpen(true);
   }
 
@@ -1032,7 +1038,20 @@ export default function LeadDetail() {
       leadId: id,
       tipo: newActivityTipo,
       titulo: newActivityTitulo.trim(),
-      descricao: newActivityDescricao.trim() || undefined,
+      descricao: (() => {
+        if (newActivityTipo === "visita") {
+          const parts: string[] = [];
+          if (!newActivityFalouComDecisor) {
+            parts.push("falou_com_decisor:false");
+            if (newActivityNomeGatekeeper.trim()) parts.push(`falou com: ${newActivityNomeGatekeeper.trim()}`);
+          } else {
+            parts.push("falou_com_decisor:true");
+          }
+          if (newActivityDescricao.trim()) parts.push(newActivityDescricao.trim());
+          return parts.join("\n") || undefined;
+        }
+        return newActivityDescricao.trim() || undefined;
+      })(),
       dataVencimento: isReuniao ? undefined : (newActivityData || undefined),
       status: "planejado",
       responsavelId,
@@ -3479,6 +3498,36 @@ export default function LeadDetail() {
                   </label>
                 </div>
               </>
+            )}
+
+            {/* Campos de visita presencial */}
+            {newActivityTipo === "visita" && (
+              <div className="space-y-3 rounded-md border border-border p-3 bg-muted/20">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Informações da visita</p>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="falou-com-decisor"
+                    checked={newActivityFalouComDecisor}
+                    onCheckedChange={setNewActivityFalouComDecisor}
+                  />
+                  <label htmlFor="falou-com-decisor" className="text-sm font-medium cursor-pointer">
+                    Falou com o decisor
+                  </label>
+                </div>
+                {!newActivityFalouComDecisor && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">
+                      Nome do gatekeeper <span className="text-xs text-muted-foreground">(opcional)</span>
+                    </label>
+                    <Input
+                      placeholder="Ex: Recepcionista, secretária, gerente intermediário…"
+                      value={newActivityNomeGatekeeper}
+                      onChange={(e) => setNewActivityNomeGatekeeper(e.target.value)}
+                      maxLength={100}
+                    />
+                  </div>
+                )}
+              </div>
             )}
 
             {/* ── Anexo ── */}

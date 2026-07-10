@@ -80,6 +80,29 @@ export async function generateSpinForActivity(
     .orderBy(desc(messagesTable.createdAt))
     .limit(15);
 
+  // Fetch previous reuniao activities (for history chain — BLOCO 26)
+  const previousActivities = await db
+    .select({
+      id:             activitiesTable.id,
+      titulo:         activitiesTable.titulo,
+      dataHoraInicio: activitiesTable.dataHoraInicio,
+      spinBriefing:   activitiesTable.spinBriefing,
+    })
+    .from(activitiesTable)
+    .where(
+      and(
+        eq(activitiesTable.leadId,  activity.leadId),
+        eq(activitiesTable.tipo,    "reuniao"),
+        isNotNull(activitiesTable.spinBriefing),
+      ),
+    )
+    .orderBy(desc(activitiesTable.dataHoraInicio))
+    .limit(3);
+
+  const previousRoteiros = previousActivities
+    .filter((a) => a.id !== activityId && a.spinBriefing)
+    .slice(0, 2);
+
   const dataReuniao = activity.dataHoraInicio
     ? new Date(activity.dataHoraInicio).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "full", timeStyle: "short" })
     : "data não definida";
@@ -101,8 +124,31 @@ export async function generateSpinForActivity(
     ? recentMessages.reverse().map((m) => `[${m.direcao === "entrada" ? "Cliente" : "Vendedor"}]: ${m.conteudo}`).join("\n")
     : "Sem mensagens recentes.";
 
+  // Build historical context from previous roteiros (BLOCO 26 — history chain)
+  const historicalContext = previousRoteiros.length > 0
+    ? previousRoteiros.map((a) => {
+        const dataAnterior = a.dataHoraInicio
+          ? new Date(a.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+          : "data anterior";
+        try {
+          const r = JSON.parse(a.spinBriefing!) as SpinRoteiro;
+          const topQuestions = [...(r.situacao ?? []), ...(r.problema ?? [])]
+            .slice(0, 3)
+            .map((q) => q.pergunta)
+            .join(" | ");
+          return (
+            `Reunião ${dataAnterior} — "${a.titulo}":\n` +
+            `• Abertura usada: "${r.abertura}"\n` +
+            `• Perguntas feitas: ${topQuestions || "—"}\n` +
+            `• Fechamento tentado: "${r.fechamento}"\n` +
+            (r.alertas?.length ? `• Alertas registrados: ${r.alertas.join(", ")}` : "")
+          );
+        } catch { return null; }
+      }).filter(Boolean).join("\n\n---\n\n")
+    : null;
+
   const systemPrompt = `Você é um especialista em SPIN Selling e vendas consultivas B2B.
-Você vai gerar um roteiro de reunião personalizado para um vendedor, baseado no histórico real do lead.
+Você vai gerar um roteiro de reunião personalizado para um vendedor, baseado no histórico real do lead.${historicalContext ? "\nIMPORTANTE: Há histórico de contatos anteriores. NÃO repita perguntas já feitas. Comece de onde o último contato parou e confirme o que mudou desde a última conversa." : ""}
 Retorne APENAS um JSON válido com a estrutura exata abaixo — sem markdown, sem explicações extras:
 {
   "abertura": "script de 2-3 frases para quebrar o gelo e estabelecer o contexto da reunião",
@@ -134,6 +180,9 @@ ${deal?.aiBriefing ? `\nBriefing IA do deal:\n${deal.aiBriefing}` : ""}
 
 ## Briefing SPIN coletado
 ${briefingTexto}
+
+## Histórico de contatos anteriores com este lead
+${historicalContext ?? "Primeiro contato/roteiro para este lead — sem histórico anterior."}
 
 ## Últimas mensagens da conversa
 ${messagesTexto}

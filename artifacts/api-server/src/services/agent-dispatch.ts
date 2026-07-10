@@ -27,6 +27,7 @@ import {
   leadSpouseConsentTable,
   tenantCalendarSettingsTable,
   scoutOportunidadesTable,
+  leadBriefingsTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
@@ -848,6 +849,18 @@ export async function processAgentInternal(params: {
       ).catch((err) => {
         log.warn({ err, leadId, tenantId }, "dispatch: qualification extraction failed");
       });
+
+      extractAndSaveSpinBriefing(
+        tenantId,
+        leadId,
+        ctx,
+        mensagem,
+        finalResposta,
+        log,
+        resolvedAgentName === "sdr" ? spinQualificationForExtraction : null,
+      ).catch((err) => {
+        log.warn({ err, leadId, tenantId }, "dispatch: SPIN briefing extraction failed");
+      });
     }
 
     return { status: "sent", taskId: task.id, agentName: resolvedAgentName, tokensUsed };
@@ -1213,6 +1226,103 @@ async function extractAndSaveQualification(
     { leadId, tenantId, extracted: Object.keys(extracted), mode: spinQuestions ? "custom-spin" : "generic" },
     "dispatch: qualification data extracted and saved",
   );
+}
+
+// ── SPIN Briefing extractor ───────────────────────────────────────────────
+
+/**
+ * After each SDR/closer/reactivation turn, extract SPIN qualification answers
+ * from the conversation and persist them to `lead_briefings`. Runs non-blocking.
+ * Only fills empty fields — never overwrites already-recorded answers.
+ */
+async function extractAndSaveSpinBriefing(
+  tenantId: string,
+  leadId: string,
+  ctx: AgentContext,
+  incomingMessage: string,
+  agentReply: string,
+  log: Logger,
+  spinQuestions: SpinQuestion[] | null = null,
+): Promise<void> {
+  const recentSlice = ctx.recentMessages.slice(-8);
+  const transcript = [
+    ...recentSlice.map((m) => `${m.enviadoPor === "lead" ? "Lead" : "Agente"}: ${m.conteudo}`),
+    `Lead: ${incomingMessage}`,
+    `Agente: ${agentReply}`,
+  ].join("\n");
+
+  let customHints = "";
+  if (spinQuestions && spinQuestions.length > 0) {
+    const byTipo = (tipo: string) =>
+      spinQuestions.filter((q) => q.tipo === tipo).map((q) => q.label).join(" / ");
+    customHints =
+      `\nPerguntas SPIN customizadas do tenant para referência:\n` +
+      `S - Situação: ${byTipo("situacao") || "—"}\n` +
+      `P - Problema: ${byTipo("problema") || "—"}\n` +
+      `I - Implicação: ${byTipo("implicacao") || "—"}\n` +
+      `N - Necessidade: ${byTipo("necessidade") || "—"}\n`;
+  }
+
+  const prompt =
+    `Você é um extrator de qualificação SPIN Selling. Analise a conversa e extraia o que o lead afirmou explicitamente. Não infira.\n` +
+    `Responda APENAS em JSON válido, sem markdown:\n` +
+    `{"situacao":"contexto atual do negócio mencionado ou null","problema":"dificuldades/dores mencionadas ou null","implicacao":"impacto/consequência do problema ou null","necessidade":"o que o lead precisa resolver ou null","valorImpacto":"valor ou número mencionado ou null"}\n` +
+    `Regras:\n- Se não foi mencionado explicitamente, use null\n- Valores devem ser curtos (máx 200 caracteres)` +
+    customHints +
+    `\n\nConversa:\n${transcript}`;
+
+  let extracted: { situacao?: string | null; problema?: string | null; implicacao?: string | null; necessidade?: string | null; valorImpacto?: string | null };
+  try {
+    const aiResult = await gatewayFamilyCallOpenAI(
+      tenantId,
+      "intelligence_analysis",
+      [{ role: "user", content: prompt }],
+      { model: "gpt-4.1-mini", maxTokens: 400, temperature: 0.0, log },
+    );
+    const raw = (aiResult.content ?? "{}").trim().replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    extracted = JSON.parse(raw) as typeof extracted;
+  } catch (err) {
+    log.warn({ err, leadId, tenantId }, "dispatch: SPIN briefing AI extraction failed");
+    return;
+  }
+
+  const hasAny = extracted.situacao || extracted.problema || extracted.implicacao || extracted.necessidade || extracted.valorImpacto;
+  if (!hasAny) return;
+
+  const [existing] = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(and(eq(leadBriefingsTable.leadId, leadId), eq(leadBriefingsTable.tenantId, tenantId)))
+    .limit(1);
+
+  const hasFilled = (arr: Array<{ answer: string }> | null | undefined) =>
+    arr && arr.some((a) => a.answer && a.answer.trim().length > 0);
+
+  const upd: Record<string, unknown> = { updatedAt: new Date() };
+  if (extracted.situacao && !hasFilled(existing?.situationAnswers)) {
+    upd.situationAnswers = [{ question: "Situação atual do cliente (extraído da conversa)", answer: extracted.situacao }];
+  }
+  if (extracted.problema && !hasFilled(existing?.problemAnswers)) {
+    upd.problemAnswers = [{ question: "Problema/dor identificada (extraído da conversa)", answer: extracted.problema }];
+  }
+  if (extracted.implicacao && !hasFilled(existing?.implicationAnswers)) {
+    upd.implicationAnswers = [{ question: "Impacto do problema (extraído da conversa)", answer: extracted.implicacao }];
+  }
+  if (extracted.necessidade && !hasFilled(existing?.needAnswers)) {
+    upd.needAnswers = [{ question: "O que o cliente precisa resolver (extraído da conversa)", answer: extracted.necessidade }];
+  }
+  if (extracted.valorImpacto && !existing?.implicationEstimatedValue) {
+    upd.implicationEstimatedValue = extracted.valorImpacto;
+  }
+
+  if (Object.keys(upd).length <= 1) return;
+
+  if (existing) {
+    await db.update(leadBriefingsTable).set(upd).where(eq(leadBriefingsTable.id, existing.id));
+  } else {
+    await db.insert(leadBriefingsTable).values({ tenantId, leadId, ...upd });
+  }
+  log.info({ leadId, tenantId, fields: Object.keys(upd).filter((k) => k !== "updatedAt") }, "dispatch: SPIN briefing extracted and persisted");
 }
 
 // ── Fire-and-forget wrapper ───────────────────────────────────────────────────

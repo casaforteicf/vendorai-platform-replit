@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, gte, lte, lt, gt, or, inArray } from "drizzle-orm";
+import { and, eq, gte, lte, lt, gt, or, inArray, like } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -25,6 +25,7 @@ import {
 } from "../lib/google-calendar";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { sendMeetingInviteEmail } from "../lib/email.js";
+import { generateSpinForActivity } from "./spin.js";
 
 const router: IRouter = Router();
 
@@ -269,26 +270,39 @@ router.post("/agendamentos", async (req, res) => {
     }
   }
 
-  // ── Deal activity ──────────────────────────────────────────────────────────
-  if (agendamento.dealId && agendamento.leadId) {
+  // ── Reunião activity on lead timeline ────────────────────────────────────
+  if (agendamento.leadId) {
     try {
       const modalidade = agendamento.modalidade ?? (agendamento.gerarMeet ? "meet" : "presencial");
       const tipoLabel = modalidade === "meet" ? "Google Meet" : modalidade === "ligacao" ? "Ligação" : "Presencial";
-      const dataStr = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
-      const horaStr = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
       const criadoPor = agendamento.criadoPor ?? "humano";
-      await db.insert(activitiesTable).values({
-        tenantId: agendamento.tenantId,
-        leadId:   agendamento.leadId,
-        dealId:   agendamento.dealId,
-        tipo:     "tarefa",
-        titulo:   `Reunião agendada — ${tipoLabel}`,
-        descricao: `Reunião ${tipoLabel} agendada para ${dataStr} às ${horaStr}. Criado por: ${criadoPor === "agente_ia" ? "Agente IA" : "Usuário"}.${agendamento.meetLink ? ` Meet: ${agendamento.meetLink}` : ""}`,
-        status:   "pendente",
+      const agendamentoMarker = `[agendamento:${agendamento.id}]`;
+      const descricao =
+        `Reunião ${tipoLabel} agendada. ` +
+        `Criado por: ${criadoPor === "agente_ia" ? "Agente IA" : "Usuário"}.` +
+        (agendamento.meetLink ? ` Meet: ${agendamento.meetLink}` : "") +
+        ` ${agendamentoMarker}`;
+      const [newActivity] = await db
+        .insert(activitiesTable)
+        .values({
+          tenantId:       agendamento.tenantId,
+          leadId:         agendamento.leadId,
+          dealId:         agendamento.dealId ?? undefined,
+          tipo:           "reuniao",
+          titulo:         `Reunião — ${tipoLabel}`,
+          descricao,
+          status:         "planejado",
+          dataHoraInicio: new Date(agendamento.dataHoraInicio),
+          dataHoraFim:    new Date(agendamento.dataHoraFim),
+          meetLink:       agendamento.meetLink ?? undefined,
+        })
+        .returning();
+      req.log.info({ leadId: agendamento.leadId, activityId: newActivity.id, agendamentoId: agendamento.id }, "agendamento: reuniao activity created");
+      generateSpinForActivity(newActivity.id, agendamento.tenantId, req.log).catch((err: unknown) => {
+        req.log.warn({ err, activityId: newActivity.id }, "agendamento: SPIN generation failed (non-fatal)");
       });
-      req.log.info({ dealId: agendamento.dealId, agendamentoId: agendamento.id }, "agendamento: deal activity created");
     } catch (actErr) {
-      req.log.warn({ err: actErr }, "agendamento: deal activity creation failed (non-fatal)");
+      req.log.warn({ err: actErr }, "agendamento: reuniao activity creation failed (non-fatal)");
     }
   }
 
@@ -598,6 +612,32 @@ router.patch("/agendamentos/:id", async (req, res) => {
     }
   }
 
+  // ── Sync linked reuniao activity ──────────────────────────────────────────
+  if (existing.leadId) {
+    try {
+      const actUpd: Record<string, unknown> = { updatedAt: new Date() };
+      if (data.dataHoraInicio) actUpd.dataHoraInicio = data.dataHoraInicio;
+      if (data.dataHoraFim)    actUpd.dataHoraFim    = data.dataHoraFim;
+      if (agendamento.meetLink) actUpd.meetLink = agendamento.meetLink;
+      if (data.status === "cancelado") actUpd.status = "cancelada";
+      if (Object.keys(actUpd).length > 1) {
+        await db
+          .update(activitiesTable)
+          .set(actUpd)
+          .where(
+            and(
+              eq(activitiesTable.tenantId, existing.tenantId),
+              eq(activitiesTable.leadId,   existing.leadId),
+              eq(activitiesTable.tipo,     "reuniao"),
+              like(activitiesTable.descricao, `%[agendamento:${existing.id}]%`),
+            ),
+          );
+      }
+    } catch (actErr) {
+      req.log.warn({ err: actErr }, "agendamento: activity sync on update failed (non-fatal)");
+    }
+  }
+
   // ── Handoff proativo: transição para "confirmado" avisa o Closer ───────────
   if (existing.status !== "confirmado" && agendamento.status === "confirmado") {
     await notifyCloserOnMeetingConfirmed(agendamento, req.log).catch((err) => {
@@ -635,6 +675,25 @@ router.delete("/agendamentos/:id", async (req, res) => {
 
   await db.delete(agendamentosTable).where(eq(agendamentosTable.id, existing.id));
   res.status(204).send();
+
+  // ── Cancel linked reuniao activity ────────────────────────────────────────
+  if (existing.leadId) {
+    try {
+      await db
+        .update(activitiesTable)
+        .set({ status: "cancelada", updatedAt: new Date() })
+        .where(
+          and(
+            eq(activitiesTable.tenantId, existing.tenantId),
+            eq(activitiesTable.leadId,   existing.leadId),
+            eq(activitiesTable.tipo,     "reuniao"),
+            like(activitiesTable.descricao, `%[agendamento:${existing.id}]%`),
+          ),
+        );
+    } catch (actErr) {
+      req.log.warn({ err: actErr }, "agendamento: activity cancel on delete failed (non-fatal)");
+    }
+  }
 
   // Async Google Calendar delete
   if (existing.agendaId && existing.googleEventId) {

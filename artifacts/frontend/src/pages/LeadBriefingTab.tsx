@@ -345,6 +345,9 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
   const [meetingMode, setMeetingMode] = useState(false);
   const [meetingSection, setMeetingSection] = useState(0);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
+  const [isSchedulingNext, setIsSchedulingNext] = useState(false);
+  const [isClosingDeal, setIsClosingDeal] = useState(false);
+  const [nextCustomDate, setNextCustomDate] = useState("");
 
   const fetchSpinData = async () => {
     setSpinLoading(true);
@@ -401,6 +404,65 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
     } catch {
       toast({ title: "Erro ao enviar", variant: "destructive" });
     } finally { setSpinSending(false); }
+  };
+
+  const handleScheduleNext = async (daysFromNow: number, customDate?: string) => {
+    setIsSchedulingNext(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const start = customDate
+        ? (() => { const d = new Date(customDate); d.setHours(9, 0, 0, 0); return d; })()
+        : (() => { const d = new Date(); d.setDate(d.getDate() + daysFromNow); d.setHours(9, 0, 0, 0); return d; })();
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      const res = await fetch(`/api/activities`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          tenantId,
+          leadId,
+          tipo: "reuniao",
+          titulo: "Próximo contato",
+          status: "planejado",
+          dataHoraInicio: start.toISOString(),
+          dataHoraFim: end.toISOString(),
+          dealId: spinData?.activity?.dealId ?? undefined,
+        }),
+      });
+      if (!res.ok) throw new Error("Falha ao criar atividade");
+      await fetchSpinData();
+      toast({
+        title: "Próximo contato agendado!",
+        description: `Atividade criada para ${start.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`,
+      });
+      setNextCustomDate("");
+    } catch {
+      toast({ title: "Erro ao agendar próximo contato", variant: "destructive" });
+    } finally {
+      setIsSchedulingNext(false);
+    }
+  };
+
+  const handleCloseDeal = async () => {
+    const dealId = spinData?.activity?.dealId;
+    if (!dealId) return;
+    setIsClosingDeal(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/deals/${dealId}/confirm-closure`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) {
+        toast({ title: "Erro ao fechar negócio", description: data.error ?? "Tente novamente.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Negócio fechado!", description: "O deal foi marcado como ganho." });
+    } catch {
+      toast({ title: "Erro ao fechar negócio", variant: "destructive" });
+    } finally {
+      setIsClosingDeal(false);
+    }
   };
 
   const handleCopySpin = () => {
@@ -1063,6 +1125,45 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {/* Próximo Contato */}
+                <div className="border-t border-border pt-4 mt-2 space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1">
+                    <RefreshCw className="h-3 w-3" /> Próximo Contato
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {[{ label: "Em 3 dias", days: 3 }, { label: "Em 1 semana", days: 7 }, { label: "Em 2 semanas", days: 14 }].map(({ label, days }) => (
+                      <Button key={days} size="sm" variant="outline" className="h-7 text-xs"
+                        onClick={() => void handleScheduleNext(days)} disabled={isSchedulingNext}>
+                        {label}
+                      </Button>
+                    ))}
+                    <Input
+                      type="date"
+                      className="h-7 text-xs w-36"
+                      value={nextCustomDate}
+                      onChange={(e) => setNextCustomDate(e.target.value)}
+                      min={new Date().toISOString().split("T")[0]}
+                    />
+                    {nextCustomDate && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs"
+                        onClick={() => void handleScheduleNext(0, nextCustomDate)} disabled={isSchedulingNext}>
+                        {isSchedulingNext ? <Loader2 className="h-3 w-3 animate-spin" /> : "Agendar"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Fechar Negócio */}
+                {spinData.activity.dealId && (
+                  <div className="border-t border-border pt-3">
+                    <Button size="sm" className="h-7 text-xs gap-1 w-full bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => void handleCloseDeal()} disabled={isClosingDeal}>
+                      {isClosingDeal ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                      Fechar Negócio
+                    </Button>
                   </div>
                 )}
               </div>

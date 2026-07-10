@@ -40,8 +40,8 @@ router.post("/activities", async (req, res) => {
       .where(eq(tenantsTable.id, activity.tenantId))
       .limit(1);
 
-    // Async SPIN briefing generation when a meeting is scheduled with a deal
-    if (!tenant?.isDemo && activity.dealId && activity.dataHoraInicio) {
+    // Async SPIN briefing generation when a meeting is scheduled
+    if (!tenant?.isDemo && activity.dataHoraInicio) {
       generateSpinForActivity(activity.id, activity.tenantId, req.log).catch((err: unknown) => {
         req.log.error({ err, activityId: activity.id }, "activity: SPIN generation failed (non-fatal)");
       });
