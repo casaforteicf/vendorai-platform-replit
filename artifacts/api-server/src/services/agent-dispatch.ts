@@ -92,6 +92,31 @@ function interpolateSystemPrompt(
   return out;
 }
 
+/**
+ * Final safety pass on every LLM response before it reaches the lead.
+ * Catches placeholder patterns that survived input-prompt sanitization or were
+ * reproduced by the model from training memory.
+ *
+ * - Meeting-link placeholders → real link if available, or a safe human fallback
+ * - [Something](#) patterns   → removed (markdown placeholder links with bare "#" href)
+ * - Known named placeholders  → removed (belt-and-suspenders after prompt interpolation)
+ */
+function sanitizeAgentResponse(text: string, meetLink?: string | null): string {
+  // 1. Meeting-link placeholders → real link or safe fallback (never raw placeholder text)
+  const meetPlaceholder = /\[Link\s+da\s+Reuni[aã]o\]\s*\(#?\)|\[Link\s+da\s+Reuni[aã]o\]|\{?\{?link_reuni[aã]o\}?\}?/gi;
+  text = text.replace(meetPlaceholder, meetLink ?? "vou te enviar o link em instantes");
+
+  // 2. Any remaining [Text](#) — markdown-style placeholder link with literal "#" href.
+  //    A real URL in agent output never uses bare "#"; these are always template artifacts.
+  text = text.replace(/\[[^\]]{1,80}\]\(#\)/g, "");
+
+  // 3. Named placeholder variants that the LLM might echo from the custom prompt template
+  text = text.replace(/\[Seu\s+Nome\]|\[Nome\]|\{?\{?vendedor_nome\}?\}?/gi, "");
+  text = text.replace(/\[Empresa\]|\{?\{?empresa_nome\}?\}?/gi, "");
+
+  return text.trim();
+}
+
 // ── Agent routing ─────────────────────────────────────────────────────────────
 
 /** Charge statuses (Asaas raw or internal) that indicate an overdue/late invoice. */
@@ -807,6 +832,12 @@ export async function processAgentInternal(params: {
         log.info({ leadId, tenantId }, "dispatch: proposal_accept action but no open proposal found");
       }
     }
+
+    // 8b. Final response sanitization — strip any unresolved placeholder patterns before
+    //     the message reaches the lead. Defense-in-depth: catches the case where the LLM
+    //     reproduces a placeholder verbatim (e.g. "[Link da Reunião](#)") despite the
+    //     prompt having been sanitized on the way in.
+    finalResposta = sanitizeAgentResponse(finalResposta, schedulerMeetLink);
 
     // 9. Update counters and insert task
     const now = new Date();

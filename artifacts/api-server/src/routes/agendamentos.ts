@@ -131,10 +131,17 @@ router.post("/agendamentos", async (req, res) => {
     return;
   }
 
-  res.status(201).json(agendamento);
-
-  // Async Google Calendar sync — after response sent
+  // ── Google Calendar sync — runs BEFORE the 201 response (8-second timeout) ───
+  // This ensures the agendamento returned to the caller and stored in DB already
+  // contains the real meetLink before the agent dispatch reads it. Previously the
+  // sync ran async after the response, causing a race condition where the scheduler
+  // agent could read meetLink=null and reproduce the placeholder verbatim.
   req.log.info({ agendaId: agendamento.agendaId, agendamentoId: agendamento.id }, "agendamento: starting Google Calendar sync");
+
+  // calendarLead is stored here so the async WhatsApp block (after response) can
+  // reference it without an extra DB round-trip.
+  let calendarLead: { nome: string | null; email: string | null; telefone: string | null } | null = null;
+
   if (agendamento.agendaId) {
     try {
       const [agenda] = await db
@@ -145,28 +152,40 @@ router.post("/agendamentos", async (req, res) => {
       req.log.info({ agendaId: agendamento.agendaId, hasRefreshToken: !!agenda?.googleRefreshToken }, "agendamento: agenda lookup done");
 
       if (agenda?.googleRefreshToken) {
-        const [lead] = await db
+        const [fetchedLead] = await db
           .select({ nome: leadsTable.nome, email: leadsTable.email, telefone: leadsTable.telefone })
           .from(leadsTable)
           .where(eq(leadsTable.id, agendamento.leadId));
+        calendarLead = fetchedLead ?? null;
 
         req.log.info({ agendaId: agendamento.agendaId, leadId: agendamento.leadId }, "agendamento: calling createGoogleEvent");
-        const { googleEventId, meetLink } = await createGoogleEvent(
-          agendamento.agendaId,
-          {
-            id: agendamento.id,
-            tenantId: agendamento.tenantId,
-            titulo: agendamento.titulo,
-            dataHoraInicio: agendamento.dataHoraInicio,
-            dataHoraFim: agendamento.dataHoraFim,
-            observacoes: agendamento.observacoes,
-            local: agendamento.local,
-            gerarMeet: agendamento.gerarMeet ?? false,
-          },
-          lead?.nome ?? undefined,
-          lead?.email ?? undefined,
-          agendamento.gerarMeet ?? false
-        );
+        const { googleEventId, meetLink } = await Promise.race([
+          createGoogleEvent(
+            agendamento.agendaId,
+            {
+              id: agendamento.id,
+              tenantId: agendamento.tenantId,
+              titulo: agendamento.titulo,
+              dataHoraInicio: agendamento.dataHoraInicio,
+              dataHoraFim: agendamento.dataHoraFim,
+              observacoes: agendamento.observacoes,
+              local: agendamento.local,
+              gerarMeet: agendamento.gerarMeet ?? false,
+            },
+            calendarLead?.nome ?? undefined,
+            calendarLead?.email ?? undefined,
+            agendamento.gerarMeet ?? false
+          ),
+          new Promise<{ googleEventId: null; meetLink: null }>((resolve) =>
+            setTimeout(() => {
+              req.log.warn(
+                { agendaId: agendamento.agendaId, agendamentoId: agendamento.id },
+                "agendamento: Google Calendar sync timeout (8s) — continuing without meetLink",
+              );
+              resolve({ googleEventId: null, meetLink: null });
+            }, 8000)
+          ),
+        ]);
         if (googleEventId || meetLink) {
           await db
             .update(agendamentosTable)
@@ -176,41 +195,51 @@ router.post("/agendamentos", async (req, res) => {
               updatedAt: new Date(),
             })
             .where(eq(agendamentosTable.id, agendamento.id));
+          // Update the in-memory object so the 201 response and all downstream code
+          // (WhatsApp, email, activity) see the real meetLink without another DB fetch.
+          if (googleEventId) agendamento = { ...agendamento, googleEventId };
+          if (meetLink)      agendamento = { ...agendamento, meetLink };
         }
         req.log.info({ agendaId: agendamento.agendaId, googleEventId, meetLink }, "agendamento: Google Calendar sync result");
-
-        // ── WhatsApp confirmation to lead (after Calendar sync so meetLink is resolved) ──
-        const resolvedMeetLink = meetLink ?? agendamento.meetLink;
-        const leadPhone = lead?.telefone ?? null;
-        if (leadPhone) {
-          try {
-            const dataStr = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
-            const horaStr = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-            const modalidade = agendamento.modalidade ?? (agendamento.gerarMeet ? "meet" : "presencial");
-            const meetPart = (modalidade === "meet" || agendamento.gerarMeet) && resolvedMeetLink
-              ? `\nAcesse o Google Meet: ${resolvedMeetLink}`
-              : agendamento.local ? `\nLocal: ${agendamento.local}` : "";
-            const [bp] = await db
-              .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial })
-              .from(businessProfilesTable)
-              .where(eq(businessProfilesTable.tenantId, agendamento.tenantId))
-              .limit(1);
-            const nomeEmpresa = bp?.nomeFantasia ?? bp?.razaoSocial ?? "Vendor.ai";
-            const tipoLabel = modalidade === "meet" ? "via Google Meet" : modalidade === "ligacao" ? "por ligação" : "presencial";
-            const msg = `Olá, ${lead?.nome ?? ""}! Reunião confirmada ${tipoLabel}: ${dataStr} às ${horaStr}.${meetPart}\nQualquer dúvida, responda aqui. Até lá! — ${nomeEmpresa}`;
-            await sendDirectWhatsAppMessage(agendamento.tenantId, leadPhone, msg, req.log);
-            req.log.info({ agendamentoId: agendamento.id }, "agendamento: WhatsApp confirmation sent to lead");
-          } catch (waErr) {
-            req.log.warn({ err: waErr, agendamentoId: agendamento.id }, "agendamento: WhatsApp confirmation failed (non-fatal)");
-          }
-        }
       } else {
         req.log.warn({ agendaId: agendamento.agendaId }, "agendamento: agenda has no refresh_token, skipping Google Calendar sync");
       }
     } catch (err) {
       req.log.error({ err }, "agendamento: Google Calendar sync failed on create");
     }
-  } else if (agendamento.leadId) {
+  }
+
+  // ── 201 response — meetLink is now resolved (or null if sync timed out / skipped) ──
+  res.status(201).json(agendamento);
+
+  // ── Async post-processing (after response is sent) ────────────────────────────
+
+  // WhatsApp confirmation to lead (agenda-connected path)
+  if (agendamento.agendaId && calendarLead) {
+    const leadPhone = calendarLead.telefone ?? null;
+    if (leadPhone) {
+      try {
+        const dataStr = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
+        const horaStr = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+        const modalidade = agendamento.modalidade ?? (agendamento.gerarMeet ? "meet" : "presencial");
+        const meetPart = (modalidade === "meet" || agendamento.gerarMeet) && agendamento.meetLink
+          ? `\nAcesse o Google Meet: ${agendamento.meetLink}`
+          : agendamento.local ? `\nLocal: ${agendamento.local}` : "";
+        const [bp] = await db
+          .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial })
+          .from(businessProfilesTable)
+          .where(eq(businessProfilesTable.tenantId, agendamento.tenantId))
+          .limit(1);
+        const nomeEmpresa = bp?.nomeFantasia ?? bp?.razaoSocial ?? "Vendor.ai";
+        const tipoLabel = modalidade === "meet" ? "via Google Meet" : modalidade === "ligacao" ? "por ligação" : "presencial";
+        const msg = `Olá, ${calendarLead.nome ?? ""}! Reunião confirmada ${tipoLabel}: ${dataStr} às ${horaStr}.${meetPart}\nQualquer dúvida, responda aqui. Até lá! — ${nomeEmpresa}`;
+        await sendDirectWhatsAppMessage(agendamento.tenantId, leadPhone, msg, req.log);
+        req.log.info({ agendamentoId: agendamento.id }, "agendamento: WhatsApp confirmation sent to lead");
+      } catch (waErr) {
+        req.log.warn({ err: waErr, agendamentoId: agendamento.id }, "agendamento: WhatsApp confirmation failed (non-fatal)");
+      }
+    }
+  } else if (!agendamento.agendaId && agendamento.leadId) {
     // No agenda connected — still send WhatsApp confirmation if possible
     try {
       const [lead] = await db
@@ -590,7 +619,7 @@ router.patch("/agendamentos/:id", async (req, res) => {
 
   res.json(agendamento);
 
-  // Async Google Calendar sync
+  // Async Google Calendar sync — update existing event
   const agendaId = agendamento.agendaId ?? existing.agendaId;
   if (agendaId && agendamento.googleEventId) {
     try {
@@ -609,6 +638,57 @@ router.patch("/agendamentos/:id", async (req, res) => {
       }
     } catch (err) {
       req.log.warn({ err }, "Google Calendar sync failed on update");
+    }
+  }
+
+  // Fix 3: If gerarMeet=true but no event was ever created (original sync failed silently),
+  // retry creating the Calendar event so the lead gets a real meet link on reschedule.
+  if (agendaId && !agendamento.googleEventId && agendamento.gerarMeet && !agendamento.meetLink) {
+    try {
+      const [agendaRetry] = await db
+        .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+        .from(agendasTable)
+        .where(eq(agendasTable.id, agendaId));
+
+      if (agendaRetry?.googleRefreshToken) {
+        const [leadRetry] = await db
+          .select({ nome: leadsTable.nome, email: leadsTable.email })
+          .from(leadsTable)
+          .where(eq(leadsTable.id, agendamento.leadId));
+
+        const { googleEventId: newEventId, meetLink: newMeetLink } = await createGoogleEvent(
+          agendaId,
+          {
+            id: agendamento.id,
+            tenantId: agendamento.tenantId,
+            titulo: agendamento.titulo,
+            dataHoraInicio: agendamento.dataHoraInicio,
+            dataHoraFim: agendamento.dataHoraFim,
+            observacoes: agendamento.observacoes,
+            local: agendamento.local,
+            gerarMeet: true,
+          },
+          leadRetry?.nome ?? undefined,
+          leadRetry?.email ?? undefined,
+          true,
+        );
+        if (newEventId || newMeetLink) {
+          await db
+            .update(agendamentosTable)
+            .set({
+              ...(newEventId   ? { googleEventId: newEventId } : {}),
+              ...(newMeetLink  ? { meetLink: newMeetLink }      : {}),
+              updatedAt: new Date(),
+            })
+            .where(eq(agendamentosTable.id, agendamento.id));
+          req.log.info(
+            { agendamentoId: agendamento.id, newEventId, newMeetLink },
+            "agendamento: Calendar event created on PATCH retry (original sync had failed)",
+          );
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err, agendamentoId: agendamento.id }, "agendamento: Calendar event creation on PATCH retry failed (non-fatal)");
     }
   }
 
