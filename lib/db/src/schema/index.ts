@@ -159,3 +159,5 @@ export * from "./arch_office_templates";
 export * from "./entregas";
 export * from "./bloqueios_agenda";
 export * from "./cliente_etapa_projeto";
+export * from "./organizacoes";
+export * from "./usuarios_organizacao";

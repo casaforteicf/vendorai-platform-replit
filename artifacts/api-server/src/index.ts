@@ -948,6 +948,32 @@ Se fizer sentido, te mostro em 10 minutos como funciona.',
   } catch (err) {
     logger.warn({ err }, "startup migrations: VendorAI SaaS plans seed skipped");
   }
+
+  // ── BLOCO 14: Organizações (redes de lojas) ──────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS organizacoes (
+        id TEXT PRIMARY KEY,
+        nome TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS usuarios_organizacao (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        organizacao_id TEXT NOT NULL REFERENCES organizacoes(id) ON DELETE CASCADE,
+        nivel TEXT NOT NULL DEFAULT 'admin_organizacao',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS organizacao_id TEXT REFERENCES organizacoes(id) ON DELETE SET NULL`);
+    logger.info("startup migrations: organizacoes OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: organizacoes skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

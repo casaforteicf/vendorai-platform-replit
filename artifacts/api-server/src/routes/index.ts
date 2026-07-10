@@ -91,6 +91,8 @@ import supportRouter from "./support";
 import adminBugReportsRouter from "./admin_bug_reports";
 import contractTemplatesRouter from "./contract_templates";
 import confirmClosureRouter from "./confirm_closure";
+import organizacoesRouter from "./organizacoes";
+import adminFinancialRouter from "./admin_financial";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -319,6 +321,12 @@ router.use(contractTemplatesRouter);
 
 // Confirm Closure (contract + ZapSign + Asaas + WhatsApp)
 router.use(confirmClosureRouter);
+
+// BLOCO 14 — Organizações / painel consolidado multi-loja
+router.use(organizacoesRouter);
+
+// BLOCO 18 — Painel financeiro da plataforma (super_admin)
+router.use(adminFinancialRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

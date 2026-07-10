@@ -61,6 +61,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
@@ -119,12 +120,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const adminNavigation = isSuperAdmin
     ? [
-        { name: "Tenants",     href: "/admin/tenants",   icon: Briefcase,    sellerHidden: false, section: "admin", badge: undefined },
-        { name: "Verticais",   href: "/admin/verticais", icon: Building2,    sellerHidden: false, section: "admin", badge: undefined },
-        { name: "Marketplace", href: "/marketplace",     icon: Store,        sellerHidden: false, section: "admin", badge: undefined },
-        { name: "AI Usage",    href: "/admin/ai-usage",  icon: BrainCircuit, sellerHidden: false, section: "admin", badge: undefined },
-        { name: "Parceiros",   href: "/admin/partners",  icon: Users,        sellerHidden: false, section: "admin", badge: undefined },
-        { name: "Suporte",     href: "/admin/suporte",   icon: Bug,          sellerHidden: false, section: "admin", badge: openBugCount > 0 ? openBugCount : undefined },
+        { name: "Tenants",     href: "/admin/tenants",    icon: Briefcase,    sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Verticais",   href: "/admin/verticais",  icon: Building2,    sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Marketplace", href: "/marketplace",      icon: Store,        sellerHidden: false, section: "admin", badge: undefined },
+        { name: "AI Usage",    href: "/admin/ai-usage",   icon: BrainCircuit, sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Financeiro",  href: "/admin/financeiro", icon: BarChart3,    sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Parceiros",   href: "/admin/partners",   icon: Users,        sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Suporte",     href: "/admin/suporte",    icon: Bug,          sellerHidden: false, section: "admin", badge: openBugCount > 0 ? openBugCount : undefined },
       ]
     : [];
 
