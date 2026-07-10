@@ -43,6 +43,7 @@ const PropostaPrint      = lazy(() => import("@/pages/PropostaPrint"));
 const AdminAIUsage       = lazy(() => import("@/pages/AdminAIUsage"));
 const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
 const AdminTenants       = lazy(() => import("@/pages/AdminTenants"));
+const AdminTenantDetail  = lazy(() => import("@/pages/AdminTenantDetail"));
 const AdminVerticals     = lazy(() => import("@/pages/AdminVerticals"));
 const AgentDefaults      = lazy(() => import("@/pages/admin/AgentDefaults"));
 const SupportAdmin       = lazy(() => import("@/pages/admin/SupportAdmin"));
@@ -510,6 +511,9 @@ function AppRoutes() {
         </Route>
         <Route path="/faturamento">
           <RedirectPage to="/configuracoes" />
+        </Route>
+        <Route path="/admin/tenants/:id">
+          {() => <SuperAdminRoute component={AdminTenantDetail} />}
         </Route>
         <Route path="/admin/tenants">
           {() => <SuperAdminRoute component={AdminTenants} />}

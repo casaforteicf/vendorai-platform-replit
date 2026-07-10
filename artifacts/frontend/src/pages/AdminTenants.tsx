@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useListTenants, getListTenantsQueryKey, type Tenant } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -61,6 +62,7 @@ interface ProvisionResult {
 }
 
 export default function AdminTenants() {
+  const [, setLocation] = useLocation();
   const { token } = useAuth();
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -343,7 +345,7 @@ export default function AdminTenants() {
               {/* Mobile cards */}
               <div className="divide-y sm:hidden">
                 {filtered.map((t) => (
-                  <div key={t.id} className="px-4 py-4 space-y-3">
+                  <div key={t.id} className="px-4 py-4 space-y-3 cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation(`/admin/tenants/${t.id}`)}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-medium text-sm">{t.name}</p>
@@ -376,7 +378,7 @@ export default function AdminTenants() {
                         )}
                       </div>
                     </div>
-                    <div>
+                    <div onClick={(e) => e.stopPropagation()}>
                       <p className="text-xs text-muted-foreground mb-1">Vertical</p>
                       <Select
                         value={(t as any).vertical ?? "__none__"}
@@ -399,7 +401,7 @@ export default function AdminTenants() {
                       size="sm"
                       variant="outline"
                       className="h-8 text-xs gap-1 w-full"
-                      onClick={() => handleResend(t.id)}
+                      onClick={(e) => { e.stopPropagation(); handleResend(t.id); }}
                       disabled={resendingId === t.id}
                     >
                       {resendingId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
@@ -425,7 +427,7 @@ export default function AdminTenants() {
                   </TableHeader>
                   <TableBody>
                     {filtered.map((t) => (
-                      <TableRow key={t.id}>
+                      <TableRow key={t.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/admin/tenants/${t.id}`)}>
                         <TableCell>
                           <div className="font-medium">{t.name}</div>
                           <div className="text-xs text-muted-foreground">{t.slug}</div>
@@ -435,7 +437,7 @@ export default function AdminTenants() {
                             {t.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <Select
                             value={(t as any).vertical ?? "__none__"}
                             onValueChange={(v) => handleUpdateVertical(t.id, v)}
@@ -477,7 +479,7 @@ export default function AdminTenants() {
                               : "—"}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <Button
                             size="sm"
                             variant="outline"
