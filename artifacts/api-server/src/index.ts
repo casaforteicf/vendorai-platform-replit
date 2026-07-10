@@ -974,6 +974,24 @@ Se fizer sentido, te mostro em 10 minutos como funciona.',
   } catch (err) {
     logger.warn({ err }, "startup migrations: organizacoes skipped");
   }
+
+  // ── BLOCO 14 Fase B: audit log de troca de tenant ────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS tenant_switch_log (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        from_tenant_id TEXT NOT NULL,
+        to_tenant_id TEXT NOT NULL,
+        organizacao_id TEXT NOT NULL,
+        ip_address TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("startup migrations: tenant_switch_log OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: tenant_switch_log skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
+import { StoreSwitcher } from "@/components/StoreSwitcher";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, tenantOverride, clearTenantOverride, token } = useAuth();
@@ -435,6 +436,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       <div className="hidden md:flex w-64 bg-card border-r flex-col shrink-0">
         <div className="p-5 border-b">
           <LogoBranding size="lg" />
+        </div>
+        <div className="px-3 py-2 border-b">
+          <StoreSwitcher />
         </div>
         <div className="flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
           <NavLinks />

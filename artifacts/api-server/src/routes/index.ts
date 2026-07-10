@@ -92,6 +92,7 @@ import adminBugReportsRouter from "./admin_bug_reports";
 import contractTemplatesRouter from "./contract_templates";
 import confirmClosureRouter from "./confirm_closure";
 import organizacoesRouter from "./organizacoes";
+import tenantSwitchRouter from "./tenant_switch.js";
 import adminFinancialRouter from "./admin_financial";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
@@ -324,6 +325,9 @@ router.use(confirmClosureRouter);
 
 // BLOCO 14 — Organizações / painel consolidado multi-loja
 router.use(organizacoesRouter);
+
+// BLOCO 14 Fase B — Troca de tenant (switch-tenant + switchable-tenants)
+router.use(tenantSwitchRouter);
 
 // BLOCO 18 — Painel financeiro da plataforma (super_admin)
 router.use(adminFinancialRouter);
