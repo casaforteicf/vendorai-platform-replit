@@ -12,6 +12,7 @@ import {
   db,
   agentConfigsTable,
   activitiesTable,
+  agendamentosTable,
   businessProfilesTable,
   conversationsTable,
   customerIntelligenceTable,
@@ -59,6 +60,11 @@ type CI      = typeof customerIntelligenceTable.$inferSelect;
 type Deal    = typeof dealsTable.$inferSelect;
 type Message = typeof messagesTable.$inferSelect;
 
+// ── Per-lead processing mutex ─────────────────────────────────────────────────
+// Prevents two concurrent processAgentInternal calls for the same lead from
+// both sending a WhatsApp message (race condition when webhook + UI fire together).
+const processingLeads = new Set<string>();
+
 // ── System prompt variable interpolation ──────────────────────────────────────
 
 /**
@@ -66,13 +72,20 @@ type Message = typeof messagesTable.$inferSelect;
  * Supported tokens (case-insensitive):
  *   - [Seu Nome] | [Nome] | {vendedor_nome} | {{vendedor_nome}} → vendor name
  *   - [Empresa]  | {empresa_nome} | {{empresa_nome}}            → company name
+ *   - [Link da Reunião](#) | [Link da Reuniao] | {link_reuniao} → actual meet link
  * Any remaining unrecognised [Placeholder] pattern is stripped to prevent literal
  * bracket text leaking to the lead.
  */
-function interpolateSystemPrompt(text: string, vars: { vendedor_nome: string; empresa_nome: string }): string {
+function interpolateSystemPrompt(
+  text: string,
+  vars: { vendedor_nome: string; empresa_nome: string; link_reuniao?: string },
+): string {
   let out = text;
   out = out.replace(/\[Seu\s+Nome\]|\[Nome\]|\{?\{vendedor_nome\}\}?/gi, vars.vendedor_nome);
   out = out.replace(/\[Empresa\]|\{?\{empresa_nome\}\}?/gi, vars.empresa_nome);
+  // Replace meeting link placeholders — must run BEFORE the catch-all removal below
+  const meetPlaceholder = /\[Link\s+da\s+Reuni[aã]o\]\s*\(#?\)|\[Link\s+da\s+Reuni[aã]o\]|\{?\{?link_reuni[aã]o\}?\}?/gi;
+  out = out.replace(meetPlaceholder, vars.link_reuniao ?? "");
   // Remove any leftover [Unknown Placeholder] patterns (1–60 chars between brackets)
   out = out.replace(/\[[^\]]{1,60}\]/g, "");
   return out;
@@ -224,6 +237,16 @@ export async function processAgentInternal(params: {
   scenario?: Record<string, unknown> | null;
 }): Promise<DispatchResult> {
   const { tenantId, leadId, mensagem, log, forcedAgent } = params;
+
+  // ── Per-lead mutex: skip if already processing for this lead ────────────────
+  // Prevents duplicate responses when the webhook fires concurrently with a
+  // UI-triggered scheduler call for the same lead.
+  const lockKey = `${tenantId}:${leadId}`;
+  if (processingLeads.has(lockKey)) {
+    log.warn({ tenantId, leadId }, "dispatch: already processing for this lead — skipping duplicate call");
+    return { status: "skipped", reason: "duplicate_processing" };
+  }
+  processingLeads.add(lockKey);
 
   try {
     // 1. Load agent config
@@ -606,6 +629,37 @@ export async function processAgentInternal(params: {
       );
     }
 
+    // For scheduler: inject the most recent active agendamento so the agent knows the real
+    // meet link and can reference it instead of echoing a placeholder.
+    if (resolvedAgentName === "scheduler") {
+      try {
+        const [latestAgendamento] = await db
+          .select({
+            tipo:           agendamentosTable.tipo,
+            dataHoraInicio: agendamentosTable.dataHoraInicio,
+            dataHoraFim:    agendamentosTable.dataHoraFim,
+            local:          agendamentosTable.local,
+            meetLink:       agendamentosTable.meetLink,
+          })
+          .from(agendamentosTable)
+          .where(
+            and(
+              eq(agendamentosTable.tenantId, tenantId),
+              eq(agendamentosTable.leadId, leadId),
+              eq(agendamentosTable.status, "agendado"),
+            ),
+          )
+          .orderBy(desc(agendamentosTable.dataHoraInicio))
+          .limit(1);
+        if (latestAgendamento) {
+          enrichedScenario = { ...(enrichedScenario ?? {}), ...latestAgendamento };
+          log.debug({ tenantId, leadId, meetLink: latestAgendamento.meetLink }, "dispatch: scheduler agendamento injected into scenario");
+        }
+      } catch (err) {
+        log.warn({ err, tenantId, leadId }, "dispatch: scheduler agendamento lookup failed (non-fatal)");
+      }
+    }
+
     // For closer: inject active catalog plans so the agent can answer pricing questions.
     if (resolvedAgentName === "closer") {
       const catalogPlans = await db
@@ -682,9 +736,17 @@ export async function processAgentInternal(params: {
     }
 
     // Apply variable interpolation to the system prompt before sending to OpenAI.
-    // Prevents placeholder text like "[Seu Nome]" from leaking to the lead verbatim.
+    // Prevents placeholder text like "[Seu Nome]" or "[Link da Reunião](#)" from leaking verbatim.
+    const schedulerMeetLink =
+      resolvedAgentName === "scheduler" && enrichedScenario
+        ? (enrichedScenario.meetLink as string | null | undefined) ?? undefined
+        : undefined;
     if (dispatchSystemPrompt) {
-      dispatchSystemPrompt = interpolateSystemPrompt(dispatchSystemPrompt, { vendedor_nome: vendedorNome, empresa_nome: empresaNome });
+      dispatchSystemPrompt = interpolateSystemPrompt(dispatchSystemPrompt, {
+        vendedor_nome: vendedorNome,
+        empresa_nome:  empresaNome,
+        link_reuniao:  schedulerMeetLink,
+      });
       log.debug({ tenantId, agentName: resolvedAgentName }, "dispatch: system prompt variables interpolated");
     }
 
@@ -792,6 +854,8 @@ export async function processAgentInternal(params: {
   } catch (err) {
     log.error({ err, tenantId, leadId }, "dispatch: unexpected error — skipping");
     return { status: "failed", reason: "unexpected_error" };
+  } finally {
+    processingLeads.delete(lockKey);
   }
 }
 

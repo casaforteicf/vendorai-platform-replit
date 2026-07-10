@@ -937,9 +937,16 @@ export function buildSchedulerPrompt(
       `(${agendamento.tipo}${agendamento.local ? ` — ${agendamento.local}` : ""}).${meetInfo} Confirme os detalhes ao lead.`
     : "Nenhum horário foi definido ainda. Sugira ao lead um próximo passo para confirmar data e formato da reunião.";
 
+  // Replace [Link da Reunião](#) and variants in the custom prompt with the real meet link.
+  // This prevents placeholder text from leaking to the lead verbatim.
+  function resolveMeetLinkInText(text: string): string {
+    const placeholder = /\[Link\s+da\s+Reuni[aã]o\]\s*\(#?\)|\[Link\s+da\s+Reuni[aã]o\]|\{?\{?link_reuni[aã]o\}?\}?/gi;
+    return text.replace(placeholder, agendamento?.meetLink ?? "");
+  }
+
   const parts: string[] = [];
   if (systemPromptOverride?.trim()) {
-    parts.push(systemPromptOverride.trim() + `\n\n${agendadoInfo}`);
+    parts.push(resolveMeetLinkInText(systemPromptOverride.trim()) + `\n\n${agendadoInfo}`);
   } else {
     parts.push(
       "Você é um especialista em agendamento comercial B2B.\n" +
@@ -952,7 +959,7 @@ export function buildSchedulerPrompt(
       "- Se não houver horário definido, ofereça 2–3 opções concretas ou peça a disponibilidade do lead\n" +
       `- ${agendadoInfo}`
     );
-    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + resolveMeetLinkInText(customPrompt.trim()));
   }
   parts.push(buildLeadSection(lead));
   if (ci?.nextBestAction) {
