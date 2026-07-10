@@ -54,6 +54,21 @@ export type LimitResult = LimitOk | LimitExceeded;
 export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca";
 export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null) => string;
 
+/** A single SPIN qualification question customized for a tenant's niche. */
+export type SpinQuestion = {
+  fieldKey: string;
+  label: string;
+  tipo: "situacao" | "problema" | "implicacao" | "necessidade";
+  pergunta: string;
+};
+
+/** Stored in tenant_agent_configs.parametros.spinQualification for the SDR agent. */
+export type SpinQualificationConfig = {
+  nicheDescription: string;
+  questions: SpinQuestion[];
+  approvedAt: string | null;
+};
+
 export type RelacionamentoScenario = {
   type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "spouse_welcome" | "inactivity_checkin";
   dateName?: string;
@@ -547,6 +562,17 @@ export function buildLeadSection(lead: Lead): string {
   if (missing.length > 0) {
     qualLines.push(`  Ainda não coletado: ${missing.map((f) => f.label).join(" | ")}`);
   }
+
+  // Custom qualification answers stored under non-standard keys (from tenant SPIN questions)
+  const standardKeys = new Set(QUAL_FIELDS.map((f) => f.key));
+  const customEntries = Object.entries(dd).filter(([k, v]) => !standardKeys.has(k) && v != null && v !== "");
+  if (customEntries.length > 0) {
+    qualLines.push("  Respostas customizadas do nicho (NÃO repita):");
+    customEntries.forEach(([k, v]) =>
+      qualLines.push(`    ✓ ${k.replace(/_/g, " ")}: ${String(v)}`)
+    );
+  }
+
   lines.push(qualLines.join("\n"));
 
   return lines.join("\n");
@@ -612,6 +638,32 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
   parts.push(buildLeadSection(lead));
+
+  // ── SPIN customizado por nicho (Bloco 23) ─────────────────────────────────
+  // Ativo apenas quando o tenant configurou e aprovou perguntas de qualificação
+  // personalizadas via painel. Substitui a orientação genérica B2B do prompt base.
+  const spinCfg = scenario?.spinQualification as SpinQualificationConfig | undefined;
+  if (spinCfg?.approvedAt && spinCfg.questions?.length > 0) {
+    const dd = (lead.discoveryData ?? {}) as Record<string, unknown>;
+    const answeredQs = spinCfg.questions.filter((q) => dd[q.fieldKey] != null && dd[q.fieldKey] !== "");
+    const pendingQs  = spinCfg.questions.filter((q) => !dd[q.fieldKey]);
+
+    const spinLines = [
+      `## QUALIFICAÇÃO DO NICHO: ${spinCfg.nicheDescription}`,
+      "Perguntas adaptadas ao seu negócio — substitui a qualificação genérica B2B.",
+    ];
+    if (answeredQs.length > 0) {
+      spinLines.push("Já respondido pelo lead (NÃO repita — avance a conversa):");
+      answeredQs.forEach((q) => spinLines.push(`  ✓ ${q.label}: ${String(dd[q.fieldKey])}`));
+    }
+    if (pendingQs.length > 0) {
+      spinLines.push("Pergunte de forma natural, uma de cada vez, sem revelar o questionário:");
+      pendingQs.forEach((q) => spinLines.push(`  • [${q.tipo.toUpperCase()}] ${q.pergunta}`));
+    } else {
+      spinLines.push("✅ Qualificação completa — avance para proposta ou próxima etapa.");
+    }
+    parts.push(spinLines.join("\n"));
+  }
 
   // ── Motor Preditivo (Cmd 22): inject predictive intel as first-message hook ─
   if (scenario?.cold_outreach && scenario?.origem === "prospector_predictive") {

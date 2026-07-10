@@ -61,10 +61,40 @@ import {
   Upload,
   X,
   FileText,
+  Sparkles,
+  CheckCircle2,
+  HelpCircle,
   type LucideIcon,
 } from "lucide-react";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
+
+type SpinQuestion = {
+  fieldKey: string;
+  label: string;
+  tipo: "situacao" | "problema" | "implicacao" | "necessidade";
+  pergunta: string;
+};
+
+type SpinQualificationConfig = {
+  nicheDescription: string;
+  questions: SpinQuestion[];
+  approvedAt: string | null;
+};
+
+const SPIN_TIPO_LABEL: Record<SpinQuestion["tipo"], string> = {
+  situacao:    "Situação",
+  problema:    "Problema",
+  implicacao:  "Implicação",
+  necessidade: "Necessidade",
+};
+
+const SPIN_TIPO_COLOR: Record<SpinQuestion["tipo"], string> = {
+  situacao:    "bg-blue-50 text-blue-700 border-blue-200",
+  problema:    "bg-orange-50 text-orange-700 border-orange-200",
+  implicacao:  "bg-purple-50 text-purple-700 border-purple-200",
+  necessidade: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
 
 type AgentAttachment = {
   name: string;
@@ -273,6 +303,18 @@ function AgentConfigSheet({
   const [restricoes, setRestricoes]               = useState(agent.restricoes ?? "");
   const [systemPromptCustom, setSystemPromptCustom] = useState(agent.systemPromptCustom ?? "");
 
+  // ── SPIN qualification state (SDR only) ──
+  const initSpinConfig = (): SpinQualificationConfig | null => {
+    const raw = agent.parametros?.["spinQualification"];
+    if (!raw || typeof raw !== "object") return null;
+    return raw as SpinQualificationConfig;
+  };
+  const [spinConfig, setSpinConfig]             = useState<SpinQualificationConfig | null>(initSpinConfig);
+  const [spinNicheDesc, setSpinNicheDesc]       = useState<string>(() => initSpinConfig()?.nicheDescription ?? "");
+  const [spinDraftQuestions, setSpinDraftQuestions] = useState<SpinQuestion[]>(() => initSpinConfig()?.questions ?? []);
+  const [spinGenerating, setSpinGenerating]     = useState(false);
+  const [spinGenError, setSpinGenError]         = useState<string | null>(null);
+
   // ── Arquivos state ──
   const initAttachments = (): AgentAttachment[] => {
     const raw = agent.parametros?.["attachments"];
@@ -317,6 +359,66 @@ function AgentConfigSheet({
     setAttachments(next);
     await patchAgent(agent.agentKey, { parametros: { ...((agent.parametros ?? {}) as Record<string,unknown>), attachments: next } } as Partial<AgentCardData>);
     toast({ title: "Arquivo removido" });
+  }
+
+  // ── SPIN handlers ──
+  async function handleGenerateSpinQuestions() {
+    if (!spinNicheDesc.trim()) return;
+    setSpinGenerating(true);
+    setSpinGenError(null);
+    try {
+      const res = await fetch(`/api/agent-configs/${agent.agentKey}/spin-questions/generate`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ nicheDescription: spinNicheDesc.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Erro ${res.status}`);
+      }
+      const data = await res.json() as { questions?: SpinQuestion[] };
+      setSpinDraftQuestions(data.questions ?? []);
+    } catch (err) {
+      setSpinGenError(err instanceof Error ? err.message : "Erro ao gerar perguntas");
+    } finally {
+      setSpinGenerating(false);
+    }
+  }
+
+  function handleUpdateSpinQuestion(idx: number, pergunta: string) {
+    setSpinDraftQuestions((prev) => prev.map((q, i) => i === idx ? { ...q, pergunta } : q));
+  }
+
+  const saveSpinMutation = useMutation({
+    mutationFn: async () => {
+      const newConfig: SpinQualificationConfig = {
+        nicheDescription: spinNicheDesc.trim(),
+        questions: spinDraftQuestions,
+        approvedAt: new Date().toISOString(),
+      };
+      const existingParametros = (agent.parametros ?? {}) as Record<string, unknown>;
+      await patchAgent(agent.agentKey, {
+        parametros: { ...existingParametros, spinQualification: newConfig },
+      } as Partial<AgentCardData>);
+      return newConfig;
+    },
+    onSuccess: (newConfig) => {
+      setSpinConfig(newConfig);
+      toast({ title: "Qualificação salva", description: "Perguntas customizadas aprovadas e ativas para o SDR." });
+    },
+    onError: () => {
+      toast({ title: "Erro ao salvar", description: "Não foi possível salvar as perguntas de qualificação.", variant: "destructive" });
+    },
+  });
+
+  async function handleClearSpinConfig() {
+    const existingParametros = (agent.parametros ?? {}) as Record<string, unknown>;
+    const { spinQualification: _, ...rest } = existingParametros;
+    await patchAgent(agent.agentKey, { parametros: rest } as Partial<AgentCardData>);
+    setSpinConfig(null);
+    setSpinDraftQuestions([]);
+    setSpinNicheDesc("");
+    toast({ title: "Qualificação removida", description: "O SDR voltará a usar a qualificação genérica B2B." });
   }
 
   // ── Mutation salvar ──
@@ -412,6 +514,15 @@ function AgentConfigSheet({
                 </span>
               )}
             </TabsTrigger>
+            {agent.agentKey === "sdr" && (
+              <TabsTrigger value="qualificacao">
+                <HelpCircle className="h-3.5 w-3.5 mr-1.5" />
+                Qualificação
+                {spinConfig?.approvedAt && (
+                  <CheckCircle2 className="ml-1.5 h-3 w-3 text-emerald-500" />
+                )}
+              </TabsTrigger>
+            )}
             <TabsTrigger value="teste">Teste</TabsTrigger>
           </TabsList>
 
@@ -576,6 +687,111 @@ function AgentConfigSheet({
               </ul>
             )}
           </TabsContent>
+
+          {/* ABA QUALIFICAÇÃO (SDR only) */}
+          {agent.agentKey === "sdr" && (
+            <TabsContent value="qualificacao" className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Qualificação por nicho</p>
+                <p className="text-xs text-muted-foreground">
+                  Descreva seu negócio e a IA gera perguntas SPIN adaptadas ao seu contexto. O SDR usará essas perguntas no lugar da qualificação genérica B2B.
+                </p>
+              </div>
+
+              {spinConfig?.approvedAt && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>Qualificação customizada ativa — {spinConfig.questions.length} perguntas aprovadas</span>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="spinNicheDesc">Descrição do nicho</Label>
+                <Textarea
+                  id="spinNicheDesc"
+                  value={spinNicheDesc}
+                  onChange={(e) => setSpinNicheDesc(e.target.value)}
+                  placeholder="Ex: Loja de móveis planejados que vende direto ao consumidor final. Produtos: dormitórios, cozinhas, home offices."
+                  rows={3}
+                />
+              </div>
+
+              <Button
+                onClick={handleGenerateSpinQuestions}
+                disabled={spinGenerating || !spinNicheDesc.trim()}
+                variant="outline"
+              >
+                {spinGenerating ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando…</>
+                ) : (
+                  <><Sparkles className="mr-2 h-4 w-4" />Gerar perguntas com IA</>
+                )}
+              </Button>
+
+              {spinGenError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{spinGenError}</AlertDescription>
+                </Alert>
+              )}
+
+              {spinDraftQuestions.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Perguntas geradas — edite antes de aprovar
+                  </p>
+                  <ul className="space-y-3">
+                    {spinDraftQuestions.map((q, idx) => (
+                      <li key={idx} className="rounded-lg border bg-card p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${SPIN_TIPO_COLOR[q.tipo]}`}>
+                            {SPIN_TIPO_LABEL[q.tipo]}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{q.label}</span>
+                        </div>
+                        <Textarea
+                          value={q.pergunta}
+                          onChange={(e) => handleUpdateSpinQuestion(idx, e.target.value)}
+                          rows={2}
+                          className="text-sm resize-none"
+                        />
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={() => saveSpinMutation.mutate()}
+                      disabled={saveSpinMutation.isPending}
+                    >
+                      {saveSpinMutation.isPending ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando…</>
+                      ) : (
+                        <><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar e ativar</>
+                      )}
+                    </Button>
+                    {spinConfig?.approvedAt && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearSpinConfig}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        Remover qualificação customizada
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {spinDraftQuestions.length === 0 && !spinConfig?.approvedAt && (
+                <div className="flex flex-col items-center justify-center py-10 rounded-lg border border-dashed text-muted-foreground gap-2">
+                  <HelpCircle className="h-8 w-8 opacity-30" />
+                  <p className="text-sm">Descreva o nicho acima e clique em "Gerar perguntas"</p>
+                </div>
+              )}
+            </TabsContent>
+          )}
 
           {/* ABA TESTE */}
           <TabsContent value="teste" className="flex-1 overflow-y-auto px-6 py-4 space-y-4">

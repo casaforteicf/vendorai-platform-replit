@@ -227,6 +227,61 @@ router.post("/agent-configs/:agentKey/test", async (req, res, next) => {
   return res.json({ resposta, tokensUsed, tom });
 });
 
+// ── POST /agent-configs/:agentKey/spin-questions/generate ─────────────────────
+// Gera rascunho de perguntas de qualificação SPIN adaptadas ao nicho descrito.
+// Só roteado para agentKeys conhecidos (ex: "sdr"); outros fazem fallthrough.
+router.post("/agent-configs/:agentKey/spin-questions/generate", async (req, res, next) => {
+  const { agentKey } = req.params as { agentKey: string };
+  if (!KNOWN_AGENT_KEYS.has(agentKey)) return next();
+
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const { nicheDescription } = req.body as { nicheDescription?: string };
+  if (!nicheDescription?.trim()) {
+    res.status(422).json({ error: "nicheDescription é obrigatória" });
+    return;
+  }
+
+  const openai = getOpenAI();
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content:
+          "Você é um especialista em metodologia SPIN Selling e qualificação consultiva de leads.\n" +
+          "Gere exatamente 6 perguntas de qualificação personalizadas para o nicho descrito.\n" +
+          "Responda APENAS como JSON válido, sem markdown. Formato:\n" +
+          '{"questions":[{"fieldKey":"snake_case_max30","label":"Label curto PT-BR","tipo":"situacao","pergunta":"Pergunta completa?"}]}\n\n' +
+          "Regras:\n" +
+          "- tipo: exatamente um de situacao | problema | implicacao | necessidade\n" +
+          "- fieldKey: snake_case, sem acentos, máx. 30 chars\n" +
+          "- label: nome curto legível do campo (ex: 'Tamanho do espaço')\n" +
+          "- pergunta: a pergunta real que o agente fará (1 a 2 frases naturais, consultivas)\n" +
+          "- Distribuição: 2 situacao, 2 problema, 1 implicacao, 1 necessidade\n" +
+          "- Perguntas naturais e consultivas — não devem parecer formulário",
+      },
+      { role: "user", content: `Nicho: ${nicheDescription.trim()}` },
+    ],
+    temperature: 0.7,
+    max_tokens: 900,
+    response_format: { type: "json_object" },
+  });
+
+  let questions: unknown[];
+  try {
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(raw) as { questions?: unknown[] };
+    questions = Array.isArray(parsed.questions) ? parsed.questions : [];
+  } catch {
+    res.status(500).json({ error: "Falha ao interpretar resposta da IA" });
+    return;
+  }
+
+  return res.json({ questions });
+});
+
 // ── PATCH /agent-configs/:agentKey — salva perfil + prompt do tenant ───────────
 // Falls through to PATCH /agent-configs/:id (UUID-based) if agentKey is unknown
 router.patch("/agent-configs/:agentKey", async (req, res, next) => {

@@ -49,6 +49,7 @@ import {
   type AgentName,
   getOpenAI,
   type AgentContext,
+  type SpinQuestion,
 } from "../lib/agent-engine.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
@@ -655,11 +656,26 @@ export async function processAgentInternal(params: {
 
     // Resolve DB-driven system prompt override
     let dispatchSystemPrompt: string | null = null;
+    let spinQualificationForExtraction: SpinQuestion[] | null = null;
     const dispatchAgentKey = AGENT_NAME_TO_KEY[resolvedAgentName];
     if (dispatchAgentKey) {
       try {
         const resolved = await getAgentConfig(tenantId, dispatchAgentKey);
         dispatchSystemPrompt = resolved?.systemPrompt ?? null;
+
+        // Bloco 23: for SDR, inject approved custom SPIN questions into enriched scenario
+        if (resolvedAgentName === "sdr" && resolved?.parametros) {
+          const sq = (resolved.parametros as Record<string, unknown>).spinQualification as {
+            nicheDescription?: string;
+            questions?: SpinQuestion[];
+            approvedAt?: string | null;
+          } | undefined;
+          if (sq?.approvedAt && sq.questions && sq.questions.length > 0) {
+            enrichedScenario = { ...(enrichedScenario ?? {}), spinQualification: sq };
+            spinQualificationForExtraction = sq.questions;
+            log.debug({ tenantId, questionCount: sq.questions.length }, "dispatch: custom SPIN qualification injected into SDR scenario");
+          }
+        }
       } catch (err) {
         log.warn({ err, agentName: resolvedAgentName, tenantId }, "dispatch: getAgentConfig failed, using hardcoded fallback");
       }
@@ -759,7 +775,15 @@ export async function processAgentInternal(params: {
 
     // 11. Post-response: extract and persist qualification answers after SDR, Closer, and Reactivation turns (async, non-blocking)
     if (["sdr", "closer", "reactivation"].includes(resolvedAgentName)) {
-      extractAndSaveQualification(tenantId, leadId, ctx, mensagem, finalResposta, log).catch((err) => {
+      extractAndSaveQualification(
+        tenantId,
+        leadId,
+        ctx,
+        mensagem,
+        finalResposta,
+        log,
+        resolvedAgentName === "sdr" ? spinQualificationForExtraction : null,
+      ).catch((err) => {
         log.warn({ err, leadId, tenantId }, "dispatch: qualification extraction failed");
       });
     }
@@ -1033,6 +1057,7 @@ async function extractAndSaveQualification(
   incomingMessage: string,
   agentReply: string,
   log: Logger,
+  spinQuestions: SpinQuestion[] | null = null,
 ): Promise<void> {
   const { lead } = ctx;
 
@@ -1044,17 +1069,36 @@ async function extractAndSaveQualification(
     `Agente: ${agentReply}`,
   ].join("\n");
 
-  const extractionPrompt =
-    `Você é um extrator de dados de qualificação de vendas. Analise a conversa abaixo e extraia APENAS as informações que o lead afirmou explicitamente. Não infira, não suponha.\n\n` +
-    `Responda APENAS em JSON válido, sem markdown, sem explicações. Use este formato:\n` +
-    `{"numero_funcionarios":"...","segmento":"...","crm_atual":"...","faturamento":"...","objetivo":"...","dor_principal":"...","orcamento":"...","urgencia":"..."}\n\n` +
-    `Regras:\n` +
-    `- Inclua apenas os campos que o lead afirmou claramente\n` +
-    `- Se um campo não foi mencionado, omita-o completamente (não use null, não use "")\n` +
-    `- Se não houver nenhum dado, retorne {}\n` +
-    `- Valores devem ser curtos e objetivos (máx. 100 caracteres cada)\n` +
-    `- Para campos monetários (faturamento, orcamento): retorne APENAS o número puro, sem símbolo de moeda e sem separadores de milhar (ex: lead disse "100 mil" → retorne "100000"; "1,5 milhão" → "1500000"; "100.000" → "100000")\n\n` +
-    `Conversa:\n${transcript}`;
+  // When tenant has custom SPIN questions, use their fieldKeys and descriptions for extraction.
+  // Fallback to generic B2B fields when no custom config is set.
+  let extractionPrompt: string;
+  if (spinQuestions && spinQuestions.length > 0) {
+    const fieldList = spinQuestions.map((q) => `"${q.fieldKey}":"${q.label}"`).join(", ");
+    const fieldFormat = `{${spinQuestions.map((q) => `"${q.fieldKey}":"..."`).join(",")}}`;
+    extractionPrompt =
+      `Você é um extrator de dados de qualificação de vendas. Analise a conversa abaixo e extraia APENAS as informações que o lead afirmou explicitamente. Não infira, não suponha.\n\n` +
+      `Campos a extrair (customizados para o nicho): ${fieldList}\n\n` +
+      `Responda APENAS em JSON válido, sem markdown, sem explicações. Use este formato:\n` +
+      `${fieldFormat}\n\n` +
+      `Regras:\n` +
+      `- Inclua apenas os campos que o lead afirmou claramente nesta conversa\n` +
+      `- Se um campo não foi mencionado, omita-o completamente (não use null, não use "")\n` +
+      `- Se não houver nenhum dado, retorne {}\n` +
+      `- Valores devem ser curtos e objetivos (máx. 100 caracteres cada)\n\n` +
+      `Conversa:\n${transcript}`;
+  } else {
+    extractionPrompt =
+      `Você é um extrator de dados de qualificação de vendas. Analise a conversa abaixo e extraia APENAS as informações que o lead afirmou explicitamente. Não infira, não suponha.\n\n` +
+      `Responda APENAS em JSON válido, sem markdown, sem explicações. Use este formato:\n` +
+      `{"numero_funcionarios":"...","segmento":"...","crm_atual":"...","faturamento":"...","objetivo":"...","dor_principal":"...","orcamento":"...","urgencia":"..."}\n\n` +
+      `Regras:\n` +
+      `- Inclua apenas os campos que o lead afirmou claramente\n` +
+      `- Se um campo não foi mencionado, omita-o completamente (não use null, não use "")\n` +
+      `- Se não houver nenhum dado, retorne {}\n` +
+      `- Valores devem ser curtos e objetivos (máx. 100 caracteres cada)\n` +
+      `- Para campos monetários (faturamento, orcamento): retorne APENAS o número puro, sem símbolo de moeda e sem separadores de milhar (ex: lead disse "100 mil" → retorne "100000"; "1,5 milhão" → "1500000"; "100.000" → "100000")\n\n` +
+      `Conversa:\n${transcript}`;
+  }
 
   let extracted: Record<string, unknown>;
   try {
@@ -1073,12 +1117,10 @@ async function extractAndSaveQualification(
 
   if (Object.keys(extracted).length === 0) return;
 
-  // Normalize monetary fields to "R$ X.XXX,00" before persisting
-  if (extracted.faturamento) {
-    extracted.faturamento = normalizeToBRL(String(extracted.faturamento));
-  }
-  if (extracted.orcamento) {
-    extracted.orcamento = normalizeToBRL(String(extracted.orcamento));
+  // Normalize monetary fields to "R$ X.XXX,00" before persisting (generic fields only)
+  if (!spinQuestions) {
+    if (extracted.faturamento) extracted.faturamento = normalizeToBRL(String(extracted.faturamento));
+    if (extracted.orcamento)   extracted.orcamento   = normalizeToBRL(String(extracted.orcamento));
   }
 
   // Merge into existing discoveryData (never overwrite already-set values)
@@ -1088,20 +1130,25 @@ async function extractAndSaveQualification(
     if (v && !existingDd[k]) mergedDd[k] = v;
   }
 
-  // Build lead update: discoveryData + dedicated columns (only if still empty)
+  // Build lead update: discoveryData + dedicated columns (only for generic fields, not custom SPIN)
   const update: Record<string, unknown> = { discoveryData: mergedDd, updatedAt: new Date() };
-  if (extracted.objetivo && !lead.objetivo)          update.objetivo = String(extracted.objetivo);
-  if (extracted.dor_principal && !lead.dorPrincipal) update.dorPrincipal = String(extracted.dor_principal);
-  if (extracted.orcamento && !lead.orcamento)        update.orcamento = String(extracted.orcamento);
-  if (extracted.urgencia && !lead.urgencia)          update.urgencia = String(extracted.urgencia);
-  if (extracted.numero_funcionarios && !lead.tamanhoEquipe) {
-    update.tamanhoEquipe = String(extracted.numero_funcionarios);
+  if (!spinQuestions) {
+    if (extracted.objetivo && !lead.objetivo)          update.objetivo = String(extracted.objetivo);
+    if (extracted.dor_principal && !lead.dorPrincipal) update.dorPrincipal = String(extracted.dor_principal);
+    if (extracted.orcamento && !lead.orcamento)        update.orcamento = String(extracted.orcamento);
+    if (extracted.urgencia && !lead.urgencia)          update.urgencia = String(extracted.urgencia);
+    if (extracted.numero_funcionarios && !lead.tamanhoEquipe) {
+      update.tamanhoEquipe = String(extracted.numero_funcionarios);
+    }
   }
 
   await db.update(leadsTable).set(update).where(
     and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)),
   );
-  log.info({ leadId, tenantId, extracted: Object.keys(extracted) }, "dispatch: qualification data extracted and saved");
+  log.info(
+    { leadId, tenantId, extracted: Object.keys(extracted), mode: spinQuestions ? "custom-spin" : "generic" },
+    "dispatch: qualification data extracted and saved",
+  );
 }
 
 // ── Fire-and-forget wrapper ───────────────────────────────────────────────────
