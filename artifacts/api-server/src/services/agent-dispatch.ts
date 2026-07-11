@@ -37,7 +37,8 @@ import { classifyFinancialIntent } from "./financial-intent.js";
 import { handleDeliveryFeedbackReply } from "./post-venda.js";
 import { handleSequenceOfferReply } from "./sequence-offer.js";
 import { generateAgentHandoffSummary } from "./handoff.js";
-import { sendDirectWhatsAppMessage } from "./omnichannel.js";
+import { sendDirectWhatsAppMessage, sendDirectWhatsAppDocument } from "./omnichannel.js";
+import { generateQuoteComercialPdf } from "../lib/pdf-quote-comercial.js";
 import {
   loadContext,
   computeLimits,
@@ -124,9 +125,9 @@ function interpolateSystemPrompt(
  *
  * - Meeting-link placeholders → real link if available, or a safe human fallback
  * - [Something](#) patterns   → removed (markdown placeholder links with bare "#" href)
- * - Known named placeholders  → removed (belt-and-suspenders after prompt interpolation)
+ * - Known named placeholders  → replaced with real values (belt-and-suspenders after prompt interpolation)
  */
-function sanitizeAgentResponse(text: string, meetLink?: string | null): string {
+function sanitizeAgentResponse(text: string, meetLink?: string | null, vendedorNome?: string): string {
   // 1. Meeting-link placeholders → real link or safe fallback (never raw placeholder text)
   const meetPlaceholder = /\[Link\s+da\s+Reuni[aã]o\]\s*\(#?\)|\[Link\s+da\s+Reuni[aã]o\]|\{?\{?link_reuni[aã]o\}?\}?/gi;
   text = text.replace(meetPlaceholder, meetLink ?? "vou te enviar o link em instantes");
@@ -135,8 +136,10 @@ function sanitizeAgentResponse(text: string, meetLink?: string | null): string {
   //    A real URL in agent output never uses bare "#"; these are always template artifacts.
   text = text.replace(/\[[^\]]{1,80}\]\(#\)/g, "");
 
-  // 3. Named placeholder variants that the LLM might echo from the custom prompt template
-  text = text.replace(/\[Seu\s+Nome\]|\[Nome\]|\{?\{?vendedor_nome\}?\}?/gi, "");
+  // 3. Named placeholder variants that the LLM might echo from the custom prompt template.
+  //    Replace with the real name when available so "Meu nome é [Seu Nome]" → "Meu nome é João".
+  const nomeFallback = vendedorNome?.trim() || "";
+  text = text.replace(/\[Seu\s+Nome\]|\[Nome\]|\{?\{?vendedor_nome\}?\}?/gi, nomeFallback);
   text = text.replace(/\[Empresa\]|\{?\{?empresa_nome\}?\}?/gi, "");
 
   // 4. Defense-in-depth: intercept free-form LLM denials of ability to send/provide a
@@ -739,9 +742,36 @@ export async function processAgentInternal(params: {
       }
     }
 
-    // For closer: inject active catalog plans (enterprise-first) and handle
-    // contract data collection mode when lead already accepted a proposal.
+    // For closer: inject agendamento (meet link) + active catalog plans (enterprise-first)
+    // and handle contract data collection mode when lead already accepted a proposal.
     if (resolvedAgentName === "closer") {
+      try {
+        const [latestCloserAgendamento] = await db
+          .select({
+            tipo:           agendamentosTable.tipo,
+            dataHoraInicio: agendamentosTable.dataHoraInicio,
+            dataHoraFim:    agendamentosTable.dataHoraFim,
+            local:          agendamentosTable.local,
+            meetLink:       agendamentosTable.meetLink,
+          })
+          .from(agendamentosTable)
+          .where(
+            and(
+              eq(agendamentosTable.tenantId, tenantId),
+              eq(agendamentosTable.leadId, leadId),
+              eq(agendamentosTable.status, "agendado"),
+            ),
+          )
+          .orderBy(desc(agendamentosTable.dataHoraInicio))
+          .limit(1);
+        if (latestCloserAgendamento) {
+          enrichedScenario = { ...(enrichedScenario ?? {}), ...latestCloserAgendamento };
+          log.debug({ tenantId, leadId, meetLink: latestCloserAgendamento.meetLink }, "dispatch: closer agendamento injected into scenario");
+        }
+      } catch (err) {
+        log.warn({ err, tenantId, leadId }, "dispatch: closer agendamento lookup failed (non-fatal)");
+      }
+
       const catalogPlans = await db
         .select({
           id:                produtosCatalogoTable.id,
@@ -872,7 +902,7 @@ export async function processAgentInternal(params: {
     // Apply variable interpolation to the system prompt before sending to OpenAI.
     // Prevents placeholder text like "[Seu Nome]" or "[Link da Reunião](#)" from leaking verbatim.
     const schedulerMeetLink =
-      resolvedAgentName === "scheduler" && enrichedScenario
+      (resolvedAgentName === "scheduler" || resolvedAgentName === "closer") && enrichedScenario
         ? (enrichedScenario.meetLink as string | null | undefined) ?? undefined
         : undefined;
     if (dispatchSystemPrompt) {
@@ -924,9 +954,29 @@ export async function processAgentInternal(params: {
           });
           if (quoteResult) {
             finalResposta =
-              `Preparei o orçamento formal **${quoteResult.numero}** para o plano **${quoteResult.nomePlano}**. ` +
-              `Você pode visualizar todos os detalhes — quer que eu explique o que está incluso?`;
+              `Preparei o orçamento formal **${quoteResult.numero}** para o plano **${quoteResult.nomePlano}** e estou enviando agora como documento anexo. ` +
+              `Quer que eu explique o que está incluso ou tira alguma dúvida?`;
             log.info({ leadId, tenantId, numero: quoteResult.numero, plano: quoteResult.nomePlano }, "dispatch: formal quote generated via Closer action");
+
+            // Generate and send PDF attachment (fire-and-forget — text response goes first)
+            const leadNomeForPdf = ctx.lead.nome ?? ctx.lead.telefone ?? "Cliente";
+            const leadTelefone   = ctx.lead.telefone;
+            if (leadTelefone) {
+              generateQuoteComercialPdf({
+                leadNome:         leadNomeForPdf,
+                numero:           quoteResult.numero,
+                nomePlano:        quoteResult.nomePlano,
+                precoImplantacao: quoteResult.precoImplantacao,
+                precoMensalidade: quoteResult.precoMensalidade,
+                recorrencia:      quoteResult.recorrencia,
+                empresaNome,
+              })
+                .then((pdfBuffer) => {
+                  const fileName = `Orçamento-VendorAI-${quoteResult.numero}.pdf`;
+                  return sendDirectWhatsAppDocument(tenantId, leadTelefone, pdfBuffer, fileName, `Orçamento ${quoteResult.numero} — ${quoteResult.nomePlano}`, log);
+                })
+                .catch((err) => log.error({ err, leadId, tenantId, numero: quoteResult.numero }, "dispatch: quote PDF send failed (non-fatal)"));
+            }
           } else {
             finalResposta = "Vou preparar o orçamento e enviar em seguida. Você pode me dar um momento?";
             log.warn({ leadId, tenantId }, "dispatch: generate_quote action but no plan found or creation failed");
@@ -1122,7 +1172,7 @@ export async function processAgentInternal(params: {
     //     the message reaches the lead. Defense-in-depth: catches the case where the LLM
     //     reproduces a placeholder verbatim (e.g. "[Link da Reunião](#)") despite the
     //     prompt having been sanitized on the way in.
-    finalResposta = sanitizeAgentResponse(finalResposta, schedulerMeetLink);
+    finalResposta = sanitizeAgentResponse(finalResposta, schedulerMeetLink, vendedorNome);
 
     // 9. Update counters and insert task
     const now = new Date();

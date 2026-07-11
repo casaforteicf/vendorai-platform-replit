@@ -36,4 +36,7 @@
 - [Pós-venda feedback de entrega](post-venda-feedback-entrega.md) — pergunta de satisfação pós-entrega classificada por IA (não keyword); positivo pede avaliação Google só se tenant configurou link; negativo registra motivo em 2 turnos.
 - [OpenAPI enum mirrors DB pgEnum](openapi-enum-mirrors-db-enum.md) — nova value em pgEnum (ex: deal_etapa) precisa ser adicionada manualmente ao enum do OpenAPI + codegen, senão frontend quebra TS2322.
 - [ARQDOR Render Studio layout](arqdor-render-studio-layout.md) — IDE de 4 painéis (topbar+sidebar+canvas+right panel+bottom+footer) em RenderStudioPage.tsx; toda lógica de API preservada; FullscreenProtectedRoute oculta sidebar global.
-- [Closer closing flow](closer-closing-flow.md) — pricing → {{action:generate_quote}} → orçamento formal; aceite → coleta campos contratuais via discoveryData.pendingProposalAccept antes de proposalAccepted().
+- [Closer closing flow](closer-closing-flow.md) — pricing → {{action:generate_quote}} → orçamento formal em PDF; aceite → coleta campos contratuais via discoveryData.pendingProposalAccept antes de proposalAccepted().
+- [VendorAI catalog seeding pattern](vendorai-catalog-seeding.md) — startup migration deve fazer UPDATE+INSERT separados; deactivação deve omitir filtro product_type (senão rows legadas com nome diferente escapam).
+- [Puppeteer waitUntil constraint](puppeteer-waituntil.md) — esta versão do puppeteer-core só aceita "load" ou "domcontentloaded" em setContent (não "networkidle0").
+- [Z-API document endpoint](zapi-document-endpoint.md) — envio de PDF via `/send-document/pdf` com body `{ phone, document: "data:application/pdf;base64,...", fileName, caption }` e header `Client-Token`.

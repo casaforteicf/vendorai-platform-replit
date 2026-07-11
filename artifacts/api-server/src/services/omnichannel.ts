@@ -157,6 +157,104 @@ async function sendZapiWhatsAppMessage(
   log.info({ phone: normalized, zapiMessageId }, "omnichannel: whatsapp message sent via z-api");
 }
 
+// ── Z-API document send ───────────────────────────────────────────────────────
+
+async function sendZapiDocument(
+  instanceId: string,
+  token: string,
+  clientToken: string,
+  phone: string,
+  pdfBuffer: Buffer,
+  fileName: string,
+  caption: string,
+  log: Logger,
+): Promise<void> {
+  const digits = phone.replace(/\D/g, "").replace(/^0+/, "");
+  const normalized = digits.startsWith("55") ? digits : "55" + digits;
+  const base64 = pdfBuffer.toString("base64");
+  const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-document/pdf`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Client-Token": clientToken },
+    body: JSON.stringify({
+      phone: normalized,
+      document: `data:application/pdf;base64,${base64}`,
+      fileName,
+      caption,
+    }),
+  });
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    log.error({ body, phone: normalized }, "omnichannel: zapi document send failed");
+    throw new Error(`Z-API document error ${res.status}: ${JSON.stringify(body)}`);
+  }
+  log.info({ phone: normalized, fileName }, "omnichannel: document sent via z-api");
+}
+
+/**
+ * Send a PDF buffer as a WhatsApp document attachment.
+ * Picks Z-API when configured, falls back to Meta Cloud API.
+ * Silently skips (logs warn) when no credentials are available.
+ */
+export async function sendDirectWhatsAppDocument(
+  tenantId: string,
+  phone: string,
+  pdfBuffer: Buffer,
+  fileName: string,
+  caption: string,
+  log: Logger,
+): Promise<void> {
+  const [config] = await db
+    .select({
+      zapiInstanceId:    agentConfigsTable.zapiInstanceId,
+      zapiToken:         agentConfigsTable.zapiToken,
+      zapiClientToken:   agentConfigsTable.zapiClientToken,
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      metaAccessToken:   agentConfigsTable.metaAccessToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId))
+    .limit(1);
+
+  const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
+  const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
+
+  if (!hasZapi && !hasMeta) {
+    log.warn({ tenantId }, "omnichannel: no credentials for document send — skipping PDF");
+    return;
+  }
+
+  if (hasZapi) {
+    await sendZapiDocument(
+      config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
+      phone, pdfBuffer, fileName, caption, log,
+    );
+  } else {
+    // Meta: upload to Media API, then send as document message
+    const mediaId = await uploadMediaToMeta(
+      config!.metaPhoneNumberId!, config!.metaAccessToken!,
+      pdfBuffer, "application/pdf", fileName, log,
+    );
+    const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
+    const url = `https://graph.facebook.com/v20.0/${config!.metaPhoneNumberId!}/messages`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config!.metaAccessToken!}` },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: normalizedPhone,
+        type: "document",
+        document: { id: mediaId, filename: fileName, caption },
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+      throw new Error(`Meta document send error ${res.status}: ${JSON.stringify(data)}`);
+    }
+    log.info({ phone: normalizedPhone, fileName }, "omnichannel: document sent via meta");
+  }
+}
+
 // ── Meta send ─────────────────────────────────────────────────────────────────
 
 async function sendMetaWhatsAppMessage(

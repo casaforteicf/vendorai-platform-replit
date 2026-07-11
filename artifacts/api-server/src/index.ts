@@ -943,14 +943,15 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   }
 
   // Seed VendorAI SaaS plans for tenant 1d4ea673-58d0-413a-a554-c9aca72a3121
-  // Deactivate the old generic plan and insert the 6 real plans (3 planos × mensal + anual)
+  // Deactivate ALL non-standard products (regardless of product_type — catches legacy entries
+  // with wrong names like "Implantação sistema de gerenciamento lead com IA PRO")
+  // and UPSERT the 6 real plans so values are always up-to-date on every restart.
   try {
     const VENDORAI_TENANT = "1d4ea673-58d0-413a-a554-c9aca72a3121";
     await db.execute(sql`
       UPDATE produtos_catalogo
       SET ativo = false, updated_at = now()
       WHERE tenant_id = ${VENDORAI_TENANT}
-        AND product_type = 'saas_plan'
         AND nome NOT IN ('Growth Mensal','Growth Anual','PME+ Mensal','PME+ Anual','Enterprise Mensal','Enterprise Anual')
     `);
     const plans = [
@@ -962,6 +963,21 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
       { nome: "Enterprise Anual",   precoBase: "1990.00", implantacao: "8900.00", mensalidade: "1990.00", recorrencia: "anual",  prazo: 12 },
     ];
     for (const p of plans) {
+      // UPDATE existing row to enforce correct prices (idempotent on every restart)
+      await db.execute(sql`
+        UPDATE produtos_catalogo
+        SET preco_base = ${p.precoBase}::numeric,
+            preco_implantacao = ${p.implantacao}::numeric,
+            preco_mensalidade = ${p.mensalidade}::numeric,
+            product_type = 'saas_plan',
+            recorrencia = ${p.recorrencia},
+            prazo_contrato = ${p.prazo},
+            ativo = true,
+            destaque = true,
+            updated_at = now()
+        WHERE tenant_id = ${VENDORAI_TENANT} AND nome = ${p.nome}
+      `);
+      // INSERT if no row exists yet
       await db.execute(sql`
         INSERT INTO produtos_catalogo
           (id, tenant_id, nome, product_type, preco_base, preco_implantacao, preco_mensalidade,
@@ -976,7 +992,7 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
         )
       `);
     }
-    logger.info("startup migrations: VendorAI SaaS plans seeded OK");
+    logger.info("startup migrations: VendorAI SaaS plans seeded/updated OK");
   } catch (err) {
     logger.warn({ err }, "startup migrations: VendorAI SaaS plans seed skipped");
   }

@@ -555,7 +555,7 @@ export async function createQuoteFromCatalogPlan(params: {
   leadId: string;
   productId: string;
   log: Logger;
-}): Promise<{ propostaId: string; numero: string; valorTotal: number; nomePlano: string } | null> {
+}): Promise<{ propostaId: string; numero: string; valorTotal: number; nomePlano: string; precoImplantacao: number; precoMensalidade: number; recorrencia: string | null } | null> {
   const { tenantId, leadId, productId, log } = params;
 
   const [product] = await db
@@ -566,6 +566,7 @@ export async function createQuoteFromCatalogPlan(params: {
       precoBase:        produtosCatalogoTable.precoBase,
       precoImplantacao: produtosCatalogoTable.precoImplantacao,
       precoMensalidade: produtosCatalogoTable.precoMensalidade,
+      recorrencia:      produtosCatalogoTable.recorrencia,
     })
     .from(produtosCatalogoTable)
     .where(
@@ -598,5 +599,11 @@ export async function createQuoteFromCatalogPlan(params: {
   }];
 
   const result = await createAutoQuote({ tenantId, leadId, found, log });
-  return { ...result, nomePlano: product.nome };
+  return {
+    ...result,
+    nomePlano:        product.nome,
+    precoImplantacao: precoImplantacao ?? 0,
+    precoMensalidade: precoMensalidade ?? price,
+    recorrencia:      product.recorrencia ?? null,
+  };
 }
