@@ -92,7 +92,7 @@ async function apiPost(path: string, body: unknown) {
 async function apiGet(path: string) {
   const res = await fetch(`${BASE}${path}`, { headers: authHeader() as HeadersInit });
   if (!res.ok) throw new Error(`Erro ${res.status}`);
-  return res.json();
+  return res.json().catch(() => { throw new Error("Resposta inválida do servidor"); });
 }
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = reject; r.readAsDataURL(file); });
