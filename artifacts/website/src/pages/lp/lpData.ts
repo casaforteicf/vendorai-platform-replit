@@ -16,6 +16,14 @@ export interface AgentCard {
   desc: string;
 }
 
+export interface ObrasHubFeature {
+  icon: string;
+  badge?: string;
+  title: string;
+  problem: string;
+  solution: string;
+}
+
 export interface LpConfig {
   slug: string;
   vertical: string;
@@ -38,6 +46,16 @@ export interface LpConfig {
     title: string;
     subtitle: string;
     agents: AgentCard[];
+  };
+  obrasHub?: {
+    badge: string;
+    title: string;
+    subtitle: string;
+    features: ObrasHubFeature[];
+    vsCallout: {
+      title: string;
+      desc: string;
+    };
   };
   cta: {
     headline: string;
@@ -87,7 +105,7 @@ export const LP_CONFIGS: LpConfig[] = [
           detail: "Quanto tempo sua empresa leva para responder um contato novo hoje?",
         },
         {
-          value: "R$47k",
+          value: "R$800k",
           label: "é o ticket médio de uma obra residencial",
           detail: "Quantas propostas sem follow-up você perdeu nos últimos 30 dias?",
         },
@@ -124,6 +142,59 @@ export const LP_CONFIGS: LpConfig[] = [
         },
       ],
     },
+    obrasHub: {
+      badge: "Módulo exclusivo · Obras Hub",
+      title: "Gestão completa da obra no mesmo lugar que cuida do seu comercial",
+      subtitle: "Enquanto o Vobi para na obra, o VendorAI começa nela — e vai até o fechamento do próximo contrato. CRM, WhatsApp, prospecção e gestão de obra integrados em um único Business OS.",
+      features: [
+        {
+          icon: "📊",
+          badge: "Curva ABC",
+          title: "Priorização inteligente de itens de obra",
+          problem: "Você não sabe quais itens concentram 80% do custo da obra sem montar uma planilha complexa do zero.",
+          solution: "Cada item do orçamento recebe automaticamente um badge A, B ou C. Badge A = foco total. Sua equipe sabe exatamente onde concentrar atenção de compra e negociação sem análise manual.",
+        },
+        {
+          icon: "🏛️",
+          badge: "SINAPI integrado",
+          title: "Base oficial de preços da construção civil",
+          problem: "Orçamentos feitos no feeling ou com tabelas desatualizadas geram margem errada e propostas difíceis de defender para o cliente.",
+          solution: "O catálogo SINAPI completo está integrado — os mesmos preços referenciais usados por engenheiros, prefeituras e financiadores. Orçamento defensável, com credibilidade técnica, em minutos.",
+        },
+        {
+          icon: "📝",
+          badge: "IA no diário",
+          title: "Relatório de obra que se escreve sozinho",
+          problem: "Registrar o diário de obra todo dia consome tempo que o engenheiro não tem — e quando não é feito, a documentação some.",
+          solution: "Sua equipe registra o que aconteceu no dia. O Claude transforma esses registros em um relatório profissional formatado automaticamente — com resumo executivo, pendências e próximos passos.",
+        },
+        {
+          icon: "📅",
+          badge: "Gantt drag-to-edit",
+          title: "Replanejamento do cronograma em segundos",
+          problem: "Quando a obra atrasa — e sempre atrasa — reajustar o cronograma leva uma tarde inteira e exige reenviar documentos para o cliente.",
+          solution: "Arraste qualquer tarefa no Gantt e o cronograma inteiro se recalcula. Datas persistidas no banco. Compartilhe o cronograma atualizado com o cliente sem sair do sistema.",
+        },
+        {
+          icon: "📄",
+          badge: "PDF profissional",
+          title: "Orçamento e DRE prontos para assinar",
+          problem: "Gerar um orçamento apresentável para o cliente ou um DRE para o financiador requer um contador, uma tarde e um Excel cheio de fórmulas.",
+          solution: "Um clique gera o PDF do orçamento detalhado ou o DRE completo da obra — com logo, formatação profissional e todos os números calculados. Pronto para apresentar ou protocolar.",
+        },
+        {
+          icon: "📷",
+          badge: "Diário com fotos",
+          title: "Documentação visual do progresso da obra",
+          problem: "Disputas de garantia, prestação de contas ao incorporador e laudos de vistoria exigem evidência fotográfica — que raramente existe quando precisa.",
+          solution: "Upload de fotos diretamente no diário de obra, vinculadas à data e à etapa. Histórico visual completo da execução. Evidência real de cada fase, acessível a qualquer momento.",
+        },
+      ],
+      vsCallout: {
+        title: "Por que não usar só o Vobi?",
+        desc: "O Vobi resolve orçamento e cronograma. Mas quando o cliente some depois da proposta, você não tem agente SDR para fazer follow-up. Quando um lead novo chega pelo Instagram às 22h, não há resposta automática. Quando a obra termina e o cliente precisa de reforma, não há CRM para reativar. O VendorAI entrega o módulo de obras E todo o comercial integrado — no mesmo lugar, com os mesmos dados.",
+      },
+    },
     cta: {
       headline: "Veja como construtoras estão fechando 3× mais obras",
       sub: "Demonstração personalizada para Construção Civil. Sem compromisso, sem cartão.",
@@ -136,10 +207,10 @@ export const LP_CONFIGS: LpConfig[] = [
     vertical: "Materiais de Construção",
     emoji: "🧱",
     situation: {
-      tag: "Para lojas e distribuidoras de materiais de construção",
+      tag: "Para lojas de materiais de construção",
       headline: "Enquanto seu vendedor digita cotação no WhatsApp,\na concorrência já fechou o pedido.",
       subheadline:
-        "Distribuidoras de materiais que usam VendorAI respondem cotações em menos de 60 segundos — e aumentam o ticket médio sem contratar mais vendedores.",
+        "Lojas de materiais que usam VendorAI respondem cotações em menos de 60 segundos — e aumentam o ticket médio sem contratar mais vendedores.",
     },
     problem: {
       title: "O dia a dia que você conhece bem",
@@ -209,7 +280,7 @@ export const LP_CONFIGS: LpConfig[] = [
       ],
     },
     cta: {
-      headline: "Veja como distribuidoras de materiais dobram o volume de pedidos",
+      headline: "Veja como lojas de materiais dobram o volume de pedidos",
       sub: "Demonstração personalizada. Sem compromisso, sem cartão de crédito.",
     },
     gtagConversionLabel: "lp_materiais_construcao",

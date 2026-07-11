@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Loader2, ArrowRight, ChevronRight } from "lucide-react";
+import { CheckCircle2, Loader2, ArrowRight, ChevronRight, ShieldCheck } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -153,7 +153,9 @@ function LandingPage({ config }: { config: LpConfig }) {
                 key={i}
                 className="group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:border-violet-500/20 hover:bg-white/[0.06] transition-all duration-200"
               >
-                <div className="text-3xl mb-4">{point.icon}</div>
+                <div className="w-6 h-6 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center mb-4">
+                  <span className="text-xs font-bold text-violet-400">{i + 1}</span>
+                </div>
                 <h3 className="font-semibold text-white mb-2 leading-snug">{point.title}</h3>
                 <p className="text-sm text-slate-400 leading-relaxed">{point.desc}</p>
               </div>
@@ -201,15 +203,13 @@ function LandingPage({ config }: { config: LpConfig }) {
             {config.needPayoff.agents.map((agent, i) => (
               <div
                 key={i}
-                className="flex gap-5 p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:border-cyan-500/20 hover:bg-white/[0.06] transition-all duration-200"
+                className="p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:border-cyan-500/20 hover:bg-white/[0.06] transition-all duration-200"
               >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20 border border-white/10 flex items-center justify-center text-2xl shrink-0">
-                  {agent.icon}
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1 h-5 rounded-full bg-gradient-to-b from-violet-400 to-cyan-400" />
+                  <h3 className="font-bold text-white">{agent.name}</h3>
                 </div>
-                <div>
-                  <h3 className="font-bold text-white mb-1.5">{agent.name}</h3>
-                  <p className="text-sm text-slate-400 leading-relaxed">{agent.desc}</p>
-                </div>
+                <p className="text-sm text-slate-400 leading-relaxed">{agent.desc}</p>
               </div>
             ))}
           </div>
@@ -226,6 +226,79 @@ function LandingPage({ config }: { config: LpConfig }) {
           </div>
         </div>
       </section>
+
+      {/* ══ OBRAS HUB — conditional, construcao-civil only ═══════════════════ */}
+      {config.obrasHub && (
+        <section className="py-20 px-4 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-[#08070F] via-[#0d1a12] to-[#08070F] pointer-events-none" />
+          <div className="absolute top-0 left-1/4 w-[500px] h-[400px] bg-emerald-600/8 blur-[120px] rounded-full pointer-events-none" />
+
+          <div className="container mx-auto max-w-5xl relative z-10">
+            {/* Header */}
+            <div className="text-center mb-14">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-semibold mb-6 tracking-wide uppercase">
+                {config.obrasHub.badge}
+              </div>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 max-w-3xl mx-auto leading-tight">
+                {config.obrasHub.title}
+              </h2>
+              <p className="text-slate-400 max-w-2xl mx-auto leading-relaxed">
+                {config.obrasHub.subtitle}
+              </p>
+            </div>
+
+            {/* Feature cards — 3-col grid */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-12">
+              {config.obrasHub.features.map((feat, i) => (
+                <div
+                  key={i}
+                  className="group p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:border-emerald-500/20 hover:bg-white/[0.05] transition-all duration-200 flex flex-col gap-4"
+                >
+                  {feat.badge && (
+                    <span className="self-start text-xs font-semibold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      {feat.badge}
+                    </span>
+                  )}
+
+                  <h3 className="font-bold text-white leading-snug">{feat.title}</h3>
+
+                  {/* Problem */}
+                  <div className="text-xs text-slate-500 leading-relaxed border-l-2 border-slate-700 pl-3">
+                    {feat.problem}
+                  </div>
+
+                  {/* Solution */}
+                  <div className="text-xs text-emerald-300/80 leading-relaxed border-l-2 border-emerald-700/50 pl-3">
+                    {feat.solution}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* vs. callout */}
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8 flex flex-col sm:flex-row gap-6 items-start">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-lg mb-2">{config.obrasHub.vsCallout.title}</h4>
+                <p className="text-sm text-slate-400 leading-relaxed">{config.obrasHub.vsCallout.desc}</p>
+              </div>
+            </div>
+
+            {/* Inline CTA */}
+            <div className="mt-12 text-center">
+              <button
+                onClick={openModal}
+                className="group inline-flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-base text-white bg-gradient-to-r from-emerald-600 to-cyan-500 hover:from-emerald-500 hover:to-cyan-400 shadow-lg shadow-emerald-500/20 transition-all duration-200 hover:scale-[1.02]"
+              >
+                Ver o Obras Hub em ação
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ══ Final CTA ═════════════════════════════════════════════════════════ */}
       <section className="py-24 px-4 relative overflow-hidden">
