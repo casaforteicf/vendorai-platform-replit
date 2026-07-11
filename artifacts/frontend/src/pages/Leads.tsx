@@ -222,6 +222,7 @@ export default function Leads() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>(isChurnUrl ? "high_risk" : isQuenteUrl ? "quente" : "all");
   const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(isChurnUrl ? "desc" : null);
+  const [maturityFilter, setMaturityFilter] = useState<string>("all");
 
   const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
 
@@ -422,7 +423,13 @@ export default function Leads() {
             : statusFilter === "quente"
               ? (lead.status === "qualificado" || lead.status === "novo")
               : lead.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesMaturity =
+        maturityFilter === "all"
+          ? true
+          : maturityFilter === "sem_resposta"
+            ? !(lead as any).maturidadeIA
+            : String((lead as any).maturidadeIA) === maturityFilter;
+      return matchesSearch && matchesStatus && matchesMaturity;
     })
     .sort((a, b) => {
       if (isQuenteUrl) {
@@ -697,6 +704,18 @@ export default function Leads() {
                   {s.label}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select value={maturityFilter} onValueChange={setMaturityFilter}>
+            <SelectTrigger className="w-52" data-testid="select-maturity-filter">
+              <SelectValue placeholder="Maturidade IA" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toda maturidade</SelectItem>
+              <SelectItem value="1">✋ Manual, sem sistema</SelectItem>
+              <SelectItem value="2">⚙️ Tem sistema, sem IA</SelectItem>
+              <SelectItem value="3">🤖 Já usa IA/automação</SelectItem>
+              <SelectItem value="sem_resposta">Sem resposta</SelectItem>
             </SelectContent>
           </Select>
         </div>

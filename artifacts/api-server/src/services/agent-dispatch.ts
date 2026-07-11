@@ -58,6 +58,29 @@ import { checkAgentPlan } from "../middlewares/plan-guard.js";
 
 type Lead    = typeof leadsTable.$inferSelect;
 type CI      = typeof customerIntelligenceTable.$inferSelect;
+
+// ── Maturity survey helpers ───────────────────────────────────────────────────
+
+const SURVEY_KEYWORDS = ["1️⃣", "2️⃣", "3️⃣", "manualmente", "sem sistema", "sem IA", "automação de alguma forma"];
+
+function isSurveyMessage(conteudo: string): boolean {
+  return SURVEY_KEYWORDS.some((kw) => conteudo.includes(kw));
+}
+
+/**
+ * Attempts to infer maturity level (1-3) from a free-text reply.
+ * Returns null if no signal is confident enough.
+ */
+function inferMaturityFromText(text: string): number | null {
+  const lower = text.toLowerCase();
+  // Level 3: already uses AI / automation
+  if (/\b(ia\b|inteligência artificial|chatbot|automação|automat|bot\b|robô|gpt|openai|copilot|ai\b)\b/.test(lower)) return 3;
+  // Level 2: has a system but no AI keyword
+  if (/\b(sistema|crm|erp|software|ferramenta|plataforma|app\b|aplicativo|programa|rdstation|pipedrive|bitrix|hubspot|zendesk)\b/.test(lower)) return 2;
+  // Level 1: explicitly manual
+  if (/\b(manual|na mão|no braço|manualmente|sem sistema|não uso|nenhum sistema|tudo na mão|só eu|respondo eu|faço eu)\b/.test(lower)) return 1;
+  return null;
+}
 type Deal    = typeof dealsTable.$inferSelect;
 type Message = typeof messagesTable.$inferSelect;
 
@@ -786,6 +809,42 @@ export async function processAgentInternal(params: {
         }
       } catch (err) {
         log.warn({ err, agentName: resolvedAgentName, tenantId }, "dispatch: getAgentConfig failed, using hardcoded fallback");
+      }
+    }
+
+    // ── Maturity survey response detection (frio_teste pesquisa) ─────────────
+    // When the lead replies after the survey message, detect and persist the
+    // maturity level so it's available in the scenario AND in the lead record.
+    if (resolvedAgentName === "sdr") {
+      try {
+        const trimmedMsg = mensagem.trim();
+        const lastAgentMsg = [...ctx.recentMessages].reverse().find((m) => m.enviadoPor === "agente_ia");
+        const lastWasSurvey = !!(lastAgentMsg?.conteudo && isSurveyMessage(lastAgentMsg.conteudo));
+
+        if (lastWasSurvey) {
+          // Numeric direct reply (1, 2 or 3)
+          const numericAnswer = /^[123]$/.test(trimmedMsg) ? parseInt(trimmedMsg, 10) : null;
+          // Text-based inference (free text after survey)
+          const inferredAnswer = numericAnswer ?? inferMaturityFromText(trimmedMsg);
+
+          if (inferredAnswer) {
+            enrichedScenario = { ...(enrichedScenario ?? {}), maturityLevel: inferredAnswer };
+            log.info({ tenantId, leadId: ctx.lead.id, maturityLevel: inferredAnswer, numeric: !!numericAnswer },
+              "dispatch: maturity survey answer detected — injecting into SDR scenario");
+
+            // Persist to leads table (non-blocking — failures must not break the reply)
+            db.update(leadsTable)
+              .set({
+                maturidadeIA: inferredAnswer,
+                dataRespostaPesquisa: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(leadsTable.id, ctx.lead.id))
+              .catch((err) => log.warn({ err, leadId: ctx.lead.id }, "dispatch: failed to persist maturidadeIA"));
+          }
+        }
+      } catch (err) {
+        log.warn({ err }, "dispatch: maturity detection failed, continuing");
       }
     }
 

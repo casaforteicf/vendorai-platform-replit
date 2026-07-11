@@ -5511,6 +5511,8 @@ export const ListLeadsResponseItem = zod.object({
   "email": zod.string().nullish()
 })).nullish()
 }).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5649,6 +5651,8 @@ export const ListTenantLeadsResponseItem = zod.object({
   "email": zod.string().nullish()
 })).nullish()
 }).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5734,6 +5738,8 @@ export const GetLeadResponse = zod.object({
   "email": zod.string().nullish()
 })).nullish()
 }).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5874,6 +5880,8 @@ export const UpdateLeadResponse = zod.object({
   "email": zod.string().nullish()
 })).nullish()
 }).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5968,6 +5976,8 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "email": zod.string().nullish()
 })).nullish()
 }).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -6041,6 +6051,8 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "email": zod.string().nullish()
 })).nullish()
 }).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()
@@ -6133,6 +6145,8 @@ export const MergeLeadResponse = zod.object({
   "email": zod.string().nullish()
 })).nullish()
 }).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -6222,6 +6236,8 @@ export const DismissDuplicateLeadResponse = zod.object({
   "email": zod.string().nullish()
 })).nullish()
 }).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()

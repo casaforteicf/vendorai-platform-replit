@@ -133,6 +133,13 @@ export const leadsTable = pgTable("leads", {
   }>(),
   priorityReason: text("priority_reason"),
 
+  // ── Pesquisa de maturidade em IA/automação (frio_teste) ───────────────────
+  // 1 = responde tudo manualmente, sem sistema
+  // 2 = tem sistema, mas sem IA
+  // 3 = já usa IA ou automação de alguma forma
+  maturidadeIA: integer("maturidade_ia"),
+  dataRespostaPesquisa: timestamp("data_resposta_pesquisa"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

@@ -855,11 +855,30 @@ async function runStartupMigrations() {
     await db.execute(sql`
       INSERT INTO sdr_templates (id, tenant_id, cenario, ordem, delay_horas, template, ativo)
       SELECT gen_random_uuid()::text, NULL, 'frio_teste', 1, 0,
-        'Oi {dono_nome}! Passei rapidinho — vi que vocês trabalham com {segmento_produto} em {cidade}. A gente ajuda negócios do setor a não perder venda por demora no atendimento do WhatsApp, com IA que responde e qualifica na hora, mesmo fora do horário comercial.
+        'Oi {dono_nome}! Rapidinho — uma pergunta sobre a {empresa_lead}: hoje, como vocês lidam com o atendimento de clientes pelo WhatsApp?
 
-Faz sentido eu te mostrar em uns 10 minutos? Consigo {dia_sugestao_1} ou {dia_sugestao_2}, o que for melhor pra você.',
+1️⃣ Respondo tudo manualmente, sem sistema
+2️⃣ Uso algum sistema, mas sem IA
+3️⃣ Já uso IA ou automação de alguma forma
+
+Só me manda o número, já ajuda demais 🙂',
         true
       WHERE NOT EXISTS (SELECT 1 FROM sdr_templates WHERE tenant_id IS NULL AND cenario = 'frio_teste' AND ordem = 1)
+    `);
+    await db.execute(sql`
+      UPDATE sdr_templates
+      SET    template    = 'Oi {dono_nome}! Rapidinho — uma pergunta sobre a {empresa_lead}: hoje, como vocês lidam com o atendimento de clientes pelo WhatsApp?
+
+1️⃣ Respondo tudo manualmente, sem sistema
+2️⃣ Uso algum sistema, mas sem IA
+3️⃣ Já uso IA ou automação de alguma forma
+
+Só me manda o número, já ajuda demais 🙂',
+             updated_at  = NOW()
+      WHERE  tenant_id IS NULL
+        AND  cenario     = 'frio_teste'
+        AND  ordem       = 1
+        AND  template NOT LIKE '%1️⃣%'
     `);
     await db.execute(sql`
       INSERT INTO sdr_templates (id, tenant_id, cenario, ordem, delay_horas, template, ativo)
@@ -888,6 +907,9 @@ Se fizer sentido, te mostro em 10 minutos como funciona.',
         true
       WHERE NOT EXISTS (SELECT 1 FROM sdr_templates WHERE tenant_id IS NULL AND cenario = 'direto_dono' AND ordem = 1)
     `);
+    // Pesquisa de maturidade em IA/automação
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS maturidade_ia INTEGER`);
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS data_resposta_pesquisa TIMESTAMPTZ`);
     logger.info("startup migrations: sdr_templates global seeds OK");
   } catch (err) {
     logger.warn({ err }, "startup migrations: sdr_templates global seeds skipped");

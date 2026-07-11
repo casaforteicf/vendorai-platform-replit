@@ -1284,6 +1284,32 @@ export default function LeadDetail() {
                     </div>
                   );
                 })()}
+                {(lead as any).maturidadeIA && (() => {
+                  const matMap: Record<number, { label: string; color: string; emoji: string }> = {
+                    1: { label: "Manual, sem sistema", color: "text-orange-600 bg-orange-50 border-orange-200", emoji: "✋" },
+                    2: { label: "Tem sistema, sem IA", color: "text-blue-600 bg-blue-50 border-blue-200", emoji: "⚙️" },
+                    3: { label: "Já usa IA/automação", color: "text-emerald-600 bg-emerald-50 border-emerald-200", emoji: "🤖" },
+                  };
+                  const m = matMap[(lead as any).maturidadeIA as number];
+                  if (!m) return null;
+                  return (
+                    <div className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
+                      <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
+                        <span className="text-xs">Maturidade IA</span>
+                      </dt>
+                      <dd>
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded border ${m.color}`}>
+                          {m.emoji} {m.label}
+                        </span>
+                        {(lead as any).dataRespostaPesquisa && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            Respondido em {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date((lead as any).dataRespostaPesquisa))}
+                          </p>
+                        )}
+                      </dd>
+                    </div>
+                  );
+                })()}
               </dl>
               <div className="mt-3 pt-2.5 border-t">
                 <p className="text-xs text-muted-foreground">

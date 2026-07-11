@@ -3246,6 +3246,10 @@ export interface Lead {
   tipoPessoa?: string | null;
   /** Dados exclusivos de Pessoa Jurídica */
   dadosPj?: LeadDadosPj;
+  /** Nível de maturidade em IA/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA/automação. */
+  maturidadeIA?: number | null;
+  /** Timestamp de quando o lead respondeu à pesquisa de maturidade. */
+  dataRespostaPesquisa?: string | null;
   createdAt: string;
   updatedAt: string;
 }

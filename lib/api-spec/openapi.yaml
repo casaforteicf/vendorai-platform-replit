@@ -15369,6 +15369,15 @@ components:
                     type: string
                     nullable: true
                 required: [nome]
+        maturidadeIA:
+          type: integer
+          nullable: true
+          description: "Nível de maturidade em IA/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA/automação."
+        dataRespostaPesquisa:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Timestamp de quando o lead respondeu à pesquisa de maturidade."
         createdAt:
           type: string
           format: date-time
