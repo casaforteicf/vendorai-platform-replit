@@ -283,7 +283,7 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   }
 
   let agendaId: string;
-  let returnTo: string = "/configuracoes";
+  let returnTo: string = "/app/configuracoes";
   try {
     const decoded = JSON.parse(
       Buffer.from(state, "base64url").toString("utf-8")
