@@ -64,4 +64,18 @@
     <priority>0.8</priority>
   </url>
 
+  <url>
+    <loc>https://appvendorai.com/blog</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://appvendorai.com/blog/quanto-custa-nao-responder-cliente</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
 </urlset>

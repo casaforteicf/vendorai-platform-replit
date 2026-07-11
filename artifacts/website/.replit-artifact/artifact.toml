@@ -1,5 +1,5 @@
 kind = "web"
-previewPath = "/website/"
+previewPath = "/"
 title = "VendorAI \u2014 Site Institucional"
 version = "1.0.0"
 id = "artifacts/website"
@@ -11,16 +11,21 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/website/" ]
+paths = [ "/" ]
 localPort = 19161
 
 [services.development]
-run = "pnpm --filter @workspace/website run serve"
+run = "pnpm --filter @workspace/website run dev"
 
 [services.production]
-build = [ "sh", "-c", "rm -rf artifacts/website/dist/public && mkdir -p artifacts/website/dist/public/website && cp artifacts/website/index.html artifacts/website/dist/public/website/index.html && cp artifacts/website/index.html artifacts/website/dist/public/index.html" ]
+build = [ "pnpm", "--filter", "@workspace/website", "run", "build" ]
 publicDir = "artifacts/website/dist/public"
 serve = "static"
 
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
 [services.env]
 PORT = "19161"
+BASE_PATH = "/"

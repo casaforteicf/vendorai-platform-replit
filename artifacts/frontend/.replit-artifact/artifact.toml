@@ -1,6 +1,6 @@
 kind = "web"
-previewPath = "/"
-title = "VendorAI Core — Frontend"
+previewPath = "/app"
+title = "VendorAI Core \u2014 Frontend"
 version = "1.0.0"
 id = "artifacts/frontend"
 router = "path"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/" ]
+paths = [ "/app" ]
 localPort = 18130
 
 [services.development]
@@ -28,4 +28,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "18130"
-BASE_PATH = "/"
+BASE_PATH = "/app"

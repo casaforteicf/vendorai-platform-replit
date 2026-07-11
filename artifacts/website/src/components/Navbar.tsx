@@ -18,6 +18,7 @@ export default function Navbar() {
   const links = [
     { href: "/funcionalidades", label: "Funcionalidades" },
     { href: "/precos", label: "Preços" },
+    { href: "/blog", label: "Blog" },
     { href: "/sobre", label: "Sobre nós" },
     { href: "/contato", label: "Contato" },
   ];

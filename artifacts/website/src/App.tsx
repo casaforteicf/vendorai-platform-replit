@@ -13,6 +13,8 @@ import Privacy from "@/pages/Privacy";
 import Terms from "@/pages/Terms";
 import VerticalPage from "@/pages/site/VerticalPage";
 import ParceirosPage from "@/pages/site/ParceirosPage";
+import BlogList from "@/pages/blog/BlogList";
+import BlogPost from "@/pages/blog/BlogPost";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -39,6 +41,8 @@ function Router() {
               <Route path="/demo" component={Demo} />
               <Route path="/privacy" component={Privacy} />
               <Route path="/terms" component={Terms} />
+              <Route path="/blog/:slug" component={BlogPost} />
+              <Route path="/blog" component={BlogList} />
               <Route component={NotFound} />
             </Switch>
           </main>
