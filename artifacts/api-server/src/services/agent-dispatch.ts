@@ -129,7 +129,8 @@ function interpolateSystemPrompt(
  */
 function sanitizeAgentResponse(text: string, meetLink?: string | null, vendedorNome?: string): string {
   // 1. Meeting-link placeholders → real link or safe fallback (never raw placeholder text)
-  const meetPlaceholder = /\[Link\s+da\s+Reuni[aã]o\]\s*\(#?\)|\[Link\s+da\s+Reuni[aã]o\]|\{?\{?link_reuni[aã]o\}?\}?/gi;
+  // Broad match: any "[Link da reuni(ã/a)o...]" regardless of suffix (": **(exemplo)**", "(#)", etc.)
+  const meetPlaceholder = /\[link\s+da\s+reuni[aã]o[^\]]*\]|\{?\{?link_reuni[aã]o\}?\}?/gi;
   text = text.replace(meetPlaceholder, meetLink ?? "vou te enviar o link em instantes");
 
   // 2. Any remaining [Text](#) — markdown-style placeholder link with literal "#" href.
@@ -142,7 +143,15 @@ function sanitizeAgentResponse(text: string, meetLink?: string | null, vendedorN
   text = text.replace(/\[Seu\s+Nome\]|\[Nome\]|\{?\{?vendedor_nome\}?\}?/gi, nomeFallback);
   text = text.replace(/\[Empresa\]|\{?\{?empresa_nome\}?\}?/gi, "");
 
-  // 4. Defense-in-depth: intercept free-form LLM denials of ability to send/provide a
+  // 4. Domain correction: replace any wrong-domain URLs the LLM may hallucinate.
+  //    The correct public domain is appvendorai.com; vendor.ai and vendorai.com are wrong.
+  text = text.replace(/https?:\/\/(?:www\.)?vendor\.ai(?=[\s/,)"']|$)/gi, "https://appvendorai.com");
+  text = text.replace(/https?:\/\/(?:www\.)?vendorai\.com(?!\.br)(?=[\s/,)"']|$)/gi, "https://appvendorai.com");
+  // Plain mentions without protocol
+  text = text.replace(/\bwww\.vendor\.ai\b/gi, "appvendorai.com");
+  text = text.replace(/\bwww\.vendorai\.com\b(?!\.br)/gi, "appvendorai.com");
+
+  // 5. Defense-in-depth: intercept free-form LLM denials of ability to send/provide a
   //    meeting link. These are hallucinations that bypass placeholder detection — the
   //    scheduler agent can always relay a link, so these responses are always wrong.
   //    Catches: "não tenho capacidade de enviar links", "infelizmente não posso enviar

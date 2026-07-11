@@ -973,7 +973,8 @@ export function buildSchedulerPrompt(
   // Replace [Link da Reunião](#) and variants in the custom prompt with the real meet link.
   // This prevents placeholder text from leaking to the lead verbatim.
   function resolveMeetLinkInText(text: string): string {
-    const placeholder = /\[Link\s+da\s+Reuni[aã]o\]\s*\(#?\)|\[Link\s+da\s+Reuni[aã]o\]|\{?\{?link_reuni[aã]o\}?\}?/gi;
+    // Broad match: any "[Link da reuni(ã/a)o...]" regardless of what follows (colon, bold, "(exemplo)", etc.)
+    const placeholder = /\[link\s+da\s+reuni[aã]o[^\]]*\]|\{?\{?link_reuni[aã]o\}?\}?/gi;
     return text.replace(placeholder, agendamento?.meetLink ?? "");
   }
 
