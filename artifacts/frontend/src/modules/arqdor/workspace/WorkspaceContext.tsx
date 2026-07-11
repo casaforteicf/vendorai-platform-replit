@@ -66,8 +66,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setIsInitializing(true)
     fetch(`${BASE}/arqdor/projects/${storedId}`, { headers: authHeaders() })
       .then(async res => {
-        if (!res.ok) return
-        const ctx = await res.json() as ProjectContext
+        if (res.status === 404) {
+          // Project no longer exists — clear stale ID so we don't retry on next load
+          localStorage.removeItem(STORAGE_KEY)
+          setLoadError(null) // show empty/welcome state, not an error
+          return
+        }
+        if (!res.ok) {
+          setLoadError('Não foi possível carregar o projeto salvo. Tente recarregar.')
+          return
+        }
+        let ctx: ProjectContext
+        try {
+          ctx = await res.json() as ProjectContext
+        } catch {
+          // Non-JSON response (e.g. proxy HTML error page) — ignore silently
+          return
+        }
         if (ctx && typeof ctx === 'object' && ctx.id) {
           setProjectCtxState(ctx)
           setIsRealProject(true)

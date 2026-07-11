@@ -66,7 +66,10 @@ export default function ArchDashboard() {
     fetch(`${getBase()}/api/arch/projetos`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => { setProjetos(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => { setError("Erro ao carregar projetos."); setLoading(false); });
   }, [tenantId]);
