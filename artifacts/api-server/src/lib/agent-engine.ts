@@ -746,7 +746,7 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
       "## REUNIÃO AGENDADA — AÇÃO OBRIGATÓRIA\n" +
       `Uma reunião foi criada automaticamente para ${startStr}.\n` +
       `Link Google Meet: ${scenario.meetLink}\n` +
-      "REGRA CRÍTICA: inclua ESTE link exato na sua resposta. Não invente outro. Não use placeholder."
+      "REGRA CRÍTICA: inclua ESTE link exato na sua resposta como URL puro (exemplo: https://meet.google.com/xxx-yyyy-zzz). NÃO use formatação markdown — NÃO coloque entre colchetes e parênteses como [link](url). Não invente outro link. Não use placeholder."
     );
   } else if (scenario?.meetingRequested) {
     parts.push(

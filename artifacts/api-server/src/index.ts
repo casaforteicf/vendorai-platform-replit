@@ -1062,6 +1062,27 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
     logger.warn({ err }, "startup migrations: relatos_tecnicos skipped");
   }
 
+  // ── Arch: arqdor_workspace_projects ──────────────────────────────────────────
+  // Table stores Render Studio project context blobs per tenant.
+  // Missing in production — created here so GET /api/arqdor/projects/:id
+  // returns 404 (not found) instead of 500 (relation does not exist).
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS arqdor_workspace_projects (
+        id          TEXT        NOT NULL,
+        tenant_id   TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        context_blob JSONB      NOT NULL DEFAULT '{}',
+        created_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (id, tenant_id)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_arqdor_workspace_projects_tenant ON arqdor_workspace_projects (tenant_id)`);
+    logger.info("startup migrations: arqdor_workspace_projects OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: arqdor_workspace_projects skipped");
+  }
+
   // ── Seed: correct company name for Comercio Brasil / Vendor.ai tenant ────────
   // business_profiles.nome_fantasia must match the WhatsApp Business (WABA)
   // display name "appvendor.ai" so the agent uses the right brand in messages.

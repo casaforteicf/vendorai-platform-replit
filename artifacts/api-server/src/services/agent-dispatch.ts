@@ -218,6 +218,10 @@ function sanitizeAgentResponse(text: string, meetLink?: string | null, vendedorN
   //    A real URL in agent output never uses bare "#"; these are always template artifacts.
   text = text.replace(/\[[^\]]{1,80}\]\(#\)/g, "");
 
+  // 2b. Duplicate markdown links where text === URL: [https://x.com](https://x.com) → https://x.com
+  //     WhatsApp does not render markdown links — stripping the wrapper leaves a clean clickable URL.
+  text = text.replace(/\[([^\]]+)\]\(\1\)/g, "$1");
+
   // 3. Named placeholder variants that the LLM might echo from the custom prompt template.
   //    Replace with the real name when available so "Meu nome é [Seu Nome]" → "Meu nome é João".
   const nomeFallback = vendedorNome?.trim() || "";
