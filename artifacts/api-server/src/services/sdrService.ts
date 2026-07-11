@@ -17,7 +17,7 @@ import {
 import type { Logger } from "pino";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 
-export type SdrCenario = "frio_teste" | "frio_revelacao" | "pos_visita" | "direto_dono" | null;
+export type SdrCenario = "frio_teste" | "frio_revelacao" | "pos_visita" | "direto_dono" | "inbound_site" | null;
 
 // ── Scenario detection ────────────────────────────────────────────────────────
 
@@ -54,6 +54,9 @@ export async function detectSdrCenario(
 
   // Cenário 1 — cold prospector lead
   if (lead.source === "prospector" && visitas.length === 0) return "frio_teste";
+
+  // Cenário 4 — inbound: lead chegou pelo formulário do site institucional ou landing pages
+  if (lead.source?.startsWith("site_")) return "inbound_site";
 
   return null;
 }
