@@ -845,11 +845,14 @@ export async function processAgentInternal(params: {
       try {
         const [latestCloserAgendamento] = await db
           .select({
+            id:             agendamentosTable.id,
             tipo:           agendamentosTable.tipo,
+            titulo:         agendamentosTable.titulo,
             dataHoraInicio: agendamentosTable.dataHoraInicio,
             dataHoraFim:    agendamentosTable.dataHoraFim,
             local:          agendamentosTable.local,
             meetLink:       agendamentosTable.meetLink,
+            agendaId:       agendamentosTable.agendaId,
           })
           .from(agendamentosTable)
           .where(
@@ -866,11 +869,50 @@ export async function processAgentInternal(params: {
             enrichedScenario = { ...(enrichedScenario ?? {}), ...latestCloserAgendamento };
             log.debug({ tenantId, leadId, meetLink: latestCloserAgendamento.meetLink }, "dispatch: closer agendamento with meetLink injected");
           } else {
-            // Agendamento exists but Google Meet link not yet generated (e.g. OAuth was revoked).
-            // Treat as meetingRequested so the prompt tells the agent to confirm the link is coming
-            // rather than silently passing meetLink:null which causes the LLM to say it can't generate links.
-            enrichedScenario = { ...(enrichedScenario ?? {}), meetingRequested: true };
-            log.info({ tenantId, leadId }, "dispatch: closer agendamento has no meetLink — using meetingRequested fallback");
+            // Agendamento exists but meetLink is null (e.g. Google OAuth was revoked/reconnected after creation).
+            // Attempt to generate the Meet link retroactively using the now-connected agenda.
+            try {
+              const agendaResult = await db.execute(
+                sql`SELECT id FROM agendas WHERE tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL ORDER BY is_default DESC LIMIT 1`
+              );
+              const agendaWithToken = agendaResult.rows[0] as { id: string } | undefined;
+
+              if (agendaWithToken?.id) {
+                log.info({ tenantId, leadId, agendamentoId: latestCloserAgendamento.id }, "dispatch: closer retroactive Meet link — calling createGoogleEvent");
+                const { googleEventId, meetLink: newMeetLink } = await createGoogleEvent(
+                  agendaWithToken.id,
+                  {
+                    id:             latestCloserAgendamento.id,
+                    tenantId,
+                    titulo:         latestCloserAgendamento.titulo,
+                    dataHoraInicio: latestCloserAgendamento.dataHoraInicio,
+                    dataHoraFim:    latestCloserAgendamento.dataHoraFim,
+                    gerarMeet:      true,
+                  },
+                  ctx.lead.nome ?? undefined,
+                  undefined,
+                  true,
+                );
+
+                if (newMeetLink || googleEventId) {
+                  await db.execute(
+                    sql`UPDATE agendamentos SET meet_link=${newMeetLink ?? null}, google_event_id=${googleEventId ?? null}, updated_at=NOW() WHERE id=${latestCloserAgendamento.id}`
+                  );
+                  enrichedScenario = { ...(enrichedScenario ?? {}), ...latestCloserAgendamento, meetLink: newMeetLink };
+                  log.info({ tenantId, leadId, meetLink: newMeetLink }, "dispatch: closer retroactive Meet link generated and saved");
+                } else {
+                  enrichedScenario = { ...(enrichedScenario ?? {}), meetingRequested: true };
+                  log.warn({ tenantId, leadId }, "dispatch: closer retroactive createGoogleEvent returned no link — meetingRequested fallback");
+                }
+              } else {
+                // No connected agenda at all — use original fallback
+                enrichedScenario = { ...(enrichedScenario ?? {}), meetingRequested: true };
+                log.info({ tenantId, leadId }, "dispatch: closer agendamento has no meetLink and no connected agenda — meetingRequested fallback");
+              }
+            } catch (gcalErr) {
+              enrichedScenario = { ...(enrichedScenario ?? {}), meetingRequested: true };
+              log.warn({ err: gcalErr, tenantId, leadId }, "dispatch: closer retroactive Google Calendar failed — meetingRequested fallback");
+            }
           }
         } else if (detectMeetingIntent(mensagem)) {
           // Lead is asking for a meeting link but no agendamento exists yet.
