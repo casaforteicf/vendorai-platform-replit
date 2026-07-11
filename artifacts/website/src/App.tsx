@@ -15,6 +15,7 @@ import VerticalPage from "@/pages/site/VerticalPage";
 import ParceirosPage from "@/pages/site/ParceirosPage";
 import BlogList from "@/pages/blog/BlogList";
 import BlogPost from "@/pages/blog/BlogPost";
+import LpRouter from "@/pages/lp/LpPage";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -23,11 +24,12 @@ const queryClient = new QueryClient();
 function Router() {
   return (
     <Switch>
-      {/* Public standalone pages — own nav, no global Navbar/Footer */}
+      {/* Standalone pages — own layout, no global Navbar/Footer */}
       <Route path="/verticais/:slug" component={VerticalPage} />
       <Route path="/parceiros" component={ParceirosPage} />
+      <Route path="/lp/:slug" component={LpRouter} />
 
-      {/* All other pages — standard layout */}
+      {/* Standard layout — Navbar + Footer */}
       <Route>
         <div className="flex flex-col min-h-screen">
           <Navbar />
