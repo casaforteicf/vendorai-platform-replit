@@ -861,8 +861,16 @@ export async function processAgentInternal(params: {
           .orderBy(desc(agendamentosTable.dataHoraInicio))
           .limit(1);
         if (latestCloserAgendamento) {
-          enrichedScenario = { ...(enrichedScenario ?? {}), ...latestCloserAgendamento };
-          log.debug({ tenantId, leadId, meetLink: latestCloserAgendamento.meetLink }, "dispatch: closer agendamento injected into scenario");
+          if (latestCloserAgendamento.meetLink) {
+            enrichedScenario = { ...(enrichedScenario ?? {}), ...latestCloserAgendamento };
+            log.debug({ tenantId, leadId, meetLink: latestCloserAgendamento.meetLink }, "dispatch: closer agendamento with meetLink injected");
+          } else {
+            // Agendamento exists but Google Meet link not yet generated (e.g. OAuth was revoked).
+            // Treat as meetingRequested so the prompt tells the agent to confirm the link is coming
+            // rather than silently passing meetLink:null which causes the LLM to say it can't generate links.
+            enrichedScenario = { ...(enrichedScenario ?? {}), meetingRequested: true };
+            log.info({ tenantId, leadId }, "dispatch: closer agendamento has no meetLink — using meetingRequested fallback");
+          }
         } else if (SCHEDULING_INTENT_RE.test(mensagem)) {
           // Lead is asking for a meeting link but no agendamento exists yet.
           // Auto-schedule: create agendamento + call Google Calendar to get a real Meet link.
