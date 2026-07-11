@@ -224,13 +224,20 @@ function sanitizeAgentResponse(text: string, meetLink?: string | null, vendedorN
   text = text.replace(/\[Seu\s+Nome\]|\[Nome\]|\{?\{?vendedor_nome\}?\}?/gi, nomeFallback);
   text = text.replace(/\[Empresa\]|\{?\{?empresa_nome\}?\}?/gi, "");
 
-  // 4. Domain correction: replace any wrong-domain URLs the LLM may hallucinate.
-  //    The correct public domain is appvendorai.com; vendor.ai and vendorai.com are wrong.
+  // 4. Domain / brand correction: replace any wrong-domain URLs or bare company-name
+  //    mentions the LLM may hallucinate. The correct names are:
+  //      • appvendorai.com  (URL / full domain)
+  //      • appvendor.ai    (bare company name)
+  //    Wrong variants: vendor.ai, vendorai.com, www.vendor.ai, www.vendorai.com
   text = text.replace(/https?:\/\/(?:www\.)?vendor\.ai(?=[\s/,)"']|$)/gi, "https://appvendorai.com");
   text = text.replace(/https?:\/\/(?:www\.)?vendorai\.com(?!\.br)(?=[\s/,)"']|$)/gi, "https://appvendorai.com");
   // Plain mentions without protocol
   text = text.replace(/\bwww\.vendor\.ai\b/gi, "appvendorai.com");
   text = text.replace(/\bwww\.vendorai\.com\b(?!\.br)/gi, "appvendorai.com");
+  // Bare company-name "Vendor.ai" / "vendor.ai" (no protocol, no www).
+  // \bvendor\.ai\b does NOT match "appvendor.ai" because 'v' in "appvendor" has no
+  // preceding word boundary — so no double-replacement risk.
+  text = text.replace(/\bvendor\.ai\b/gi, "appvendor.ai");
 
   // 5. Defense-in-depth: intercept free-form LLM denials of ability to send/provide a
   //    meeting link. These are hallucinations that bypass placeholder detection — the
