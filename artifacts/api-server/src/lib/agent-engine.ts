@@ -729,6 +729,37 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
 
+  // ── Meeting link or pending-link injection ──────────────────────────────────
+  // When auto-schedule succeeded: inject the real Google Meet URL.
+  // When scheduling intent was detected but Calendar was unavailable: tell the
+  // agent to confirm the link is coming — never ask for availability.
+  if (scenario?.meetLink) {
+    const startStr = scenario.dataHoraInicio
+      ? (() => {
+          const d = scenario.dataHoraInicio instanceof Date
+            ? scenario.dataHoraInicio
+            : new Date(scenario.dataHoraInicio as string);
+          return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" });
+        })()
+      : "a confirmar";
+    parts.push(
+      "## REUNIÃO AGENDADA — AÇÃO OBRIGATÓRIA\n" +
+      `Uma reunião foi criada automaticamente para ${startStr}.\n` +
+      `Link Google Meet: ${scenario.meetLink}\n` +
+      "REGRA CRÍTICA: inclua ESTE link exato na sua resposta. Não invente outro. Não use placeholder."
+    );
+  } else if (scenario?.meetingRequested) {
+    parts.push(
+      "## PEDIDO DE LINK DE REUNIÃO\n" +
+      "O lead acabou de pedir o link da reunião. O sistema irá organizar uma reunião e enviar o link em breve.\n" +
+      "Regras OBRIGATÓRIAS para esta resposta:\n" +
+      "- NÃO pergunte 'qual horário fica bom?' nem 'qual é sua disponibilidade?'\n" +
+      "- NÃO peça data ou horário — o sistema já vai organizar.\n" +
+      "- Confirme com entusiasmo que você vai enviar o link em breve. Exemplo: 'Claro! Vou organizar a reunião e te envio o link agora mesmo.' ou 'Perfeito! Deixa comigo — te mando o link em instantes.'\n" +
+      "- Seja breve (1 frase)."
+    );
+  }
+
   // Catalog plans section — injected by dispatch when tenant has active products.
   // Plans arrive sorted most-expensive-first (Enterprise anchoring).
   type CatalogPlan = { id?: string; nome: string; precoBase: string | null; precoImplantacao?: string | null; precoMensalidade?: string | null };

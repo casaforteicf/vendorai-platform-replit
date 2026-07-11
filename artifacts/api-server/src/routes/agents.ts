@@ -12,7 +12,7 @@
  * Shared engine logic lives in lib/agent-engine.ts.
  */
 import { Router, type Request, type Response, type IRouter } from "express";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, agentConfigsTable, agendamentosTable, agendasTable } from "@workspace/db";
 import type { Agendamento } from "@workspace/db";
@@ -119,8 +119,105 @@ async function handleAgentProcess(
     }
   }
 
+  // ── Closer: detect scheduling intent → auto-schedule via Google Calendar ───
+  // When a lead asks for a meeting link and no agendamento exists yet, create one
+  // automatically (next business day 10:00 BRT) and get a real Google Meet link
+  // before the LLM generates its response — so the link appears in the first reply.
+  let closerEnrichedScenario: Record<string, unknown> | undefined;
+  if (agentName === "closer") {
+    const SCHEDULING_INTENT_RE =
+      /link\s+(?:da\s+)?reuni[aã]o|quero\s+agendar|(?:pode|poderia|consegue)\s+(?:mandar|enviar|me\s+mandar)\s+(?:o\s+)?link|que\s+horas?\s+(?:fica\s+)?bom|qual\s+(?:o\s+)?hor[aá]rio|marcar\s+(?:uma\s+)?reuni[aã]o|agendar\s+(?:uma\s+)?(?:reuni[aã]o|conversa|call)|quero\s+(?:marcar|agendar)|vamos\s+(?:marcar|agendar)|me\s+(?:manda|passa)\s+(?:o\s+)?link|quero\s+o\s+link/i;
+
+    if (SCHEDULING_INTENT_RE.test(mensagem)) {
+      try {
+        // Check for existing agendamento first
+        const [existingAg] = await db
+          .select({ meetLink: agendamentosTable.meetLink, dataHoraInicio: agendamentosTable.dataHoraInicio })
+          .from(agendamentosTable)
+          .where(and(
+            eq(agendamentosTable.tenantId, tenantId),
+            eq(agendamentosTable.leadId, leadId),
+            eq(agendamentosTable.status, "agendado"),
+          ))
+          .orderBy(desc(agendamentosTable.dataHoraInicio))
+          .limit(1);
+
+        if (existingAg) {
+          if (existingAg.meetLink) {
+            closerEnrichedScenario = { meetLink: existingAg.meetLink, dataHoraInicio: existingAg.dataHoraInicio };
+            req.log.info({ leadId, meetLink: existingAg.meetLink }, "closer: existing agendamento with meetLink injected");
+          } else {
+            // Agendamento exists but no Google Meet link yet — signal prompt to confirm link is coming
+            closerEnrichedScenario = { meetingRequested: true, dataHoraInicio: existingAg.dataHoraInicio };
+            req.log.info({ leadId }, "closer: existing agendamento without meetLink — using meetingRequested fallback");
+          }
+        } else {
+          // Auto-schedule: find agenda with OAuth token
+          const agendaResult = await db.execute(
+            sql`SELECT id FROM agendas WHERE tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL ORDER BY is_default DESC LIMIT 1`
+          );
+          const agendaId = (agendaResult.rows[0] as { id?: string } | undefined)?.id;
+
+          if (agendaId) {
+            // Next business day at 10:00 BRT (UTC-3)
+            const now = new Date();
+            const brtOffset = -3 * 60;
+            const candidate = new Date(now.getTime() + (brtOffset - now.getTimezoneOffset()) * 60_000);
+            candidate.setDate(candidate.getDate() + 1);
+            candidate.setHours(10, 0, 0, 0);
+            while (candidate.getDay() === 0 || candidate.getDay() === 6) {
+              candidate.setDate(candidate.getDate() + 1);
+            }
+            const dataHoraInicio = new Date(candidate.getTime() - (brtOffset - now.getTimezoneOffset()) * 60_000);
+            const dataHoraFim    = new Date(dataHoraInicio.getTime() + 60 * 60_000);
+            const agendamentoId  = crypto.randomUUID();
+            const leadNome       = ctx.lead.nome ?? "Lead";
+            const titulo         = `Reunião com ${leadNome}`;
+
+            await db.execute(
+              sql`INSERT INTO agendamentos (id,tenant_id,lead_id,tipo,titulo,data_hora_inicio,data_hora_fim,status,agenda_id,gerar_meet,criado_por,created_at,updated_at)
+               VALUES (${agendamentoId},${tenantId},${leadId},'reuniao',${titulo},${dataHoraInicio.toISOString()},${dataHoraFim.toISOString()},'agendado',${agendaId},true,'closer_auto',NOW(),NOW())`
+            );
+
+            req.log.info({ agendamentoId, agendaId, dataHoraInicio }, "closer: auto-agendamento created, calling Google Calendar");
+
+            try {
+              const { googleEventId, meetLink } = await createGoogleEvent(
+                agendaId,
+                { id: agendamentoId, tenantId, titulo, dataHoraInicio, dataHoraFim, gerarMeet: true },
+                leadNome,
+                undefined,
+                true
+              );
+
+              if (meetLink || googleEventId) {
+                await db.execute(
+                  sql`UPDATE agendamentos SET meet_link=${meetLink ?? null}, google_event_id=${googleEventId ?? null}, updated_at=NOW() WHERE id=${agendamentoId}`
+                );
+                closerEnrichedScenario = { meetLink, dataHoraInicio, autoScheduled: true };
+                req.log.info({ agendamentoId, meetLink }, "closer: Meet link generated via Google Calendar");
+              } else {
+                req.log.warn({ agendamentoId }, "closer: Google Calendar returned no meetLink — falling back to meetingRequested");
+                closerEnrichedScenario = { meetingRequested: true };
+              }
+            } catch (gcalErr) {
+              req.log.warn({ err: gcalErr }, "closer: Google Calendar failed — falling back to meetingRequested");
+              closerEnrichedScenario = { meetingRequested: true };
+            }
+          } else {
+            req.log.info({ tenantId }, "closer: scheduling intent detected but no connected Google Calendar — using meetingRequested fallback");
+            closerEnrichedScenario = { meetingRequested: true };
+          }
+        }
+      } catch (err) {
+        req.log.warn({ err }, "closer: auto-schedule failed (non-fatal), using meetingRequested fallback");
+        closerEnrichedScenario = { meetingRequested: true };
+      }
+    }
+  }
+
   const openaiMessages = [
-    { role: "system" as const, content: buildPrompt(agentCfg.prompt, ctx, undefined, resolvedSystemPrompt) },
+    { role: "system" as const, content: buildPrompt(agentCfg.prompt, ctx, closerEnrichedScenario, resolvedSystemPrompt) },
     ...ctx.recentMessages.map(msgToOpenAI),
     { role: "user" as const, content: mensagem },
   ];

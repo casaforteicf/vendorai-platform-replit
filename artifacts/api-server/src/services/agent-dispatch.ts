@@ -6,13 +6,14 @@
  *   - routes/webhooks.ts  (fire-and-forget after WhatsApp message insert)
  *   - jobs/scheduler.ts   (campaign message dispatch)
  */
-import { and, desc, eq, gte, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
   agentConfigsTable,
   activitiesTable,
   agendamentosTable,
+  agendasTable,
   businessProfilesTable,
   conversationsTable,
   customerIntelligenceTable,
@@ -58,6 +59,92 @@ import {
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { createQuoteFromCatalogPlan } from "./auto-quote.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
+import { createGoogleEvent } from "../lib/google-calendar.js";
+
+// ── Scheduling intent detector ────────────────────────────────────────────────
+// Keywords that signal the lead wants to schedule a meeting or get a link.
+// Evaluated inside the Closer block; if matched and no agendamento exists,
+// triggers auto-schedule via Google Calendar to produce a real Meet link.
+const SCHEDULING_INTENT_RE =
+  /link\s+(?:da\s+)?reuni[aã]o|quero\s+agendar|(?:pode|poderia|consegue)\s+(?:mandar|enviar|me\s+mandar)\s+(?:o\s+)?link|que\s+horas?\s+(?:fica\s+)?bom|qual\s+(?:o\s+)?hor[aá]rio|marcar\s+(?:uma\s+)?reuni[aã]o|agendar\s+(?:uma\s+)?(?:reuni[aã]o|conversa|call)|quero\s+(?:marcar|agendar)|vamos\s+(?:marcar|agendar)|me\s+(?:manda|passa)\s+(?:o\s+)?link|quero\s+o\s+link/i;
+
+/**
+ * Finds the tenant's agenda with a refresh token, creates a provisional
+ * agendamento (next business day at 10 AM BRT) and calls Google Calendar
+ * to generate a real Meet link. Saves the result to the DB.
+ * Returns the meetLink string, or null if no connected agenda exists.
+ */
+async function autoScheduleAndGetMeetLink(params: {
+  tenantId: string;
+  leadId:   string;
+  leadNome: string;
+  log:      Logger;
+}): Promise<string | null> {
+  const { tenantId, leadId, leadNome, log } = params;
+
+  // 1. Find the first agenda with a real OAuth token for this tenant.
+  //    Using raw SQL because googleRefreshToken is stored but may not be in
+  //    the Drizzle type's $inferSelect (nullable text column added later).
+  const agendaResult = await db.execute(
+    sql`SELECT id, nome FROM agendas WHERE tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL ORDER BY is_default DESC LIMIT 1`
+  );
+  const agendaWithToken = agendaResult.rows[0] as { id: string; nome: string } | undefined;
+
+  if (!agendaWithToken?.id) {
+    log.info({ tenantId }, "autoSchedule: no agenda with refresh_token found, skipping");
+    return null;
+  }
+
+  // 2. Compute next business day at 10:00 BRT (UTC-3)
+  const now = new Date();
+  const brtOffset = -3 * 60; // minutes
+  const brtNow = new Date(now.getTime() + (brtOffset - now.getTimezoneOffset()) * 60_000);
+
+  // Advance to the next day
+  const candidate = new Date(brtNow);
+  candidate.setDate(candidate.getDate() + 1);
+  candidate.setHours(10, 0, 0, 0);
+  // Skip weekends
+  while (candidate.getDay() === 0 || candidate.getDay() === 6) {
+    candidate.setDate(candidate.getDate() + 1);
+  }
+  // Convert back to UTC for storage
+  const dataHoraInicio = new Date(candidate.getTime() - (brtOffset - now.getTimezoneOffset()) * 60_000);
+  const dataHoraFim    = new Date(dataHoraInicio.getTime() + 60 * 60_000); // +1h
+
+  // 3. Create agendamento record
+  const agendamentoId = crypto.randomUUID();
+  const titulo = `Reunião com ${leadNome || "Lead"}`;
+  await db.execute(
+    `INSERT INTO agendamentos (id, tenant_id, lead_id, tipo, titulo, data_hora_inicio, data_hora_fim, status, agenda_id, gerar_meet, criado_por, created_at, updated_at)
+     VALUES ('${agendamentoId}','${tenantId}','${leadId}','reuniao','${titulo.replace(/'/g,"''")}','${dataHoraInicio.toISOString()}','${dataHoraFim.toISOString()}','agendado','${agendaWithToken.id}',true,'closer_auto',NOW(),NOW())`
+  );
+
+  log.info({ agendamentoId, agendaId: agendaWithToken.id, dataHoraInicio }, "autoSchedule: agendamento created, calling Google Calendar");
+
+  // 4. Call Google Calendar → get Meet link
+  try {
+    const { googleEventId, meetLink } = await createGoogleEvent(
+      agendaWithToken.id,
+      { id: agendamentoId, tenantId, titulo, dataHoraInicio, dataHoraFim, gerarMeet: true },
+      leadNome || undefined,
+      undefined,
+      true
+    );
+
+    if (meetLink || googleEventId) {
+      await db.execute(
+        `UPDATE agendamentos SET meet_link=${meetLink ? `'${meetLink}'` : "NULL"}, google_event_id=${googleEventId ? `'${googleEventId}'` : "NULL"}, updated_at=NOW() WHERE id='${agendamentoId}'`
+      );
+      log.info({ agendamentoId, meetLink, googleEventId }, "autoSchedule: Meet link saved");
+    }
+
+    return meetLink;
+  } catch (err) {
+    log.warn({ err, agendamentoId }, "autoSchedule: Google Calendar call failed (non-fatal)");
+    return null;
+  }
+}
 
 type Lead    = typeof leadsTable.$inferSelect;
 type CI      = typeof customerIntelligenceTable.$inferSelect;
@@ -776,6 +863,30 @@ export async function processAgentInternal(params: {
         if (latestCloserAgendamento) {
           enrichedScenario = { ...(enrichedScenario ?? {}), ...latestCloserAgendamento };
           log.debug({ tenantId, leadId, meetLink: latestCloserAgendamento.meetLink }, "dispatch: closer agendamento injected into scenario");
+        } else if (SCHEDULING_INTENT_RE.test(mensagem)) {
+          // Lead is asking for a meeting link but no agendamento exists yet.
+          // Auto-schedule: create agendamento + call Google Calendar to get a real Meet link.
+          log.info({ tenantId, leadId }, "dispatch: scheduling intent detected, triggering auto-schedule");
+          try {
+            const autoMeetLink = await autoScheduleAndGetMeetLink({
+              tenantId,
+              leadId,
+              leadNome: ctx.lead.nome ?? "",
+              log,
+            });
+            if (autoMeetLink) {
+              enrichedScenario = {
+                ...(enrichedScenario ?? {}),
+                meetLink: autoMeetLink,
+                autoScheduled: true,
+              };
+              log.info({ tenantId, leadId, autoMeetLink }, "dispatch: auto-schedule succeeded, meetLink injected for Closer");
+            } else {
+              log.info({ tenantId, leadId }, "dispatch: auto-schedule returned null (no connected agenda), Closer proceeds without meetLink");
+            }
+          } catch (err) {
+            log.warn({ err, tenantId, leadId }, "dispatch: auto-schedule failed (non-fatal)");
+          }
         }
       } catch (err) {
         log.warn({ err, tenantId, leadId }, "dispatch: closer agendamento lookup failed (non-fatal)");

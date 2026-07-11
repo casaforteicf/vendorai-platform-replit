@@ -1,3 +1,4 @@
+- [Closer auto-schedule Google Meet](closer-auto-schedule.md) — sql tagged template obrigatório; existingAg sem meetLink = meetingRequested; buildCloserPrompt injeta URL ou fallback "link em breve".
 - [Supabase pooler region](supabase-pooler-region.md) — vendorai-core usa aws-1-sa-east-1 (não aws-0); conexão direta bloqueada no Replit.
 - [Drizzle push silent failure](drizzle-push-silent-fail.md) — push reports "No changes detected" mesmo com colunas novas; aplicar via ALTER TABLE + executeSql como fallback.
 - [Prod schema sync determinístico](prod-schema-sync.md) — recuperar drift gerando DDL idempotente via getTableConfig vs information_schema; prod erra ~3-4min pós-migração até conexões reciclarem.
