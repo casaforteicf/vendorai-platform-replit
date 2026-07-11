@@ -15,7 +15,12 @@ const jsonHeaders = () => ({
 
 async function parseResponse<T>(response: Response): Promise<ApiResult<T>> {
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : null;
+  let payload: any = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    return { error: `Erro HTTP ${response.status}` };
+  }
 
   if (!response.ok) {
     return {
