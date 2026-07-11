@@ -17,6 +17,7 @@ import { z } from "zod";
 import { db, agentConfigsTable, agendamentosTable, agendasTable } from "@workspace/db";
 import type { Agendamento } from "@workspace/db";
 import { createGoogleEvent } from "../lib/google-calendar.js";
+import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
 import {
   loadContext,
   computeLimits,
@@ -125,10 +126,7 @@ async function handleAgentProcess(
   // before the LLM generates its response — so the link appears in the first reply.
   let closerEnrichedScenario: Record<string, unknown> | undefined;
   if (agentName === "closer") {
-    const SCHEDULING_INTENT_RE =
-      /link\s+(?:da\s+)?reuni[aã]o|quero\s+agendar|(?:pode|poderia|consegue)\s+(?:mandar|enviar|me\s+mandar)\s+(?:o\s+)?link|que\s+horas?\s+(?:fica\s+)?bom|qual\s+(?:o\s+)?hor[aá]rio|marcar\s+(?:uma\s+)?reuni[aã]o|agendar\s+(?:uma\s+)?(?:reuni[aã]o|conversa|call)|quero\s+(?:marcar|agendar)|vamos\s+(?:marcar|agendar)|me\s+(?:manda|passa)\s+(?:o\s+)?link|quero\s+o\s+link/i;
-
-    if (SCHEDULING_INTENT_RE.test(mensagem)) {
+    if (detectMeetingIntent(mensagem)) {
       try {
         // Check for existing agendamento first
         const [existingAg] = await db

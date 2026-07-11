@@ -60,13 +60,7 @@ import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { createQuoteFromCatalogPlan } from "./auto-quote.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
 import { createGoogleEvent } from "../lib/google-calendar.js";
-
-// ── Scheduling intent detector ────────────────────────────────────────────────
-// Keywords that signal the lead wants to schedule a meeting or get a link.
-// Evaluated inside the Closer block; if matched and no agendamento exists,
-// triggers auto-schedule via Google Calendar to produce a real Meet link.
-const SCHEDULING_INTENT_RE =
-  /link\s+(?:da\s+)?reuni[aã]o|quero\s+agendar|(?:pode|poderia|consegue)\s+(?:mandar|enviar|me\s+mandar)\s+(?:o\s+)?link|que\s+horas?\s+(?:fica\s+)?bom|qual\s+(?:o\s+)?hor[aá]rio|marcar\s+(?:uma\s+)?reuni[aã]o|agendar\s+(?:uma\s+)?(?:reuni[aã]o|conversa|call)|quero\s+(?:marcar|agendar)|vamos\s+(?:marcar|agendar)|me\s+(?:manda|passa)\s+(?:o\s+)?link|quero\s+o\s+link/i;
+import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
 
 /**
  * Finds the tenant's agenda with a refresh token, creates a provisional
@@ -871,7 +865,7 @@ export async function processAgentInternal(params: {
             enrichedScenario = { ...(enrichedScenario ?? {}), meetingRequested: true };
             log.info({ tenantId, leadId }, "dispatch: closer agendamento has no meetLink — using meetingRequested fallback");
           }
-        } else if (SCHEDULING_INTENT_RE.test(mensagem)) {
+        } else if (detectMeetingIntent(mensagem)) {
           // Lead is asking for a meeting link but no agendamento exists yet.
           // Auto-schedule: create agendamento + call Google Calendar to get a real Meet link.
           log.info({ tenantId, leadId }, "dispatch: scheduling intent detected, triggering auto-schedule");

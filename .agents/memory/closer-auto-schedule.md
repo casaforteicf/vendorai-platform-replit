@@ -9,7 +9,8 @@ When a lead asks for a meeting link, the Closer auto-schedules via Google Calend
 **Why:** Without pre-scheduling, the LLM invents placeholder links or asks for the lead's availability — both bad UX.
 
 ## How to apply
-- SCHEDULING_INTENT_RE in `agents.ts` (HTTP path) and `agent-dispatch.ts` (webhook path) detects intent.
+- `detectMeetingIntent(text)` in `lib/detect-meeting-intent.ts` — single shared helper (NO duplicate regex). Normalizes text (lowercase + NFD accent removal) then checks for any keyword: link, reuniao, agendar, marcar, horario, encontro, call, meet, videochamada, videoconferencia. One keyword = intent detected.
+- Both `agents.ts` (HTTP path) and `agent-dispatch.ts` (webhook path) import from `../lib/detect-meeting-intent.js`. Never duplicate the logic again.
 - Query: `db.execute(sql\`SELECT id FROM agendas WHERE tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL...\`)` — **must use `sql` tagged template**, not raw string. Raw string returns `QueryResult` not plain array; `.rows[0]` is the correct accessor.
 - Happy path: `closerEnrichedScenario = { meetLink, dataHoraInicio }` → `buildCloserPrompt` injects the URL into the system prompt with REGRA CRÍTICA instruction.
 - `existingAg.meetLink === null`: treat same as no-link fallback (`meetingRequested: true`), not as "link available".
