@@ -12,7 +12,7 @@
  * Shared engine logic lives in lib/agent-engine.ts.
  */
 import { Router, type Request, type Response, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, agentConfigsTable, agendamentosTable, agendasTable } from "@workspace/db";
 import type { Agendamento } from "@workspace/db";
@@ -198,6 +198,28 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
       res.status(400).json({ error: "Nao e possivel agendar para uma data/horario no passado." });
       return;
     }
+
+    // Auto-resolve agendaId: if not supplied by the caller (common in AI-driven
+    // flows where the frontend omits the field), fall back to the first Google
+    // Calendar-connected agenda for this tenant so the Meet link is always
+    // generated when the tenant has a valid OAuth connection.
+    let resolvedAgendaId = agendamentoInput.agendaId ?? null;
+    if (!resolvedAgendaId) {
+      try {
+        const [connectedAgenda] = await db
+          .select({ id: agendasTable.id })
+          .from(agendasTable)
+          .where(and(eq(agendasTable.tenantId, tenantId), isNotNull(agendasTable.googleRefreshToken)))
+          .limit(1);
+        if (connectedAgenda) {
+          resolvedAgendaId = connectedAgenda.id;
+          req.log.info({ resolvedAgendaId }, "scheduler: auto-resolved agendaId from connected Google Calendar agenda");
+        }
+      } catch (err) {
+        req.log.warn({ err }, "scheduler: agendaId auto-resolution failed (non-fatal)");
+      }
+    }
+
     const titulo = agendamentoInput.titulo ?? `Reunião com ${ctx.lead.nome}`;
     const [ag] = await db
       .insert(agendamentosTable)
@@ -210,25 +232,25 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
         dataHoraFim:    agendamentoInput.dataHoraFim,
         local:          agendamentoInput.local,
         observacoes:    agendamentoInput.observacoes,
-        agendaId:       agendamentoInput.agendaId,
+        agendaId:       resolvedAgendaId,
         gerarMeet:      agendamentoInput.gerarMeet ?? false,
         status:         "agendado",
       })
       .returning();
     agendamentoCriado = ag;
-    req.log.info({ agendamentoId: ag.id, leadId }, "scheduler: agendamento created");
+    req.log.info({ agendamentoId: ag.id, leadId, agendaId: resolvedAgendaId }, "scheduler: agendamento created");
 
     // Sync to Google Calendar + optionally generate Meet link
-    if (agendamentoInput.agendaId) {
+    if (resolvedAgendaId) {
       try {
         const [agenda] = await db
           .select({ googleRefreshToken: agendasTable.googleRefreshToken })
           .from(agendasTable)
-          .where(eq(agendasTable.id, agendamentoInput.agendaId));
+          .where(eq(agendasTable.id, resolvedAgendaId));
 
         if (agenda?.googleRefreshToken) {
           const { googleEventId, meetLink } = await createGoogleEvent(
-            agendamentoInput.agendaId,
+            resolvedAgendaId,
             {
               id: ag.id,
               tenantId: ag.tenantId,

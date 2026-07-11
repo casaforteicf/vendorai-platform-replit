@@ -191,7 +191,15 @@ export async function determineAgent(
     const leadWasRecentlyActive = prevLeadMsg != null &&
       new Date(prevLeadMsg.createdAt).getTime() > twentyFourHoursAgo;
 
-    if (hasAdvancedDeal || hasRecentAgentActivity || leadWasRecentlyActive) {
+    // (d) Lead is brand-new or originates from the cold prospector pipeline.
+    //     These leads have zero contact history, so churnRisk is artificially
+    //     inflated to 100 — it does not represent genuine inactivity of a prior
+    //     customer. Routing them to reactivation is incorrect and causes a
+    //     duplicate message (prospector sends frio_teste → lead replies →
+    //     reactivation fires a second message). Always fall through to SDR.
+    const isNewOrColdProspect = lead.status === "novo" || lead.source === "prospector";
+
+    if (hasAdvancedDeal || hasRecentAgentActivity || leadWasRecentlyActive || isNewOrColdProspect) {
       log.info(
         {
           tenantId,
@@ -200,6 +208,9 @@ export async function determineAgent(
           hasAdvancedDeal,
           hasRecentAgentActivity,
           leadWasRecentlyActive,
+          isNewOrColdProspect,
+          source: lead.source,
+          status: lead.status,
           daysSinceContact,
         },
         "determineAgent: churnRisk >= 60 but active conversation/deal detected — skipping reactivation",

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, gte, lte, lt, gt, or, inArray, like } from "drizzle-orm";
+import { and, eq, gte, lte, lt, gt, or, inArray, isNotNull, like } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -117,11 +117,31 @@ router.post("/agendamentos", async (req, res) => {
     return;
   }
 
+  // Auto-resolve agendaId: if not supplied by the caller (common in AI-driven
+  // flows), fall back to the first Google Calendar-connected agenda for this
+  // tenant so the Meet link is always generated when OAuth is configured.
+  let resolvedInsertData = parsed.data;
+  if (!parsed.data.agendaId && (parsed.data.gerarMeet || parsed.data.tipo === "reuniao")) {
+    try {
+      const [connectedAgenda] = await db
+        .select({ id: agendasTable.id })
+        .from(agendasTable)
+        .where(and(eq(agendasTable.tenantId, parsed.data.tenantId), isNotNull(agendasTable.googleRefreshToken)))
+        .limit(1);
+      if (connectedAgenda) {
+        resolvedInsertData = { ...parsed.data, agendaId: connectedAgenda.id };
+        req.log.info({ agendaId: connectedAgenda.id }, "agendamento: auto-resolved agendaId from connected Google Calendar agenda");
+      }
+    } catch (err) {
+      req.log.warn({ err }, "agendamento: agendaId auto-resolution failed (non-fatal)");
+    }
+  }
+
   let agendamento: typeof agendamentosTable.$inferSelect;
   try {
     const rows = await db
       .insert(agendamentosTable)
-      .values(parsed.data)
+      .values(resolvedInsertData)
       .returning();
     agendamento = rows[0];
   } catch (err: unknown) {
