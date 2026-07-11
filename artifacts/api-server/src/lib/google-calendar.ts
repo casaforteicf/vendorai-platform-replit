@@ -9,30 +9,51 @@ const SCOPES = [
   "openid",
 ];
 
-function getRedirectUri(): string {
+const PRODUCTION_HOSTS = ["appvendorai.com", "www.appvendorai.com"];
+const CALLBACK_PATH = "/api/auth/google/calendar/callback";
+
+/**
+ * Determine the OAuth redirect_uri that must be sent to Google.
+ *
+ * Priority:
+ *  1. If the initiating request came from a known production host → always
+ *     use the production callback URL, regardless of any env var.
+ *  2. Explicit GOOGLE_REDIRECT_URI override (useful for dev/staging).
+ *  3. Derive from REPLIT_DOMAINS (the first domain in the comma-separated list).
+ *  4. Localhost fallback for local development.
+ *
+ * This ensures the redirect_uri always matches the domain the user is actually
+ * on, preventing the classic "OAuth initiated on appvendorai.com but callback
+ * goes to spock.replit.dev" breakage.
+ */
+function getRedirectUri(host?: string): string {
+  if (host && PRODUCTION_HOSTS.includes(host.toLowerCase())) {
+    return `https://appvendorai.com${CALLBACK_PATH}`;
+  }
+
   const explicit = process.env["GOOGLE_REDIRECT_URI"];
   if (explicit) return explicit;
 
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
-  if (domain) return `https://${domain}/api/auth/google/calendar/callback`;
-  return `http://localhost:${process.env["PORT"] ?? 5000}/api/auth/google/calendar/callback`;
+  if (domain) return `https://${domain}${CALLBACK_PATH}`;
+  return `http://localhost:${process.env["PORT"] ?? 5000}${CALLBACK_PATH}`;
 }
 
-export function getGoogleRedirectUri(): string {
-  return getRedirectUri();
+export function getGoogleRedirectUri(host?: string): string {
+  return getRedirectUri(host);
 }
 
-export function createOAuth2Client() {
+export function createOAuth2Client(host?: string) {
   const clientId = process.env["GOOGLE_CLIENT_ID"];
   const clientSecret = process.env["GOOGLE_CLIENT_SECRET"];
   if (!clientId || !clientSecret) {
     throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set");
   }
-  return new google.auth.OAuth2(clientId, clientSecret, getRedirectUri());
+  return new google.auth.OAuth2(clientId, clientSecret, getRedirectUri(host));
 }
 
-export function buildAuthUrl(agendaId: string, returnTo?: string): string {
-  const oauth2 = createOAuth2Client();
+export function buildAuthUrl(agendaId: string, returnTo?: string, host?: string): string {
+  const oauth2 = createOAuth2Client(host);
   const state = Buffer.from(JSON.stringify({ agendaId, returnTo })).toString("base64url");
   return oauth2.generateAuthUrl({
     access_type: "offline",
