@@ -9,7 +9,7 @@
 - [Anthropic integration template cp danger](anthropic-template-cp.md) — `cp -r` do skill sobrescreve conversations.ts e messages.ts existentes; restaurar via `git show HEAD:lib/db/src/schema/<file> > <file>` após o cp.
 - [Meta WhatsApp Cloud API](meta-whatsapp-cloud-api.md) — Z-API 100% removido; todos os envios via Meta; webhook Meta trata text/audio/image; media requer downloadMetaMedia(id, token) com Authorization header.
 - [Express router.use wildcard blocks downstream](express-router-use-wildcard.md) — router.use(requireRole) sem path bloqueia TODA request; sempre colocar guard em cada rota individualmente.
-- [executeSql vs Supabase](executesql-vs-supabase.md) — executeSql em code_execution conecta ao Postgres interno do Replit, NÃO ao Supabase; para produção usar pg com SUPABASE_DATABASE_URL diretamente.
+- [psql shell vs Supabase](psql-shell-vs-supabase.md) — `psql "$DATABASE_URL"` no bash shell conecta ao heliumdb (Replit interno), NÃO ao Supabase; runStartupMigrations() é o único meio confiável de seeding no Supabase.
 - [OpenAI image models](openai-image-models.md) — dall-e-2/3 não existem nesta conta; usar gpt-image-1 (retorna b64_json); upload → object storage → /api/storage/objects/*.
 - [Analytics dashboard](analytics-dashboard.md) — 3 rotas (/analytics/agents, /channels, /intelligence); frontend em /analytics com 3 tabs; usa count(*) filter para performance.
 - [Demo session auth](demo-session-auth.md) — demo login é "try-it" não-persistente; detectado pelo JWT email demo@demo.com + marker sessionStorage; token fica em localStorage vendorai_token.
