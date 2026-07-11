@@ -89,6 +89,7 @@ import siteRouter from "./site";
 import spinRouter from "./spin";
 import supportRouter from "./support";
 import adminBugReportsRouter from "./admin_bug_reports";
+import adminRelatosTecnicosRouter from "./admin_relatos_tecnicos";
 import contractTemplatesRouter from "./contract_templates";
 import confirmClosureRouter from "./confirm_closure";
 import organizacoesRouter from "./organizacoes";
@@ -238,6 +239,7 @@ router.use(partnersRouter);
 
 // Admin Partners Hub (super_admin management)
 router.use(adminBugReportsRouter);
+router.use(adminRelatosTecnicosRouter);
 router.use(adminPartnersRouter);
 router.use(adminPlansRouter);
 router.use(adminAgentDefaultsRouter);

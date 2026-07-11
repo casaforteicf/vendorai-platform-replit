@@ -128,6 +128,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         { name: "Financeiro",  href: "/admin/financeiro", icon: BarChart3,    sellerHidden: false, section: "admin", badge: undefined },
         { name: "Parceiros",   href: "/admin/partners",   icon: Users,        sellerHidden: false, section: "admin", badge: undefined },
         { name: "Suporte",     href: "/admin/suporte",    icon: Bug,          sellerHidden: false, section: "admin", badge: openBugCount > 0 ? openBugCount : undefined },
+        { name: "Relatos Técnicos", href: "/admin/relatos-tecnicos", icon: AlertCircle, sellerHidden: false, section: "admin", badge: undefined },
       ]
     : [];
 

@@ -162,3 +162,4 @@ export * from "./cliente_etapa_projeto";
 export * from "./organizacoes";
 export * from "./usuarios_organizacao";
 export * from "./tenant_switch_log";
+export * from "./relatos_tecnicos";

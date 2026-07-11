@@ -1015,6 +1015,27 @@ Se fizer sentido, te mostro em 10 minutos como funciona.',
     logger.warn({ err }, "startup migrations: tenant_switch_log skipped");
   }
 
+  // ── Relatos Técnicos — checkpoint humano para bugs identificados pelo Suporte ──
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS relatos_tecnicos (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL,
+        lead_id UUID NULL,
+        conversation_id UUID NULL,
+        descricao_problema TEXT NOT NULL,
+        transcript_relevante TEXT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente_revisao',
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_relatos_tecnicos_status ON relatos_tecnicos (status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_relatos_tecnicos_tenant ON relatos_tecnicos (tenant_id)`);
+    logger.info("startup migrations: relatos_tecnicos OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: relatos_tecnicos skipped");
+  }
+
   // ── Seed: correct company name for Comercio Brasil / Vendor.ai tenant ────────
   // business_profiles.nome_fantasia must match the WhatsApp Business (WABA)
   // display name "appvendor.ai" so the agent uses the right brand in messages.

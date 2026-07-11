@@ -3,14 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 
-const COMPANY_INFO = {
-  cnpj:         "59.623.589/0001-27",
-  razaoSocial:  "WINDOOR SERVICOS DE GERENCIAMENTO DE OBRAS LTDA",
-  nomeFantasia: "CASAFORTEICF",
-  situacao:     "Ativa",
-  municipio:    "Florianópolis — SC",
-};
-
 export default function Navbar() {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -25,96 +17,78 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* ── Barra de identificação legal ── */}
-      <div className="w-full bg-muted/60 border-b border-border/40 text-[10px] text-muted-foreground">
-        <div className="container mx-auto px-4 py-1 flex flex-wrap items-center gap-x-4 gap-y-0.5">
-          <span className="font-semibold text-foreground/70">{COMPANY_INFO.razaoSocial}</span>
-          <span className="hidden sm:inline">·</span>
-          <span className="hidden sm:inline">CNPJ <span className="font-mono">{COMPANY_INFO.cnpj}</span></span>
-          <span className="hidden md:inline">·</span>
-          <span className="hidden md:inline">Nome fantasia: <span className="font-medium">{COMPANY_INFO.nomeFantasia}</span></span>
-          <span className="hidden md:inline">·</span>
-          <span className="hidden md:inline">{COMPANY_INFO.municipio}</span>
-          <span className="ml-auto hidden sm:inline">
-            Situação cadastral:{" "}
-            <span className="text-green-600 font-semibold">{COMPANY_INFO.situacao}</span>
-          </span>
-        </div>
-      </div>
-
-      {/* ── Navbar principal ── */}
       <div className="border-b border-border/40">
-      <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Link href="/" className="font-bold text-xl tracking-tight text-primary flex items-center gap-2" data-testid="link-home">
-            <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
-              V
-            </div>
-            VendorAI
-          </Link>
-        </div>
-
-        <nav className="hidden md:flex items-center gap-6">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`text-sm font-medium transition-colors hover:text-primary ${
-                location === link.href ? "text-primary" : "text-muted-foreground"
-              }`}
-              data-testid={`link-nav-${link.href.replace("/", "")}`}
-            >
-              {link.label}
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link href="/" className="font-bold text-xl tracking-tight text-primary flex items-center gap-2" data-testid="link-home">
+              <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
+                V
+              </div>
+              VendorAI
             </Link>
-          ))}
-          <div className="ml-4 flex items-center gap-4">
-            <Button variant="ghost" asChild data-testid="btn-login">
-              <a href="/app">Entrar</a>
-            </Button>
-            <Button asChild data-testid="btn-demo">
-              <a href="/demo">Experimentar grátis</a>
-            </Button>
           </div>
-        </nav>
 
-        <button
-          className="md:hidden p-2 text-foreground"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          data-testid="btn-mobile-menu"
-        >
-          {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
-      </div>
-
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-border bg-background p-4 absolute w-full left-0 top-16 shadow-lg">
-          <nav className="flex flex-col gap-4">
+          <nav className="hidden md:flex items-center gap-6">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className={`text-base font-medium p-2 rounded-md ${
-                  location === link.href ? "bg-primary/10 text-primary" : "text-foreground"
+                className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location === link.href ? "text-primary" : "text-muted-foreground"
                 }`}
-                onClick={() => setMobileMenuOpen(false)}
+                data-testid={`link-nav-${link.href.replace("/", "")}`}
               >
                 {link.label}
               </Link>
             ))}
-            <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border">
-              <Button variant="outline" className="w-full" asChild>
+            <div className="ml-4 flex items-center gap-4">
+              <Button variant="ghost" asChild data-testid="btn-login">
                 <a href="/app">Entrar</a>
               </Button>
-              <Button className="w-full" asChild>
-                <Link href="/demo" onClick={() => setMobileMenuOpen(false)}>
-                  Experimentar grátis
-                </Link>
+              <Button asChild data-testid="btn-demo">
+                <a href="/demo">Experimentar grátis</a>
               </Button>
             </div>
           </nav>
+
+          <button
+            className="md:hidden p-2 text-foreground"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            data-testid="btn-mobile-menu"
+          >
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
         </div>
-      )}
-      </div>{/* end navbar wrapper */}
+
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-border bg-background p-4 absolute w-full left-0 top-16 shadow-lg z-50">
+            <nav className="flex flex-col gap-4">
+              {links.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`text-base font-medium p-2 rounded-md ${
+                    location === link.href ? "bg-primary/10 text-primary" : "text-foreground"
+                  }`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border">
+                <Button variant="outline" className="w-full" asChild>
+                  <a href="/app">Entrar</a>
+                </Button>
+                <Button className="w-full" asChild>
+                  <Link href="/demo" onClick={() => setMobileMenuOpen(false)}>
+                    Experimentar grátis
+                  </Link>
+                </Button>
+              </div>
+            </nav>
+          </div>
+        )}
+      </div>
     </header>
   );
 }

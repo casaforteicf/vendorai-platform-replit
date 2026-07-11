@@ -16,17 +16,17 @@ export default function Footer() {
               A plataforma de vendas com IA que transforma equipes comerciais.
             </p>
           </div>
-          
+
           <div>
             <h4 className="font-semibold text-white mb-4">Produto</h4>
             <ul className="space-y-2 text-sm">
               <li><Link href="/funcionalidades" className="hover:text-white transition-colors">Funcionalidades</Link></li>
               <li><Link href="/precos" className="hover:text-white transition-colors">Planos e Preços</Link></li>
-              <li><Link href="/funcionalidades" className="hover:text-white transition-colors">Agentes de IA</Link></li>
-              <li><Link href="/funcionalidades" className="hover:text-white transition-colors">CRM Completo</Link></li>
+              <li><Link href="/funcionalidades#agentes" className="hover:text-white transition-colors">Agentes de IA</Link></li>
+              <li><Link href="/funcionalidades#crm" className="hover:text-white transition-colors">CRM Completo</Link></li>
             </ul>
           </div>
-          
+
           <div>
             <h4 className="font-semibold text-white mb-4">Empresa</h4>
             <ul className="space-y-2 text-sm">
@@ -36,21 +36,26 @@ export default function Footer() {
               <li><Link href="/terms" className="hover:text-white transition-colors">Termos de Uso</Link></li>
             </ul>
           </div>
-          
+
           <div>
             <h4 className="font-semibold text-white mb-4">Contato</h4>
             <ul className="space-y-2 text-sm">
               <li>vendorai@appvendorai.com</li>
-              <li>São Paulo, SP — Brasil</li>
+              <li>Chapecó, SC — Brasil</li>
             </ul>
           </div>
         </div>
-        
+
         <div className="pt-8 border-t border-slate-800 text-sm text-slate-500 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p>&copy; 2025 VendorAI. Todos os direitos reservados.</p>
+          <div className="flex flex-col items-center md:items-start gap-1">
+            <p>&copy; 2026 VendorAI. Todos os direitos reservados.</p>
+            <p className="text-xs text-slate-600">
+              Windoor Serviços de Gerenciamento de Obras Ltda · CNPJ 59.623.589/0001-27
+            </p>
+          </div>
           <div className="flex gap-4">
-            <a href="#" className="hover:text-white transition-colors">Termos de uso</a>
-            <a href="#" className="hover:text-white transition-colors">Privacidade</a>
+            <Link href="/terms" className="hover:text-white transition-colors">Termos de uso</Link>
+            <Link href="/privacy" className="hover:text-white transition-colors">Privacidade</Link>
           </div>
         </div>
       </div>

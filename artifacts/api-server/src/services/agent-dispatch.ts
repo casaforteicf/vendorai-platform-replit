@@ -28,6 +28,7 @@ import {
   tenantCalendarSettingsTable,
   scoutOportunidadesTable,
   leadBriefingsTable,
+  relatosTecnicosTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
@@ -1060,6 +1061,61 @@ export async function processAgentInternal(params: {
         }
         // If stillMissing.length > 0: LLM already generated the "ask for next field" response.
       }
+    }
+
+    // 8d. {{action:relato_tecnico}} — Service agent flagged a potential technical bug.
+    // Strip the marker from the user-facing response and create a relatos_tecnicos record
+    // non-blockingly (does NOT delay the response to the lead).
+    if (resolvedAgentName === "service" && finalResposta.includes("{{action:relato_tecnico}}")) {
+      finalResposta = finalResposta.replace(/\{\{action:relato_tecnico\}\}/g, "").trim();
+
+      const capturedMessages = ctx.recentMessages.slice(-4);
+      const capturedMensagem = mensagem;
+      const capturedConversationId = ctx.conversation?.id ?? null;
+
+      void (async () => {
+        try {
+          const transcript = [
+            ...capturedMessages.map((m) =>
+              `${m.enviadoPor === "agente_ia" ? "Agente" : "Cliente"}: ${m.conteudo ?? ""}`
+            ),
+            `Cliente: ${capturedMensagem}`,
+          ].join("\n");
+
+          const descResult = await callOpenAI(
+            [
+              {
+                role: "system" as const,
+                content:
+                  "Você é um analista técnico de software. Dado o trecho de conversa de suporte abaixo, " +
+                  "gere um resumo técnico e objetivo do problema relatado pelo cliente (2-4 frases). " +
+                  "Inclua: qual funcionalidade está com problema, o comportamento esperado vs. o observado, e contexto relevante. " +
+                  "Foque no problema técnico, não na emoção do cliente. " +
+                  "Se não conseguir identificar um problema técnico concreto, responda apenas: NÃO_IDENTIFICADO",
+              },
+              { role: "user" as const, content: transcript },
+            ],
+            tenantId,
+            "relato_tecnico",
+            log,
+          );
+
+          const descricao = descResult.resposta?.trim() ?? "";
+          if (descricao && descricao !== "NÃO_IDENTIFICADO") {
+            await db.insert(relatosTecnicosTable).values({
+              tenantId,
+              leadId: leadId ?? null,
+              conversationId: capturedConversationId,
+              descricaoProblema: descricao,
+              transcriptRelevante: transcript,
+              status: "pendente_revisao",
+            });
+            log.info({ leadId, tenantId }, "dispatch: relato_tecnico created (pendente_revisao)");
+          }
+        } catch (err) {
+          log.error({ err, leadId, tenantId }, "dispatch: relato_tecnico creation failed (non-critical)");
+        }
+      })();
     }
 
     // 8b. Final response sanitization — strip any unresolved placeholder patterns before

@@ -1009,7 +1009,8 @@ export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentC
       "- Máximo 3 parágrafos curtos\n" +
       "- Confirme que entendeu o problema antes de propor a solução\n" +
       "- Se não souber a resposta, seja honesto e indique o próximo passo (escalação, consulta interna)\n" +
-      "- Encerre sempre verificando se o cliente ficou satisfeito ou tem mais alguma dúvida"
+      "- Encerre sempre verificando se o cliente ficou satisfeito ou tem mais alguma dúvida\n" +
+      "- DETECÇÃO DE PROBLEMA TÉCNICO: Se a mensagem do cliente descreve algo que DEVERIA funcionar no sistema mas NÃO funcionou (ex: 'o link não abre', 'o botão sumiu', 'a mensagem não chegou', 'o sistema travou', 'deu erro ao salvar', 'não consigo acessar') — isso é diferente de uma dúvida de 'como usar'. Nesses casos, ao FINAL da sua resposta (após responder normalmente ao cliente), adicione exatamente esta linha separada: {{action:relato_tecnico}}. NÃO adicione esse marcador para: perguntas de 'como faço X', pedidos de nova funcionalidade, ou reclamações sobre comportamento que é esperado/documentado."
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }

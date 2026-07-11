@@ -86,11 +86,12 @@ export default function Funcionalidades() {
           {modules.map((mod, idx) => (
             <motion.div 
               key={mod.id}
+              id={mod.id}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: idx * 0.1 }}
-              className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm"
+              className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm scroll-mt-24"
             >
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
