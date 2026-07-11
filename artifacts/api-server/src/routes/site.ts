@@ -1,10 +1,13 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
-import { siteVerticaisTable, siteContatosTable, leadsTable } from "@workspace/db";
+import { siteVerticaisTable, siteContatosTable, leadsTable, dealsTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
+import { storePhone, findLeadByDedup } from "../lib/dedup.js";
+import { pickNextVendedor } from "../lib/round-robin.js";
+import { sendSdrFirstApproach } from "../services/sdrService.js";
 
 const router: IRouter = Router();
 
@@ -46,6 +49,7 @@ router.get("/site/verticais/:slug", async (req, res) => {
 });
 
 // ─── POST /site/contato ─────────────────────────────────────────────────────
+// origem: aceita qualquer slug legível (ex: "formulario_contato", "lp_auto-pecas", "cta_final")
 const contatoSchema = z.object({
   nome: z.string().min(2, "Nome obrigatório"),
   email: z.string().email("E-mail inválido"),
@@ -53,14 +57,9 @@ const contatoSchema = z.object({
   telefone: z.string().optional(),
   empresa: z.string().optional(),
   origem: z
-    .enum([
-      "cta_final",
-      "formulario_contato",
-      "plano_growth",
-      "plano_pme",
-      "plano_enterprise",
-      "parceiro_interesse",
-    ])
+    .string()
+    .regex(/^[a-z0-9_-]+$/, "Origem inválida")
+    .max(64)
     .optional(),
 });
 
@@ -74,38 +73,110 @@ router.post("/site/contato", async (req, res) => {
   }
 
   const { nome, email, mensagem, telefone, empresa, origem } = parsed.data;
+  const telefoneSanitizado = telefone ? storePhone(telefone) : null;
+  const sourceLabel = origem ? `site_${origem}` : "site_institucional";
 
-  // 1 — Gravar em site_contatos
+  // 1 — Gravar em site_contatos (log bruto, sempre)
   await db.insert(siteContatosTable).values({
     nome,
     email,
     mensagem,
-    telefone: telefone ?? null,
+    telefone: telefoneSanitizado ?? null,
     empresa: empresa ?? null,
     origem: origem ?? null,
     status: "novo",
   });
 
-  // 2 — Gravar como lead no tenant institucional
-  try {
-    await db.insert(leadsTable).values({
-      tenantId: INSTITUTIONAL_TENANT_ID,
-      nome,
-      email,
-      telefone: telefone ?? null,
-      empresa: empresa ?? null,
-      notasNutricao: mensagem,
-      source: origem ? `site_${origem}` : "site_institucional",
-      status: "novo",
-    });
-  } catch (err) {
-    logger.warn({ err }, "site/contato: falha ao inserir lead institucional (não bloqueia resposta)");
-  }
+  // 2 — Gravar lead + deal no pipeline institucional e disparar SDR (background, não bloqueia resposta)
+  void (async () => {
+    try {
+      // 2a — Dedup: se já existe, não duplicar
+      const dedup = await findLeadByDedup(
+        INSTITUTIONAL_TENANT_ID,
+        telefoneSanitizado,
+        null,
+        nome,
+      );
+
+      let leadId: string;
+
+      if (dedup.found && dedup.lead) {
+        leadId = dedup.lead.id;
+        logger.info({ leadId, nome }, "site/contato: lead já existe — usando existente");
+      } else {
+        // 2b — Resolver vendedor responsável via round-robin
+        const assignedTo = await pickNextVendedor(INSTITUTIONAL_TENANT_ID).catch(() => null);
+
+        // Contexto da mensagem e origem no campo notasNutricao para o SDR
+        const notasNutricao = [
+          origem ? `Origem: ${origem}` : null,
+          `Mensagem do site: "${mensagem}"`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        const [createdLead] = await db
+          .insert(leadsTable)
+          .values({
+            tenantId: INSTITUTIONAL_TENANT_ID,
+            nome,
+            email,
+            telefone: telefoneSanitizado ?? null,
+            empresa: empresa ?? null,
+            notasNutricao,
+            source: sourceLabel,
+            status: "novo",
+            assignedTo: assignedTo ?? null,
+          })
+          .returning({ id: leadsTable.id });
+
+        leadId = createdLead.id;
+
+        // 2c — Criar deal no pipeline em "aquecimento"
+        const [createdDeal] = await db
+          .insert(dealsTable)
+          .values({
+            tenantId: INSTITUTIONAL_TENANT_ID,
+            leadId,
+            titulo: nome,
+            etapa: "em_aquecimento",
+            assignedTo: assignedTo ?? null,
+          })
+          .returning({ id: dealsTable.id });
+
+        logger.info(
+          { leadId, dealId: createdDeal.id, tenantId: INSTITUTIONAL_TENANT_ID },
+          "site/contato: lead e deal criados no pipeline institucional",
+        );
+
+        // 2d — Disparar SDR (primeira abordagem via WhatsApp — ignora se não configurado)
+        if (telefoneSanitizado) {
+          sendSdrFirstApproach(leadId, createdDeal.id, INSTITUTIONAL_TENANT_ID, logger).then(
+            (result) => {
+              logger.info(
+                { leadId, result },
+                "site/contato: SDR primeira abordagem executada",
+              );
+            },
+          ).catch((err) => {
+            logger.warn(
+              { err, leadId },
+              "site/contato: SDR primeira abordagem falhou (não bloqueia fluxo)",
+            );
+          });
+        } else {
+          logger.info({ leadId }, "site/contato: sem telefone — SDR via WhatsApp não disparado");
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, "site/contato: falha ao criar lead/deal institucional (não bloqueia resposta)");
+    }
+  })();
 
   // 3 — Notificar por e-mail
   if (resend) {
-    try {
-      await resend.emails.send({
+    resend.emails
+      .send({
         from: "VendorAI Site <noreply@vendorai.app>",
         to: "vendorai@appvendorai.com",
         subject: `[Site] Novo contato: ${nome}`,
@@ -115,7 +186,7 @@ router.post("/site/contato", async (req, res) => {
             <table style="width:100%;border-collapse:collapse;font-size:14px;color:#333;">
               <tr><td style="padding:8px 0;font-weight:600;width:120px;">Nome</td><td style="padding:8px 0;">${nome}</td></tr>
               <tr style="background:#f9f9f9;"><td style="padding:8px;font-weight:600;">E-mail</td><td style="padding:8px;"><a href="mailto:${email}" style="color:#2563eb;">${email}</a></td></tr>
-              ${telefone ? `<tr><td style="padding:8px 0;font-weight:600;">Telefone</td><td style="padding:8px 0;">${telefone}</td></tr>` : ""}
+              ${telefoneSanitizado ? `<tr><td style="padding:8px 0;font-weight:600;">Telefone</td><td style="padding:8px 0;">${telefoneSanitizado}</td></tr>` : ""}
               ${empresa ? `<tr style="background:#f9f9f9;"><td style="padding:8px;font-weight:600;">Empresa</td><td style="padding:8px;">${empresa}</td></tr>` : ""}
               ${origem ? `<tr><td style="padding:8px 0;font-weight:600;">Origem</td><td style="padding:8px 0;">${origem}</td></tr>` : ""}
               <tr style="background:#f9f9f9;"><td style="padding:8px;font-weight:600;vertical-align:top;">Mensagem</td><td style="padding:8px;">${mensagem.replace(/\n/g, "<br>")}</td></tr>
@@ -123,10 +194,10 @@ router.post("/site/contato", async (req, res) => {
             <p style="margin-top:24px;font-size:12px;color:#888;">Enviado automaticamente pelo site VendorAI.</p>
           </div>
         `,
+      })
+      .catch((err) => {
+        logger.warn({ err }, "site/contato: falha ao enviar e-mail de notificação");
       });
-    } catch (err) {
-      logger.warn({ err }, "site/contato: falha ao enviar e-mail de notificação (não bloqueia resposta)");
-    }
   } else {
     logger.warn("site/contato: RESEND_API_KEY não configurada — e-mail de notificação ignorado");
   }

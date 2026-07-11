@@ -71,3 +71,51 @@ id = "WzL3Ivlea1H7Rg5O4T9uD"
 uri = "file://arqdor-current-render-files.zip"
 type = "unspecified"
 title = "arqdor-current-render-files.zip"
+
+[[outputs]]
+id = "gNJqGNFsMuE5iXqtrerhK"
+uri = "file://ad-creatives/auto-pecas-feed.png"
+type = "image"
+title = "Auto Peças — Feed 1:1 (4.6 MB)"
+
+[[outputs]]
+id = "QmusEstQuR8UqxAUltIOV"
+uri = "file://ad-creatives/auto-pecas-stories.png"
+type = "image"
+title = "Auto Peças — Stories 9:16 (3.9 MB)"
+
+[[outputs]]
+id = "dZKjPQVZ8ar_kz7fBfj27"
+uri = "file://ad-creatives/alimentos-feed.png"
+type = "image"
+title = "Distribuidoras de Alimentos — Feed 1:1 (4.1 MB)"
+
+[[outputs]]
+id = "iZdNC7ibyp81vE4K-MIZ2"
+uri = "file://ad-creatives/alimentos-stories.png"
+type = "image"
+title = "Distribuidoras de Alimentos — Stories 9:16 (6.2 MB)"
+
+[[outputs]]
+id = "QqaethbASHZ33_HJufX8p"
+uri = "file://ad-creatives/construcao-feed.png"
+type = "image"
+title = "Materiais de Construção — Feed 1:1 (5.1 MB)"
+
+[[outputs]]
+id = "rE0DsuzaQ3m_2Cu7RKvyM"
+uri = "file://ad-creatives/construcao-stories.png"
+type = "image"
+title = "Materiais de Construção — Stories 9:16 (4.7 MB)"
+
+[[outputs]]
+id = "ptMwf3LWeCrT8e9d8JfDZ"
+uri = "file://ad-creatives/salao-feed.png"
+type = "image"
+title = "Salão de Beleza — Feed 1:1 (3.7 MB)"
+
+[[outputs]]
+id = "UKb7ipWmf1ioY-ztywhM8"
+uri = "file://ad-creatives/salao-stories.png"
+type = "image"
+title = "Salão de Beleza — Stories 9:16 (3.4 MB)"
