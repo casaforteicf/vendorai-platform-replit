@@ -962,7 +962,7 @@ export function buildSchedulerPrompt(
   const meetInfo = agendamento?.meetLink
     ? ` Um link Google Meet foi gerado para esta reunião: ${agendamento.meetLink} — INCLUA ESTE LINK NA MENSAGEM ao lead.`
     : agendamento
-      ? " O link da reunião será enviado pela equipe. Se o lead perguntar sobre o link, responda que vamos encaminhar o link em instantes. NUNCA diga que não tem capacidade de enviar links ou que isso é uma limitação sua — você sempre pode repassar um link."
+      ? " O link da reunião ainda não foi gerado. Se o lead perguntar sobre o link, diga APENAS que vai confirmar e enviar em breve. NUNCA invente um link, use placeholders, cite exemplos de formato, ou mencione qualquer texto fictício entre colchetes. Não há link disponível agora — apenas confirme que chegará em breve."
       : "";
 
   const agendadoInfo = agendamento
