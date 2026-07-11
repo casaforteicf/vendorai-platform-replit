@@ -57,6 +57,10 @@ export interface LpConfig {
       desc: string;
     };
   };
+  adCreatives?: {
+    feed: string;
+    stories: string;
+  };
   cta: {
     headline: string;
     sub: string;
@@ -198,6 +202,10 @@ export const LP_CONFIGS: LpConfig[] = [
     cta: {
       headline: "Veja como construtoras estão fechando 3× mais obras",
       sub: "Demonstração personalizada para Construção Civil. Sem compromisso, sem cartão.",
+    },
+    adCreatives: {
+      feed: "/ad-creatives/construcao-feed.png",
+      stories: "/ad-creatives/construcao-stories.png",
     },
     gtagConversionLabel: "lp_construcao_civil",
   },
@@ -367,6 +375,10 @@ export const LP_CONFIGS: LpConfig[] = [
       headline: "Veja como clínicas aumentam a recorrência de pacientes com IA",
       sub: "Demonstração personalizada para Saúde e Beleza. Sem compromisso.",
     },
+    adCreatives: {
+      feed: "/ad-creatives/salao-feed.png",
+      stories: "/ad-creatives/salao-stories.png",
+    },
     gtagConversionLabel: "lp_saude_beleza",
   },
 
@@ -451,6 +463,10 @@ export const LP_CONFIGS: LpConfig[] = [
       headline: "Veja como distribuidoras de auto peças eliminam a fila de espera no WhatsApp",
       sub: "Demonstração personalizada. Sem compromisso, sem cartão de crédito.",
     },
+    adCreatives: {
+      feed: "/ad-creatives/auto-pecas-feed.png",
+      stories: "/ad-creatives/auto-pecas-stories.png",
+    },
     gtagConversionLabel: "lp_auto_pecas",
   },
 
@@ -534,6 +550,10 @@ export const LP_CONFIGS: LpConfig[] = [
     cta: {
       headline: "Veja como distribuidoras eliminam pedidos perdidos e dobram a prospecção",
       sub: "Demonstração personalizada para food service e distribuição. Sem compromisso.",
+    },
+    adCreatives: {
+      feed: "/ad-creatives/alimentos-feed.png",
+      stories: "/ad-creatives/alimentos-stories.png",
     },
     gtagConversionLabel: "lp_distribuidoras_alimentos",
   },

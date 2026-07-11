@@ -300,6 +300,39 @@ function LandingPage({ config }: { config: LpConfig }) {
         </section>
       )}
 
+      {/* ══ AD CREATIVES — conditional ════════════════════════════════════════ */}
+      {config.adCreatives && (
+        <section className="py-16 px-4">
+          <div className="container mx-auto max-w-4xl">
+            <div className="text-center mb-10">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">Criativos para anúncios</p>
+              <h3 className="text-xl font-bold text-white">Exemplos gerados para {config.vertical}</h3>
+              <p className="text-sm text-slate-400 mt-2 max-w-lg mx-auto">
+                Prontos para veicular no Meta Ads — feed e stories adaptados ao seu segmento.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-8 items-end justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Feed · 1:1</span>
+                <img
+                  src={config.adCreatives.feed}
+                  alt={`Criativo feed ${config.vertical}`}
+                  className="w-64 h-64 object-cover rounded-2xl border border-white/10 shadow-2xl"
+                />
+              </div>
+              <div className="flex flex-col items-center gap-3">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Stories · 9:16</span>
+                <img
+                  src={config.adCreatives.stories}
+                  alt={`Criativo stories ${config.vertical}`}
+                  className="w-36 h-64 object-cover rounded-2xl border border-white/10 shadow-2xl"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ══ Final CTA ═════════════════════════════════════════════════════════ */}
       <section className="py-24 px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-[#08070F] via-[#1B1438] to-[#08070F] pointer-events-none" />
