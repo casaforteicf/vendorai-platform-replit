@@ -930,7 +930,9 @@ export function buildSchedulerPrompt(
 
   const meetInfo = agendamento?.meetLink
     ? ` Um link Google Meet foi gerado para esta reunião: ${agendamento.meetLink} — INCLUA ESTE LINK NA MENSAGEM ao lead.`
-    : "";
+    : agendamento
+      ? " O link da reunião será enviado pela equipe. Se o lead perguntar sobre o link, responda que vamos encaminhar o link em instantes. NUNCA diga que não tem capacidade de enviar links ou que isso é uma limitação sua — você sempre pode repassar um link."
+      : "";
 
   const agendadoInfo = agendamento
     ? `Um agendamento já foi criado para ${agendamento.dataHoraInicio.toLocaleString("pt-BR")} ` +

@@ -114,6 +114,23 @@ function sanitizeAgentResponse(text: string, meetLink?: string | null): string {
   text = text.replace(/\[Seu\s+Nome\]|\[Nome\]|\{?\{?vendedor_nome\}?\}?/gi, "");
   text = text.replace(/\[Empresa\]|\{?\{?empresa_nome\}?\}?/gi, "");
 
+  // 4. Defense-in-depth: intercept free-form LLM denials of ability to send/provide a
+  //    meeting link. These are hallucinations that bypass placeholder detection — the
+  //    scheduler agent can always relay a link, so these responses are always wrong.
+  //    Catches: "não tenho capacidade de enviar links", "infelizmente não posso enviar
+  //    o link", "não consigo fornecer links", etc.
+  const linkDenialPatterns = [
+    /não\s+(?:tenho(?:\s+a\s*)?(?:capacidade(?:\s+de)?)?|posso|consigo)\s+(?:enviar|compartilhar|fornecer|disponibilizar)\s+(?:o\s+)?links?/i,
+    /infelizmente[,\s]+não\s+(?:tenho|posso|consigo)[\w\s,áéíóúâãõ]{0,40}links?/i,
+    /não\s+(?:é\s+possível|estou\s+apto\s+a)\s+(?:enviar|compartilhar|fornecer)\s+(?:o\s+)?links?/i,
+    /não\s+(?:tenho|possuo)\s+acesso\s+(?:ao|a\s+um)\s+links?/i,
+  ];
+  if (linkDenialPatterns.some((re) => re.test(text))) {
+    text = meetLink
+      ? `Claro! Aqui está o link da reunião: ${meetLink}`
+      : "Vou te encaminhar o link em instantes!";
+  }
+
   return text.trim();
 }
 

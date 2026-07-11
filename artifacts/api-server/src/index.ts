@@ -992,6 +992,27 @@ Se fizer sentido, te mostro em 10 minutos como funciona.',
   } catch (err) {
     logger.warn({ err }, "startup migrations: tenant_switch_log skipped");
   }
+
+  // ── Seed: correct company name for Comercio Brasil / Vendor.ai tenant ────────
+  // business_profiles.nome_fantasia must match the WhatsApp Business (WABA)
+  // display name "appvendor.ai" so the agent uses the right brand in messages.
+  try {
+    await db.execute(sql`
+      UPDATE business_profiles
+      SET    nome_fantasia = 'appvendor.ai', updated_at = NOW()
+      WHERE  tenant_id = '1d4ea673-58d0-413a-a554-c9aca72a3121'
+        AND  (nome_fantasia IS DISTINCT FROM 'appvendor.ai')
+    `);
+    await db.execute(sql`
+      UPDATE tenants
+      SET    name = 'appvendor.ai', updated_at = NOW()
+      WHERE  id = '1d4ea673-58d0-413a-a554-c9aca72a3121'
+        AND  (name IS DISTINCT FROM 'appvendor.ai')
+    `);
+    logger.info("startup seed: appvendor.ai name OK");
+  } catch (err) {
+    logger.warn({ err }, "startup seed: appvendor.ai name skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
