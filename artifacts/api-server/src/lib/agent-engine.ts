@@ -717,14 +717,15 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
       "- Nunca invente dados, desconto ou funcionalidades não confirmadas\n" +
       "- DETECÇÃO DE ACEITE: Se o lead disser algo como 'aceito', 'vamos em frente', 'fechado', 'pode fechar', 'tá bom', 'vamos nessa', 'quero sim', 'vamos fechar', 'confirmo', 'topa', 'está certo', 'aceito a proposta', 'tá aprovado', 'pode seguir' — ou qualquer variação clara de aceite da proposta/orçamento, você deve retornar EXATAMENTE a ação especial: `{{action:proposal_accept}}` (apenas isso, sem texto adicional).\n" +
       "- Se a resposta for ambígua (ex: 'quero saber mais', 'pensei em aceitar', 'talvez', 'vou ver', 'me explica melhor'), NÃO use proposal_accept — continue a conversa normalmente pedindo confirmação explícita.\n" +
-      "- Se a resposta for claramente NÃO (ex: 'não quero', 'desisto', 'muito caro', 'não vou seguir'), não use proposal_accept — responda normalmente."
+      "- Se a resposta for claramente NÃO (ex: 'não quero', 'desisto', 'muito caro', 'não vou seguir'), não use proposal_accept — responda normalmente.\n" +
+      "- ORÇAMENTO FORMAL: Se o lead perguntar sobre preços, planos ou valores, retorne EXATAMENTE: `{{action:generate_quote}}` (apenas isso, sem texto adicional). O sistema gerará e enviará um orçamento formal automaticamente. NUNCA liste preços em texto livre no chat."
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
 
   // Catalog plans section — injected by dispatch when tenant has active products.
-  // Allows Closer to answer pricing questions with real data instead of refusing.
-  type CatalogPlan = { nome: string; precoBase: string | null; precoImplantacao?: string | null; precoMensalidade?: string | null };
+  // Plans arrive sorted most-expensive-first (Enterprise anchoring).
+  type CatalogPlan = { id?: string; nome: string; precoBase: string | null; precoImplantacao?: string | null; precoMensalidade?: string | null };
   const catalogPlans = Array.isArray(scenario?.catalogPlans)
     ? (scenario!.catalogPlans as CatalogPlan[])
     : null;
@@ -739,12 +740,36 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
       if (impl) priceParts.push(`Implantação: ${impl}`);
       if (mens) priceParts.push(`Mensalidade: ${mens}`);
       else if (base) priceParts.push(`Valor: ${base}`);
-      return `• **${p.nome}**: ${priceParts.join(" · ") || "consulte valores"}`;
+      return `• ${p.nome}: ${priceParts.join(" · ") || "consulte valores"}`;
     });
     parts.push(
-      "## PLANOS E PREÇOS DISPONÍVEIS\n" +
-      "Quando o lead perguntar sobre preços, planos ou valores, responda com as informações reais abaixo — nunca se recuse a informar ou seja evasivo. Você não precisa oferecer proativamente, mas quando perguntado diretamente, informe com confiança:\n" +
-      planLines.join("\n"),
+      "## PLANOS DISPONÍVEIS (referência interna — NÃO liste no chat)\n" +
+      "Os planos abaixo estão no catálogo ordenados do mais completo para o mais básico. Use como referência para saber o que existe — não os liste em bullets no chat.\n" +
+      planLines.join("\n") + "\n\n" +
+      "## REGRA DE APRESENTAÇÃO DE PREÇOS\n" +
+      "Quando o lead perguntar sobre preços, planos ou valores:\n" +
+      "1. NUNCA liste os planos em texto livre no chat.\n" +
+      "2. Retorne EXATAMENTE: `{{action:generate_quote}}` (apenas isso, sem texto adicional). O sistema gerará um orçamento formal automaticamente com número de orçamento, itens e valor total.\n" +
+      "3. ANCORAGEM NO PLANO ENTERPRISE: O orçamento será gerado pelo plano mais completo (primeiro da lista). Só proponha um plano menor se a qualificação do lead — porte da empresa, número de funcionários, orçamento mencionado — indicar CLARAMENTE que o plano maior não é adequado. Na dúvida, sempre o mais completo.\n" +
+      "4. Após o orçamento ser enviado (próxima mensagem do lead), retome para apresentar os diferenciais e avançar para o fechamento.",
+    );
+  }
+
+  // Contract data collection scenario — injected by dispatch when lead accepted a proposal
+  // but is missing required fields for the formal contract.
+  if (scenario?.collectContractData === true) {
+    const nextFieldLabel = String(scenario.nextMissingFieldLabel ?? "as informações necessárias");
+    const remaining = Array.isArray(scenario.missingContractFields) ? (scenario.missingContractFields as string[]).length : 0;
+    parts.push(
+      "## COLETA DE DADOS PARA CONTRATO\n" +
+      "O lead aceitou a proposta. Você está coletando os dados necessários para gerar o contrato formal de forma conversacional. " +
+      `${remaining === 1 ? "Falta apenas 1 campo." : `Faltam ${remaining} campos.`} ` +
+      `Peça de forma natural e gentil APENAS este próximo dado: **${nextFieldLabel}**\n` +
+      "Regras:\n" +
+      "- Peça UM dado por vez — não liste tudo de uma vez.\n" +
+      "- Tom positivo: o lead já decidiu comprar, não crie atrito.\n" +
+      "- Não mencione explicitamente 'contrato' ou 'dados para contrato' — seja natural, como se fosse apenas confirmar informações.\n" +
+      "- Não emita {{action:proposal_accept}} nem {{action:generate_quote}} neste turno.",
     );
   }
 

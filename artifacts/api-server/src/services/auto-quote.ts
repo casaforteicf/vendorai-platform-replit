@@ -540,3 +540,63 @@ export async function sendQuoteViaWhatsApp(params: {
     log.error({ err }, "auto-quote: failed to send via WhatsApp");
   }
 }
+
+// ── Closer-triggered quote from a single catalog plan ─────────────────────────
+
+/**
+ * Creates a formal proposal from a single catalog plan, looked up by productId.
+ * Used by the Closer agent when the lead asks for pricing and the agent emits
+ * {{action:generate_quote}}. Always quantity=1, stock unlimited (SaaS).
+ *
+ * Returns null if the product is not found or inactive.
+ */
+export async function createQuoteFromCatalogPlan(params: {
+  tenantId: string;
+  leadId: string;
+  productId: string;
+  log: Logger;
+}): Promise<{ propostaId: string; numero: string; valorTotal: number; nomePlano: string } | null> {
+  const { tenantId, leadId, productId, log } = params;
+
+  const [product] = await db
+    .select({
+      id:               produtosCatalogoTable.id,
+      nome:             produtosCatalogoTable.nome,
+      sku:              produtosCatalogoTable.sku,
+      precoBase:        produtosCatalogoTable.precoBase,
+      precoImplantacao: produtosCatalogoTable.precoImplantacao,
+      precoMensalidade: produtosCatalogoTable.precoMensalidade,
+    })
+    .from(produtosCatalogoTable)
+    .where(
+      and(
+        eq(produtosCatalogoTable.id, productId),
+        eq(produtosCatalogoTable.tenantId, tenantId),
+        eq(produtosCatalogoTable.ativo, true),
+      ),
+    )
+    .limit(1);
+
+  if (!product) {
+    log.warn({ tenantId, leadId, productId }, "createQuoteFromCatalogPlan: product not found or inactive");
+    return null;
+  }
+
+  const price          = Number(product.precoBase ?? product.precoMensalidade ?? 0);
+  const precoImplantacao = product.precoImplantacao != null ? Number(product.precoImplantacao) : null;
+  const precoMensalidade = product.precoMensalidade != null ? Number(product.precoMensalidade) : null;
+
+  const found: FoundProduct[] = [{
+    productId: product.id,
+    name:      product.nome,
+    sku:       product.sku ?? null,
+    price,
+    stock:     9999,
+    quantity:  1,
+    precoImplantacao,
+    precoMensalidade,
+  }];
+
+  const result = await createAutoQuote({ tenantId, leadId, found, log });
+  return { ...result, nomePlano: product.nome };
+}

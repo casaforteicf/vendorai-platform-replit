@@ -54,6 +54,7 @@ import {
   type SpinQuestion,
 } from "../lib/agent-engine.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
+import { createQuoteFromCatalogPlan } from "./auto-quote.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
 
 type Lead    = typeof leadsTable.$inferSelect;
@@ -737,10 +738,12 @@ export async function processAgentInternal(params: {
       }
     }
 
-    // For closer: inject active catalog plans so the agent can answer pricing questions.
+    // For closer: inject active catalog plans (enterprise-first) and handle
+    // contract data collection mode when lead already accepted a proposal.
     if (resolvedAgentName === "closer") {
       const catalogPlans = await db
         .select({
+          id:                produtosCatalogoTable.id,
           nome:              produtosCatalogoTable.nome,
           precoBase:         produtosCatalogoTable.precoBase,
           precoImplantacao:  produtosCatalogoTable.precoImplantacao,
@@ -748,11 +751,28 @@ export async function processAgentInternal(params: {
         })
         .from(produtosCatalogoTable)
         .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
-        .orderBy(produtosCatalogoTable.precoBase)
+        .orderBy(desc(produtosCatalogoTable.precoBase))
         .limit(20);
       if (catalogPlans.length > 0) {
         enrichedScenario = { ...(enrichedScenario ?? {}), catalogPlans };
-        log.info({ tenantId, count: catalogPlans.length }, "dispatch: closer catalog plans injected");
+        log.info({ tenantId, count: catalogPlans.length }, "dispatch: closer catalog plans injected (enterprise-first)");
+      }
+
+      // If the lead previously accepted a proposal but we deferred to collect
+      // contract data, inject the collect_contract_data scenario so the Closer
+      // asks for the next missing field conversationally.
+      const leadDd = (ctx.lead.discoveryData ?? {}) as Record<string, unknown>;
+      if (leadDd.pendingProposalAccept === true) {
+        const missingFields = getMissingContractFields(ctx.lead);
+        if (missingFields.length > 0) {
+          enrichedScenario = {
+            ...(enrichedScenario ?? {}),
+            collectContractData: true,
+            missingContractFields: missingFields,
+            nextMissingFieldLabel: CONTRACT_FIELD_PROMPTS[missingFields[0]!] ?? missingFields[0],
+          };
+          log.info({ tenantId, leadId, missingFields }, "dispatch: closer contract data collection mode");
+        }
       }
     }
 
@@ -885,38 +905,160 @@ export async function processAgentInternal(params: {
       return { status: "failed", reason: "openai_error" };
     }
 
-    // 8. Detect proposal-accept action from closer agent
+    // 8. Detect special Closer actions in the response.
     let finalResposta = resposta;
-    if (resolvedAgentName === "closer" && resposta.includes("{{action:proposal_accept}}")) {
-      const openProposals = await db
-        .select({ id: propostasTable.id })
-        .from(propostasTable)
-        .where(
-          and(
-            eq(propostasTable.leadId, leadId),
-            eq(propostasTable.tenantId, tenantId),
-            eq(propostasTable.status, "enviada")
-          )
-        )
-        .orderBy(desc(propostasTable.createdAt))
-        .limit(1);
 
-      if (openProposals.length > 0) {
-        const result = await proposalAccepted(openProposals[0]!.id, "whatsapp", {
-          nome: ctx.lead.nome ?? undefined,
-        });
-        if (result.ok) {
-          finalResposta = result.alreadyProcessed
-            ? "Sua proposta já tinha sido aceita anteriormente. Vamos seguir com o fechamento!"
-            : "Proposta aceita com sucesso! Parabéns, vamos seguir com o fechamento e os próximos passos.";
-          log.info({ leadId, tenantId, propostaId: openProposals[0]!.id }, "dispatch: proposal_accept via WhatsApp succeeded");
-        } else {
-          finalResposta = "Detectei que você quer aceitar, mas tive um problema técnico. Vou chamar a equipe para confirmar manualmente.";
-          log.error({ leadId, tenantId, error: result.error }, "dispatch: proposal_accept via WhatsApp failed");
+    // 8a. {{action:generate_quote}} — Closer asked for a formal quote to be generated.
+    // Use the most expensive active catalog plan (enterprise-first ordering).
+    if (resolvedAgentName === "closer" && resposta.includes("{{action:generate_quote}}")) {
+      const catalogPlansForQuote = (enrichedScenario?.catalogPlans ?? []) as Array<{ id: string; nome: string }>;
+      const topPlan = catalogPlansForQuote[0] ?? null;
+      if (topPlan?.id) {
+        try {
+          const quoteResult = await createQuoteFromCatalogPlan({
+            tenantId,
+            leadId,
+            productId: topPlan.id,
+            log,
+          });
+          if (quoteResult) {
+            finalResposta =
+              `Preparei o orçamento formal **${quoteResult.numero}** para o plano **${quoteResult.nomePlano}**. ` +
+              `Você pode visualizar todos os detalhes — quer que eu explique o que está incluso?`;
+            log.info({ leadId, tenantId, numero: quoteResult.numero, plano: quoteResult.nomePlano }, "dispatch: formal quote generated via Closer action");
+          } else {
+            finalResposta = "Vou preparar o orçamento e enviar em seguida. Você pode me dar um momento?";
+            log.warn({ leadId, tenantId }, "dispatch: generate_quote action but no plan found or creation failed");
+          }
+        } catch (err) {
+          finalResposta = "Vou preparar o orçamento e enviar em seguida. Você pode me dar um momento?";
+          log.error({ err, leadId, tenantId }, "dispatch: generate_quote action threw");
         }
       } else {
-        finalResposta = "Agradeço o interesse! Vou verificar a proposta disponível para você.";
-        log.info({ leadId, tenantId }, "dispatch: proposal_accept action but no open proposal found");
+        finalResposta = "Deixa eu puxar os valores atualizados para você. Um instante!";
+        log.warn({ leadId, tenantId }, "dispatch: generate_quote action but catalogPlans empty");
+      }
+    }
+
+    // 8b. {{action:proposal_accept}} — Closer detected the lead is accepting.
+    // Before proceeding: ensure all required contract fields are present.
+    // If any are missing, defer acceptance and start collecting them conversationally.
+    if (resolvedAgentName === "closer" && resposta.includes("{{action:proposal_accept}}")) {
+      const missingFields = getMissingContractFields(ctx.lead);
+
+      if (missingFields.length > 0) {
+        // Defer acceptance — save pending flag in discoveryData and ask for first field.
+        const existingDd = (ctx.lead.discoveryData ?? {}) as Record<string, unknown>;
+        await db
+          .update(leadsTable)
+          .set({ discoveryData: { ...existingDd, pendingProposalAccept: true }, updatedAt: new Date() })
+          .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+        const firstFieldPrompt = CONTRACT_FIELD_PROMPTS[missingFields[0]!] ?? "Pode me confirmar algumas informações?";
+        finalResposta = `Que ótimo! Para eu poder formalizar o contrato agora mesmo, preciso de uma informação rápida. ${firstFieldPrompt}`;
+        log.info({ leadId, tenantId, missingFields }, "dispatch: proposal_accept deferred — collecting contract data");
+      } else {
+        // All contract data present — proceed with acceptance.
+        const openProposals = await db
+          .select({ id: propostasTable.id })
+          .from(propostasTable)
+          .where(
+            and(
+              eq(propostasTable.leadId, leadId),
+              eq(propostasTable.tenantId, tenantId),
+              eq(propostasTable.status, "enviada")
+            )
+          )
+          .orderBy(desc(propostasTable.createdAt))
+          .limit(1);
+
+        if (openProposals.length > 0) {
+          const result = await proposalAccepted(openProposals[0]!.id, "whatsapp", {
+            nome: ctx.lead.nome ?? undefined,
+          });
+          if (result.ok) {
+            finalResposta = result.alreadyProcessed
+              ? "Sua proposta já tinha sido aceita anteriormente. Vamos seguir com o fechamento!"
+              : "Proposta aceita! Estou gerando o contrato agora — você receberá o link por e-mail em breve. 🎉";
+            log.info({ leadId, tenantId, propostaId: openProposals[0]!.id }, "dispatch: proposal_accept via WhatsApp succeeded");
+          } else {
+            finalResposta = "Detectei que você quer aceitar, mas tive um problema técnico. Vou chamar a equipe para confirmar manualmente.";
+            log.error({ leadId, tenantId, error: result.error }, "dispatch: proposal_accept via WhatsApp failed");
+          }
+        } else {
+          finalResposta = "Agradeço o interesse! Vou verificar a proposta disponível para você.";
+          log.info({ leadId, tenantId }, "dispatch: proposal_accept action but no open proposal found");
+        }
+      }
+    }
+
+    // 8c. Contract data collection — if the lead is in pending-accept mode, synchronously
+    // extract any contract fields from this message, then check if we can now proceed.
+    // This runs ONLY when the response was NOT already a proposal_accept or generate_quote action
+    // (those cases are handled above), i.e., when the Closer was asking for contract data fields.
+    if (
+      resolvedAgentName === "closer" &&
+      !resposta.includes("{{action:proposal_accept}}") &&
+      !resposta.includes("{{action:generate_quote}}")
+    ) {
+      const currentDd = (ctx.lead.discoveryData ?? {}) as Record<string, unknown>;
+      if (currentDd.pendingProposalAccept === true) {
+        // Synchronously extract contract fields from the incoming message and save them.
+        await extractAndSaveContractFields(tenantId, leadId, ctx.lead, mensagem, log);
+
+        // Re-load the lead to check if all required fields are now present.
+        const [refreshedLead] = await db
+          .select({
+            email:                     leadsTable.email,
+            documento:                 leadsTable.documento,
+            endereco:                  leadsTable.endereco,
+            representanteCargo:        leadsTable.representanteCargo,
+            representanteNacionalidade: leadsTable.representanteNacionalidade,
+            representanteEstadoCivil:  leadsTable.representanteEstadoCivil,
+            representanteProfissao:    leadsTable.representanteProfissao,
+            representanteRg:           leadsTable.representanteRg,
+            discoveryData:             leadsTable.discoveryData,
+          })
+          .from(leadsTable)
+          .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+          .limit(1);
+
+        const stillMissing = getMissingContractFields(refreshedLead ?? null);
+
+        if (stillMissing.length === 0) {
+          // All fields collected — find open proposal and complete acceptance.
+          const openProposals = await db
+            .select({ id: propostasTable.id })
+            .from(propostasTable)
+            .where(
+              and(
+                eq(propostasTable.leadId, leadId),
+                eq(propostasTable.tenantId, tenantId),
+                eq(propostasTable.status, "enviada")
+              )
+            )
+            .orderBy(desc(propostasTable.createdAt))
+            .limit(1);
+
+          if (openProposals.length > 0) {
+            const acceptResult = await proposalAccepted(openProposals[0]!.id, "whatsapp", {
+              nome: ctx.lead.nome ?? undefined,
+            });
+            // Clear the pendingProposalAccept flag.
+            const updDd = ((refreshedLead?.discoveryData ?? {}) as Record<string, unknown>);
+            delete updDd.pendingProposalAccept;
+            await db
+              .update(leadsTable)
+              .set({ discoveryData: updDd, updatedAt: new Date() })
+              .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+            if (acceptResult.ok) {
+              finalResposta =
+                "Perfeito, todas as informações foram confirmadas! Estou gerando o contrato agora — você receberá o link por e-mail em breve. 🎉";
+              log.info({ leadId, tenantId, propostaId: openProposals[0]!.id }, "dispatch: contract data complete — proposal accepted");
+            }
+          }
+        }
+        // If stillMissing.length > 0: LLM already generated the "ask for next field" response.
       }
     }
 
@@ -1441,6 +1583,126 @@ async function extractAndSaveSpinBriefing(
     await db.insert(leadBriefingsTable).values({ tenantId, leadId, ...upd });
   }
   log.info({ leadId, tenantId, fields: Object.keys(upd).filter((k) => k !== "updatedAt") }, "dispatch: SPIN briefing extracted and persisted");
+}
+
+// ── Contract data collection helpers ─────────────────────────────────────────
+
+/**
+ * Fields required on the lead before a formal contract can be generated.
+ * Collected conversationally by the Closer when the lead accepts a proposal
+ * and any of these are missing.
+ */
+const CONTRACT_REQUIRED_FIELDS = [
+  "email",
+  "documento",
+  "endereco",
+  "representanteCargo",
+  "representanteNacionalidade",
+  "representanteEstadoCivil",
+  "representanteProfissao",
+  "representanteRg",
+] as const;
+
+/** Human-readable question to ask the lead for each missing field. */
+const CONTRACT_FIELD_PROMPTS: Record<string, string> = {
+  email:                      "Qual é o seu e-mail para receber o contrato?",
+  documento:                  "Qual é o CNPJ da empresa (ou CPF se for pessoa física)?",
+  endereco:                   "Qual é o endereço completo da empresa (rua, número, cidade, estado, CEP)?",
+  representanteCargo:         "Qual é o seu cargo na empresa?",
+  representanteNacionalidade: "Qual é a sua nacionalidade?",
+  representanteEstadoCivil:   "Qual é o seu estado civil (solteiro, casado, etc.)?",
+  representanteProfissao:     "Qual é a sua profissão?",
+  representanteRg:            "Qual é o número do seu RG?",
+};
+
+type ContractCheckLead = Partial<Pick<
+  Lead,
+  "email" | "documento" | "endereco" |
+  "representanteCargo" | "representanteNacionalidade" |
+  "representanteEstadoCivil" | "representanteProfissao" | "representanteRg"
+>>;
+
+/** Returns the list of CONTRACT_REQUIRED_FIELDS that are empty/null on the lead. */
+function getMissingContractFields(lead: ContractCheckLead | null): string[] {
+  if (!lead) return [...CONTRACT_REQUIRED_FIELDS];
+  return (CONTRACT_REQUIRED_FIELDS as readonly string[]).filter(
+    (f) => !(lead as Record<string, unknown>)[f],
+  );
+}
+
+/**
+ * Synchronously extracts contract data fields from a single incoming message
+ * and persists any newly found values to the lead row.
+ * Only fills empty fields — never overwrites already-recorded values.
+ */
+async function extractAndSaveContractFields(
+  tenantId: string,
+  leadId: string,
+  lead: Lead,
+  incomingMessage: string,
+  log: Logger,
+): Promise<void> {
+  const extractionPrompt =
+    `Você é um extrator de dados para contratos. Analise a mensagem abaixo e extraia APENAS as informações explicitamente afirmadas pelo cliente. Não infira, não suponha.\n\n` +
+    `Campos a extrair:\n` +
+    `- "email": endereço de e-mail\n` +
+    `- "documento": CPF (formato 000.000.000-00) ou CNPJ (formato 00.000.000/0000-00)\n` +
+    `- "endereco": endereço completo (rua, número, complemento, cidade, estado, CEP)\n` +
+    `- "representanteCargo": cargo ou função na empresa\n` +
+    `- "representanteNacionalidade": nacionalidade (ex: brasileira, portuguesa)\n` +
+    `- "representanteEstadoCivil": estado civil (ex: solteiro, casado, divorciado, viúvo)\n` +
+    `- "representanteProfissao": profissão\n` +
+    `- "representanteRg": número do RG\n\n` +
+    `Responda APENAS em JSON válido, sem markdown. Inclua APENAS os campos que o cliente mencionou explicitamente. Se nenhum campo, retorne {}\n\n` +
+    `Mensagem: ${incomingMessage}`;
+
+  let extracted: Record<string, unknown>;
+  try {
+    const aiResult = await gatewayFamilyCallOpenAI(
+      tenantId,
+      "intelligence_analysis",
+      [{ role: "user", content: extractionPrompt }],
+      { model: "gpt-4.1-mini", maxTokens: 200, temperature: 0.0, log },
+    );
+    const raw = (aiResult.content ?? "{}").trim();
+    extracted = JSON.parse(raw.replace(/^```json\s*/, "").replace(/\s*```$/, "")) as Record<string, unknown>;
+  } catch (err) {
+    log.warn({ err, leadId, tenantId }, "dispatch: contract fields extraction AI call failed (non-fatal)");
+    return;
+  }
+
+  if (Object.keys(extracted).length === 0) return;
+
+  const fieldMap: Record<string, keyof Lead> = {
+    email:                      "email",
+    documento:                  "documento",
+    endereco:                   "endereco",
+    representanteCargo:         "representanteCargo",
+    representanteNacionalidade: "representanteNacionalidade",
+    representanteEstadoCivil:   "representanteEstadoCivil",
+    representanteProfissao:     "representanteProfissao",
+    representanteRg:            "representanteRg",
+  };
+
+  const update: Record<string, unknown> = { updatedAt: new Date() };
+  for (const [key, leadField] of Object.entries(fieldMap)) {
+    const val = extracted[key];
+    if (val && !(lead as Record<string, unknown>)[leadField as string]) {
+      update[leadField as string] = String(val);
+    }
+  }
+
+  if (Object.keys(update).length === 1) return;
+
+  await db
+    .update(leadsTable)
+    .set(update)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+  log.info(
+    { leadId, tenantId, saved: Object.keys(update).filter((k) => k !== "updatedAt") },
+    "dispatch: contract fields extracted and saved",
+  );
 }
 
 // ── Fire-and-forget wrapper ───────────────────────────────────────────────────
