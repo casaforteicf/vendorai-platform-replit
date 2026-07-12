@@ -1083,6 +1083,67 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
     logger.warn({ err }, "startup migrations: arqdor_workspace_projects skipped");
   }
 
+  // ── Arch: arch_ai_renders — jobs assíncronos do Render Studio ────────────────
+  // Table missing in production → INSERT throws "relation does not exist" → 500
+  // causing the frontend to show "Resposta inválida do servidor".
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS arch_ai_renders (
+        id                       TEXT         NOT NULL PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        tenant_id                TEXT         NOT NULL,
+        lead_id                  TEXT,
+        project_id               TEXT,
+        parent_render_id         TEXT,
+        mode                     VARCHAR(20)  NOT NULL DEFAULT 'criar',
+        ambiente                 TEXT         NOT NULL,
+        estilo                   TEXT,
+        iluminacao               TEXT,
+        angulo                   TEXT,
+        mask_zones               JSONB,
+        mask_file_url            TEXT,
+        original_image_url       TEXT,
+        result_image_url         TEXT,
+        segmentation_confidence  JSONB,
+        composited               BOOLEAN      DEFAULT FALSE,
+        version_tag              VARCHAR(30),
+        status                   VARCHAR(30)  DEFAULT 'processando',
+        erro_msg                 TEXT,
+        prompt                   TEXT,
+        motor                    VARCHAR(50),
+        retentativas             VARCHAR(5)   DEFAULT '0',
+        created_at               TIMESTAMP    NOT NULL DEFAULT NOW(),
+        concluido_em             TIMESTAMP
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_arch_ai_renders_tenant ON arch_ai_renders (tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_arch_ai_renders_status ON arch_ai_renders (status)`);
+    logger.info("startup migrations: arch_ai_renders OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: arch_ai_renders skipped");
+  }
+
+  // ── Arch: arch_project_configs — configurações reutilizáveis de render ────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS arch_project_configs (
+        id               TEXT         NOT NULL PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        tenant_id        TEXT         NOT NULL,
+        lead_id          TEXT,
+        nome_config      TEXT         NOT NULL,
+        mode             VARCHAR(20)  NOT NULL DEFAULT 'preservar',
+        estilo           TEXT,
+        iluminacao       TEXT,
+        angulo_padrao    TEXT,
+        paleta_materiais JSONB,
+        created_at       TIMESTAMP    NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_arch_project_configs_tenant ON arch_project_configs (tenant_id)`);
+    logger.info("startup migrations: arch_project_configs OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: arch_project_configs skipped");
+  }
+
   // ── Seed: correct company name for Comercio Brasil / Vendor.ai tenant ────────
   // business_profiles.nome_fantasia must match the WhatsApp Business (WABA)
   // display name "appvendor.ai" so the agent uses the right brand in messages.
