@@ -70,7 +70,7 @@ export default function AgendaClinica() {
   const { data: consultas = [], isLoading, refetch } = useQuery<any[]>({
     queryKey: ["clinic-consultas-week", tenantId, weekIni, weekFim],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/consultas?dataInicio=${weekIni}&dataFim=${weekFim}`, {
+      fetch(`/api/tenants/${tenantId}/clinic/consultas?dataInicio=${weekIni}&dataFim=${weekFim}`, {
         headers: authHeaders(),
       }).then((r) => r.json()),
     enabled: !!tenantId,
@@ -79,7 +79,7 @@ export default function AgendaClinica() {
   const { data: medicos = [] } = useQuery<any[]>({
     queryKey: ["clinic-medicos", tenantId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/medicos`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/clinic/medicos`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId,
   });
@@ -111,7 +111,7 @@ export default function AgendaClinica() {
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/consultas/${id}/status`, {
+      fetch(`/api/tenants/${tenantId}/clinic/consultas/${id}/status`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ status }),

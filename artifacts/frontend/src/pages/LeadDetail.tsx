@@ -481,7 +481,7 @@ export default function LeadDetail() {
     if (!id) return;
     setGerandoSugestao(true);
     try {
-      const res = await fetch(`${getBase()}/api/leads/${id}/conversation-starter`, {
+      const res = await fetch(`/api/leads/${id}/conversation-starter`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
       });

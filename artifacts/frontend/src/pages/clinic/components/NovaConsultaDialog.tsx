@@ -59,7 +59,7 @@ export default function NovaConsultaDialog({
   const { data: leads = [] } = useQuery<any[]>({
     queryKey: ["leads-search", tenantId, clienteSearch],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/leads?limit=10&search=${encodeURIComponent(clienteSearch)}`, {
+      fetch(`/api/tenants/${tenantId}/leads?limit=10&search=${encodeURIComponent(clienteSearch)}`, {
         headers: authHeaders(),
       }).then((r) => r.json()).then((d) => Array.isArray(d) ? d : d.leads ?? []),
     enabled: !!tenantId && clienteSearch.length >= 2,
@@ -68,7 +68,7 @@ export default function NovaConsultaDialog({
   const { data: medicos = [] } = useQuery<any[]>({
     queryKey: ["clinic-medicos", tenantId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/medicos`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/clinic/medicos`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId && open,
   });
@@ -76,7 +76,7 @@ export default function NovaConsultaDialog({
   const { data: especialidades = [] } = useQuery<any[]>({
     queryKey: ["clinic-especialidades", tenantId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/especialidades`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/clinic/especialidades`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId && open,
   });
@@ -93,7 +93,7 @@ export default function NovaConsultaDialog({
 
   const mutation = useMutation({
     mutationFn: (payload: any) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/consultas`, {
+      fetch(`/api/tenants/${tenantId}/clinic/consultas`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload),

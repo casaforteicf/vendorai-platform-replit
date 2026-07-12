@@ -93,7 +93,7 @@ export default function Catalogo() {
     const params = new URLSearchParams({ limit: "50" });
     if (busca)                    params.set("busca", busca);
     if (categoria !== "__all__")  params.set("categoria", categoria);
-    const res = await fetch(`${getBase()}/api/arch/catalogo?${params}`, {
+    const res = await fetch(`/api/arch/catalogo?${params}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) setProdutos(await res.json());
@@ -162,7 +162,7 @@ export default function Catalogo() {
       let produto: Produto;
 
       if (editing) {
-        const res = await fetch(`${getBase()}/api/arch/catalogo/${editing.id}`, {
+        const res = await fetch(`/api/arch/catalogo/${editing.id}`, {
           method: "PATCH",
           headers: authH(),
           body: JSON.stringify(body),
@@ -170,7 +170,7 @@ export default function Catalogo() {
         if (!res.ok) throw new Error("Falha ao atualizar produto.");
         produto = await res.json();
       } else {
-        const res = await fetch(`${getBase()}/api/arch/catalogo`, {
+        const res = await fetch(`/api/arch/catalogo`, {
           method: "POST",
           headers: authH(),
           body: JSON.stringify(body),
@@ -184,7 +184,7 @@ export default function Catalogo() {
         setUploadingImages(true);
         const fd = new FormData();
         files.forEach(f => fd.append("imagens", f));
-        const imgRes = await fetch(`${getBase()}/api/arch/catalogo/${produto.id}/imagens`, {
+        const imgRes = await fetch(`/api/arch/catalogo/${produto.id}/imagens`, {
           method: "POST",
           headers: { Authorization: `Bearer ${getToken()}` },
           body: fd,
@@ -195,7 +195,7 @@ export default function Catalogo() {
 
       // Publish to marketplace if toggled
       if (form.publicarMarketplace && !editing) {
-        await fetch(`${getBase()}/api/arch/marketplace`, {
+        await fetch(`/api/arch/marketplace`, {
           method: "POST",
           headers: authH(),
           body: JSON.stringify({
@@ -221,7 +221,7 @@ export default function Catalogo() {
 
   // ── Delete ─────────────────────────────────────────────────────────────
   async function handleDelete(id: string) {
-    const res = await fetch(`${getBase()}/api/arch/catalogo/${id}`, {
+    const res = await fetch(`/api/arch/catalogo/${id}`, {
       method: "PATCH",
       headers: authH(),
       body: JSON.stringify({ ativo: false }),

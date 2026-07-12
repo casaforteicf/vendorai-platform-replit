@@ -62,7 +62,7 @@ export default function RevenueDashboard() {
 
   const runScout = useMutation({
     mutationFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/scout/run`, {
+      fetch(`/api/tenants/${tenantId}/scout/run`, {
         method: "POST",
         headers: authHeaders(),
       }).then(async (r) => {
@@ -84,7 +84,7 @@ export default function RevenueDashboard() {
   const { data: dash, isLoading: loadingDash } = useQuery<any>({
     queryKey: ["scout-dashboard", tenantId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/scout/dashboard`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/scout/dashboard`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId,
   });
@@ -92,7 +92,7 @@ export default function RevenueDashboard() {
   const { data: oportunidades = [], isLoading: loadingOps } = useQuery<any[]>({
     queryKey: ["scout-oportunidades", tenantId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/scout/oportunidades`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/scout/oportunidades`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId,
   });

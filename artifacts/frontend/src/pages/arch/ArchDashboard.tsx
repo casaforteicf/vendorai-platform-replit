@@ -63,7 +63,7 @@ export default function ArchDashboard() {
   useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
-    fetch(`${getBase()}/api/arch/projetos`, {
+    fetch(`/api/arch/projetos`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
       .then(async (r) => {

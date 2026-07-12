@@ -86,7 +86,7 @@ export default function Oportunidades() {
   const { data: oportunidades = [], isLoading } = useQuery<any[]>({
     queryKey: QK,
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/scout/oportunidades?${qs}`, {
+      fetch(`/api/tenants/${tenantId}/scout/oportunidades?${qs}`, {
         headers: authHeaders(),
       }).then((r) => r.json()),
     enabled: !!tenantId,
@@ -94,7 +94,7 @@ export default function Oportunidades() {
 
   const converter = useMutation({
     mutationFn: (id: string) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/scout/oportunidades/${id}/converter`, {
+      fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}/converter`, {
         method: "POST", headers: authHeaders(),
       }).then(async (r) => {
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro");

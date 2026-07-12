@@ -258,7 +258,7 @@ export default function ProjetoDetalhe() {
   // ── Data loaders ───────────────────────────────────────────────────────
   const loadProjeto = useCallback(async () => {
     if (!projetoId) return;
-    const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}`, {
+    const res = await fetch(`/api/arch/projetos/${projetoId}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (!res.ok) return;
@@ -270,7 +270,7 @@ export default function ProjetoDetalhe() {
   const loadOrcamento = useCallback(async () => {
     if (!projetoId) return;
     setOrcLoading(true);
-    const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/orcamento`, {
+    const res = await fetch(`/api/arch/projetos/${projetoId}/orcamento`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) {
@@ -311,7 +311,7 @@ export default function ProjetoDetalhe() {
   async function gerarIA() {
     setGerandoIA(true);
     try {
-      const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/orcamento/gerar-ia`, {
+      const res = await fetch(`/api/arch/projetos/${projetoId}/orcamento/gerar-ia`, {
         method: "POST",
         headers: authH(),
       });
@@ -365,8 +365,8 @@ export default function ProjetoDetalhe() {
       };
 
       const url = editingItem
-        ? `${getBase()}/api/arch/orcamento/${editingItem.id}`
-        : `${getBase()}/api/arch/projetos/${projetoId}/orcamento`;
+        ? `/api/arch/orcamento/${editingItem.id}`
+        : `/api/arch/projetos/${projetoId}/orcamento`;
 
       const res = await fetch(url, {
         method: editingItem ? "PATCH" : "POST",
@@ -388,7 +388,7 @@ export default function ProjetoDetalhe() {
   }
 
   async function deleteItem(id: string) {
-    const res = await fetch(`${getBase()}/api/arch/orcamento/${id}`, {
+    const res = await fetch(`/api/arch/orcamento/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${getToken()}` },
     });
@@ -402,7 +402,7 @@ export default function ProjetoDetalhe() {
   async function searchCatalogo(busca: string) {
     if (!busca.trim()) { setCatalogResults([]); return; }
     const res = await fetch(
-      `${getBase()}/api/arch/catalogo?busca=${encodeURIComponent(busca)}&limit=10`,
+      `/api/arch/catalogo?busca=${encodeURIComponent(busca)}&limit=10`,
       { headers: { Authorization: `Bearer ${getToken()}` } },
     );
     if (res.ok) setCatalogResults(await res.json());
@@ -420,7 +420,7 @@ export default function ProjetoDetalhe() {
     setVinculando(true);
     try {
       const res = await fetch(
-        `${getBase()}/api/arch/orcamento/${vinculandoItem.id}/vincular-produto`,
+        `/api/arch/orcamento/${vinculandoItem.id}/vincular-produto`,
         { method: "POST", headers: authH(), body: JSON.stringify({ produtoId: selectedProduto.id }) },
       );
       if (!res.ok) throw new Error("Falha ao vincular produto.");
@@ -457,8 +457,8 @@ export default function ProjetoDetalhe() {
         descricao: ambienteForm.descricao || undefined,
       };
       const url = editingAmbiente
-        ? `${getBase()}/api/arch/projetos/${projetoId}/ambientes/${editingAmbiente.id}`
-        : `${getBase()}/api/arch/projetos/${projetoId}/ambientes`;
+        ? `/api/arch/projetos/${projetoId}/ambientes/${editingAmbiente.id}`
+        : `/api/arch/projetos/${projetoId}/ambientes`;
       const res = await fetch(url, {
         method: editingAmbiente ? "PATCH" : "POST",
         headers: authH(),
@@ -480,7 +480,7 @@ export default function ProjetoDetalhe() {
 
   async function deleteAmbiente(id: string) {
     const res = await fetch(
-      `${getBase()}/api/arch/projetos/${projetoId}/ambientes/${id}`,
+      `/api/arch/projetos/${projetoId}/ambientes/${id}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${getToken()}` } },
     );
     if (res.ok || res.status === 204) {
@@ -493,7 +493,7 @@ export default function ProjetoDetalhe() {
   const loadCenas = useCallback(async () => {
     if (!projetoId) return;
     setCenasLoading(true);
-    const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/cenas`, {
+    const res = await fetch(`/api/arch/projetos/${projetoId}/cenas`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) setCenas(await res.json());
@@ -504,7 +504,7 @@ export default function ProjetoDetalhe() {
   const loadSolicitacoes = useCallback(async () => {
     if (!projetoId) return;
     setSolLoading(true);
-    const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/solicitacoes`, {
+    const res = await fetch(`/api/arch/projetos/${projetoId}/solicitacoes`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) setSolicitacoes(await res.json());
@@ -522,7 +522,7 @@ export default function ProjetoDetalhe() {
   function startPolling(cenaId: string) {
     stopPolling(cenaId);
     pollIntervalsRef.current[cenaId] = setInterval(async () => {
-      const res = await fetch(`${getBase()}/api/arch/cenas/${cenaId}/render-status`, {
+      const res = await fetch(`/api/arch/cenas/${cenaId}/render-status`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       if (!res.ok) return;
@@ -569,7 +569,7 @@ export default function ProjetoDetalhe() {
   async function searchCatalogoCenas(busca: string) {
     if (!busca.trim()) { setCatalogCenas([]); return; }
     const res = await fetch(
-      `${getBase()}/api/arch/catalogo?busca=${encodeURIComponent(busca)}&limit=10`,
+      `/api/arch/catalogo?busca=${encodeURIComponent(busca)}&limit=10`,
       { headers: { Authorization: `Bearer ${getToken()}` } },
     );
     if (res.ok) setCatalogCenas(await res.json());
@@ -590,7 +590,7 @@ export default function ProjetoDetalhe() {
           observacoes: cenaForm.observacoes || undefined,
         },
       };
-      const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/cenas`, {
+      const res = await fetch(`/api/arch/projetos/${projetoId}/cenas`, {
         method: "POST",
         headers: authH(),
         body: JSON.stringify(body),
@@ -608,7 +608,7 @@ export default function ProjetoDetalhe() {
 
   async function renderizarCena(cenaId: string) {
     setCenas(prev => prev.map(c => c.id === cenaId ? { ...c, status: "renderizando" } : c));
-    const res = await fetch(`${getBase()}/api/arch/cenas/${cenaId}/renderizar`, {
+    const res = await fetch(`/api/arch/cenas/${cenaId}/renderizar`, {
       method: "POST",
       headers: { Authorization: `Bearer ${getToken()}` },
     });
@@ -623,7 +623,7 @@ export default function ProjetoDetalhe() {
 
   async function deleteCena(cenaId: string) {
     stopPolling(cenaId);
-    const res = await fetch(`${getBase()}/api/arch/cenas/${cenaId}`, {
+    const res = await fetch(`/api/arch/cenas/${cenaId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${getToken()}` },
     });
@@ -637,7 +637,7 @@ export default function ProjetoDetalhe() {
   async function handleActivatePortal() {
     setAtivandoPortal(true);
     try {
-      const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/portal/ativar`, {
+      const res = await fetch(`/api/arch/projetos/${projetoId}/portal/ativar`, {
         method: "POST",
         headers: { Authorization: `Bearer ${getToken()}` },
       });
@@ -664,7 +664,7 @@ export default function ProjetoDetalhe() {
     setRetrying(true);
     try {
       const res = await fetch(
-        `${getBase()}/api/arch/cenas/${sol.cenaId}/solicitacoes/${sol.id}/retry`,
+        `/api/arch/cenas/${sol.cenaId}/solicitacoes/${sol.id}/retry`,
         { method: "POST", headers: authH() },
       );
       if (!res.ok) throw new Error("Falha ao reprocessar.");

@@ -40,7 +40,7 @@ export default function Profissionais() {
   const { data: profissionais = [], isLoading } = useQuery<any[]>({
     queryKey: QK,
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/beauty/profissionais`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/beauty/profissionais`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId,
   });
@@ -48,8 +48,8 @@ export default function Profissionais() {
   const save = useMutation({
     mutationFn: (payload: any) => {
       const url = editing
-        ? `${getBase()}/api/tenants/${tenantId}/beauty/profissionais/${editing.id}`
-        : `${getBase()}/api/tenants/${tenantId}/beauty/profissionais`;
+        ? `/api/tenants/${tenantId}/beauty/profissionais/${editing.id}`
+        : `/api/tenants/${tenantId}/beauty/profissionais`;
       return fetch(url, {
         method: editing ? "PATCH" : "POST",
         headers: authHeaders(),
@@ -69,7 +69,7 @@ export default function Profissionais() {
 
   const toggleAtivo = useMutation({
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/beauty/profissionais/${id}`, {
+      fetch(`/api/tenants/${tenantId}/beauty/profissionais/${id}`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ ativo }),

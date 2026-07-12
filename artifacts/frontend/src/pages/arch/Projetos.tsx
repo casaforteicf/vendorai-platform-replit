@@ -107,7 +107,7 @@ export default function Projetos() {
     const params = new URLSearchParams();
     if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
     if (filterBusca) params.set("clienteNome", filterBusca);
-    fetch(`${getBase()}/api/arch/projetos?${params}`, {
+    fetch(`/api/arch/projetos?${params}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
       .then((r) => r.json())
@@ -131,7 +131,7 @@ export default function Projetos() {
       if (form.areaM2)          body.areaM2          = Number(form.areaM2);
       if (form.prazoEstimado)   body.prazoEstimado   = Number(form.prazoEstimado);
 
-      const res = await fetch(`${getBase()}/api/arch/projetos`, {
+      const res = await fetch(`/api/arch/projetos`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

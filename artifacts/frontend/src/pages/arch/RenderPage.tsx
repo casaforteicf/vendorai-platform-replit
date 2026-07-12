@@ -251,7 +251,7 @@ export default function RenderPage() {
         : []
 
       // ── Novo pipeline assíncrono (mode=preservar usa Flux Kontext Pro) ──
-      const res = await fetch(`${getBase()}/api/arch/ai-render`, {
+      const res = await fetch(`/api/arch/ai-render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({
@@ -278,7 +278,7 @@ export default function RenderPage() {
       const MAX_POLLS = 90 // 3 minutos a 2s
       while (attempts < MAX_POLLS) {
         await new Promise(r => setTimeout(r, 2000))
-        const poll = await fetch(`${getBase()}/api/arch/ai-render/${render_id}`, {
+        const poll = await fetch(`/api/arch/ai-render/${render_id}`, {
           headers: { Authorization: `Bearer ${getToken()}` },
         })
         if (!poll.ok) break
@@ -328,7 +328,7 @@ export default function RenderPage() {
     try {
       const componentesPrompt = `Mantendo EXATAMENTE a geometria, posição dos móveis, dimensões e estrutura da imagem, aplique APENAS as seguintes mudanças:\n${parts.map((p, i) => `${i + 1}. ${p}`).join('\n')}\nNão altere móveis, estrutura, iluminação geral, estilo ou composição.`
 
-      const res = await fetch(`${getBase()}/api/arch/ai-render`, {
+      const res = await fetch(`/api/arch/ai-render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({
@@ -344,7 +344,7 @@ export default function RenderPage() {
       let attempts = 0
       while (attempts < 90) {
         await new Promise(r => setTimeout(r, 2000))
-        const poll = await fetch(`${getBase()}/api/arch/ai-render/${render_id}`, {
+        const poll = await fetch(`/api/arch/ai-render/${render_id}`, {
           headers: { Authorization: `Bearer ${getToken()}` },
         })
         if (!poll.ok) break
@@ -373,7 +373,7 @@ export default function RenderPage() {
         acc[zone] = mat.name
         return acc
       }, {} as Record<string, string>)
-      const res = await fetch(`${getBase()}/api/arch/project-config`, {
+      const res = await fetch(`/api/arch/project-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({
@@ -400,7 +400,7 @@ export default function RenderPage() {
     if (!selectedLead || !rs.renderResult) return
     setSavingLead(true)
     try {
-      const res = await fetch(`${getBase()}/api/tenants/${tenantId}/activities`, {
+      const res = await fetch(`/api/tenants/${tenantId}/activities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({

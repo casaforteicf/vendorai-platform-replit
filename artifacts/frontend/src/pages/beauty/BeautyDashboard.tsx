@@ -46,7 +46,7 @@ export default function BeautyDashboard() {
   const { data: agendamentosHoje = [], isLoading: loadingHoje, refetch: refetchHoje } = useQuery<any[]>({
     queryKey: ["beauty-agendamentos", tenantId, today],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/beauty/agendamentos?data=${today}`, {
+      fetch(`/api/tenants/${tenantId}/beauty/agendamentos?data=${today}`, {
         headers: authHeaders(),
       }).then((r) => r.json()),
     enabled: !!tenantId,
@@ -58,7 +58,7 @@ export default function BeautyDashboard() {
       const ini = format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), "yyyy-MM-dd");
       const fim = format(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0), "yyyy-MM-dd");
       return fetch(
-        `${getBase()}/api/tenants/${tenantId}/beauty/agendamentos?dataInicio=${ini}&dataFim=${fim}`,
+        `/api/tenants/${tenantId}/beauty/agendamentos?dataInicio=${ini}&dataFim=${fim}`,
         { headers: authHeaders() }
       ).then((r) => r.json());
     },

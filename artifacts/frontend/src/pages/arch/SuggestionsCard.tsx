@@ -29,7 +29,7 @@ export default function SuggestionsCard({ referenceImageUrl, projectId }: Sugges
     setError(null)
     setSaved(false)
     try {
-      const res = await fetch(`${getBase()}/api/arch/suggestions`, {
+      const res = await fetch(`/api/arch/suggestions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

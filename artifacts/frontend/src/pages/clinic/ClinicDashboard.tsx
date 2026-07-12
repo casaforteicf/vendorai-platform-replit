@@ -44,7 +44,7 @@ export default function ClinicDashboard() {
   const { data: consultasHoje = [], isLoading: loadingHoje, refetch } = useQuery<any[]>({
     queryKey: ["clinic-consultas", tenantId, today],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/consultas?data=${today}`, {
+      fetch(`/api/tenants/${tenantId}/clinic/consultas?data=${today}`, {
         headers: authHeaders(),
       }).then((r) => r.json()),
     enabled: !!tenantId,
@@ -55,7 +55,7 @@ export default function ClinicDashboard() {
     queryFn: () => {
       const ini = format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), "yyyy-MM-dd");
       const fim = format(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0), "yyyy-MM-dd");
-      return fetch(`${getBase()}/api/tenants/${tenantId}/clinic/consultas?dataInicio=${ini}&dataFim=${fim}`, {
+      return fetch(`/api/tenants/${tenantId}/clinic/consultas?dataInicio=${ini}&dataFim=${fim}`, {
         headers: authHeaders(),
       }).then((r) => r.json());
     },

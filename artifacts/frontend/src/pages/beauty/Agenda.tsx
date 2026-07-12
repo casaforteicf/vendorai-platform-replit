@@ -73,7 +73,7 @@ export default function BeautyAgenda() {
     queryKey: ["beauty-agendamentos-week", tenantId, weekIni, weekFim],
     queryFn: () =>
       fetch(
-        `${getBase()}/api/tenants/${tenantId}/beauty/agendamentos?dataInicio=${weekIni}&dataFim=${weekFim}`,
+        `/api/tenants/${tenantId}/beauty/agendamentos?dataInicio=${weekIni}&dataFim=${weekFim}`,
         { headers: authHeaders() }
       ).then((r) => r.json()),
     enabled: !!tenantId,
@@ -82,7 +82,7 @@ export default function BeautyAgenda() {
   const { data: profissionais = [] } = useQuery<any[]>({
     queryKey: ["beauty-profissionais", tenantId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/beauty/profissionais`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/beauty/profissionais`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId,
   });
@@ -117,7 +117,7 @@ export default function BeautyAgenda() {
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/beauty/agendamentos/${id}/status`, {
+      fetch(`/api/tenants/${tenantId}/beauty/agendamentos/${id}/status`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ status }),

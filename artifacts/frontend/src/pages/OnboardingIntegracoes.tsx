@@ -133,7 +133,7 @@ export default function OnboardingIntegracoes() {
   async function connectWhatsApp() {
     try {
       const token = getToken();
-      const res = await fetch(`${getBase()}/api/auth/whatsapp`, {
+      const res = await fetch(`/api/auth/whatsapp`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

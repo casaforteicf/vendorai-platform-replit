@@ -529,8 +529,8 @@ export default function Dashboard() {
     try {
       const headers = getToken() ? { Authorization: `Bearer ${getToken()}` } : {} as Record<string, string>;
       const [dashRes, placesRes] = await Promise.all([
-        fetch(`${getBase()}/api/dashboard`, { headers }),
-        fetch(`${getBase()}/api/prospector/tenant/api-usage?api=google_places`, { headers }),
+        fetch(`/api/dashboard`, { headers }),
+        fetch(`/api/prospector/tenant/api-usage?api=google_places`, { headers }),
       ]);
       if (!dashRes.ok) throw new Error(`HTTP ${dashRes.status}`);
       setData(await dashRes.json());

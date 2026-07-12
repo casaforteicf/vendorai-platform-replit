@@ -58,7 +58,7 @@ export default function NovoAgendamentoDialog({
   const { data: leads = [] } = useQuery<any[]>({
     queryKey: ["leads-search", tenantId, clienteSearch],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/leads?limit=10&search=${encodeURIComponent(clienteSearch)}`, {
+      fetch(`/api/tenants/${tenantId}/leads?limit=10&search=${encodeURIComponent(clienteSearch)}`, {
         headers: authHeaders(),
       }).then((r) => r.json()).then((d) => Array.isArray(d) ? d : d.leads ?? []),
     enabled: !!tenantId && clienteSearch.length >= 2,
@@ -67,7 +67,7 @@ export default function NovoAgendamentoDialog({
   const { data: servicos = [] } = useQuery<any[]>({
     queryKey: ["beauty-servicos", tenantId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/beauty/servicos`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/beauty/servicos`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId && open,
   });
@@ -75,7 +75,7 @@ export default function NovoAgendamentoDialog({
   const { data: profissionais = [] } = useQuery<any[]>({
     queryKey: ["beauty-profissionais", tenantId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/beauty/profissionais`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/beauty/profissionais`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId && open,
   });
@@ -84,7 +84,7 @@ export default function NovoAgendamentoDialog({
 
   const mutation = useMutation({
     mutationFn: (payload: any) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/beauty/agendamentos`, {
+      fetch(`/api/tenants/${tenantId}/beauty/agendamentos`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload),

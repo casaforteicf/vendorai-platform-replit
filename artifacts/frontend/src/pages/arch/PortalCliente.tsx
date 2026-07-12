@@ -490,7 +490,7 @@ export default function PortalCliente() {
 
   useEffect(() => {
     if (!token) return;
-    fetch(`${getBase()}/api/arch/portal/${token}`)
+    fetch(`/api/arch/portal/${token}`)
       .then(async res => {
         if (!res.ok) { setNotFound(true); setLoading(false); return; }
         setData(await res.json());

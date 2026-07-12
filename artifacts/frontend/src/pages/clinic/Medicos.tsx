@@ -45,7 +45,7 @@ export default function Medicos() {
   const { data: medicos = [], isLoading } = useQuery<any[]>({
     queryKey: QK_MEDICOS,
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/medicos`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/clinic/medicos`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId,
   });
@@ -53,7 +53,7 @@ export default function Medicos() {
   const { data: especialidades = [] } = useQuery<any[]>({
     queryKey: QK_ESPS,
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/especialidades`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/clinic/especialidades`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId,
   });
@@ -61,8 +61,8 @@ export default function Medicos() {
   const save = useMutation({
     mutationFn: (payload: any) => {
       const url = editing
-        ? `${getBase()}/api/tenants/${tenantId}/clinic/medicos/${editing.id}`
-        : `${getBase()}/api/tenants/${tenantId}/clinic/medicos`;
+        ? `/api/tenants/${tenantId}/clinic/medicos/${editing.id}`
+        : `/api/tenants/${tenantId}/clinic/medicos`;
       return fetch(url, {
         method: editing ? "PATCH" : "POST",
         headers: authHeaders(),
@@ -82,7 +82,7 @@ export default function Medicos() {
 
   const toggleAtivo = useMutation({
     mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/medicos/${id}`, {
+      fetch(`/api/tenants/${tenantId}/clinic/medicos/${id}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify({ ativo }),
       }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK_MEDICOS }),
@@ -91,7 +91,7 @@ export default function Medicos() {
 
   const addEspecialidade = useMutation({
     mutationFn: (nome: string) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/especialidades`, {
+      fetch(`/api/tenants/${tenantId}/clinic/especialidades`, {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ nome, duracaoMinutos: 30 }),
       }).then(async (r) => {

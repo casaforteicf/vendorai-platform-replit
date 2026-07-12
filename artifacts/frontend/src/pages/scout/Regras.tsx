@@ -75,7 +75,7 @@ export default function Regras() {
   const { data: regras = [], isLoading } = useQuery<any[]>({
     queryKey: QK,
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/scout/regras`, { headers: authHeaders() })
+      fetch(`/api/tenants/${tenantId}/scout/regras`, { headers: authHeaders() })
         .then((r) => r.json()),
     enabled: !!tenantId,
   });
@@ -97,7 +97,7 @@ export default function Regras() {
 
   const create = useMutation({
     mutationFn: (payload: any) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/scout/regras`, {
+      fetch(`/api/tenants/${tenantId}/scout/regras`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(payload),
       }).then(async (r) => {
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro");
@@ -113,7 +113,7 @@ export default function Regras() {
 
   const toggle = useMutation({
     mutationFn: (id: string) =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/scout/regras/${id}/toggle`, {
+      fetch(`/api/tenants/${tenantId}/scout/regras/${id}/toggle`, {
         method: "PATCH", headers: authHeaders(),
       }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),

@@ -118,7 +118,7 @@ export default function Marketplace() {
     const params = new URLSearchParams({ limit: "40" });
     if (busca)                   params.set("busca", busca);
     if (catFilter !== "__all__") params.set("categoria", catFilter);
-    const res = await fetch(`${getBase()}/api/arch/marketplace?${params}`, {
+    const res = await fetch(`/api/arch/marketplace?${params}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) setItems(await res.json());
@@ -129,7 +129,7 @@ export default function Marketplace() {
   const loadMeusProdutos = useCallback(async () => {
     if (meusProdutosLoaded) return;
     setMeusProdutosLoading(true);
-    const res = await fetch(`${getBase()}/api/arch/marketplace/meus-produtos`, {
+    const res = await fetch(`/api/arch/marketplace/meus-produtos`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) setMeusProdutos(await res.json());
@@ -140,7 +140,7 @@ export default function Marketplace() {
   const loadPedidos = useCallback(async () => {
     if (pedidosLoaded) return;
     setPedidosLoading(true);
-    const res = await fetch(`${getBase()}/api/arch/marketplace/pedidos`, {
+    const res = await fetch(`/api/arch/marketplace/pedidos`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) setPedidos(await res.json());
@@ -151,7 +151,7 @@ export default function Marketplace() {
   const loadVendas = useCallback(async () => {
     if (vendasLoaded) return;
     setVendasLoading(true);
-    const res = await fetch(`${getBase()}/api/arch/marketplace/vendas`, {
+    const res = await fetch(`/api/arch/marketplace/vendas`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) {
@@ -165,7 +165,7 @@ export default function Marketplace() {
 
   const loadProjetos = useCallback(async () => {
     if (projetos.length > 0) return;
-    const res = await fetch(`${getBase()}/api/arch/projetos?limit=50`, {
+    const res = await fetch(`/api/arch/projetos?limit=50`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (res.ok) {
@@ -188,7 +188,7 @@ export default function Marketplace() {
     if (!buying) return;
     setSubmittingBuy(true);
     try {
-      const res = await fetch(`${getBase()}/api/arch/marketplace/${buying.id}/comprar`, {
+      const res = await fetch(`/api/arch/marketplace/${buying.id}/comprar`, {
         method: "POST",
         headers: authH(),
         body: JSON.stringify({
@@ -214,7 +214,7 @@ export default function Marketplace() {
   async function toggleAtivo(item: MarketplaceItem) {
     setTogglingId(item.id);
     try {
-      const res = await fetch(`${getBase()}/api/arch/marketplace/${item.id}`, {
+      const res = await fetch(`/api/arch/marketplace/${item.id}`, {
         method: "PATCH",
         headers: authH(),
         body: JSON.stringify({ ativo: !item.ativo }),

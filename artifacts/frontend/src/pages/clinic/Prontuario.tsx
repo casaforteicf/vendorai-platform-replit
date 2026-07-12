@@ -48,7 +48,7 @@ export default function Prontuario() {
   const { data: consulta, isLoading: loadingConsulta } = useQuery<any>({
     queryKey: ["clinic-consulta", tenantId, consultaId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/consultas/${consultaId}`, {
+      fetch(`/api/tenants/${tenantId}/clinic/consultas/${consultaId}`, {
         headers: authHeaders(),
       }).then((r) => r.json()),
     enabled: !!tenantId && !!consultaId,
@@ -58,7 +58,7 @@ export default function Prontuario() {
   const { data: prontuario, isLoading: loadingPron } = useQuery<any>({
     queryKey: ["clinic-prontuario", tenantId, consultaId],
     queryFn: () =>
-      fetch(`${getBase()}/api/tenants/${tenantId}/clinic/prontuarios/consulta/${consultaId}`, {
+      fetch(`/api/tenants/${tenantId}/clinic/prontuarios/consulta/${consultaId}`, {
         headers: authHeaders(),
       }).then((r) => r.json()),
     enabled: !!tenantId && !!consultaId,
@@ -116,13 +116,13 @@ export default function Prontuario() {
       };
 
       if (prontuarioId) {
-        const r = await fetch(`${getBase()}/api/tenants/${tenantId}/clinic/prontuarios/${prontuarioId}`, {
+        const r = await fetch(`/api/tenants/${tenantId}/clinic/prontuarios/${prontuarioId}`, {
           method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload),
         });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro");
         return r.json();
       } else {
-        const r = await fetch(`${getBase()}/api/tenants/${tenantId}/clinic/prontuarios`, {
+        const r = await fetch(`/api/tenants/${tenantId}/clinic/prontuarios`, {
           method: "POST", headers: authHeaders(),
           body: JSON.stringify({
             ...payload,
