@@ -37,7 +37,10 @@ export function requireRole(...roles: PlatformRole[]): RequestHandler {
       res.status(401).json({ error: "Unauthenticated" });
       return;
     }
-    if (!roles.includes(req.user.platformRole)) {
+    const hasRole = roles.includes(req.user.platformRole);
+    const isAdminFn = req.user.userFunction === "administrador";
+    const grantedViaAdminFn = isAdminFn && roles.includes("tenant_admin");
+    if (!hasRole && !grantedViaAdminFn) {
       res.status(403).json({ error: "Insufficient permissions" });
       return;
     }
