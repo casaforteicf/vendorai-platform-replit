@@ -1307,9 +1307,9 @@ async function orchestrateProspectCampaigns(log: Logger): Promise<void> {
 }
 
 // ── Job 14: No-response closing message ──────────────────────────────────────
-// After the agent sends 3+ consecutive messages with no reply from the lead,
-// and 5 days have passed since the last outbound message, send a polite farewell
-// and move the lead to "aquecimento" status.
+// After the agent sends 2+ consecutive messages with no reply from the lead,
+// and 24h have passed since the last outbound message, send a polite farewell,
+// move the lead to "aquecimento" status, and move the deal to "em_aquecimento".
 
 const CLOSING_AGENT_TAG = "encerramento_auto";
 const FAREWELL_MESSAGE =
@@ -1318,7 +1318,7 @@ const FAREWELL_MESSAGE =
 async function runNoResponseClosingMessage(log: Logger): Promise<void> {
   log.info("scheduler/no-response-closing: starting");
 
-  const fiveDaysAgo   = new Date(Date.now() - 5  * 24 * 60 * 60 * 1000);
+  const oneDayAgo     = new Date(Date.now() -  1 * 24 * 60 * 60 * 1000);
   const sixtyDaysAgo  = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
@@ -1335,7 +1335,7 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
 
   const tenantIds = autonomousTenants.map((t) => t.tenantId);
 
-  // Find conversations inactive for 5-60 days (outbound last, lead has phone, not already aquecimento)
+  // Find conversations inactive for 1-60 days (outbound last, lead has phone, not already aquecimento)
   const candidates = await db
     .select({
       conversationId: conversationsTable.id,
@@ -1350,7 +1350,7 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
     .where(
       and(
         inArray(conversationsTable.tenantId, tenantIds),
-        lte(conversationsTable.ultimaMensagemEm, fiveDaysAgo),
+        lte(conversationsTable.ultimaMensagemEm, oneDayAgo),
         gte(conversationsTable.ultimaMensagemEm, sixtyDaysAgo),
         isNotNull(leadsTable.telefone),
       )
@@ -1390,7 +1390,7 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
         else break;
       }
 
-      if (consecutiveOut < 3) {
+      if (consecutiveOut < 2) {
         totalSkipped++;
         continue;
       }
@@ -1439,8 +1439,28 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
         .set({ status: "aquecimento", updatedAt: new Date() })
         .where(eq(leadsTable.id, conv.leadId));
 
+      // Move deal to em_aquecimento stage
+      const [activeDeal] = await db
+        .select({ id: dealsTable.id })
+        .from(dealsTable)
+        .where(
+          and(
+            eq(dealsTable.leadId, conv.leadId),
+            eq(dealsTable.tenantId, conv.tenantId),
+            inArray(dealsTable.etapa, ["novo", "qualificado", "proposta", "negociacao"]),
+          )
+        )
+        .orderBy(desc(dealsTable.createdAt))
+        .limit(1);
+      if (activeDeal) {
+        await db
+          .update(dealsTable)
+          .set({ etapa: "em_aquecimento", updatedAt: new Date() })
+          .where(eq(dealsTable.id, activeDeal.id));
+      }
+
       totalClosed++;
-      log.info({ leadId: conv.leadId, tenantId: conv.tenantId, consecutiveOut }, "scheduler/no-response-closing: farewell sent, lead → aquecimento");
+      log.info({ leadId: conv.leadId, tenantId: conv.tenantId, consecutiveOut, dealMoved: !!activeDeal }, "scheduler/no-response-closing: farewell sent, lead → aquecimento");
     } catch (err) {
       log.error({ err, leadId: conv.leadId }, "scheduler/no-response-closing: error (non-fatal)");
     }

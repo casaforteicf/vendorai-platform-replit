@@ -1214,6 +1214,61 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup seed: vendorai-institucional skipped");
   }
+
+  // ── Backfill: move leads with 2+ consecutive outbound messages (no reply) ──
+  // Applies the new cadence-closing rule retroactively to existing leads that
+  // have already exceeded 2 unanswered attempts. Runs via raw SQL for performance.
+  try {
+    // Step 1: get candidate conversations — last message > 1 day ago, lead not yet aquecimento
+    const staleConvs = await db.execute(sql`
+      SELECT c.id AS conversation_id, c.lead_id, c.tenant_id
+      FROM conversations c
+      INNER JOIN leads l ON l.id = c.lead_id
+      WHERE l.status != 'aquecimento'
+        AND l.telefone IS NOT NULL
+        AND c.ultima_mensagem_em < NOW() - INTERVAL '1 day'
+        AND c.ultima_mensagem_em > NOW() - INTERVAL '60 days'
+    `);
+
+    // Step 2: check consecutive outbound tail per conversation, move eligible leads
+    let backfillMoved = 0;
+    const rows = (staleConvs as { rows: Array<{ conversation_id: string; lead_id: string; tenant_id: string }> }).rows ?? [];
+    for (const row of rows) {
+      const { conversation_id, lead_id, tenant_id } = row;
+      const recentMsgs = await db.execute(sql`
+        SELECT direcao FROM messages
+        WHERE conversation_id = ${conversation_id}
+        ORDER BY created_at DESC
+        LIMIT 10
+      `);
+      const msgs = (recentMsgs as { rows: Array<{ direcao: string }> }).rows ?? [];
+      let consecutiveOut = 0;
+      for (const m of msgs) {
+        if (m.direcao === "saida") consecutiveOut++;
+        else break;
+      }
+      if (consecutiveOut < 2) continue;
+
+      await db.execute(sql`
+        UPDATE leads SET status = 'aquecimento', updated_at = NOW()
+        WHERE id = ${lead_id} AND status != 'aquecimento'
+      `);
+      await db.execute(sql`
+        UPDATE deals SET etapa = 'em_aquecimento', updated_at = NOW()
+        WHERE id = (
+          SELECT id FROM deals
+          WHERE lead_id = ${lead_id} AND tenant_id = ${tenant_id}
+            AND etapa NOT IN ('ganho', 'perdido', 'em_aquecimento')
+          ORDER BY created_at DESC
+          LIMIT 1
+        )
+      `);
+      backfillMoved++;
+    }
+    logger.info({ backfillMoved }, "startup backfill: cadence-closing leads → aquecimento OK");
+  } catch (err) {
+    logger.warn({ err }, "startup backfill: cadence-closing backfill skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

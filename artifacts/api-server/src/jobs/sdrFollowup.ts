@@ -83,14 +83,47 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
         .limit(1);
 
       if (followupSent) {
-        // Follow-up already sent — check if 72h+ since follow-up → reactivation
+        // Follow-up already sent — check if 72h+ since follow-up → aquecimento
         const hoursSinceFollowup = (now.getTime() - (sentAt?.getTime() ?? 0)) / 3_600_000;
         if (hoursSinceFollowup >= REACTIVATION_WINDOW_H) {
-          // Move lead status to "reativacao" (nutrição)
+          // Move lead to aquecimento (long-term nurturing, not active outreach)
           await db
             .update(leadsTable)
-            .set({ status: "inativo" })
+            .set({ status: "aquecimento" })
             .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+          // Move deal to em_aquecimento stage
+          if (dealId) {
+            await db
+              .update(dealsTable)
+              .set({ etapa: "em_aquecimento", updatedAt: new Date() })
+              .where(
+                and(
+                  eq(dealsTable.id, dealId),
+                  eq(dealsTable.tenantId, tenantId),
+                  not(inArray(dealsTable.etapa, ["ganho", "perdido", "em_aquecimento"])),
+                )
+              );
+          } else {
+            // fallback: find the most-recent active deal for this lead
+            const [activeDeal] = await db
+              .select({ id: dealsTable.id })
+              .from(dealsTable)
+              .where(
+                and(
+                  eq(dealsTable.leadId, leadId),
+                  eq(dealsTable.tenantId, tenantId),
+                  not(inArray(dealsTable.etapa, ["ganho", "perdido", "em_aquecimento"])),
+                )
+              )
+              .orderBy(desc(dealsTable.createdAt))
+              .limit(1);
+            if (activeDeal) {
+              await db
+                .update(dealsTable)
+                .set({ etapa: "em_aquecimento", updatedAt: new Date() })
+                .where(eq(dealsTable.id, activeDeal.id));
+            }
+          }
           movedToReactivation++;
         }
         continue;
