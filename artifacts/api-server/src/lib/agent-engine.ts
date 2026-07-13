@@ -688,6 +688,50 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     }
   }
 
+  // ── Personalização com dados do Prospector / Google Places ────────────────
+  // Para qualquer lead de cold outreach (independente da origem), usar os dados
+  // reais do negócio para personalizar a abordagem — nunca abrir com genérico.
+  if (scenario?.cold_outreach) {
+    const meta = (lead.metadata ?? {}) as Record<string, unknown>;
+    const cidade = (meta.cidade as string | undefined) ?? null;
+    const setor  = (meta.setor  as string | undefined) ?? lead.mercadoSegmento ?? null;
+
+    const contexto: string[] = [];
+    if (lead.empresa) contexto.push(`Empresa: ${lead.empresa}`);
+    if (setor)        contexto.push(`Setor/nicho: ${setor}`);
+    if (cidade)       contexto.push(`Cidade: ${cidade}`);
+
+    if (contexto.length > 0) {
+      parts.push(
+        "## CONTEXTO DO NEGÓCIO (personalização obrigatória na abertura)\n" +
+        "NUNCA abra com 'Oi, tudo bem?' genérico. Use os dados abaixo para criar uma abertura específica:\n" +
+        contexto.map((c) => `- ${c}`).join("\n") + "\n" +
+        "Demonstre que você pesquisou o negócio antes de contatar — mencione o segmento ou cidade de forma natural, " +
+        "como alguém que conhece o mercado local. Ex: 'Vi que vocês são do ramo de [setor] em [cidade]...'",
+      );
+    }
+  }
+
+  // ── Diagnóstico de maturidade em IA ──────────────────────────────────────
+  // Quando ainda não temos o score de maturidade do lead, o agente deve conduzir
+  // perguntas diagnósticas de forma natural ao longo da conversa.
+  const leadAny = lead as Record<string, unknown>;
+  const maturidadeConhecida = leadAny.maturidadeIA != null;
+  if (!maturidadeConhecida && scenario?.cold_outreach) {
+    parts.push(
+      "## DIAGNÓSTICO DE MATURIDADE EM IA (obrigatório — não sinalizar ao lead)\n" +
+      "Ainda não sabemos o nível de automação deste negócio. Ao longo da conversa, conduza NATURALMENTE " +
+      "(nunca como questionário formal) perguntas que revelem:\n" +
+      "1. Como ATENDEM clientes hoje — WhatsApp manual? Quem responde? Quantas pessoas?\n" +
+      "2. Se usam ALGUM SISTEMA — CRM, software, app, planilha ou só o WhatsApp comum\n" +
+      "3. VOLUME de atendimento — quantas mensagens/clientes por dia aproximadamente\n" +
+      "4. Se PERDEM VENDAS fora do horário ou por demora na resposta\n" +
+      "5. Se já TESTARAM ou ouviram falar de IA / chatbot / automação\n" +
+      "Faça uma pergunta por vez, de forma orgânica. " +
+      "Score de maturidade (para contexto interno): 1=tudo manual, 2=tem sistema sem IA, 3=já usa IA/automação.",
+    );
+  }
+
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
     if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
@@ -853,15 +897,15 @@ export function buildFollowupPrompt(customPrompt: string | undefined, ctx: Agent
   } else if (isPrimeiroContato) {
     parts.push(
       "Você é um especialista em primeiro contato comercial B2B.\n" +
-      "Missão: apresentar-se de forma calorosa, colocar-se à disposição e despertar interesse genuíno — sem pressão.\n" +
-      "Regras:\n" +
+      "Missão: apresentar-se de forma calorosa e despertar interesse genuíno — sem pressão.\n" +
+      "REGRAS ESTRITAS — esta é a abertura de relacionamento:\n" +
       "- Responda em português brasileiro, tom acolhedor e genuinamente prestativo\n" +
-      "- Máximo 2 parágrafos curtos\n" +
+      "- MÁXIMO 1 parágrafo curto (2-3 frases) — UMA ÚNICA mensagem de texto\n" +
       "- É o PRIMEIRO contato: NÃO mencione 'nossa última interação', 'tempo que passou' ou qualquer referência a conversa anterior\n" +
-      "- Diga que está feliz em poder atender e que está à disposição\n" +
-      "- Mencione, de forma natural, que sabe da busca do lead e que pode apoiar nessa jornada\n" +
-      "- Encerre perguntando se há algo específico que faça mais sentido abordar agora\n" +
-      "- Seja breve, humano e deixe espaço para o lead responder"
+      "- Apresente-se brevemente e deixe claro que está à disposição para ajudar\n" +
+      "- Faça UMA ÚNICA pergunta aberta e simples para entender o que o lead precisa\n" +
+      "- NÃO produza dois blocos separados de texto — tudo em uma única mensagem contínua\n" +
+      "- Seja humano, direto e deixe espaço para o lead responder"
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else {
@@ -906,15 +950,15 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
   } else if (isPrimeiroContato) {
     parts.push(
       "Você é um especialista em primeiro contato comercial B2B.\n" +
-      "Missão: apresentar-se de forma calorosa, colocar-se à disposição e despertar interesse genuíno — sem pressão.\n" +
-      "Regras:\n" +
+      "Missão: apresentar-se de forma calorosa e despertar interesse genuíno — sem pressão.\n" +
+      "REGRAS ESTRITAS — esta é a abertura de relacionamento:\n" +
       "- Responda em português brasileiro, tom acolhedor e genuinamente prestativo\n" +
-      "- Máximo 2 parágrafos curtos\n" +
+      "- MÁXIMO 1 parágrafo curto (2-3 frases) — UMA ÚNICA mensagem de texto\n" +
       "- É o PRIMEIRO contato: NÃO mencione 'nossa última interação', 'tempo que passou' ou qualquer referência a conversa anterior\n" +
-      "- Diga que está feliz em poder atender e que está à disposição\n" +
-      "- Mencione, de forma natural, que sabe da busca do lead e que pode apoiar nessa jornada\n" +
-      "- Encerre perguntando se há algo específico que faça mais sentido abordar agora\n" +
-      "- Seja breve, humano e deixe espaço para o lead responder"
+      "- Apresente-se brevemente e deixe claro que está à disposição para ajudar\n" +
+      "- Faça UMA ÚNICA pergunta aberta e simples para entender o que o lead precisa\n" +
+      "- NÃO produza dois blocos separados de texto — tudo em uma única mensagem contínua\n" +
+      "- Seja humano, direto e deixe espaço para o lead responder"
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else {

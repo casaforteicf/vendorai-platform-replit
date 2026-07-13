@@ -911,11 +911,22 @@ Se fizer sentido, te mostro em 10 minutos como funciona.',
     await db.execute(sql`
       INSERT INTO sdr_templates (id, tenant_id, cenario, ordem, delay_horas, template, ativo)
       SELECT gen_random_uuid()::text, NULL, 'inbound_site', 1, 0,
-        'Oi {dono_nome}! Aqui é da VendorAI — recebi sua mensagem pelo site e quero entender melhor o que você precisa 🙂
+        'Oi {dono_nome}! Aqui é da appvendor.ai — recebi sua mensagem pelo site e quero entender melhor o que você precisa 🙂
 
 Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso consigo te mostrar algo realmente útil.',
         true
       WHERE NOT EXISTS (SELECT 1 FROM sdr_templates WHERE tenant_id IS NULL AND cenario = 'inbound_site' AND ordem = 1)
+    `);
+    await db.execute(sql`
+      UPDATE sdr_templates
+      SET    template    = 'Oi {dono_nome}! Aqui é da appvendor.ai — recebi sua mensagem pelo site e quero entender melhor o que você precisa 🙂
+
+Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso consigo te mostrar algo realmente útil.',
+             updated_at  = NOW()
+      WHERE  tenant_id IS NULL
+        AND  cenario     = 'inbound_site'
+        AND  ordem       = 1
+        AND  template LIKE '%VendorAI%'
     `);
     // Pesquisa de maturidade em IA/automação
     await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS maturidade_ia INTEGER`);

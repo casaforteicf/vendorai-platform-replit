@@ -6,7 +6,7 @@
  *   - routes/webhooks.ts  (fire-and-forget after WhatsApp message insert)
  *   - jobs/scheduler.ts   (campaign message dispatch)
  */
-import { and, desc, eq, gte, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNull, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -470,6 +470,32 @@ export async function processAgentInternal(params: {
         log.warn({ err, tenantId, leadId }, "dispatch: delivery feedback handling failed");
       });
       return { status: "skipped", reason: "delivery_feedback_handled" };
+    }
+
+    // 2b3. Reactivation dedup guard — proactive reactivation dispatches (churn-check +
+    // reactivation-queue) can both fire for the same lead within minutes of each other.
+    // Before sending, ensure no outbound WhatsApp was sent in the last 4h for this lead.
+    const isProactiveReactivation =
+      forcedAgent === "reactivation" ||
+      mensagem.startsWith("PROATIVO:");
+    if (isProactiveReactivation) {
+      const reactivationCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000);
+      const [recentOutbound] = await db
+        .select({ id: messagesTable.id })
+        .from(messagesTable)
+        .where(
+          and(
+            eq(messagesTable.tenantId, tenantId),
+            eq(messagesTable.leadId, leadId),
+            eq(messagesTable.direcao, "saida"),
+            gt(messagesTable.createdAt, reactivationCutoff),
+          )
+        )
+        .limit(1);
+      if (recentOutbound) {
+        log.info({ tenantId, leadId }, "dispatch: reactivation dedup — outbound found in last 4h, skipping");
+        return { status: "skipped", reason: "reactivation_dedup" };
+      }
     }
 
     // 2b3. Pending sequence offer (Revenue Scout) — só intercepta se a resposta
