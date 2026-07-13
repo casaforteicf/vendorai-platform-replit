@@ -81,16 +81,14 @@ function authHeader(): Record<string, string> {
   const tok = localStorage.getItem("vendorai_token") ?? "";
   return tok ? { Authorization: `Bearer ${tok}` } : {};
 }
-const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-
 async function apiPost(path: string, body: unknown) {
-  const res = await fetch(`${BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeader() } as Record<string, string>, body: JSON.stringify(body) });
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...authHeader() } as Record<string, string>, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as any).error ?? `Erro ${res.status}`);
   return data;
 }
 async function apiGet(path: string) {
-  const res = await fetch(`${BASE}${path}`, { headers: authHeader() as HeadersInit });
+  const res = await fetch(path, { headers: authHeader() as HeadersInit });
   if (!res.ok) throw new Error(`Erro ${res.status}`);
   return res.json().catch(() => { throw new Error("Resposta inválida do servidor"); });
 }
