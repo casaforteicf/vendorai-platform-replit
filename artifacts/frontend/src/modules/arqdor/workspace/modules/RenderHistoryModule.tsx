@@ -135,7 +135,7 @@ function EmptyGallery() {
       </div>
 
       <a
-        href="/arch/render"
+        href={`${import.meta.env.BASE_URL}arch/render`}
         style={{
           display:'inline-block', padding:'12px 28px', borderRadius:10,
           background:`linear-gradient(135deg, ${T.purple} 0%, #5b21b6 100%)`,
@@ -504,7 +504,7 @@ export function RenderHistoryModule() {
           </button>
 
           <a
-            href="/arch/render"
+            href={`${import.meta.env.BASE_URL}arch/render`}
             className="rg-btn"
             style={{
               padding:'6px 14px', borderRadius:8, border:'none',

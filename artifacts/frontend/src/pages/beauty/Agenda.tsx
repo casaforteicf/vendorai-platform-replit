@@ -179,7 +179,7 @@ export default function BeautyAgenda() {
           <p className="text-sm text-muted-foreground mb-3">
             Cadastre profissionais para visualizar a grade.
           </p>
-          <Button variant="outline" onClick={() => (window.location.href = "/beauty/profissionais")}>
+          <Button variant="outline" onClick={() => (window.location.href = `${import.meta.env.BASE_URL}beauty/profissionais`)}>
             Gerenciar Profissionais
           </Button>
         </div>

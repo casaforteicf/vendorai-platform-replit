@@ -1109,11 +1109,11 @@ export default function Prospector() {
             })()}
             {prospectStep === "done" && (
               <div className="flex gap-2 pt-1">
-                <a href="/negocios">
+                <Link href="/negocios">
                   <Button size="sm" variant="default" className="gap-1.5">
                     <Briefcase className="h-3.5 w-3.5" /> Ver no CRM
                   </Button>
-                </a>
+                </Link>
                 <Button size="sm" variant="outline" onClick={() => setProspectStep("idle")} className="gap-1.5">
                   <XCircle className="h-3.5 w-3.5" /> Fechar
                 </Button>

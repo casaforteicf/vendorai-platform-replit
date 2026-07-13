@@ -226,7 +226,7 @@ function SpecItemRow({
               Buscar no Catálogo
             </button>
             <a
-              href={`/arch/marketplace?q=${encodeURIComponent(item.descricao)}`}
+              href={`${import.meta.env.BASE_URL}arch/marketplace?q=${encodeURIComponent(item.descricao)}`}
               className="ss-btn"
               style={{
                 padding:'6px 12px', borderRadius:7, border:`1px solid ${T.border}`,
@@ -265,7 +265,7 @@ function SpecItemRow({
             catalogMatches.length === 0 ? (
               <div style={{ padding:'10px 12px', borderRadius:7, background:'rgba(251,146,60,0.06)', border:`1px solid rgba(251,146,60,0.15)`, fontSize:11, color:T.amber }}>
                 Nenhum item encontrado no catálogo para "{item.descricao}".{' '}
-                <a href="/arch/marketplace" style={{ color:T.amber, fontWeight:700 }}>Buscar no Marketplace →</a>
+                <a href={`${import.meta.env.BASE_URL}arch/marketplace`} style={{ color:T.amber, fontWeight:700 }}>Buscar no Marketplace →</a>
               </div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -561,7 +561,7 @@ export function SmartSpecModule() {
                 <div style={{ padding:'20px 10px', textAlign:'center', color:T.dim, fontSize:11 }}>
                   <div style={{ fontSize:24, marginBottom:6 }}>🎬</div>
                   Nenhum render encontrado.<br/>
-                  <a href="/arch/render" style={{ color:T.purpleL, fontWeight:700, textDecoration:'none' }}>Gerar renders →</a>
+                  <a href={`${import.meta.env.BASE_URL}arch/render`} style={{ color:T.purpleL, fontWeight:700, textDecoration:'none' }}>Gerar renders →</a>
                 </div>
               )}
               {renders.map(r => (

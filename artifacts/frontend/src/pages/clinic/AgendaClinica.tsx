@@ -170,7 +170,7 @@ export default function AgendaClinica() {
           <p className="text-sm text-muted-foreground mb-3">
             Cadastre médicos para visualizar a grade.
           </p>
-          <Button variant="outline" onClick={() => (window.location.href = "/clinic/medicos")}>
+          <Button variant="outline" onClick={() => (window.location.href = `${import.meta.env.BASE_URL}clinic/medicos`)}>
             Gerenciar Médicos
           </Button>
         </div>
