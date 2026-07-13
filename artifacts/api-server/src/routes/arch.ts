@@ -1982,7 +1982,7 @@ function buildAiRenderPrompt(opts: {
 }
 
 // ── POST /arch/ai-render — create async render job ───────────────────────────
-router.post("/arch/ai-render", authenticate, async (req, res) => {
+router.post("/arch/ai-render", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
@@ -2036,7 +2036,7 @@ router.post("/arch/ai-render", authenticate, async (req, res) => {
 });
 
 // ── GET /arch/ai-render/:id — poll render job status ─────────────────────────
-router.get("/arch/ai-render/:id", authenticate, async (req, res) => {
+router.get("/arch/ai-render/:id", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
@@ -2060,7 +2060,7 @@ router.get("/arch/ai-render/:id", authenticate, async (req, res) => {
 });
 
 // ── POST /arch/ai-render/:id/adjust — create adjusted version ─────────────────
-router.post("/arch/ai-render/:id/adjust", authenticate, async (req, res) => {
+router.post("/arch/ai-render/:id/adjust", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
@@ -2121,7 +2121,7 @@ router.post("/arch/ai-render/:id/adjust", authenticate, async (req, res) => {
 });
 
 // ── POST /arch/ai-render/:id/approve — approve a render ──────────────────────
-router.post("/arch/ai-render/:id/approve", authenticate, async (req, res) => {
+router.post("/arch/ai-render/:id/approve", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
@@ -2146,7 +2146,7 @@ router.post("/arch/ai-render/:id/approve", authenticate, async (req, res) => {
 });
 
 // ── POST /arch/ai-render/:id/send-to-specification — forward to spec pipeline ─
-router.post("/arch/ai-render/:id/send-to-specification", authenticate, async (req, res) => {
+router.post("/arch/ai-render/:id/send-to-specification", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
