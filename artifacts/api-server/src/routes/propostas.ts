@@ -328,6 +328,7 @@ const fromCatalogoBodySchema = z.object({
         produtoId: z.string().min(1),
         quantidade: z.number().positive(),
         precoUnitario: z.number().nonnegative().optional(),
+        nome: z.string().optional(),
       })
     )
     .min(1, "At least one item is required"),
@@ -396,7 +397,7 @@ router.post(
         : parseFloat(produto.precoBase);
       valorTotal += item.quantidade * valorUnitario;
       return {
-        nome: produto.nome,
+        nome: item.nome || produto.nome,
         quantidade: item.quantidade,
         valorUnitario,
         produtoId: produto.id,

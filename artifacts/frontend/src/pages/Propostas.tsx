@@ -745,7 +745,7 @@ function CatalogoModal({
 }
 
 // ── Proposta Modal (Nova Proposta) ────────────────────────────────────────────
-interface CartLine { produtoId: string; quantidade: number; precoUnitarioOverride?: number; }
+interface CartLine { produtoId: string; quantidade: number; precoUnitarioOverride?: number; nomeOverride?: string; }
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
 
 const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
@@ -920,6 +920,22 @@ export function PropostaModal({
   function updateCatLine(i: number, patch: Partial<CartLine>) {
     setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
+  function selectPlanProduct(i: number, produtoId: string) {
+    const prod = activeCatalog.find((p) => p.id === produtoId);
+    if (!prod) { updateCatLine(i, { produtoId, nomeOverride: undefined }); return; }
+    const precoImpl = prod.precoImplantacao ? parseFloat(prod.precoImplantacao) : 0;
+    const precoMens = prod.precoMensalidade ? parseFloat(prod.precoMensalidade) : 0;
+    if (precoImpl > 0 && precoMens > 0) {
+      setCartLines((prev) => [
+        ...prev.slice(0, i),
+        { produtoId, quantidade: 1, precoUnitarioOverride: precoImpl, nomeOverride: `${prod.nome} — Implantação` },
+        { produtoId, quantidade: 1, precoUnitarioOverride: precoMens, nomeOverride: `${prod.nome} — Mensalidade` },
+        ...prev.slice(i + 1),
+      ]);
+    } else {
+      updateCatLine(i, { produtoId, nomeOverride: undefined });
+    }
+  }
 
   // ── livre helpers ─────────────────────────────────────────────────────────
   function addFreeItem()    { setFreeItems((p) => [...p, newFreeItem()]); }
@@ -984,7 +1000,7 @@ export function PropostaModal({
       const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas = vals.skipAsaasBilling;
       createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade, precoUnitario: l.precoUnitarioOverride })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
+        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade, precoUnitario: l.precoUnitarioOverride, nome: l.nomeOverride || undefined })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -1135,7 +1151,36 @@ export function PropostaModal({
             {/* ── TEMPLATE MODE ─────────────────────────────────────────────── */}
             {mode === "template" && (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">Crie um orçamento com todos os itens de um plano VendorAI pré-configurado.</p>
+                <p className="text-sm text-muted-foreground">Selecione um plano para pré-preencher implantação + mensalidade.</p>
+                {selectedTemplateSlug ? (
+                  (() => {
+                    const sel = propostaTemplates.find((t: PropostaTemplate) => t.slug === selectedTemplateSlug);
+                    if (!sel) return null;
+                    const totalSel = (sel.itens as Array<{ quantidade: number; valorUnitario: number }>).reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+                    return (
+                      <div className="rounded-lg border-2 border-primary bg-primary/5 p-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-primary text-lg">✓</span>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm">{sel.name}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                              {(sel.itens as Array<{ nome: string }>).map((i) => i.nome).join(" + ")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <p className="text-sm font-bold">{fmtCurrency(totalSel)}</p>
+                            <p className="text-xs text-muted-foreground">{sel.cycle === "annual" ? "anual" : "mensal"}</p>
+                          </div>
+                          <Button type="button" variant="outline" size="sm" onClick={() => setSelectedTemplateSlug("")}>
+                            Alterar
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
                 <div className="grid gap-2">
                   {propostaTemplates.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">Nenhum template disponível</p>
@@ -1144,13 +1189,12 @@ export function PropostaModal({
                       const totalTemplate = (t.itens as Array<{ quantidade: number; valorUnitario: number }>).reduce(
                         (s, i) => s + i.quantidade * i.valorUnitario, 0
                       );
-                      const isSelected = selectedTemplateSlug === t.slug;
                       return (
                         <button
                           key={t.slug}
                           type="button"
                           onClick={() => setSelectedTemplateSlug(t.slug)}
-                          className={`w-full text-left rounded-lg border p-3 transition-colors ${isSelected ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                          className="w-full text-left rounded-lg border p-3 transition-colors hover:bg-muted/50 hover:border-primary"
                         >
                           <div className="flex items-center justify-between">
                             <div>
@@ -1169,6 +1213,7 @@ export function PropostaModal({
                     })
                   )}
                 </div>
+                )}
               </div>
             )}
 
@@ -1200,7 +1245,7 @@ export function PropostaModal({
                         return (
                           <TableRow key={idx}>
                             <TableCell className="py-1.5">
-                              <Select value={line.produtoId} onValueChange={(v) => updateCatLine(idx, { produtoId: v })}>
+                              <Select value={line.produtoId} onValueChange={(v) => selectPlanProduct(idx, v)}>
                                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione…" /></SelectTrigger>
                                 <SelectContent>
                                   {activeCatalog.map((p) => (
@@ -1208,6 +1253,14 @@ export function PropostaModal({
                                   ))}
                                 </SelectContent>
                               </Select>
+                              {line.nomeOverride && (
+                                <Input
+                                  className="h-6 text-xs mt-1 px-1 border-0 border-b rounded-none bg-transparent text-primary font-medium focus-visible:ring-0"
+                                  value={line.nomeOverride}
+                                  onChange={(e) => updateCatLine(idx, { nomeOverride: e.target.value })}
+                                  placeholder="Descrição do item"
+                                />
+                              )}
                             </TableCell>
                             <TableCell className="py-1.5">
                               <Input type="number" min={1} className="h-8 text-sm w-20" value={line.quantidade} onChange={(e) => updateCatLine(idx, { quantidade: Math.max(1, parseInt(e.target.value) || 1) })} />
