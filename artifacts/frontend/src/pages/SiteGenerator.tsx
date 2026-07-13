@@ -436,7 +436,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         <div className="rounded-lg border border-green-200 bg-green-50/50 dark:border-green-900/40 dark:bg-green-950/20 px-4 py-3 flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-green-800 dark:text-green-400 uppercase tracking-wider">✓ Do seu perfil</span>
-            <a href="/configuracoes?tab=perfil" target="_blank" rel="noreferrer" className="text-[10px] text-green-700 dark:text-green-500 underline underline-offset-2 hover:no-underline">
+            <a href={`${import.meta.env.BASE_URL}configuracoes?tab=perfil`} target="_blank" rel="noreferrer" className="text-[10px] text-green-700 dark:text-green-500 underline underline-offset-2 hover:no-underline">
               Editar perfil →
             </a>
           </div>
@@ -466,7 +466,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         <div className="rounded-lg border border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20 px-4 py-3 flex flex-col gap-3">
           <p className="text-xs text-amber-800 dark:text-amber-400">
             ⚠ Dados não encontrados no perfil. Preencha aqui ou{" "}
-            <a href="/configuracoes?tab=perfil" target="_blank" rel="noreferrer" className="underline underline-offset-2">complete seu perfil</a>.
+            <a href={`${import.meta.env.BASE_URL}configuracoes?tab=perfil`} target="_blank" rel="noreferrer" className="underline underline-offset-2">complete seu perfil</a>.
           </p>
           {missingName && (
             <div className="flex flex-col gap-1">

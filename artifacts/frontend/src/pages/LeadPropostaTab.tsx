@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1075,9 +1076,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 <Badge variant="outline" className="text-xs">{orcamentos.length}</Badge>
               )}
             </span>
-            <a href="/propostas" className="text-xs font-normal text-muted-foreground hover:text-foreground underline underline-offset-2">
+            <Link href="/propostas" className="text-xs font-normal text-muted-foreground hover:text-foreground underline underline-offset-2">
               + Novo orçamento
-            </a>
+            </Link>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1088,9 +1089,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           ) : orcamentos.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">
               Nenhum orçamento criado para este lead.{" "}
-              <a href="/propostas" className="underline underline-offset-2 hover:text-foreground">
+              <Link href="/propostas" className="underline underline-offset-2 hover:text-foreground">
                 Criar orçamento
-              </a>
+              </Link>
             </p>
           ) : (
             <div className="space-y-2">
@@ -1143,7 +1144,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                           </SelectContent>
                         </Select>
                       )}
-                      <a href={`/propostas/${orc.id}/print`} target="_blank" rel="noopener noreferrer">
+                      <a href={`${import.meta.env.BASE_URL}propostas/${orc.id}/print`} target="_blank" rel="noopener noreferrer">
                         <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver orçamento">
                           <ExternalLink className="h-3.5 w-3.5" />
                         </Button>
@@ -1188,7 +1189,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             </Button>
           </CardTitle>
           {/* Template de proposta */}
-          <a href="/configuracoes?tab=perfil" className="flex items-center gap-1.5 text-xs mt-1 no-underline">
+          <Link href="/configuracoes?tab=perfil" className="flex items-center gap-1.5 text-xs mt-1 no-underline">
             {hasProposalTemplate ? (
               <span className="flex items-center gap-1.5 text-emerald-600">
                 <FileText className="h-3 w-3" />
@@ -1201,7 +1202,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 Importar modelo de proposta da empresa
               </span>
             )}
-          </a>
+          </Link>
         </CardHeader>
         <CardContent>
           {/* Seletor de orçamento a incluir */}
