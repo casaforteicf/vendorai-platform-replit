@@ -3113,6 +3113,25 @@ router.post("/arch/specification/analyze", authenticate, async (req, res) => {
   }
 
   try {
+    // Anthropic only accepts base64 images (not URLs). Fetch internally and convert.
+    let imageBase64: string;
+    let imageMime: string = "image/png";
+    if (imageUrl.startsWith("/")) {
+      const absUrl = `http://localhost:${process.env["PORT"] ?? 8080}${imageUrl}`;
+      const imgRes = await fetch(absUrl);
+      if (!imgRes.ok) throw new Error(`Não foi possível buscar imagem do render: ${imgRes.status}`);
+      const contentType = imgRes.headers.get("content-type") ?? "image/png";
+      imageMime = contentType.split(";")[0]!.trim() || "image/png";
+      imageBase64 = Buffer.from(await imgRes.arrayBuffer()).toString("base64");
+    } else {
+      // External URL — fetch and encode
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) throw new Error(`Não foi possível buscar imagem: ${imgRes.status}`);
+      const contentType = imgRes.headers.get("content-type") ?? "image/png";
+      imageMime = contentType.split(";")[0]!.trim() || "image/png";
+      imageBase64 = Buffer.from(await imgRes.arrayBuffer()).toString("base64");
+    }
+
     const message = await anthropic.messages.create({
       model: "claude-opus-4-5",
       max_tokens: 2048,
@@ -3121,7 +3140,7 @@ router.post("/arch/specification/analyze", authenticate, async (req, res) => {
         content: [
           {
             type: "image",
-            source: { type: "url", url: imageUrl },
+            source: { type: "base64", media_type: imageMime as "image/png" | "image/jpeg" | "image/gif" | "image/webp", data: imageBase64 },
           },
           {
             type: "text",
