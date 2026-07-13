@@ -20,7 +20,7 @@ import logoFull from "/logo-full-light.svg";
 import { StoreSwitcher } from "@/components/StoreSwitcher";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout, tenantOverride, clearTenantOverride, token } = useAuth();
+  const { user, logout, tenantOverride, clearTenantOverride, token, isEffectiveAdmin } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
@@ -39,8 +39,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     },
   });
   const openBugCount = openBugsData?.count ?? 0;
-  const isTenantAdmin = user?.platformRole === "tenant_admin";
-  const isSeller = user?.platformRole === "tenant_seller";
+  const isTenantAdmin = isEffectiveAdmin;
+  const isSeller = user?.platformRole === "tenant_seller" && user?.userFunction !== "administrador";
   const userFunction = user?.userFunction as UserFunction | undefined;
   const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";

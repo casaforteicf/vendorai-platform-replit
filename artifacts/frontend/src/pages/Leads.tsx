@@ -206,7 +206,7 @@ function parseCsvRows(text: string): ParsedLeadRow[] {
 }
 
 export default function Leads() {
-  const { user, token } = useAuth();
+  const { user, token, isEffectiveAdmin: isAdmin } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const hints = getSegmentHints(user?.tenantVertical);
   const queryClient = useQueryClient();
@@ -223,8 +223,6 @@ export default function Leads() {
   const [statusFilter, setStatusFilter] = useState<string>(isChurnUrl ? "high_risk" : isQuenteUrl ? "quente" : "all");
   const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(isChurnUrl ? "desc" : null);
   const [maturityFilter, setMaturityFilter] = useState<string>("all");
-
-  const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
 
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [parsedRows, setParsedRows] = useState<ParsedLeadRow[]>([]);

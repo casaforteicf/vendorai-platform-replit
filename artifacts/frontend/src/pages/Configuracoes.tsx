@@ -551,13 +551,13 @@ function AnalysisLogTab({ tenantId }: { tenantId: string }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Configuracoes() {
-  const { user, token } = useAuth();
+  const { user, token, isEffectiveAdmin } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const isTenantAdmin = user?.platformRole === "tenant_admin";
+  const isTenantAdmin = isEffectiveAdmin;
   const isSuperAdmin = user?.platformRole === "super_admin";
-  const isSeller = user?.platformRole === "tenant_seller";
+  const isSeller = user?.platformRole === "tenant_seller" && user?.userFunction !== "administrador";
   const userFunction = user?.userFunction as UserFunction | undefined;
   const isAdmin = isTenantAdmin || isSuperAdmin;
   const showFaturamento = isAdmin || (userFunction && ["financeiro", "administrador", "outro"].includes(userFunction));
@@ -2299,7 +2299,7 @@ export default function Configuracoes() {
           </div>
 
           {/* Tipo de Fechamento Padrão — admin only */}
-          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+          {(isAdmin) && (
             <div className="rounded-xl border bg-card p-6 space-y-4">
               <div>
                 <h2 className="font-semibold text-base flex items-center gap-2">
@@ -2344,7 +2344,7 @@ export default function Configuracoes() {
           )}
 
           {/* Confirmação de Estoque antes do Financeiro — admin only */}
-          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+          {(isAdmin) && (
             <div className="rounded-xl border bg-card p-6 space-y-4">
               <div className="flex items-center justify-between gap-4">
                 <div>
@@ -2390,7 +2390,7 @@ export default function Configuracoes() {
           )}
 
           {/* Link de Avaliação do Google — admin only */}
-          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+          {(isAdmin) && (
             <div className="rounded-xl border bg-card p-6 space-y-4">
               <div>
                 <h2 className="font-semibold text-base flex items-center gap-2">
@@ -2427,7 +2427,7 @@ export default function Configuracoes() {
           )}
 
           {/* Modelo de Proposta — admin only */}
-          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && profileQuery.data?.id && (
+          {(isAdmin) && profileQuery.data?.id && (
             <ProposalTemplateSection
               profileId={profileQuery.data.id}
               templateUrl={profileQuery.data.proposalTemplateUrl ?? null}
@@ -2437,12 +2437,12 @@ export default function Configuracoes() {
           )}
 
           {/* Modelo de Contrato — admin only */}
-          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+          {(isAdmin) && (
             <ContractTemplateSection tenantId={tenantId} />
           )}
 
           {/* Configurações do Contrato SaaS — admin only */}
-          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+          {(isAdmin) && (
             <ContractSettingsSection tenantId={tenantId} />
           )}
         </TabsContent>
@@ -2618,7 +2618,7 @@ export default function Configuracoes() {
         <TabsContent value="analise" className="space-y-5">
 
           {/* Threshold Settings Card — admin only */}
-          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+          {(isAdmin) && (
             <div className="rounded-xl border bg-card p-6 space-y-5">
               <div>
                 <h2 className="font-semibold text-base flex items-center gap-2">

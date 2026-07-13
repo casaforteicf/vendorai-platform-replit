@@ -20,6 +20,8 @@ interface AuthContextType {
   tenantOverride: TenantOverride | null;
   setTenantOverride: (t: TenantOverride) => void;
   clearTenantOverride: () => void;
+  /** true for super_admin, tenant_admin, or userFunction === "administrador" */
+  isEffectiveAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -150,6 +152,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(OVERRIDE_KEY);
   };
 
+  const isEffectiveAdmin =
+    effectiveUser?.platformRole === "super_admin" ||
+    effectiveUser?.platformRole === "tenant_admin" ||
+    effectiveUser?.userFunction === "administrador";
+
   return (
     <AuthContext.Provider value={{
       user: effectiveUser,
@@ -161,6 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       tenantOverride,
       setTenantOverride,
       clearTenantOverride,
+      isEffectiveAdmin,
     }}>
       {children}
     </AuthContext.Provider>

@@ -390,9 +390,8 @@ function BloqueiosList({ tenantId, isAdmin, userId }: { tenantId: string; isAdmi
 }
 
 export default function MinhasEntregas() {
-  const { user } = useAuth();
+  const { user, isEffectiveAdmin: isAdmin } = useAuth();
   const tenantId = user?.tenantId ?? "";
-  const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [bloqueioOpen, setBloqueioOpen] = useState(false);

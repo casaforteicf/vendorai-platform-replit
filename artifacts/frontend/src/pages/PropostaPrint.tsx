@@ -97,7 +97,7 @@ interface ItemEdit {
 export default function PropostaPrint() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user, isEffectiveAdmin: isGerente } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [markingVendido, setMarkingVendido] = useState(false);
@@ -296,7 +296,6 @@ export default function PropostaPrint() {
     : undefined;
   const jaVendido = proposta.status === "aceita";
   const podeVender = proposta.status === "rascunho" || proposta.status === "enviada" || proposta.status === "pendente";
-  const isGerente = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
   const podeEditar = !jaVendido || isGerente;
 
   // ── Edit sheet totals (live) ──────────────────────────────────────────────
