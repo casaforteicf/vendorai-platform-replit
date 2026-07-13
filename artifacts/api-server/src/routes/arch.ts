@@ -49,6 +49,7 @@ import {
   archKnowledgeEntriesTable,
   archKnowledgeTagsTable,
   archOfficeTemplatesTable,
+  archAiRendersTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -1825,6 +1826,345 @@ router.post("/arch/render", async (req, res) => {
     const { status, message } = sanitizeAIError(err);
     return res.status(status).json({ success: false, error: message });
   }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Render Studio Async API — /arch/ai-render
+// Frontend creates a job, then polls GET /arch/ai-render/:id every ~2s.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Helper: build and execute a render job (shared logic) ─────────────────────
+async function executeRenderJob(opts: {
+  tid: string;
+  renderId: string;
+  originalImageUrl: string | null;
+  prompt: string;
+  log: import("pino").Logger;
+}): Promise<void> {
+  const { tid, renderId, originalImageUrl, prompt, log } = opts;
+  const storage = new ObjectStorageService();
+  let b64: string | undefined;
+  let motor = "gpt-image-1";
+
+  try {
+    if (originalImageUrl) {
+      let dataUrl = originalImageUrl;
+
+      // If it's a storage path, fetch and convert to data URL
+      if (originalImageUrl.startsWith("/api/storage/") || originalImageUrl.startsWith("/storage/")) {
+        const absUrl = `http://localhost:${process.env["PORT"] ?? 8080}${originalImageUrl}`;
+        const imgRes = await fetch(absUrl);
+        if (!imgRes.ok) throw new Error(`Não foi possível buscar imagem: ${imgRes.status}`);
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        dataUrl = `data:image/png;base64,${buf.toString("base64")}`;
+      }
+
+      const dataUrlMatch = dataUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
+      if (!dataUrlMatch) throw new Error("Imagem de referência deve ser um data URL base64 válido");
+
+      if (process.env["REPLICATE_API_TOKEN"]) {
+        try {
+          b64   = await callReplicateFlux({ controlImageDataUrl: dataUrl, prompt, logger: log });
+          motor = "replicate-flux";
+        } catch (replicateErr: any) {
+          log.warn({ err: replicateErr?.message, tenantId: tid }, "arch/ai-render: Replicate falhou → fallback gpt-image-1");
+          db.insert(automationLogsTable).values({
+            flow: "render_fallback", step: "replicate_to_openai",
+            status: "warning", errorMessage: replicateErr?.message ?? "Replicate failed",
+          }).catch(() => undefined);
+        }
+      }
+
+      if (!b64) {
+        const openai    = await getOpenAIForTenant(tid);
+        const mimeType  = dataUrlMatch[1]!;
+        const imgBuffer = Buffer.from(dataUrlMatch[2]!, "base64");
+        const ext       = mimeType.split("/")[1] ?? "png";
+        const refFile   = await toFile(imgBuffer, `reference.${ext}`, { type: mimeType });
+        const result    = await (openai.images.edit as Function)({
+          model: "gpt-image-1", image: refFile, prompt, n: 1, size: "1536x1024", quality: "high",
+        });
+        b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+      }
+    } else {
+      const openai = await getOpenAIForTenant(tid);
+      const result = await (openai.images.generate as Function)({
+        model: "gpt-image-1", prompt, n: 1, size: "1536x1024", quality: "high",
+      });
+      b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+    }
+
+    if (!b64) throw new Error("Motor de render não retornou imagem");
+
+    const buf       = Buffer.from(b64, "base64");
+    const objPath   = await storage.savePrivateBuffer(buf, "image/png", `arch-render-${tid}-${Date.now()}.png`);
+    const servePath = objPath.replace(/^\/objects\//, "");
+    const imageUrl  = `/api/storage/objects/${servePath}`;
+
+    await db.update(archAiRendersTable)
+      .set({ status: "concluido", resultImageUrl: imageUrl, motor, prompt, concluidoEm: new Date() })
+      .where(eq(archAiRendersTable.id, renderId));
+
+    log.info({ tenantId: tid, renderId, motor }, "arch/ai-render: concluído");
+  } catch (err: any) {
+    log.error({ err, tenantId: tid, renderId }, "arch/ai-render: erro no processamento async");
+    await db.update(archAiRendersTable)
+      .set({ status: "erro", erroMsg: err?.message ?? "Erro desconhecido" })
+      .where(eq(archAiRendersTable.id, renderId))
+      .catch(() => undefined);
+  }
+}
+
+// ── Helper: build prompt for ai-render ───────────────────────────────────────
+function buildAiRenderPrompt(opts: {
+  ambiente: string;
+  mode: string;
+  estilo: string | null;
+  lighting: string | null;
+  angle: string | null;
+  userNotes: string | null;
+  ajustePrompt?: string;
+}): string {
+  const { ambiente, mode, estilo, lighting, angle, userNotes, ajustePrompt } = opts;
+  const isExterior = !ambiente || ambiente === "fachada_externa" || ambiente === "fachada externa";
+
+  const preservationRules = isExterior
+    ? [
+        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
+        "• DO NOT add any new element not already visible in the reference.",
+        "• DO NOT remove, move, or alter any existing architectural element.",
+        "• DO NOT change viewpoint, perspective, or camera position.",
+        "• Preserve PIXEL-EXACTLY: building shape, all window positions, all door positions, roof geometry.",
+        "PERMITTED CHANGES ONLY: material quality and texture on specified surfaces, lighting condition.",
+      ].join(" ")
+    : [
+        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
+        "• DO NOT add any object not already present in the reference.",
+        "• DO NOT remove, move, or replace any existing furniture or object.",
+        "• DO NOT change viewpoint, perspective, or camera angle.",
+        "• Preserve PIXEL-EXACTLY: room geometry, all wall/window/door positions, every piece of furniture in its exact place.",
+        "PERMITTED CHANGES ONLY: material quality and texture on specified surfaces, lighting condition.",
+      ].join(" ");
+
+  const estiloMap: Record<string, string> = {
+    minimalista:   "minimalist style with clean lines, neutral palette, uncluttered spaces",
+    contemporaneo: "contemporary modern style with bold geometric forms and refined materials",
+    classico:      "timeless classic style with quality materials, warm tones, and refined simplicity",
+    industrial:    "industrial style with raw concrete, exposed steel, and dark tones",
+    escandinavo:   "Scandinavian style with natural light, pale wood, and simple functional forms",
+    tropical:      "tropical Brazilian style with warm earthy tones, natural textures, and lush accents",
+  };
+
+  const lightingInstruction = lighting && lighting !== "auto" && lightingMapArch[lighting as keyof typeof lightingMapArch]
+    ? `LIGHTING CONDITION: ${lightingMapArch[lighting as keyof typeof lightingMapArch]}`
+    : null;
+
+  const angleInstruction = angle && angleMapArch[angle as keyof typeof angleMapArch]
+    ? `CAMERA ANGLE: render from a ${angleMapArch[angle as keyof typeof angleMapArch]}.`
+    : null;
+
+  const estiloInstruction = estilo && estiloMap[estilo]
+    ? `VISUAL STYLE: ${estiloMap[estilo]}.`
+    : null;
+
+  return [
+    "You are a professional architectural visualization engine.",
+    ajustePrompt
+      ? `Apply the following adjustment to the render: ${ajustePrompt}`
+      : `Transform this ${isExterior ? "architectural photo" : "interior photo"} into a photorealistic render.`,
+    mode === "preservar" ? preservationRules : null,
+    estiloInstruction,
+    lightingInstruction,
+    angleInstruction,
+    userNotes ? `Additional notes: ${userNotes}` : null,
+    "Output: ultra-sharp 4K detail, high dynamic range, photorealistic, Brazilian architecture context.",
+  ].filter(Boolean).join(" ");
+}
+
+// ── POST /arch/ai-render — create async render job ───────────────────────────
+router.post("/arch/ai-render", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const body = req.body as {
+    original_image_url?: string;
+    mode?: string;
+    ambiente?: string;
+    user_notes?: string;
+    project_id?: string;
+    estilo?: string;
+    lighting?: string;
+    angle?: string;
+  };
+
+  const ambiente        = body.ambiente ?? "sala";
+  const mode            = body.mode ?? "preservar";
+  const originalImageUrl = body.original_image_url ?? null;
+  const userNotes       = body.user_notes ?? null;
+  const projectId       = body.project_id ?? null;
+  const estilo          = body.estilo ?? null;
+  const lighting        = body.lighting ?? "auto";
+  const angle           = body.angle ?? "frontal";
+
+  const prompt = buildAiRenderPrompt({ ambiente, mode, estilo, lighting, angle, userNotes });
+
+  const [job] = await db
+    .insert(archAiRendersTable)
+    .values({
+      tenantId:         tid,
+      projectId:        projectId ?? undefined,
+      mode,
+      ambiente,
+      estilo:           estilo ?? undefined,
+      iluminacao:       lighting,
+      angulo:           angle,
+      originalImageUrl: originalImageUrl ?? undefined,
+      status:           "processando",
+      prompt,
+    })
+    .returning({ id: archAiRendersTable.id });
+
+  const renderId = job!.id;
+  const log      = req.log;
+
+  setImmediate(() => {
+    executeRenderJob({ tid, renderId, originalImageUrl, prompt, log }).catch(() => undefined);
+  });
+
+  req.log.info({ tenantId: tid, renderId, ambiente, mode }, "arch/ai-render: job criado");
+  return res.json({ render_id: renderId });
+});
+
+// ── GET /arch/ai-render/:id — poll render job status ─────────────────────────
+router.get("/arch/ai-render/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const [job] = await db
+    .select()
+    .from(archAiRendersTable)
+    .where(and(eq(archAiRendersTable.id, req.params["id"]!), eq(archAiRendersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!job) return res.status(404).json({ error: "Render não encontrado" });
+
+  return res.json({
+    status:           job.status,
+    result_image_url: job.resultImageUrl ?? undefined,
+    erro_msg:         job.erroMsg ?? undefined,
+    motor:            job.motor ?? undefined,
+    ambiente:         job.ambiente,
+    created_at:       job.createdAt,
+    concluido_em:     job.concluidoEm ?? undefined,
+  });
+});
+
+// ── POST /arch/ai-render/:id/adjust — create adjusted version ─────────────────
+router.post("/arch/ai-render/:id/adjust", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const parentId = req.params["id"]!;
+  const [parent] = await db
+    .select()
+    .from(archAiRendersTable)
+    .where(and(eq(archAiRendersTable.id, parentId), eq(archAiRendersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!parent) return res.status(404).json({ error: "Render pai não encontrado" });
+
+  const body = req.body as {
+    ajuste_prompt?: string;
+    mask_zones?: string[];
+    user_notes?: string;
+  };
+
+  const ajustePrompt = body.ajuste_prompt ?? "";
+  const prompt = buildAiRenderPrompt({
+    ambiente:    parent.ambiente,
+    mode:        parent.mode,
+    estilo:      parent.estilo,
+    lighting:    parent.iluminacao,
+    angle:       parent.angulo,
+    userNotes:   body.user_notes ?? null,
+    ajustePrompt,
+  });
+
+  const [job] = await db
+    .insert(archAiRendersTable)
+    .values({
+      tenantId:         tid,
+      projectId:        parent.projectId ?? undefined,
+      parentRenderId:   parentId,
+      mode:             parent.mode,
+      ambiente:         parent.ambiente,
+      estilo:           parent.estilo ?? undefined,
+      iluminacao:       parent.iluminacao ?? undefined,
+      angulo:           parent.angulo ?? undefined,
+      originalImageUrl: parent.resultImageUrl ?? parent.originalImageUrl ?? undefined,
+      maskZones:        body.mask_zones,
+      status:           "processando",
+      prompt,
+    })
+    .returning({ id: archAiRendersTable.id });
+
+  const renderId       = job!.id;
+  const referenceImage = parent.resultImageUrl ?? parent.originalImageUrl ?? null;
+  const log            = req.log;
+
+  setImmediate(() => {
+    executeRenderJob({ tid, renderId, originalImageUrl: referenceImage, prompt, log }).catch(() => undefined);
+  });
+
+  req.log.info({ tenantId: tid, renderId, parentId }, "arch/ai-render/adjust: job criado");
+  return res.json({ render_id: renderId });
+});
+
+// ── POST /arch/ai-render/:id/approve — approve a render ──────────────────────
+router.post("/arch/ai-render/:id/approve", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const [job] = await db
+    .select()
+    .from(archAiRendersTable)
+    .where(and(eq(archAiRendersTable.id, req.params["id"]!), eq(archAiRendersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!job) return res.status(404).json({ error: "Render não encontrado" });
+  if (job.status !== "concluido") {
+    return res.status(400).json({ error: "Somente renders concluídos podem ser aprovados" });
+  }
+
+  const body = req.body as { notes?: string; approvedBy?: string };
+  await db.update(archAiRendersTable)
+    .set({ versionTag: "fiel_ao_original" })
+    .where(eq(archAiRendersTable.id, job.id));
+
+  req.log.info({ tenantId: tid, renderId: job.id, approvedBy: body.approvedBy }, "arch/ai-render: aprovado");
+  return res.json({ success: true, render_id: job.id, result_image_url: job.resultImageUrl });
+});
+
+// ── POST /arch/ai-render/:id/send-to-specification — forward to spec pipeline ─
+router.post("/arch/ai-render/:id/send-to-specification", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const [job] = await db
+    .select()
+    .from(archAiRendersTable)
+    .where(and(eq(archAiRendersTable.id, req.params["id"]!), eq(archAiRendersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!job) return res.status(404).json({ error: "Render não encontrado" });
+
+  req.log.info({ tenantId: tid, renderId: job.id }, "arch/ai-render: enviado para especificação");
+  return res.json({
+    success:          true,
+    render_id:        job.id,
+    result_image_url: job.resultImageUrl,
+    project_id:       job.projectId,
+  });
 });
 
 // ── POST /api/arch/suggestions — Card de sugestões de decoração por IA ──────
