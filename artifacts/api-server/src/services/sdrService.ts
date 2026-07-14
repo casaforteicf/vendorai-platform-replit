@@ -16,6 +16,7 @@ import {
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
+import { dispatchAgentBackground } from "./agent-dispatch.js";
 
 export type SdrCenario = "frio_teste" | "frio_revelacao" | "pos_visita" | "direto_dono" | "inbound_site" | null;
 
@@ -350,8 +351,24 @@ export async function sendSdrFollowup(
   leadTelefone: string,
   log: Logger,
 ): Promise<boolean> {
-  const msg = `Oi ${leadNome.split(" ")[0]}! Sei que a correria é grande — só não queria que você perdesse isso. Consigo te mostrar em 15 min essa semana. Qual dia fica melhor?`;
-  await sendDirectWhatsAppMessage(tenantId, leadTelefone, msg, log);
+  // Dispatch via agent (not hardcoded message) so the SDR uses the full maturidade
+  // research model — including the diagnostic questions injected by buildSdrPrompt
+  // when cold_outreach is true and maturidadeIA is still unknown.
+  dispatchAgentBackground({
+    tenantId,
+    leadId,
+    mensagem: `[FOLLOW-UP AUTOMÁTICO 48h] ${leadNome.split(" ")[0]} não respondeu à abordagem inicial. ` +
+      "Envie uma mensagem de follow-up natural, curta e sem pressão. " +
+      "Mantenha o modelo de pesquisa — se ainda não sabemos o grau de maturidade em IA deste negócio, " +
+      "aproveite para avançar uma pergunta diagnóstica de forma orgânica.",
+    log,
+    forcedAgent: "sdr",
+    scenario: {
+      cold_outreach: true,
+      origem: "sdr_followup_48h",
+      template_ordem: 2,
+    },
+  });
 
   await db.insert(activitiesTable).values({
     tenantId,
@@ -359,12 +376,12 @@ export async function sendSdrFollowup(
     dealId: dealId ?? undefined,
     tipo: "whatsapp",
     titulo: "SDR — follow-up 48h",
-    descricao: msg,
+    descricao: `Follow-up automático 48h para ${leadNome}`,
     status: "concluida",
     concluidaEm: new Date(),
     resultadoExecucao: "cenario:followup_48h",
   });
 
-  log.info({ leadId, tenantId }, "sdrService: 48h follow-up sent");
+  log.info({ leadId, tenantId }, "sdrService: 48h follow-up dispatched via agent");
   return true;
 }

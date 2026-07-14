@@ -97,18 +97,23 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
       const isAutonomous = !!agentConfig?.churnAutoWhatsapp;
 
       // Find leads with churnRisk > 70 (limit 200 per tenant for safety)
+      // Skip leads with status "novo" — they are in the active SDR cycle and must not be
+      // interrupted by reactivation. Also skip prospector_auto source leads still fresh.
       const highRiskRows = await db
         .select({
           leadId:    customerIntelligenceTable.leadId,
           churnRisk: customerIntelligenceTable.churnRisk,
           telefone:  leadsTable.telefone,
+          status:    leadsTable.status,
+          source:    leadsTable.source,
         })
         .from(customerIntelligenceTable)
         .innerJoin(leadsTable, eq(leadsTable.id, customerIntelligenceTable.leadId))
         .where(
           and(
             eq(customerIntelligenceTable.tenantId, tenant.id),
-            gt(customerIntelligenceTable.churnRisk, 70)
+            gt(customerIntelligenceTable.churnRisk, 70),
+            not(inArray(leadsTable.status, ["novo", "aquecimento"])),
           )
         )
         .limit(200);
@@ -135,8 +140,10 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
         if (!isAutonomous || !row.telefone) continue;
 
         try {
-          // Dedup: skip if there's already been an outgoing whatsapp in the last 24h for this lead
-          const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          // Dedup: skip if there's already been an outgoing whatsapp in the last 7 days.
+          // 24h was too short — SDR could send on day 1, then reactivation fires on day 2
+          // on the same lead before SDR's follow-up cycle is finished.
+          const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
           const [recentOutgoing] = await db
             .select({ id: messagesTable.id })
             .from(messagesTable)
