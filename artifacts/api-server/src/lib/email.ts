@@ -1,11 +1,13 @@
 import { Resend } from "resend";
 import { logger } from "./logger.js";
 
-// Remetente configurável via RESEND_FROM_DOMAIN.
-// Defina essa variável de ambiente para o domínio verificado no Resend
-// (ex: "appvendorai.com"). Sem ela, usa "vendorai.app" — que precisa ser
-// verificado em https://resend.com/domains para que os emails sejam entregues.
+// Remetente configurável.
+// RESEND_FROM_EMAIL — endereço completo fixo (ex: "vendorai@appvendorai.com"). Tem prioridade.
+// RESEND_FROM_DOMAIN — apenas o domínio (ex: "appvendorai.com"); local-part varia por tipo.
+// Sem nenhum dos dois, usa "vendorai.app" (precisa estar verificado em resend.com/domains).
 function from(displayName: string, localPart: string): string {
+  const fullEmail = process.env["RESEND_FROM_EMAIL"];
+  if (fullEmail) return `${displayName} <${fullEmail}>`;
   const domain = process.env["RESEND_FROM_DOMAIN"] ?? "vendorai.app";
   return `${displayName} <${localPart}@${domain}>`;
 }
