@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -147,12 +148,12 @@ export default function Login() {
           </Button>
 
           <div className="text-center">
-            <a
+            <Link
               href="/esqueci-senha"
               className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors"
             >
               Esqueci minha senha
-            </a>
+            </Link>
           </div>
           
         </div>
