@@ -12,7 +12,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug,
+  Handshake, Shield, Cpu, Bug, Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Prospector",    href: "/app/prospector", icon: Search,         sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm", fn: ["vendedor", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Comissões",     href: "/comissoes",     icon: Coins,           sellerHidden: false, section: "crm", fn: ["vendedor", "administrador"] as UserFunction[] },
     { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Minhas Entregas", href: "/entregas",    icon: Truck,           sellerHidden: false, section: "crm", fn: ["entrega", "administrador"] as UserFunction[] },

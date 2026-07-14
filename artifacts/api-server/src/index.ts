@@ -1269,6 +1269,36 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup backfill: cadence-closing backfill skipped");
   }
+
+  // Seller commissions table
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS seller_commissions (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        seller_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        cliente_tenant_id TEXT REFERENCES tenants(id) ON DELETE SET NULL,
+        deal_id TEXT REFERENCES deals(id) ON DELETE SET NULL,
+        plan_slug TEXT,
+        cliente_nome TEXT,
+        valor_implantacao_cents INTEGER NOT NULL,
+        percentual INTEGER NOT NULL DEFAULT 20,
+        valor_comissao_cents INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente',
+        observacoes TEXT,
+        paid_at TIMESTAMP,
+        paid_by_user_id TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_seller_comm_tenant ON seller_commissions(tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_seller_comm_seller ON seller_commissions(seller_user_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_seller_comm_deal   ON seller_commissions(deal_id)`);
+    logger.info("startup migrations: seller_commissions OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: seller_commissions skipped (may already exist)");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

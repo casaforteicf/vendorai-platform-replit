@@ -95,6 +95,7 @@ import confirmClosureRouter from "./confirm_closure";
 import organizacoesRouter from "./organizacoes";
 import tenantSwitchRouter from "./tenant_switch.js";
 import adminFinancialRouter from "./admin_financial";
+import sellerCommissionsRouter from "./sellerCommissions";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -333,6 +334,9 @@ router.use(tenantSwitchRouter);
 
 // BLOCO 18 — Painel financeiro da plataforma (super_admin)
 router.use(adminFinancialRouter);
+
+// Comissões de vendedores
+router.use(sellerCommissionsRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

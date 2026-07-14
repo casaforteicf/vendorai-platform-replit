@@ -22,6 +22,7 @@ import {
   reactivationQueueTable,
   agentTasksTable,
   usersTable,
+  sellerCommissionsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -343,7 +344,7 @@ router.patch("/deals/:id", async (req, res) => {
     }
 
     const plano = await db
-      .select({ id: plansTable.id })
+      .select({ id: plansTable.id, implantationPriceCents: plansTable.implantationPriceCents })
       .from(plansTable)
       .where(eq(plansTable.slug, deal.planoContratado))
       .limit(1)
@@ -444,7 +445,43 @@ router.patch("/deals/:id", async (req, res) => {
           planId: plano.id,
           assignedBy: "sistema_fechamento_deal",
         });
-        req.log.info({ dealId: deal.id, tenantId, planId: plano.id }, "deal-ganho: plano atribuído ao tenant");
+        bgLog.info({ dealId: deal.id, tenantId, planId: plano.id }, "deal-ganho: plano atribuído ao tenant");
+
+        // ── Auto-gerar comissão do vendedor (20% da implantação) ────────────
+        if (earlyDeal.assignedTo && plano.implantationPriceCents && plano.implantationPriceCents > 0) {
+          try {
+            const [sellerUser] = await db
+              .select({ tenantId: usersTable.tenantId })
+              .from(usersTable)
+              .where(eq(usersTable.id, earlyDeal.assignedTo))
+              .limit(1);
+            const commTenantId = sellerUser?.tenantId ?? tenantId;
+            const comissaoCents = Math.round(plano.implantationPriceCents * 20 / 100);
+            // Idempotência: não criar duplicata para o mesmo deal
+            const existing = await db
+              .select({ id: sellerCommissionsTable.id })
+              .from(sellerCommissionsTable)
+              .where(eq(sellerCommissionsTable.dealId, deal.id))
+              .limit(1);
+            if (existing.length === 0) {
+              await db.insert(sellerCommissionsTable).values({
+                tenantId: commTenantId,
+                sellerUserId: earlyDeal.assignedTo,
+                clienteTenantId: tenantId ?? null,
+                dealId: deal.id,
+                planSlug: deal.planoContratado ?? null,
+                clienteNome: earlyDeal.titulo ?? deal.titulo ?? null,
+                valorImplantacaoCents: plano.implantationPriceCents,
+                percentual: 20,
+                valorComissaoCents: comissaoCents,
+                status: "pendente",
+              });
+              bgLog.info({ dealId: deal.id, sellerUserId: earlyDeal.assignedTo, comissaoCents }, "deal-ganho: comissão de vendedor gerada");
+            }
+          } catch (commErr) {
+            bgLog.warn({ commErr, dealId: deal.id }, "deal-ganho: falha ao gerar comissão (não crítico)");
+          }
+        }
 
         // Atualizar deal_closing_status: plano_atribuido → concluido (ou travado em erro)
         await db
