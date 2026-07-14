@@ -457,7 +457,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   const appUrl = domain ? `https://${domain}` : `http://localhost:3000`;
-  const resetUrl = `${appUrl}/redefinir-senha?token=${rawToken}`;
+  const resetUrl = `${appUrl}/app/redefinir-senha?token=${rawToken}`;
 
   await sendPasswordResetEmail(user.email, resetUrl);
 

@@ -1,6 +1,15 @@
 import { Resend } from "resend";
 import { logger } from "./logger.js";
 
+// Remetente configurável via RESEND_FROM_DOMAIN.
+// Defina essa variável de ambiente para o domínio verificado no Resend
+// (ex: "appvendorai.com"). Sem ela, usa "vendorai.app" — que precisa ser
+// verificado em https://resend.com/domains para que os emails sejam entregues.
+function from(displayName: string, localPart: string): string {
+  const domain = process.env["RESEND_FROM_DOMAIN"] ?? "vendorai.app";
+  return `${displayName} <${localPart}@${domain}>`;
+}
+
 export async function sendPasswordResetEmail(
   to: string,
   resetUrl: string,
@@ -15,7 +24,7 @@ export async function sendPasswordResetEmail(
   }
 
   const { error } = await resendLocal.emails.send({
-    from: "VendorAI <noreply@vendorai.app>",
+    from: from("VendorAI", "noreply"),
     to,
     subject: "Redefinir sua senha — VendorAI",
     html: `
@@ -91,7 +100,7 @@ export async function sendAiFailureAlert(params: {
   const needsRecharge = params.errorType === "429_quota" || params.errorType === "400_billing";
 
   const { error } = await resend.emails.send({
-    from: "VendorAI Alertas <alertas@vendorai.app>",
+    from: from("VendorAI Alertas", "alertas"),
     to: alertTo,
     subject: `[VendorAI] Falha de API — ${providerLabel} ${errorLabel}`,
     html: `
@@ -162,7 +171,7 @@ export async function sendWelcomeEmail(opts: {
   }
 
   const { error } = await resend.emails.send({
-    from: "VendorAI <noreply@vendorai.app>",
+    from: from("VendorAI", "noreply"),
     to: opts.to,
     subject: `Seu acesso ao VendorAI está pronto — ${opts.tenantName}`,
     html: `
@@ -214,7 +223,7 @@ export async function sendInviteEmail(
   }
 
   const { error } = await resend.emails.send({
-    from: "VendorAI <convites@vendorai.app>",
+    from: from("VendorAI", "convites"),
     to,
     subject: `Seu acesso ao VendorAI — ${tenantName}`,
     html: `
@@ -284,7 +293,7 @@ export async function sendMeetingInviteEmail(params: {
     : "";
 
   const { error } = await r.emails.send({
-    from: `${params.nomeEmpresa} <noreply@vendorai.app>`,
+    from: from(params.nomeEmpresa, "noreply"),
     to: params.to,
     subject: `📅 Reunião confirmada — ${params.dataStr} às ${params.horaStr}`,
     html: `
