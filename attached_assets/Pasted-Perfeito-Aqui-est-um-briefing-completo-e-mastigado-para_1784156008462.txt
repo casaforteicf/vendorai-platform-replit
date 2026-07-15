@@ -1,0 +1,51 @@
+Perfeito! Aqui está um briefing completo e mastigado para você copiar, colar e enviar para o seu agente (desenvolvedor, estagiário, ou assistente técnico).
+
+Ele vai extrair exatamente o que eu preciso, sem que ninguém precise expor dados sigilosos. Basta enviar este texto para a pessoa responsável pelo código:
+
+---
+
+📋 BRIEFING PARA AGENTE - LEVANTAMENTO DE DADOS (AUDITORIA SaaS/REPLIT)
+
+Olá, equipe! Preciso que vocês coletem as informações abaixo para uma auditoria de escalabilidade e segurança. Regra de ouro: Antes de me enviar, troquem qualquer valor sensível (DATABASE_URL, JWT_SECRET, API_KEYS) por placeholders do tipo "SUA_CHAVE_AQUI" ou "REMOVER". Nada de senhas reais!
+
+---
+
+1. CÓDIGO E DEPENDÊNCIAS (Cole o conteúdo textual)
+
+· Cole o conteúdo do arquivo package.json (ou requirements.txt/pyproject.toml).
+· Cole o conteúdo do arquivo principal do servidor (ex: index.js, server.js, app.py ou main.ts).
+· Cole o conteúdo do arquivo de schema do banco de dados (models/entities ou migration inicial).
+
+2. BANCO DE DADOS (Responda em texto)
+
+· Vocês estão usando o SQLite nativo do Replit ou um banco externo (ex: Neon PostgreSQL, Supabase, PlanetScale)?
+· Se for externo, qual o plano atual (ex: Neon Free, Pro)?
+· Já rodaram a query mais lenta do sistema com EXPLAIN ANALYZE? Se sim, colem o plano de execução aqui.
+
+3. AUTENTICAÇÃO E SESSÕES (Responda em texto)
+
+· Como as sessões dos usuários são mantidas? ( JWT stateless armazenado no localStorage/cookie? OU Sessão em memória guardada no servidor do Replit?)
+· Se usam Redis, estão usando um serviço externo (Upstash/Redis Cloud) ou rodam local no Replit?
+
+4. TAREFAS EM BACKGROUND (JOBS) (Responda em texto)
+
+· Existem processos que rodam "por baixo dos panos" (enviar e-mails, gerar relatórios PDF, processar imagens)?
+· Como essas tarefas são executadas? ( setTimeout/setInterval direto no código? BullMQ com Redis? Trigger.dev? Cron jobs do Replit?)
+
+5. SEGURANÇA E LIMITAÇÃO (Responda em texto)
+
+· Existe algum mecanismo de Rate Limiting (limitar número de requisições por IP/usuário)? Se sim, qual lib e onde os dados são armazenados (em memória ou Redis)?
+· Como vocês protegem endpoints críticos contra força bruta (ex: /login, /reset-password)?
+
+6. INFRAESTRUTURA E CUSTOS (Responda em texto)
+
+· Qual o plano atual do Replit (Starter, Hacker ou Pro) e qual a cota de Unidades de Computação (ex: 3M, 6M)?
+· Vocês habilitaram o auto-scale máximo de instâncias? Qual o limite configurado?
+· Qual é o maior custo identificado atualmente: banco de dados, tráfego de rede, ou processamento?
+
+---
+
+COMO ENTREGAR A RESPOSTA:
+Organizem as respostas exatamente nesta ordem, em tópicos (1 a 6), direto no chat com o auditor (eu). Com isso em mãos, o relatório técnico sai em poucos minutos.
+
+Agradeço a colaboração! 🚀
