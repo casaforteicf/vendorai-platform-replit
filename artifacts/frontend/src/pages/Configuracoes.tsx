@@ -35,7 +35,7 @@ import {
   useRegenerateIntegrationApiKey,
   useListTenantUsers,
   getListTenantUsersQueryKey,
-  useInviteTenantSeller,
+
   useDeleteUser,
   TipoFechamento,
   useRequestUploadUrl,
@@ -569,23 +569,14 @@ export default function Configuracoes() {
 
   // ── Team Management ────────────────────────────────────────────────────────
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"tenant_admin" | "tenant_seller" | "member">("tenant_seller");
+  const [invitePending, setInvitePending] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
   const [reassignDialog, setReassignDialog] = useState<{ open: boolean; fromMember: { id: string; name: string } | null }>({ open: false, fromMember: null });
   const [reassignToUserId, setReassignToUserId] = useState<string>("");
 
   const teamQuery = useListTenantUsers(tenantId, {
     query: { queryKey: getListTenantUsersQueryKey(tenantId), enabled: !!tenantId && isTenantAdmin },
-  });
-
-  const inviteSeller = useInviteTenantSeller({
-    mutation: {
-      onSuccess: (data) => {
-        setLastInviteUrl(data.inviteUrl);
-        setInviteEmail("");
-        toast({ title: "Convite gerado!", description: `Link de acesso criado para ${data.email}.` });
-      },
-      onError: () => toast({ title: "Erro ao gerar convite.", variant: "destructive" }),
-    },
   });
 
   const removeUser = useDeleteUser({
@@ -3893,10 +3884,10 @@ Body:
                 <div>
                   <h3 className="text-base font-semibold flex items-center gap-2">
                     <UserPlus className="h-4 w-4" />
-                    Convidar Vendedor
+                    Convidar Membro da Equipe
                   </h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Gere um link de convite para um novo membro da equipe com acesso de vendedor.
+                    Gere um link de convite para um novo membro da equipe. Escolha o papel que ele terá.
                   </p>
                 </div>
 
@@ -3908,16 +3899,41 @@ Body:
                     onChange={(e) => setInviteEmail(e.target.value)}
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   />
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as typeof inviteRole)}
+                    className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring shrink-0"
+                  >
+                    <option value="tenant_admin">Admin</option>
+                    <option value="tenant_seller">Vendedor</option>
+                    <option value="member">Membro</option>
+                  </select>
                   <Button
-                    onClick={() => {
+                    onClick={async () => {
                       if (!inviteEmail.trim()) return;
-                      inviteSeller.mutate({ tenantId, data: { email: inviteEmail.trim() } });
+                      setInvitePending(true);
+                      try {
+                        const res = await fetch(`/api/tenants/${tenantId}/users/invite`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+                        });
+                        const data = await res.json() as { inviteUrl?: string; error?: string };
+                        if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+                        setLastInviteUrl(data.inviteUrl ?? null);
+                        setInviteEmail("");
+                        toast({ title: "Convite gerado!", description: `Link de acesso criado para ${inviteEmail.trim()}.` });
+                      } catch (err) {
+                        toast({ title: "Erro ao gerar convite.", description: (err as Error).message, variant: "destructive" });
+                      } finally {
+                        setInvitePending(false);
+                      }
                     }}
-                    disabled={inviteSeller.isPending || !inviteEmail.trim()}
+                    disabled={invitePending || !inviteEmail.trim()}
                     size="sm"
                     className="shrink-0"
                   >
-                    {inviteSeller.isPending ? (
+                    {invitePending ? (
                       <RefreshCw className="h-4 w-4 animate-spin" />
                     ) : (
                       <>

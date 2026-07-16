@@ -748,6 +748,45 @@ router.post("/superadmin/tenants/:id/resend-access", requireRole("super_admin"),
   res.json({ tempPassword, emailSent, email: adminUser.email });
 });
 
+// ── PATCH /tenants/:id/users/:userId/role ────────────────────────────────────
+// Apenas tenant_admin ou super_admin podem alterar roles de membros do tenant
+router.patch(
+  "/tenants/:id/users/:userId/role",
+  requireRole("tenant_admin", "super_admin"),
+  requireSameTenanOrSuperAdmin(),
+  async (req, res) => {
+    const tenantId = String(req.params["id"]);
+    const userId = String(req.params["userId"]);
+    const { role } = req.body as { role?: string };
+
+    const allowed = ["tenant_admin", "tenant_seller", "member"];
+    if (!role || !allowed.includes(role)) {
+      res.status(400).json({ error: "ROLE_INVALIDO", message: `Role deve ser: ${allowed.join(", ")}` });
+      return;
+    }
+
+    const roleMap: Record<string, { role: string; platformRole: string }> = {
+      tenant_admin:  { role: "admin",  platformRole: "tenant_admin"  },
+      tenant_seller: { role: "member", platformRole: "tenant_seller" },
+      member:        { role: "member", platformRole: "member"        },
+    };
+    const values = roleMap[role]!;
+
+    const [updated] = await db
+      .update(usersTable)
+      .set({ role: values.role, platformRole: values.platformRole as "tenant_admin" | "tenant_seller" | "member", updatedAt: new Date() })
+      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
+      .returning({ id: usersTable.id, email: usersTable.email, platformRole: usersTable.platformRole });
+
+    if (!updated) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+
+    res.json(updated);
+  }
+);
+
 function isUniqueViolation(err: unknown): boolean {
   return (
     typeof err === "object" &&

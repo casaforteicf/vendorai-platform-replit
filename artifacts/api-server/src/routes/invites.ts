@@ -30,6 +30,7 @@ const createInviteSchema = z.object({
 const createSellerInviteSchema = z.object({
   email: z.email(),
   name: z.string().min(1).optional(),
+  role: z.enum(["tenant_admin", "tenant_seller", "member"]).optional().default("tenant_seller"),
 });
 
 const acceptInviteSchema = z.object({
@@ -134,7 +135,12 @@ router.post("/auth/accept-invite", async (req, res) => {
 
   const hashed = await bcrypt.hash(password, 12);
 
-  const isSeller = invite.role === "tenant_seller";
+  const roleMap: Record<string, { role: string; platformRole: "tenant_admin" | "tenant_seller" | "member" }> = {
+    tenant_admin:  { role: "admin",  platformRole: "tenant_admin"  },
+    tenant_seller: { role: "member", platformRole: "tenant_seller" },
+    member:        { role: "member", platformRole: "member"        },
+  };
+  const roleValues = roleMap[invite.role] ?? roleMap["tenant_seller"]!;
   const [user] = await db
     .insert(usersTable)
     .values({
@@ -142,8 +148,8 @@ router.post("/auth/accept-invite", async (req, res) => {
       name,
       email: invite.email,
       password: hashed,
-      role: isSeller ? "member" : "admin",
-      platformRole: isSeller ? "tenant_seller" : "tenant_admin",
+      role: roleValues.role,
+      platformRole: roleValues.platformRole,
     })
     .returning(PUBLIC_USER_FIELDS);
 
@@ -257,7 +263,7 @@ protectedRouter.post(
       return;
     }
 
-    const { email } = parsed.data;
+    const { email, role } = parsed.data;
 
     const existingPending = await db
       .select({ id: tenantInvitesTable.id, token: tenantInvitesTable.token })
@@ -266,7 +272,7 @@ protectedRouter.post(
         and(
           eq(tenantInvitesTable.email, email),
           eq(tenantInvitesTable.tenantId, tenantId),
-          eq(tenantInvitesTable.role, "tenant_seller")
+          eq(tenantInvitesTable.role, role)
         )
       );
 
@@ -277,7 +283,7 @@ protectedRouter.post(
     if (existingPending.length > 0 && existingPending[0]) {
       [invite] = await db
         .update(tenantInvitesTable)
-        .set({ usedAt: null, expiresAt })
+        .set({ usedAt: null, expiresAt, role })
         .where(eq(tenantInvitesTable.id, existingPending[0].id))
         .returning();
     } else {
@@ -286,7 +292,7 @@ protectedRouter.post(
         .values({
           tenantId,
           email,
-          role: "tenant_seller",
+          role,
           expiresAt,
           createdBy: req.user!.sub,
         })
@@ -299,7 +305,7 @@ protectedRouter.post(
     }
 
     const inviteUrl = buildInviteUrl(req, invite.token);
-    req.log.info({ inviteId: invite.id, tenantId, email }, "Seller invite created");
+    req.log.info({ inviteId: invite.id, tenantId, email, role }, "Team invite created");
 
     res.status(201).json({
       id: invite.id,
