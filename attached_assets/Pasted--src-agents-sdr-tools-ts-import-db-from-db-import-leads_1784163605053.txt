@@ -1,0 +1,104 @@
+// src/agents/sdr-tools.ts
+import { db } from '../db';
+import { leads, whatsapp_messages, tasks } from '../schema';
+import { eq, desc } from 'drizzle-orm';
+import { sendWhatsApp } from '../integrations/zapi'; // Vamos criar este arquivo agora
+
+// 1. Buscar contexto completo do lead
+export const getLeadContext = async (leadId: string) => {
+  const leadResult = await db.select().from(leads).where(eq(leads.id, leadId));
+  const history = await db.select()
+    .from(whatsapp_messages)
+    .where(eq(whatsapp_messages.lead_id, leadId))
+    .orderBy(desc(whatsapp_messages.created_at))
+    .limit(10);
+  
+  return { 
+    lead: leadResult[0], 
+    history: history.reverse()
+  };
+};
+
+// 2. Enviar mensagem (ação real)
+export const sendMessage = async (leadId: string, text: string) => {
+  const lead = await db.select().from(leads).where(eq(leads.id, leadId));
+  if (!lead[0]) throw new Error('Lead não encontrado');
+  
+  await sendWhatsApp(lead[0].phone, text);
+  
+  await db.insert(whatsapp_messages).values({
+    lead_id: leadId,
+    text: text,
+    sender: 'sdr_agent',
+    created_at: new Date()
+  });
+  
+  return { success: true, message: 'Mensagem enviada com sucesso' };
+};
+
+// 3. Atualizar etapa no pipeline
+export const updateStage = async (leadId: string, stage: string) => {
+  await db.update(leads)
+    .set({ stage: stage, updated_at: new Date() })
+    .where(eq(leads.id, leadId));
+  return { success: true, new_stage: stage };
+};
+
+// 4. Agendar follow-up
+export const scheduleFollowUp = async (leadId: string, dateTime: string, notes: string) => {
+  await db.insert(tasks).values({
+    lead_id: leadId,
+    due_date: new Date(dateTime),
+    notes: notes,
+    status: 'pending',
+    created_at: new Date()
+  });
+  return { success: true, scheduled_for: dateTime };
+};
+
+// Schema das ferramentas para OpenAI
+export const toolSchemas = [
+  {
+    type: 'function',
+    function: {
+      name: 'sendMessage',
+      description: 'Envia uma mensagem de WhatsApp para o lead.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'Texto exato da mensagem' }
+        },
+        required: ['text']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'updateStage',
+      description: 'Move o lead para uma nova etapa do funil (Qualificado, Reunião Marcada, Perdido, Aguardando).',
+      parameters: {
+        type: 'object',
+        properties: {
+          stage: { type: 'string', enum: ['Novo', 'Qualificado', 'Reunião Marcada', 'Perdido', 'Aguardando'] }
+        },
+        required: ['stage']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'scheduleFollowUp',
+      description: 'Agenda uma tarefa para contatar o lead novamente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          dateTime: { type: 'string', description: 'Data ISO (ex: 2026-07-20T14:30:00Z)' },
+          notes: { type: 'string', description: 'Motivo do follow-up' }
+        },
+        required: ['dateTime', 'notes']
+      }
+    }
+  }
+];
