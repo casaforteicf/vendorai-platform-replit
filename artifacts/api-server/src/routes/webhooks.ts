@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, sql } from "drizzle-orm";
 import {
   db,
   agentConfigsTable,
@@ -10,6 +10,8 @@ import {
   billingEventsTable,
   tokenPurchasesTable,
   dealsTable,
+  prospectorFlowExecutionsTable,
+  campaignSentLogsTable,
 } from "@workspace/db";
 import { dispatchSkuDelivery } from "../lib/product-delivery.js";
 import { z } from "zod";
@@ -1195,6 +1197,40 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           if (!_metaApptHandled) {
             dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
           }
+        }
+
+        // ── Rastreamento de leitura (read receipts) ──────────────────────
+        const statuses = (value.statuses ?? []) as Array<Record<string, unknown>>;
+        for (const statusEvt of statuses) {
+          if (statusEvt["status"] !== "read") continue;
+          const wamidEvt = statusEvt["id"] as string | undefined;
+          if (!wamidEvt) continue;
+
+          // Marca abertura em execuções de fluxo de nutrição
+          await db
+            .update(prospectorFlowExecutionsTable)
+            .set({ abertaEm: new Date() })
+            .where(
+              and(
+                eq(prospectorFlowExecutionsTable.wamid, wamidEvt),
+                isNull(prospectorFlowExecutionsTable.abertaEm)
+              )
+            )
+            .catch(() => {});
+
+          // Marca leitura em logs de campanha
+          await db
+            .update(campaignSentLogsTable)
+            .set({ readAt: new Date() })
+            .where(
+              and(
+                eq(campaignSentLogsTable.wamid, wamidEvt),
+                isNull(campaignSentLogsTable.readAt)
+              )
+            )
+            .catch(() => {});
+
+          req.log.debug({ wamidEvt }, "meta-webhook: read receipt processado");
         }
       }
     }

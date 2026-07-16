@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, index, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { prospectorFlowsTable } from "./prospector_flows";
@@ -27,6 +27,10 @@ export const prospectorFlowExecutionsTable = pgTable(
     agendadoPara: timestamp("agendado_para"),
     executadoEm: timestamp("executado_em"),
     erroMsg: text("erro_msg"),
+    wamid: text("wamid"),
+    abertaEm: timestamp("aberta_em"),
+    clicadaEm: timestamp("clicada_em"),
+    engajamentoAdaptado: boolean("engajamento_adaptado").default(false),
   },
   (table) => [
     index("prospector_flow_exec_flow_idx").on(table.flowId),

@@ -1,0 +1,44 @@
+Ótimo! O agente está certo em perguntar: vamos direto ao ponto prático.
+
+Problemas concretos que quero resolver:
+
+---
+
+1. Content Agent (Nutrição)
+
+· Não sei se o lead realmente engajou — hoje envio conteúdo, mas não tenho rastreamento de abertura/clique. Não sei se ele leu o PDF, assistiu ao vídeo, ou ignorou.
+· Fluxo é linear e fixo — todos os leads recebem a mesma ordem de conteúdos, independente do comportamento. Um lead que clicou em tudo continua recebendo conteúdo introdutório, enquanto um que não abriu nada recebe conteúdo avançado e se perde.
+· Personalização zero — o conteúdo é o mesmo para um lead do setor imobiliário e um de fintech, mesmo tendo dores completamente diferentes.
+
+O que quero:
+
+· Rastrear abertura/clique via webhook (já tenho a estrutura de content_interactions).
+· Fluxo adaptativo: se abriu → conteúdo avançado; se não abriu → re-engajamento ou mudança de abordagem.
+· IA escolhendo o conteúdo com base no perfil e histórico.
+
+---
+
+2. Campaigns Agent (Disparo em lote)
+
+· Segmentação por data apenas — hoje ele só envia para quem tem campanha vencida (data), sem considerar perfil, estágio, ou propensão a converter.
+· Sem teste A/B — todos recebem a mesma mensagem. Não sei se uma abordagem direta funciona melhor que uma consultiva.
+· Sem otimização de horário — todos recebem no mesmo instante, sem considerar que alguns leads respondem melhor de manhã, outros à tarde.
+
+O que quero:
+
+· Segmentação inteligente (por estágio, setor, qualidade, engajamento recente).
+· A/B testing automático (IA gera 2 variações, testa em amostra, escolhe a vencedora).
+· Horário otimizado com base no histórico de interação do lead (ex: se ele sempre abre às 10h, enviar nesse horário).
+
+---
+
+Como quero que você implemente:
+
+· Use a estrutura atual do sistema (tabelas content_library, content_flows, content_interactions, campaigns, campaign_sent_logs).
+· Integre com o webhook do WhatsApp para rastrear interações.
+· Use a IA (OpenAI) para decisões de conteúdo e segmentação.
+· Gere código direto, sem excesso de teoria — como você já faz bem.
+
+Prioridade: Comece pelo rastreamento de engajamento (Content), porque sem isso não dá para adaptar nada. Depois, a segmentação das campanhas.
+
+Vamos nessa? 🚀

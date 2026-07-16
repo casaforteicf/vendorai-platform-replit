@@ -41,3 +41,4 @@
 - [VendorAI catalog seeding pattern](vendorai-catalog-seeding.md) — startup migration deve fazer UPDATE+INSERT separados; deactivação deve omitir filtro product_type (senão rows legadas com nome diferente escapam).
 - [Puppeteer waitUntil constraint](puppeteer-waituntil.md) — esta versão do puppeteer-core só aceita "load" ou "domcontentloaded" em setContent (não "networkidle0").
 - [Z-API document endpoint](zapi-document-endpoint.md) — envio de PDF via `/send-document/pdf` com body `{ phone, document: "data:application/pdf;base64,...", fileName, caption }` e header `Client-Token`.
+- [Content engagement + Campaign A/B](content-engagement-ab.md) — wamid salvo na execução; webhook statuses[].status=read → abertaEm/readAt; /api/track/c/:execId para cliques; fluxo adaptativo se >24h sem abertura; A/B split 50/50 em campaigns com variant em campaign_sent_logs.

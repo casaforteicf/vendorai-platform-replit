@@ -1338,6 +1338,67 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup migrations: lead_embeddings skipped (may already exist or pgvector unavailable)");
   }
+
+  // ── Flow execution engagement tracking (wamid + aberta_em + clicada_em) ──
+  try {
+    await db.execute(sql`ALTER TABLE prospector_flow_executions ADD COLUMN IF NOT EXISTS wamid TEXT`);
+    await db.execute(sql`ALTER TABLE prospector_flow_executions ADD COLUMN IF NOT EXISTS aberta_em TIMESTAMPTZ`);
+    await db.execute(sql`ALTER TABLE prospector_flow_executions ADD COLUMN IF NOT EXISTS clicada_em TIMESTAMPTZ`);
+    await db.execute(sql`ALTER TABLE prospector_flow_executions ADD COLUMN IF NOT EXISTS engajamento_adaptado BOOLEAN DEFAULT FALSE`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_pfe_wamid ON prospector_flow_executions(wamid) WHERE wamid IS NOT NULL`);
+    logger.info("startup migrations: prospector_flow_executions engagement columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: prospector_flow_executions engagement columns skipped");
+  }
+
+  // ── Campaign A/B testing columns ──────────────────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS ab_test_enabled INTEGER DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS ab_test_sample_pct INTEGER DEFAULT 30`);
+    await db.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variant_a_text TEXT`);
+    await db.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS variant_b_text TEXT`);
+    await db.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS winning_variant TEXT`);
+    logger.info("startup migrations: campaigns A/B columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: campaigns A/B columns skipped");
+  }
+
+  // ── campaign_sent_logs ────────────────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS campaign_sent_logs (
+        id TEXT PRIMARY KEY,
+        campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+        variant TEXT NOT NULL DEFAULT 'main',
+        wamid TEXT,
+        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        read_at TIMESTAMPTZ
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_csl_campaign ON campaign_sent_logs(campaign_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_csl_lead ON campaign_sent_logs(lead_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_csl_wamid ON campaign_sent_logs(wamid) WHERE wamid IS NOT NULL`);
+    logger.info("startup migrations: campaign_sent_logs OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: campaign_sent_logs skipped");
+  }
+
+  // ── lead_optimal_hours ────────────────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS lead_optimal_hours (
+        id TEXT PRIMARY KEY,
+        lead_id TEXT NOT NULL UNIQUE REFERENCES leads(id) ON DELETE CASCADE,
+        optimal_hour INTEGER,
+        confidence REAL NOT NULL DEFAULT 0.5,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    logger.info("startup migrations: lead_optimal_hours OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: lead_optimal_hours skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

@@ -165,3 +165,5 @@ export * from "./tenant_switch_log";
 export * from "./relatos_tecnicos";
 export * from "./seller_commissions";
 export * from "./prospect_feedback";
+export * from "./campaign_sent_logs";
+export * from "./lead_optimal_hours";

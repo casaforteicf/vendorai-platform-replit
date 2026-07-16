@@ -96,6 +96,7 @@ import organizacoesRouter from "./organizacoes";
 import tenantSwitchRouter from "./tenant_switch.js";
 import adminFinancialRouter from "./admin_financial";
 import sellerCommissionsRouter from "./sellerCommissions";
+import contentTrackingRouter from "./content_tracking";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -337,6 +338,9 @@ router.use(adminFinancialRouter);
 
 // Comissões de vendedores
 router.use(sellerCommissionsRouter);
+
+// Rastreamento de clique em materiais de fluxo de nutrição (sem auth)
+router.use(contentTrackingRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

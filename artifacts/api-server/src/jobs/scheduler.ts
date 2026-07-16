@@ -51,6 +51,7 @@ import {
   prospectApprovalsTable,
   reactivationQueueTable,
   tenantDomainsTable,
+  campaignSentLogsTable,
 } from "@workspace/db";
 import { getCustomHostname } from "../lib/cloudflare.js";
 import type { SegmentoFiltro } from "@workspace/db";
@@ -354,14 +355,40 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
         }
       }
 
+      // ── A/B Test split ─────────────────────────────────────────────────────
+      const isAbTest = !!(
+        (campaign as Record<string, unknown>).abTestEnabled &&
+        (campaign as Record<string, unknown>).variantAText &&
+        (campaign as Record<string, unknown>).variantBText
+      );
+      type LeadVariant = { leadId: string; variant: "A" | "B" | "main"; mensagem: string };
+      const leadsWithVariants: LeadVariant[] = [];
+
+      if (isAbTest) {
+        const halfLen = Math.floor(leadIds.length / 2);
+        for (let i = 0; i < leadIds.length; i++) {
+          const leadId = leadIds[i]!;
+          const variant = i < halfLen ? "A" : "B";
+          const mensagemVariant = variant === "A"
+            ? String((campaign as Record<string, unknown>).variantAText)
+            : String((campaign as Record<string, unknown>).variantBText);
+          leadsWithVariants.push({ leadId, variant, mensagem: mensagemVariant });
+        }
+        log.info({ campaignId: campaign.id, total: leadIds.length, halfLen }, "scheduler/campaigns: A/B test split aplicado");
+      } else {
+        for (const leadId of leadIds) {
+          const etapa = leadEtapaMap[leadId];
+          const mensagemParaLead = (etapa && mensagensEtapa?.[etapa]) || campaign.mensagem;
+          leadsWithVariants.push({ leadId, variant: "main", mensagem: mensagemParaLead });
+        }
+      }
+
       // Create one agent_task per lead
       const dispatchTime = new Date();
       let enviados = 0;
 
-      for (const leadId of leadIds) {
+      for (const { leadId, variant, mensagem: conteudoFinal } of leadsWithVariants) {
         try {
-          const etapa = leadEtapaMap[leadId];
-          const mensagemParaLead = (etapa && mensagensEtapa?.[etapa]) || campaign.mensagem;
           const campaignImageUrl = (campaign as Record<string, unknown>).imageUrl as string | null | undefined;
           const campaignImageObjectPath = campaignImageUrl
             ? campaignImageUrl.replace(/^\/api\/storage\/objects/, "/objects")
@@ -376,10 +403,11 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
               actionType: "enviar_whatsapp",
               payload: {
                 leadId,
-                conteudo:   mensagemParaLead,
+                conteudo:   conteudoFinal,
                 agentName:  "sdr",
                 canal:      campaign.tipo === "whatsapp" ? "whatsapp" : "whatsapp",
                 campaignId: campaign.id,
+                abVariant:  variant,
                 ...(campaignImageObjectPath ? { campaignImageObjectPath } : {}),
               },
               status:     isAutonomous ? "executando" : "pendente_aprovacao",
@@ -387,16 +415,23 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
             })
             .returning();
 
+          // Registra log de envio com variante (wamid preenchido depois pelo webhook)
+          await db.insert(campaignSentLogsTable).values({
+            id: crypto.randomUUID(),
+            campaignId: campaign.id,
+            leadId,
+            variant,
+            sentAt: dispatchTime,
+          }).catch(() => {});
+
           if (isAutonomous) {
             // Execute immediately — import inline to avoid circular dep at module load
             const { executeTaskAction } = await import("../routes/agent_tasks.js");
             await executeTaskAction(task, log);
 
             // ── Anti-ban: delay entre disparos de campanha ──────────────────
-            // Intervalo aleatório de 4–9 s para imitar cadência humana e evitar
-            // que a conta seja sinalizada por envio em rajada pelo Z-API.
             const delayMs = 4000 + Math.floor(Math.random() * 5000);
-            log.debug({ delayMs, leadId }, "scheduler/campaigns: anti-ban delay");
+            log.debug({ delayMs, leadId, variant }, "scheduler/campaigns: anti-ban delay");
             await new Promise<void>((r) => setTimeout(r, delayMs));
           }
 

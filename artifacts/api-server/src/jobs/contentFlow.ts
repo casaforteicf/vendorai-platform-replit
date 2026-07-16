@@ -5,7 +5,7 @@
  * processFlowExecutions(): processa execuções pendentes vencidas.
  * Cron: a cada 5 minutos via scheduler.ts.
  */
-import { and, asc, eq, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lte, or } from "drizzle-orm";
 import { Resend } from "resend";
 import type { Logger } from "pino";
 import {
@@ -200,6 +200,32 @@ export async function processFlowExecutions(log: Logger): Promise<void> {
         continue;
       }
 
+      // adaptive: verifica se step anterior foi enviado mas não aberto
+      let previousNotOpened = false;
+      try {
+        const [prevExec] = await db
+          .select({
+            abertaEm: prospectorFlowExecutionsTable.abertaEm,
+            executadoEm: prospectorFlowExecutionsTable.executadoEm,
+          })
+          .from(prospectorFlowExecutionsTable)
+          .where(
+            and(
+              eq(prospectorFlowExecutionsTable.leadId, exec.leadId),
+              eq(prospectorFlowExecutionsTable.flowId, exec.flowId),
+              eq(prospectorFlowExecutionsTable.status, "enviado"),
+            )
+          )
+          .orderBy(desc(prospectorFlowExecutionsTable.executadoEm))
+          .limit(1);
+        if (prevExec?.executadoEm && !prevExec.abertaEm) {
+          const hoursSince = (Date.now() - prevExec.executadoEm.getTime()) / 3600000;
+          if (hoursSince >= 24) previousNotOpened = true;
+        }
+      } catch {
+        // ignore — adaptive check is non-critical
+      }
+
       // b. Gerando
       await db
         .update(prospectorFlowExecutionsTable)
@@ -222,9 +248,13 @@ export async function processFlowExecutions(log: Logger): Promise<void> {
         cidade: "",
         segmento: "",
       };
-      const mensagem = step.mensagemTemplate
+      let mensagem = step.mensagemTemplate
         ? renderPrompt(step.mensagemTemplate, leadVars)
         : "";
+
+      if (previousNotOpened && mensagem) {
+        mensagem = `Olá ${lead.nome}! 👋\n\nNotei que ainda não tive retorno sobre o que compartilhei antes. Quero garantir que você receba as informações certas.\n\n${mensagem}`;
+      }
 
       // f. Enviando
       await db
@@ -235,17 +265,24 @@ export async function processFlowExecutions(log: Logger): Promise<void> {
       // g/h. Envio por canal
       const tenantId = lead.tenantId;
 
+      let wamid: string | undefined;
+
       if (step.canal === "whatsapp") {
         if (!lead.telefone) throw new Error("Lead sem telefone para WhatsApp");
         if (!tenantId) throw new Error("Lead sem tenantId — não é possível enviar WhatsApp");
+
+        const host = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0];
+        const trackingUrl = host
+          ? `https://${host}/api/track/c/${exec.id}`
+          : materialUrl;
 
         if (materialUrl && step.materialTipo === "imagem") {
           await sendWhatsAppMedia(tenantId, lead.telefone, materialUrl, mensagem, xlog);
         } else {
           const texto = materialUrl
-            ? `${mensagem}\n\n📎 ${materialUrl}`.trim()
+            ? `${mensagem}\n\n📎 ${trackingUrl ?? materialUrl}`.trim()
             : mensagem;
-          await sendDirectWhatsAppMessage(tenantId, lead.telefone, texto, xlog);
+          wamid = await sendDirectWhatsAppMessage(tenantId, lead.telefone, texto, xlog) ?? undefined;
         }
       } else if (step.canal === "email") {
         if (!lead.email) throw new Error("Lead sem e-mail para envio");
@@ -261,6 +298,8 @@ export async function processFlowExecutions(log: Logger): Promise<void> {
           status: "enviado",
           executadoEm: new Date(),
           materialGeradoUrl: materialUrl,
+          ...(wamid ? { wamid } : {}),
+          ...(previousNotOpened ? { engajamentoAdaptado: true } : {}),
         })
         .where(eq(prospectorFlowExecutionsTable.id, exec.id));
 

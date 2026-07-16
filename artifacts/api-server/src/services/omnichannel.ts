@@ -264,7 +264,7 @@ async function sendMetaWhatsAppMessage(
   message: string,
   log: Logger,
   isAiResponse = false
-): Promise<void> {
+): Promise<string | undefined> {
   if (isAiResponse) await simulateTypingDelay(message, log);
 
   const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
@@ -292,6 +292,7 @@ async function sendMetaWhatsAppMessage(
 
   const metaMessageId = (body.messages as Array<{ id: string }>)?.[0]?.id;
   log.info({ phone, metaMessageId }, "omnichannel: whatsapp message sent via meta cloud api");
+  return metaMessageId;
 }
 
 /**
@@ -415,7 +416,7 @@ export async function sendDirectWhatsAppMessage(
   phone: string,
   message: string,
   log: Logger
-): Promise<void> {
+): Promise<string | undefined> {
   const [config] = await db
     .select({
       zapiInstanceId: agentConfigsTable.zapiInstanceId,
@@ -437,8 +438,9 @@ export async function sendDirectWhatsAppMessage(
 
   if (hasZapi) {
     await sendZapiWhatsAppMessage(config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!, phone, message, log);
+    return undefined;
   } else {
-    await sendMetaWhatsAppMessage(config!.metaPhoneNumberId!, config!.metaAccessToken!, phone, message, log);
+    return sendMetaWhatsAppMessage(config!.metaPhoneNumberId!, config!.metaAccessToken!, phone, message, log);
   }
 }
 

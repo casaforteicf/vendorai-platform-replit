@@ -58,6 +58,11 @@ export const campaignsTable = pgTable("campaigns", {
   agendadaPara: timestamp("agendada_para"),
   totalDestinatarios: integer("total_destinatarios").notNull().default(0),
   totalEnviados: integer("total_enviados").notNull().default(0),
+  abTestEnabled: integer("ab_test_enabled").default(0),
+  abTestSamplePct: integer("ab_test_sample_pct").default(30),
+  variantAText: text("variant_a_text"),
+  variantBText: text("variant_b_text"),
+  winningVariant: text("winning_variant"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
