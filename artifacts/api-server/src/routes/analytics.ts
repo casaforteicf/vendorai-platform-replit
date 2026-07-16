@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import {
-  and, eq, count, sql, desc, gte, isNotNull,
+  and, eq, count, sql, desc, gte, isNotNull, lte,
 } from "drizzle-orm";
 import {
   db,
@@ -14,6 +14,11 @@ import {
   conversationsTable,
   agendamentosTable,
   activitiesTable,
+  churnActionsTable,
+  scoutOportunidadesTable,
+  campaignsTable,
+  campaignSentLogsTable,
+  prospectorQueueTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -556,6 +561,124 @@ router.get("/tenants/:tenantId/analytics/flow-metrics", async (req, res) => {
     escalationsByReason: toRows(escalationsResult).map((r) => ({
       reason: String(r.reason ?? "sem_razao"),
       count:  Number(r.count  ?? 0),
+    })),
+  });
+});
+
+// ─── Agent Status Dashboard ───────────────────────────────────────────────────
+// GET /tenants/:tenantId/analytics/agents-dashboard
+// Painel consolidado de saúde de todos os agentes — filas, métricas e execuções recentes.
+
+router.get("/tenants/:tenantId/analytics/agents-dashboard", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccess(req, tid)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const [
+    totalLeadsRow,
+    leadsHojeRow,
+    churnedLeadsRow,
+    dealsWonRow,
+    churnPendingRow,
+    churnSuccessRow,
+    churnFailedRow,
+    scoutPorStatusRow,
+    campaignsActiveRow,
+    campaignConversionRow,
+    prospectorQueueRow,
+    agendamentosHojeRow,
+    agentActionsRow,
+  ] = await Promise.all([
+    // Total de leads do tenant
+    db.select({ n: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tid)),
+    // Leads criados hoje
+    db.select({ n: count() }).from(leadsTable).where(and(eq(leadsTable.tenantId, tid), gte(leadsTable.createdAt, today))),
+    // Leads marcados como churned
+    db.select({ n: count() }).from(leadsTable).where(and(eq(leadsTable.tenantId, tid), eq((leadsTable as any).isChurned, true))),
+    // Deals ganhos (últimos 30 dias)
+    db.select({ n: count() }).from(dealsTable).where(and(eq(dealsTable.tenantId, tid), eq(dealsTable.etapa, "ganho"), gte(dealsTable.updatedAt, thirtyDaysAgo))),
+    // Churn actions por status
+    db.select({ n: count() }).from(churnActionsTable).where(and(eq(churnActionsTable.tenantId, tid), sql`${churnActionsTable.actionSuccessful} IS NULL`)),
+    db.select({ n: count() }).from(churnActionsTable).where(and(eq(churnActionsTable.tenantId, tid), eq(churnActionsTable.actionSuccessful, true))),
+    db.select({ n: count() }).from(churnActionsTable).where(and(eq(churnActionsTable.tenantId, tid), eq(churnActionsTable.actionSuccessful, false))),
+    // Scout oportunidades por status
+    db
+      .select({ status: scoutOportunidadesTable.status, n: count() })
+      .from(scoutOportunidadesTable)
+      .where(eq(scoutOportunidadesTable.tenantId, tid))
+      .groupBy(scoutOportunidadesTable.status),
+    // Campanhas ativas
+    db.select({ n: count() }).from(campaignsTable).where(and(eq(campaignsTable.tenantId, tid), eq(campaignsTable.status, "ativa"))),
+    // Taxa de conversão das campanhas (sent logs com convertedAt)
+    db.select({
+      total: count(),
+      converted: sql<number>`count(*) filter (where ${campaignSentLogsTable.convertedAt} is not null)`.mapWith(Number),
+    })
+      .from(campaignSentLogsTable)
+      .innerJoin(campaignsTable, eq(campaignsTable.id, campaignSentLogsTable.campaignId))
+      .where(eq(campaignsTable.tenantId, tid)),
+    // Fila do Prospector
+    db.select({ n: count() }).from(prospectorQueueTable).where(eq(prospectorQueueTable.tenantId, tid)),
+    // Agendamentos de hoje
+    db.select({ n: count() }).from(agendamentosTable).where(and(eq(agendamentosTable.tenantId, tid), gte(agendamentosTable.dataHora, today))),
+    // Ações dos agentes (últimos 30 dias)
+    db
+      .select({
+        agentName: agentActionsLogTable.agentName,
+        total: count(),
+        executed: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'executed')`.mapWith(Number),
+      })
+      .from(agentActionsLogTable)
+      .where(and(eq(agentActionsLogTable.tenantId, tid), gte(agentActionsLogTable.createdAt, thirtyDaysAgo)))
+      .groupBy(agentActionsLogTable.agentName),
+  ]);
+
+  const totalLeads = totalLeadsRow[0]?.n ?? 0;
+  const churnedLeads = churnedLeadsRow[0]?.n ?? 0;
+  const dealsWon = dealsWonRow[0]?.n ?? 0;
+  const campConv = campaignConversionRow[0];
+  const campConvRate = campConv && campConv.total > 0
+    ? Number((campConv.converted / campConv.total).toFixed(3))
+    : 0;
+
+  res.json({
+    generatedAt: new Date().toISOString(),
+    leads: {
+      total: totalLeads,
+      hoje: leadsHojeRow[0]?.n ?? 0,
+      churned: churnedLeads,
+      churnRate: totalLeads > 0 ? Number((churnedLeads / totalLeads).toFixed(3)) : 0,
+    },
+    deals: {
+      wonLast30d: dealsWon,
+    },
+    churnAgent: {
+      actionsPending: churnPendingRow[0]?.n ?? 0,
+      actionsSuccess: churnSuccessRow[0]?.n ?? 0,
+      actionsFailed: churnFailedRow[0]?.n ?? 0,
+    },
+    revenueScout: {
+      byStatus: scoutPorStatusRow.map((r) => ({ status: r.status, count: r.n })),
+    },
+    campaigns: {
+      active: campaignsActiveRow[0]?.n ?? 0,
+      sentLogs: campConv?.total ?? 0,
+      converted: campConv?.converted ?? 0,
+      conversionRate: campConvRate,
+    },
+    prospector: {
+      queueSize: prospectorQueueRow[0]?.n ?? 0,
+    },
+    scheduler: {
+      agendamentosHoje: agendamentosHojeRow[0]?.n ?? 0,
+    },
+    agentActions: agentActionsRow.map((r) => ({
+      agentName: r.agentName,
+      total: r.total,
+      executed: r.executed,
     })),
   });
 });

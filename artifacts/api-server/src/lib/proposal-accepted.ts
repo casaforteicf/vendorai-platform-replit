@@ -21,6 +21,7 @@ import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { triggerOnboardingHandoff } from "./agent-engine.js";
 import { createEntregasFromProposta } from "./entregas.js";
 import { reconcileScoutOnDealWon } from "../services/revenueScout.js";
+import { exportLeadToCRM } from "./crm-export.js";
 
 export type ProposalAcceptanceChannel = "link" | "whatsapp" | "manual";
 
@@ -400,6 +401,14 @@ export async function proposalAccepted(
     }).catch((err) => {
       log.warn({ err, dealId: deal.id }, "proposalAccepted: scout reconciliation failed (non-fatal)");
     });
+
+    // Exporta para CRM externo (HubSpot, RD Station etc.) se configurado — fire-and-forget.
+    exportLeadToCRM({
+      tenantId: proposta.tenantId,
+      leadId: proposta.leadId,
+      event: "deal_won",
+      log,
+    }).catch(() => undefined);
   }
 
   log.info({ dealId: deal.id }, "proposalAccepted: deal moved to ganho");

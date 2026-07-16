@@ -1450,6 +1450,25 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup migrations: campaign_sent_logs.converted_at skipped");
   }
+
+  // ── agent_execution_log ────────────────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS agent_execution_log (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        agent_name TEXT NOT NULL,
+        executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        success BOOLEAN,
+        error_message TEXT,
+        duration_ms INTEGER
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_agent_exec_log_agent ON agent_execution_log(agent_name)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_agent_exec_log_at ON agent_execution_log(executed_at DESC)`);
+    logger.info("startup migrations: agent_execution_log OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: agent_execution_log skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

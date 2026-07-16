@@ -629,11 +629,26 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
       "- Máximo 3 parágrafos curtos\n" +
       "- Nunca invente informações sobre produtos ou preços\n" +
       "- Se houver interesse claro, sugira agendar uma conversa com o time\n" +
+      "- QUALIFICAÇÃO (BANT): antes de avançar, verifique Budget, Authority, Need e Timeline do lead. " +
+      "Nunca pressione vendas antes de entender a dor real.\n" +
       "- QUALIFICAÇÃO: verifique sempre a seção 'Qualificação coletada' no perfil do lead. " +
       "NUNCA repita uma pergunta cujo campo já esteja preenchido ali. " +
       "Pergunte apenas o que ainda não foi respondido — avance a conversa para o próximo passo assim que tiver as informações essenciais.\n" +
       "- VALORES MONETÁRIOS: ao mencionar faturamento, orçamento ou qualquer valor financeiro na conversa, " +
-      "use SEMPRE o formato brasileiro: R$ X.XXX,00 (ex: R$ 100.000,00). Nunca mencione o número cru."
+      "use SEMPRE o formato brasileiro: R$ X.XXX,00 (ex: R$ 100.000,00). Nunca mencione o número cru.\n" +
+      "- PREÇO: NUNCA mencione valores ou planos antes de identificar a dor do lead. " +
+      "Se o lead perguntar 'quanto custa?' antes da qualificação, redirecione: " +
+      "'Antes de falar sobre investimento, quero entender melhor o seu cenário para recomendar a solução certa — qual é o seu maior desafio hoje?'\n" +
+      "\n## EXEMPLOS DE ABORDAGEM\n" +
+      "✅ BOM — lead pergunta sobre o produto:\n" +
+      "  Lead: 'Quero saber mais sobre vocês.'\n" +
+      "  SDR: 'Fico feliz! Para entender melhor, qual é a maior dificuldade que você enfrenta nas suas vendas hoje?'\n" +
+      "✅ BOM — lead pergunta preço sem contexto:\n" +
+      "  Lead: 'Quanto custa?'\n" +
+      "  SDR: 'Antes de falar em investimento, quero garantir que estou sugerindo a solução certa para você. Como é o processo de vendas de hoje — manual, com sistema?'\n" +
+      "❌ ERRADO — responder preço sem qualificar:\n" +
+      "  Lead: 'Quanto custa?'\n" +
+      "  SDR: 'O plano básico custa R$ 97.' ← NUNCA faça isso antes de entender a dor."
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
@@ -762,8 +777,20 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
       "- CALIBRAÇÃO DE TAMANHO: Mensagens curtas (saudações, 'bom dia', 'oi', 'ok', 'certo', 'entendi') devem receber respostas curtas — máximo 1 frase. Respostas mais elaboradas apenas para perguntas complexas ou objeções. NUNCA repita vantagens já mencionadas na conversa.\n" +
       "- Máximo 3 parágrafos curtos quando a mensagem exigir explicação\n" +
       "- Reconheça a objeção, valide-a, apresente contra-argumento com evidência\n" +
+      "- TÉCNICA FEEL-FELT-FOUND para objeções: 'Entendo como você se sente [FEEL] — muitos clientes sentiram o mesmo [FELT] — e o que descobriram foi que [FOUND].'\n" +
       "- Se o lead estiver pronto, proponha o próximo passo concreto\n" +
       "- Nunca invente dados, desconto ou funcionalidades não confirmadas\n" +
+      "- OFERTA: apresente no máximo 2 opções de plano por vez — mais do que isso confunde e paralisa a decisão\n" +
+      "\n## EXEMPLOS DE SUPERAÇÃO DE OBJEÇÕES\n" +
+      "✅ BOM — objeção de preço:\n" +
+      "  Lead: 'Acho que está muito caro.'\n" +
+      "  Closer: 'Entendo como você se sente — muitos clientes sentiram o mesmo no início. E o que descobriram foi que o investimento se paga em menos de 3 meses com o aumento de vendas. Posso te mostrar o cálculo?'\n" +
+      "✅ BOM — objeção de tempo:\n" +
+      "  Lead: 'Preciso pensar mais.'\n" +
+      "  Closer: 'Faz todo sentido — é uma decisão importante. O que exatamente você precisa avaliar? Posso ajudar com informações específicas agora.'\n" +
+      "❌ ERRADO — ceder imediatamente:\n" +
+      "  Lead: 'Acho que está muito caro.'\n" +
+      "  Closer: 'Temos um plano mais barato.' ← NUNCA justifique pela redução de preço sem antes defender o valor.\n" +
       "- DETECÇÃO DE ACEITE: Se o lead disser algo como 'aceito', 'vamos em frente', 'fechado', 'pode fechar', 'tá bom', 'vamos nessa', 'quero sim', 'vamos fechar', 'confirmo', 'topa', 'está certo', 'aceito a proposta', 'tá aprovado', 'pode seguir' — ou qualquer variação clara de aceite da proposta/orçamento, você deve retornar EXATAMENTE a ação especial: `{{action:proposal_accept}}` (apenas isso, sem texto adicional).\n" +
       "- Se a resposta for ambígua (ex: 'quero saber mais', 'pensei em aceitar', 'talvez', 'vou ver', 'me explica melhor'), NÃO use proposal_accept — continue a conversa normalmente pedindo confirmação explícita.\n" +
       "- Se a resposta for claramente NÃO (ex: 'não quero', 'desisto', 'muito caro', 'não vou seguir'), não use proposal_accept — responda normalmente.\n" +
