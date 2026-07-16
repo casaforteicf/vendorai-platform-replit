@@ -2,6 +2,8 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import compression from "compression";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { and, desc, eq } from "drizzle-orm";
 import { db, tenantsTable, generatedSitesTable, tenantDomainsTable } from "@workspace/db";
 import router from "./routes";
@@ -11,6 +13,26 @@ const app: Express = express();
 
 // Trust proxy headers from Replit's reverse proxy
 app.set("trust proxy", true);
+
+// ─── Security headers ─────────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false,
+}));
+
+// ─── Rate limiting — endpoints críticos de auth ───────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ error: "Muitas tentativas. Aguarde 1 minuto." });
+  },
+});
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/forgot-password", authLimiter);
 
 app.use(compression());
 app.use(
