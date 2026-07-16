@@ -23,6 +23,7 @@ import {
   clinicEspecialidadesTable,
   agentConfigsTable,
   propostasTable,
+  produtosCatalogoTable,
   type PropostaItem,
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
@@ -90,6 +91,38 @@ function parseCond(raw: unknown): Condicoes {
 
 function parseAcao(raw: unknown): Acao {
   return (raw ?? {}) as Acao;
+}
+
+/**
+ * Calcula scoreOportunidade (0-100) com base no tipo de regra e no atraso
+ * em relação ao padrão esperado. Usado para priorizar processamento.
+ *
+ * Bases por tipo (quanto mais urgente/valioso, maior o base):
+ *   sequencia_produto = 80  (compra confirmada + oferta de follow-up)
+ *   upgrade           = 75  (cliente no produto base, alvo premium)
+ *   cross_sell        = 65  (histórico indica fit com produto complementar)
+ *   aniversario       = 60  (janela de 1 dia — alta urgência temporal)
+ *   recompra          = 55  (clientes com histórico, potencial de recorrência)
+ *   reativacao        = 45  (leads frios — menos urgente)
+ *
+ * Bônus de atraso (+10): quando dias passados excedem 1.5× o limiar esperado.
+ */
+function calcularScoreOportunidade(
+  tipo: string | null | undefined,
+  diasDesdeUltimo: number,
+  diasEsperado: number,
+): number {
+  const bases: Record<string, number> = {
+    sequencia_produto: 80,
+    upgrade:           75,
+    cross_sell:        65,
+    aniversario:       60,
+    recompra:          55,
+    reativacao:        45,
+  };
+  const base = bases[tipo ?? ""] ?? 50;
+  const bonus = diasEsperado > 0 && diasDesdeUltimo > diasEsperado * 1.5 ? 10 : 0;
+  return Math.min(base + bonus, 100);
 }
 
 /** Retorna true se o mês e dia do dataNascimento coincidem com hoje. */
@@ -236,13 +269,25 @@ export async function analisarCliente(
         // converter) — permite reabrir uma nova oferta.
       }
 
+      // Busca preço do produto sugerido para preencher valorEstimado
+      const [produtoSugerido] = await db
+        .select({ precoBase: produtosCatalogoTable.precoBase, nome: produtosCatalogoTable.nome })
+        .from(produtosCatalogoTable)
+        .where(eq(produtosCatalogoTable.id, cond.produtoSugeridoId))
+        .limit(1);
+
+      const diasApos = cond.diasApos ?? 30;
+      const scoreSeq = calcularScoreOportunidade("sequencia_produto", diasDesdeCompra, diasApos);
+
       await db.insert(scoutOportunidadesTable).values({
         tenantId,
         clienteId,
-        regraId:   regra.id,
-        tipo:      regra.tipo,
-        descricao: `Sequência de produto: sugerir ${cond.produtoSugeridoId} para ${lead.nome ?? clienteId}`,
-        status:    "pendente",
+        regraId:          regra.id,
+        tipo:             regra.tipo,
+        descricao:        `Sequência de produto: sugerir ${produtoSugerido?.nome ?? cond.produtoSugeridoId} para ${lead.nome ?? clienteId}`,
+        status:           "pendente",
+        valorEstimado:    produtoSugerido ? String(produtoSugerido.precoBase) : undefined,
+        scoreOportunidade: String(scoreSeq),
       } as any);
 
       await db
@@ -250,7 +295,7 @@ export async function analisarCliente(
         .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
         .where(eq(scoutRegrasTable.id, regra.id));
 
-      log.info({ tenantId, clienteId, regraId: regra.id, tipo: regra.tipo }, "scout: oportunidade sequencia_produto inserida");
+      log.info({ tenantId, clienteId, regraId: regra.id, tipo: regra.tipo, score: scoreSeq }, "scout: oportunidade sequencia_produto inserida");
       continue;
     }
 
@@ -307,13 +352,20 @@ export async function analisarCliente(
 
     if (pendente) continue;
 
+    // Score: usa diasDesdeUltimo e o limiar configurado na regra
+    const diasEsperado =
+      regra.tipo === "recompra"   ? (parseCond(regra.condicoes).diasSemCompra ?? 30) :
+      regra.tipo === "reativacao" ? (parseCond(regra.condicoes).diasSemVisita ?? 60) : 0;
+    const score = calcularScoreOportunidade(regra.tipo, diasDesdeUltimo, diasEsperado);
+
     await db.insert(scoutOportunidadesTable).values({
       tenantId,
       clienteId,
-      regraId:   regra.id,
-      tipo:      regra.tipo,
-      descricao: `Regra "${regra.nome}" disparada para ${lead.nome ?? clienteId}`,
-      status:    "pendente",
+      regraId:           regra.id,
+      tipo:              regra.tipo,
+      descricao:         `Regra "${regra.nome}" disparada para ${lead.nome ?? clienteId}`,
+      status:            "pendente",
+      scoreOportunidade: String(score),
     } as any);
 
     // Incrementa contador de disparos da regra
@@ -322,7 +374,7 @@ export async function analisarCliente(
       .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
       .where(eq(scoutRegrasTable.id, regra.id));
 
-    log.info({ tenantId, clienteId, regraId: regra.id, tipo: regra.tipo }, "scout: oportunidade inserida");
+    log.info({ tenantId, clienteId, regraId: regra.id, tipo: regra.tipo, score }, "scout: oportunidade inserida");
   }
 
   // 5. Atualizar client_service_gaps — um registro por serviço beauty usado
@@ -397,6 +449,7 @@ export async function processarOportunidades(
         eq(scoutOportunidadesTable.status, "pendente"),
       ),
     )
+    .orderBy(desc(scoutOportunidadesTable.scoreOportunidade))
     .limit(50);
 
   if (oportunidades.length === 0) return;

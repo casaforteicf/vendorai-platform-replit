@@ -1400,6 +1400,14 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
     logger.warn({ err }, "startup migrations: lead_optimal_hours skipped");
   }
 
+  // ── scout_oportunidades.score_oportunidade ────────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE scout_oportunidades ADD COLUMN IF NOT EXISTS score_oportunidade NUMERIC(5,2)`);
+    logger.info("startup migrations: scout_oportunidades.score_oportunidade OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: scout_oportunidades.score_oportunidade skipped");
+  }
+
   // ── leads churn columns ───────────────────────────────────────────────────
   try {
     await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_churned BOOLEAN NOT NULL DEFAULT FALSE`);

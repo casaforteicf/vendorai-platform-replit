@@ -61,17 +61,22 @@ export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
   // Contador de sinais de bot detectados em respostas do lead nesta oportunidade.
   // Quando atingir o limite (default: 3), muda o status para "pendente_revisao_bot".
   sinaisBot:       integer("sinais_bot").notNull().default(0),
+  // Score de prioridade 0-100: combina tipo, tempo de atraso e valor estimado.
+  // Oportunidades com score maior são processadas primeiro.
+  scoreOportunidade: numeric("score_oportunidade", { precision: 5, scale: 2 }),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertScoutOportunidadeSchema = createInsertSchema(scoutOportunidadesTable, {
-  valorEstimado: z.coerce.number().nonnegative().optional(),
-  status:        z.enum(SCOUT_OPORTUNIDADE_STATUS).optional(),
+  valorEstimado:     z.coerce.number().nonnegative().optional(),
+  scoreOportunidade: z.coerce.number().min(0).max(100).optional(),
+  status:            z.enum(SCOUT_OPORTUNIDADE_STATUS).optional(),
 }).omit({ id: true, createdAt: true });
 
 export const updateScoutOportunidadeSchema = createSelectSchema(scoutOportunidadesTable, {
-  valorEstimado: z.coerce.number().nonnegative().optional(),
-  status:        z.enum(SCOUT_OPORTUNIDADE_STATUS).optional(),
+  valorEstimado:     z.coerce.number().nonnegative().optional(),
+  scoreOportunidade: z.coerce.number().min(0).max(100).optional(),
+  status:            z.enum(SCOUT_OPORTUNIDADE_STATUS).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true })
   .partial();

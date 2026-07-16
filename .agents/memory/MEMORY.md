@@ -43,3 +43,4 @@
 - [Z-API document endpoint](zapi-document-endpoint.md) — envio de PDF via `/send-document/pdf` com body `{ phone, document: "data:application/pdf;base64,...", fileName, caption }` e header `Client-Token`.
 - [Content engagement + Campaign A/B](content-engagement-ab.md) — wamid salvo na execução; webhook statuses[].status=read → abertaEm/readAt; /api/track/c/:execId para cliques; fluxo adaptativo se >24h sem abertura; A/B split 50/50 em campaigns com variant em campaign_sent_logs.
 - [Churn tiered actions](churn-tiered-actions.md) — churn_actions table como dedup+log; ≥85=escalation_sdr, 70-84=retention_message via callOpenAI; is_churned+churned_at em leads; mark-churned endpoint fecha feedback loop.
+- [Revenue Scout score + valorEstimado](revenue-scout-score.md) — scoreOportunidade NUMERIC(5,2) por tipo (seq_produto=80..reativacao=45) + bônus overdue; valorEstimado populado de produtos_catalogo.precoBase; processarOportunidades ordena por score DESC.
