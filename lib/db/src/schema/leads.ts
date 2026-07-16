@@ -140,6 +140,10 @@ export const leadsTable = pgTable("leads", {
   maturidadeIA: integer("maturidade_ia"),
   dataRespostaPesquisa: timestamp("data_resposta_pesquisa"),
 
+  // ── Churn tracking ────────────────────────────────────────────────────────
+  isChurned: boolean("is_churned").notNull().default(false),
+  churnedAt: timestamp("churned_at"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

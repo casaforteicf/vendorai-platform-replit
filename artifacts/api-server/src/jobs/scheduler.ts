@@ -52,7 +52,9 @@ import {
   reactivationQueueTable,
   tenantDomainsTable,
   campaignSentLogsTable,
+  churnActionsTable,
 } from "@workspace/db";
+import { callOpenAI } from "../lib/ai-gateway.js";
 import { getCustomHostname } from "../lib/cloudflare.js";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
@@ -100,13 +102,17 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
       // Find leads with churnRisk > 70 (limit 200 per tenant for safety)
       // Skip leads with status "novo" — they are in the active SDR cycle and must not be
       // interrupted by reactivation. Also skip prospector_auto source leads still fresh.
+      // Also skip leads already confirmed churned.
       const highRiskRows = await db
         .select({
           leadId:    customerIntelligenceTable.leadId,
           churnRisk: customerIntelligenceTable.churnRisk,
+          churnRiskExplicacao: customerIntelligenceTable.churnRiskExplicacao,
           telefone:  leadsTable.telefone,
+          nome:      leadsTable.nome,
           status:    leadsTable.status,
           source:    leadsTable.source,
+          isChurned: leadsTable.isChurned,
         })
         .from(customerIntelligenceTable)
         .innerJoin(leadsTable, eq(leadsTable.id, customerIntelligenceTable.leadId))
@@ -115,6 +121,7 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
             eq(customerIntelligenceTable.tenantId, tenant.id),
             gt(customerIntelligenceTable.churnRisk, 70),
             not(inArray(leadsTable.status, ["novo", "aquecimento"])),
+            eq(leadsTable.isChurned, false),
           )
         )
         .limit(200);
@@ -137,45 +144,101 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
           log.error({ err, tenantId: tenant.id, leadId: row.leadId }, "scheduler/churn-check: rule evaluation failed (non-fatal)");
         }
 
-        // ── 2. Automatic WhatsApp follow-up (only when autonomous + has telefone) ──
+        // ── 2. Tiered preventive action (only when autonomous + has telefone) ──
         if (!isAutonomous || !row.telefone) continue;
 
         try {
-          // Dedup: skip if there's already been an outgoing whatsapp in the last 7 days.
-          // 24h was too short — SDR could send on day 1, then reactivation fires on day 2
-          // on the same lead before SDR's follow-up cycle is finished.
+          // Dedup: skip if a churn action was already logged for this lead in the last 7 days.
           const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-          const [recentOutgoing] = await db
-            .select({ id: messagesTable.id })
-            .from(messagesTable)
+          const [recentAction] = await db
+            .select({ id: churnActionsTable.id })
+            .from(churnActionsTable)
             .where(
               and(
-                eq(messagesTable.tenantId, tenant.id),
-                eq(messagesTable.leadId, row.leadId),
-                eq(messagesTable.direcao, "saida"),
-                eq(messagesTable.canal, "whatsapp"),
-                gt(messagesTable.createdAt, cutoff)
+                eq(churnActionsTable.tenantId, tenant.id),
+                eq(churnActionsTable.leadId, row.leadId),
+                gt(churnActionsTable.executedAt, cutoff)
               )
             )
             .limit(1);
 
-          if (recentOutgoing) {
-            log.info({ leadId: row.leadId }, "scheduler/churn-check: recent whatsapp found — skipping auto-dispatch");
+          if (recentAction) {
+            log.info({ leadId: row.leadId }, "scheduler/churn-check: recent churn action found — skipping");
             continue;
           }
 
-          // Dispatch reactivation agent proactively via WhatsApp
-          dispatchAgentBackground({
-            tenantId: tenant.id,
-            leadId:   row.leadId,
-            mensagem: "PROATIVO: reativação automática — churn risk elevado, lead sem contato recente.",
-            log,
-          });
+          const churnRisk = row.churnRisk ?? 0;
+          const isCritical = churnRisk >= 85;
 
-          totalAutoWpp++;
-          log.info({ leadId: row.leadId, churnRisk: row.churnRisk }, "scheduler/churn-check: auto whatsapp dispatched");
+          if (isCritical) {
+            // ── Critical (≥85): escalate to closer/sdr with a specific signal ──
+            dispatchAgentBackground({
+              tenantId: tenant.id,
+              leadId:   row.leadId,
+              mensagem: "PROATIVO: ALERTA CRÍTICO DE CHURN — lead com risco ≥85 de cancelamento. Ação de escalação imediata necessária.",
+              log,
+            });
+
+            await db.insert(churnActionsTable).values({
+              id: crypto.randomUUID(),
+              tenantId: tenant.id,
+              leadId:   row.leadId,
+              actionType: "escalation_sdr",
+              churnRiskAtAction: churnRisk,
+              executedAt: new Date(),
+            });
+
+            totalAutoWpp++;
+            log.info({ leadId: row.leadId, churnRisk }, "scheduler/churn-check: critical — escalation dispatched");
+          } else {
+            // ── High (70-84): personalized retention message via AI ──────────
+            const leadNome = row.nome ?? "cliente";
+            const explicacao = row.churnRiskExplicacao ?? "";
+
+            let retentionMsg: string;
+            try {
+              const aiResponse = await callOpenAI(
+                tenant.id,
+                "churn_retention",
+                [
+                  {
+                    role: "system",
+                    content: `Você é um especialista em retenção de clientes. Escreva UMA mensagem curta e personalizada de reengajamento para WhatsApp (máx. 3 frases). Tom: próximo, humano, sem jargão de vendas. NÃO mencione que é um robô.`,
+                  },
+                  {
+                    role: "user",
+                    content: `Lead: ${leadNome}. Contexto de risco: ${explicacao || "inatividade recente"}. Escreva a mensagem de reengajamento.`,
+                  },
+                ],
+                { maxTokens: 150 }
+              );
+              retentionMsg = aiResponse.content.trim();
+            } catch {
+              retentionMsg = `Olá ${leadNome}! Faz um tempo que não conversamos. Estou aqui caso precise de qualquer apoio — é só me chamar! 🙂`;
+            }
+
+            dispatchAgentBackground({
+              tenantId: tenant.id,
+              leadId:   row.leadId,
+              mensagem: `PROATIVO: reativação churn (score ${churnRisk}) — enviar mensagem de retenção personalizada: "${retentionMsg}"`,
+              log,
+            });
+
+            await db.insert(churnActionsTable).values({
+              id: crypto.randomUUID(),
+              tenantId: tenant.id,
+              leadId:   row.leadId,
+              actionType:        "retention_message",
+              messageSent:       retentionMsg,
+              churnRiskAtAction: churnRisk,
+              executedAt:        new Date(),
+            });
+
+            totalAutoWpp++;
+            log.info({ leadId: row.leadId, churnRisk }, "scheduler/churn-check: high — retention message dispatched");
+          }
         } catch (err) {
-          log.error({ err, tenantId: tenant.id, leadId: row.leadId }, "scheduler/churn-check: auto whatsapp dispatch failed (non-fatal)");
+          log.error({ err, tenantId: tenant.id, leadId: row.leadId }, "scheduler/churn-check: tiered action failed (non-fatal)");
         }
       }
 

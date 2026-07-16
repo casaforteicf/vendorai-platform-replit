@@ -8,6 +8,7 @@ import {
   intelligenceAnalysisLogTable,
   leadsTable,
   tenantsTable,
+  churnActionsTable,
 } from "@workspace/db";
 import {
   analyzeLeadIntelligence,
@@ -478,6 +479,94 @@ router.post(
       }
       throw err;
     }
+  }
+);
+
+// ── POST /tenants/:tenantId/leads/:leadId/mark-churned ───────────────────────
+// Marks a lead as confirmed churned: sets is_churned=true + churned_at on leads,
+// and optionally updates the latest churn action as unsuccessful.
+router.post(
+  "/tenants/:tenantId/leads/:leadId/mark-churned",
+  async (req, res) => {
+    const { tenantId, leadId } = req.params;
+
+    const [lead] = await db
+      .select({ id: leadsTable.id, isChurned: leadsTable.isChurned })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+      .limit(1);
+
+    if (!lead) {
+      res.status(404).json({ error: "Lead not found" });
+      return;
+    }
+
+    if (lead.isChurned) {
+      res.json({ ok: true, alreadyChurned: true });
+      return;
+    }
+
+    await db
+      .update(leadsTable)
+      .set({ isChurned: true, churnedAt: new Date(), updatedAt: new Date() })
+      .where(eq(leadsTable.id, leadId));
+
+    // Mark latest pending churn action as unsuccessful (feedback loop)
+    const [latestAction] = await db
+      .select({ id: churnActionsTable.id })
+      .from(churnActionsTable)
+      .where(
+        and(
+          eq(churnActionsTable.tenantId, tenantId),
+          eq(churnActionsTable.leadId, leadId),
+        )
+      )
+      .orderBy(desc(churnActionsTable.executedAt))
+      .limit(1);
+
+    if (latestAction && latestAction.id) {
+      await db
+        .update(churnActionsTable)
+        .set({ actionSuccessful: false })
+        .where(eq(churnActionsTable.id, latestAction.id));
+    }
+
+    req.log.info({ tenantId, leadId }, "churn: lead marked as churned");
+    res.json({ ok: true, churnedAt: new Date().toISOString() });
+  }
+);
+
+// ── POST /tenants/:tenantId/churn-actions/:actionId/result ───────────────────
+// Records whether a churn-prevention action was successful.
+router.post(
+  "/tenants/:tenantId/churn-actions/:actionId/result",
+  async (req, res) => {
+    const { tenantId, actionId } = req.params;
+    const { successful } = req.body as { successful: boolean };
+
+    if (typeof successful !== "boolean") {
+      res.status(400).json({ error: "successful (boolean) is required" });
+      return;
+    }
+
+    const [action] = await db
+      .select({ id: churnActionsTable.id, tenantId: churnActionsTable.tenantId })
+      .from(churnActionsTable)
+      .where(and(eq(churnActionsTable.id, actionId), eq(churnActionsTable.tenantId, tenantId)))
+      .limit(1);
+
+    if (!action) {
+      res.status(404).json({ error: "Churn action not found" });
+      return;
+    }
+
+    await db
+      .update(churnActionsTable)
+      .set({ actionSuccessful: successful })
+      .where(eq(churnActionsTable.id, actionId));
+
+    req.log.info({ tenantId, actionId, successful }, "churn: action result recorded");
+    res.json({ ok: true });
   }
 );
 

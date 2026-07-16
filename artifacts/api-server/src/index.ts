@@ -1399,6 +1399,38 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup migrations: lead_optimal_hours skipped");
   }
+
+  // ── leads churn columns ───────────────────────────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_churned BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS churned_at TIMESTAMPTZ`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_leads_is_churned ON leads(tenant_id) WHERE is_churned = FALSE`);
+    logger.info("startup migrations: leads churn columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: leads churn columns skipped");
+  }
+
+  // ── churn_actions ─────────────────────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS churn_actions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+        action_type TEXT NOT NULL,
+        message_sent TEXT,
+        churn_risk_at_action REAL,
+        action_successful BOOLEAN,
+        executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_churn_actions_lead ON churn_actions(lead_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_churn_actions_tenant ON churn_actions(tenant_id)`);
+    logger.info("startup migrations: churn_actions OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: churn_actions skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

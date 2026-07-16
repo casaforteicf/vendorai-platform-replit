@@ -42,3 +42,4 @@
 - [Puppeteer waitUntil constraint](puppeteer-waituntil.md) — esta versão do puppeteer-core só aceita "load" ou "domcontentloaded" em setContent (não "networkidle0").
 - [Z-API document endpoint](zapi-document-endpoint.md) — envio de PDF via `/send-document/pdf` com body `{ phone, document: "data:application/pdf;base64,...", fileName, caption }` e header `Client-Token`.
 - [Content engagement + Campaign A/B](content-engagement-ab.md) — wamid salvo na execução; webhook statuses[].status=read → abertaEm/readAt; /api/track/c/:execId para cliques; fluxo adaptativo se >24h sem abertura; A/B split 50/50 em campaigns com variant em campaign_sent_logs.
+- [Churn tiered actions](churn-tiered-actions.md) — churn_actions table como dedup+log; ≥85=escalation_sdr, 70-84=retention_message via callOpenAI; is_churned+churned_at em leads; mark-churned endpoint fecha feedback loop.
