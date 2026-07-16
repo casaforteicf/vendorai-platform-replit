@@ -1732,9 +1732,14 @@ async function extractAndSaveQualification(
       `Conversa:\n${transcript}`;
   } else {
     extractionPrompt =
-      `Você é um extrator de dados de qualificação de vendas. Analise a conversa abaixo e extraia APENAS as informações que o lead afirmou explicitamente. Não infira, não suponha.\n\n` +
+      `Você é um extrator de dados de qualificação de vendas BANT (Budget, Authority, Need, Timeline). Analise a conversa abaixo e extraia APENAS as informações que o lead afirmou explicitamente. Não infira, não suponha.\n\n` +
       `Responda APENAS em JSON válido, sem markdown, sem explicações. Use este formato:\n` +
-      `{"numero_funcionarios":"...","segmento":"...","crm_atual":"...","faturamento":"...","objetivo":"...","dor_principal":"...","orcamento":"...","urgencia":"..."}\n\n` +
+      `{"numero_funcionarios":"...","segmento":"...","crm_atual":"...","faturamento":"...","objetivo":"...","dor_principal":"...","orcamento":"...","urgencia":"...","autoridade":"..."}\n\n` +
+      `Descrição dos campos BANT:\n` +
+      `- orcamento (Budget): valor disponível para investir ou faixa de orçamento mencionada\n` +
+      `- autoridade (Authority): nome ou cargo de quem toma a decisão de compra (ex: "o próprio lead", "precisa aprovar com o sócio", "CEO João", "diretora financeira")\n` +
+      `- dor_principal / objetivo (Need): problema ou necessidade que o lead quer resolver\n` +
+      `- urgencia (Timeline): prazo, urgência ou quando pretende contratar\n` +
       `Regras:\n` +
       `- Inclua apenas os campos que o lead afirmou claramente\n` +
       `- Se um campo não foi mencionado, omita-o completamente (não use null, não use "")\n` +
@@ -1783,6 +1788,10 @@ async function extractAndSaveQualification(
     if (extracted.urgencia && !lead.urgencia)          update.urgencia = String(extracted.urgencia);
     if (extracted.numero_funcionarios && !lead.tamanhoEquipe) {
       update.tamanhoEquipe = String(extracted.numero_funcionarios);
+    }
+    // Authority (BANT A): quem decide a compra → mapeia para representanteCargo
+    if (extracted.autoridade && !(lead as Record<string, unknown>).representanteCargo) {
+      update.representanteCargo = String(extracted.autoridade);
     }
   }
 

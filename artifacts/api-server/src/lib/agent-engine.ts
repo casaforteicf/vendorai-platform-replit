@@ -540,6 +540,31 @@ export function buildLeadSection(lead: Lead): string {
   const dd = (lead.discoveryData ?? {}) as Record<string, unknown>;
 
   // Merge dedicated lead columns into the qualification view (extractor saves to both)
+  const leadAny2 = lead as Record<string, unknown>;
+
+  // ── BANT block (Budget / Authority / Need / Timeline) ─────────────────────
+  const bantBudget    = (dd.orcamento as string | undefined) ?? lead.orcamento ?? null;
+  const bantAuthority = (dd.autoridade as string | undefined) ?? (leadAny2.representanteCargo as string | undefined) ?? null;
+  const bantNeed      = (dd.dor_principal as string | undefined) ?? lead.dorPrincipal ?? lead.objetivo ?? null;
+  const bantTimeline  = (dd.urgencia as string | undefined) ?? lead.urgencia ?? null;
+
+  const bantItems = [
+    { label: "B — Budget (orçamento)",         value: bantBudget },
+    { label: "A — Authority (quem decide)",    value: bantAuthority },
+    { label: "N — Need (dor / necessidade)",   value: bantNeed },
+    { label: "T — Timeline (prazo / urgência)",value: bantTimeline },
+  ];
+  const bantCollected = bantItems.filter((b) => b.value != null);
+  const bantMissing   = bantItems.filter((b) => b.value == null);
+
+  const bantLines: string[] = ["## QUALIFICAÇÃO BANT (nunca repita o que já está preenchido)"];
+  bantCollected.forEach((b) => bantLines.push(`  ✓ ${b.label}: ${b.value}`));
+  if (bantMissing.length > 0) {
+    bantLines.push(`  ◻ Ainda não coletado: ${bantMissing.map((b) => b.label).join(" | ")}`);
+  }
+  lines.push(bantLines.join("\n"));
+
+  // ── Demais campos de qualificação ─────────────────────────────────────────
   const QUAL_FIELDS: Array<{ key: string; label: string; value: string | null }> = [
     { key: "numero_funcionarios", label: "Funcionários",      value: (dd.numero_funcionarios as string | undefined) ?? lead.tamanhoEquipe ?? null },
     { key: "segmento",            label: "Segmento",          value: (dd.segmento as string | undefined) ?? null },
@@ -547,8 +572,9 @@ export function buildLeadSection(lead: Lead): string {
     { key: "faturamento",         label: "Faturamento mensal",value: (dd.faturamento as string | undefined) ?? null },
     { key: "objetivo",            label: "Objetivo",          value: (dd.objetivo as string | undefined) ?? lead.objetivo ?? null },
     { key: "dor_principal",       label: "Dor principal",     value: (dd.dor_principal as string | undefined) ?? lead.dorPrincipal ?? null },
-    { key: "orcamento",           label: "Orçamento",         value: (dd.orcamento as string | undefined) ?? lead.orcamento ?? null },
-    { key: "urgencia",            label: "Urgência",          value: (dd.urgencia as string | undefined) ?? lead.urgencia ?? null },
+    { key: "orcamento",           label: "Orçamento",         value: bantBudget },
+    { key: "urgencia",            label: "Urgência",          value: bantTimeline },
+    { key: "autoridade",          label: "Decisor (Authority)",value: bantAuthority },
   ];
 
   const collected = QUAL_FIELDS.filter((f) => f.value != null);
