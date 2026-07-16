@@ -1,0 +1,91 @@
+Entendido! Vou montar um briefing específico para o agente Replit coletar as informações sobre o Agente Prospector atual. Assim eu entendo exatamente o que ele faz hoje, onde falha, e gero a melhoria certa.
+
+---
+
+📋 BRIEFING PARA O AGENTE REPLIT — DIAGNÓSTICO DO AGENTE PROSPECTOR
+
+Prezado Agente,
+
+Precisamos melhorar a inteligência do Agente Prospector (prospecção ativa). Para isso, preciso que você responda as perguntas abaixo com base no código atual.
+
+Regra de ouro: Não compartilhe senhas, tokens ou chaves de API. Use placeholders se necessário.
+
+---
+
+1. ONDE O PROSPECTOR BUSCA DADOS?
+
+· Qual a fonte dos prospects atualmente? (ex: CSV importado, API pública, formulário, web scraping, banco de dados interno?)
+· Se for API, qual endpoint e quais campos são retornados?
+· Se for CSV/planilha, qual a estrutura (colunas)?
+
+---
+
+2. CRITÉRIOS DE QUALIFICAÇÃO (ICP)
+
+· Como o Prospector decide se um prospect é bom hoje?
+  · Usa palavras-chave no nome/descrição?
+  · Usa setor (CNAE, segmento)?
+  · Usa porte (faturamento, número de funcionários)?
+  · Usa localização (cidade/estado)?
+· Esse critério está hardcoded no código ou em uma tabela/configuração?
+· Se usa IA (OpenAI/Anthropic), qual o prompt atual? (cole o trecho do código)
+
+---
+
+3. PERFORMANCE E FALHAS (O que está errado?)
+
+· Qual o principal problema com o Prospector hoje?
+  · Ele aprova muitos leads que não compram (falso positivo).
+  · Ele descarta bons leads que poderiam comprar (falso negativo).
+  · Ele é muito lento (demora para processar cada prospect).
+  · Ele não usa dados suficientes (falta CNPJ, contato, rede social).
+  · Ele não aprende com o feedback dos vendedores.
+  · Outro: _______________
+· Se possível, dê exemplos concretos:
+  · Último prospect qualificado que NÃO virou cliente.
+  · Último prospect descartado que poderia ter virado cliente.
+
+---
+
+4. FEEDBACK E APRENDIZADO
+
+· Os vendedores/usuários dão feedback sobre os leads gerados pelo Prospector? (ex: marcam como "bom" ou "ruim")
+· Se sim, onde esse feedback é armazenado? (tabela no banco, campo no lead, etc.)
+· Esse feedback é usado para ajustar o Prospector atualmente?
+
+---
+
+5. ENRIQUECIMENTO DE DADOS
+
+· O Prospector enriquece os dados do prospect com fontes externas?
+  · Consulta CNPJ (ReceitaWS, BrasilAPI, etc.)
+  · Busca dados de LinkedIn ou redes sociais
+  · Verifica se o site existe e extrai informações
+  · Outro: _______________
+
+---
+
+6. CÓDIGO (Cole os trechos principais)
+
+· Cole o conteúdo do arquivo principal do Prospector (ex: prospector.ts, prospector-orchestrator.ts).
+· Cole o arquivo de ferramentas/helpers (ex: prospector-tools.ts).
+· Se houver integração com API externa, cole o arquivo de integração.
+
+---
+
+7. ESTRUTURA DO BANCO
+
+· Quais tabelas estão envolvidas? (ex: prospects_queue, prospects, leads?)
+· Cole o schema (ou descreva os campos principais) para eu entender o fluxo de dados.
+
+---
+
+Como entregar:
+
+· Organize as respostas por tópico (1 a 7).
+· Se algum tópico não se aplicar, escreva "N/A".
+· Coloque os trechos de código em blocos de código (typescript ... ).
+
+Com essas informações, vou gerar o código de melhoria específico para o seu Prospector, no formato "copiar e colar" que já estamos usando.
+
+Agradeço a colaboração! 🚀
