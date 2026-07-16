@@ -20,6 +20,7 @@ export const campaignSentLogsTable = pgTable(
     wamid: text("wamid"),
     sentAt: timestamp("sent_at").notNull().defaultNow(),
     readAt: timestamp("read_at"),
+    convertedAt: timestamp("converted_at"),
   },
   (t) => [
     index("campaign_sent_log_campaign_idx").on(t.campaignId),

@@ -3,6 +3,7 @@ import { and, eq, gt, gte, lt, lte, isNotNull, inArray } from "drizzle-orm";
 import {
   db,
   campaignsTable,
+  campaignSentLogsTable,
   customerIntelligenceTable,
   dealsTable,
   insertCampaignSchema,
@@ -272,6 +273,50 @@ router.patch("/campaigns/:id", async (req, res) => {
 
   res.json(campaign);
 });
+
+// ── POST /tenants/:tenantId/campaigns/:campaignId/leads/:leadId/conversion ────
+// Marca que um lead converteu a partir de uma campanha (ex: efetuou compra).
+// Atualiza converted_at no log de envio correspondente.
+router.post(
+  "/tenants/:tenantId/campaigns/:campaignId/leads/:leadId/conversion",
+  async (req, res) => {
+    const { tenantId, campaignId, leadId } = req.params;
+
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    const [campaign] = await db
+      .select({ id: campaignsTable.id, tenantId: campaignsTable.tenantId })
+      .from(campaignsTable)
+      .where(and(eq(campaignsTable.id, campaignId), eq(campaignsTable.tenantId, tenantId)));
+
+    if (!campaign) {
+      res.status(404).json({ error: "Campaign not found" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(campaignSentLogsTable)
+      .set({ convertedAt: new Date() })
+      .where(
+        and(
+          eq(campaignSentLogsTable.campaignId, campaignId),
+          eq(campaignSentLogsTable.leadId, leadId)
+        )
+      )
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: "Sent log not found for this lead/campaign" });
+      return;
+    }
+
+    req.log.info({ tenantId, campaignId, leadId }, "campaigns: conversion registrada");
+    res.json({ success: true, convertedAt: updated.convertedAt });
+  }
+);
 
 router.delete("/campaigns/:id", async (req, res) => {
   const [existing] = await db

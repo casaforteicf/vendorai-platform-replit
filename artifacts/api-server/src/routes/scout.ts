@@ -204,4 +204,32 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/converter", async (req, 
   return res.json(row);
 });
 
+// ── POST /tenants/:tenantId/scout/oportunidades/:id/resultado ─────────────────
+// Marca o resultado final de uma oportunidade: "won" → converteu / "lost" → ignorado
+router.post("/tenants/:tenantId/scout/oportunidades/:id/resultado", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const { resultado } = req.body as { resultado?: string };
+  if (resultado !== "won" && resultado !== "lost") {
+    return res.status(422).json({ error: "resultado deve ser 'won' ou 'lost'" });
+  }
+
+  const updates =
+    resultado === "won"
+      ? { converteu: true, status: "converteu" as const }
+      : { status: "ignorado" as const };
+
+  const [row] = await db
+    .update(scoutOportunidadesTable)
+    .set(updates)
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)))
+    .returning();
+
+  if (!row) return res.status(404).json({ error: "Oportunidade not found" });
+
+  req.log.info({ tenantId, id, resultado }, "scout: oportunidade resultado registrado");
+  return res.json(row);
+});
+
 export default router;

@@ -1439,6 +1439,17 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup migrations: churn_actions skipped");
   }
+
+  // ── campaign_sent_logs: converted_at ───────────────────────────────────────
+  try {
+    await db.execute(sql`
+      ALTER TABLE campaign_sent_logs
+        ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ
+    `);
+    logger.info("startup migrations: campaign_sent_logs.converted_at OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: campaign_sent_logs.converted_at skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
