@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { eq, desc, sql } from "drizzle-orm";
+import { storeConvertedEmbedding, markFeedbackConverted } from "../lib/prospectorMemory.js";
 import {
   db,
   dealsTable,
@@ -320,6 +321,21 @@ export async function runDealClosure(
       .update(leadsTable)
       .set({ status: "convertido", updatedAt: new Date() })
       .where(eq(leadsTable.id, deal.leadId));
+
+    // Store embedding of converted lead for future similarity scoring — non-blocking
+    if (lead || deal.leadId) {
+      const l = lead ?? { id: deal.leadId!, tenantId, nome: null, mercadoSegmento: null, websiteUrl: null, endereco: null, metadata: null };
+      storeConvertedEmbedding({
+        id: l.id,
+        tenantId: l.tenantId,
+        nome: (l as typeof l & { nome?: string | null }).nome ?? null,
+        segmento: (l as typeof l & { mercadoSegmento?: string | null }).mercadoSegmento ?? null,
+        websiteUrl: (l as typeof l & { websiteUrl?: string | null }).websiteUrl ?? null,
+        endereco: (l as typeof l & { endereco?: string | null }).endereco ?? null,
+        metadata: (l as typeof l & { metadata?: Record<string, unknown> | null }).metadata ?? null,
+      }).catch(() => void 0);
+      markFeedbackConverted(deal.leadId!).catch(() => void 0);
+    }
 
     // Fecha o placar do Revenue Scout automaticamente, se essa venda veio de
     // uma oferta proativa recente — non-blocking, não deve atrapalhar o fechamento.

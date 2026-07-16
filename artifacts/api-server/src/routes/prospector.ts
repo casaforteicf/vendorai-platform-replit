@@ -17,7 +17,10 @@ import {
   segmentBenchmarksTable,
   leadEventsTable,
   cnaeVerticalMapTable,
+  prospectFeedbackTable,
+  insertProspectFeedbackSchema,
 } from "@workspace/db";
+import { registerLeadFeedback } from "../lib/prospectorMemory.js";
 import {
   callOpenAI as gatewayCallOpenAI,
   generateEmbedding,
@@ -1712,6 +1715,69 @@ router.post("/prospector/dedup-check", async (req, res) => {
     source: existing?.source ?? null,
   });
 });
+
+// ── POST /tenants/:id/leads/:leadId/feedback — rate a lead ───────────────────
+router.post(
+  "/tenants/:id/leads/:leadId/feedback",
+  async (req, res) => {
+    const tenantId = resolveTenantId(req, req.params["id"]);
+    const leadId = String(req.params["leadId"]);
+
+    const parsed = insertProspectFeedbackSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json({ error: parsed.error.message });
+      return;
+    }
+
+    const [lead] = await db
+      .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+    if (!lead) {
+      res.status(404).json({ error: "Lead não encontrado" });
+      return;
+    }
+
+    const result = await registerLeadFeedback({
+      tenantId,
+      leadId,
+      userId: req.user!.sub,
+      rating: parsed.data.rating,
+      comment: parsed.data.comment,
+    });
+
+    res.status(201).json({ success: true, avgRating: result.avgRating });
+  }
+);
+
+// ── GET /tenants/:id/leads/:leadId/feedback — list feedback for a lead ────────
+router.get(
+  "/tenants/:id/leads/:leadId/feedback",
+  async (req, res) => {
+    const tenantId = resolveTenantId(req, req.params["id"]);
+    const leadId = String(req.params["leadId"]);
+
+    const rows = await db
+      .select({
+        id: prospectFeedbackTable.id,
+        rating: prospectFeedbackTable.rating,
+        comment: prospectFeedbackTable.comment,
+        converted: prospectFeedbackTable.converted,
+        createdAt: prospectFeedbackTable.createdAt,
+      })
+      .from(prospectFeedbackTable)
+      .where(
+        and(
+          eq(prospectFeedbackTable.tenantId, tenantId),
+          eq(prospectFeedbackTable.leadId, leadId),
+        )
+      )
+      .orderBy(desc(prospectFeedbackTable.createdAt));
+
+    res.json(rows);
+  }
+);
 
 export default router;
 

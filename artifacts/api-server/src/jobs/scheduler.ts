@@ -12,7 +12,7 @@
  *        (enviar_whatsapp with the campaign message), and advance status.
  */
 import cron from "node-cron";
-import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, not, sql } from "drizzle-orm";
 import { runMonthlyBilling } from "../lib/billing.js";
 import { runPartnerCommissions } from "./partnerCommission.js";
 import { runPartnerProspectorJob } from "./partnerProspector.js";

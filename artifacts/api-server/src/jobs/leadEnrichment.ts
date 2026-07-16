@@ -20,6 +20,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { getSimilarityBonus, storeConvertedEmbedding } from "../lib/prospectorMemory.js";
 import { logger as rootLogger } from "../lib/logger.js";
 import { checkHasMetaAds, checkGooglePresence } from "../services/cnpjService.js";
 
@@ -384,6 +385,21 @@ export async function enrichLead(
     // Boost +15 if no Google presence (invisible = maximum pain)
     if (!digital.presenca_google && (lead.source === "cnpj" || lead.source === "recem_aberta")) {
       scoreResult.propensity_score = Math.min(100, scoreResult.propensity_score + 15);
+    }
+
+    // Boost +0..15 from vector similarity with previously converted leads
+    const similarityBonus = await getSimilarityBonus(tenantId, {
+      nome: lead.nome,
+      segmento: lead.mercadoSegmento,
+      websiteUrl: lead.websiteUrl,
+      endereco: lead.endereco,
+      metadata: lead.metadata as Record<string, unknown> | null,
+    });
+    if (similarityBonus > 0) {
+      scoreResult.propensity_score = Math.min(100, scoreResult.propensity_score + similarityBonus);
+      scoreResult.priority_reason = scoreResult.priority_reason
+        ? `${scoreResult.priority_reason} • Similar a clientes convertidos (+${similarityBonus} pts)`
+        : `Similar a clientes convertidos (+${similarityBonus} pts)`;
     }
 
     await db.update(leadsTable)

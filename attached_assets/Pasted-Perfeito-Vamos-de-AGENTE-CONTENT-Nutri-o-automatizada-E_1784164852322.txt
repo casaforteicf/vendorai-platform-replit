@@ -1,0 +1,544 @@
+Perfeito! Vamos de AGENTE CONTENT (Nutrição automatizada). Ele já existe no seu scheduler como content-flow (roda a cada 5 minutos) e envia materiais (PDFs, vídeos, links) para leads.
+
+---
+
+📦 PACOTE ÚNICO — MELHORIAS DO AGENTE CONTENT (VendorAI)
+
+Instrução: Copie todo o conteúdo abaixo e cole no chat com o Agente Replit.
+
+---
+
+🔍 DIAGNÓSTICO ATUAL (BASEADO NO SCHEDULER)
+
+· Execução: content-flow no cron (a cada 5 minutos)
+· Problemas:
+  · ❌ Envia conteúdo fixo, sem personalização
+  · ❌ Não mede engajamento (abertura/clique)
+  · ❌ Fluxo linear (todos recebem a mesma ordem)
+  · ❌ Sem análise de "momento certo" para envio
+
+🚀 MELHORIAS PROPOSTAS
+
+1. Personalização por Perfil — IA escolhe o conteúdo com base no setor, estágio e interações anteriores do lead
+2. Rastreamento de Engajamento — Registra aberturas, cliques e tempo de leitura
+3. Fluxo Adaptativo — Se clicou → conteúdo avançado; se não → re-engajamento
+4. IA para Seleção — GPT-4o-mini decide o próximo conteúdo com base no histórico e na biblioteca disponível
+
+---
+
+📋 PASSO A PASSO PARA IMPLANTAR
+
+1. Execute as migrações no Supabase SQL Editor:
+
+```sql
+-- Tabela de biblioteca de conteúdos
+CREATE TABLE IF NOT EXISTS content_library (
+  id SERIAL PRIMARY KEY,
+  tenant_id UUID NOT NULL,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('pdf', 'video', 'link', 'image', 'text')),
+  url TEXT,
+  description TEXT,
+  tags TEXT[], -- ex: {'vendas', 'imobiliario', 'prospecao'}
+  stage TEXT, -- ex: 'Novo', 'Qualificado', 'Interessado'
+  engagement_score FLOAT DEFAULT 0, -- média de engajamento histórico
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Tabela de fluxos de conteúdo (configuração por tenant)
+CREATE TABLE IF NOT EXISTS content_flows (
+  id SERIAL PRIMARY KEY,
+  tenant_id UUID NOT NULL,
+  name TEXT NOT NULL,
+  trigger_stage TEXT NOT NULL, -- ex: 'Interessado'
+  content_order INTEGER[] DEFAULT '{}', -- ordem dos IDs da content_library
+  delay_hours INTEGER DEFAULT 24, -- tempo entre envios
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Tabela de interações com conteúdo
+CREATE TABLE IF NOT EXISTS content_interactions (
+  id SERIAL PRIMARY KEY,
+  lead_id INTEGER NOT NULL REFERENCES leads(id),
+  content_id INTEGER NOT NULL REFERENCES content_library(id),
+  sent_at TIMESTAMP DEFAULT NOW(),
+  opened_at TIMESTAMP,
+  clicked_at TIMESTAMP,
+  completed_at TIMESTAMP, -- se assistiu/leu até o fim
+  interaction_type TEXT CHECK (interaction_type IN ('sent', 'opened', 'clicked', 'completed')),
+  metadata JSONB -- dados adicionais (ex: tempo de leitura, link clicado)
+);
+
+-- Adicionar colunas na tabela leads para controle de fluxo
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_content_sent_at TIMESTAMP;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS current_flow_position INTEGER DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS current_flow_id INTEGER;
+```
+
+---
+
+2. Crie os seguintes arquivos no Replit:
+
+---
+
+📂 ARQUIVO: src/agents/content-tools.ts
+
+```typescript
+// src/agents/content-tools.ts
+import { db } from '../db';
+import { content_library, content_flows, content_interactions, leads } from '../schema';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
+import { sendWhatsApp } from '../integrations/zapi';
+
+// 1. Buscar conteúdo disponível para um lead
+export const getAvailableContent = async (tenantId: string, leadStage: string) => {
+  const content = await db.select()
+    .from(content_library)
+    .where(
+      and(
+        eq(content_library.tenant_id, tenantId),
+        sql`${leadStage} = ANY(${content_library.stage}) OR ${content_library.stage} IS NULL`
+      )
+    )
+    .orderBy(desc(content_library.engagement_score));
+  
+  return content;
+};
+
+// 2. Buscar fluxo ativo para um lead
+export const getLeadFlow = async (leadId: number) => {
+  const lead = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  if (!lead[0] || !lead[0].current_flow_id) return null;
+
+  const flow = await db.select()
+    .from(content_flows)
+    .where(
+      and(
+        eq(content_flows.id, lead[0].current_flow_id),
+        eq(content_flows.is_active, true)
+      )
+    )
+    .limit(1);
+  
+  return flow[0] || null;
+};
+
+// 3. Registrar envio de conteúdo
+export const logContentSent = async (leadId: number, contentId: number) => {
+  const [interaction] = await db.insert(content_interactions)
+    .values({
+      lead_id: leadId,
+      content_id: contentId,
+      sent_at: new Date(),
+      interaction_type: 'sent'
+    })
+    .returning();
+  
+  // Atualiza o último envio no lead
+  await db.update(leads)
+    .set({ last_content_sent_at: new Date() })
+    .where(eq(leads.id, leadId));
+  
+  return interaction;
+};
+
+// 4. Registrar abertura/clique (via webhook)
+export const logInteraction = async (leadId: number, contentId: number, type: 'opened' | 'clicked' | 'completed') => {
+  // Busca a interação de envio mais recente para este conteúdo
+  const sentInteraction = await db.select()
+    .from(content_interactions)
+    .where(
+      and(
+        eq(content_interactions.lead_id, leadId),
+        eq(content_interactions.content_id, contentId),
+        eq(content_interactions.interaction_type, 'sent')
+      )
+    )
+    .orderBy(desc(content_interactions.sent_at))
+    .limit(1);
+
+  if (sentInteraction.length === 0) {
+    // Se não encontrou envio, cria uma interação direta (caso o lead tenha acessado sem envio prévio)
+    await db.insert(content_interactions).values({
+      lead_id: leadId,
+      content_id: contentId,
+      interaction_type: type,
+      [type === 'opened' ? 'opened_at' : type === 'clicked' ? 'clicked_at' : 'completed_at']: new Date()
+    });
+    return;
+  }
+
+  // Atualiza a interação existente com o timestamp adequado
+  const updateData: any = {};
+  if (type === 'opened') updateData.opened_at = new Date();
+  if (type === 'clicked') updateData.clicked_at = new Date();
+  if (type === 'completed') updateData.completed_at = new Date();
+  
+  await db.update(content_interactions)
+    .set(updateData)
+    .where(eq(content_interactions.id, sentInteraction[0].id));
+
+  // Atualiza o engagement_score do conteúdo
+  const interactions = await db.select()
+    .from(content_interactions)
+    .where(eq(content_interactions.content_id, contentId));
+  
+  const total = interactions.length;
+  const opened = interactions.filter(i => i.opened_at).length;
+  const clicked = interactions.filter(i => i.clicked_at).length;
+  
+  const score = total > 0 ? ((opened / total) * 0.6 + (clicked / total) * 0.4) * 100 : 0;
+  await db.update(content_library)
+    .set({ engagement_score: Math.round(score) })
+    .where(eq(content_library.id, contentId));
+};
+
+// 5. Avançar lead no fluxo
+export const advanceFlowPosition = async (leadId: number, flowId: number, newPosition: number) => {
+  await db.update(leads)
+    .set({ 
+      current_flow_position: newPosition,
+      current_flow_id: flowId 
+    })
+    .where(eq(leads.id, leadId));
+};
+
+// Schema das ferramentas para IA
+export const contentToolSchemas = [
+  {
+    type: 'function',
+    function: {
+      name: 'selectContent',
+      description: 'Seleciona o próximo conteúdo a ser enviado para o lead com base no perfil e engajamento.',
+      parameters: {
+        type: 'object',
+        properties: {
+          content_id: { type: 'number', description: 'ID do conteúdo escolhido' },
+          content_title: { type: 'string', description: 'Título do conteúdo' },
+          reason: { type: 'string', description: 'Motivo da escolha (ex: "Lead é do setor imobiliário, conteúdo sobre vendas imobiliárias é mais relevante")' },
+          should_send: { type: 'boolean', description: 'Se deve enviar agora ou aguardar' },
+          delay_hours: { type: 'number', description: 'Se não enviar agora, em quantas horas enviar' }
+        },
+        required: ['content_id', 'content_title', 'reason', 'should_send']
+      }
+    }
+  }
+];
+```
+
+---
+
+📂 ARQUIVO: src/agents/content-orchestrator.ts
+
+```typescript
+// src/agents/content-orchestrator.ts
+import OpenAI from 'openai';
+import { 
+  getAvailableContent, 
+  getLeadFlow, 
+  logContentSent, 
+  advanceFlowPosition,
+  contentToolSchemas 
+} from './content-tools';
+import { db } from '../db';
+import { leads, content_library, content_interactions, content_flows } from '../schema';
+import { eq, and, isNull, sql } from 'drizzle-orm';
+import { sendWhatsApp } from '../integrations/zapi';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export const runContentAgent = async () => {
+  console.log('[CONTENT] Iniciando ciclo de nutrição...');
+
+  // 1. Busca leads que precisam de conteúdo
+  // Critério: leads em estágio de nutrição (ex: 'Interessado', 'Qualificado') 
+  // E que não receberam conteúdo nas últimas 24h OU nunca receberam
+  const leadsToNurture = await db.select()
+    .from(leads)
+    .where(
+      sql`
+        (stage IN ('Interessado', 'Qualificado', 'Aguardando')) AND
+        (last_content_sent_at IS NULL OR last_content_sent_at < NOW() - INTERVAL '24 hours')
+      `
+    )
+    .limit(20);
+
+  if (leadsToNurture.length === 0) {
+    console.log('[CONTENT] Nenhum lead precisa de nutrição agora.');
+    return;
+  }
+
+  console.log(`[CONTENT] ${leadsToNurture.length} leads aguardando conteúdo.`);
+
+  for (const lead of leadsToNurture) {
+    await processLeadContent(lead);
+  }
+};
+
+const processLeadContent = async (lead: any) => {
+  console.log(`[CONTENT] Processando lead ${lead.id} - ${lead.name}`);
+
+  // 1. Busca conteúdo disponível para o estágio do lead
+  const availableContent = await getAvailableContent(lead.tenant_id, lead.stage);
+  if (availableContent.length === 0) {
+    console.log(`[CONTENT] Nenhum conteúdo disponível para lead ${lead.id}`);
+    return;
+  }
+
+  // 2. Busca histórico de interações do lead com conteúdos
+  const history = await db.select()
+    .from(content_interactions)
+    .where(eq(content_interactions.lead_id, lead.id))
+    .orderBy(desc(content_interactions.sent_at))
+    .limit(10);
+
+  // 3. Busca fluxo atual do lead (se tiver)
+  const flow = await getLeadFlow(lead.id);
+  let flowContent = [];
+  if (flow) {
+    const contentIds = flow.content_order;
+    flowContent = await db.select()
+      .from(content_library)
+      .where(inArray(content_library.id, contentIds));
+  }
+
+  // 4. Monta prompt para IA decidir o próximo conteúdo
+  const systemPrompt = `
+Você é um especialista em nutrição de leads B2B da VendorAI.
+Seu objetivo é escolher o melhor conteúdo para nutrir este lead, considerando:
+
+Dados do Lead:
+- Nome: ${lead.name}
+- Empresa: ${lead.company || 'N/A'}
+- Setor: ${lead.industry || 'N/A'}
+- Estágio atual: ${lead.stage}
+- Histórico de interações: ${history.length} conteúdos enviados
+
+Conteúdos disponíveis:
+${availableContent.map(c => `- [${c.id}] ${c.title} (${c.type}) - Tags: ${c.tags?.join(', ') || 'N/A'} - Engagement Score: ${c.engagement_score}%`).join('\n')}
+
+${flow ? `Fluxo atual: ${flow.name} - Posição: ${lead.current_flow_position || 0}` : 'Sem fluxo definido.'}
+
+Regras:
+- Priorize conteúdos com maior engagement_score.
+- Considere o setor do lead para personalização.
+- Se o lead já recebeu um conteúdo similar, evite repetir.
+- Se o lead tem histórico de abertura/clique, avance para conteúdos mais avançados.
+- Use a ferramenta "selectContent" para decidir.
+`;
+
+  const userMessage = `
+Lead: ${lead.name}
+Estágio: ${lead.stage}
+Conteúdos já enviados: ${history.map(h => `ID ${h.content_id} (${h.opened_at ? 'abriu' : 'não abriu'})`).join(', ') || 'Nenhum'}
+`;
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ],
+    tools: contentToolSchemas,
+    tool_choice: 'auto',
+    temperature: 0.3,
+  });
+
+  const toolCall = response.choices[0].message.tool_calls?.[0];
+  if (!toolCall) {
+    console.log(`[CONTENT] IA não retornou ferramenta para lead ${lead.id}`);
+    return;
+  }
+
+  const args = JSON.parse(toolCall.function.arguments);
+  console.log(`[CONTENT] IA escolheu: ${args.content_title} - ${args.reason}`);
+
+  if (!args.should_send) {
+    console.log(`[CONTENT] IA decidiu aguardar ${args.delay_hours || 24} horas.`);
+    return;
+  }
+
+  // 5. Busca o conteúdo escolhido
+  const selectedContent = await db.select()
+    .from(content_library)
+    .where(eq(content_library.id, args.content_id))
+    .limit(1);
+
+  if (!selectedContent[0]) {
+    console.log(`[CONTENT] Conteúdo ${args.content_id} não encontrado.`);
+    return;
+  }
+
+  // 6. Envia a mensagem via WhatsApp
+  const message = `📚 *Conteúdo exclusivo para você!*\n\n${selectedContent[0].title}\n${selectedContent[0].description || ''}\n\n🔗 Acesse: ${selectedContent[0].url}`;
+  
+  try {
+    await sendWhatsApp(lead.phone, message);
+    
+    // 7. Registra o envio
+    await logContentSent(lead.id, selectedContent[0].id);
+    
+    // 8. Avança no fluxo (se tiver)
+    if (flow) {
+      const currentPos = lead.current_flow_position || 0;
+      await advanceFlowPosition(lead.id, flow.id, currentPos + 1);
+    }
+
+    console.log(`[CONTENT] Conteúdo enviado para lead ${lead.id}: ${selectedContent[0].title}`);
+  } catch (error) {
+    console.error(`[CONTENT] Erro ao enviar para lead ${lead.id}:`, error);
+  }
+};
+
+// Função para webhook de interação (abertura/clique)
+export const handleContentInteraction = async (leadId: number, contentId: number, type: 'opened' | 'clicked' | 'completed') => {
+  console.log(`[CONTENT] Lead ${leadId} ${type} conteúdo ${contentId}`);
+  await logInteraction(leadId, contentId, type);
+};
+```
+
+---
+
+📂 ARQUIVO: Atualização do scheduler.ts
+
+Localize o job content-flow e substitua ou atualize:
+
+```typescript
+// src/scheduler.ts (ou onde estiver seus cron jobs)
+import { runContentAgent } from '../agents/content-orchestrator';
+
+// Substitua o content-flow antigo por este:
+cron.schedule('*/5 * * * *', async () => {
+  console.log('[CRON] Disparando Content Agent...');
+  try {
+    await runContentAgent();
+  } catch (error) {
+    console.error('[CRON] Erro no Content Agent:', error);
+  }
+});
+```
+
+---
+
+📂 ARQUIVO: src/routes/content-webhook.ts
+
+Webhook para rastrear aberturas e cliques (opcional, mas recomendado):
+
+```typescript
+// src/routes/content-webhook.ts
+import express from 'express';
+import { handleContentInteraction } from '../agents/content-orchestrator';
+
+const router = express.Router();
+
+// Endpoint para rastrear abertura de conteúdo (use em links com tracking)
+router.post('/api/content/track', async (req, res) => {
+  try {
+    const { leadId, contentId, type } = req.body;
+    
+    if (!leadId || !contentId || !['opened', 'clicked', 'completed'].includes(type)) {
+      return res.status(400).json({ error: 'Dados inválidos' });
+    }
+
+    await handleContentInteraction(parseInt(leadId), parseInt(contentId), type);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[CONTENT WEBHOOK] Erro:', error);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+export default router;
+```
+
+---
+
+📂 ARQUIVO: Seed inicial de conteúdo (para testes)
+
+Execute no terminal do Replit para popular a biblioteca:
+
+```bash
+node -e "
+import { db } from './dist/db/index.js';
+import { content_library } from './dist/db/schema.js';
+
+const contents = [
+  { title: 'Guia de Vendas B2B', type: 'pdf', url: 'https://exemplo.com/guia-vendas.pdf', description: 'Estratégias para fechar mais negócios', tags: ['vendas', 'b2b'], stage: 'Novo' },
+  { title: 'Como usar IA para prospectar', type: 'video', url: 'https://exemplo.com/video-ia.mp4', description: 'Automatize sua prospecção', tags: ['ia', 'prospecao'], stage: 'Interessado' },
+  { title: 'Case de Sucesso Imobiliário', type: 'link', url: 'https://exemplo.com/case-imobiliario', description: 'Como a VendorAI ajudou uma construtora', tags: ['imobiliario', 'case'], stage: 'Qualificado' }
+];
+
+for (const content of contents) {
+  await db.insert(content_library).values({ ...content, tenant_id: 'SEU_TENANT_ID_AQUI' });
+}
+console.log('Conteúdos inseridos!');
+"
+```
+
+---
+
+📂 ARQUIVO: Criar fluxo de exemplo (SQL)
+
+```sql
+-- Cria um fluxo básico para leads no estágio 'Interessado'
+INSERT INTO content_flows (tenant_id, name, trigger_stage, content_order, delay_hours)
+VALUES (
+  'SEU_TENANT_ID_AQUI', 
+  'Fluxo de Nutrição - 3 Passos', 
+  'Interessado', 
+  ARRAY[1, 2, 3], -- IDs dos conteúdos inseridos acima
+  24 -- envia a cada 24h
+);
+
+-- Atualiza leads para usar este fluxo
+UPDATE leads 
+SET current_flow_id = (SELECT id FROM content_flows WHERE name = 'Fluxo de Nutrição - 3 Passos' LIMIT 1),
+    current_flow_position = 0
+WHERE stage = 'Interessado' AND current_flow_id IS NULL;
+```
+
+---
+
+✅ CHECKLIST DE IMPLANTAÇÃO
+
+· SQL das tabelas executado no Supabase (content_library, content_flows, content_interactions)
+· Colunas last_content_sent_at, current_flow_position, current_flow_id adicionadas em leads
+· Arquivos content-tools.ts e content-orchestrator.ts criados
+· Scheduler atualizado (substituir content-flow antigo)
+· Rota content-webhook.ts criada e registrada no index.ts
+· Conteúdos iniciais inseridos na biblioteca
+· Fluxo de exemplo criado e atribuído a leads
+· npm run build e reiniciado o servidor
+· Testado o envio para um lead manualmente
+
+---
+
+🧪 Como testar rapidamente
+
+1. Insira um lead de teste no estágio Interessado
+2. Rode o orquestrador manualmente:
+   ```bash
+   node -e "import('./dist/agents/content-orchestrator.js').then(m => m.runContentAgent())"
+   ```
+3. Verifique os logs para ver se o conteúdo foi escolhido e enviado
+4. Simule uma interação (opção via webhook):
+   ```bash
+   curl -X POST http://localhost:3000/api/content/track \
+     -H "Content-Type: application/json" \
+     -d '{"leadId": 123, "contentId": 1, "type": "opened"}'
+   ```
+
+---
+
+📊 Resultado esperado
+
+· O Content Agent agora:
+  · Personaliza o conteúdo com base no perfil e histórico do lead
+  · Rastreia aberturas e cliques (feedback em tempo real)
+  · Avança o lead no fluxo adaptativamente
+  · Prioriza conteúdos com melhor histórico de engajamento
+
+---
+
+Pronto! O pacote do Agente Content está completo. Quer o próximo (Campaigns, Churn ou Scheduler)? É só pedir! 🚀

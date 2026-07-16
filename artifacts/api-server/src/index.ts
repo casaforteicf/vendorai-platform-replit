@@ -1299,6 +1299,45 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup migrations: seller_commissions skipped (may already exist)");
   }
+
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS prospect_feedback (
+        id           TEXT PRIMARY KEY,
+        tenant_id    TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        lead_id      TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+        user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rating       INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        comment      TEXT,
+        converted    BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_pfeedback_tenant_lead ON prospect_feedback(tenant_id, lead_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_pfeedback_lead ON prospect_feedback(lead_id)`);
+    logger.info("startup migrations: prospect_feedback OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: prospect_feedback skipped (may already exist)");
+  }
+
+  try {
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS vector`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS lead_embeddings (
+        id           TEXT PRIMARY KEY,
+        tenant_id    TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        lead_id      TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+        embedding    VECTOR(1536),
+        segmento     TEXT,
+        nome         TEXT,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_lead_emb_tenant ON lead_embeddings(tenant_id)`);
+    logger.info("startup migrations: lead_embeddings OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: lead_embeddings skipped (may already exist or pgvector unavailable)");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
