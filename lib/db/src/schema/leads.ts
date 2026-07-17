@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, boolean, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, boolean, integer, real, index } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -139,6 +139,15 @@ export const leadsTable = pgTable("leads", {
   // 3 = já usa IA ou automação de alguma forma
   maturidadeIA: integer("maturidade_ia"),
   dataRespostaPesquisa: timestamp("data_resposta_pesquisa"),
+
+  // ── Sinais de intenção de compra (Revenue Scout) ──────────────────────────
+  // Calculado em tempo real toda vez que um sinal de intenção é recebido.
+  // 0-100. Boost no score das oportunidades geradas pelo Revenue Scout.
+  intentScore: real("intent_score").default(0),
+  lastIntentUpdate: timestamp("last_intent_update"),
+  // Estágio atual da obra (vertical construção). Ex: fundacao, alvenaria, acabamento.
+  constructionStage: text("construction_stage"),
+  contextAnsweredAt: timestamp("context_answered_at"),
 
   // ── Churn tracking ────────────────────────────────────────────────────────
   isChurned: boolean("is_churned").notNull().default(false),

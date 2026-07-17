@@ -24,6 +24,7 @@ import {
   agentConfigsTable,
   propostasTable,
   produtosCatalogoTable,
+  intentSignalsTable,
   type PropostaItem,
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
@@ -143,6 +144,40 @@ function isAniversarioHoje(dataNascimento: string | null): boolean {
   return month === today.getMonth() + 1 && day === today.getDate();
 }
 
+// ── Intent score helper ────────────────────────────────────────────────────────
+
+/**
+ * Retorna o intent score atual do lead baseado nos sinais dos últimos 30 dias.
+ * Reutilizado tanto na análise de clientes quanto na reavaliação sob demanda.
+ */
+async function getLeadIntentScore(tenantId: string, leadId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const weights: Record<string, number> = {
+    google_search:    30,
+    meta_click:       25,
+    site_visit:       20,
+    whatsapp_question:40,
+  };
+
+  const signals = await db
+    .select({ signalType: intentSignalsTable.signalType, value: intentSignalsTable.value })
+    .from(intentSignalsTable)
+    .where(
+      and(
+        eq(intentSignalsTable.leadId, leadId),
+        eq(intentSignalsTable.tenantId, tenantId),
+        gte(intentSignalsTable.capturedAt, cutoff),
+      ),
+    );
+
+  if (signals.length === 0) return 0;
+  let total = 0;
+  for (const s of signals) {
+    total += (weights[s.signalType] ?? 10) * ((s.value ?? 50) / 100);
+  }
+  return Math.min(Math.round(total), 100);
+}
+
 // ─── analisarCliente ──────────────────────────────────────────────────────────
 
 export async function analisarCliente(
@@ -150,9 +185,16 @@ export async function analisarCliente(
   clienteId: string,
   log: Logger,
 ): Promise<void> {
-  // 1. Dados do cliente (lead)
+  // 1. Dados do cliente (lead) — inclui intentScore e constructionStage
   const [lead] = await db
-    .select({ id: leadsTable.id, nome: leadsTable.nome, telefone: leadsTable.telefone, dataNascimento: leadsTable.dataNascimento })
+    .select({
+      id: leadsTable.id,
+      nome: leadsTable.nome,
+      telefone: leadsTable.telefone,
+      dataNascimento: leadsTable.dataNascimento,
+      intentScore: leadsTable.intentScore,
+      constructionStage: leadsTable.constructionStage,
+    })
     .from(leadsTable)
     .where(and(eq(leadsTable.id, clienteId), eq(leadsTable.tenantId, tenantId)));
 
@@ -277,7 +319,10 @@ export async function analisarCliente(
         .limit(1);
 
       const diasApos = cond.diasApos ?? 30;
-      const scoreSeq = calcularScoreOportunidade("sequencia_produto", diasDesdeCompra, diasApos);
+      const baseScoreSeq = calcularScoreOportunidade("sequencia_produto", diasDesdeCompra, diasApos);
+      // Aplica boost de intenção: cada 10 pts de intentScore soma até +5 pts (cap 15)
+      const intentBoostSeq = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
+      const scoreSeq = Math.min(baseScoreSeq + intentBoostSeq, 100);
 
       await db.insert(scoutOportunidadesTable).values({
         tenantId,
@@ -352,11 +397,13 @@ export async function analisarCliente(
 
     if (pendente) continue;
 
-    // Score: usa diasDesdeUltimo e o limiar configurado na regra
+    // Score: usa diasDesdeUltimo e o limiar configurado na regra + boost de intenção
     const diasEsperado =
       regra.tipo === "recompra"   ? (parseCond(regra.condicoes).diasSemCompra ?? 30) :
       regra.tipo === "reativacao" ? (parseCond(regra.condicoes).diasSemVisita ?? 60) : 0;
-    const score = calcularScoreOportunidade(regra.tipo, diasDesdeUltimo, diasEsperado);
+    const baseScore    = calcularScoreOportunidade(regra.tipo, diasDesdeUltimo, diasEsperado);
+    const intentBoost  = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
+    const score        = Math.min(baseScore + intentBoost, 100);
 
     await db.insert(scoutOportunidadesTable).values({
       tenantId,

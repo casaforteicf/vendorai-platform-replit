@@ -83,6 +83,7 @@ import videoProcessingRouter from "./video_processing";
 import beautyRouter from "./beauty";
 import clinicRouter from "./clinic";
 import scoutRouter from "./scout";
+import intentWebhooksRouter from "./intentWebhooks";
 import sdrTemplatesRouter from "./sdr_templates";
 import renderRouter from "./render";
 import siteRouter from "./site";
@@ -299,6 +300,7 @@ router.use(clinicRouter);
 
 // Revenue Scout Hub
 router.use(scoutRouter);
+router.use(intentWebhooksRouter);
 
 // Partner Hub (VPN — Vendor Partner Network — FASE 20)
 router.use(partnerHubRouter);

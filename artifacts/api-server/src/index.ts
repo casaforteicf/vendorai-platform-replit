@@ -1469,6 +1469,44 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup migrations: agent_execution_log skipped");
   }
+
+  // ── intent_signals (Revenue Scout com Intenção Preditiva) ─────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS intent_signals (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+        signal_type TEXT NOT NULL,
+        source TEXT NOT NULL,
+        product_name TEXT,
+        search_term TEXT,
+        url TEXT,
+        value REAL NOT NULL DEFAULT 50,
+        confidence REAL NOT NULL DEFAULT 0.8,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        metadata JSONB
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_intent_signals_lead ON intent_signals(lead_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_intent_signals_tenant ON intent_signals(tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_intent_signals_captured ON intent_signals(captured_at DESC)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_intent_signals_type ON intent_signals(signal_type)`);
+    logger.info("startup migrations: intent_signals OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: intent_signals skipped");
+  }
+
+  // ── leads: intent_score, last_intent_update, construction_stage, context_answered_at
+  try {
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS intent_score REAL DEFAULT 0`);
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_intent_update TIMESTAMPTZ`);
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS construction_stage TEXT`);
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS context_answered_at TIMESTAMPTZ`);
+    logger.info("startup migrations: leads intent/construction columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: leads intent/construction columns skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

@@ -168,3 +168,4 @@ export * from "./prospect_feedback";
 export * from "./campaign_sent_logs";
 export * from "./lead_optimal_hours";
 export * from "./churn_actions";
+export * from "./intent_signals";
