@@ -34,6 +34,7 @@ import {
   buildOnboardingPrompt,
   getAgentConfig,
   AGENT_NAME_TO_KEY,
+  classifyBusinessActivity,
   type AgentName,
   type PromptBuilder,
 } from "../lib/agent-engine.js";
@@ -103,6 +104,11 @@ async function handleAgentProcess(
 
   const ctx = await loadContext(tenantId, leadId);
   if (!ctx) { res.status(404).json({ error: `Lead "${leadId}" not found in this tenant` }); return; }
+
+  // ── SDR: classificar atividade do negócio (não-bloqueante, 1 vez por lead) ─
+  if (agentName === "sdr") {
+    void classifyBusinessActivity(tenantId, ctx.lead, req.log);
+  }
 
   // Resolve DB-driven system prompt (falls back to hardcoded if not found)
   const agentKey = AGENT_NAME_TO_KEY[agentName];

@@ -149,6 +149,14 @@ export const leadsTable = pgTable("leads", {
   constructionStage: text("construction_stage"),
   contextAnsweredAt: timestamp("context_answered_at"),
 
+  // ── Perfil de atividade do negócio (SPIN adaptativo) ─────────────────────
+  // Classificado via IA a partir do nome da empresa/segmento ao longo da conversa.
+  // Ex: 'distribuidor', 'fabricante', 'varejista', 'prestador_servicos', 'outro'
+  businessActivity: text("business_activity"),
+  businessSubActivity: text("business_sub_activity"),
+  businessDescription: text("business_description"),
+  businessActivityConfidence: real("business_activity_confidence").default(0),
+
   // ── Churn tracking ────────────────────────────────────────────────────────
   isChurned: boolean("is_churned").notNull().default(false),
   churnedAt: timestamp("churned_at"),

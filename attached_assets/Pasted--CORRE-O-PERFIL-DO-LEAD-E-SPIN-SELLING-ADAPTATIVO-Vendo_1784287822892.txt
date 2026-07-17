@@ -1,0 +1,45 @@
+📦 CORREÇÃO — PERFIL DO LEAD E SPIN SELLING ADAPTATIVO (VendorAI)
+
+**Problema:** O sistema está interpretando leads de forma genérica (ex: tratando um distribuidor de materiais como uma marcenaria), gerando perguntas SPIN totalmente desconectadas da realidade do negócio.
+
+**Solução:** Aprimorar a coleta e o uso do perfil do lead, fazendo com que o SDR identifique corretamente a atividade principal e adapte as perguntas SPIN ao contexto real (distribuidor, fabricante, varejista, prestador de serviços, etc.).
+
+---
+
+## 📋 PASSO 1: MIGRAÇÕES (Supabase SQL Editor)
+
+```sql
+-- ========================================
+-- 1. ADICIONAR CAMPOS DE PERFIL NA TABELA LEADS
+-- ========================================
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_activity TEXT; -- ex: 'fabricante', 'distribuidor', 'varejista', 'prestador_servicos', 'outro'
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_sub_activity TEXT; -- ex: 'moveis_sob_medida', 'materiais_construcao', 'distribuicao_madeira'
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_description TEXT; -- descrição livre
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_activity_confidence FLOAT DEFAULT 0; -- 0-1
+
+-- ========================================
+-- 2. TABELA DE DETECÇÃO DE ATIVIDADE (REGRA BASEADA EM PALAVRAS-CHAVE)
+-- ========================================
+CREATE TABLE IF NOT EXISTS activity_detection_rules (
+  id SERIAL PRIMARY KEY,
+  keyword TEXT NOT NULL, -- ex: 'móveis', 'madeira', 'distribuição'
+  activity_type TEXT NOT NULL, -- 'fabricante', 'distribuidor', 'varejista'
+  sub_activity TEXT, -- opcional
+  weight FLOAT DEFAULT 1.0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ========================================
+-- 3. SEED DE REGRAS PARA DETECÇÃO
+-- ========================================
+INSERT INTO activity_detection_rules (keyword, activity_type, sub_activity, weight) VALUES
+  ('móveis', 'fabricante', 'moveis_sob_medida', 1.2),
+  ('marcenaria', 'fabricante', 'moveis_sob_medida', 1.2),
+  ('madeira', 'distribuidor', 'distribuicao_madeira', 1.0),
+  ('distribuição', 'distribuidor', 'distribuicao_materiais', 1.0),
+  ('atacado', 'distribuidor', 'distribuicao_materiais', 1.0),
+  ('construção', 'varejista', 'materiais_construcao', 1.0),
+  ('material', 'varejista', 'materiais_construcao', 0.8),
+  ('acabamento', 'fabricante', 'moveis_sob_medida', 0.7),
+  ('painel', 'fabricante', 'moveis_sob_medida', 0.6)
+ON CONFLICT DO NOTHING;

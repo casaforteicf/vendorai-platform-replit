@@ -526,6 +526,23 @@ export function buildLeadSection(lead: Lead): string {
   lines.push(`Nome: ${lead.nome}`);
   if (lead.empresa)          lines.push(`Empresa: ${lead.empresa}`);
   if (lead.tamanhoEquipe)    lines.push(`Tamanho da equipe: ${lead.tamanhoEquipe}`);
+
+  // ── Perfil de atividade do negócio (SPIN adaptativo) ──────────────────────
+  const leadAny = lead as Record<string, unknown>;
+  const bizActivity    = leadAny.businessActivity    as string | undefined;
+  const bizSubActivity = leadAny.businessSubActivity as string | undefined;
+  const bizDescription = leadAny.businessDescription as string | undefined;
+  if (bizActivity) {
+    const label = {
+      fabricante:         "Fabricante / Produtor",
+      distribuidor:       "Distribuidor / Atacadista",
+      varejista:          "Varejista / Loja",
+      prestador_servicos: "Prestador de Serviços",
+      outro:              "Outro / Indefinido",
+    }[bizActivity] ?? bizActivity;
+    lines.push(`Tipo de negócio: ${label}${bizSubActivity ? ` (${bizSubActivity.replace(/_/g, " ")})` : ""}`);
+    if (bizDescription) lines.push(`Descrição do negócio: ${bizDescription}`);
+  }
   lines.push(`Status no CRM: ${lead.status}`);
   if (lead.objetivo)         lines.push(`Objetivo declarado: ${lead.objetivo}`);
   if (lead.dorPrincipal)     lines.push(`Dor principal: ${lead.dorPrincipal}`);
@@ -604,6 +621,58 @@ export function buildLeadSection(lead: Lead): string {
   return lines.join("\n");
 }
 
+// ── Classificador de atividade do negócio (SPIN adaptativo) ─────────────────
+// Roda de forma não-bloqueante na primeira mensagem do SDR quando empresa/segmento
+// está disponível mas businessActivity ainda não foi classificado.
+export async function classifyBusinessActivity(
+  tenantId: string,
+  lead: Lead,
+  log?: Logger
+): Promise<void> {
+  const leadAny = lead as Record<string, unknown>;
+  // Já classificado — nada a fazer
+  if (leadAny.businessActivity) return;
+  // Sem informação suficiente para classificar
+  const empresa   = lead.empresa ?? null;
+  const segmento  = (lead as any).mercadoSegmento as string | null ?? null;
+  if (!empresa && !segmento) return;
+
+  try {
+    const hint = [empresa, segmento].filter(Boolean).join(" / ");
+    const { content } = await gatewayCallOpenAI(tenantId, "agent_sdr", [
+      {
+        role: "system",
+        content:
+          "Você é um classificador de tipo de negócio. Responda SOMENTE com JSON válido, sem markdown.\n" +
+          "Com base no nome e/ou segmento da empresa, retorne:\n" +
+          '{ "activity": "<fabricante|distribuidor|varejista|prestador_servicos|outro>", ' +
+          '"subActivity": "<string curta opcional, ex: materiais_construcao>", ' +
+          '"description": "<1 frase descrevendo o negócio>", ' +
+          '"confidence": <0.0 a 1.0> }',
+      },
+      { role: "user", content: `Empresa/segmento: ${hint}` },
+    ], { model: "gpt-4o-mini", temperature: 0, maxTokens: 120, log });
+
+    const parsed = JSON.parse(content);
+    if (!parsed.activity) return;
+
+    await db
+      .update(leadsTable)
+      .set({
+        businessActivity: parsed.activity,
+        businessSubActivity: parsed.subActivity ?? null,
+        businessDescription: parsed.description ?? null,
+        businessActivityConfidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(leadsTable.id, lead.id));
+
+    log?.info({ leadId: lead.id, activity: parsed.activity, confidence: parsed.confidence }, "business-activity: classified");
+  } catch (err) {
+    log?.warn({ err, leadId: lead.id }, "business-activity: classification failed (non-fatal)");
+  }
+}
+
 // ── Days since last contact ───────────────────────────────────────────────────
 export function daysSinceLastContact(ctx: AgentContext): number | null {
   if (!ctx.conversation?.ultimaMensagemEm) return null;
@@ -673,7 +742,8 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
       "- Se S foi respondida → faça P (Problema): ex: 'Qual é a maior dificuldade que você enfrenta para responder todos os leads em tempo hábil?'\n" +
       "- Se P foi respondida → faça I (Implicação): ex: 'Quanto você estima que está perdendo em vendas por não conseguir acompanhar todos os contatos?'\n" +
       "- Se I foi respondida → faça N (Necessidade): ex: 'Se você tivesse um SDR virtual que respondesse 100% dos leads automaticamente, isso te ajudaria a aumentar suas vendas?'\n" +
-      "- Se N foi respondida → finalize: 'Ótimo! Vamos agendar uma reunião para mostrar como podemos transformar seu atendimento. Posso sugerir um horário?'\n\n" +
+      "- Se N foi respondida → finalize: 'Ótimo! Vamos agendar uma reunião para mostrar como podemos transformar seu atendimento. Posso sugerir um horário?'\n" +
+      "IMPORTANTE: As perguntas acima são exemplos genéricos. Adapte-as ao tipo de negócio identificado no perfil do lead (veja 'Tipo de negócio' na seção PERFIL DO LEAD).\n\n" +
       "## REGRAS RÍGIDAS DO SPIN\n" +
       "- NUNCA mude a ordem S → P → I → N\n" +
       "- NUNCA pule uma etapa antes do lead responder a anterior\n" +
@@ -695,6 +765,54 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
   parts.push(buildLeadSection(lead));
+
+  // ── SPIN adaptativo por tipo de negócio detectado por IA ─────────────────
+  // Injeta exemplos de perguntas SPIN específicos para o tipo de negócio
+  // classificado automaticamente (fabricante, distribuidor, varejista, etc.)
+  // Só ativo quando businessActivity foi preenchido pelo classificador.
+  {
+    const leadAny = lead as Record<string, unknown>;
+    const bizActivity = leadAny.businessActivity as string | undefined;
+    if (bizActivity && bizActivity !== "outro") {
+      const spinExamples: Record<string, { s: string; p: string; i: string; n: string }> = {
+        fabricante: {
+          s: "Como você está gerenciando os leads de distribuidores e revendedores que entram em contato com a fábrica?",
+          p: "Qual a maior dificuldade para qualificar e responder pedidos de orçamento de novos canais?",
+          i: "Quanto você estima que perde em potenciais parceiros de distribuição por demora no atendimento inicial?",
+          n: "Se você pudesse automatizar o primeiro contato com novos revendedores e filtrar os mais qualificados, isso aceleraria sua expansão de canais?",
+        },
+        distribuidor: {
+          s: "Como você está gerenciando os leads de varejistas e clientes que solicitam seu portfólio ou tabela de preços?",
+          p: "Qual é o maior gargalo no processo de atender e qualificar novos clientes lojistas?",
+          i: "Quanto volume de vendas você estima que está perdendo por não conseguir responder todos os contatos rapidamente?",
+          n: "Se você tivesse um assistente virtual que respondesse pedidos de tabela e qualificasse varejistas automaticamente, isso ajudaria a escalar suas vendas?",
+        },
+        varejista: {
+          s: "Como você está gerenciando os leads que chegam pelo WhatsApp, Instagram ou site — pedidos de orçamento e dúvidas de produtos?",
+          p: "Qual é a maior dificuldade para converter esses contatos em clientes sem perder nenhum no caminho?",
+          i: "Quanto você estima que está perdendo em vendas por leads que não recebem resposta rápida?",
+          n: "Se você tivesse um SDR virtual que respondesse 100% dos contatos automaticamente e qualificasse quem tem intenção real de compra, isso aumentaria seu faturamento?",
+        },
+        prestador_servicos: {
+          s: "Como você está gerenciando os leads que pedem orçamento ou tiram dúvidas sobre seus serviços — WhatsApp, e-mail, indicações?",
+          p: "Qual é o maior desafio para qualificar quem realmente precisa dos seus serviços e transformar em agendamento?",
+          i: "Quantos potenciais clientes por mês você acredita que não converte por falta de agilidade no primeiro contato?",
+          n: "Se você tivesse um assistente que respondesse dúvidas e agendasse reuniões automaticamente, liberando você para focar na entrega, isso ajudaria?",
+        },
+      };
+      const ex = spinExamples[bizActivity];
+      if (ex) {
+        parts.push(
+          `## EXEMPLOS SPIN ADAPTADOS AO NEGÓCIO (${bizActivity.toUpperCase().replace(/_/g, " ")})\n` +
+          "Use estes exemplos como base para formular suas perguntas SPIN — adapte ao contexto da conversa:\n" +
+          `- S (Situação): "${ex.s}"\n` +
+          `- P (Problema): "${ex.p}"\n` +
+          `- I (Implicação): "${ex.i}"\n` +
+          `- N (Necessidade): "${ex.n}"`
+        );
+      }
+    }
+  }
 
   // ── SPIN customizado por nicho (Bloco 23) ─────────────────────────────────
   // Ativo apenas quando o tenant configurou e aprovou perguntas de qualificação

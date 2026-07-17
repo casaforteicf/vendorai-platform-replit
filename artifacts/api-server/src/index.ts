@@ -1508,6 +1508,17 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
     logger.warn({ err }, "startup migrations: leads intent/construction columns skipped");
   }
 
+  // ── leads: business_activity, business_sub_activity, business_description, business_activity_confidence
+  try {
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_activity TEXT`);
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_sub_activity TEXT`);
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_description TEXT`);
+    await db.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_activity_confidence REAL DEFAULT 0`);
+    logger.info("startup migrations: leads business_activity columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: leads business_activity columns skipped");
+  }
+
   // ── tenant_nav_modules: layout dinâmico por tenant ───────────────────────
   try {
     await db.execute(sql`
