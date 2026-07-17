@@ -1,0 +1,304 @@
+📦 ARQUIVO ÚNICO — VALIDAÇÃO COMPLETA DA IMPLANTAÇÃO (VENDORAI)
+
+---
+
+Copie todo o conteúdo abaixo e cole no chat com o Agente Replit.
+
+---
+
+```
+📋 RELATÓRIO DE VALIDAÇÃO — IMPLANTAÇÃO DOS AGENTES VENDORAI
+================================================================
+
+Instrução: Execute todos os passos abaixo em ordem e preencha os campos [ ] com o resultado obtido. No final, preencha a tabela resumo e me envie o relatório completo.
+
+---
+
+## 1. MIGRAÇÕES (BANCO DE DADOS)
+
+Verifique se as tabelas e colunas abaixo existem no Supabase.
+
+### 1.1. Tabelas
+
+Execute no SQL Editor do Supabase:
+
+```sql
+SELECT table_name 
+FROM information_schema.tables 
+WHERE table_name IN ('intent_signals', 'predictive_transition_matrix', 'prediction_log');
+```
+
+Resultado:
+
+· intent_signals
+· predictive_transition_matrix
+· prediction_log
+
+1.2. Colunas na tabela leads
+
+```sql
+SELECT column_name 
+FROM information_schema.columns 
+WHERE table_name = 'leads' 
+AND column_name IN ('construction_stage', 'context_answered_at', 'intent_score', 'last_intent_update');
+```
+
+Resultado:
+
+· construction_stage
+· context_answered_at
+· intent_score
+· last_intent_update
+
+---
+
+2. ARQUIVOS CRIADOS
+
+Verifique se os seguintes arquivos existem no projeto.
+
+```bash
+ls -la src/integrations/meta-conversions.ts \
+      src/routes/intent-webhooks.ts \
+      src/agents/revenue-orchestrator.ts \
+      src/scheduler.ts \
+      src/index.ts
+```
+
+Resultado:
+
+· src/integrations/meta-conversions.ts
+· src/routes/intent-webhooks.ts
+· src/agents/revenue-orchestrator.ts (versão atualizada com intenção)
+· src/scheduler.ts (com job do Revenue Scout)
+· src/index.ts (com rotas de webhook registradas)
+
+---
+
+3. SCHEDULER (CRON JOBS)
+
+Verifique se o job do Revenue Scout está registrado no scheduler.
+
+```bash
+grep -n "runRevenueScout" src/scheduler.ts
+```
+
+Resultado:
+
+· Job diário: 0 9 * * * (runRevenueScout)
+· Job opcional: 0 */2 * * * (recalculo)
+
+Linhas encontradas (copiar a saída):
+
+```
+
+```
+
+---
+
+4. WEBHOOKS
+
+Teste se as rotas estão registradas e respondendo.
+
+4.1. Webhook Google
+
+```bash
+curl -X POST http://localhost:3000/webhooks/intent/google \
+  -H "Content-Type: application/json" \
+  -H "x-tenant-id: SEU_TENANT_ID" \
+  -d '{"leadId": 1, "searchTerm": "preço de tijolo"}' -s | jq .
+```
+
+Resposta esperada: {"success":true}
+Resultado: [ ]
+
+4.2. Webhook Meta
+
+```bash
+curl -X POST http://localhost:3000/webhooks/intent/meta \
+  -H "Content-Type: application/json" \
+  -H "x-tenant-id: SEU_TENANT_ID" \
+  -d '{"leadId": 1, "eventType": "instagram", "productId": 1}' -s | jq .
+```
+
+Resposta esperada: {"success":true}
+Resultado: [ ]
+
+4.3. Webhook Site
+
+```bash
+curl -X POST http://localhost:3000/webhooks/intent/site \
+  -H "Content-Type: application/json" \
+  -H "x-tenant-id: SEU_TENANT_ID" \
+  -d '{"leadId": 1, "url": "https://site.com/produto"}' -s | jq .
+```
+
+Resposta esperada: {"success":true}
+Resultado: [ ]
+
+4.4. Webhook WhatsApp
+
+```bash
+curl -X POST http://localhost:3000/webhooks/intent/whatsapp \
+  -H "Content-Type: application/json" \
+  -H "x-tenant-id: SEU_TENANT_ID" \
+  -d '{"leadId": 1, "question": "Vocês vendem tijolos?"}' -s | jq .
+```
+
+Resposta esperada: {"success":true}
+Resultado: [ ]
+
+---
+
+5. DADOS INICIAIS (SEED)
+
+Verifique se a matriz preditiva foi populada.
+
+```sql
+SELECT COUNT(*) FROM predictive_transition_matrix WHERE tenant_id = 'SEU_TENANT_ID';
+```
+
+Resultado: [ ] Número de registros: _______
+
+---
+
+6. LEADS COM ESTÁGIO DEFINIDO
+
+Veja quantos leads já têm o estágio preenchido.
+
+```sql
+SELECT COUNT(*) FROM leads WHERE construction_stage IS NOT NULL;
+```
+
+Resultado: [ ] Número de leads: _______
+
+---
+
+7. STATUS DO SERVIDOR E WORKER
+
+Verifique se os processos estão rodando.
+
+```bash
+ps aux | grep "node.*dist" | grep -v grep
+```
+
+Resultado:
+
+· Servidor (index.js) ativo
+· Worker (worker.js) ativo
+
+---
+
+8. TESTE END-TO-END (REVENUE SCOUT)
+
+Execute manualmente o Revenue Scout e copie a saída completa.
+
+```bash
+node -e "import('./dist/agents/revenue-orchestrator.js').then(m => m.runRevenueScout('SEU_TENANT_ID')).catch(console.error)"
+```
+
+Saída completa:
+
+```
+
+```
+
+---
+
+9. OPORTUNIDADES GERADAS
+
+Verifique se há novas oportunidades nas últimas 24h.
+
+```sql
+SELECT COUNT(*) FROM revenue_opportunities WHERE created_at > NOW() - INTERVAL '1 day';
+```
+
+Resultado: [ ] Número de oportunidades: _______
+
+---
+
+10. SINAIS DE INTENÇÃO CAPTURADOS
+
+Verifique a distribuição dos sinais.
+
+```sql
+SELECT signal_type, COUNT(*) FROM intent_signals GROUP BY signal_type;
+```
+
+Resultado:
+
+· google_search: _______
+· meta_click: _______
+· site_visit: _______
+· whatsapp_question: _______
+
+---
+
+11. BUILD E LOGS
+
+Verifique se o build foi concluído sem erros.
+
+```bash
+npm run build 2>&1 | tail -20
+```
+
+Resultado:
+
+· Build concluído com sucesso
+· Erros encontrados (copiar abaixo)
+
+Erros (se houver):
+
+```
+
+```
+
+---
+
+12. TABELA RESUMO
+
+Preencha com o status de cada item:
+
+# Item Status (OK/FALHA/PARCIAL) Observação
+1 Tabelas (intent_signals, predictive_transition_matrix, prediction_log)  
+2 Colunas em leads (construction_stage, context_answered_at, intent_score, last_intent_update)  
+3 Arquivos criados (meta-conversions.ts, intent-webhooks.ts, revenue-orchestrator.ts, scheduler.ts, index.ts)  
+4 Scheduler (cron jobs)  
+5 Webhook Google  
+6 Webhook Meta  
+7 Webhook Site  
+8 Webhook WhatsApp  
+9 Dados iniciais (matriz preditiva)  
+10 Leads com estágio definido  
+11 Servidor/Worker ativos  
+12 Teste End-to-End (Revenue Scout)  
+13 Oportunidades geradas  
+14 Sinais de intenção capturados  
+15 Build sem erros  
+
+---
+
+13. CONCLUSÃO
+
+Com base na tabela acima, a implantação está:
+
+· ✅ COMPLETAMENTE BEM-SUCEDIDA (todos os itens OK)
+· ⚠️ PARCIALMENTE BEM-SUCEDIDA (alguns itens com FALHA ou PARCIAL)
+· ❌ COM ERROS (maioria dos itens com FALHA)
+
+Lista de problemas encontrados (se houver):
+
+1. 
+2. 
+3. 
+
+---
+
+📌 INSTRUÇÕES FINAIS:
+
+· Copie todo o conteúdo acima, execute os comandos e preencha os campos.
+· Cole a resposta completa no chat.
+· Se algum comando falhar, copie a mensagem de erro exata.
+
+Aguardando o relatório para validarmos a implantação! 🚀
+
+```
