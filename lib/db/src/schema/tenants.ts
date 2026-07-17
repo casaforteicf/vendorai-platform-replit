@@ -103,6 +103,7 @@ export const tenantsTable = pgTable(
     // FK para organizacoes.id — nullable; sem .references() para evitar import circular.
     // Preencher via BLOCO 14 ao vincular tenant a uma organização (rede de lojas).
     organizacaoId: text("organizacao_id"),
+    comissaoPadraoPercentual: numeric("comissao_padrao_percentual", { precision: 5, scale: 2 }).default("0"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

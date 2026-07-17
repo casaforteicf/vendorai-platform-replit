@@ -23,6 +23,7 @@ import {
   agentTasksTable,
   usersTable,
   sellerCommissionsTable,
+  produtosCatalogoTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -447,8 +448,9 @@ router.patch("/deals/:id", async (req, res) => {
         });
         bgLog.info({ dealId: deal.id, tenantId, planId: plano.id }, "deal-ganho: plano atribuído ao tenant");
 
-        // ── Auto-gerar comissão do vendedor (20% da implantação) ────────────
-        if (earlyDeal.assignedTo && plano.implantationPriceCents && plano.implantationPriceCents > 0) {
+        // ── Auto-gerar comissão do vendedor ──────────────────────────────────
+        // Hierarquia: produto.comissaoPercentual → tenant.comissaoPadraoPercentual → 20 (SaaS default)
+        if (earlyDeal.assignedTo) {
           try {
             const [sellerUser] = await db
               .select({ tenantId: usersTable.tenantId })
@@ -456,27 +458,76 @@ router.patch("/deals/:id", async (req, res) => {
               .where(eq(usersTable.id, earlyDeal.assignedTo))
               .limit(1);
             const commTenantId = sellerUser?.tenantId ?? tenantId;
-            const comissaoCents = Math.round(plano.implantationPriceCents * 20 / 100);
-            // Idempotência: não criar duplicata para o mesmo deal
-            const existing = await db
-              .select({ id: sellerCommissionsTable.id })
-              .from(sellerCommissionsTable)
-              .where(eq(sellerCommissionsTable.dealId, deal.id))
+
+            // Buscar proposta para obter valorTotal e produtoId do primeiro item
+            const [propComm] = await db
+              .select({ valorTotal: propostasTable.valorTotal, itens: propostasTable.itens })
+              .from(propostasTable)
+              .where(eq(propostasTable.dealId, deal.id))
+              .orderBy(desc(propostasTable.createdAt))
               .limit(1);
-            if (existing.length === 0) {
-              await db.insert(sellerCommissionsTable).values({
-                tenantId: commTenantId,
-                sellerUserId: earlyDeal.assignedTo,
-                clienteTenantId: tenantId ?? null,
-                dealId: deal.id,
-                planSlug: deal.planoContratado ?? null,
-                clienteNome: earlyDeal.titulo ?? deal.titulo ?? null,
-                valorImplantacaoCents: plano.implantationPriceCents,
-                percentual: 20,
-                valorComissaoCents: comissaoCents,
-                status: "pendente",
-              });
-              bgLog.info({ dealId: deal.id, sellerUserId: earlyDeal.assignedTo, comissaoCents }, "deal-ganho: comissão de vendedor gerada");
+
+            // 1. Comissão do produto (primeiro item com produtoId)
+            let comissaoPercentual: number | null = null;
+            if (propComm?.itens && propComm.itens.length > 0) {
+              const firstProdutoId = propComm.itens.find((i: any) => i.produtoId)?.produtoId;
+              if (firstProdutoId) {
+                const [produto] = await db
+                  .select({ comissaoPercentual: produtosCatalogoTable.comissaoPercentual })
+                  .from(produtosCatalogoTable)
+                  .where(eq(produtosCatalogoTable.id, firstProdutoId))
+                  .limit(1);
+                if (produto?.comissaoPercentual != null) {
+                  comissaoPercentual = parseFloat(String(produto.comissaoPercentual));
+                }
+              }
+            }
+
+            // 2. Comissão padrão do tenant
+            if (comissaoPercentual === null) {
+              const [tenantComm] = await db
+                .select({ comissaoPadraoPercentual: tenantsTable.comissaoPadraoPercentual })
+                .from(tenantsTable)
+                .where(eq(tenantsTable.id, tenantId))
+                .limit(1);
+              if (tenantComm?.comissaoPadraoPercentual != null) {
+                const parsed = parseFloat(String(tenantComm.comissaoPadraoPercentual));
+                if (parsed > 0) comissaoPercentual = parsed;
+              }
+            }
+
+            // 3. Fallback: 20% sobre implantação SaaS (comportamento legado)
+            const useLegacySaaS = comissaoPercentual === null && plano.implantationPriceCents && plano.implantationPriceCents > 0;
+            if (useLegacySaaS) comissaoPercentual = 20;
+
+            // Valor base: proposta.valorTotal > plano.implantationPriceCents
+            const valorBaseCents = propComm?.valorTotal
+              ? Math.round(Number(propComm.valorTotal) * 100)
+              : (plano.implantationPriceCents ?? 0);
+
+            if (earlyDeal.assignedTo && comissaoPercentual !== null && valorBaseCents > 0) {
+              const comissaoCents = Math.round(valorBaseCents * comissaoPercentual / 100);
+              // Idempotência: não criar duplicata para o mesmo deal
+              const existingComm = await db
+                .select({ id: sellerCommissionsTable.id })
+                .from(sellerCommissionsTable)
+                .where(eq(sellerCommissionsTable.dealId, deal.id))
+                .limit(1);
+              if (existingComm.length === 0) {
+                await db.insert(sellerCommissionsTable).values({
+                  tenantId: commTenantId,
+                  sellerUserId: earlyDeal.assignedTo,
+                  clienteTenantId: tenantId ?? null,
+                  dealId: deal.id,
+                  planSlug: deal.planoContratado ?? null,
+                  clienteNome: earlyDeal.titulo ?? deal.titulo ?? null,
+                  valorImplantacaoCents: valorBaseCents,
+                  percentual: comissaoPercentual,
+                  valorComissaoCents: comissaoCents,
+                  status: "pendente",
+                });
+                bgLog.info({ dealId: deal.id, sellerUserId: earlyDeal.assignedTo, comissaoCents, comissaoPercentual }, "deal-ganho: comissão de vendedor gerada");
+              }
             }
           } catch (commErr) {
             bgLog.warn({ commErr, dealId: deal.id }, "deal-ganho: falha ao gerar comissão (não crítico)");

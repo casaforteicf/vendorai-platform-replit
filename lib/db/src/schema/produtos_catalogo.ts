@@ -42,11 +42,18 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   recorrencia: text("recorrencia"),
   prazoContrato: integer("prazo_contrato"),
   exigeAgendamento: boolean("exige_agendamento").notNull().default(false),
+  comissaoPercentual: numeric("comissao_percentual", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 const descontoMaximoPercentualSchema = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v))
+  .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid percentage"))
+  .nullable();
+
+const comissaoPercentualSchema = z
   .union([z.string(), z.number()])
   .transform((v) => String(v))
   .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid percentage"))
@@ -64,6 +71,7 @@ export const insertProdutoCatalogoSchema = createInsertSchema(
     precoImplantacao: precoDecimalSchema.nullable().optional(),
     precoMensalidade: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
+    comissaoPercentual: comissaoPercentualSchema.optional(),
   }
 ).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -74,6 +82,7 @@ export const updateProdutoCatalogoSchema = createSelectSchema(
     precoImplantacao: precoDecimalSchema.nullable().optional(),
     precoMensalidade: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
+    comissaoPercentual: comissaoPercentualSchema.optional(),
   }
 )
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })

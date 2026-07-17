@@ -1507,6 +1507,39 @@ Me conta: qual é o maior gargalo no atendimento do seu negócio hoje? Com isso 
   } catch (err) {
     logger.warn({ err }, "startup migrations: leads intent/construction columns skipped");
   }
+
+  // ── tenant_nav_modules: layout dinâmico por tenant ───────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS tenant_nav_modules (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        module_key TEXT NOT NULL,
+        is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT tenant_nav_modules_tenant_key_uidx UNIQUE (tenant_id, module_key)
+      )
+    `);
+    logger.info("startup migrations: tenant_nav_modules OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: tenant_nav_modules skipped");
+  }
+
+  // ── produtos_catalogo: comissao_percentual ───────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE produtos_catalogo ADD COLUMN IF NOT EXISTS comissao_percentual NUMERIC(5,2)`);
+    logger.info("startup migrations: produtos_catalogo.comissao_percentual OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: produtos_catalogo.comissao_percentual skipped");
+  }
+
+  // ── tenants: comissao_padrao_percentual ─────────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS comissao_padrao_percentual NUMERIC(5,2) DEFAULT 0`);
+    logger.info("startup migrations: tenants.comissao_padrao_percentual OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: tenants.comissao_padrao_percentual skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
