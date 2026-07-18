@@ -87,7 +87,21 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 //   • injects req.tenantId and continues for all other requests
 //   • for non-/api/ paths: additionally serves the tenant's published HTML site
 const ROOT_DOMAIN = "appvendorai.com";
-const MAIN_HOSTNAMES = new Set([ROOT_DOMAIN, `www.${ROOT_DOMAIN}`, "localhost", "127.0.0.1"]);
+// Include all Replit production/dev domains so platform-level routes (auth,
+// health, etc.) are never blocked by the tenant-subdomain resolver.
+const replitDomains = (process.env["REPLIT_DOMAINS"] ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const replitDevDomain = (process.env["REPLIT_DEV_DOMAIN"] ?? "").trim();
+const MAIN_HOSTNAMES = new Set([
+  ROOT_DOMAIN,
+  `www.${ROOT_DOMAIN}`,
+  "localhost",
+  "127.0.0.1",
+  ...replitDomains,
+  ...(replitDevDomain ? [replitDevDomain] : []),
+]);
 
 function notFoundHtml(label: string) {
   return (
