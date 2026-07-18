@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { z } from "zod/v4";
 import { logger } from "../lib/logger.js";
 import { authenticate } from "../middlewares/auth.js";
+import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
 import {
   buildWhatsappOAuthUrl,
   exchangeShortCodeForToken,
@@ -16,36 +16,22 @@ import {
 
 const router: IRouter = Router();
 
-const stateSchema = z.object({
-  tenantId: z.string(),
-  userId: z.string(),
-});
-
-function encodeState(tenantId: string, userId: string): string {
-  return Buffer.from(JSON.stringify({ tenantId, userId })).toString("base64url");
-}
-
-function decodeState(state: string): { tenantId: string; userId: string } {
-  return JSON.parse(Buffer.from(state, "base64url").toString("utf-8"));
-}
-
 function getAppUrl(): string {
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}`;
   return "http://localhost:3000";
 }
 
-// ── 1. Redirect para OAuth ──────────────────────────────────────
 router.get("/auth/whatsapp", authenticate, async (req, res) => {
   try {
-    const userId = (req as any).user?.id as string;
-    const tenantId = (req as any).user?.tenantId as string;
+    const userId = req.user?.sub;
+    const tenantId = req.user?.tenantId;
     if (!userId || !tenantId) {
       logger.warn("OAuth WhatsApp: usuário não autenticado");
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const state = encodeState(tenantId, userId);
+    const state = createOAuthState(tenantId, userId, "whatsapp");
     const url = buildWhatsappOAuthUrl(tenantId, state);
     logger.info({ tenantId, userId }, "Retornando URL OAuth WhatsApp");
     return res.json({ url });
@@ -55,7 +41,6 @@ router.get("/auth/whatsapp", authenticate, async (req, res) => {
   }
 });
 
-// ── 2. Callback ────────────────────────────────────────────
 router.get("/auth/whatsapp/callback", async (req, res) => {
   const { code, state, error } = req.query as Record<string, string>;
   const appUrl = getAppUrl();
@@ -67,10 +52,10 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
 
   let tenantId: string;
   try {
-    const decoded = decodeState(state);
+    const decoded = consumeOAuthState(state, "whatsapp");
     tenantId = decoded.tenantId;
-  } catch {
-    logger.warn("Callback WhatsApp: state inválido");
+  } catch (err) {
+    logger.warn({ err }, "Callback WhatsApp: state inválido, expirado ou reutilizado");
     return res.redirect(`${appUrl}/configuracoes?whatsappError=invalid_state`);
   }
 
@@ -103,12 +88,11 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
   }
 });
 
-// ── 3. Status da conexão ────────────────────────────────────
 router.get("/tenants/:tenantId/whatsapp-connection", authenticate, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
-    const userTenantId = (req as any).user?.tenantId;
-    if (tenantId !== userTenantId) {
+    const userTenantId = req.user?.tenantId;
+    if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -133,12 +117,11 @@ router.get("/tenants/:tenantId/whatsapp-connection", authenticate, async (req, r
   }
 });
 
-// ── 4. Renovar token ─────────────────────────────────────────
 router.post("/tenants/:tenantId/whatsapp-connection/refresh", authenticate, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
-    const userTenantId = (req as any).user?.tenantId;
-    if (tenantId !== userTenantId) {
+    const userTenantId = req.user?.tenantId;
+    if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -160,12 +143,11 @@ router.post("/tenants/:tenantId/whatsapp-connection/refresh", authenticate, asyn
   }
 });
 
-// ── 5. Desconectar ───────────────────────────────────────────
 router.delete("/tenants/:tenantId/whatsapp-connection", authenticate, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
-    const userTenantId = (req as any).user?.tenantId;
-    if (tenantId !== userTenantId) {
+    const userTenantId = req.user?.tenantId;
+    if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
