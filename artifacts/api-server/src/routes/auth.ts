@@ -494,17 +494,44 @@ router.post("/auth/reset-password", async (req, res) => {
 
   const hashed = await bcrypt.hash(newPassword, 12);
 
-  await db
+  const [updatedUser] = await db
     .update(usersTable)
     .set({ password: hashed, updatedAt: now })
-    .where(eq(usersTable.id, resetRecord.userId));
+    .where(eq(usersTable.id, resetRecord.userId))
+    .returning();
 
   await db
     .update(passwordResetTokensTable)
     .set({ usedAt: now })
     .where(eq(passwordResetTokensTable.id, resetRecord.id));
 
-  res.json({ ok: true });
+  // Auto-login: return a JWT so the client can skip the login step
+  if (!updatedUser) {
+    res.json({ ok: true });
+    return;
+  }
+
+  let partnerId: string | undefined;
+  if (updatedUser.platformRole === "partner") {
+    const [partnerRow] = await db
+      .select({ id: partnersTable.id })
+      .from(partnersTable)
+      .where(eq(partnersTable.userId, updatedUser.id));
+    partnerId = partnerRow?.id;
+  }
+
+  const jwtToken = signToken({
+    sub: updatedUser.id,
+    email: updatedUser.email,
+    platformRole: updatedUser.platformRole,
+    tenantId: updatedUser.tenantId,
+    role: updatedUser.role,
+    userFunction: updatedUser.userFunction ?? undefined,
+    ...(partnerId ? { partnerId } : {}),
+  });
+
+  const { password: _pw, ...publicUser } = updatedUser;
+  res.json({ ok: true, token: jwtToken, user: publicUser });
 });
 
 // ── Force password change (first login) ───────────────────────────────────
