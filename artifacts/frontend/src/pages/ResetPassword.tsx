@@ -3,46 +3,55 @@ import { useResetPassword } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
-import { useAuth } from "@/contexts/AuthContext";
+import { useLocation, useSearch } from "wouter";
 import logoLight from "/logo-full-dark.svg";
 
+const TOKEN_KEY = "vendorai_token";
+
 export default function ResetPassword() {
-  const [token, setToken] = useState("");
+  const searchString = useSearch();
+  const token = new URLSearchParams(searchString).get("token") ?? "";
+
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [done, setDone] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { login } = useAuth();
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get("token");
-    if (t) setToken(t);
-  }, []);
 
   const mutation = useResetPassword({
     mutation: {
       onSuccess: (data) => {
         const d = data as any;
-        if (d?.token && d?.user) {
-          // Auto-login: token returned by backend after reset
-          login(d.token, d.user);
+        if (d?.token) {
+          // Save JWT directly to localStorage, then hard-navigate to dashboard
+          // Hard navigation avoids React state race conditions (useGetMe vs setToken)
+          localStorage.setItem(TOKEN_KEY, d.token);
+          window.location.href = window.location.origin + "/app/dashboard";
         } else {
-          // Fallback: redirect to login page manually
-          toast({ title: "Senha redefinida com sucesso! Faça login para continuar." });
-          setTimeout(() => setLocation("/login"), 1500);
+          // Fallback: show success and redirect to login
+          setDone(true);
         }
       },
       onError: (err: any) => {
+        const msg =
+          err?.response?.data?.error ??
+          err?.data?.error ??
+          "Link inválido ou expirado.";
         toast({
           title: "Erro ao redefinir senha",
-          description: err?.response?.data?.error ?? err?.data?.error ?? "Link inválido ou expirado.",
+          description: msg,
           variant: "destructive",
         });
       },
     },
   });
+
+  // Fallback redirect after success without token
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => setLocation("/login"), 3000);
+    return () => clearTimeout(t);
+  }, [done]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +74,19 @@ export default function ResetPassword() {
           <Button variant="outline" onClick={() => setLocation("/esqueci-senha")}>
             Solicitar novo link
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (done) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="text-center space-y-4 max-w-sm">
+          <div className="text-4xl">✅</div>
+          <h2 className="text-xl font-semibold">Senha redefinida!</h2>
+          <p className="text-muted-foreground">Redirecionando para o login...</p>
+          <Button onClick={() => setLocation("/login")}>Ir para o login</Button>
         </div>
       </div>
     );
