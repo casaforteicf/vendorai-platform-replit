@@ -272,8 +272,8 @@ export default function OnboardingIntegracoes() {
               icon={<MessageCircle className="h-8 w-8 text-green-500" />}
               title="Conecte seu WhatsApp"
               subtitle="Receba e responda mensagens dos seus clientes direto na plataforma"
-              connected={status?.whatsapp.connected}
-              connectedLabel={status?.whatsapp.phone ? `WhatsApp — ${status.whatsapp.phone}` : "WhatsApp conectado"}
+              connected={status?.whatsapp?.connected}
+              connectedLabel={status?.whatsapp?.phone ? `WhatsApp — ${status.whatsapp.phone}` : "WhatsApp conectado"}
               onSkip={skip}
               onConnect={connectWhatsApp}
               connectLabel="Conectar via Meta"
@@ -288,7 +288,7 @@ export default function OnboardingIntegracoes() {
               icon={<Calendar className="h-8 w-8 text-blue-500" />}
               title="Sincronize sua agenda"
               subtitle="Agendamentos feitos na plataforma aparecem automaticamente no seu Google Calendar"
-              connected={status?.googleCalendar.connected}
+              connected={status?.googleCalendar?.connected}
               connectedLabel="Google Calendar conectado"
               onSkip={skip}
               onConnect={connectGoogleCalendar}
@@ -304,8 +304,8 @@ export default function OnboardingIntegracoes() {
               icon={<Instagram className="h-8 w-8 text-purple-500" />}
               title="Conecte seu Instagram Business"
               subtitle="Receba DMs e gere conteúdo para o Instagram direto pela Vendor.ai"
-              connected={status?.instagram.connected}
-              connectedLabel={status?.instagram.username ? `Instagram — @${status.instagram.username}` : "Instagram conectado"}
+              connected={status?.instagram?.connected}
+              connectedLabel={status?.instagram?.username ? `Instagram — @${status.instagram.username}` : "Instagram conectado"}
               onSkip={skip}
               onConnect={connectInstagram}
               connectLabel="Conectar Instagram"
@@ -327,7 +327,7 @@ export default function OnboardingIntegracoes() {
                 </p>
               </div>
 
-              {status?.asaas.connected ? (
+              {status?.asaas?.connected ? (
                 <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   Asaas — conta verificada
@@ -354,7 +354,7 @@ export default function OnboardingIntegracoes() {
                 <Button variant="outline" className="flex-1 gap-2" onClick={skip} disabled={submitting}>
                   <SkipForward className="h-4 w-4" /> Pular
                 </Button>
-                {status?.asaas.connected ? (
+                {status?.asaas?.connected ? (
                   <Button className="flex-1 gap-2" onClick={advance} disabled={submitting}>
                     Continuar <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -381,7 +381,7 @@ export default function OnboardingIntegracoes() {
                 </p>
               </div>
 
-              {status?.zapsign.connected ? (
+              {status?.zapsign?.connected ? (
                 <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   ZapSign — conta verificada
@@ -408,7 +408,7 @@ export default function OnboardingIntegracoes() {
                 <Button variant="outline" className="flex-1 gap-2" onClick={skip} disabled={submitting}>
                   <SkipForward className="h-4 w-4" /> Pular
                 </Button>
-                {status?.zapsign.connected ? (
+                {status?.zapsign?.connected ? (
                   <Button className="flex-1 gap-2" onClick={advance} disabled={submitting}>
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     Finalizar <ChevronRight className="h-4 w-4" />
