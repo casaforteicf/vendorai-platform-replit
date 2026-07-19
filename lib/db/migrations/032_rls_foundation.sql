@@ -1,15 +1,37 @@
 -- Vendor.ai multi-tenant RLS foundation
 --
--- This migration versions tenant policies without forcing them on table owners.
--- The current API uses a shared PostgreSQL pool and does not yet set a tenant
--- context inside each database transaction. Therefore:
---   1. RLS is enabled only on tables the migration role can safely manage;
---   2. FORCE ROW LEVEL SECURITY is intentionally NOT enabled yet;
---   3. table owners / BYPASSRLS roles may still bypass policies;
---   4. a later migration may FORCE RLS only after request-scoped DB context is live.
+-- Safe rollout model:
+--   1. postgres remains the privileged migration/admin role;
+--   2. vendorai_app is created as a non-login, non-superuser, non-BYPASSRLS role;
+--   3. tenant policies are enabled for vendorai_app;
+--   4. the API keeps using its current connection until APP_DATABASE_URL is
+--      provisioned securely with credentials for vendorai_app;
+--   5. FORCE ROW LEVEL SECURITY is not required for vendorai_app because it is
+--      not the table owner and cannot bypass RLS.
 
 CREATE SCHEMA IF NOT EXISTS app_security;
-GRANT USAGE ON SCHEMA app_security TO PUBLIC;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vendorai_app') THEN
+    CREATE ROLE vendorai_app
+      NOLOGIN
+      NOSUPERUSER
+      NOCREATEDB
+      NOCREATEROLE
+      NOINHERIT
+      NOBYPASSRLS;
+  END IF;
+END
+$$;
+
+ALTER ROLE vendorai_app
+  NOLOGIN
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOINHERIT
+  NOBYPASSRLS;
 
 CREATE OR REPLACE FUNCTION app_security.current_tenant_id()
 RETURNS TEXT
@@ -49,9 +71,29 @@ BEGIN
 END;
 $$;
 
--- Only the database owner may set server-side tenant context. The read helpers
--- remain callable because PostgreSQL evaluates them inside RLS policies.
+REVOKE ALL ON SCHEMA app_security FROM PUBLIC;
+REVOKE ALL ON FUNCTION app_security.current_tenant_id() FROM PUBLIC;
+REVOKE ALL ON FUNCTION app_security.is_super_admin() FROM PUBLIC;
 REVOKE ALL ON FUNCTION app_security.set_tenant_context(TEXT, BOOLEAN) FROM PUBLIC;
+
+GRANT USAGE ON SCHEMA app_security TO vendorai_app;
+GRANT EXECUTE ON FUNCTION app_security.current_tenant_id() TO vendorai_app;
+GRANT EXECUTE ON FUNCTION app_security.is_super_admin() TO vendorai_app;
+GRANT EXECUTE ON FUNCTION app_security.set_tenant_context(TEXT, BOOLEAN) TO vendorai_app;
+
+-- Runtime privileges for the restricted application role.
+GRANT USAGE ON SCHEMA public TO vendorai_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vendorai_app;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO vendorai_app;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO vendorai_app;
+
+-- Future objects created by the migration owner inherit the same runtime grants.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO vendorai_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO vendorai_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO vendorai_app;
 
 DO $$
 DECLARE
@@ -120,19 +162,16 @@ BEGIN
       tenant_table.table_name
     );
 
-    -- A permissive policy is required for rows to be visible when RLS applies.
     EXECUTE format(
-      'CREATE POLICY vendorai_tenant_access ON %I.%I AS PERMISSIVE FOR ALL TO PUBLIC USING (%s) WITH CHECK (%s)',
+      'CREATE POLICY vendorai_tenant_access ON %I.%I AS PERMISSIVE FOR ALL TO vendorai_app USING (%s) WITH CHECK (%s)',
       tenant_table.table_schema,
       tenant_table.table_name,
       tenant_expression,
       tenant_expression
     );
 
-    -- The restrictive policy prevents any broader existing permissive policy
-    -- from granting cross-tenant access.
     EXECUTE format(
-      'CREATE POLICY vendorai_tenant_guard ON %I.%I AS RESTRICTIVE FOR ALL TO PUBLIC USING (%s) WITH CHECK (%s)',
+      'CREATE POLICY vendorai_tenant_guard ON %I.%I AS RESTRICTIVE FOR ALL TO vendorai_app USING (%s) WITH CHECK (%s)',
       tenant_table.table_schema,
       tenant_table.table_name,
       tenant_expression,
@@ -176,11 +215,27 @@ WHERE ns.nspname = 'public'
   )
 ORDER BY cls.relname;
 
+CREATE OR REPLACE VIEW app_security.app_role_status AS
+SELECT
+  rolname AS role_name,
+  rolcanlogin AS can_login,
+  rolsuper AS is_superuser,
+  rolbypassrls AS bypasses_rls,
+  rolcreatedb AS can_create_db,
+  rolcreaterole AS can_create_role
+FROM pg_roles
+WHERE rolname = 'vendorai_app';
+
+REVOKE ALL ON app_security.rls_coverage FROM PUBLIC;
+REVOKE ALL ON app_security.app_role_status FROM PUBLIC;
+GRANT SELECT ON app_security.rls_coverage TO vendorai_app;
+GRANT SELECT ON app_security.app_role_status TO vendorai_app;
+
 COMMENT ON SCHEMA app_security IS
   'Tenant isolation helpers and RLS coverage metadata for Vendor.ai.';
-
 COMMENT ON FUNCTION app_security.set_tenant_context(TEXT, BOOLEAN) IS
-  'Sets transaction-local tenant context. Must be called inside the same explicit transaction as protected queries.';
-
+  'Sets transaction-local tenant context for the restricted vendorai_app role.';
 COMMENT ON VIEW app_security.rls_coverage IS
   'Reports RLS and Vendor.ai policy coverage for public tables containing tenant_id.';
+COMMENT ON VIEW app_security.app_role_status IS
+  'Reports security attributes of the restricted Vendor.ai application role.';
