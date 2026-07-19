@@ -147,11 +147,11 @@ async function run(): Promise<void> {
            AND attr.attname IN ('tenant_id', 'tenantId')
       )
       SELECT
-        COUNT(*)::text AS tenant_tables,
-        COUNT(*) FILTER (WHERE relrowsecurity)::text AS rls_enabled,
-        COUNT(*) FILTER (WHERE pol.polname = 'tenant_isolation')::text AS legacy_policies,
-        COUNT(*) FILTER (WHERE pol.polname = 'vendorai_tenant_access')::text AS access_policies,
-        COUNT(*) FILTER (WHERE pol.polname = 'vendorai_tenant_guard')::text AS guard_policies
+        COUNT(DISTINCT tbl.oid)::text AS tenant_tables,
+        COUNT(DISTINCT tbl.oid) FILTER (WHERE tbl.relrowsecurity)::text AS rls_enabled,
+        COUNT(DISTINCT pol.polrelid) FILTER (WHERE pol.polname = 'tenant_isolation')::text AS legacy_policies,
+        COUNT(DISTINCT pol.polrelid) FILTER (WHERE pol.polname = 'vendorai_tenant_access')::text AS access_policies,
+        COUNT(DISTINCT pol.polrelid) FILTER (WHERE pol.polname = 'vendorai_tenant_guard')::text AS guard_policies
       FROM tenant_tables AS tbl
       LEFT JOIN pg_policy AS pol ON pol.polrelid = tbl.oid
     `);
