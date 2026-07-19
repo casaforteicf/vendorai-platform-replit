@@ -10,6 +10,8 @@
     "worker": "node --enable-source-maps ./dist/worker.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "audit:tenant": "tsx ./src/scripts/audit-tenant-isolation.ts",
+    "audit:tenant:strict": "tsx ./src/scripts/audit-tenant-isolation.ts --strict",
     "seed-segment-templates": "tsx ./src/seed-segment-templates.ts"
   },
   "dependencies": {
