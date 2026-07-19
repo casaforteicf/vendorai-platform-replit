@@ -1,0 +1,168 @@
+Execute a etapa “Migrations versionadas da Vendor.ai” com máxima segurança.
+
+CONTEXTO
+- Branch local ativa: main
+- Destino remoto final: github/replit-full
+- As correções P0 já estão aplicadas.
+- A API está funcionando e existem 301 testes aprovados.
+- Atualmente src/index.ts executa CREATE TABLE, ALTER TABLE, CREATE INDEX, INSERT e UPDATE durante a inicialização da API.
+- Isso precisa ser removido sem alterar funcionalidades nem perder dados.
+
+REGRAS DE SEGURANÇA
+- Não use reset, rebase, force, force-with-lease ou push forçado.
+- Não apague tabelas, colunas ou dados.
+- Não revele DATABASE_URL, tokens ou segredos nos logs.
+- Não use drizzle-kit push ou push-force.
+- Não faça deploy se testes, migration ou health check falharem.
+- Se encontrar qualquer instrução destrutiva inesperada, pare e apresente o diagnóstico.
+- Preserve os remotes internos do Replit.
+- Crie um checkpoint/commit de segurança antes de começar.
+
+FASE 1 — INVENTÁRIO
+1. Leia integralmente:
+   - artifacts/api-server/src/index.ts
+   - lib/db/drizzle.config.ts
+   - lib/db/package.json
+   - lib/db/src/schema/**
+2. Identifique:
+   - toda a função runStartupMigrations;
+   - onde ela é chamada;
+   - todos os CREATE, ALTER, INDEX, INSERT e UPDATE executados no startup;
+   - tabelas e colunas que não estão representadas no schema Drizzle.
+3. Gere um relatório interno com a quantidade de instruções por tipo.
+4. Não altere o banco ainda.
+
+FASE 2 — MIGRATION RUNNER VERSIONADO
+Crie:
+
+lib/db/migrations/
+lib/db/scripts/migrate.mjs
+
+O runner precisa:
+
+- localizar arquivos .sql em ordem numérica;
+- criar uma tabela de controle chamada vendorai_schema_migrations;
+- registrar:
+  - migration_id;
+  - filename;
+  - checksum_sha256;
+  - applied_at;
+  - execution_ms;
+- utilizar advisory lock do PostgreSQL para impedir duas migrations simultâneas;
+- validar checksum de migrations já aplicadas;
+- parar se uma migration antiga tiver sido modificada;
+- executar cada migration em transação;
+- fazer rollback automático em falha;
+- retornar código de saída diferente de zero em erro;
+- não imprimir dados sensíveis;
+- suportar:
+  - migrate;
+  - status;
+  - dry-run.
+
+Adicionar ao lib/db/package.json:
+
+"migrate": "node ./scripts/migrate.mjs migrate",
+"migrate:status": "node ./scripts/migrate.mjs status",
+"migrate:dry-run": "node ./scripts/migrate.mjs dry-run"
+
+FASE 3 — MIGRATION BASELINE
+Crie uma migration versionada, por exemplo:
+
+lib/db/migrations/0001_legacy_startup_baseline.sql
+
+Transfira para ela todo o SQL atualmente executado por runStartupMigrations.
+
+Requisitos:
+
+- preservar a ordem necessária das dependências;
+- manter IF NOT EXISTS onde já existe;
+- manter os seeds e atualizações necessários;
+- não introduzir DROP novo;
+- não modificar valores comerciais existentes além do que o startup já fazia;
+- adicionar comentários separando schema, índices, alterações e seeds;
+- não executar automaticamente ao iniciar a API.
+
+Como o banco atual já recebeu essas operações anteriormente, a migration deve ser idempotente e segura para ser executada uma vez no banco existente.
+
+FASE 4 — VALIDAÇÃO ANTES DO BANCO
+Antes de executar a migration:
+
+1. Rode:
+   pnpm --filter @workspace/db migrate:dry-run
+2. Rode:
+   pnpm --filter @workspace/api-server typecheck
+3. Rode:
+   pnpm --filter @workspace/api-server test
+4. Confirme que continuam passando 301/301 testes.
+5. Verifique que a migration não contém novos DROP, TRUNCATE ou DELETE.
+6. Mostre o resultado resumido antes de continuar.
+
+FASE 5 — APLICAÇÃO CONTROLADA
+Depois da validação:
+
+1. Execute:
+   pnpm --filter @workspace/db migrate
+2. Execute:
+   pnpm --filter @workspace/db migrate:status
+3. Confirme:
+   - migration 0001 registrada;
+   - checksum salvo;
+   - nenhuma falha;
+   - nenhuma execução duplicada.
+4. Execute novamente o migrate e confirme que retorna “nenhuma migration pendente”.
+
+FASE 6 — REMOVER MIGRATIONS DO STARTUP
+Somente depois da migration ser aplicada com sucesso:
+
+1. Remova de artifacts/api-server/src/index.ts:
+   - runStartupMigrations;
+   - a chamada de runStartupMigrations;
+   - imports db e sql que ficaram sem uso.
+2. A inicialização da API não pode mais executar CREATE, ALTER, INDEX, INSERT ou UPDATE de estrutura/seeds.
+3. Mantenha scheduler, servidor e demais inicializações inalterados.
+
+FASE 7 — TESTES FINAIS
+Execute:
+
+pnpm run typecheck
+pnpm --filter @workspace/api-server test
+pnpm --filter @workspace/api-server build
+
+Depois:
+
+- reinicie a API;
+- faça health check;
+- confirme que o startup não executou migrations;
+- confirme que o sistema continua funcionando;
+- confirme novamente 301/301 testes ou informe qualquer mudança legítima na contagem.
+
+FASE 8 — COMMITS E GITHUB
+Crie commits claros, preferencialmente:
+
+1. Add controlled versioned database migrations
+2. Remove database migrations from API startup
+
+Depois:
+
+- confirme que github/replit-full é ancestral da main local;
+- faça apenas push normal:
+  git push github main:replit-full
+- não altere a branch main do GitHub;
+- não use force.
+
+RELATÓRIO FINAL
+Apresente:
+
+- arquivos criados e alterados;
+- quantidade de SQL removido do startup;
+- migration aplicada;
+- checksum;
+- status da tabela vendorai_schema_migrations;
+- resultado do typecheck;
+- resultado dos testes;
+- resultado do build;
+- resultado do health check;
+- SHA final enviado ao GitHub;
+- confirmação de que nenhuma migration roda mais no startup;
+- riscos ou itens que ainda ficaram pendentes.

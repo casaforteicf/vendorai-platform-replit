@@ -10,7 +10,7 @@
 - [Anthropic integration template cp danger](anthropic-template-cp.md) — `cp -r` do skill sobrescreve conversations.ts e messages.ts existentes; restaurar via `git show HEAD:lib/db/src/schema/<file> > <file>` após o cp.
 - [Meta WhatsApp Cloud API](meta-whatsapp-cloud-api.md) — Z-API 100% removido; todos os envios via Meta; webhook Meta trata text/audio/image; media requer downloadMetaMedia(id, token) com Authorization header.
 - [Express router.use wildcard blocks downstream](express-router-use-wildcard.md) — router.use(requireRole) sem path bloqueia TODA request; sempre colocar guard em cada rota individualmente.
-- [psql shell vs Supabase](psql-shell-vs-supabase.md) — `psql "$DATABASE_URL"` no bash shell conecta ao heliumdb (Replit interno), NÃO ao Supabase; runStartupMigrations() é o único meio confiável de seeding no Supabase.
+- [psql shell vs Supabase](psql-shell-vs-supabase.md) — `psql "$DATABASE_URL"` no bash shell conecta ao heliumdb (Replit interno), NÃO ao Supabase; usar pnpm --filter @workspace/db run migrate para aplicar DDL.
 - [OpenAI image models](openai-image-models.md) — dall-e-2/3 não existem nesta conta; usar gpt-image-1 (retorna b64_json); upload → object storage → /api/storage/objects/*.
 - [Analytics dashboard](analytics-dashboard.md) — 3 rotas (/analytics/agents, /channels, /intelligence); frontend em /analytics com 3 tabs; usa count(*) filter para performance.
 - [Demo session auth](demo-session-auth.md) — demo login é "try-it" não-persistente; detectado pelo JWT email demo@demo.com + marker sessionStorage; token fica em localStorage vendorai_token.
@@ -22,7 +22,7 @@
 - [Cmd 23 CNPJ multicanal](cmd23-cnpj.md) — cnpjService.ts: BrasilAPI (grátis, single lookup), CNPJá (CNPJ_API_KEY, bulk CNAE), Meta Ads (INSTAGRAM_ACCESS_TOKEN); enrichLead aceita EnrichLeadParams ou string posicional.
 - [ArqCopilot Sprint 2](arqcopilot-sprint2.md) — copilot usa POST /arch/copilot/chat; extrai ACTIONS: [...] do LLM; AbortController para cancel; history slice(-8); logs em arqAieSnapshotsTable non-blocking.
 - [ARQDOR Orchestrator](arqdor-orchestrator.md) — ArqOrchestrator em src/lib/arqdor/orchestrator/; detectAll+threshold para multi-specialist; max 3 por resposta; adicionar especialista = 1 arquivo + 1 linha no array.
-- [Startup migration pattern](startup-migration.md) — drizzle-kit push é lento/interativo; usar runStartupMigrations() com CREATE TABLE IF NOT EXISTS no index.ts do api-server como fallback confiável.
+- [Versioned migration runner](versioned-migration-runner.md) — lib/db/migrations/*.sql + lib/db/src/migrate.ts; runner usa advisory lock + SHA256 + vendorai_schema_migrations; no-transaction para ALTER TYPE ADD VALUE; runStartupMigrations removido do api-server.
 - [Project Phoenix UX](project-phoenix-ux.md) — PHX=light shell, T=dark modules; FLOW_STEPS nav; ✨ Gerar Render imutável; Copilot inicia colapsado.
 - [VendorAI SaaS contract auto-gen](vendorai-saas-contract.md) — template HTML completo em vendorai-contract-template.ts; contract_settings JSONB no tenant; numberToWordsPTBR para valor por extenso; settings UI em Configuracoes.tsx.
 - [Obras Hub AI + Gantt drag](obras-hub-gantt-ai.md) — resumoIA: Anthropic via resolveAIKey; Gantt substituído por DraggableGantt div-based com drag via refs/forceUpdate.
