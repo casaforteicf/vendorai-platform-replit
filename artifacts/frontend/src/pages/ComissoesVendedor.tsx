@@ -105,7 +105,7 @@ export default function ComissoesVendedor() {
   const [editStatus, setEditStatus] = useState<CommissionStatus>("pendente");
   const [editObs, setEditObs] = useState("");
 
-  const isAdmin = user?.role === "administrador" || user?.role === "super_admin";
+  const isAdmin = (user?.role as string) === "administrador" || (user?.role as string) === "super_admin";
   const tenantId = user?.tenantId;
 
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };

@@ -99,7 +99,6 @@ async function main() {
         name: TENANT_NAME,
         slug: SLUG,
         status: "active",
-        plan: "trial",
       })
       .returning({ id: tenantsTable.id, slug: tenantsTable.slug });
     tenant = created;

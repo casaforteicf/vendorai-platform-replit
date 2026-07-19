@@ -12,7 +12,9 @@
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
     "migrate": "tsx src/migrate.ts up",
     "migrate:status": "tsx src/migrate.ts status",
-    "migrate:dry-run": "tsx src/migrate.ts dry-run"
+    "migrate:dry-run": "tsx src/migrate.ts dry-run",
+    "audit:rls": "tsx src/audit-rls.ts",
+    "audit:rls:strict": "tsx src/audit-rls.ts --strict"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

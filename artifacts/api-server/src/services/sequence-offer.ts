@@ -284,7 +284,7 @@ export async function handleSequenceOfferReply(params: {
     await db.insert(activitiesTable).values({
       tenantId,
       leadId,
-      tipo: "scout_sequencia_etapa",
+      tipo: "scout_sequencia_etapa" as "tarefa",
       titulo: "Cliente relatou etapa do projeto",
       descricao: etapaAtual,
       status: "concluida",

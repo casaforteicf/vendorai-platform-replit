@@ -44,6 +44,89 @@ function sha256(content: string): string {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+/**
+ * Split a SQL file into individual statements, respecting:
+ *   - Dollar-quoted strings: $$ ... $$ and $tag$ ... $tag$
+ *   - Single-quoted strings: '...'
+ *   - Line comments: -- ...
+ *   - Block comments: /* ... *\/
+ *
+ * Each returned string is a non-empty statement (without the trailing `;`).
+ */
+function splitStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let buf = "";
+  let i = 0;
+  const n = sql.length;
+
+  while (i < n) {
+    // ── Line comment ──────────────────────────────────────────────────────────
+    if (sql[i] === "-" && sql[i + 1] === "-") {
+      const end = sql.indexOf("\n", i);
+      const chunk = end === -1 ? sql.slice(i) : sql.slice(i, end + 1);
+      buf += chunk;
+      i += chunk.length;
+      continue;
+    }
+
+    // ── Block comment ─────────────────────────────────────────────────────────
+    if (sql[i] === "/" && sql[i + 1] === "*") {
+      const end = sql.indexOf("*/", i + 2);
+      const chunk = end === -1 ? sql.slice(i) : sql.slice(i, end + 2);
+      buf += chunk;
+      i += chunk.length;
+      continue;
+    }
+
+    // ── Single-quoted string ──────────────────────────────────────────────────
+    if (sql[i] === "'") {
+      let j = i + 1;
+      while (j < n) {
+        if (sql[j] === "'" && sql[j + 1] === "'") { j += 2; continue; } // escaped ''
+        if (sql[j] === "'") { j++; break; }
+        j++;
+      }
+      buf += sql.slice(i, j);
+      i = j;
+      continue;
+    }
+
+    // ── Dollar-quoted string ──────────────────────────────────────────────────
+    if (sql[i] === "$") {
+      const tagEnd = sql.indexOf("$", i + 1);
+      if (tagEnd !== -1) {
+        const tag = sql.slice(i, tagEnd + 1); // e.g. "$$" or "$do$"
+        if (/^\$[A-Za-z0-9_]*\$$/.test(tag)) {
+          const bodyStart = tagEnd + 1;
+          const bodyEnd = sql.indexOf(tag, bodyStart);
+          if (bodyEnd !== -1) {
+            buf += sql.slice(i, bodyEnd + tag.length);
+            i = bodyEnd + tag.length;
+            continue;
+          }
+        }
+      }
+    }
+
+    // ── Statement terminator ──────────────────────────────────────────────────
+    if (sql[i] === ";") {
+      const stmt = buf.trim();
+      if (stmt) statements.push(stmt);
+      buf = "";
+      i++;
+      continue;
+    }
+
+    buf += sql[i++];
+  }
+
+  // Trailing content without a final semicolon
+  const last = buf.trim();
+  if (last) statements.push(last);
+
+  return statements.filter((s) => s.replace(/--[^\n]*/g, "").trim().length > 0);
+}
+
 interface MigrationFile {
   version: string;
   name: string;
@@ -196,10 +279,21 @@ async function cmdUp(
     const checksum = sha256(content);
     const t0 = Date.now();
 
+    const stmts = splitStatements(content);
+
     if (f.noTransaction) {
       // Run outside explicit transaction (DDL like ALTER TYPE ... ADD VALUE)
       try {
-        await client.query(content);
+        for (let si = 0; si < stmts.length; si++) {
+          const stmt = stmts[si]!;
+          const preview = stmt.replace(/\s+/g, " ").slice(0, 80);
+          try {
+            await client.query(stmt);
+          } catch (stmtErr) {
+            const msg = stmtErr instanceof Error ? stmtErr.message : String(stmtErr);
+            throw new Error(`Statement [${si + 1}/${stmts.length}] failed:\n  SQL: ${preview}\n  ERR: ${msg}`);
+          }
+        }
         await recordMigration(client, f.version, f.name, checksum);
         console.log(`  ✓  ${f.version}  ${f.name}  (${Date.now() - t0}ms) [no-tx]`);
       } catch (err) {
@@ -207,10 +301,20 @@ async function cmdUp(
         throw err;
       }
     } else {
-      // Wrap in transaction
+      // Wrap in transaction — execute each statement individually so that
+      // catalog changes (e.g. CREATE ROLE) are visible to subsequent statements.
       await client.query("BEGIN");
       try {
-        await client.query(content);
+        for (let si = 0; si < stmts.length; si++) {
+          const stmt = stmts[si]!;
+          const preview = stmt.replace(/\s+/g, " ").slice(0, 80);
+          try {
+            await client.query(stmt);
+          } catch (stmtErr) {
+            const msg = stmtErr instanceof Error ? stmtErr.message : String(stmtErr);
+            throw new Error(`Statement [${si + 1}/${stmts.length}] failed:\n  SQL: ${preview}\n  ERR: ${msg}`);
+          }
+        }
         await recordMigration(client, f.version, f.name, checksum);
         await client.query("COMMIT");
         console.log(`  ✓  ${f.version}  ${f.name}  (${Date.now() - t0}ms)`);
