@@ -1,5 +1,6 @@
+import { timingSafeEqual } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { eq, and, gte, sql, desc } from "drizzle-orm";
+import { eq, and, gte, sql, desc, ne } from "drizzle-orm";
 import {
   db,
   tenantsTable,
@@ -9,12 +10,16 @@ import {
 } from "@workspace/db";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { encrypt } from "../lib/crypto.js";
-import { estimateCost, checkQuota, logUsage, AiGatewayError } from "../lib/ai-gateway.js";
 
 const router: IRouter = Router();
 
-// ── POST /api/tenants/:tenantId/ai-keys/anthropic ──────────────────────
-// Configure tenant's own Anthropic API key (BYOK)
+function secureTokenEquals(received: string | undefined, expected: string): boolean {
+  if (!received) return false;
+  const receivedBuffer = Buffer.from(received, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  return receivedBuffer.length === expectedBuffer.length && timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
 router.post("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, res) => {
   const tenantId = req.params.tenantId;
   const { apiKey } = req.body as { apiKey?: string };
@@ -41,8 +46,6 @@ router.post("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, re
   return res.json({ success: true, message: "Anthropic API key configured" });
 });
 
-// ── DELETE /api/tenants/:tenantId/ai-keys/anthropic ────────────────────
-// Remove tenant's Anthropic API key
 router.delete("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, res) => {
   const tenantId = req.params.tenantId;
 
@@ -63,8 +66,6 @@ router.delete("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, 
   return res.json({ success: true, message: "Anthropic API key removed" });
 });
 
-// ── GET /api/tenants/:tenantId/ai-usage ───────────────────────────────
-// Tenant's own AI usage dashboard
 router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
   const tenantId = req.params.tenantId;
 
@@ -89,7 +90,6 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
     return res.status(404).json({ error: "Tenant not found" });
   }
 
-  // Get plan quota
   let quotaUsd: number | null = null;
   if (tenant.planId) {
     const [plan] = await db
@@ -100,21 +100,14 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
     quotaUsd = plan?.aiQuotaUsd ? Number(plan.aiQuotaUsd) : null;
   }
 
-  // Monthly spend
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const [monthlyRow] = await db
     .select({ total: sql<number>`coalesce(sum(${aiUsageLogsTable.costEstimateUsd}), 0)` })
     .from(aiUsageLogsTable)
-    .where(
-      and(
-        eq(aiUsageLogsTable.tenantId, tenantId as string),
-        gte(aiUsageLogsTable.createdAt, startOfMonth),
-      ),
-    );
+    .where(and(eq(aiUsageLogsTable.tenantId, tenantId as string), gte(aiUsageLogsTable.createdAt, startOfMonth)));
   const spentThisMonthUsd = Number(monthlyRow?.total ?? 0);
 
-  // Feature breakdown
   const featureRows = await db
     .select({
       feature: aiUsageLogsTable.feature,
@@ -122,15 +115,9 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
       calls: sql<number>`count(*)`,
     })
     .from(aiUsageLogsTable)
-    .where(
-      and(
-        eq(aiUsageLogsTable.tenantId, tenantId as string),
-        gte(aiUsageLogsTable.createdAt, startOfMonth),
-      ),
-    )
+    .where(and(eq(aiUsageLogsTable.tenantId, tenantId as string), gte(aiUsageLogsTable.createdAt, startOfMonth)))
     .groupBy(aiUsageLogsTable.feature);
 
-  // Recent logs
   const recentLogs = await db
     .select()
     .from(aiUsageLogsTable)
@@ -154,13 +141,10 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
   });
 });
 
-// ── GET /api/admin/ai-usage ───────────────────────────────────────────
-// Super Admin aggregate AI usage
-router.get("/admin/ai-usage", authenticate, requireRole("super_admin"), async (req, res) => {
+router.get("/admin/ai-usage", authenticate, requireRole("super_admin"), async (_req, res) => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  // Total usage this month
   const [totalRow] = await db
     .select({
       totalCost: sql<number>`coalesce(sum(${aiUsageLogsTable.costEstimateUsd}), 0)`,
@@ -169,7 +153,6 @@ router.get("/admin/ai-usage", authenticate, requireRole("super_admin"), async (r
     .from(aiUsageLogsTable)
     .where(gte(aiUsageLogsTable.createdAt, startOfMonth));
 
-  // Per-tenant usage
   const tenantRows = await db
     .select({
       tenantId: aiUsageLogsTable.tenantId,
@@ -181,7 +164,6 @@ router.get("/admin/ai-usage", authenticate, requireRole("super_admin"), async (r
     .where(gte(aiUsageLogsTable.createdAt, startOfMonth))
     .groupBy(aiUsageLogsTable.tenantId);
 
-  // Per-feature usage
   const featureRows = await db
     .select({
       feature: aiUsageLogsTable.feature,
@@ -200,10 +182,17 @@ router.get("/admin/ai-usage", authenticate, requireRole("super_admin"), async (r
   });
 });
 
-// ── POST /api/webhooks/asaas/credits ──────────────────────────────────
-// Asaas webhook for credit purchase confirmation
 router.post("/webhooks/asaas/credits", async (req, res) => {
-  // TODO: validate Asaas webhook signature
+  const expectedToken = process.env["ASAAS_WEBHOOK_ACCESS_TOKEN"];
+  if (!expectedToken) {
+    return res.status(503).json({ error: "Webhook authentication is not configured" });
+  }
+
+  const receivedToken = req.header("asaas-access-token") ?? undefined;
+  if (!secureTokenEquals(receivedToken, expectedToken)) {
+    return res.status(401).json({ error: "Invalid webhook token" });
+  }
+
   const event = req.body as {
     event?: string;
     payment?: { id?: string; status?: string; value?: number };
@@ -220,52 +209,56 @@ router.post("/webhooks/asaas/credits", async (req, res) => {
     return res.status(200).json({ ignored: true, reason: "Payment not confirmed" });
   }
 
-  // Find the token purchase record
-  const [purchase] = await db
-    .select()
-    .from(tokenPurchasesTable)
-    .where(eq(tokenPurchasesTable.asaasChargeId, paymentId))
-    .limit(1);
+  const result = await db.transaction(async (tx) => {
+    const [purchase] = await tx
+      .select()
+      .from(tokenPurchasesTable)
+      .where(eq(tokenPurchasesTable.asaasChargeId, paymentId))
+      .limit(1);
 
-  if (!purchase) {
+    if (!purchase) return { kind: "not_found" as const };
+
+    const updatedPurchases = await tx
+      .update(tokenPurchasesTable)
+      .set({ status: "paid", paidAt: new Date() })
+      .where(and(eq(tokenPurchasesTable.id, purchase.id), ne(tokenPurchasesTable.status, "paid")))
+      .returning({ id: tokenPurchasesTable.id });
+
+    if (updatedPurchases.length === 0) return { kind: "already_processed" as const };
+
+    const usdRate = Number(process.env["USD_BRL_RATE"] ?? 5.0);
+    if (!Number.isFinite(usdRate) || usdRate <= 0) {
+      throw new Error("Invalid USD_BRL_RATE configuration");
+    }
+    const creditsUsd = Number(purchase.valor) / usdRate;
+
+    const [tenant] = await tx
+      .update(tenantsTable)
+      .set({
+        aiCreditsUsd: sql`${tenantsTable.aiCreditsUsd} + ${creditsUsd}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantsTable.id, purchase.tenantId as string))
+      .returning({ aiCreditsUsd: tenantsTable.aiCreditsUsd });
+
+    if (!tenant) throw new Error("Tenant not found for paid purchase");
+
+    return {
+      kind: "credited" as const,
+      tenantId: purchase.tenantId,
+      creditsAddedUsd: creditsUsd,
+      totalCreditsUsd: Number(tenant.aiCreditsUsd),
+    };
+  });
+
+  if (result.kind === "not_found") {
     return res.status(404).json({ error: "Purchase not found" });
   }
-
-  if (purchase.status === "paid") {
+  if (result.kind === "already_processed") {
     return res.status(200).json({ ignored: true, reason: "Already processed" });
   }
 
-  // Update purchase status
-  await db
-    .update(tokenPurchasesTable)
-    .set({ status: "paid", paidAt: new Date() })
-    .where(eq(tokenPurchasesTable.id, purchase.id));
-
-  // Credit the tenant (convert R$ value to USD credits using rough rate)
-  const usdRate = Number(process.env["USD_BRL_RATE"] ?? 5.0);
-  const creditsUsd = Number(purchase.valor) / usdRate;
-
-  const [tenant] = await db
-    .select({ aiCreditsUsd: tenantsTable.aiCreditsUsd })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, purchase.tenantId as string))
-    .limit(1);
-
-  const currentCredits = Number(tenant?.aiCreditsUsd ?? 0);
-  await db
-    .update(tenantsTable)
-    .set({
-      aiCreditsUsd: String(currentCredits + creditsUsd),
-      updatedAt: new Date(),
-    })
-    .where(eq(tenantsTable.id, purchase.tenantId as string));
-
-  return res.json({
-    success: true,
-    tenantId: purchase.tenantId,
-    creditsAddedUsd: creditsUsd,
-    totalCreditsUsd: currentCredits + creditsUsd,
-  });
+  return res.json({ success: true, ...result });
 });
 
 export default router;

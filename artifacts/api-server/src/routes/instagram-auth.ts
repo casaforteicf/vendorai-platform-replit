@@ -1,7 +1,4 @@
 import { Router, type IRouter } from "express";
-import { z } from "zod/v4";
-import { db, instagramConnectionsTable, agentConfigsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import {
   buildInstagramOAuthUrl,
@@ -14,21 +11,9 @@ import {
   getInstagramConnectionByTenantId,
 } from "../services/instagram-oauth.js";
 import { authenticate } from "../middlewares/auth.js";
+import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
 
 const router: IRouter = Router();
-
-const stateSchema = z.object({
-  tenantId: z.string(),
-  userId: z.string(),
-});
-
-function encodeState(tenantId: string, userId: string): string {
-  return Buffer.from(JSON.stringify({ tenantId, userId })).toString("base64url");
-}
-
-function decodeState(state: string): { tenantId: string; userId: string } {
-  return JSON.parse(Buffer.from(state, "base64url").toString("utf-8"));
-}
 
 function getAppUrl(): string {
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
@@ -36,17 +21,16 @@ function getAppUrl(): string {
   return "http://localhost:3000";
 }
 
-// ── 1. Redirect para OAuth ──────────────────────────────────────
 router.get("/auth/instagram", authenticate, async (req, res) => {
   try {
-    const userId = (req as any).user?.id as string;
-    const tenantId = (req as any).user?.tenantId as string;
+    const userId = req.user?.sub;
+    const tenantId = req.user?.tenantId;
     if (!userId || !tenantId) {
       logger.warn("OAuth Instagram: usuário não autenticado");
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const state = encodeState(tenantId, userId);
+    const state = createOAuthState(tenantId, userId, "instagram");
     const url = buildInstagramOAuthUrl(tenantId, state);
     logger.info({ tenantId, userId }, "Retornando URL OAuth Instagram");
     return res.json({ url });
@@ -56,7 +40,6 @@ router.get("/auth/instagram", authenticate, async (req, res) => {
   }
 });
 
-// ── 2. Callback ────────────────────────────────────────────
 router.get("/auth/instagram/callback", async (req, res) => {
   const { code, state, error } = req.query as Record<string, string>;
   const appUrl = getAppUrl();
@@ -68,10 +51,10 @@ router.get("/auth/instagram/callback", async (req, res) => {
 
   let tenantId: string;
   try {
-    const decoded = decodeState(state);
+    const decoded = consumeOAuthState(state, "instagram");
     tenantId = decoded.tenantId;
-  } catch {
-    logger.warn("Callback Instagram: state inválido");
+  } catch (err) {
+    logger.warn({ err }, "Callback Instagram: state inválido, expirado ou reutilizado");
     return res.redirect(`${appUrl}/configuracoes?instagramError=invalid_state`);
   }
 
@@ -85,12 +68,8 @@ router.get("/auth/instagram/callback", async (req, res) => {
       return res.redirect(`${appUrl}/configuracoes?instagramError=no_pages`);
     }
 
-    // Usa a primeira página que tem Instagram Business
     const page = pages.find((p) => p.instagram_business_account) ?? pages[0];
-
     const igInfo = await fetchInstagramAccountInfo(page.id, page.access_token);
-
-    // Converte o token da página para long-lived
     const longLivedPageToken = await exchangeForPageLongLivedToken(page.access_token);
 
     await saveInstagramConnection(tenantId, page, igInfo, {
@@ -106,12 +85,11 @@ router.get("/auth/instagram/callback", async (req, res) => {
   }
 });
 
-// ── 3. Status da conexão ────────────────────────────────────
 router.get("/tenants/:tenantId/instagram-connection", authenticate, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
-    const userTenantId = (req as any).user?.tenantId;
-    if (tenantId !== userTenantId) {
+    const userTenantId = req.user?.tenantId;
+    if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -135,12 +113,11 @@ router.get("/tenants/:tenantId/instagram-connection", authenticate, async (req, 
   }
 });
 
-// ── 4. Renovar token ─────────────────────────────────────────
 router.post("/tenants/:tenantId/instagram-connection/refresh", authenticate, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
-    const userTenantId = (req as any).user?.tenantId;
-    if (tenantId !== userTenantId) {
+    const userTenantId = req.user?.tenantId;
+    if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -162,12 +139,11 @@ router.post("/tenants/:tenantId/instagram-connection/refresh", authenticate, asy
   }
 });
 
-// ── 5. Desconectar ───────────────────────────────────────────
 router.delete("/tenants/:tenantId/instagram-connection", authenticate, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
-    const userTenantId = (req as any).user?.tenantId;
-    if (tenantId !== userTenantId) {
+    const userTenantId = req.user?.tenantId;
+    if (req.user?.platformRole !== "super_admin" && tenantId !== userTenantId) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -179,7 +155,6 @@ router.delete("/tenants/:tenantId/instagram-connection", authenticate, async (re
   }
 });
 
-// ── Helper: converte token da página para long-lived ───────────────
 async function exchangeForPageLongLivedToken(pageToken: string): Promise<string> {
   const url = new URL("https://graph.facebook.com/v18.0/oauth/access_token");
   url.searchParams.set("grant_type", "fb_exchange_token");
@@ -187,14 +162,14 @@ async function exchangeForPageLongLivedToken(pageToken: string): Promise<string>
   url.searchParams.set("client_secret", process.env["INSTAGRAM_APP_SECRET"] ?? "");
   url.searchParams.set("fb_exchange_token", pageToken);
 
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    const body = await res.text();
-    logger.error({ status: res.status, body }, "Falha ao converter page token para long-lived");
-    throw new Error(`Page token exchange failed: ${res.status}`);
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const body = await response.text();
+    logger.error({ status: response.status, body }, "Falha ao converter page token para long-lived");
+    throw new Error(`Page token exchange failed: ${response.status}`);
   }
 
-  const data = (await res.json()) as { access_token: string };
+  const data = (await response.json()) as { access_token: string };
   return data.access_token;
 }
 
