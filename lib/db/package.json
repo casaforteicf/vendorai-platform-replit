@@ -10,9 +10,10 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
-    "migrate": "tsx src/migrate.ts up",
+    "migrate": "tsx src/reconcile-redacted-migration.ts && tsx src/migrate.ts up",
     "migrate:status": "tsx src/migrate.ts status",
-    "migrate:dry-run": "tsx src/migrate.ts dry-run"
+    "migrate:dry-run": "tsx src/migrate.ts dry-run",
+    "migrate:reconcile-redaction": "tsx src/reconcile-redacted-migration.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
