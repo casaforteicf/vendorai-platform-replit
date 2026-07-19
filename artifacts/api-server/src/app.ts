@@ -213,6 +213,10 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+// Re-run after domain resolution so JWT tenant and subdomain/custom-domain tenant
+// must agree before the request reaches any API route.
+app.use(enforceTenantPath);
+
 app.use("/api", router);
 app.use("/api/v1", router);
 
