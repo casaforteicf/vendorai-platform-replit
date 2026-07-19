@@ -3,7 +3,7 @@
 -- This migration versions tenant policies without forcing them on table owners.
 -- The current API uses a shared PostgreSQL pool and does not yet set a tenant
 -- context inside each database transaction. Therefore:
---   1. RLS is ENABLED on tenant-owned tables;
+--   1. RLS is enabled only on tables the migration role can safely manage;
 --   2. FORCE ROW LEVEL SECURITY is intentionally NOT enabled yet;
 --   3. table owners / BYPASSRLS roles may still bypass policies;
 --   4. a later migration may FORCE RLS only after request-scoped DB context is live.
@@ -57,22 +57,46 @@ DO $$
 DECLARE
   tenant_table RECORD;
   tenant_expression TEXT;
+  current_role_is_superuser BOOLEAN := FALSE;
 BEGIN
+  SELECT rolsuper
+    INTO current_role_is_superuser
+    FROM pg_roles
+   WHERE rolname = current_user;
+
   FOR tenant_table IN
     SELECT
       cols.table_schema,
       cols.table_name,
-      cols.column_name
+      cols.column_name,
+      owner_role.rolname AS table_owner
     FROM information_schema.columns AS cols
     JOIN information_schema.tables AS tbl
       ON tbl.table_schema = cols.table_schema
      AND tbl.table_name = cols.table_name
+    JOIN pg_namespace AS ns
+      ON ns.nspname = cols.table_schema
+    JOIN pg_class AS cls
+      ON cls.relnamespace = ns.oid
+     AND cls.relname = cols.table_name
+    JOIN pg_roles AS owner_role
+      ON owner_role.oid = cls.relowner
     WHERE cols.table_schema = 'public'
       AND tbl.table_type = 'BASE TABLE'
       AND cols.column_name IN ('tenant_id', 'tenantId')
       AND cols.table_name <> 'vendorai_schema_migrations'
     ORDER BY cols.table_name
   LOOP
+    IF tenant_table.table_owner <> current_user AND NOT current_role_is_superuser THEN
+      RAISE NOTICE
+        'Skipping RLS policy creation for %.%: current role % is not owner %',
+        tenant_table.table_schema,
+        tenant_table.table_name,
+        current_user,
+        tenant_table.table_owner;
+      CONTINUE;
+    END IF;
+
     tenant_expression := format(
       '(app_security.is_super_admin() OR %I::text = app_security.current_tenant_id())',
       tenant_table.column_name
