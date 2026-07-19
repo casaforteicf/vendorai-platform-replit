@@ -16,6 +16,8 @@
  *   legacy RLS shape before reconciliation is allowed;
  * - foundation SQL, legacy-policy removal, validation and checksum update run
  *   in one transaction under the migration advisory lock;
+ * - the existing vendorai_app LOGIN state is restored inside that transaction,
+ *   preserving its password and avoiding an application connection outage;
  * - applied_at is preserved and no application data is changed.
  */
 import crypto from "crypto";
@@ -327,11 +329,14 @@ async function dropLegacyPolicies(client: pg.PoolClient): Promise<void> {
   }
 }
 
-async function validateCanonicalState(client: pg.PoolClient): Promise<void> {
+async function validateCanonicalState(
+  client: pg.PoolClient,
+  expectedCanLogin: boolean,
+): Promise<void> {
   const role = await readRoleStatus(client);
   if (!role) throw new Error("vendorai_app role is missing after reconciliation.");
   if (
-    role.rolcanlogin ||
+    role.rolcanlogin !== expectedCanLogin ||
     role.rolsuper ||
     role.rolbypassrls ||
     role.rolinherit ||
@@ -339,7 +344,7 @@ async function validateCanonicalState(client: pg.PoolClient): Promise<void> {
     role.rolcreaterole
   ) {
     throw new Error(
-      "vendorai_app does not match canonical NOLOGIN/NOBYPASSRLS/NOINHERIT attributes.",
+      `vendorai_app restricted-role validation failed; expected LOGIN=${expectedCanLogin}.`,
     );
   }
 
@@ -465,6 +470,7 @@ async function run(): Promise<void> {
     console.log(
       `Support tables: ${supportTableCount}/${SUPPORT_TABLES.length}`,
     );
+    console.log("Application role LOGIN: will be preserved");
 
     if (!apply) {
       console.log(
@@ -513,9 +519,16 @@ async function run(): Promise<void> {
       lockedSupportTableCount,
     );
 
+    const preserveCanLogin = lockedRole!.rolcanlogin;
+
     await client.query(foundationSql);
     await dropLegacyPolicies(client);
-    await validateCanonicalState(client);
+
+    if (preserveCanLogin) {
+      await client.query("ALTER ROLE vendorai_app LOGIN");
+    }
+
+    await validateCanonicalState(client, preserveCanLogin);
     await updateMigrationRecord(
       client,
       schema,
@@ -531,6 +544,7 @@ async function run(): Promise<void> {
     console.log(`  Canonical checksum: ${foundationChecksum}`);
     console.log("  Legacy tenant_isolation policies: removed");
     console.log("  Canonical access/guard policies: validated");
+    console.log("  Application role LOGIN: preserved");
     console.log("  Application data: unchanged");
     console.log("\nNext commands:");
     console.log("  pnpm --filter @workspace/db migrate:dry-run");
