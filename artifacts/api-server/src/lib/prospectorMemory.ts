@@ -11,7 +11,15 @@ import { db, prospectFeedbackTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "./logger.js";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error("OPENAI_API_KEY is required for prospector memory");
+    _openai = new OpenAI({ apiKey });
+  }
+  return _openai;
+}
 
 // ── Feedback ──────────────────────────────────────────────────────────────────
 
@@ -81,7 +89,7 @@ function buildEmbeddingText(lead: {
 }
 
 async function generateEmbedding(text: string): Promise<number[]> {
-  const res = await openai.embeddings.create({
+  const res = await getOpenAI().embeddings.create({
     model: "text-embedding-3-small",
     input: text,
   });

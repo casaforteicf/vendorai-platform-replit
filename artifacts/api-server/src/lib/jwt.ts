@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 
-const secret = process.env["JWT_SECRET"];
-if (!secret) throw new Error("JWT_SECRET is required");
+const secret = process.env["JWT_SECRET"] ?? process.env["SESSION_SECRET"];
+if (!secret) throw new Error("JWT_SECRET (or SESSION_SECRET as fallback) is required");
 
 export interface JwtPayload {
   sub: string;
