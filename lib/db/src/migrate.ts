@@ -55,12 +55,38 @@ interface MigrationFile {
   noTransaction: boolean;
 }
 
+function assertUniqueMigrationVersions(files: MigrationFile[]): void {
+  const filesByVersion = new Map<string, string[]>();
+
+  for (const file of files) {
+    const filenames = filesByVersion.get(file.version) ?? [];
+    filenames.push(path.basename(file.filePath));
+    filesByVersion.set(file.version, filenames);
+  }
+
+  const duplicates = [...filesByVersion.entries()].filter(
+    ([, filenames]) => filenames.length > 1,
+  );
+
+  if (duplicates.length === 0) return;
+
+  const details = duplicates
+    .map(([version, filenames]) => `  ${version}: ${filenames.join(", ")}`)
+    .join("\n");
+
+  throw new Error(
+    `Duplicate migration version(s) detected:\n${details}\n` +
+      "Each numeric migration version must be unique. Resolve the filename conflict before running migrations.",
+  );
+}
+
 function readMigrationFiles(): MigrationFile[] {
   if (!fs.existsSync(MIGRATIONS_DIR)) {
     console.warn(`  ⚠  Migrations directory not found: ${MIGRATIONS_DIR}`);
     return [];
   }
-  return fs
+
+  const files = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
     .sort()
@@ -78,6 +104,9 @@ function readMigrationFiles(): MigrationFile[] {
         },
       ];
     });
+
+  assertUniqueMigrationVersions(files);
+  return files;
 }
 
 // ─── DB helpers ──────────────────────────────────────────────────────────────
