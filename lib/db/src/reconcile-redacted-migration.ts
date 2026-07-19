@@ -40,10 +40,14 @@ if (currentChecksum !== REDACTED_CHECKSUM) {
 }
 
 const connectionString =
-  process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL;
+  process.env.MIGRATION_DATABASE_URL ??
+  process.env.SUPABASE_DATABASE_URL ??
+  process.env.DATABASE_URL;
 
 if (!connectionString) {
-  console.error("❌  DATABASE_URL or SUPABASE_DATABASE_URL is required.");
+  console.error(
+    "❌  MIGRATION_DATABASE_URL, SUPABASE_DATABASE_URL or DATABASE_URL is required.",
+  );
   process.exit(1);
 }
 
