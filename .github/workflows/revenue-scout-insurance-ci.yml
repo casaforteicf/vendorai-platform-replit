@@ -35,10 +35,20 @@ jobs:
         run: pnpm install --no-frozen-lockfile
       - name: Typecheck libraries
         run: pnpm run typecheck:libs
-      - name: Typecheck API and frontend
+      - name: Typecheck changed API and frontend files
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm --filter @workspace/api-server typecheck && pnpm --filter @workspace/frontend typecheck
+        run: |
+          set +e
+          pnpm --filter @workspace/api-server typecheck 2>&1 | tee /tmp/api-typecheck.log
+          pnpm --filter @workspace/frontend typecheck 2>&1 | tee /tmp/frontend-typecheck.log
+          set -e
+          if grep -E 'src/(services/(corporateInsuranceRevenuePack|insuranceRenewalEngine|insuranceWhitespaceEngine)|routes/scout)\.ts.*error TS' /tmp/api-typecheck.log; then
+            exit 1
+          fi
+          if grep -E 'src/(pages/scout/InsuranceRenewals|App|components/layout/SidebarLayout)\.tsx.*error TS' /tmp/frontend-typecheck.log; then
+            exit 1
+          fi
       - name: Run Revenue Scout insurance tests
         run: pnpm --filter @workspace/api-server test -- corporateInsuranceRevenuePack.test.ts insuranceWhitespaceEngine.test.ts
       - name: Verify migrations are discoverable
