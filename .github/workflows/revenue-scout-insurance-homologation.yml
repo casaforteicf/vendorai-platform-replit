@@ -1,0 +1,47 @@
+name: Revenue Scout Insurance Homologation
+
+on:
+  pull_request:
+    paths:
+      - "lib/db/migrations/034_insurance_revenue_scout.sql"
+      - "lib/db/migrations/035_insurance_renewal_opportunities.sql"
+      - "lib/db/src/insurance-rls-smoke.ts"
+      - ".github/workflows/revenue-scout-insurance-homologation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate-and-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: homologation
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_MIGRATION_DATABASE_URL }}
+      APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_APP_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Require homologation-only credentials
+        run: |
+          test -n "$MIGRATION_DATABASE_URL" || (echo "Missing HOMOLOGATION_MIGRATION_DATABASE_URL" && exit 1)
+          test -n "$APP_DATABASE_URL" || (echo "Missing HOMOLOGATION_APP_DATABASE_URL" && exit 1)
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Migration dry run
+        run: pnpm --filter @workspace/db migrate:dry-run
+      - name: Apply versioned migrations
+        run: pnpm --filter @workspace/db migrate
+      - name: Verify migration status
+        run: pnpm --filter @workspace/db migrate:status
+      - name: Audit all tenant RLS policies
+        run: pnpm --filter @workspace/db audit:rls:runtime
+      - name: Verify insurance isolation with two tenants
+        run: pnpm --filter @workspace/db exec tsx src/insurance-rls-smoke.ts
