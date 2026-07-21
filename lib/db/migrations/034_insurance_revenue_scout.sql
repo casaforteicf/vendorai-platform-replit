@@ -83,7 +83,36 @@ CREATE TABLE IF NOT EXISTS insurance_policy_claims (
 CREATE INDEX IF NOT EXISTS insurance_claims_tenant_position_idx ON insurance_policy_claims(tenant_id, position_id);
 CREATE INDEX IF NOT EXISTS insurance_claims_tenant_status_idx ON insurance_policy_claims(tenant_id, status);
 
-ALTER TABLE insurance_account_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE insurance_products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE insurance_account_product_positions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE insurance_policy_claims ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+  insurance_account_profiles,
+  insurance_products,
+  insurance_account_product_positions,
+  insurance_policy_claims
+TO vendorai_app;
+
+DO $
+DECLARE
+  table_name text;
+  tenant_expression text := '(app_security.is_super_admin() OR tenant_id::text = app_security.current_tenant_id())';
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'insurance_account_profiles',
+    'insurance_products',
+    'insurance_account_product_positions',
+    'insurance_policy_claims'
+  ]
+  LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
+    EXECUTE format('DROP POLICY IF EXISTS vendorai_tenant_access ON %I', table_name);
+    EXECUTE format('DROP POLICY IF EXISTS vendorai_tenant_guard ON %I', table_name);
+    EXECUTE format(
+      'CREATE POLICY vendorai_tenant_access ON %I AS PERMISSIVE FOR ALL TO vendorai_app USING (%s) WITH CHECK (%s)',
+      table_name, tenant_expression, tenant_expression
+    );
+    EXECUTE format(
+      'CREATE POLICY vendorai_tenant_guard ON %I AS RESTRICTIVE FOR ALL TO vendorai_app USING (%s) WITH CHECK (%s)',
+      table_name, tenant_expression, tenant_expression
+    );
+  END LOOP;
+END
+$;
