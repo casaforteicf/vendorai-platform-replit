@@ -86,7 +86,7 @@ export interface InsuranceScoreResult {
 export function scoreInsuranceOpportunity(input: InsuranceRiskInput): InsuranceScoreResult {
   const window = renewalWindow(input.expiresAt, input.now);
   const reasons: string[] = [];
-  let score = ({ vencido: 100, "10_dias": 90, "30_dias": 75, "60_dias": 60, "90_dias": 45, fora_janela: 20 } as const)[window];
+  let score: number = ({ vencido: 100, "10_dias": 90, "30_dias": 75, "60_dias": 60, "90_dias": 45, fora_janela: 20 } as const)[window];
 
   if (input.highLossRatio) { score += 10; reasons.push("sinistralidade_alta"); }
   if (input.competitiveSignal) { score += 15; reasons.push("risco_competitivo"); }
