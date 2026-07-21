@@ -26,6 +26,7 @@ export const SCOUT_OPORTUNIDADE_STATUS = [
   "adiado",
   "pendente_revisao_bot",
   "pendente_aprovacao",
+  "aprovado",
 ] as const;
 
 export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
