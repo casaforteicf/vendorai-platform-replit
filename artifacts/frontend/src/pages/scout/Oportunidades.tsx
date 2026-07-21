@@ -24,15 +24,22 @@ function fmt(v: number) {
 }
 
 const TIPO_OPTS = [
-  { value: "",            label: "Todos os tipos" },
-  { value: "recompra",    label: "Recompra" },
+  { value: "__all",       label: "Todos os tipos" },
+  { value: "recompra",    label: "Recompra prevista" },
+  { value: "reducao_compra", label: "Redução de compra" },
+  { value: "mudanca_etapa", label: "Mudança de etapa" },
+  { value: "expansao_cesta", label: "Expansão de cesta" },
+  { value: "recuperacao_orcamento", label: "Recuperação de orçamento" },
+  { value: "cliente_inativo", label: "Cliente inativo" },
+  { value: "risco_perda", label: "Risco de perda" },
+  { value: "sequencia_produto", label: "Próxima categoria" },
   { value: "cross_sell",  label: "Cross-sell" },
   { value: "reativacao",  label: "Reativação" },
   { value: "upgrade",     label: "Upgrade" },
   { value: "aniversario", label: "Aniversário" },
 ];
 const STATUS_OPTS = [
-  { value: "",           label: "Todos os status" },
+  { value: "__all",      label: "Todos os status" },
   { value: "pendente",   label: "Pendente" },
   { value: "enviado",    label: "Enviado" },
   { value: "respondeu",  label: "Respondeu" },
@@ -41,13 +48,27 @@ const STATUS_OPTS = [
 ];
 const TIPO_BADGE: Record<string, string> = {
   recompra:    "bg-blue-50 text-blue-700 border-blue-200",
+  reducao_compra: "bg-red-50 text-red-700 border-red-200",
+  mudanca_etapa: "bg-violet-50 text-violet-700 border-violet-200",
+  expansao_cesta: "bg-sky-50 text-sky-700 border-sky-200",
+  recuperacao_orcamento: "bg-amber-50 text-amber-700 border-amber-200",
+  cliente_inativo: "bg-slate-50 text-slate-700 border-slate-200",
+  risco_perda: "bg-red-50 text-red-800 border-red-300",
+  sequencia_produto: "bg-teal-50 text-teal-700 border-teal-200",
   cross_sell:  "bg-indigo-50 text-indigo-700 border-indigo-200",
   reativacao:  "bg-amber-50 text-amber-700 border-amber-200",
   upgrade:     "bg-emerald-50 text-emerald-700 border-emerald-200",
   aniversario: "bg-pink-50 text-pink-700 border-pink-200",
 };
 const TIPO_LABELS: Record<string, string> = {
-  recompra:    "Recompra",
+  recompra:    "Recompra prevista",
+  reducao_compra: "Redução de compra",
+  mudanca_etapa: "Mudança de etapa",
+  expansao_cesta: "Expansão de cesta",
+  recuperacao_orcamento: "Recuperação de orçamento",
+  cliente_inativo: "Cliente inativo",
+  risco_perda: "Risco de perda",
+  sequencia_produto: "Próxima categoria",
   cross_sell:  "Cross-sell",
   reativacao:  "Reativação",
   upgrade:     "Upgrade",
@@ -74,12 +95,12 @@ export default function Oportunidades() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [tipoFiltro, setTipoFiltro]     = useState("");
-  const [statusFiltro, setStatusFiltro] = useState("");
+  const [tipoFiltro, setTipoFiltro]     = useState("__all");
+  const [statusFiltro, setStatusFiltro] = useState("__all");
 
   const qs = new URLSearchParams();
-  if (tipoFiltro)   qs.set("tipo",   tipoFiltro);
-  if (statusFiltro) qs.set("status", statusFiltro);
+  if (tipoFiltro !== "__all")   qs.set("tipo",   tipoFiltro);
+  if (statusFiltro !== "__all") qs.set("status", statusFiltro);
 
   const QK = ["scout-oportunidades", tenantId, tipoFiltro, statusFiltro];
 
@@ -131,7 +152,7 @@ export default function Oportunidades() {
           </SelectTrigger>
           <SelectContent>
             {TIPO_OPTS.map((o) => (
-              <SelectItem key={o.value || "__all"} value={o.value}>{o.label}</SelectItem>
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -141,13 +162,13 @@ export default function Oportunidades() {
           </SelectTrigger>
           <SelectContent>
             {STATUS_OPTS.map((o) => (
-              <SelectItem key={o.value || "__all"} value={o.value}>{o.label}</SelectItem>
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {(tipoFiltro || statusFiltro) && (
+        {(tipoFiltro !== "__all" || statusFiltro !== "__all") && (
           <Button variant="ghost" size="sm" className="h-8 text-xs"
-            onClick={() => { setTipoFiltro(""); setStatusFiltro(""); }}>
+            onClick={() => { setTipoFiltro("__all"); setStatusFiltro("__all"); }}>
             Limpar
           </Button>
         )}
@@ -183,7 +204,7 @@ export default function Oportunidades() {
                 <td colSpan={7} className="px-4 py-16 text-center text-muted-foreground">
                   <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">Nenhuma oportunidade encontrada.</p>
-                  {(tipoFiltro || statusFiltro) && (
+                  {(tipoFiltro !== "__all" || statusFiltro !== "__all") && (
                     <p className="text-xs mt-1">Tente remover os filtros.</p>
                   )}
                 </td>

@@ -29,6 +29,7 @@ import {
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { triggerSequenceOffer } from "./sequence-offer.js";
+import { scoreConstructionOpportunity } from "./constructionRevenuePack.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -113,17 +114,7 @@ function calcularScoreOportunidade(
   diasDesdeUltimo: number,
   diasEsperado: number,
 ): number {
-  const bases: Record<string, number> = {
-    sequencia_produto: 80,
-    upgrade:           75,
-    cross_sell:        65,
-    aniversario:       60,
-    recompra:          55,
-    reativacao:        45,
-  };
-  const base = bases[tipo ?? ""] ?? 50;
-  const bonus = diasEsperado > 0 && diasDesdeUltimo > diasEsperado * 1.5 ? 10 : 0;
-  return Math.min(base + bonus, 100);
+  return scoreConstructionOpportunity({ tipo, diasDesdeUltimo, diasEsperado }).score;
 }
 
 /** Retorna true se o mês e dia do dataNascimento coincidem com hoje. */
@@ -352,6 +343,7 @@ export async function analisarCliente(
         break;
 
       case "reativacao":
+      case "cliente_inativo":
         seAplica = diasDesdeUltimo > (cond.diasSemVisita ?? 60);
         break;
 
@@ -400,7 +392,8 @@ export async function analisarCliente(
     // Score: usa diasDesdeUltimo e o limiar configurado na regra + boost de intenção
     const diasEsperado =
       regra.tipo === "recompra"   ? (parseCond(regra.condicoes).diasSemCompra ?? 30) :
-      regra.tipo === "reativacao" ? (parseCond(regra.condicoes).diasSemVisita ?? 60) : 0;
+      regra.tipo === "reativacao" || regra.tipo === "cliente_inativo"
+        ? (parseCond(regra.condicoes).diasSemVisita ?? 60) : 0;
     const baseScore    = calcularScoreOportunidade(regra.tipo, diasDesdeUltimo, diasEsperado);
     const intentBoost  = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
     const score        = Math.min(baseScore + intentBoost, 100);

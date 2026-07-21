@@ -26,18 +26,32 @@ function fmt(v: number) {
 }
 
 const TIPO_LABELS: Record<string, string> = {
-  recompra:    "Recompra",
-  cross_sell:  "Cross-sell",
-  reativacao:  "Reativação",
-  upgrade:     "Upgrade",
-  aniversario: "Aniversário",
+  recompra:               "Recompra prevista",
+  reducao_compra:         "Redução de compra",
+  mudanca_etapa:          "Mudança de etapa",
+  expansao_cesta:         "Expansão de cesta",
+  recuperacao_orcamento:  "Recuperação de orçamento",
+  cliente_inativo:        "Cliente inativo",
+  risco_perda:            "Risco de perda",
+  sequencia_produto:      "Próxima categoria",
+  cross_sell:             "Cross-sell",
+  reativacao:             "Reativação",
+  upgrade:                "Upgrade",
+  aniversario:            "Aniversário",
 };
 const TIPO_COLORS: Record<string, string> = {
-  recompra:    "#3b82f6",
-  cross_sell:  "#6366f1",
-  reativacao:  "#f59e0b",
-  upgrade:     "#22c55e",
-  aniversario: "#ec4899",
+  recompra:              "#2563eb",
+  reducao_compra:        "#ef4444",
+  mudanca_etapa:         "#8b5cf6",
+  expansao_cesta:        "#0ea5e9",
+  recuperacao_orcamento: "#f59e0b",
+  cliente_inativo:       "#64748b",
+  risco_perda:           "#dc2626",
+  sequencia_produto:     "#14b8a6",
+  cross_sell:            "#6366f1",
+  reativacao:            "#f97316",
+  upgrade:               "#22c55e",
+  aniversario:           "#ec4899",
 };
 const STATUS_COLORS: Record<string, string> = {
   pendente:  "bg-slate-100 text-slate-600 border-slate-200",
@@ -158,7 +172,7 @@ export default function RevenueDashboard() {
             <TrendingUp className="h-5 w-5" /> Revenue Scout
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Inteligência de retenção e expansão de receita
+            Inteligência de receita para materiais de construção
           </p>
         </div>
         <div className="flex gap-2">
@@ -199,6 +213,21 @@ export default function RevenueDashboard() {
           </Card>
         ))}
       </div>
+
+      <Card className="p-5 border-blue-200 bg-blue-50/40">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-semibold text-sm">Fila diária de oportunidades</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Priorize recompra, recuperação de orçamento, evolução da obra e expansão de cesta.
+            </p>
+          </div>
+          <div className="flex gap-6 text-sm">
+            <div><span className="font-bold text-lg">{ops.filter((o) => o.status === "pendente").length}</span><p className="text-xs text-muted-foreground">para revisar</p></div>
+            <div><span className="font-bold text-lg">{fmt(ops.filter((o) => o.status === "pendente").reduce((s, o) => s + Number(o.valorEstimado ?? 0), 0))}</span><p className="text-xs text-muted-foreground">receita potencial</p></div>
+          </div>
+        </div>
+      </Card>
 
       {/* Bar chart */}
       <Card className="p-5">
@@ -269,6 +298,11 @@ export default function RevenueDashboard() {
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{o.descricao ?? "—"}</p>
+                  {o.scoreOportunidade != null && (
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Prioridade {Number(o.scoreOportunidade) >= 75 ? "alta" : Number(o.scoreOportunidade) >= 50 ? "média" : "acompanhar"} · confiança {Math.round(Number(o.scoreOportunidade))}%
+                    </p>
+                  )}
                 </div>
                 <div className="text-right shrink-0 space-y-0.5">
                   {o.valorEstimado && (

@@ -25,7 +25,8 @@ function authHeaders() {
 }
 
 const TIPO_OPTS = [
-  { value: "recompra",    label: "Recompra" },
+  { value: "recompra",    label: "Recompra prevista" },
+  { value: "cliente_inativo", label: "Cliente inativo" },
   { value: "cross_sell",  label: "Cross-sell" },
   { value: "reativacao",  label: "Reativação" },
   { value: "upgrade",     label: "Upgrade" },
@@ -33,6 +34,7 @@ const TIPO_OPTS = [
 ];
 const TIPO_COLORS: Record<string, string> = {
   recompra:    "bg-blue-50 text-blue-700 border-blue-200",
+  cliente_inativo: "bg-slate-50 text-slate-700 border-slate-200",
   cross_sell:  "bg-indigo-50 text-indigo-700 border-indigo-200",
   reativacao:  "bg-amber-50 text-amber-700 border-amber-200",
   upgrade:     "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -83,7 +85,9 @@ export default function Regras() {
   function buildPayload() {
     let condicoes: Record<string, unknown> = {};
     if (form.tipo === "recompra")   condicoes = { diasSemRetornar: Number(form.diasSemRetornar) };
-    if (form.tipo === "reativacao") condicoes = { diasSemVisita:   Number(form.diasSemVisita) };
+    if (form.tipo === "reativacao" || form.tipo === "cliente_inativo") {
+      condicoes = { diasSemVisita: Number(form.diasSemVisita) };
+    }
     if (form.tipo === "cross_sell") condicoes = { servicoBase: form.servicoBase, servicoSugerido: form.servicoSugerido };
     if (form.tipo === "upgrade")    condicoes = { servicoAtual: form.servicoAtual, servicoPremium: form.servicoPremium };
     if (form.tipo === "aniversario") condicoes = {};
@@ -249,7 +253,7 @@ export default function Regras() {
                 </div>
               </div>
             )}
-            {form.tipo === "reativacao" && (
+            {(form.tipo === "reativacao" || form.tipo === "cliente_inativo") && (
               <div className="space-y-1.5 p-3 rounded-lg border bg-muted/30">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
                 <div className="flex items-center gap-2">
