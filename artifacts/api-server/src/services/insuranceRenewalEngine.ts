@@ -147,7 +147,7 @@ export async function runInsuranceRenewalForTenant(
     };
 
     const [existing] = await db
-      .select({ id: scoutOportunidadesTable.id })
+      .select({ id: scoutOportunidadesTable.id, status: scoutOportunidadesTable.status })
       .from(scoutOportunidadesTable)
       .where(and(
         eq(scoutOportunidadesTable.tenantId, tenantId),
@@ -160,7 +160,7 @@ export async function runInsuranceRenewalForTenant(
       tipo: type,
       descricao: `${position.productName}: renovação ${window.replace("_", " ")} para ${position.accountName}`,
       valorEstimado: position.premium ?? undefined,
-      status: "pendente_aprovacao",
+      status: existing?.status === "aprovado" && !score.blocked ? "aprovado" : "pendente_aprovacao",
       scoreOportunidade: String(score.score),
       renewalWindow: window,
       humanRequired: true,
