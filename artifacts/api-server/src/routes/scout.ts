@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { runRevenueScoutForTenant } from "../services/revenueScout.js";
 import { runInsuranceRenewalForTenant } from "../services/insuranceRenewalEngine.js";
+import { runInsuranceWhitespaceForTenant } from "../services/insuranceWhitespaceEngine.js";
 
 const router: IRouter = Router();
 
@@ -191,6 +192,55 @@ router.post("/tenants/:tenantId/scout/insurance/renewals/run", async (req, res) 
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const result = await runInsuranceRenewalForTenant(tenantId, req.log);
+  return res.json({ ok: true, ...result });
+});
+
+router.get("/tenants/:tenantId/scout/insurance/whitespace", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select({
+      id: scoutOportunidadesTable.id,
+      accountId: insuranceAccountProductPositionsTable.accountId,
+      accountName: leadsTable.nome,
+      productName: insuranceProductsTable.name,
+      productCode: insuranceProductsTable.code,
+      stage: insuranceAccountProductPositionsTable.stage,
+      score: scoutOportunidadesTable.scoreOportunidade,
+      status: scoutOportunidadesTable.status,
+      explanation: scoutOportunidadesTable.explanation,
+    })
+    .from(scoutOportunidadesTable)
+    .innerJoin(
+      insuranceAccountProductPositionsTable,
+      and(
+        eq(insuranceAccountProductPositionsTable.id, scoutOportunidadesTable.insurancePositionId),
+        eq(insuranceAccountProductPositionsTable.tenantId, tenantId),
+      ),
+    )
+    .innerJoin(leadsTable, and(
+      eq(leadsTable.id, insuranceAccountProductPositionsTable.accountId),
+      eq(leadsTable.tenantId, tenantId),
+    ))
+    .innerJoin(insuranceProductsTable, and(
+      eq(insuranceProductsTable.id, insuranceAccountProductPositionsTable.productId),
+      eq(insuranceProductsTable.tenantId, tenantId),
+    ))
+    .where(and(
+      eq(scoutOportunidadesTable.tenantId, tenantId),
+      eq(insuranceAccountProductPositionsTable.stage, "whitespace"),
+    ))
+    .orderBy(desc(scoutOportunidadesTable.scoreOportunidade));
+
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/scout/insurance/whitespace/run", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const result = await runInsuranceWhitespaceForTenant(tenantId, req.log);
   return res.json({ ok: true, ...result });
 });
 
