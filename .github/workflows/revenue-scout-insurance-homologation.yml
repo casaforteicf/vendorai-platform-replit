@@ -1,4 +1,4 @@
-name: Revenue Scout Insurance Homologation
+name: Revenue Scout Insurance Database Validation
 
 on:
   pull_request:
@@ -16,10 +16,10 @@ jobs:
   migrate-and-rls:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: homologation
+    environment: production
     env:
-      MIGRATION_DATABASE_URL: ${{ secrets.HOMOLOGATION_MIGRATION_DATABASE_URL }}
-      APP_DATABASE_URL: ${{ secrets.HOMOLOGATION_APP_DATABASE_URL }}
+      MIGRATION_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      APP_DATABASE_URL: ${{ secrets.APP_DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -31,8 +31,8 @@ jobs:
           cache: pnpm
       - name: Require homologation-only credentials
         run: |
-          test -n "$MIGRATION_DATABASE_URL" || (echo "Missing HOMOLOGATION_MIGRATION_DATABASE_URL" && exit 1)
-          test -n "$APP_DATABASE_URL" || (echo "Missing HOMOLOGATION_APP_DATABASE_URL" && exit 1)
+          test -n "$MIGRATION_DATABASE_URL" || (echo "Missing SUPABASE_DATABASE_URL" && exit 1)
+          test -n "$APP_DATABASE_URL" || (echo "Missing APP_DATABASE_URL" && exit 1)
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
       - name: Migration dry run
