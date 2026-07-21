@@ -5,8 +5,12 @@ import {
   scoutRegrasTable,
   scoutOportunidadesTable,
   SCOUT_REGRA_TIPOS,
+  leadsTable,
+  insuranceProductsTable,
+  insuranceAccountProductPositionsTable,
 } from "@workspace/db";
 import { runRevenueScoutForTenant } from "../services/revenueScout.js";
+import { runInsuranceRenewalForTenant } from "../services/insuranceRenewalEngine.js";
 
 const router: IRouter = Router();
 
@@ -127,6 +131,137 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
     .where(and(...filters))
     .orderBy(desc(scoutOportunidadesTable.createdAt))
     .limit(200);
+
+  return res.json(rows);
+});
+
+// ─── Seguros Corporativos: Renovações e matriz conta × produto ────────────────
+
+router.get("/tenants/:tenantId/scout/insurance/renewals", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select({
+      id: scoutOportunidadesTable.id,
+      accountId: insuranceAccountProductPositionsTable.accountId,
+      accountName: leadsTable.nome,
+      productName: insuranceProductsTable.name,
+      insurerName: insuranceAccountProductPositionsTable.insurerName,
+      policyNumber: insuranceAccountProductPositionsTable.policyNumber,
+      effectiveTo: insuranceAccountProductPositionsTable.effectiveTo,
+      premium: insuranceAccountProductPositionsTable.premium,
+      renewalWindow: scoutOportunidadesTable.renewalWindow,
+      score: scoutOportunidadesTable.scoreOportunidade,
+      status: scoutOportunidadesTable.status,
+      blocked: scoutOportunidadesTable.blocked,
+      humanRequired: scoutOportunidadesTable.humanRequired,
+      explanation: scoutOportunidadesTable.explanation,
+    })
+    .from(scoutOportunidadesTable)
+    .innerJoin(
+      insuranceAccountProductPositionsTable,
+      and(
+        eq(insuranceAccountProductPositionsTable.id, scoutOportunidadesTable.insurancePositionId),
+        eq(insuranceAccountProductPositionsTable.tenantId, tenantId),
+      ),
+    )
+    .innerJoin(
+      leadsTable,
+      and(
+        eq(leadsTable.id, insuranceAccountProductPositionsTable.accountId),
+        eq(leadsTable.tenantId, tenantId),
+      ),
+    )
+    .innerJoin(
+      insuranceProductsTable,
+      and(
+        eq(insuranceProductsTable.id, insuranceAccountProductPositionsTable.productId),
+        eq(insuranceProductsTable.tenantId, tenantId),
+      ),
+    )
+    .where(eq(scoutOportunidadesTable.tenantId, tenantId))
+    .orderBy(desc(scoutOportunidadesTable.scoreOportunidade));
+
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/scout/insurance/renewals/run", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const result = await runInsuranceRenewalForTenant(tenantId, req.log);
+  return res.json({ ok: true, ...result });
+});
+
+router.post("/tenants/:tenantId/scout/insurance/renewals/:id/approve", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [existing] = await db
+    .select({
+      id: scoutOportunidadesTable.id,
+      blocked: scoutOportunidadesTable.blocked,
+      insurancePositionId: scoutOportunidadesTable.insurancePositionId,
+    })
+    .from(scoutOportunidadesTable)
+    .where(and(
+      eq(scoutOportunidadesTable.id, id),
+      eq(scoutOportunidadesTable.tenantId, tenantId),
+    ));
+
+  if (!existing?.insurancePositionId) return res.status(404).json({ error: "Renovação não encontrada" });
+  if (existing.blocked) {
+    return res.status(409).json({
+      error: "A renovação está bloqueada por sinistro, reclamação ou outra exceção e precisa de tratamento humano.",
+    });
+  }
+
+  const [row] = await db
+    .update(scoutOportunidadesTable)
+    .set({ status: "aprovado", humanRequired: true })
+    .where(and(
+      eq(scoutOportunidadesTable.id, id),
+      eq(scoutOportunidadesTable.tenantId, tenantId),
+    ))
+    .returning();
+
+  req.log.info({ tenantId, opportunityId: id }, "insurance-renewal: preparação aprovada por humano");
+  return res.json(row);
+});
+
+router.get("/tenants/:tenantId/scout/insurance/accounts/:accountId/matrix", async (req, res) => {
+  const { tenantId, accountId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select({
+      positionId: insuranceAccountProductPositionsTable.id,
+      productId: insuranceProductsTable.id,
+      productName: insuranceProductsTable.name,
+      productCode: insuranceProductsTable.code,
+      stage: insuranceAccountProductPositionsTable.stage,
+      policyNumber: insuranceAccountProductPositionsTable.policyNumber,
+      insurerName: insuranceAccountProductPositionsTable.insurerName,
+      effectiveFrom: insuranceAccountProductPositionsTable.effectiveFrom,
+      effectiveTo: insuranceAccountProductPositionsTable.effectiveTo,
+      premium: insuranceAccountProductPositionsTable.premium,
+      competitiveRisk: insuranceAccountProductPositionsTable.competitiveRisk,
+      renewalRisk: insuranceAccountProductPositionsTable.renewalRisk,
+    })
+    .from(insuranceAccountProductPositionsTable)
+    .innerJoin(
+      insuranceProductsTable,
+      and(
+        eq(insuranceProductsTable.id, insuranceAccountProductPositionsTable.productId),
+        eq(insuranceProductsTable.tenantId, tenantId),
+      ),
+    )
+    .where(and(
+      eq(insuranceAccountProductPositionsTable.tenantId, tenantId),
+      eq(insuranceAccountProductPositionsTable.accountId, accountId),
+    ))
+    .orderBy(insuranceProductsTable.name);
 
   return res.json(rows);
 });
