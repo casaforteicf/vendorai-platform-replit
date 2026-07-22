@@ -293,9 +293,18 @@ function assertLegacyState(
   if (tenantTables === 0) {
     throw new Error("No tenant-owned tables were discovered.");
   }
-  if (rlsEnabled !== tenantTables || legacyPolicies !== tenantTables) {
+  // Tables may have been added after the alternate 032 was applied. Accept
+  // that known mixed legacy shape only when at least one original policy is
+  // present and no canonical policy exists yet. The transaction below applies
+  // the foundation to every current tenant table and validates full coverage
+  // before committing.
+  if (
+    legacyPolicies === 0 ||
+    legacyPolicies > rlsEnabled ||
+    rlsEnabled > tenantTables
+  ) {
     throw new Error(
-      `Legacy RLS coverage is incomplete: tables=${tenantTables}, rls=${rlsEnabled}, tenant_isolation=${legacyPolicies}.`,
+      `Legacy RLS coverage is not reconcilable: tables=${tenantTables}, rls=${rlsEnabled}, tenant_isolation=${legacyPolicies}.`,
     );
   }
   if (accessPolicies !== 0 || guardPolicies !== 0) {
