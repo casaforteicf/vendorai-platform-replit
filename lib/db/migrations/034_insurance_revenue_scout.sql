@@ -90,7 +90,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
   insurance_policy_claims
 TO vendorai_app;
 
-DO $
+DO $insurance$
 DECLARE
   table_name text;
   tenant_expression text := '(app_security.is_super_admin() OR tenant_id::text = app_security.current_tenant_id())';
@@ -115,4 +115,4 @@ BEGIN
     );
   END LOOP;
 END
-$;
+$insurance$;
