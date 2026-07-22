@@ -128,6 +128,36 @@ const VERTICAL_META: Record<string, VerticalMeta> = {
     href: "/arch",
     features: ["Dashboard de projetos", "Render Studio", "Catálogo", "Marketplace"],
   },
+  "Distribuidora de Materiais de Construção": {
+    label: "Distribuidora de Materiais de Construção",
+    icon: Building2,
+    color: "text-orange-700 bg-orange-50 border-orange-200",
+    bgGradient: "from-orange-50 to-amber-50",
+    href: "/scout",
+    features: [
+      "Revenue Scout por obra, etapa e categoria",
+      "Reposição e giro de estoque",
+      "Cross-sell de materiais complementares",
+      "Reativação de construtoras e profissionais",
+      "Cotações e oportunidades comerciais",
+      "Entregas e acompanhamento de pedidos",
+    ],
+  },
+  "Distribuidora de Alimentos": {
+    label: "Distribuidora de Alimentos",
+    icon: ShoppingCart,
+    color: "text-lime-700 bg-lime-50 border-lime-200",
+    bgGradient: "from-lime-50 to-emerald-50",
+    href: "/scout",
+    features: [
+      "Revenue Scout por frequência e mix de compra",
+      "Reposição, giro, validade e ruptura",
+      "Cross-sell por categoria e perfil de cliente",
+      "Reativação de clientes inativos",
+      "Campanhas e oportunidades sazonais",
+      "Entregas e acompanhamento de pedidos",
+    ],
+  },
 };
 
 const ACTIVE_VERTICALS = Object.keys(VERTICAL_META);
