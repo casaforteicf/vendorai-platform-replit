@@ -32,6 +32,7 @@ import {
   HardHat, Shirt, ShoppingCart, Building2, Search, LogOut,
   ExternalLink, AlertCircle, Bot, GitBranch, Tag, Sparkles,
   CheckCircle2, Loader2, Users, ChevronRight, Info, Layers,
+  Shield, DraftingCompass, Scissors, Stethoscope, Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -88,6 +89,44 @@ const VERTICAL_META: Record<string, VerticalMeta> = {
       "Campanhas de promoção por segmento",
       "Configurações de área de cobertura",
     ],
+  },
+  "Seguros Corporativos": {
+    label: "Seguros Corporativos",
+    icon: Shield,
+    color: "text-blue-700 bg-blue-50 border-blue-200",
+    bgGradient: "from-blue-50 to-cyan-50",
+    href: "/scout/seguros/renovacoes",
+    features: [
+      "Pipeline de renovações 90/60/30/10",
+      "Matriz conta × produto",
+      "Whitespace e cross-sell",
+      "Gestão de apólices e sinistros",
+      "Revenue Scout com aprovação humana",
+    ],
+  },
+  "Clínica": {
+    label: "Clínica",
+    icon: Stethoscope,
+    color: "text-sky-700 bg-sky-50 border-sky-200",
+    bgGradient: "from-sky-50 to-indigo-50",
+    href: "/clinic",
+    features: ["Dashboard clínico", "Agenda", "Prontuários", "Gestão de médicos"],
+  },
+  "Salão de Beleza": {
+    label: "Salão de Beleza",
+    icon: Scissors,
+    color: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200",
+    bgGradient: "from-fuchsia-50 to-pink-50",
+    href: "/beauty",
+    features: ["Dashboard do salão", "Agenda", "Serviços", "Profissionais"],
+  },
+  "Arquitetura & Design": {
+    label: "Arch — Arquitetura & Design",
+    icon: DraftingCompass,
+    color: "text-violet-700 bg-violet-50 border-violet-200",
+    bgGradient: "from-violet-50 to-purple-50",
+    href: "/arch",
+    features: ["Dashboard de projetos", "Render Studio", "Catálogo", "Marketplace"],
   },
 };
 
@@ -162,6 +201,17 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
     onClose();
   }
 
+  function handlePreview() {
+    setTenantOverride({
+      id: `__vertical_preview__:${vertical}`,
+      name: "Preview de layout",
+      vertical: vertical!,
+      preview: true,
+    });
+    setLocation(meta.href);
+    onClose();
+  }
+
   return (
     <Sheet open={!!vertical} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto flex flex-col gap-0 p-0">
@@ -196,6 +246,23 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <section className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Eye className="h-4 w-4 text-primary" />
+                Preview sem tenant
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Abra o layout desta vertical como Super Admin, sem cadastrar empresa, tenant ou e-mail.
+                Dados reais de clientes não são carregados.
+              </p>
+            </div>
+            <Button className="w-full gap-2" onClick={handlePreview}>
+              <Eye className="h-4 w-4" />
+              Visualizar layout
+            </Button>
+          </section>
+
           {/* ── Funcionalidades do módulo ──────────────────────── */}
           <section className="space-y-2">
             <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -392,10 +459,10 @@ export default function AdminVerticals() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Building2 className="h-6 w-6 text-primary" />
-            Verticais por Tenant
+            Verticais e previews
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Acesse, visualize detalhes e ative módulos verticais para qualquer tenant.
+            Visualize qualquer layout sem tenant ou acesse módulos vinculados a clientes reais.
           </p>
         </div>
         {tenantOverride && (
@@ -418,7 +485,7 @@ export default function AdminVerticals() {
       </div>
 
       {/* ── Vitrine dos módulos verticais ─────────────────────── */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {ACTIVE_VERTICALS.map((vertical) => {
           const meta = VERTICAL_META[vertical]!;
           const VertIcon = meta.icon;
