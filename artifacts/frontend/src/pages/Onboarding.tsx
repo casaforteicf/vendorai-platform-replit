@@ -197,20 +197,32 @@ export default function Onboarding() {
     try {
       const token = getToken();
       const base = getBase();
-      const urlRes = await fetch(`${base}/api/storage/upload-url`, {
+      const formData = new FormData();
+      formData.append("logo", file);
+
+      const uploadRes = await fetch(`${base}/api/onboarding/step/1/logo`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        body: formData,
       });
-      const { uploadURL, objectPath } = await urlRes.json();
-      await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      setS1Logo(objectPath);
+
+      const payload = await uploadRes.json().catch(() => ({})) as {
+        logoUrl?: string;
+        error?: string;
+      };
+      if (!uploadRes.ok || !payload.logoUrl) {
+        throw new Error(payload.error || `Falha no upload (HTTP ${uploadRes.status})`);
+      }
+
+      setS1Logo(payload.logoUrl);
       toast({ title: "Logo carregada!" });
-    } catch {
-      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Erro no upload. Tente novamente.",
+        variant: "destructive",
+      });
     } finally {
       setLogoUploading(false);
     }
