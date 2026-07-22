@@ -72,6 +72,20 @@ if (!fs.existsSync(FOUNDATION_PATH)) {
 
 const foundationSql = fs.readFileSync(FOUNDATION_PATH, "utf8");
 const foundationChecksum = sha256(foundationSql);
+const roleAlterationSql = `ALTER ROLE vendorai_app
+  NOLOGIN
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOINHERIT
+  NOBYPASSRLS;`;
+const reconciliationSql = foundationSql.replace(
+  roleAlterationSql,
+  "-- Existing vendorai_app attributes were validated by the reconciler.",
+);
+if (reconciliationSql === foundationSql) {
+  throw new Error("Could not isolate the canonical vendorai_app ALTER ROLE block.");
+}
 
 const connectionString =
   process.env.MIGRATION_DATABASE_URL ??
@@ -530,12 +544,11 @@ async function run(): Promise<void> {
 
     const preserveCanLogin = lockedRole!.rolcanlogin;
 
-    await client.query(foundationSql);
+    // Supabase's migration owner may manage schema objects without permission
+    // to ALTER ROLE. The existing role was validated above, so preserve it
+    // unchanged while applying every other canonical foundation statement.
+    await client.query(reconciliationSql);
     await dropLegacyPolicies(client);
-
-    if (preserveCanLogin) {
-      await client.query("ALTER ROLE vendorai_app LOGIN");
-    }
 
     await validateCanonicalState(client, preserveCanLogin);
     await updateMigrationRecord(
