@@ -19,7 +19,6 @@ jobs:
     environment: production
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
-      APP_DATABASE_URL: ${{ secrets.APP_DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -29,10 +28,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - name: Require homologation-only credentials
+      - name: Require database credential
         run: |
           test -n "$MIGRATION_DATABASE_URL" || (echo "Missing SUPABASE_DATABASE_URL" && exit 1)
-          test -n "$APP_DATABASE_URL" || (echo "Missing APP_DATABASE_URL" && exit 1)
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
       - name: Migration dry run
@@ -42,6 +40,6 @@ jobs:
       - name: Verify migration status
         run: pnpm --filter @workspace/db migrate:status
       - name: Audit all tenant RLS policies
-        run: pnpm --filter @workspace/db audit:rls:runtime
+        run: pnpm --filter @workspace/db audit:rls:strict
       - name: Verify insurance isolation with two tenants
         run: pnpm --filter @workspace/db exec tsx src/insurance-rls-smoke.ts
