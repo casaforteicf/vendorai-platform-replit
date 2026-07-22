@@ -4,18 +4,20 @@ import pg from "pg";
 
 const { Pool } = pg;
 const adminUrl = process.env.MIGRATION_DATABASE_URL;
+const runtimeUrl = process.env.APP_DATABASE_URL;
 if (!adminUrl) throw new Error("MIGRATION_DATABASE_URL is required");
+if (!runtimeUrl) throw new Error("APP_DATABASE_URL is required");
 
 const admin = new Pool({ connectionString: adminUrl, max: 2 });
+const runtime = new Pool({ connectionString: runtimeUrl, max: 2 });
 const suffix = crypto.randomUUID();
 const productA = `insurance-rls-a-${suffix}`;
 const productB = `insurance-rls-b-${suffix}`;
 
 async function visibleProductIds(tenantId: string): Promise<string[]> {
-  const client = await admin.connect();
+  const client = await runtime.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SET LOCAL ROLE vendorai_app");
     await client.query("SELECT app_security.set_tenant_context($1, FALSE)", [tenantId]);
     const result = await client.query<{ id: string }>(
       "SELECT id FROM insurance_products WHERE id = ANY($1::text[]) ORDER BY id",
@@ -63,6 +65,7 @@ async function run() {
     await client.query("DELETE FROM insurance_products WHERE id = ANY($1::text[])", [[productA, productB]]).catch(() => undefined);
     client.release();
     await admin.end();
+    await runtime.end();
   }
 }
 
