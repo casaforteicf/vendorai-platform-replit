@@ -18,7 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Layers, Pencil, Trash2, Search, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Plus, Layers, Pencil, Trash2, Search, ChevronDown, ChevronUp, X, Upload, Download } from "lucide-react";
+import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
+import { useToast } from "@/hooks/use-toast";
 
 const UNIDADES = ["un", "m²", "m³", "m", "kg", "t", "l", "cj", "pc", "sc", "cx"];
 
@@ -224,10 +226,17 @@ export default function Composicoes() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const { data: composicoes = [], isLoading } = useListComposicoes(tenantId, {}, {
     query: { enabled: !!tenantId, queryKey: getListComposicoesQueryKey(tenantId) },
+  });
+  const { data: insumos = [] } = useListInsumos(tenantId, {}, {
+    query: { enabled: !!tenantId, queryKey: getListInsumosQueryKey(tenantId) },
   });
   const { mutateAsync: createComposicao, isPending: isCreating } = useCreateComposicao();
   const { mutateAsync: deleteComposicao } = useDeleteComposicao();
@@ -238,13 +247,63 @@ export default function Composicoes() {
     setAddOpen(false);
   }
 
+  async function handleCsvImport() {
+    if (!importFile || !tenantId) return;
+    setImporting(true);
+    try {
+      const rows = parseConstructionCsv(await importFile.text());
+      if (!rows.length) throw new Error("O CSV está vazio ou não possui cabeçalho.");
+      const byInsumoCode = new Map(insumos.filter((i) => i.codigo).map((i) => [i.codigo!.trim().toLowerCase(), i]));
+      const byInsumoName = new Map(insumos.map((i) => [i.nome.trim().toLowerCase(), i]));
+      const groups = new Map<string, typeof rows>();
+      for (const row of rows) {
+        const key = (row.composicao_codigo || row.composicao_nome || row.codigo || row.nome || "").trim().toLowerCase();
+        if (!key) continue;
+        groups.set(key, [...(groups.get(key) ?? []), row]);
+      }
+      const existing = new Set(composicoes.flatMap((item) => [item.codigo?.trim().toLowerCase(), item.nome.trim().toLowerCase()].filter(Boolean) as string[]));
+      let imported = 0;
+      let ignored = rows.length - [...groups.values()].reduce((sum, group) => sum + group.length, 0);
+      for (const [key, group] of groups) {
+        const first = group[0];
+        const nome = (first.composicao_nome || first.nome || "").trim();
+        const codigo = (first.composicao_codigo || first.codigo || "").trim();
+        const unidade = (first.unidade || "un").trim();
+        if (!nome || existing.has(key)) { ignored += group.length; continue; }
+        const itens = group.flatMap((row) => {
+          const insumo = row.insumo_codigo
+            ? byInsumoCode.get(row.insumo_codigo.trim().toLowerCase())
+            : byInsumoName.get((row.insumo_nome || "").trim().toLowerCase());
+          const quantidade = csvDecimal(row.quantidade);
+          if (!insumo || !quantidade) { ignored += 1; return []; }
+          const precoUnitario = csvDecimal(row.preco_unitario);
+          return [{ insumoId: insumo.id, quantidade, ...(precoUnitario ? { precoUnitario } : {}) }];
+        });
+        if (!itens.length && group.some((row) => row.insumo_codigo || row.insumo_nome)) continue;
+        await createComposicao({ tenantId, data: {
+          nome,
+          unidade,
+          ...(codigo ? { codigo } : {}),
+          ...(first.descricao ? { descricao: first.descricao } : {}),
+          ...(itens.length ? { itens } : {}),
+        } as any });
+        existing.add(key); existing.add(nome.toLowerCase()); imported += 1;
+      }
+      await qc.invalidateQueries({ queryKey: getListComposicoesQueryKey(tenantId) });
+      toast({ title: `${imported} composição(ões) importada(s)`, description: ignored ? `${ignored} linha(s) foram ignoradas por duplicidade, dados inválidos ou insumo não encontrado.` : undefined });
+      setImportOpen(false); setImportFile(null);
+    } catch (error) {
+      toast({ title: "Não foi possível importar o CSV", description: error instanceof Error ? error.message : "Confira o arquivo e tente novamente.", variant: "destructive" });
+    } finally { setImporting(false); }
+  }
+
   const filtered = composicoes.filter((c) =>
     !search || c.nome.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Layers className="h-6 w-6 text-purple-500" />
@@ -252,6 +311,19 @@ export default function Composicoes() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Cadastro central de composições para alocação em obras</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <Dialog open={importOpen} onOpenChange={setImportOpen}>
+          <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-2"><Upload className="h-4 w-4" />Importar CSV</Button></DialogTrigger>
+          <DialogContent className="w-full max-w-2xl">
+            <DialogHeader><DialogTitle>Importar composições detalhadas</DialogTitle></DialogHeader>
+            <div className="space-y-4 text-sm">
+              <p className="text-muted-foreground">Use uma linha para cada insumo. Repita os dados da composição nas linhas seguintes. O insumo deve estar previamente cadastrado e pode ser identificado pelo código ou nome.</p>
+              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-composicoes.csv", "composicao_codigo;composicao_nome;descricao;unidade;insumo_codigo;insumo_nome;quantidade;preco_unitario\nCOMP-001;Concreto fck 25 MPa;Composição por m³;m³;MAT-001;;7;39,90\nCOMP-001;Concreto fck 25 MPa;Composição por m³;m³;MAT-002;;0,70;120,00\n")}><Download className="h-4 w-4" />Baixar modelo</Button>
+              <Input type="file" accept=".csv,text/csv" onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
+              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setImportOpen(false)}>Cancelar</Button><Button onClick={handleCsvImport} disabled={!importFile || importing}>{importing ? "Importando..." : "Importar"}</Button></div>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Nova composição</Button>
@@ -261,6 +333,7 @@ export default function Composicoes() {
             <ComposicaoForm tenantId={tenantId} onSave={handleCreate} onCancel={() => setAddOpen(false)} isPending={isCreating} />
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="relative max-w-sm">

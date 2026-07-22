@@ -14,8 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Package, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, Search, Upload, Download } from "lucide-react";
 import type { Insumo } from "@workspace/api-client-react";
+import { csvDecimal, downloadCsvTemplate, parseConstructionCsv } from "@/lib/construction-csv";
+import { useToast } from "@/hooks/use-toast";
 
 const CATEGORIAS = ["Alvenaria", "Concreto", "Cobertura", "Elétrica", "Hidráulica", "Acabamento", "Estrutura", "Movimento de terra", "Ferramentas", "Outros"];
 
@@ -120,6 +122,10 @@ export default function Insumos() {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const { toast } = useToast();
 
   const { data: insumos = [], isLoading } = useListInsumos(tenantId, {}, {
     query: { enabled: !!tenantId, queryKey: getListInsumosQueryKey(tenantId) },
@@ -139,6 +145,41 @@ export default function Insumos() {
     await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
   }
 
+  async function handleCsvImport() {
+    if (!importFile || !tenantId) return;
+    setImporting(true);
+    try {
+      const rows = parseConstructionCsv(await importFile.text());
+      if (!rows.length) throw new Error("O CSV está vazio ou não possui cabeçalho.");
+      const known = new Set(insumos.flatMap((item) => [item.codigo?.trim().toLowerCase(), item.nome.trim().toLowerCase()].filter(Boolean) as string[]));
+      let imported = 0;
+      let ignored = 0;
+      for (const row of rows) {
+        const nome = row.nome?.trim();
+        const codigo = row.codigo?.trim();
+        const key = (codigo || nome || "").toLowerCase();
+        if (!nome || !row.unidade?.trim() || !key || known.has(key)) { ignored += 1; continue; }
+        const precoUnitario = csvDecimal(row.preco_unitario);
+        await createInsumo({ tenantId, data: {
+          nome,
+          unidade: row.unidade.trim(),
+          ...(codigo ? { codigo } : {}),
+          ...(row.descricao ? { descricao: row.descricao } : {}),
+          ...(row.categoria ? { categoria: row.categoria } : {}),
+          ...(precoUnitario ? { precoUnitario } : {}),
+        } as any });
+        known.add(key);
+        known.add(nome.toLowerCase());
+        imported += 1;
+      }
+      await qc.invalidateQueries({ queryKey: getListInsumosQueryKey(tenantId) });
+      toast({ title: `${imported} insumo(s) importado(s)`, description: ignored ? `${ignored} linha(s) inválida(s) ou já cadastrada(s) foram ignoradas.` : undefined });
+      setImportOpen(false); setImportFile(null);
+    } catch (error) {
+      toast({ title: "Não foi possível importar o CSV", description: error instanceof Error ? error.message : "Confira o arquivo e tente novamente.", variant: "destructive" });
+    } finally { setImporting(false); }
+  }
+
   const filtered = insumos.filter((i) => {
     if (catFilter !== "all" && i.categoria !== catFilter) return false;
     if (search && !i.nome.toLowerCase().includes(search.toLowerCase())) return false;
@@ -149,7 +190,7 @@ export default function Insumos() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Package className="h-6 w-6 text-blue-500" />
@@ -157,6 +198,19 @@ export default function Insumos() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Cadastro central de materiais e insumos para alocação em obras</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <Dialog open={importOpen} onOpenChange={setImportOpen}>
+          <DialogTrigger asChild><Button size="sm" variant="outline" className="gap-2"><Upload className="h-4 w-4" />Importar CSV</Button></DialogTrigger>
+          <DialogContent className="w-full max-w-lg">
+            <DialogHeader><DialogTitle>Importar insumos por CSV</DialogTitle></DialogHeader>
+            <div className="space-y-4 text-sm">
+              <p className="text-muted-foreground">Use uma linha por insumo. Separadores vírgula, ponto e vírgula e tabulação são aceitos.</p>
+              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => downloadCsvTemplate("modelo-insumos.csv", "codigo;nome;descricao;unidade;preco_unitario;categoria\nMAT-001;Cimento CP II;Saco 50 kg;sc;39,90;Concreto\n")}><Download className="h-4 w-4" />Baixar modelo</Button>
+              <Input type="file" accept=".csv,text/csv" onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
+              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setImportOpen(false)}>Cancelar</Button><Button onClick={handleCsvImport} disabled={!importFile || importing}>{importing ? "Importando..." : "Importar"}</Button></div>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Novo insumo</Button>
@@ -166,6 +220,7 @@ export default function Insumos() {
             <InsumoForm onSave={handleCreate} onCancel={() => setAddOpen(false)} isPending={isCreating} />
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Filters */}
