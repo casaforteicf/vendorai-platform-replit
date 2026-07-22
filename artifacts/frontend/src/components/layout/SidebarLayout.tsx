@@ -154,6 +154,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       "/arch", "/arch/projetos", "/arch/render", "/arch/catalogo",
       "/arch/marketplace",
     ]),
+    "Distribuidora de Materiais de Construção": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/entregas", "/vendor-certified-network", "/poe",
+    ]),
+    "Distribuidora de Alimentos": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/entregas", "/vendor-certified-network", "/poe",
+    ]),
+    "Distribuidora de Máquinas e Insumos": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/entregas", "/vendor-certified-network", "/poe",
+    ]),
   };
 
   const activeVerticalAllowlist = effectiveVertical
@@ -169,6 +181,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Salão de Beleza": "Salão",
     "Arquitetura & Design": "Arquitetura",
     "Arquitetura": "Arquitetura",
+    "Distribuidora de Materiais de Construção": "Materiais de Construção",
+    "Distribuidora de Alimentos": "Alimentos",
+    "Distribuidora de Máquinas e Insumos": "Máquinas e Insumos",
   };
   const scoutVerticalLabel = effectiveVertical
     ? scoutVerticalLabels[effectiveVertical]
