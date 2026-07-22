@@ -160,6 +160,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     ? verticalHrefAllowlists[effectiveVertical]
     : undefined;
 
+  const scoutVerticalLabels: Record<string, string> = {
+    "Construção & Reforma": "Construção",
+    "Varejo de Roupas & Acessórios": "Varejo",
+    "Supermercado": "Supermercado",
+    "Seguros Corporativos": "Seguros",
+    "Clínica": "Clínica",
+    "Salão de Beleza": "Salão",
+    "Arquitetura & Design": "Arquitetura",
+    "Arquitetura": "Arquitetura",
+  };
+  const scoutVerticalLabel = effectiveVertical
+    ? scoutVerticalLabels[effectiveVertical]
+    : undefined;
+
   function isVisible(item: typeof allNavItems[0]) {
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
@@ -175,7 +189,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return userFunction ? item.fn.includes(userFunction) : true;
   }
 
-  const navigation = allNavItems.filter(isVisible);
+  const navigation = allNavItems
+    .filter(isVisible)
+    .map((item) =>
+      item.href === "/scout" && scoutVerticalLabel
+        ? { ...item, name: `Revenue Scout · ${scoutVerticalLabel}` }
+        : item
+    );
 
   const adminNavigation = isSuperAdmin
     ? [
@@ -436,7 +456,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           <div className="mt-3 pt-3 border-t">
             <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
               <TrendingUp className="h-3 w-3" />
-              Inteligência
+              {scoutVerticalLabel ? `Revenue Scout · ${scoutVerticalLabel}` : "Inteligência"}
             </p>
             {inteligenciaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
           </div>
