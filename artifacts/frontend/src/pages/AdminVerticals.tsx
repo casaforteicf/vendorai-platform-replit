@@ -158,6 +158,21 @@ const VERTICAL_META: Record<string, VerticalMeta> = {
       "Entregas e acompanhamento de pedidos",
     ],
   },
+  "Distribuidora de Máquinas e Insumos": {
+    label: "Distribuidora de Máquinas e Insumos",
+    icon: Layers,
+    color: "text-cyan-700 bg-cyan-50 border-cyan-200",
+    bgGradient: "from-cyan-50 to-slate-50",
+    href: "/scout",
+    features: [
+      "Revenue Scout por parque instalado e ciclo de uso",
+      "Reposição de insumos e consumíveis",
+      "Manutenção e substituição de máquinas",
+      "Cross-sell técnico e expansão de capacidade",
+      "Reativação de contas e contratos",
+      "Entregas e oportunidades por aplicação",
+    ],
+  },
 };
 
 const ACTIVE_VERTICALS = Object.keys(VERTICAL_META);
