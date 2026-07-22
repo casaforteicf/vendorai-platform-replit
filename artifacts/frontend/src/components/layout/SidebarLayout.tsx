@@ -105,7 +105,63 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Renovações",    href: "/scout/seguros/renovacoes", icon: Shield,      sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
   ];
 
+  // Global menu policy per Industry Pack. A known vertical only receives
+  // Core routes plus its explicit allowlist; new routes remain hidden until
+  // approved for that vertical.
+  const CORE_VERTICAL_HREFS = [
+    "/", "/leads", "/app/prospector", "/deals", "/comissoes",
+    "/conversations", "/agenda", "/propostas", "/campanhas",
+    "/agents/config", "/analytics", "/usuarios", "/configuracoes",
+    "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades",
+  ];
+
+  const verticalHrefAllowlists: Record<string, Set<string>> = {
+    "Construção & Reforma": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/entregas", "/estoque", "/obras", "/insumos", "/composicoes",
+    ]),
+    "Varejo de Roupas & Acessórios": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Supermercado": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/supermercado", "/supermercado/produtos", "/supermercado/pedidos",
+      "/supermercado/campanhas", "/supermercado/config",
+    ]),
+    "Seguros Corporativos": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/scout/seguros/renovacoes",
+    ]),
+    "Clínica": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/clinic", "/clinic/agenda", "/clinic/medicos",
+    ]),
+    "Salão de Beleza": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/beauty", "/beauty/agenda", "/beauty/servicos",
+      "/beauty/profissionais",
+    ]),
+    "Arquitetura & Design": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/arch", "/arch/projetos", "/arch/render", "/arch/catalogo",
+      "/arch/marketplace",
+    ]),
+    "Arquitetura": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/arch", "/arch/projetos", "/arch/render", "/arch/catalogo",
+      "/arch/marketplace",
+    ]),
+  };
+
+  const activeVerticalAllowlist = effectiveVertical
+    ? verticalHrefAllowlists[effectiveVertical]
+    : undefined;
+
   function isVisible(item: typeof allNavItems[0]) {
+    if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
     const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "inteligencia", "hub"];
     if (!knownSections.includes(item.section)) return false;
