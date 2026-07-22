@@ -20,6 +20,7 @@ jobs:
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
       EXPECTED_RLS_032_CHECKSUM: 7e17d10da3a994d558e25b18ce16fa7441350629780fe43bba7660939dd8a4a2
+      EXPECTED_RLS_033_CHECKSUM: ac2e38e8fbe5a09854c2abc72e1026b05c0a3bef8147dd6b5288561cabd87d0c
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -38,6 +39,10 @@ jobs:
         run: pnpm --filter @workspace/db migrate:reconcile-rls-032
       - name: Reconcile legacy RLS migration
         run: pnpm --filter @workspace/db migrate:reconcile-rls-032 -- --apply --expected-checksum="$EXPECTED_RLS_032_CHECKSUM"
+      - name: Preview support-table migration reconciliation
+        run: pnpm --filter @workspace/db migrate:reconcile-rls-033
+      - name: Reconcile support-table migration history
+        run: pnpm --filter @workspace/db migrate:reconcile-rls-033 -- --apply --expected-checksum="$EXPECTED_RLS_033_CHECKSUM"
       - name: Migration dry run
         run: pnpm --filter @workspace/db migrate:dry-run
       - name: Apply versioned migrations
