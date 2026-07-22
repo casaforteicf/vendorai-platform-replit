@@ -154,6 +154,11 @@ export default function Onboarding() {
           return;
         }
         const s = data.stepAtual ?? 1;
+        if (s >= 4) {
+          await apiPatch("/api/onboarding/step/4", {});
+          setStep("done");
+          return;
+        }
         setStep(Math.min(Math.max(s, 1), 4) as WizardStep);
       } catch {
         // ignore — start at step 1
@@ -275,7 +280,8 @@ export default function Onboarding() {
         nomePerfil: s3NomePerfil.trim() || undefined,
         tom: s3Tom || undefined,
       });
-      setStep(4);
+      await apiPatch("/api/onboarding/step/4", {});
+      setStep("done");
     } catch (err) {
       toast({ title: String(err instanceof Error ? err.message : "Erro ao salvar"), variant: "destructive" });
     } finally {
@@ -300,10 +306,10 @@ export default function Onboarding() {
   }
 
   // ── Progress bar ─────────────────────────────────────────────────────────────
-  const stepNum = step === "done" ? 4 : (step as number);
-  const progressPct = step === "done" ? 100 : ((stepNum - 1) / 4) * 100;
+  const stepNum = step === "done" ? 3 : Math.min(step as number, 3);
+  const progressPct = step === "done" ? 100 : ((stepNum - 1) / 3) * 100;
 
-  const STEP_LABELS = ["Empresa", "WhatsApp", "Primeiro Agente", "Plano"];
+  const STEP_LABELS = ["Empresa", "WhatsApp", "Primeiro Agente"];
 
   if (loading) {
     return (

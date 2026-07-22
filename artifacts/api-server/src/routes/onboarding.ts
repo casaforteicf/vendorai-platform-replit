@@ -863,8 +863,8 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
   if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
 
   const step4Schema = z.object({
-    planoId: z.string().min(1),
-    ciclo: z.enum(["mensal", "anual"]),
+    planoId: z.string().min(1).optional(),
+    ciclo: z.enum(["mensal", "anual"]).optional(),
   });
 
   const parsed = step4Schema.safeParse(req.body);
@@ -873,8 +873,28 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
     return;
   }
 
-  const { planoId, ciclo } = parsed.data;
-  const billingCycle: "monthly" | "annual" = ciclo === "mensal" ? "monthly" : "annual";
+  const [tenant] = await db
+    .select({
+      planId: tenantsTable.planId,
+      billingCycle: tenantsTable.billingCycle,
+      planStartedAt: tenantsTable.planStartedAt,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+
+  if (!tenant?.planId) {
+    res.status(409).json({
+      error: "O plano deve ser definido pelo administrador antes do primeiro acesso",
+    });
+    return;
+  }
+
+  // The plan is assigned by the platform administrator when the tenant is
+  // created. Onboarding must never let the tenant replace that assignment.
+  const planoId = tenant.planId;
+  const billingCycle: "monthly" | "annual" =
+    tenant.billingCycle === "annual" ? "annual" : "monthly";
+  const ciclo = billingCycle === "annual" ? "anual" : "mensal";
   const now = new Date();
 
   // Look up the plan
@@ -898,7 +918,7 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
 
   const { isAsaasConfigured, createOrGetCustomer, createCharge } = await import("../lib/asaas.js");
 
-  if ((await isAsaasConfigured()) && priceCents > 0) {
+  if (parsed.data.planoId && (await isAsaasConfigured()) && priceCents > 0) {
     try {
       // Get tenant admin user for customer data
       const { usersTable } = await import("@workspace/db");
@@ -939,7 +959,7 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
     .set({
       planId: planoId,
       billingCycle,
-      planStartedAt: now,
+      planStartedAt: tenant.planStartedAt ?? now,
       onboardingConcluido: true,
       setupCompletedAt: now,
       updatedAt: now,
