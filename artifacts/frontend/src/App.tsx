@@ -170,15 +170,22 @@ function RedirectPage({ to }: { to: string }) {
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
   const { token, user, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
 
   const isTenantAdmin = user?.platformRole === "tenant_admin";
+  const isOnboardingRoute =
+    location === "/onboarding" || location.startsWith("/onboarding/");
 
   const { data: tenant, isLoading: tenantLoading } = useGetTenant(
     user?.tenantId ?? "",
     {
       query: {
-        enabled: !isLoading && !!token && isTenantAdmin && !!user?.tenantId,
+        enabled:
+          !isLoading &&
+          !!token &&
+          isTenantAdmin &&
+          !!user?.tenantId &&
+          !isOnboardingRoute,
         queryKey: getGetTenantQueryKey(user?.tenantId ?? ""),
       },
     }
@@ -189,7 +196,12 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
     undefined,
     {
       query: {
-        enabled: !isLoading && !!token && isTenantAdmin && !!user?.tenantId,
+        enabled:
+          !isLoading &&
+          !!token &&
+          isTenantAdmin &&
+          !!user?.tenantId &&
+          !isOnboardingRoute,
         queryKey: getListInvoicesQueryKey(user?.tenantId ?? ""),
       },
     }
@@ -215,7 +227,11 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   }, [tenant, tenantLoading, isTenantAdmin, hasOverdueInvoice, setLocation]);
 
   if (isLoading || !token || !user) return <Spinner />;
-  if (isTenantAdmin && (tenantLoading || invoicesLoading)) return <Spinner />;
+  if (
+    isTenantAdmin &&
+    !isOnboardingRoute &&
+    (tenantLoading || invoicesLoading)
+  ) return <Spinner />;
   if (isTenantAdmin && (tenant?.status === "suspended" || hasOverdueInvoice)) return <Suspended />;
 
   return (
