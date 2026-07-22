@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { useGetMe, getGetMeQueryKey, User } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 
@@ -76,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [rawUser, setRawUser] = useState<User | null>(null);
   const [tenantOverride, setTenantOverrideState] = useState<TenantOverride | null>(readInitialOverride);
   const [location, setLocation] = useLocation();
+  const passwordRedirectedUserRef = useRef<string | null>(null);
 
   const { data: meData, isLoading, isError } = useGetMe({
     query: {
@@ -88,8 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (meData) {
       setRawUser(meData);
-      if (meData.forcePasswordReset && location !== "/trocar-senha") {
-        setLocation("/trocar-senha");
+      const isPasswordRoute = location === "/trocar-senha" || location.endsWith("/trocar-senha");
+      if (meData.forcePasswordReset && !isPasswordRoute && passwordRedirectedUserRef.current !== meData.id) {
+        passwordRedirectedUserRef.current = meData.id;
+        setLocation("/trocar-senha", { replace: true });
+      } else if (!meData.forcePasswordReset) {
+        passwordRedirectedUserRef.current = null;
       }
       if (meData.platformRole !== "super_admin") {
         setTenantOverrideState(null);
@@ -124,7 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(OVERRIDE_KEY);
     }
     if (newUser.forcePasswordReset) {
-      setLocation("/trocar-senha");
+      passwordRedirectedUserRef.current = newUser.id;
+      setLocation("/trocar-senha", { replace: true });
     } else {
       setLocation(newUser.platformRole === "partner" ? "/partner" : "/dashboard");
     }
@@ -140,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem(DEMO_SESSION_KEY);
     setToken(null);
     setRawUser(null);
+    passwordRedirectedUserRef.current = null;
     setTenantOverrideState(null);
     setLocation("/login");
   };
