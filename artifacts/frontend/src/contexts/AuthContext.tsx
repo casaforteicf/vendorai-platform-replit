@@ -26,7 +26,7 @@ interface AuthContextType {
   isEffectiveAdmin: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType | null>(null);
 
 const TOKEN_KEY = "vendorai_token";
 const DEMO_SESSION_KEY = "vendorai_demo_session";
