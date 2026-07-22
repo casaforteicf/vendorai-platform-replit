@@ -21,7 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2, Plus, Copy, Check, Mail, Loader2, RefreshCw, UserCheck, Clock,
-  HardHat, Stethoscope, Car, Warehouse, Shirt, UtensilsCrossed, Briefcase, Cpu,
+  HardHat, Stethoscope, Car, Warehouse, Shirt, UtensilsCrossed, Briefcase, Cpu, Trash2,
 } from "lucide-react";
 
 interface VerticalDef {
@@ -85,6 +85,9 @@ export default function AdminTenants() {
 
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [updatingVertical, setUpdatingVertical] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const VERTICAL_OPTIONS = [
     { value: "__none__",                        label: "— CRM Geral —" },
@@ -187,9 +190,31 @@ export default function AdminTenants() {
     }
   }
 
+  async function handleDeleteTenant() {
+    if (!deleteTarget || deleteConfirmation.trim() !== deleteTarget.name) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/tenants/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        toast({ title: data.error ?? "Erro ao excluir tenant", variant: "destructive" });
+        return;
+      }
+      toast({ title: `Tenant ${deleteTarget.name} excluído com sucesso` });
+      setDeleteTarget(null);
+      setDeleteConfirmation("");
+      await qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function buildWhatsAppText() {
     if (!result) return "";
-    const loginUrl = window.location.origin + "/login";
+    const loginUrl = window.location.origin + "/app/";
     return `Olá ${result.user.name}! Seu acesso ao Vendor.ai está pronto.\n🔗 ${loginUrl}\n📧 Login: ${result.user.email}\n🔑 Senha: ${result.tempPassword}\nTroque a senha no primeiro acesso!`;
   }
 
@@ -397,16 +422,14 @@ export default function AdminTenants() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs gap-1 w-full"
-                      onClick={(e) => { e.stopPropagation(); handleResend(t.id); }}
-                      disabled={resendingId === t.id}
-                    >
-                      {resendingId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                      Reenviar acesso
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => handleResend(t.id)} disabled={resendingId === t.id}>
+                        {resendingId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Reenviar
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs gap-1 text-red-600 border-red-200" onClick={() => setDeleteTarget(t)}>
+                        <Trash2 className="h-3 w-3" /> Excluir
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -492,6 +515,14 @@ export default function AdminTenants() {
                               : <RefreshCw className="h-3 w-3" />}
                             Reenviar acesso
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1 ml-2 text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => setDeleteTarget(t)}
+                          >
+                            <Trash2 className="h-3 w-3" /> Excluir
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -576,6 +607,28 @@ export default function AdminTenants() {
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}
                 Criar e enviar e-mail
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleting) { setDeleteTarget(null); setDeleteConfirmation(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Excluir tenant definitivamente</DialogTitle>
+            <DialogDescription>
+              Esta ação apaga a empresa, seus usuários e todos os dados vinculados. Não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label>Digite <strong>{deleteTarget?.name}</strong> para confirmar</Label>
+            <Input value={deleteConfirmation} onChange={(e) => setDeleteConfirmation(e.target.value)} autoComplete="off" />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" disabled={deleting} onClick={() => { setDeleteTarget(null); setDeleteConfirmation(""); }}>Cancelar</Button>
+              <Button variant="destructive" disabled={deleting || deleteConfirmation.trim() !== deleteTarget?.name} onClick={() => void handleDeleteTenant()}>
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                Excluir definitivamente
               </Button>
             </div>
           </div>

@@ -24,12 +24,16 @@ import {
   customerIntelligenceTable,
   agentTasksTable,
   onboardingProgressTable,
+  agentDefaultsTable,
+  tenantAgentConfigsTable,
+  knowledgeBaseTable,
 } from "@workspace/db";
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { encrypt } from "../lib/crypto.js";
 import { sendWelcomeEmail } from "../lib/email.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
 import { createCustomHostname } from "../lib/cloudflare.js";
+import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 
 const router: IRouter = Router();
 
@@ -74,6 +78,141 @@ router.get("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
   }
 
   res.json(tenant);
+});
+
+router.get("/superadmin/tenants/:id/agents", requireRole("super_admin"), async (req, res) => {
+  const tenantId = String(req.params.id);
+  const [tenant] = await db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+
+  const [defaults, tenantConfigs, knowledge] = await Promise.all([
+    db.select().from(agentDefaultsTable).where(eq(agentDefaultsTable.ativo, true)),
+    db.select().from(tenantAgentConfigsTable).where(eq(tenantAgentConfigsTable.tenantId, tenantId)),
+    db.select().from(knowledgeBaseTable).where(eq(knowledgeBaseTable.tenantId, tenantId)),
+  ]);
+  const configMap = new Map(tenantConfigs.map((config) => [config.agentKey, config]));
+  const knowledgeMap = new Map(knowledge.map((item) => [item.id, item]));
+
+  res.json({
+    agents: defaults.map((agent) => {
+      const config = configMap.get(agent.agentKey);
+      const parameters = (config?.parametros ?? {}) as Record<string, unknown>;
+      const attachments = Array.isArray(parameters["attachments"]) ? parameters["attachments"] : [];
+      const knowledgeItems = (config?.knowledgeBaseIds ?? [])
+        .map((knowledgeId) => knowledgeMap.get(knowledgeId))
+        .filter(Boolean);
+      return {
+        agentKey: agent.agentKey,
+        nome: agent.nome,
+        descricao: agent.descricao ?? "",
+        categoria: agent.categoria ?? "",
+        ativo: config?.ativo ?? false,
+        nomePerfil: config?.nomePerfil ?? null,
+        tom: config?.tom ?? "profissional",
+        restricoes: config?.restricoes ?? null,
+        systemPromptBase: agent.systemPromptBase,
+        systemPromptCustom: config?.systemPromptCustom ?? null,
+        attachments,
+        knowledgeItems,
+      };
+    }),
+    knowledgeBase: knowledge,
+  });
+});
+
+router.get("/superadmin/tenants/:id/zapi-status", requireRole("super_admin"), async (req, res) => {
+  const tenantId = String(req.params.id);
+  const [config] = await db
+    .select({
+      zapiInstanceId: agentConfigsTable.zapiInstanceId,
+      zapiToken: agentConfigsTable.zapiToken,
+      zapiClientToken: agentConfigsTable.zapiClientToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId))
+    .limit(1);
+
+  const credentials = {
+    instanceId: Boolean(config?.zapiInstanceId),
+    token: Boolean(config?.zapiToken),
+    clientToken: Boolean(config?.zapiClientToken),
+  };
+  const configured = credentials.instanceId && credentials.token && credentials.clientToken;
+  if (!configured) {
+    return res.json({ configured: false, connected: false, credentials });
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.z-api.io/instances/${config!.zapiInstanceId}/token/${config!.zapiToken}/status`,
+      { headers: { "Client-Token": config!.zapiClientToken! } },
+    );
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    return res.json({
+      configured: true,
+      connected: response.ok && data.connected === true,
+      session: data.session === true,
+      smartphoneConnected: data.smartphoneConnected === true,
+      credentials,
+      providerStatus: response.status,
+    });
+  } catch (error) {
+    req.log.error({ error, tenantId }, "superadmin tenant zapi status failed");
+    return res.status(502).json({ configured: true, connected: false, credentials, error: "Falha ao consultar a Z-API" });
+  }
+});
+
+router.patch("/superadmin/tenants/:id/zapi-credentials", requireRole("super_admin"), async (req, res) => {
+  const tenantId = String(req.params.id);
+  const instanceId = typeof req.body?.instanceId === "string" ? req.body.instanceId.trim() : undefined;
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : undefined;
+  const clientToken = typeof req.body?.clientToken === "string" ? req.body.clientToken.trim() : undefined;
+
+  if ([instanceId, token, clientToken].every((value) => value === undefined)) {
+    return res.status(422).json({ error: "Informe ao menos uma credencial para atualizar." });
+  }
+  if ([instanceId, token, clientToken].some((value) => value !== undefined && value.length < 3)) {
+    return res.status(422).json({ error: "Credencial inválida." });
+  }
+
+  const [tenant] = await db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant) return res.status(404).json({ error: "Tenant não encontrado." });
+
+  const update: Partial<typeof agentConfigsTable.$inferInsert> = { updatedAt: new Date() };
+  if (instanceId !== undefined) update.zapiInstanceId = instanceId;
+  if (token !== undefined) update.zapiToken = token;
+  if (clientToken !== undefined) update.zapiClientToken = clientToken;
+
+  await db
+    .insert(agentConfigsTable)
+    .values({ tenantId, ...update })
+    .onConflictDoUpdate({ target: agentConfigsTable.tenantId, set: update });
+
+  req.log.info({ tenantId, fields: Object.keys(update).filter((field) => field !== "updatedAt") }, "superadmin updated tenant zapi credentials");
+  return res.json({ ok: true });
+});
+
+router.post("/superadmin/tenants/:id/zapi-test", requireRole("super_admin"), async (req, res) => {
+  const tenantId = String(req.params.id);
+  const phone = String(req.body?.phone ?? "").replace(/\D/g, "");
+  const message = String(req.body?.message ?? "").trim();
+  if (phone.length < 10 || phone.length > 15) {
+    return res.status(422).json({ error: "Informe um telefone válido com DDD." });
+  }
+  if (!message || message.length > 500) {
+    return res.status(422).json({ error: "A mensagem deve ter entre 1 e 500 caracteres." });
+  }
+
+  const [tenant] = await db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant) return res.status(404).json({ error: "Tenant não encontrado." });
+
+  try {
+    await sendDirectWhatsAppMessage(tenantId, phone, message, req.log);
+    return res.json({ ok: true, phone });
+  } catch (error) {
+    req.log.error({ error, tenantId }, "superadmin tenant zapi test failed");
+    return res.status(502).json({ error: error instanceof Error ? error.message : "Falha ao enviar mensagem de teste." });
+  }
 });
 
 router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
@@ -688,9 +827,7 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
 
     let emailSent = false;
     if (sendWelcomeEmailFlag) {
-      const loginUrl = process.env["REPLIT_DOMAINS"]
-        ? `https://${process.env["REPLIT_DOMAINS"].split(",")[0]}/login`
-        : "https://vendorai.replit.app/login";
+      const loginUrl = "https://appvendorai.com/app/";
       emailSent = await sendWelcomeEmail({
         to: email,
         name: responsibleName,
@@ -729,9 +866,7 @@ router.post("/superadmin/tenants/:id/resend-access", requireRole("super_admin"),
   await db.update(usersTable).set({ password: hashed, forcePasswordReset: true, updatedAt: new Date() })
     .where(eq(usersTable.id, adminUser.id));
 
-  const loginUrl = process.env["REPLIT_DOMAINS"]
-    ? `https://${process.env["REPLIT_DOMAINS"].split(",")[0]}/login`
-    : "https://vendorai.replit.app/login";
+  const loginUrl = "https://appvendorai.com/app/";
 
   const emailSent = await sendWelcomeEmail({
     to: adminUser.email,
@@ -765,7 +900,7 @@ router.patch(
       return;
     }
 
-    const roleMap: Record<string, { role: string; platformRole: string }> = {
+    const roleMap: Record<string, { role: "admin" | "member"; platformRole: "tenant_admin" | "tenant_seller" | "member" }> = {
       tenant_admin:  { role: "admin",  platformRole: "tenant_admin"  },
       tenant_seller: { role: "member", platformRole: "tenant_seller" },
       member:        { role: "member", platformRole: "member"        },
