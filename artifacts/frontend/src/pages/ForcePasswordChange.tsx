@@ -41,9 +41,14 @@ export default function ForcePasswordChange() {
         toast({ title: data.error ?? "Erro ao trocar senha", variant: "destructive" });
         return;
       }
+      qc.setQueryData(getGetMeQueryKey(), (current: any) =>
+        current ? { ...current, forcePasswordReset: false } : current,
+      );
       toast({ title: "Senha alterada com sucesso! Bem-vindo(a)!" });
       await qc.invalidateQueries({ queryKey: getGetMeQueryKey() });
-      setLocation("/");
+      setLocation("/dashboard", { replace: true });
+    } catch {
+      toast({ title: "Não foi possível trocar a senha. Tente novamente.", variant: "destructive" });
     } finally {
       setSaving(false);
     }

@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(readInitialToken);
   const [rawUser, setRawUser] = useState<User | null>(null);
   const [tenantOverride, setTenantOverrideState] = useState<TenantOverride | null>(readInitialOverride);
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
 
   const { data: meData, isLoading, isError } = useGetMe({
     query: {
@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (meData) {
       setRawUser(meData);
-      if (meData.forcePasswordReset) {
+      if (meData.forcePasswordReset && location !== "/trocar-senha") {
         setLocation("/trocar-senha");
       }
       if (meData.platformRole !== "super_admin") {
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(OVERRIDE_KEY);
       }
     }
-  }, [meData]);
+  }, [meData, location, setLocation]);
 
   useEffect(() => {
     if (isError) {
