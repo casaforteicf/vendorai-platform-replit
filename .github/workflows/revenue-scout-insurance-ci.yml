@@ -6,6 +6,7 @@ on:
       - "artifacts/api-server/src/services/corporateInsuranceRevenuePack.ts"
       - "artifacts/api-server/src/services/insuranceRenewalEngine.ts"
       - "artifacts/api-server/src/services/insuranceWhitespaceEngine.ts"
+      - "artifacts/api-server/src/services/distributorRevenueEngine.ts"
       - "artifacts/api-server/src/__tests__/**"
       - "artifacts/api-server/src/routes/scout.ts"
       - "artifacts/frontend/src/pages/scout/InsuranceRenewals.tsx"
@@ -43,13 +44,13 @@ jobs:
           pnpm --filter @workspace/api-server typecheck 2>&1 | tee /tmp/api-typecheck.log
           pnpm --filter @workspace/frontend typecheck 2>&1 | tee /tmp/frontend-typecheck.log
           set -e
-          if grep -E 'src/(services/(corporateInsuranceRevenuePack|insuranceRenewalEngine|insuranceWhitespaceEngine)|routes/scout)\.ts.*error TS' /tmp/api-typecheck.log; then
+          if grep -E 'src/(services/(corporateInsuranceRevenuePack|insuranceRenewalEngine|insuranceWhitespaceEngine|distributorRevenueEngine)|routes/scout)\.ts.*error TS' /tmp/api-typecheck.log; then
             exit 1
           fi
           if grep -E 'src/(pages/scout/InsuranceRenewals|App|components/layout/SidebarLayout)\.tsx.*error TS' /tmp/frontend-typecheck.log; then
             exit 1
           fi
       - name: Run Revenue Scout insurance tests
-        run: pnpm --filter @workspace/api-server test -- corporateInsuranceRevenuePack.test.ts insuranceWhitespaceEngine.test.ts
+        run: pnpm --filter @workspace/api-server test -- corporateInsuranceRevenuePack.test.ts insuranceWhitespaceEngine.test.ts distributorRevenueEngine.test.ts
       - name: Verify migrations are discoverable
         run: test -f lib/db/migrations/034_insurance_revenue_scout.sql && test -f lib/db/migrations/035_insurance_renewal_opportunities.sql

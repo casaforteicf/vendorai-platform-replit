@@ -31,6 +31,7 @@ import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { triggerSequenceOffer } from "./sequence-offer.js";
 import { runInsuranceRenewalForTenant } from "./insuranceRenewalEngine.js";
 import { runInsuranceWhitespaceForTenant } from "./insuranceWhitespaceEngine.js";
+import { runDistributorRevenueForTenant } from "./distributorRevenueEngine.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -632,6 +633,10 @@ export async function runRevenueScoutForTenant(
   // mas não as envia automaticamente (status pendente_aprovacao).
   await runInsuranceRenewalForTenant(tenantId, log);
   await runInsuranceWhitespaceForTenant(tenantId, log);
+
+  // Distribuidoras usam histórico de propostas aceitas e ciclos próprios por segmento.
+  // As sugestões ficam em pendente_aprovacao e nunca são contatadas automaticamente.
+  await runDistributorRevenueForTenant(tenantId, log);
 
   await processarOportunidades(tenantId, log);
 

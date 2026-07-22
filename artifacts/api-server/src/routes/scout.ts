@@ -359,16 +359,6 @@ router.post("/tenants/:tenantId/scout/run", async (req, res) => {
 
   const log = (req as any).log ?? console;
 
-  const [hasRegras] = await db
-    .select({ id: scoutRegrasTable.id })
-    .from(scoutRegrasTable)
-    .where(and(eq(scoutRegrasTable.tenantId, tenantId), eq(scoutRegrasTable.ativo, true)))
-    .limit(1);
-
-  if (!hasRegras) {
-    return res.status(422).json({ error: "Nenhuma regra ativa encontrada. Configure pelo menos uma regra antes de rodar o scout." });
-  }
-
   const result = await runRevenueScoutForTenant(tenantId, log);
   return res.json({ ok: true, ...result });
 });
