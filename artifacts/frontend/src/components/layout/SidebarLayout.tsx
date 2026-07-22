@@ -102,6 +102,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Revenue Scout", href: "/scout",                    icon: TrendingUp,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Regras",        href: "/scout/regras",             icon: Zap,         sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Oportunidades", href: "/scout/oportunidades",      icon: ListChecks,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Renovações",    href: "/scout/seguros/renovacoes", icon: Shield,      sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
   ];
 
   function isVisible(item: typeof allNavItems[0]) {

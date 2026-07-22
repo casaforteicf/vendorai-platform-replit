@@ -29,6 +29,8 @@ import {
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { triggerSequenceOffer } from "./sequence-offer.js";
+import { runInsuranceRenewalForTenant } from "./insuranceRenewalEngine.js";
+import { runInsuranceWhitespaceForTenant } from "./insuranceWhitespaceEngine.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -625,6 +627,11 @@ export async function runRevenueScoutForTenant(
       log.error({ err, tenantId, clienteId }, "scout/run: analisarCliente falhou (non-fatal)");
     }
   }
+
+  // Seguros Corporativos opera em modo de aprovação: cria/atualiza oportunidades,
+  // mas não as envia automaticamente (status pendente_aprovacao).
+  await runInsuranceRenewalForTenant(tenantId, log);
+  await runInsuranceWhitespaceForTenant(tenantId, log);
 
   await processarOportunidades(tenantId, log);
 

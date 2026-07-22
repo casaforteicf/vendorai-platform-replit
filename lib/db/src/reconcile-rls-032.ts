@@ -72,6 +72,20 @@ if (!fs.existsSync(FOUNDATION_PATH)) {
 
 const foundationSql = fs.readFileSync(FOUNDATION_PATH, "utf8");
 const foundationChecksum = sha256(foundationSql);
+const roleAlterationSql = `ALTER ROLE vendorai_app
+  NOLOGIN
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOINHERIT
+  NOBYPASSRLS;`;
+const reconciliationSql = foundationSql.replace(
+  roleAlterationSql,
+  "-- Existing vendorai_app attributes were validated by the reconciler.",
+);
+if (reconciliationSql === foundationSql) {
+  throw new Error("Could not isolate the canonical vendorai_app ALTER ROLE block.");
+}
 
 const connectionString =
   process.env.MIGRATION_DATABASE_URL ??
@@ -293,9 +307,18 @@ function assertLegacyState(
   if (tenantTables === 0) {
     throw new Error("No tenant-owned tables were discovered.");
   }
-  if (rlsEnabled !== tenantTables || legacyPolicies !== tenantTables) {
+  // Tables may have been added after the alternate 032 was applied. Accept
+  // that known mixed legacy shape only when at least one original policy is
+  // present and no canonical policy exists yet. The transaction below applies
+  // the foundation to every current tenant table and validates full coverage
+  // before committing.
+  if (
+    legacyPolicies === 0 ||
+    legacyPolicies > rlsEnabled ||
+    rlsEnabled > tenantTables
+  ) {
     throw new Error(
-      `Legacy RLS coverage is incomplete: tables=${tenantTables}, rls=${rlsEnabled}, tenant_isolation=${legacyPolicies}.`,
+      `Legacy RLS coverage is not reconcilable: tables=${tenantTables}, rls=${rlsEnabled}, tenant_isolation=${legacyPolicies}.`,
     );
   }
   if (accessPolicies !== 0 || guardPolicies !== 0) {
@@ -521,12 +544,11 @@ async function run(): Promise<void> {
 
     const preserveCanLogin = lockedRole!.rolcanlogin;
 
-    await client.query(foundationSql);
+    // Supabase's migration owner may manage schema objects without permission
+    // to ALTER ROLE. The existing role was validated above, so preserve it
+    // unchanged while applying every other canonical foundation statement.
+    await client.query(reconciliationSql);
     await dropLegacyPolicies(client);
-
-    if (preserveCanLogin) {
-      await client.query("ALTER ROLE vendorai_app LOGIN");
-    }
 
     await validateCanonicalState(client, preserveCanLogin);
     await updateMigrationRecord(

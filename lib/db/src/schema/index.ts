@@ -169,4 +169,5 @@ export * from "./campaign_sent_logs";
 export * from "./lead_optimal_hours";
 export * from "./churn_actions";
 export * from "./intent_signals";
+export * from "./insurance_revenue_scout";
 export * from "./tenant_nav_modules";

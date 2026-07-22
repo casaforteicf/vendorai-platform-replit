@@ -6,6 +6,7 @@ import {
   numeric,
   boolean,
   integer,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -24,6 +25,8 @@ export const SCOUT_OPORTUNIDADE_STATUS = [
   "aguardando_etapa",
   "adiado",
   "pendente_revisao_bot",
+  "pendente_aprovacao",
+  "aprovado",
 ] as const;
 
 export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
@@ -64,6 +67,16 @@ export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
   // Score de prioridade 0-100: combina tipo, tempo de atraso e valor estimado.
   // Oportunidades com score maior são processadas primeiro.
   scoreOportunidade: numeric("score_oportunidade", { precision: 5, scale: 2 }),
+  // Seguros Corporativos: oportunidade sempre vinculada a conta + produto/apólice.
+  insurancePositionId: text("insurance_position_id"),
+  renewalWindow: text("renewal_window"),
+  humanRequired: boolean("human_required").notNull().default(false),
+  blocked: boolean("blocked").notNull().default(false),
+  explanation: jsonb("explanation").$type<{
+    facts?: Record<string, unknown>;
+    inference?: Record<string, unknown>;
+    autonomy?: Record<string, unknown>;
+  }>(),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
 });
 

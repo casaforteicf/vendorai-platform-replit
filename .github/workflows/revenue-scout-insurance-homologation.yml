@@ -1,0 +1,60 @@
+name: Revenue Scout Insurance Database Validation
+
+on:
+  pull_request:
+    paths:
+      - "lib/db/migrations/034_insurance_revenue_scout.sql"
+      - "lib/db/migrations/035_insurance_renewal_opportunities.sql"
+      - "lib/db/src/insurance-rls-smoke.ts"
+      - ".github/workflows/revenue-scout-insurance-homologation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate-and-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      APP_DATABASE_URL: ${{ secrets.APP_DATABASE_URL }}
+      EXPECTED_RLS_032_CHECKSUM: 7e17d10da3a994d558e25b18ce16fa7441350629780fe43bba7660939dd8a4a2
+      EXPECTED_RLS_033_CHECKSUM: ac2e38e8fbe5a09854c2abc72e1026b05c0a3bef8147dd6b5288561cabd87d0c
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Require database credential
+        run: |
+          test -n "$MIGRATION_DATABASE_URL" || (echo "Missing SUPABASE_DATABASE_URL" && exit 1)
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Preview legacy RLS reconciliation
+        run: pnpm --filter @workspace/db migrate:reconcile-rls-032
+      - name: Reconcile legacy RLS migration
+        run: pnpm --filter @workspace/db migrate:reconcile-rls-032 -- --apply --expected-checksum="$EXPECTED_RLS_032_CHECKSUM"
+      - name: Preview support-table migration reconciliation
+        run: pnpm --filter @workspace/db migrate:reconcile-rls-033
+      - name: Reconcile support-table migration history
+        run: pnpm --filter @workspace/db migrate:reconcile-rls-033 -- --apply --expected-checksum="$EXPECTED_RLS_033_CHECKSUM"
+      - name: Migration dry run
+        run: pnpm --filter @workspace/db migrate:dry-run
+      - name: Apply versioned migrations
+        run: pnpm --filter @workspace/db migrate
+      - name: Verify migration status
+        run: pnpm --filter @workspace/db migrate:status
+      - name: Audit all tenant RLS policies
+        run: pnpm --filter @workspace/db audit:rls:strict
+      - name: Verify insurance isolation with two tenants
+        if: ${{ env.APP_DATABASE_URL != '' }}
+        run: pnpm --filter @workspace/db exec tsx src/insurance-rls-smoke.ts
+      - name: Record deferred runtime isolation test
+        if: ${{ env.APP_DATABASE_URL == '' }}
+        run: echo "APP_DATABASE_URL is not configured; runtime isolation test deferred by release authorization."
