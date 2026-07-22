@@ -197,26 +197,33 @@ export default function Onboarding() {
     try {
       const token = getToken();
       const base = getBase();
-      const formData = new FormData();
-      formData.append("logo", file);
-
-      const uploadRes = await fetch(`${base}/api/onboarding/step/1/logo`, {
+      const requestRes = await fetch(`${base}/api/storage/uploads/request-url`, {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: formData,
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
       });
-
-      const payload = await uploadRes.json().catch(() => ({})) as {
-        logoUrl?: string;
+      const payload = await requestRes.json().catch(() => ({})) as {
+        uploadURL?: string;
+        objectPath?: string;
         error?: string;
       };
-      if (!uploadRes.ok || !payload.logoUrl) {
-        throw new Error(payload.error || `Falha no upload (HTTP ${uploadRes.status})`);
+      if (!requestRes.ok || !payload.uploadURL || !payload.objectPath) {
+        throw new Error(payload.error || `Falha ao preparar upload (HTTP ${requestRes.status})`);
       }
 
-      setS1Logo(payload.logoUrl);
+      const uploadRes = await fetch(payload.uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) {
+        throw new Error(`Falha ao enviar arquivo (HTTP ${uploadRes.status})`);
+      }
+
+      setS1Logo(payload.objectPath);
       toast({ title: "Logo carregada!" });
     } catch (err) {
       toast({
