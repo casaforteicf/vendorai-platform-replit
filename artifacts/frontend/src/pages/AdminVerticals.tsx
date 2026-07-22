@@ -32,7 +32,7 @@ import {
   HardHat, Shirt, ShoppingCart, Building2, Search, LogOut,
   ExternalLink, AlertCircle, Bot, GitBranch, Tag, Sparkles,
   CheckCircle2, Loader2, Users, ChevronRight, Info, Layers,
-  Shield, DraftingCompass, Scissors, Stethoscope, Eye,
+  Shield, DraftingCompass, Scissors, Stethoscope, Eye, Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -127,6 +127,21 @@ const VERTICAL_META: Record<string, VerticalMeta> = {
     bgGradient: "from-violet-50 to-purple-50",
     href: "/arch",
     features: ["Dashboard de projetos", "Render Studio", "Catálogo", "Marketplace"],
+  },
+  "Distribuidora de Peças": {
+    label: "Distribuidora de Peças",
+    icon: Wrench,
+    color: "text-slate-700 bg-slate-50 border-slate-200",
+    bgGradient: "from-slate-50 to-zinc-100",
+    href: "/scout",
+    features: [
+      "Revenue Scout específico para distribuição",
+      "Reposição e giro de estoque",
+      "Cross-sell por aplicação e categoria",
+      "Recuperação de clientes inativos",
+      "Rede de fornecedores e oportunidades",
+      "Entregas e acompanhamento comercial",
+    ],
   },
 };
 
