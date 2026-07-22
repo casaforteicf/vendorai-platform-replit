@@ -31,7 +31,7 @@ async function run() {
       console.log("✓ Migration 033 already matches the canonical checksum.");
       return;
     }
-    const expectedName = current ? "033_rls_support_tables.sql" : "rls support tables";
+    const expectedName = current ? "033_rls_support_tables.sql" : "admin audit log";
     if (record.name.toLowerCase() !== expectedName) throw new Error(`Unexpected migration 033 name: ${record.name}`);
     const coverage = await client.query(`
       SELECT c.relname, c.relrowsecurity,
@@ -52,7 +52,7 @@ async function run() {
     await client.query("BEGIN"); tx = true;
     const updateSql = current
       ? "UPDATE vendorai_schema_migrations SET checksum_sha256=$1 WHERE migration_id='033' AND filename=$2 AND checksum_sha256=$3"
-      : "UPDATE vendorai_schema_migrations SET checksum=$1 WHERE version='033' AND name=$2 AND checksum=$3";
+      : "UPDATE vendorai_schema_migrations SET name='rls support tables', checksum=$1 WHERE version='033' AND name=$2 AND checksum=$3";
     const updated = await client.query(updateSql, [checksum, record.name, record.checksum]);
     if (updated.rowCount !== 1) throw new Error("Migration 033 record changed; aborted.");
     await client.query("COMMIT"); tx = false;
