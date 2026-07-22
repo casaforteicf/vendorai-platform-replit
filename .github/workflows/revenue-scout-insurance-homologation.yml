@@ -19,6 +19,7 @@ jobs:
     environment: production
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      EXPECTED_RLS_032_CHECKSUM: 7e17d10da3a994d558e25b18ce16fa7441350629780fe43bba7660939dd8a4a2
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -33,6 +34,10 @@ jobs:
           test -n "$MIGRATION_DATABASE_URL" || (echo "Missing SUPABASE_DATABASE_URL" && exit 1)
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+      - name: Preview legacy RLS reconciliation
+        run: pnpm --filter @workspace/db migrate:reconcile-rls-032
+      - name: Reconcile legacy RLS migration
+        run: pnpm --filter @workspace/db migrate:reconcile-rls-032 -- --apply --expected-checksum="$EXPECTED_RLS_032_CHECKSUM"
       - name: Migration dry run
         run: pnpm --filter @workspace/db migrate:dry-run
       - name: Apply versioned migrations
