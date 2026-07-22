@@ -8,6 +8,8 @@ export interface TenantOverride {
   id: string;
   name: string;
   vertical: string;
+  /** Super Admin layout preview without a persisted tenant. */
+  preview?: boolean;
 }
 
 interface AuthContextType {

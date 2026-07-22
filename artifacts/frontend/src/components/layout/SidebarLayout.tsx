@@ -496,9 +496,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-2 min-w-0">
               <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
               <span className="truncate">
-                Visualizando módulo de{" "}
-                <strong>{tenantOverride.vertical}</strong> — Tenant:{" "}
-                <strong>{tenantOverride.name}</strong>
+                {tenantOverride.preview ? (
+                  <>
+                    Preview de <strong>{tenantOverride.vertical}</strong> — somente layout, sem tenant
+                  </>
+                ) : (
+                  <>
+                    Visualizando módulo de{" "}
+                    <strong>{tenantOverride.vertical}</strong> — Tenant:{" "}
+                    <strong>{tenantOverride.name}</strong>
+                  </>
+                )}
               </span>
             </div>
             <Button
@@ -508,7 +516,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               onClick={() => { clearTenantOverride(); }}
             >
               <LogOut className="h-3.5 w-3.5" />
-              Sair do tenant
+              {tenantOverride.preview ? "Sair do preview" : "Sair do tenant"}
             </Button>
           </div>
         )}
