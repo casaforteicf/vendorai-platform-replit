@@ -196,8 +196,7 @@ export default function Onboarding() {
     setLogoUploading(true);
     try {
       const token = getToken();
-      const base = getBase();
-      const requestRes = await fetch(`${base}/api/storage/uploads/request-url`, {
+      const requestRes = await fetch("/api/storage/uploads/request-url", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
