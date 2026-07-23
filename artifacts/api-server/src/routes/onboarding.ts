@@ -981,6 +981,7 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
       target: onboardingProgressTable.tenantId,
       set: {
         step4Completo: true,
+        stepAtual: 4,
         concluido: true,
         concluidoEm: now,
         updatedAt: now,
