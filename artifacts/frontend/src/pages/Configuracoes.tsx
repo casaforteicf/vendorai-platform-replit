@@ -1597,7 +1597,7 @@ export default function Configuracoes() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
-        <p className="text-muted-foreground text-sm mt-1">Gerencie o perfil da empresa e os agentes de IA.</p>
+        <p className="text-muted-foreground text-sm mt-1">Gerencie o perfil da empresa e as configurações da conta.</p>
       </div>
 
       <Tabs
@@ -1609,14 +1609,10 @@ export default function Configuracoes() {
         }}
       >
         <div className="overflow-x-auto pb-0.5">
-        <TabsList className={cn("grid w-max sm:w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-10" : isTenantAdmin ? "grid-cols-9" : showFaturamento ? "grid-cols-8" : "grid-cols-7")}>
+        <TabsList className={cn("grid w-max sm:w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-9" : isTenantAdmin ? "grid-cols-8" : showFaturamento ? "grid-cols-7" : "grid-cols-6")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
-          </TabsTrigger>
-          <TabsTrigger value="agentes" className="gap-1.5">
-            <Bot className="h-4 w-4" />
-            Agentes
           </TabsTrigger>
           <TabsTrigger value="analise" className="gap-1.5">
             <Brain className="h-4 w-4" />
@@ -2436,173 +2432,6 @@ export default function Configuracoes() {
           {(isAdmin) && (
             <ContractSettingsSection tenantId={tenantId} />
           )}
-        </TabsContent>
-
-        {/* ── Tab: Agentes de IA ──────────────────────────────────────────── */}
-        <TabsContent value="agentes" className="space-y-5">
-
-          {/* Status & Usage Card */}
-          <div className="rounded-xl border bg-card p-6 space-y-5">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h2 className="font-semibold text-base flex items-center gap-2">
-                  <Bot className="h-4 w-4 text-primary" />
-                  Status de Autonomia
-                </h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Após o setup, os agentes operam de forma autônoma após 5 dias.
-                </p>
-              </div>
-              {agentQuery.data && (
-                <AutonomyStatus
-                  setupCompletedAt={agentQuery.data.setupCompletedAt}
-                  autonomyEnabledAt={agentQuery.data.autonomyEnabledAt}
-                />
-              )}
-            </div>
-
-            {agentQuery.data && !agentQuery.data.setupCompletedAt && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={onCompleteSetup}
-                disabled={completeSetup.isPending}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                {completeSetup.isPending ? "Iniciando..." : "Concluir Setup e Ativar Autonomia"}
-              </Button>
-            )}
-
-            {agentQuery.data?.id && (
-              <div className="border-t pt-4">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Uso atual</p>
-                <UsageBars agentConfigId={agentQuery.data.id} />
-              </div>
-            )}
-
-            {agentQuery.isLoading && (
-              <div className="space-y-3">
-                <Skeleton className="h-4 w-48" />
-                <Skeleton className="h-2 w-full" />
-                <Skeleton className="h-2 w-full" />
-              </div>
-            )}
-          </div>
-
-          {/* Churn Auto-WhatsApp Card */}
-          {agentQuery.data && (
-            <div className="rounded-xl border bg-card p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="font-semibold text-base flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-green-500" />
-                    Follow-up automático por churn
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Quando ativado, o agente envia WhatsApp automaticamente para leads com risco de churn acima de 70%, máximo uma vez a cada 24h por lead.
-                  </p>
-                </div>
-                <Switch
-                  checked={!!agentQuery.data.churnAutoWhatsapp}
-                  onCheckedChange={(checked) => {
-                    if (!agentQuery.data?.id) return;
-                    updateAgentConf.mutate(
-                      { id: agentQuery.data.id, data: { churnAutoWhatsapp: checked } },
-                      { onSuccess: () => { agentQuery.refetch(); toast({ title: checked ? "Automação de churn ativada." : "Automação de churn desativada." }); } }
-                    );
-                  }}
-                  disabled={updateAgentConf.isPending}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Agents List */}
-          <div className="rounded-xl border bg-card divide-y">
-            <div className="px-6 py-4 flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-base">Configuração dos Agentes</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Ative os agentes e personalize o prompt de cada um.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={onSaveAgents}
-                disabled={agentSaving}
-                className="gap-2"
-              >
-                <Save className="h-4 w-4" />
-                {agentSaving ? "Salvando..." : "Salvar Agentes"}
-              </Button>
-            </div>
-
-            {agentQuery.isLoading
-              ? Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="px-6 py-5 space-y-2">
-                    <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-4 w-64" />
-                    <Skeleton className="h-20 w-full" />
-                  </div>
-                ))
-              : AGENT_KEYS.map((key) => {
-                  const meta    = AGENT_LABELS[key];
-                  const current = agentState[key];
-                  return (
-                    <div key={key} className="px-6 py-5 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold",
-                            current.enabled
-                              ? "bg-primary/10 text-primary"
-                              : "bg-muted text-muted-foreground"
-                          )}>
-                            {meta.label.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium leading-tight">{meta.label}</p>
-                            <p className="text-xs text-muted-foreground">{meta.description}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant={current.enabled ? "default" : "secondary"}
-                            className="text-xs"
-                          >
-                            {current.enabled ? "Ativo" : "Inativo"}
-                          </Badge>
-                          <Switch
-                            checked={current.enabled}
-                            onCheckedChange={(v) =>
-                              setAgentState((prev) => ({ ...prev, [key]: { ...prev[key], enabled: v } }))
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      {current.enabled && (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1.5">Prompt personalizado</p>
-                          <Textarea
-                            placeholder={`Instruções específicas para o agente ${meta.label}... (deixe em branco para usar o padrão)`}
-                            className="text-sm resize-none min-h-[90px]"
-                            value={current.prompt}
-                            onChange={(e) =>
-                              setAgentState((prev) => ({ ...prev, [key]: { ...prev[key], prompt: e.target.value } }))
-                            }
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-            }
-          </div>
-
-          {/* ── SDR Templates de Abordagem ─────────────────────────────── */}
-          <SdrTemplatesSection tenantId={tenantId} />
         </TabsContent>
 
         {/* ── Tab: Análise de IA ──────────────────────────────────────────── */}
