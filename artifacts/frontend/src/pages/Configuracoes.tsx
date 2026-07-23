@@ -4127,7 +4127,22 @@ Body:
 function AIUsageTab({ tenantId }: { tenantId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: usage, isLoading } = useGetTenantAIUsage(tenantId);
+  const { data: usage, isLoading: usageDetailsLoading } = useGetTenantAIUsage(tenantId);
+  const { data: dashboardUsage, isLoading: dashboardUsageLoading } = useQuery<{
+    ia: { quotaUsada: number; tokensMes: number };
+  }>({
+    queryKey: ["dashboard-ai-usage", tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard", {
+        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+  const isLoading = usageDetailsLoading || dashboardUsageLoading;
   const configureKey = useConfigureAnthropicAIKey({
     mutation: {
       onSuccess: () => {
@@ -4150,14 +4165,12 @@ function AIUsageTab({ tenantId }: { tenantId: string }) {
   const [anthropicKey, setAnthropicKey] = useState("");
   const [showKey, setShowKey] = useState(false);
 
-  const spent = Number(usage?.spentThisMonthUsd ?? 0);
-  const quota = Number(usage?.quotaUsd ?? 0);
-  const credits = Number(usage?.creditsUsd ?? 0);
-  const remaining = Math.max(0, quota + credits - spent);
-  const pct = quota + credits > 0 ? Math.round((spent / (quota + credits)) * 100) : 0;
-  const alert80 = quota + credits > 0 && spent / (quota + credits) >= 0.8;
+  // The dashboard is the single source of truth for the tenant's monthly AI quota.
+  const pct = Math.min(100, Math.max(0, Math.round(Number(dashboardUsage?.ia.quotaUsada ?? 0))));
+  const alert80 = pct >= 80;
 
   const features = usage?.featureBreakdown ?? [];
+  const totalFeatureCalls = features.reduce((sum, feature) => sum + Number(feature.calls ?? 0), 0);
   const recent = (usage?.recentLogs ?? []) as Array<{
     id: string;
     feature: string;
@@ -4177,7 +4190,7 @@ function AIUsageTab({ tenantId }: { tenantId: string }) {
             Consumo de IA
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Gastos do mês atual e limites da sua conta.
+            Percentual utilizado da quota mensal de IA.
           </p>
         </div>
 
@@ -4188,55 +4201,23 @@ function AIUsageTab({ tenantId }: { tenantId: string }) {
           </div>
         ) : (
           <div className="space-y-5">
-            {/* Metric cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Gasto este mês</p>
-                <p className="text-lg font-semibold">${spent.toFixed(2)}</p>
+            <div className="rounded-xl border bg-muted/20 p-5 space-y-4">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Uso da quota de IA neste mês</p>
+                  <p className="text-4xl font-bold mt-1">{pct}%</p>
+                </div>
+                <p className="text-xs text-muted-foreground text-right">
+                  Mesma medição exibida no dashboard
+                </p>
               </div>
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Quota plano</p>
-                <p className="text-lg font-semibold">${quota.toFixed(2)}</p>
-              </div>
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Créditos</p>
-                <p className="text-lg font-semibold">${credits.toFixed(2)}</p>
-              </div>
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Restante</p>
-                <p className="text-lg font-semibold">${remaining.toFixed(2)}</p>
-              </div>
-            </div>
-
-            {/* Progress bar */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Consumo do mês</span>
-                <span className={cn("font-medium", alert80 ? "text-amber-600" : "text-muted-foreground")}>
-                  {pct}%
-                </span>
-              </div>
-              <Progress value={pct} className={cn("h-2", alert80 && "[&>div]:bg-amber-500")} />
+              <Progress value={pct} className={cn("h-3", alert80 && "[&>div]:bg-amber-500")} />
               {alert80 && (
                 <p className="text-xs text-amber-600 flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" />
-                  Você atingiu 80% do limite. Considere comprar créditos.
+                  A utilização da quota de IA atingiu {pct}%.
                 </p>
               )}
-            </div>
-
-            {/* Daily spend */}
-            <div className="rounded-lg bg-muted/30 p-3 space-y-1">
-              <p className="text-xs text-muted-foreground">Gasto hoje</p>
-              <p className="text-sm font-medium">
-                ${Number(usage?.dailySpendUsd ?? 0).toFixed(2)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Reseta em{" "}
-                {usage?.dailySpendResetAt
-                  ? format(new Date(usage.dailySpendResetAt), "dd/MM/yyyy HH:mm", { locale: ptBR })
-                  : "—"}
-              </p>
             </div>
           </div>
         )}
@@ -4265,8 +4246,10 @@ function AIUsageTab({ tenantId }: { tenantId: string }) {
                   <span className="capitalize text-sm font-medium">{(f.feature ?? "unknown").replace(/_/g, " ")}</span>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-medium">${Number(f.total ?? 0).toFixed(2)}</p>
-                  <p className="text-xs text-muted-foreground">{f.calls ?? 0} chamadas</p>
+                  <p className="text-sm font-semibold">
+                    {totalFeatureCalls > 0 ? Math.round((Number(f.calls ?? 0) / totalFeatureCalls) * 100) : 0}%
+                  </p>
+                  <p className="text-xs text-muted-foreground">do uso registrado</p>
                 </div>
               </div>
             ))}
@@ -4300,7 +4283,6 @@ function AIUsageTab({ tenantId }: { tenantId: string }) {
                   </p>
                 </div>
                 <div className="flex items-center gap-3 ml-4 shrink-0">
-                  <span className="text-sm font-medium">${Number(log.costEstimateUsd ?? 0).toFixed(4)}</span>
                   {log.usedByok && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded">
                       <Key className="h-2.5 w-2.5" /> BYOK
