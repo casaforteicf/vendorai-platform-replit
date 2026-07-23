@@ -150,7 +150,7 @@ export default function Onboarding() {
       try {
         const data = await apiGet("/api/onboarding") as { stepAtual?: number; concluido?: boolean };
         if (data.concluido) {
-          setLocation("/dashboard");
+          window.location.replace("/dashboard");
           return;
         }
         const s = data.stepAtual ?? 1;
@@ -319,6 +319,24 @@ export default function Onboarding() {
     } catch (err) {
       toast({ title: String(err instanceof Error ? err.message : "Erro ao confirmar plano"), variant: "destructive" });
     } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function goToDashboard() {
+    setSubmitting(true);
+    try {
+      const progress = await apiGet("/api/onboarding") as { concluido?: boolean };
+      if (!progress.concluido) {
+        await apiPatch("/api/onboarding/step/4", {});
+      }
+      // Full navigation intentionally clears stale tenant cache used by ProtectedRoute.
+      window.location.assign("/dashboard");
+    } catch (err) {
+      toast({
+        title: String(err instanceof Error ? err.message : "Erro ao concluir onboarding"),
+        variant: "destructive",
+      });
       setSubmitting(false);
     }
   }
@@ -872,9 +890,10 @@ export default function Onboarding() {
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setLocation("/dashboard")}
+                  onClick={goToDashboard}
+                  disabled={submitting}
                 >
-                  Pular e ir direto para o dashboard
+                  {submitting ? "Concluindo..." : "Pular e ir direto para o dashboard"}
                 </button>
               </div>
             </>
