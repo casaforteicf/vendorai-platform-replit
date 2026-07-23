@@ -229,7 +229,7 @@ export default function AdminTenantDetail() {
       const response = await fetch(`/api/superadmin/tenants/${id}/zapi-test`, {
         method: "POST",
         headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: testPhone, message: "Teste de integração Vendor.ai" }),
+        body: JSON.stringify({ phone: testPhone, message: "Teste de integração appvendorai.com" }),
       });
       const result = await response.json() as { ok?: boolean; error?: string };
       if (!response.ok) throw new Error(result.error ?? "Falha ao enviar teste");
