@@ -732,9 +732,9 @@ router.patch("/deals/:id", async (req, res) => {
                     .from(partnersTable)
                     .where(eq(partnersTable.id, tenant.partnerId));
                   if (partner) {
-                    signers.push({ name: partner.name, email: partner.email });
-                    partnerName = partner.name;
-                    partnerEmail = partner.email;
+                    signers.push({ name: partner.name ?? "Parceiro", email: partner.email ?? "" });
+                    partnerName = partner.name ?? undefined;
+                    partnerEmail = partner.email ?? undefined;
                   }
                 }
 

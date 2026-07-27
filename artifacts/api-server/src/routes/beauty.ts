@@ -283,10 +283,13 @@ router.post("/tenants/:tenantId/beauty/agendamentos", async (req, res) => {
       }, ms2h);
     }
   });
+
+  return;
 });
 
 router.patch("/tenants/:tenantId/beauty/agendamentos/:id/status", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = req.params.tenantId as string;
+  const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { status } = req.body as { status: string };
@@ -344,6 +347,8 @@ router.patch("/tenants/:tenantId/beauty/agendamentos/:id/status", async (req, re
       } catch { /* silent — prontuário pode ser criado manualmente */ }
     });
   }
+
+  return;
 });
 
 // ─── Prontuários ──────────────────────────────────────────────────────────────

@@ -65,7 +65,7 @@ router.post("/arch/prompt-variations", authenticate, async (req, res) => {
 router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   const tid = getTenantId(req);
   const uid = getUserId(req);
-  const { id } = req.params;
+  const id = req.params.id as string;
   const parsed = updatePromptVariationSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues });
@@ -97,7 +97,7 @@ router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
 router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   const tid = getTenantId(req);
   const uid = getUserId(req);
-  const { id } = req.params;
+  const id = req.params.id as string;
   try {
     // Delete only if id + tenant + user all match (least-privilege)
     const [deleted] = await (db as any)

@@ -195,7 +195,7 @@ router.get("/tenants/:tenantId/clinic/consultas", async (req, res) => {
 });
 
 router.post("/tenants/:tenantId/clinic/consultas", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const {
@@ -301,10 +301,13 @@ router.post("/tenants/:tenantId/clinic/consultas", async (req, res) => {
       }, ms2h);
     }
   });
+
+  return;
 });
 
 router.patch("/tenants/:tenantId/clinic/consultas/:id/status", async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = req.params.tenantId as string;
+  const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { status } = req.body as { status: string };
@@ -347,6 +350,8 @@ router.patch("/tenants/:tenantId/clinic/consultas/:id/status", async (req, res) 
       } catch { /* silent — prontuário pode ser criado manualmente */ }
     });
   }
+
+  return;
 });
 
 // ─── Prontuários ──────────────────────────────────────────────────────────────
