@@ -359,7 +359,7 @@ export async function describeImage(imageUrl: string, tenantId: string): Promise
   return result.content || "Imagem sem descrição disponível";
 }
 
-export interface ContentStrategy {
+export interface ContentStrategyHints {
   customerPain?: string;
   postObjective?: string;
   voiceTone?: string;
@@ -386,7 +386,7 @@ const CTA_LABELS: Record<string, string> = {
   sem_cta: "NÃO inclua nenhuma chamada para ação — finalize o post naturalmente",
 };
 
-function buildStrategyBlock(s?: ContentStrategy): string {
+function buildStrategyBlock(s?: ContentStrategyHints): string {
   if (!s?.customerPain) return "";
 
   const objective = s.postObjective ? (POST_OBJECTIVE_LABELS[s.postObjective] ?? s.postObjective) : null;
@@ -413,7 +413,7 @@ export async function generateFeedContent(
   productExtra?: string,
   referenceImageUrls?: string[],
   aspectRatio?: string,
-  strategy?: ContentStrategy,
+  strategy?: ContentStrategyHints,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
@@ -479,7 +479,7 @@ export async function generateStoriesContent(
   productExtra?: string,
   referenceImageUrls?: string[],
   aspectRatio?: string,
-  strategy?: ContentStrategy,
+  strategy?: ContentStrategyHints,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
@@ -542,7 +542,7 @@ export async function generateReelsScript(
   productName: string | undefined,
   variationsCount: number,
   productExtra?: string,
-  strategy?: ContentStrategy,
+  strategy?: ContentStrategyHints,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);

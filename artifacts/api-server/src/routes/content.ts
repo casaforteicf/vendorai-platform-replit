@@ -447,9 +447,9 @@ router.delete("/tenants/:tenantId/content/:contentId/variations/:idx/image", asy
   if (imageIndex !== null && !isNaN(imageIndex)) {
     const currentUrls: string[] = v.imageUrls ?? (v.imageUrl ? [v.imageUrl] : []);
     const newUrls = currentUrls.filter((_, i) => i !== imageIndex);
-    variations[idx] = { ...v, imageUrl: newUrls[0] ?? null, imageUrls: newUrls.length > 1 ? newUrls : undefined };
+    variations[idx] = { ...v, imageUrl: newUrls[0] ?? null, imageUrls: newUrls.length > 1 ? newUrls : undefined } as typeof variations[number];
   } else {
-    variations[idx] = { ...v, imageUrl: null, imageUrls: undefined };
+    variations[idx] = { ...v, imageUrl: null, imageUrls: undefined } as typeof variations[number];
   }
 
   await db
@@ -661,7 +661,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
 
 const improveBodySchema = z.object({
   type: z.enum(["feed", "stories", "reels"]),
-  variation: z.record(z.unknown()),
+  variation: z.record(z.string(), z.unknown()),
   theme: z.string().optional().nullable(),
 });
 
