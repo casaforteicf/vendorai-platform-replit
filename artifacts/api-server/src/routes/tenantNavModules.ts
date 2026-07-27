@@ -17,7 +17,7 @@ const router: IRouter = Router();
 // que é isDefault:true — precisa de override explícito pra desligar).
 // Chamado na provisão de um tenant no plano Light, ou manualmente por admin.
 router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_admin", "super_admin"), async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   const user = (req as any).user;
 
   if (user.role !== "super_admin" && user.tenantId !== tenantId) {
@@ -40,7 +40,7 @@ router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_
 // Retorna o catálogo completo de módulos com o estado is_enabled do tenant.
 // Módulos sem override usam o default do catálogo.
 router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   const user = (req as any).user;
 
   if (!user) {
@@ -75,8 +75,9 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
 
 // ── PATCH /tenants/:tenantId/nav-modules/:moduleKey ─────────────────────────
 // Liga/desliga um módulo específico.
-router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("owner", "admin", "super_admin"), async (req, res) => {
-  const { tenantId, moduleKey } = req.params;
+router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("tenant_admin", "super_admin"), async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const moduleKey = req.params.moduleKey as string;
   const user = (req as any).user;
 
   if (user.role !== "super_admin" && user.tenantId !== tenantId) {
@@ -110,8 +111,8 @@ router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("owner", "
 
 // ── PUT /tenants/:tenantId/nav-modules ──────────────────────────────────────
 // Atualização em lote: body = Array<{ moduleKey, isEnabled }>
-router.put("/tenants/:tenantId/nav-modules", requireRole("owner", "admin", "super_admin"), async (req, res) => {
-  const { tenantId } = req.params;
+router.put("/tenants/:tenantId/nav-modules", requireRole("tenant_admin", "super_admin"), async (req, res) => {
+  const tenantId = req.params.tenantId as string;
   const user = (req as any).user;
 
   if (user.role !== "super_admin" && user.tenantId !== tenantId) {
@@ -129,7 +130,7 @@ router.put("/tenants/:tenantId/nav-modules", requireRole("owner", "admin", "supe
 
   for (const mod of modules) {
     const { moduleKey, isEnabled } = mod as { moduleKey: string; isEnabled: boolean };
-    if (!validKeys.has(moduleKey) || typeof isEnabled !== "boolean") continue;
+    if (!validKeys.has(moduleKey as NavModuleKey) || typeof isEnabled !== "boolean") continue;
 
     await db
       .insert(tenantNavModulesTable)
