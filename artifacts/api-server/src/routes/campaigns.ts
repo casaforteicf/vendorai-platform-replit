@@ -172,7 +172,7 @@ router.get(
             inArray(dealsTable.etapa, filtro.dealEtapas as any[])
           )
         );
-      dealLeadIds = dealRows.map((r) => r.leadId);
+      dealLeadIds = dealRows.map((r) => r.leadId).filter((id): id is string => id != null);
       if (dealLeadIds.length === 0) {
         res.json({ count: 0, filtersApplied: filtro ?? null, sample: [] });
         return;
@@ -212,7 +212,7 @@ router.get(
           )
         );
       for (const d of deals) {
-        dealEtapaMap[d.leadId] = d.etapa;
+        if (d.leadId) dealEtapaMap[d.leadId] = d.etapa;
       }
     }
 

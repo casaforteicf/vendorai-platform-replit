@@ -404,7 +404,7 @@ export async function callOpenAI(
       feature: String(feature),
       tenantId: String(tenantId),
       model: String(model),
-      message: errorMessage,
+      message: errorMessage ?? "Erro desconhecido",
     });
 
     // 429 quota exceeded → attempt Anthropic fallback if key available
@@ -547,7 +547,7 @@ export async function callAnthropic(
         feature: String(feature),
         tenantId: String(tenantId),
         model: String(model),
-        message: errorMessage,
+        message: errorMessage ?? "Erro desconhecido",
       });
       throw new AiGatewayError(
         "Saldo da IA esgotado. Configure uma chave própria da Anthropic ou da OpenAI nas Configurações → Integrações.",
@@ -563,7 +563,7 @@ export async function callAnthropic(
       feature: String(feature),
       tenantId: String(tenantId),
       model: String(model),
-      message: errorMessage,
+      message: errorMessage ?? "Erro desconhecido",
     });
   }
 

@@ -12,7 +12,7 @@ export interface CRMEventPayload {
     telefone: string | null;
     email: string | null;
     source: string | null;
-    etapaFunil: string | null;
+    status: string;
     createdAt: Date;
   };
   timestamp: string;
@@ -61,7 +61,7 @@ export async function exportLeadToCRM(params: {
         telefone: leadsTable.telefone,
         email: leadsTable.email,
         source: leadsTable.source,
-        etapaFunil: leadsTable.etapaFunil,
+        status: leadsTable.status,
         createdAt: leadsTable.createdAt,
       })
       .from(leadsTable)
@@ -82,7 +82,7 @@ export async function exportLeadToCRM(params: {
         telefone: lead.telefone ?? null,
         email: lead.email ?? null,
         source: lead.source ?? null,
-        etapaFunil: lead.etapaFunil ?? null,
+        status: lead.status,
         createdAt: lead.createdAt,
       },
       timestamp: new Date().toISOString(),
