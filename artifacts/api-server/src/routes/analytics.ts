@@ -611,7 +611,7 @@ router.get("/tenants/:tenantId/analytics/agents-dashboard", async (req, res) => 
       .where(eq(scoutOportunidadesTable.tenantId, tid))
       .groupBy(scoutOportunidadesTable.status),
     // Campanhas ativas
-    db.select({ n: count() }).from(campaignsTable).where(and(eq(campaignsTable.tenantId, tid), eq(campaignsTable.status, "ativa"))),
+    db.select({ n: count() }).from(campaignsTable).where(and(eq(campaignsTable.tenantId, tid), eq(campaignsTable.status, "enviando"))),
     // Taxa de conversão das campanhas (sent logs com convertedAt)
     db.select({
       total: count(),
@@ -623,7 +623,7 @@ router.get("/tenants/:tenantId/analytics/agents-dashboard", async (req, res) => 
     // Fila do Prospector
     db.select({ n: count() }).from(prospectorQueueTable).where(eq(prospectorQueueTable.tenantId, tid)),
     // Agendamentos de hoje
-    db.select({ n: count() }).from(agendamentosTable).where(and(eq(agendamentosTable.tenantId, tid), gte(agendamentosTable.dataHora, today))),
+    db.select({ n: count() }).from(agendamentosTable).where(and(eq(agendamentosTable.tenantId, tid), gte(agendamentosTable.dataHoraInicio, today))),
     // Ações dos agentes (últimos 30 dias)
     db
       .select({
