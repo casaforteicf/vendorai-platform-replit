@@ -92,7 +92,7 @@ router.post("/ecosystem-hub/companies", async (req: Request, res: Response) => {
 router.get("/ecosystem-hub/companies/:id", async (req: Request, res: Response) => {
   try {
     const [company] = await db
-      .select().from(vepCompaniesTable).where(eq(vepCompaniesTable.id, req.params.id));
+      .select().from(vepCompaniesTable).where(eq(vepCompaniesTable.id, (req.params.id as string)));
     if (!company) return err(res, "Empresa não encontrada", 404);
     return ok(res, company);
   } catch (e) {
@@ -110,7 +110,7 @@ router.patch("/ecosystem-hub/companies/:id", async (req: Request, res: Response)
     const [updated] = await db
       .update(vepCompaniesTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(vepCompaniesTable.id, req.params.id))
+      .where(eq(vepCompaniesTable.id, (req.params.id as string)))
       .returning();
     if (!updated) return err(res, "Empresa não encontrada", 404);
     return ok(res, updated);
@@ -125,7 +125,7 @@ router.patch("/ecosystem-hub/companies/:id", async (req: Request, res: Response)
 router.delete("/ecosystem-hub/companies/:id", async (req: Request, res: Response) => {
   try {
     const [deleted] = await db
-      .delete(vepCompaniesTable).where(eq(vepCompaniesTable.id, req.params.id)).returning({ id: vepCompaniesTable.id });
+      .delete(vepCompaniesTable).where(eq(vepCompaniesTable.id, (req.params.id as string))).returning({ id: vepCompaniesTable.id });
     if (!deleted) return err(res, "Empresa não encontrada", 404);
     return ok(res, { deleted: true });
   } catch (e) {
@@ -141,7 +141,7 @@ router.get("/ecosystem-hub/companies/:id/professionals", async (req: Request, re
     const professionals = await db
       .select().from(vepProfessionalsTable)
       .where(and(
-        eq(vepProfessionalsTable.companyId, req.params.id),
+        eq(vepProfessionalsTable.companyId, (req.params.id as string)),
         eq(vepProfessionalsTable.active, true),
       ))
       .orderBy(vepProfessionalsTable.name);
@@ -156,7 +156,7 @@ router.get("/ecosystem-hub/companies/:id/professionals", async (req: Request, re
 
 router.post("/ecosystem-hub/companies/:id/professionals", async (req: Request, res: Response) => {
   try {
-    const parsed = insertVepProfessionalSchema.safeParse({ ...req.body, companyId: req.params.id });
+    const parsed = insertVepProfessionalSchema.safeParse({ ...req.body, companyId: (req.params.id as string) });
     if (!parsed.success) return err(res, parsed.error.message);
     const [prof] = await db.insert(vepProfessionalsTable).values(parsed.data).returning();
     return ok(res, prof, 201);
@@ -175,7 +175,7 @@ router.patch("/ecosystem-hub/professionals/:profId", async (req: Request, res: R
     const [updated] = await db
       .update(vepProfessionalsTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(vepProfessionalsTable.id, req.params.profId))
+      .where(eq(vepProfessionalsTable.id, (req.params.profId as string)))
       .returning();
     if (!updated) return err(res, "Profissional não encontrado", 404);
     return ok(res, updated);
@@ -190,7 +190,7 @@ router.patch("/ecosystem-hub/professionals/:profId", async (req: Request, res: R
 router.delete("/ecosystem-hub/professionals/:profId", async (req: Request, res: Response) => {
   try {
     const [del] = await db
-      .delete(vepProfessionalsTable).where(eq(vepProfessionalsTable.id, req.params.profId))
+      .delete(vepProfessionalsTable).where(eq(vepProfessionalsTable.id, (req.params.profId as string)))
       .returning({ id: vepProfessionalsTable.id });
     if (!del) return err(res, "Profissional não encontrado", 404);
     return ok(res, { deleted: true });
@@ -206,7 +206,7 @@ router.get("/ecosystem-hub/companies/:id/portfolio", async (req: Request, res: R
   try {
     const { type } = req.query;
     const conditions = [
-      eq(vepPortfolioTable.companyId, req.params.id),
+      eq(vepPortfolioTable.companyId, (req.params.id as string)),
       eq(vepPortfolioTable.published, true),
     ];
     if (type) conditions.push(eq(vepPortfolioTable.type, String(type)));
@@ -225,7 +225,7 @@ router.get("/ecosystem-hub/companies/:id/portfolio", async (req: Request, res: R
 
 router.post("/ecosystem-hub/companies/:id/portfolio", async (req: Request, res: Response) => {
   try {
-    const parsed = insertVepPortfolioSchema.safeParse({ ...req.body, companyId: req.params.id });
+    const parsed = insertVepPortfolioSchema.safeParse({ ...req.body, companyId: (req.params.id as string) });
     if (!parsed.success) return err(res, parsed.error.message);
     const [item] = await db.insert(vepPortfolioTable).values(parsed.data).returning();
     return ok(res, item, 201);
@@ -244,7 +244,7 @@ router.patch("/ecosystem-hub/portfolio/:itemId", async (req: Request, res: Respo
     const [updated] = await db
       .update(vepPortfolioTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(vepPortfolioTable.id, req.params.itemId))
+      .where(eq(vepPortfolioTable.id, (req.params.itemId as string)))
       .returning();
     if (!updated) return err(res, "Item não encontrado", 404);
     return ok(res, updated);
@@ -259,7 +259,7 @@ router.patch("/ecosystem-hub/portfolio/:itemId", async (req: Request, res: Respo
 router.delete("/ecosystem-hub/portfolio/:itemId", async (req: Request, res: Response) => {
   try {
     const [del] = await db
-      .delete(vepPortfolioTable).where(eq(vepPortfolioTable.id, req.params.itemId))
+      .delete(vepPortfolioTable).where(eq(vepPortfolioTable.id, (req.params.itemId as string)))
       .returning({ id: vepPortfolioTable.id });
     if (!del) return err(res, "Item não encontrado", 404);
     return ok(res, { deleted: true });
@@ -284,7 +284,7 @@ router.post("/ecosystem-hub/companies/:id/follow", async (req: Request, res: Res
       .insert(vepConnectionsTable)
       .values({
         fromCompanyId: parsed.data.fromCompanyId,
-        toCompanyId:   req.params.id,
+        toCompanyId:   (req.params.id as string),
         type:          parsed.data.type ?? "follow",
       })
       .onConflictDoNothing()

@@ -387,7 +387,7 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
               inArray(dealsTable.leadId, leadIds)
             )
           );
-        leadIds = dealRows.map((r) => r.leadId);
+        leadIds = dealRows.map((r) => r.leadId).filter((id): id is string => id != null);
       }
 
       if (leadIds.length === 0) {
@@ -415,7 +415,7 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
             )
           );
         for (const d of dealRows) {
-          leadEtapaMap[d.leadId] = d.etapa;
+          if (d.leadId) leadEtapaMap[d.leadId] = d.etapa;
         }
       }
 
@@ -607,7 +607,7 @@ async function runLostDealReactivation(log: Logger): Promise<void> {
       // 1. Mover deal para o primeiro estágio do funil
       await db
         .update(dealsTable)
-        .set({ etapa: targetEtapa, updatedAt: now })
+        .set({ etapa: targetEtapa as any, updatedAt: now })
         .where(eq(dealsTable.id, dealId));
       log.info({ dealId, targetEtapa }, "scheduler/reactivation: deal moved to first stage");
 
@@ -1271,9 +1271,26 @@ async function leadHasReplied(tenantId: string, leadId: string, since: Date): Pr
 
 async function recordEmailSent(tenantId: string, leadId: string, conteudo: string): Promise<void> {
   if (!conteudo.trim()) return;
+
+  // conversationId é obrigatório em messages — acha a conversa de e-mail
+  // já existente pra esse lead, ou cria uma nova.
+  const [existingConv] = await db
+    .select({ id: conversationsTable.id })
+    .from(conversationsTable)
+    .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, leadId), eq(conversationsTable.channel, "email")))
+    .limit(1);
+
+  const conversationId = existingConv?.id ?? (
+    await db
+      .insert(conversationsTable)
+      .values({ tenantId, leadId, channel: "email", status: "open" })
+      .returning({ id: conversationsTable.id })
+  )[0].id;
+
   await db.insert(messagesTable).values({
     tenantId,
     leadId,
+    conversationId,
     direcao: "saida",
     canal: "email",
     conteudo,
@@ -1470,6 +1487,11 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
   for (const conv of candidates) {
     totalChecked++;
     try {
+      if (!conv.leadId) {
+        totalSkipped++;
+        continue;
+      }
+
       // Already warm — nothing to do
       if (conv.leadStatus === "aquecimento") {
         totalSkipped++;

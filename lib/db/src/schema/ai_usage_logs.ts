@@ -28,7 +28,8 @@ export type AiFeature =
   | "web_search"
   | "media_interpretation"
   | "auto_quote"
-  | "spin_briefing";
+  | "spin_briefing"
+  | "churn_retention";
 
 export const aiFeatureEnum = pgEnum("ai_feature", [
   "agent_sdr",
