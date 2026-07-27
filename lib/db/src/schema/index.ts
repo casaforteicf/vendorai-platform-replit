@@ -55,6 +55,8 @@ export * from "./imoveis_propriedades";
 export * from "./imoveis_visitas";
 export * from "./fretes_veiculos";
 export * from "./fretes_cargas";
+export * from "./veiculos_estoque";
+export * from "./veiculos_test_drives";
 export * from "./restaurante_cardapio";
 export * from "./restaurante_pedidos";
 export * from "./supermercado_campanhas";

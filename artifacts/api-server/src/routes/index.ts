@@ -72,6 +72,7 @@ import supermercadoRouter from "./supermercado";
 import farmaciaRouter from "./farmacia";
 import imoveisRouter from "./imoveis";
 import fretesRouter from "./fretes";
+import veiculosRouter from "./veiculos";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
@@ -267,6 +268,7 @@ router.use(supermercadoRouter);
 router.use(farmaciaRouter);
 router.use(imoveisRouter);
 router.use(fretesRouter);
+router.use(veiculosRouter);
 router.use(restauranteRouter);
 
 // Site Generator Hub
