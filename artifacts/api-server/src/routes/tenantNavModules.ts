@@ -11,6 +11,31 @@ import { requireRole } from "./index.js";
 
 const router: IRouter = Router();
 
+// ── POST /tenants/:tenantId/apply-light-plan-defaults ───────────────────────
+// Aplica as restrições de tela do plano Light: sem Revenue Scout ("revenue",
+// já é isDefault:false, não precisa de override), sem Agenda ("scheduler",
+// que é isDefault:true — precisa de override explícito pra desligar).
+// Chamado na provisão de um tenant no plano Light, ou manualmente por admin.
+router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_admin", "super_admin"), async (req, res) => {
+  const { tenantId } = req.params;
+  const user = (req as any).user;
+
+  if (user.role !== "super_admin" && user.tenantId !== tenantId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  await db
+    .insert(tenantNavModulesTable)
+    .values({ tenantId, moduleKey: "scheduler", isEnabled: false } as any)
+    .onConflictDoUpdate({
+      target: [tenantNavModulesTable.tenantId, tenantNavModulesTable.moduleKey],
+      set: { isEnabled: false, updatedAt: new Date() },
+    });
+
+  res.json({ applied: true, disabledModules: ["scheduler"], note: "'revenue' já vem desligado por padrão (isDefault: false)." });
+});
+
 // ── GET /tenants/:tenantId/nav-modules ──────────────────────────────────────
 // Retorna o catálogo completo de módulos com o estado is_enabled do tenant.
 // Módulos sem override usam o default do catálogo.
