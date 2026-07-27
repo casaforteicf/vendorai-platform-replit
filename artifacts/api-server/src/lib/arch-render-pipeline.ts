@@ -49,6 +49,28 @@ function fillRect(
 }
 
 /**
+ * Gera máscara PNG a partir de coordenadas reais de retângulo desenhadas
+ * pelo usuário (x,y,w,h em porcentagem 0-100, mesma convenção do
+ * SelectionCanvas no frontend) — seleção livre de verdade, não mais só o
+ * mapa heurístico de 5 zonas fixas.
+ */
+export async function createRectMask(
+  rects: { x: number; y: number; w: number; h: number }[],
+  width: number,
+  height: number,
+): Promise<Buffer> {
+  const pixels = Buffer.alloc(width * height, 0); // all black = preserve
+
+  for (const r of rects) {
+    fillRect(pixels, width, height, r.x / 100, r.y / 100, (r.x + r.w) / 100, (r.y + r.h) / 100, 255);
+  }
+
+  return sharp(pixels, { raw: { width, height, channels: 1 } })
+    .png()
+    .toBuffer();
+}
+
+/**
  * Gera máscara PNG (greyscale, branco=editável, preto=preservado)
  * baseada nas zonas selecionadas. Usada exclusivamente no ajuste pontual
  * via Fill Pro — não na geração inicial do Kontext.

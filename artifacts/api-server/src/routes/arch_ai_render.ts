@@ -24,6 +24,7 @@ import { authenticate } from "../middlewares/auth.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   createZoneMask,
+  createRectMask,
   callReplicateFluxKontext,
   callReplicateFluxUltraPro,
   callReplicateFluxFill,
@@ -72,8 +73,16 @@ const renderBodySchema = z.object({
 });
 
 const adjustBodySchema = z.object({
-  mask_zones:    z.array(z.string()).optional().default([]),
-  ajuste_prompt: z.string().optional(),
+  mask_zones:      z.array(z.string()).optional().default([]),
+  ajuste_prompt:   z.string().optional(),
+  // Máscara real desenhada no frontend (PNG base64) — maior prioridade.
+  mask_file_base64: z.string().optional(),
+  // Seleção real por retângulo arrastável (SelectionCanvas no
+  // RenderStudioPage.tsx) — x/y/w/h em porcentagem (0-100). Antes desse
+  // fix, esse campo era descartado silenciosamente pelo Zod (não existia
+  // no schema) e o ajuste caía no mapa heurístico de zonas fixas, que não
+  // batia com nenhuma seleção real desenhada.
+  mask_coordinates: z.array(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })).optional(),
 });
 
 const projectConfigBodySchema = z.object({
@@ -262,7 +271,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     });
   }
 
-  const { mask_zones, ajuste_prompt } = parsed.data;
+  const { mask_zones, ajuste_prompt, mask_file_base64, mask_coordinates } = parsed.data;
 
   // Herda mode do pai — e sanitiza zonas se mode=preservar
   const safeZones = parent.mode === "preservar"
@@ -302,6 +311,8 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     mode:         parent.mode as "preservar" | "criar",
     originalUrl:  baseImageUrl,
     maskZones:    safeZones,
+    maskFileBase64: mask_file_base64,
+    maskCoordinates: mask_coordinates,
     ambiente:     parent.ambiente,
     estilo:       parent.estilo,
     iluminacao:   parent.iluminacao,
@@ -377,6 +388,12 @@ interface RenderJobParams {
   mode:         "preservar" | "criar";
   originalUrl:  string;
   maskZones:    string[];
+  // Máscara real desenhada pelo usuário (PNG base64, branco=editar,
+  // preto=preservar) — quando presente, tem prioridade sobre o mapa
+  // heurístico de zonas fixas (ZONE_REGIONS). Seleção livre de verdade,
+  // não mais só 5 zonas em posição fixa presumindo cozinha padrão.
+  maskFileBase64?: string;
+  maskCoordinates?: { x: number; y: number; w: number; h: number }[];
   ambiente:     string | null | undefined;
   estilo:       string | null | undefined;
   iluminacao:   string | null | undefined;
@@ -391,7 +408,7 @@ const MAX_RETENTATIVAS = 2;
 
 async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
-    renderId, tenantId: tid, mode, originalUrl, maskZones,
+    renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
     ambiente, estilo, iluminacao, angulo, materials, userNotes,
     logger, retentativas,
   } = params;
@@ -448,7 +465,15 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
       // ── 3b. Ajuste pós-geração de elemento pontual (Fill Pro + máscara) ─
       // Chamada separada sobre resultado já convertido — nunca combinada
       // com a geração inicial do Kontext no mesmo fluxo.
-      const maskBuf = await createZoneMask(maskZones, width, height);
+      // Seleção livre de verdade: se o usuário desenhou a máscara real
+      // (frontend com ferramenta de pincel), usa ela direto — só cai no
+      // mapa heurístico de 5 zonas fixas (ZONE_REGIONS) se nada foi
+      // desenhado, mantendo compatibilidade com o fluxo antigo.
+      const maskBuf = maskFileBase64
+        ? Buffer.from(maskFileBase64.replace(/^data:image\/\w+;base64,/, ""), "base64")
+        : maskCoordinates && maskCoordinates.length > 0
+          ? await createRectMask(maskCoordinates, width, height)
+          : await createZoneMask(maskZones, width, height);
 
       const maskPath = await storage.savePrivateBuffer(
         maskBuf, "image/png",
