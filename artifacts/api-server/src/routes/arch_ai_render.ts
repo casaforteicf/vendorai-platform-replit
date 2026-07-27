@@ -171,7 +171,7 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
     .select()
     .from(archAiRendersTable)
     .where(and(
-      eq(archAiRendersTable.id,       req.params["id"]!),
+      eq(archAiRendersTable.id,       (req.params["id"] as string)),
       eq(archAiRendersTable.tenantId, tid as string),
     )!)
     .limit(1);
@@ -243,7 +243,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     .select()
     .from(archAiRendersTable)
     .where(and(
-      eq(archAiRendersTable.id,       req.params["id"]!),
+      eq(archAiRendersTable.id,       (req.params["id"] as string)),
       eq(archAiRendersTable.tenantId, tid as string),
     )!)
     .limit(1);

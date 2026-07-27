@@ -70,7 +70,7 @@ async function isOwner(organizacaoId: string, userId: string): Promise<boolean> 
 
 // ── GET /organizacoes — listar organizações do usuário ───────────────────────
 router.get("/organizacoes", authenticate, async (req, res) => {
-  const userId = req.user!.id;
+  const userId = req.user!.sub;
   const isSuperAdmin = req.user!.platformRole === "super_admin";
 
   let orgs;
@@ -122,7 +122,7 @@ router.post("/organizacoes", authenticate, async (req, res) => {
     res.status(422).json({ error: parsed.error.message });
     return;
   }
-  const userId = req.user!.id;
+  const userId = req.user!.sub;
   const [org] = await db
     .insert(organizacoesTable)
     .values({ nome: parsed.data.nome, ownerId: userId })
@@ -132,8 +132,8 @@ router.post("/organizacoes", authenticate, async (req, res) => {
 
 // ── PATCH /organizacoes/:id — atualizar nome ─────────────────────────────────
 router.patch("/organizacoes/:id", authenticate, async (req, res) => {
-  const { id } = req.params;
-  const userId = req.user!.id;
+  const id = req.params.id as string;
+  const userId = req.user!.sub;
   const isSuperAdmin = req.user!.platformRole === "super_admin";
 
   if (!isSuperAdmin && !(await isOwner(id, userId))) {
@@ -163,8 +163,8 @@ const addMemberSchema = z.object({
 });
 
 router.post("/organizacoes/:id/members", authenticate, async (req, res) => {
-  const { id } = req.params;
-  const requesterId = req.user!.id;
+  const id = req.params.id as string;
+  const requesterId = req.user!.sub;
   const isSuperAdmin = req.user!.platformRole === "super_admin";
 
   if (!isSuperAdmin && !(await isOwner(id, requesterId))) {
@@ -205,8 +205,9 @@ router.post("/organizacoes/:id/members", authenticate, async (req, res) => {
 
 // ── DELETE /organizacoes/:id/members/:userId — remover membro ────────────────
 router.delete("/organizacoes/:id/members/:userId", authenticate, async (req, res) => {
-  const { id, userId: targetUserId } = req.params;
-  const requesterId = req.user!.id;
+  const id = req.params.id as string;
+  const targetUserId = req.params.userId as string;
+  const requesterId = req.user!.sub;
   const isSuperAdmin = req.user!.platformRole === "super_admin";
 
   if (!isSuperAdmin && !(await isOwner(id, requesterId))) {
@@ -228,8 +229,9 @@ router.delete("/organizacoes/:id/members/:userId", authenticate, async (req, res
 
 // ── POST /organizacoes/:id/tenants/:tenantId — vincular tenant ───────────────
 router.post("/organizacoes/:id/tenants/:tenantId", authenticate, async (req, res) => {
-  const { id: orgId, tenantId } = req.params;
-  const requesterId = req.user!.id;
+  const orgId = req.params.id as string;
+  const tenantId = req.params.tenantId as string;
+  const requesterId = req.user!.sub;
   const isSuperAdmin = req.user!.platformRole === "super_admin";
 
   if (!isSuperAdmin && !(await isOwner(orgId, requesterId))) {
@@ -258,8 +260,9 @@ router.post("/organizacoes/:id/tenants/:tenantId", authenticate, async (req, res
 
 // ── DELETE /organizacoes/:id/tenants/:tenantId — desvincular tenant ──────────
 router.delete("/organizacoes/:id/tenants/:tenantId", authenticate, async (req, res) => {
-  const { id: orgId, tenantId } = req.params;
-  const requesterId = req.user!.id;
+  const orgId = req.params.id as string;
+  const tenantId = req.params.tenantId as string;
+  const requesterId = req.user!.sub;
   const isSuperAdmin = req.user!.platformRole === "super_admin";
 
   if (!isSuperAdmin && !(await isOwner(orgId, requesterId))) {
@@ -280,8 +283,8 @@ router.delete("/organizacoes/:id/tenants/:tenantId", authenticate, async (req, r
 // Nenhum join cross-tenant ocorre no banco. Apenas somas numéricas são retornadas.
 // Registros individuais de uma loja nunca aparecem na resposta de outra.
 router.get("/organizacoes/:id/painel", authenticate, async (req, res) => {
-  const { id: orgId } = req.params;
-  const requesterId = req.user!.id;
+  const orgId = req.params.id as string;
+  const requesterId = req.user!.sub;
   const isSuperAdmin = req.user!.platformRole === "super_admin";
 
   if (!isSuperAdmin && !(await isMembro(orgId, requesterId))) {
@@ -342,7 +345,7 @@ router.get("/organizacoes/:id/painel", authenticate, async (req, res) => {
       const [dealsRow] = await db
         .select({
           count: sql<number>`count(*)`,
-          receita: sql<number>`coalesce(sum(${dealsTable.valorTotal}), 0)`,
+          receita: sql<number>`coalesce(sum(${dealsTable.valor}), 0)`,
         })
         .from(dealsTable)
         .where(and(eq(dealsTable.tenantId, tenant.id), eq(dealsTable.etapa, "ganho")));

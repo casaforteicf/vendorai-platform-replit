@@ -98,7 +98,7 @@ router.post("/poe/opportunities", async (req: Request, res: Response) => {
 
 router.get("/poe/opportunities/:id", async (req: Request, res: Response) => {
   try {
-    const [opp] = await db.select().from(poeOpportunitiesTable).where(eq(poeOpportunitiesTable.id, req.params.id));
+    const [opp] = await db.select().from(poeOpportunitiesTable).where(eq(poeOpportunitiesTable.id, (req.params.id as string)));
     if (!opp) return err(res, "Oportunidade não encontrada", 404);
     return ok(res, opp);
   } catch (e) {
@@ -113,7 +113,7 @@ router.patch("/poe/opportunities/:id", async (req: Request, res: Response) => {
     if (!parsed.success) return err(res, parsed.error.message);
     const [updated] = await db.update(poeOpportunitiesTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(poeOpportunitiesTable.id, req.params.id))
+      .where(eq(poeOpportunitiesTable.id, (req.params.id as string)))
       .returning();
     if (!updated) return err(res, "Oportunidade não encontrada", 404);
     return ok(res, updated);
@@ -125,7 +125,7 @@ router.patch("/poe/opportunities/:id", async (req: Request, res: Response) => {
 
 router.delete("/poe/opportunities/:id", async (req: Request, res: Response) => {
   try {
-    const [del] = await db.delete(poeOpportunitiesTable).where(eq(poeOpportunitiesTable.id, req.params.id)).returning({ id: poeOpportunitiesTable.id });
+    const [del] = await db.delete(poeOpportunitiesTable).where(eq(poeOpportunitiesTable.id, (req.params.id as string))).returning({ id: poeOpportunitiesTable.id });
     if (!del) return err(res, "Oportunidade não encontrada", 404);
     return ok(res, { deleted: true });
   } catch (e) {
@@ -138,7 +138,7 @@ router.post("/poe/opportunities/:id/dismiss", async (req: Request, res: Response
   try {
     const [updated] = await db.update(poeOpportunitiesTable)
       .set({ dismissed: true, status: "dismissed", updatedAt: new Date() })
-      .where(eq(poeOpportunitiesTable.id, req.params.id))
+      .where(eq(poeOpportunitiesTable.id, (req.params.id as string)))
       .returning();
     if (!updated) return err(res, "Oportunidade não encontrada", 404);
     return ok(res, updated);
@@ -153,7 +153,7 @@ router.post("/poe/opportunities/:id/dismiss", async (req: Request, res: Response
 router.get("/poe/opportunities/:id/recommendations", async (req: Request, res: Response) => {
   try {
     const recs = await db.select().from(poeRecommendationsTable)
-      .where(and(eq(poeRecommendationsTable.opportunityId, req.params.id), eq(poeRecommendationsTable.dismissed, false)))
+      .where(and(eq(poeRecommendationsTable.opportunityId, (req.params.id as string)), eq(poeRecommendationsTable.dismissed, false)))
       .orderBy(poeRecommendationsTable.rank);
     return ok(res, recs);
   } catch (e) {
@@ -164,7 +164,7 @@ router.get("/poe/opportunities/:id/recommendations", async (req: Request, res: R
 
 router.post("/poe/opportunities/:id/recommendations", async (req: Request, res: Response) => {
   try {
-    const parsed = insertPoeRecommendationSchema.safeParse({ ...req.body, opportunityId: req.params.id });
+    const parsed = insertPoeRecommendationSchema.safeParse({ ...req.body, opportunityId: (req.params.id as string) });
     if (!parsed.success) return err(res, parsed.error.message);
     const [rec] = await db.insert(poeRecommendationsTable).values(parsed.data).returning();
     return ok(res, rec, 201);
@@ -180,7 +180,7 @@ router.patch("/poe/recommendations/:recId", async (req: Request, res: Response) 
     if (!parsed.success) return err(res, parsed.error.message);
     const [updated] = await db.update(poeRecommendationsTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(poeRecommendationsTable.id, req.params.recId))
+      .where(eq(poeRecommendationsTable.id, (req.params.recId as string)))
       .returning();
     if (!updated) return err(res, "Recomendação não encontrada", 404);
     return ok(res, updated);
@@ -193,7 +193,7 @@ router.patch("/poe/recommendations/:recId", async (req: Request, res: Response) 
 router.post("/poe/recommendations/:recId/select", async (req: Request, res: Response) => {
   try {
     const [rec] = await db.select({ opportunityId: poeRecommendationsTable.opportunityId })
-      .from(poeRecommendationsTable).where(eq(poeRecommendationsTable.id, req.params.recId));
+      .from(poeRecommendationsTable).where(eq(poeRecommendationsTable.id, (req.params.recId as string)));
     if (!rec) return err(res, "Recomendação não encontrada", 404);
 
     // Deselect siblings first
@@ -203,7 +203,7 @@ router.post("/poe/recommendations/:recId/select", async (req: Request, res: Resp
 
     const [updated] = await db.update(poeRecommendationsTable)
       .set({ selected: true, updatedAt: new Date() })
-      .where(eq(poeRecommendationsTable.id, req.params.recId))
+      .where(eq(poeRecommendationsTable.id, (req.params.recId as string)))
       .returning();
 
     // Update opportunity status to "quoted"
@@ -254,9 +254,9 @@ router.post("/poe/quotations", async (req: Request, res: Response) => {
 
 router.get("/poe/quotations/:id", async (req: Request, res: Response) => {
   try {
-    const [quot] = await db.select().from(poeQuotationRequestsTable).where(eq(poeQuotationRequestsTable.id, req.params.id));
+    const [quot] = await db.select().from(poeQuotationRequestsTable).where(eq(poeQuotationRequestsTable.id, (req.params.id as string)));
     if (!quot) return err(res, "Cotação não encontrada", 404);
-    const responses = await db.select().from(poeQuotationResponsesTable).where(eq(poeQuotationResponsesTable.requestId, req.params.id));
+    const responses = await db.select().from(poeQuotationResponsesTable).where(eq(poeQuotationResponsesTable.requestId, (req.params.id as string)));
     return ok(res, { ...quot, responses });
   } catch (e) {
     req.log?.error(e, "poe quotation get error");
@@ -270,7 +270,7 @@ router.patch("/poe/quotations/:id", async (req: Request, res: Response) => {
     if (!parsed.success) return err(res, parsed.error.message);
     const [updated] = await db.update(poeQuotationRequestsTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(poeQuotationRequestsTable.id, req.params.id))
+      .where(eq(poeQuotationRequestsTable.id, (req.params.id as string)))
       .returning();
     if (!updated) return err(res, "Cotação não encontrada", 404);
     return ok(res, updated);
@@ -284,7 +284,7 @@ router.post("/poe/quotations/:id/send", async (req: Request, res: Response) => {
   try {
     const [updated] = await db.update(poeQuotationRequestsTable)
       .set({ status: "sent", sentAt: new Date(), updatedAt: new Date() })
-      .where(eq(poeQuotationRequestsTable.id, req.params.id))
+      .where(eq(poeQuotationRequestsTable.id, (req.params.id as string)))
       .returning();
     if (!updated) return err(res, "Cotação não encontrada", 404);
     return ok(res, updated);
@@ -296,13 +296,13 @@ router.post("/poe/quotations/:id/send", async (req: Request, res: Response) => {
 
 router.post("/poe/quotations/:id/responses", async (req: Request, res: Response) => {
   try {
-    const parsed = insertPoeQuotationResponseSchema.safeParse({ ...req.body, requestId: req.params.id });
+    const parsed = insertPoeQuotationResponseSchema.safeParse({ ...req.body, requestId: (req.params.id as string) });
     if (!parsed.success) return err(res, parsed.error.message);
     const [resp] = await db.insert(poeQuotationResponsesTable).values(parsed.data).returning();
     // Update request status to "received"
     await db.update(poeQuotationRequestsTable)
       .set({ status: "received", updatedAt: new Date() })
-      .where(eq(poeQuotationRequestsTable.id, req.params.id));
+      .where(eq(poeQuotationRequestsTable.id, (req.params.id as string)));
     return ok(res, resp, 201);
   } catch (e) {
     req.log?.error(e, "poe quotation response create error");
@@ -316,7 +316,7 @@ router.patch("/poe/quotation-responses/:respId", async (req: Request, res: Respo
     if (!parsed.success) return err(res, parsed.error.message);
     const [updated] = await db.update(poeQuotationResponsesTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(poeQuotationResponsesTable.id, req.params.respId))
+      .where(eq(poeQuotationResponsesTable.id, (req.params.respId as string)))
       .returning();
     if (!updated) return err(res, "Resposta não encontrada", 404);
     return ok(res, updated);
@@ -329,7 +329,7 @@ router.patch("/poe/quotation-responses/:respId", async (req: Request, res: Respo
 router.post("/poe/quotation-responses/:respId/select", async (req: Request, res: Response) => {
   try {
     const [resp] = await db.select({ requestId: poeQuotationResponsesTable.requestId })
-      .from(poeQuotationResponsesTable).where(eq(poeQuotationResponsesTable.id, req.params.respId));
+      .from(poeQuotationResponsesTable).where(eq(poeQuotationResponsesTable.id, (req.params.respId as string)));
     if (!resp) return err(res, "Resposta não encontrada", 404);
     // Deselect siblings
     await db.update(poeQuotationResponsesTable)
@@ -337,7 +337,7 @@ router.post("/poe/quotation-responses/:respId/select", async (req: Request, res:
       .where(eq(poeQuotationResponsesTable.requestId, resp.requestId));
     const [updated] = await db.update(poeQuotationResponsesTable)
       .set({ selected: true, updatedAt: new Date() })
-      .where(eq(poeQuotationResponsesTable.id, req.params.respId))
+      .where(eq(poeQuotationResponsesTable.id, (req.params.respId as string)))
       .returning();
     // Close quotation request
     await db.update(poeQuotationRequestsTable)
@@ -418,7 +418,7 @@ router.get("/poe/matrix/:projectId", async (req: Request, res: Response) => {
     const opportunities = await db.select().from(poeOpportunitiesTable)
       .where(and(
         eq(poeOpportunitiesTable.tenantId, tenantId),
-        eq(poeOpportunitiesTable.projectId, req.params.projectId),
+        eq(poeOpportunitiesTable.projectId, (req.params.projectId as string)),
         eq(poeOpportunitiesTable.dismissed, false),
       ));
     // Group by environment + category

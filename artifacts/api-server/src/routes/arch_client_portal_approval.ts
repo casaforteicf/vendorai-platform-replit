@@ -225,7 +225,7 @@ async function sendProposal(tId: string | null, proposalId: string, payload: Sen
     );
   }
 
-  await addEvent(proposalId, "sent", "internal", "Proposta enviada ao cliente.", payload as Record<string, unknown>);
+  await addEvent(proposalId, "sent", "internal", "Proposta enviada ao cliente.", payload as unknown as Record<string, unknown>);
 
   return getProposalBundleById(proposalId);
 }

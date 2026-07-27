@@ -228,7 +228,7 @@ router.post("/arch/projetos", authenticate, async (req, res) => {
 
 // GET /api/arch/projetos/:id
 router.get("/arch/projetos/:id", authenticate, async (req, res) => {
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
   const tid = tenantId(req);
 
   const [projeto] = await db
@@ -263,7 +263,7 @@ router.get("/arch/projetos/:id", authenticate, async (req, res) => {
 
 // PATCH /api/arch/projetos/:id
 router.patch("/arch/projetos/:id", authenticate, async (req, res) => {
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
 
   const [existing] = await db
     .select({ tenantId: archProjetosTable.tenantId })
@@ -292,7 +292,7 @@ router.patch("/arch/projetos/:id", authenticate, async (req, res) => {
 
 // DELETE /api/arch/projetos/:id — soft delete (status = cancelado)
 router.delete("/arch/projetos/:id", authenticate, async (req, res) => {
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
 
   const [existing] = await db
     .select({ tenantId: archProjetosTable.tenantId })
@@ -316,7 +316,7 @@ router.delete("/arch/projetos/:id", authenticate, async (req, res) => {
 
 // POST /api/arch/projetos/:id/portal/ativar
 router.post("/arch/projetos/:id/portal/ativar", authenticate, async (req, res) => {
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
 
   const [existing] = await db
     .select({ tenantId: archProjetosTable.tenantId, portalToken: archProjetosTable.portalToken })
@@ -344,7 +344,7 @@ router.post("/arch/projetos/:id/portal/ativar", authenticate, async (req, res) =
 
 // POST /api/arch/projetos/:id/ambientes
 router.post("/arch/projetos/:id/ambientes", authenticate, async (req, res) => {
-  const projetoId = String(req.params.id);
+  const projetoId = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ tenantId: archProjetosTable.tenantId })
@@ -372,7 +372,7 @@ router.post("/arch/projetos/:id/ambientes", authenticate, async (req, res) => {
 
 // PATCH /api/arch/projetos/:id/ambientes/:ambId
 router.patch("/arch/projetos/:id/ambientes/:ambId", authenticate, async (req, res) => {
-  const projetoId = String(req.params.id);
+  const projetoId = String((req.params.id as string));
   const ambId = String(req.params.ambId);
 
   const [projeto] = await db
@@ -408,7 +408,7 @@ router.patch("/arch/projetos/:id/ambientes/:ambId", authenticate, async (req, re
 
 // DELETE /api/arch/projetos/:id/ambientes/:ambId
 router.delete("/arch/projetos/:id/ambientes/:ambId", authenticate, async (req, res) => {
-  const projetoId = String(req.params.id);
+  const projetoId = String((req.params.id as string));
   const ambId = String(req.params.ambId);
 
   const [projeto] = await db
@@ -440,7 +440,7 @@ router.delete("/arch/projetos/:id/ambientes/:ambId", authenticate, async (req, r
 
 // GET /api/arch/projetos/:id/cenas
 router.get("/arch/projetos/:id/cenas", authenticate, async (req, res) => {
-  const projetoId = String(req.params.id);
+  const projetoId = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ tenantId: archProjetosTable.tenantId })
@@ -464,7 +464,7 @@ router.get("/arch/projetos/:id/cenas", authenticate, async (req, res) => {
 
 // POST /api/arch/projetos/:id/cenas
 router.post("/arch/projetos/:id/cenas", authenticate, async (req, res) => {
-  const projetoId = String(req.params.id);
+  const projetoId = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ tenantId: archProjetosTable.tenantId })
@@ -682,7 +682,7 @@ router.post(
   authenticate,
   upload.array("imagens", 5),
   async (req, res) => {
-    const id = String(req.params.id);
+    const id = String((req.params.id as string));
     const tid = tenantId(req);
 
     const [produto] = await db
@@ -733,7 +733,7 @@ router.post(
 
 // PATCH /api/arch/catalogo/:id
 router.patch("/arch/catalogo/:id", authenticate, async (req, res) => {
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
 
   const [existing] = await db
     .select({ tenantId: archCatalogoTable.tenantId })
@@ -1006,7 +1006,7 @@ async function recalcularOrcamentoTotal(projetoId: string): Promise<void> {
 
 // GET /api/arch/projetos/:id/orcamento
 router.get("/arch/projetos/:id/orcamento", authenticate, async (req, res) => {
-  const projetoId = String(req.params.id);
+  const projetoId = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ tenantId: archProjetosTable.tenantId, orcamentoTotal: archProjetosTable.orcamentoTotal })
@@ -1043,7 +1043,7 @@ router.get("/arch/projetos/:id/orcamento", authenticate, async (req, res) => {
 
 // POST /api/arch/projetos/:id/orcamento
 router.post("/arch/projetos/:id/orcamento", authenticate, async (req, res) => {
-  const projetoId = String(req.params.id);
+  const projetoId = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ tenantId: archProjetosTable.tenantId })
@@ -1227,7 +1227,7 @@ const iaItemSchema = z.object({
 
 // POST /api/arch/projetos/:id/orcamento/gerar-ia
 router.post("/arch/projetos/:id/orcamento/gerar-ia", authenticate, async (req, res) => {
-  const projetoId = String(req.params.id);
+  const projetoId = String((req.params.id as string));
 
   const [projeto] = await db
     .select()
@@ -2268,7 +2268,7 @@ router.get("/arch/surfaces/:projectId", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
-  const { projectId } = req.params;
+  const projectId = req.params.projectId as string;
 
   const [projeto] = await db
     .select({ id: archProjetosTable.id })
@@ -2316,7 +2316,7 @@ router.patch("/arch/surfaces/:surfaceId", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
-  const { surfaceId } = req.params;
+  const surfaceId = req.params.surfaceId as string;
   const parsed = updateRenderSurfaceSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues.map(i => i.message).join("; ") });
@@ -2350,7 +2350,7 @@ router.post("/arch/surfaces/:surfaceId/material", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
-  const { surfaceId } = req.params;
+  const surfaceId = req.params.surfaceId as string;
 
   const parsed = insertRenderSurfaceMaterialSchema.omit({ surfaceId: true }).safeParse(req.body);
   if (!parsed.success) {
@@ -2406,7 +2406,7 @@ router.get("/arq/projects", authenticate, async (req, res) => {
 // GET /arq/projects/:id — get project with objects + materials
 router.get("/arq/projects/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id  = String(req.params.id);
+  const id  = String((req.params.id as string));
 
   const [projeto] = await db
     .select()
@@ -2442,7 +2442,7 @@ router.post("/arq/projects", authenticate, async (req, res) => {
 // PATCH /arq/projects/:id — update project metadata
 router.patch("/arq/projects/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id  = String(req.params.id);
+  const id  = String((req.params.id as string));
 
   const [existing] = await db
     .select({ id: archProjetosTable.id })
@@ -2465,7 +2465,7 @@ router.patch("/arq/projects/:id", authenticate, async (req, res) => {
 // DELETE /arq/projects/:id — delete project (cascades to objects/materials/aie_snapshots)
 router.delete("/arq/projects/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id  = String(req.params.id);
+  const id  = String((req.params.id as string));
 
   const [existing] = await db
     .select({ id: archProjetosTable.id })
@@ -2497,7 +2497,7 @@ const arqObjectRowSchema = z.object({
 // PUT /arq/projects/:id/objects — replace all objects for project
 router.put("/arq/projects/:id/objects", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id  = String(req.params.id);
+  const id  = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ id: archProjetosTable.id })
@@ -2540,7 +2540,7 @@ const arqMaterialRowSchema = z.object({
 // PUT /arq/projects/:id/materials — replace all materials for project
 router.put("/arq/projects/:id/materials", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id  = String(req.params.id);
+  const id  = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ id: archProjetosTable.id })
@@ -2588,7 +2588,7 @@ const arqAieSnapshotBodySchema = z.object({
 // POST /arq/projects/:id/aie-snapshots — save AIE result snapshot
 router.post("/arq/projects/:id/aie-snapshots", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id  = String(req.params.id);
+  const id  = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ id: archProjetosTable.id })
@@ -2626,7 +2626,7 @@ router.post("/arq/projects/:id/aie-snapshots", authenticate, async (req, res) =>
 // GET /arq/projects/:id/aie-snapshots — get AIE snapshot history for learning engine
 router.get("/arq/projects/:id/aie-snapshots", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id  = String(req.params.id);
+  const id  = String((req.params.id as string));
 
   const [projeto] = await db
     .select({ id: archProjetosTable.id })
@@ -2694,7 +2694,7 @@ router.post("/arch/prompt-variations", authenticate, async (req, res) => {
 router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const uid = (req as any).user?.sub as string;
-  const id = req.params.id;
+  const id = (req.params.id as string) as string;
 
   const body = updateArchPromptVariationSchema.safeParse(req.body);
   if (!body.success) {
@@ -2721,7 +2721,7 @@ router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
 router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const uid = (req as any).user?.sub as string;
-  const id = req.params.id;
+  const id = (req.params.id as string) as string;
 
   const [row] = await (db as any)
     .delete(archPromptVariationsTable)
@@ -2824,7 +2824,7 @@ router.post("/arch/prompt-variations", authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
 
   const [existing] = await db
     .select({ tenantId: archPromptVariationsTable.tenantId })
@@ -2854,7 +2854,7 @@ router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
 
   const [existing] = await db
     .select({ tenantId: archPromptVariationsTable.tenantId })
@@ -2877,7 +2877,7 @@ router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/arqdor/projects/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
 
   const [row] = await db
     .select()
@@ -2899,7 +2899,7 @@ router.get("/arqdor/projects/:id", authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const id = String(req.params.id);
+  const id = String((req.params.id as string));
   const contextBlob = req.body;
 
   if (!contextBlob || typeof contextBlob !== "object" || Array.isArray(contextBlob)) {
@@ -2995,7 +2995,7 @@ Orçamento estimado: ${projeto.orcamentoTotal ? `R$ ${projeto.orcamentoTotal}` :
 Prazo: ${projeto.prazoEstimado || "N/A"}
 
 AMBIENTES (${ambientes.length}):
-${ambientes.map((a) => `- ${a.nome}${a.tipoAmbiente ? ` [${a.tipoAmbiente}]` : ""}`).join("\n") || "Nenhum ambiente cadastrado"}
+${ambientes.map((a) => `- ${a.nome}`).join("\n") || "Nenhum ambiente cadastrado"}
 
 CENAS DE RENDER (${cenas.length}):
 ${cenas.map((c) => `- ${c.nome}: status ${c.status}`).join("\n") || "Nenhuma cena cadastrada"}
@@ -3215,7 +3215,7 @@ Responda SOMENTE com JSON válido, sem texto adicional:
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/arch/specification/:projetoId", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const { projetoId } = req.params;
+  const projetoId = req.params.projetoId as string;
 
   const [spec] = await db
     .select()
@@ -3245,7 +3245,7 @@ router.get("/arch/specification/:projetoId", authenticate, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch("/arch/specification/item/:itemId", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const { itemId } = req.params;
+  const itemId = req.params.itemId as string;
 
   const [ownership] = await db
     .select({ id: archSpecItemsTable.id, specificationId: archSpecItemsTable.specificationId })
@@ -3362,7 +3362,7 @@ router.patch("/arch/partners/:id", authenticate, async (req, res) => {
   const [existing] = await db
     .select({ id: archPartnersTable.id })
     .from(archPartnersTable)
-    .where(and(eq(archPartnersTable.id, req.params.id), eq(archPartnersTable.tenantId, tid)))
+    .where(and(eq(archPartnersTable.id, (req.params.id as string)), eq(archPartnersTable.tenantId, tid)))
     .limit(1);
 
   if (!existing) return res.status(404).json({ error: "Parceiro não encontrado." });
@@ -3373,7 +3373,7 @@ router.patch("/arch/partners/:id", authenticate, async (req, res) => {
   const [updated] = await db
     .update(archPartnersTable)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(archPartnersTable.id, req.params.id))
+    .where(eq(archPartnersTable.id, (req.params.id as string)))
     .returning();
 
   return res.json(updated);
@@ -3385,7 +3385,7 @@ router.delete("/arch/partners/:id", authenticate, async (req, res) => {
   const [existing] = await db
     .select({ id: archPartnersTable.id })
     .from(archPartnersTable)
-    .where(and(eq(archPartnersTable.id, req.params.id), eq(archPartnersTable.tenantId, tid)))
+    .where(and(eq(archPartnersTable.id, (req.params.id as string)), eq(archPartnersTable.tenantId, tid)))
     .limit(1);
 
   if (!existing) return res.status(404).json({ error: "Parceiro não encontrado." });
@@ -3393,7 +3393,7 @@ router.delete("/arch/partners/:id", authenticate, async (req, res) => {
   await db
     .update(archPartnersTable)
     .set({ ativo: false, updatedAt: new Date() })
-    .where(eq(archPartnersTable.id, req.params.id));
+    .where(eq(archPartnersTable.id, (req.params.id as string)));
 
   return res.json({ ok: true });
 });
@@ -3401,7 +3401,7 @@ router.delete("/arch/partners/:id", authenticate, async (req, res) => {
 // ── POST /arch/partners/:id/solicitar — criar solicitação ─────────────────────
 router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const { id: partnerId } = req.params;
+  const partnerId = (req.params.id as string) as string;
   const { tipo, mensagem, canal, projetoId, projetoTitulo, catalogoItemId, itemNome } = req.body as {
     tipo: string; mensagem?: string; canal?: string
     projetoId?: string; projetoTitulo?: string; catalogoItemId?: string; itemNome?: string
@@ -3568,8 +3568,7 @@ async function extractTenantKnowledge(tid: string): Promise<number> {
       db.select().from(archOrcamentoItensTable).where(eq(archOrcamentoItensTable.projetoId, projeto.id)).limit(50),
       db.select({ prompt: archPromptVariationsTable.prompt })
         .from(archPromptVariationsTable)
-        .innerJoin(archAmbientesTable, eq(archAmbientesTable.id, archPromptVariationsTable.ambienteId))
-        .where(eq(archAmbientesTable.projetoId, projeto.id))
+        .where(eq(archPromptVariationsTable.tenantId, tid))
         .limit(10),
     ]);
 
@@ -4006,7 +4005,7 @@ router.get("/arch/office/pipeline", authenticate, async (req, res) => {
 
 // ── PATCH /arch/office/pipeline/:projectId/stage — mover etapa ───────────────
 router.patch("/arch/office/pipeline/:projectId/stage", authenticate, async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = req.params.projectId as string;
   const { stage }     = req.body as { stage: string };
   const tid           = tenantId(req);
 
@@ -4275,7 +4274,7 @@ router.post("/arch/office/templates", authenticate, async (req, res) => {
 
 // ── DELETE /arch/office/templates/:id — remover template ─────────────────────
 router.delete("/arch/office/templates/:id", authenticate, async (req, res) => {
-  const { id } = req.params;
+  const id = (req.params.id as string) as string;
   const tid    = tenantId(req);
   await db.delete(archOfficeTemplatesTable)
     .where(and(eq(archOfficeTemplatesTable.id, id), eq(archOfficeTemplatesTable.tenantId, tid)));
