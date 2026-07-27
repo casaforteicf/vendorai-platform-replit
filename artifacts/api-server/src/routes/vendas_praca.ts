@@ -48,7 +48,7 @@ router.get("/tenants/:tenantId/vendas-praca-resumo", async (req, res) => {
   const resumo: Record<string, { totalVendido: number; totalPedidos: number; comissaoCalculada: number }> = {};
 
   for (const periodo of periodos) {
-    const [row] = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT
         coalesce(sum(valor), 0)::numeric AS total_vendido,
         count(*)::int AS total_pedidos
@@ -57,7 +57,8 @@ router.get("/tenants/:tenantId/vendas-praca-resumo", async (req, res) => {
         AND origem_pedido_praca_id IS NOT NULL
         AND etapa = 'ganho'
         AND ${periodo.condicaoData}
-    `) as unknown as [{ total_vendido: string; total_pedidos: number }];
+    `);
+    const row = result.rows[0] as { total_vendido: string; total_pedidos: number } | undefined;
 
     const totalVendido = Number(row?.total_vendido ?? 0);
     resumo[periodo.chave] = {

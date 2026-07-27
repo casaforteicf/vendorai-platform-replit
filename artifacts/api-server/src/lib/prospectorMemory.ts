@@ -130,22 +130,24 @@ export async function getSimilarityBonus(
   },
 ): Promise<number> {
   try {
-    const [{ count }] = await db.execute<{ count: number }>(
+    const countResult = await db.execute<{ count: number }>(
       sql`SELECT COUNT(*)::int AS count FROM lead_embeddings WHERE tenant_id = ${tenantId}`,
     );
+    const count = countResult.rows[0]?.count;
     if ((count ?? 0) < 3) return 0;
 
     const text = buildEmbeddingText(lead);
     const embedding = await generateEmbedding(text);
     const vectorLiteral = `[${embedding.join(",")}]`;
 
-    const rows = await db.execute<{ similarity: number }>(
+    const rowsResult = await db.execute<{ similarity: number }>(
       sql`SELECT 1 - (embedding <=> ${vectorLiteral}::vector) AS similarity
           FROM lead_embeddings
           WHERE tenant_id = ${tenantId}
           ORDER BY embedding <=> ${vectorLiteral}::vector
           LIMIT 5`,
     );
+    const rows = rowsResult.rows;
 
     if (!rows.length) return 0;
 
