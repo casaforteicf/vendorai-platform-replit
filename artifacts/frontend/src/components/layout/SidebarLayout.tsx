@@ -12,7 +12,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Visitas",       href: "/imoveis/visitas",          icon: Calendar,    sellerHidden: false, section: "imoveis",  fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Cargas",        href: "/fretes/cargas",            icon: Package,     sellerHidden: false, section: "fretes",   fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Frota",         href: "/fretes/veiculos",          icon: Truck,       sellerHidden: false, section: "fretes",   fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Estoque",       href: "/veiculos/estoque",         icon: Car,         sellerHidden: false, section: "veiculos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Test-Drives",   href: "/veiculos/test-drives",     icon: Calendar,    sellerHidden: false, section: "veiculos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Clínica",       href: "/clinic",                   icon: Stethoscope, sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agenda",        href: "/clinic/agenda",            icon: Calendar,    sellerHidden: false, section: "clinica",      fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Médicos",       href: "/clinic/medicos",           icon: User2,       sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
@@ -167,6 +169,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Fretes": new Set([
       ...CORE_VERTICAL_HREFS,
       "/fretes/cargas", "/fretes/veiculos",
+    ]),
+    "Veículos": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/veiculos/estoque", "/veiculos/test-drives",
     ]),
     "Arquitetura & Design": new Set([
       ...CORE_VERTICAL_HREFS,
