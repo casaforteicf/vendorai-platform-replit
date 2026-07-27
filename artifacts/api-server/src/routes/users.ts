@@ -89,7 +89,7 @@ router.get("/users/:id", async (req, res) => {
   const [user] = await db
     .select(PUBLIC_FIELDS)
     .from(usersTable)
-    .where(eq(usersTable.id, req.params.id));
+    .where(eq(usersTable.id, (req.params.id as string)));
 
   if (!user) {
     res.status(404).json({ error: "User not found" });
@@ -109,7 +109,7 @@ router.patch("/users/:id", async (req, res) => {
   const [existing] = await db
     .select({ id: usersTable.id, tenantId: usersTable.tenantId })
     .from(usersTable)
-    .where(eq(usersTable.id, req.params.id));
+    .where(eq(usersTable.id, (req.params.id as string)));
 
   if (!existing) {
     res.status(404).json({ error: "User not found" });
@@ -162,7 +162,7 @@ router.patch("/users/:id/password", async (req, res) => {
   const [existing] = await db
     .select({ id: usersTable.id, password: usersTable.password, tenantId: usersTable.tenantId })
     .from(usersTable)
-    .where(eq(usersTable.id, String(req.params.id)));
+    .where(eq(usersTable.id, String((req.params.id as string))));
 
   if (!existing) {
     res.status(404).json({ error: "User not found" });
@@ -195,7 +195,7 @@ router.delete("/users/:id", requireRole("super_admin", "tenant_admin"), async (r
   const [existing] = await db
     .select({ id: usersTable.id, tenantId: usersTable.tenantId })
     .from(usersTable)
-    .where(eq(usersTable.id, req.params.id));
+    .where(eq(usersTable.id, (req.params.id as string)));
 
   if (!existing) {
     res.status(404).json({ error: "User not found" });

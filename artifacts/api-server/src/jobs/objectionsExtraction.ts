@@ -69,6 +69,7 @@ export async function runObjectionsExtraction(log: Logger): Promise<void> {
             .limit(20);
 
           if (msgs.length < 3) continue;
+          if (!conv.leadId) continue;
 
           // Get lead segment
           const [lead] = await db

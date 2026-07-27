@@ -184,7 +184,7 @@ describe("PATCH /api/deals/:id — etapa=ganho catalog guardrail", () => {
       diferenca: -500,
       itemDetails: [],
     });
-    setupInsertReturning([{ id: "task-1" }]);
+    setupInsertReturning([{ id: "task-1", tenantId: TENANT_B }]);
 
     const res = await request(app)
       .patch(`/api/deals/${DEAL_ID}`)

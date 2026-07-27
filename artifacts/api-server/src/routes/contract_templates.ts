@@ -374,8 +374,8 @@ router.post("/deals/:dealId/generate-contract", async (req, res) => {
         .from(partnersTable)
         .where(eq(partnersTable.id, partnerId));
       if (partner) {
-        partnerName = partner.name;
-        partnerEmail = partner.email;
+        partnerName = partner.name ?? undefined;
+        partnerEmail = partner.email ?? undefined;
       }
     }
 

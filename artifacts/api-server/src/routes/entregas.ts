@@ -21,7 +21,7 @@ router.get("/tenants/:tenantId/entregas", async (req, res) => {
   const conditions = [eq(entregasTable.tenantId, String(req.params.tenantId))];
   conditions.push(...buildUserFunctionFilter(req, entregasTable));
 
-  if (status) conditions.push(eq(entregasTable.status, status as typeof entregasTable.$inferInsert.status));
+  if (status) conditions.push(eq(entregasTable.status, status as "entregue" | "cancelada" | "agendada" | "aguardando" | "em_transito"));
   if (dealId) conditions.push(eq(entregasTable.dealId, dealId));
 
   const entregas = await db

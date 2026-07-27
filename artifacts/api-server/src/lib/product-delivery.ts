@@ -3,6 +3,7 @@
  * Triggered after Asaas PAYMENT_CONFIRMED for charges with externalReference = sku_delivery:<propostaId>
  */
 import { eq, and, sql } from "drizzle-orm";
+import { slugify } from "./subdomain.js";
 import {
   db,
   propostasTable,
@@ -149,6 +150,7 @@ async function deliverPlan(
     .insert(tenantsTable)
     .values({
       name: tenantName,
+      slug: `${slugify(tenantName)}-${Date.now().toString(36).slice(-6)}`,
       planId: plan.id,
       status: "active",
       monthlyTokenLimit: plan.aiQuotaUsd

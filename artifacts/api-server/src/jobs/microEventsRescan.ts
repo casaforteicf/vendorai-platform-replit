@@ -129,9 +129,8 @@ export async function runMicroEventsRescan(log: Logger): Promise<void> {
             await db.insert(notificationsTable).values({
               tenantId: tenant.id,
               title: "📈 Lead subiu na fila",
-              body: `${lead.nome}: ${event.descricao}`,
+              message: `${lead.nome}: ${event.descricao}`,
               type: "info",
-              metadata: { leadId: lead.id, tipo: event.tipo, scoreBoost: SCORE_BOOST },
             });
 
             totalEvents++;

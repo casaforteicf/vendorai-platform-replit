@@ -3,6 +3,7 @@
  * Uses Claude (Anthropic) with OpenAI fallback, same pattern as site_generator.ts
  */
 import { Router, type IRouter } from "express";
+import type { Logger } from "pino";
 import { desc, eq, and } from "drizzle-orm";
 import {
   db,
@@ -156,7 +157,7 @@ export async function learnFromProposalEdit(
   originalHtml: string,
   editedHtml: string,
   existingMemory: ProposalStyleMemory | null,
-  log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void },
+  log: Logger,
 ): Promise<ProposalStyleMemory> {
   const existing = existingMemory || {};
   const editCount = (existing.editCount ?? 0) + 1;

@@ -135,7 +135,7 @@ router.post("/auth/accept-invite", async (req, res) => {
 
   const hashed = await bcrypt.hash(password, 12);
 
-  const roleMap: Record<string, { role: string; platformRole: "tenant_admin" | "tenant_seller" | "member" }> = {
+  const roleMap: Record<string, { role: "admin" | "member"; platformRole: "tenant_admin" | "tenant_seller" | "member" }> = {
     tenant_admin:  { role: "admin",  platformRole: "tenant_admin"  },
     tenant_seller: { role: "member", platformRole: "tenant_seller" },
     member:        { role: "member", platformRole: "member"        },

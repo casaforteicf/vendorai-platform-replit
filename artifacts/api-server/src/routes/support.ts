@@ -140,6 +140,8 @@ router.post("/support/chat", async (req, res) => {
     res.write(`data: ${JSON.stringify({ error: "Erro ao processar resposta" })}\n\n`);
     res.end();
   }
+
+  return;
 });
 
 export default router;

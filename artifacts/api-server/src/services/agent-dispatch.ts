@@ -1347,7 +1347,7 @@ export async function processAgentInternal(params: {
               { role: "user" as const, content: transcript },
             ],
             tenantId,
-            "relato_tecnico",
+            "relato_tecnico" as AgentName,
             log,
           );
 
