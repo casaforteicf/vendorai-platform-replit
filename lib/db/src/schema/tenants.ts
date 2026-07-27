@@ -104,6 +104,16 @@ export const tenantsTable = pgTable(
     // Preencher via BLOCO 14 ao vincular tenant a uma organização (rede de lojas).
     organizacaoId: text("organizacao_id"),
     comissaoPadraoPercentual: numeric("comissao_padrao_percentual", { precision: 5, scale: 2 }).default("0"),
+    // Praça.ai (marketplace) — colunas já existiam no banco (criadas via
+    // migration direta antes deste schema ser atualizado), adicionadas aqui
+    // pra bater com a realidade do banco de produção.
+    vendeNoPracaAi: boolean("vende_no_praca_ai").notNull().default(false),
+    freteMesmaCidade: numeric("frete_mesma_cidade", { precision: 10, scale: 2 }).default("0"),
+    freteOutraCidade: numeric("frete_outra_cidade", { precision: 10, scale: 2 }).default("15.90"),
+    freteGratisAcimaDe: numeric("frete_gratis_acima_de", { precision: 10, scale: 2 }).default("79.00"),
+    // Comissão da Praça.ai sobre venda originada de lá (distinta de
+    // comissaoPadraoPercentual, que é do módulo de rede de parceiros/revenda).
+    comissaoPracaAiPercentual: numeric("comissao_praca_ai_percentual", { precision: 5, scale: 2 }).default("8.00"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

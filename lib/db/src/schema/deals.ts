@@ -84,6 +84,12 @@ export const dealsTable = pgTable("deals", {
   // Briefing gerado automaticamente pela IA no momento da prospecção
   aiBriefing: text("ai_briefing"),
   aiBriefingGeneratedAt: timestamp("ai_briefing_generated_at"),
+  // Rastreabilidade de origem — já existiam no banco (criadas via migration
+  // direta antes deste schema ser atualizado), adicionadas aqui pra bater
+  // com a realidade do banco de produção.
+  scoutOportunidadeId: text("scout_oportunidade_id"),
+  grupoId: text("grupo_id"),
+  origemPedidoPracaId: text("origem_pedido_praca_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
