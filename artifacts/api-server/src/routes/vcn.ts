@@ -90,7 +90,7 @@ router.post("/vcn/companies", async (req: Request, res: Response) => {
 
 router.get("/vcn/companies/:id", async (req: Request, res: Response) => {
   try {
-    const [company] = await db.select().from(vcnCompaniesTable).where(eq(vcnCompaniesTable.id, req.params.id));
+    const [company] = await db.select().from(vcnCompaniesTable).where(eq(vcnCompaniesTable.id, (req.params.id as string)));
     if (!company) return err(res, "Empresa não encontrada", 404);
     return ok(res, company);
   } catch (e) {
@@ -106,7 +106,7 @@ router.patch("/vcn/companies/:id", async (req: Request, res: Response) => {
     const [updated] = await db
       .update(vcnCompaniesTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(vcnCompaniesTable.id, req.params.id))
+      .where(eq(vcnCompaniesTable.id, (req.params.id as string)))
       .returning();
     if (!updated) return err(res, "Empresa não encontrada", 404);
     return ok(res, updated);
@@ -118,7 +118,7 @@ router.patch("/vcn/companies/:id", async (req: Request, res: Response) => {
 
 router.delete("/vcn/companies/:id", async (req: Request, res: Response) => {
   try {
-    const [del] = await db.delete(vcnCompaniesTable).where(eq(vcnCompaniesTable.id, req.params.id)).returning({ id: vcnCompaniesTable.id });
+    const [del] = await db.delete(vcnCompaniesTable).where(eq(vcnCompaniesTable.id, (req.params.id as string))).returning({ id: vcnCompaniesTable.id });
     if (!del) return err(res, "Empresa não encontrada", 404);
     return ok(res, { deleted: true });
   } catch (e) {
@@ -132,7 +132,7 @@ router.delete("/vcn/companies/:id", async (req: Request, res: Response) => {
 router.get("/vcn/companies/:id/specialists", async (req: Request, res: Response) => {
   try {
     const specialists = await db.select().from(vcnSpecialistsTable)
-      .where(and(eq(vcnSpecialistsTable.companyId, req.params.id), eq(vcnSpecialistsTable.active, true)))
+      .where(and(eq(vcnSpecialistsTable.companyId, (req.params.id as string)), eq(vcnSpecialistsTable.active, true)))
       .orderBy(vcnSpecialistsTable.featured, vcnSpecialistsTable.name);
     return ok(res, specialists);
   } catch (e) {
@@ -143,7 +143,7 @@ router.get("/vcn/companies/:id/specialists", async (req: Request, res: Response)
 
 router.post("/vcn/companies/:id/specialists", async (req: Request, res: Response) => {
   try {
-    const parsed = insertVcnSpecialistSchema.safeParse({ ...req.body, companyId: req.params.id });
+    const parsed = insertVcnSpecialistSchema.safeParse({ ...req.body, companyId: (req.params.id as string) });
     if (!parsed.success) return err(res, parsed.error.message);
     const [spec] = await db.insert(vcnSpecialistsTable).values(parsed.data).returning();
     return ok(res, spec, 201);
@@ -160,7 +160,7 @@ router.patch("/vcn/specialists/:specId", async (req: Request, res: Response) => 
     const [updated] = await db
       .update(vcnSpecialistsTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(vcnSpecialistsTable.id, req.params.specId))
+      .where(eq(vcnSpecialistsTable.id, (req.params.specId as string)))
       .returning();
     if (!updated) return err(res, "Especialista não encontrado", 404);
     return ok(res, updated);
@@ -172,7 +172,7 @@ router.patch("/vcn/specialists/:specId", async (req: Request, res: Response) => 
 
 router.delete("/vcn/specialists/:specId", async (req: Request, res: Response) => {
   try {
-    const [del] = await db.delete(vcnSpecialistsTable).where(eq(vcnSpecialistsTable.id, req.params.specId)).returning({ id: vcnSpecialistsTable.id });
+    const [del] = await db.delete(vcnSpecialistsTable).where(eq(vcnSpecialistsTable.id, (req.params.specId as string))).returning({ id: vcnSpecialistsTable.id });
     if (!del) return err(res, "Especialista não encontrado", 404);
     return ok(res, { deleted: true });
   } catch (e) {
@@ -186,7 +186,7 @@ router.delete("/vcn/specialists/:specId", async (req: Request, res: Response) =>
 router.get("/vcn/companies/:id/products", async (req: Request, res: Response) => {
   try {
     const { category } = req.query;
-    const conditions = [eq(vcnProductsTable.companyId, req.params.id), eq(vcnProductsTable.published, true)];
+    const conditions = [eq(vcnProductsTable.companyId, (req.params.id as string)), eq(vcnProductsTable.published, true)];
     if (category) conditions.push(eq(vcnProductsTable.category, String(category)));
     const products = await db.select().from(vcnProductsTable).where(and(...conditions))
       .orderBy(vcnProductsTable.featured, vcnProductsTable.name);
@@ -199,7 +199,7 @@ router.get("/vcn/companies/:id/products", async (req: Request, res: Response) =>
 
 router.post("/vcn/companies/:id/products", async (req: Request, res: Response) => {
   try {
-    const parsed = insertVcnProductSchema.safeParse({ ...req.body, companyId: req.params.id });
+    const parsed = insertVcnProductSchema.safeParse({ ...req.body, companyId: (req.params.id as string) });
     if (!parsed.success) return err(res, parsed.error.message);
     const [product] = await db.insert(vcnProductsTable).values(parsed.data).returning();
     return ok(res, product, 201);
@@ -216,7 +216,7 @@ router.patch("/vcn/products/:productId", async (req: Request, res: Response) => 
     const [updated] = await db
       .update(vcnProductsTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(vcnProductsTable.id, req.params.productId))
+      .where(eq(vcnProductsTable.id, (req.params.productId as string)))
       .returning();
     if (!updated) return err(res, "Produto não encontrado", 404);
     return ok(res, updated);
@@ -228,7 +228,7 @@ router.patch("/vcn/products/:productId", async (req: Request, res: Response) => 
 
 router.delete("/vcn/products/:productId", async (req: Request, res: Response) => {
   try {
-    const [del] = await db.delete(vcnProductsTable).where(eq(vcnProductsTable.id, req.params.productId)).returning({ id: vcnProductsTable.id });
+    const [del] = await db.delete(vcnProductsTable).where(eq(vcnProductsTable.id, (req.params.productId as string))).returning({ id: vcnProductsTable.id });
     if (!del) return err(res, "Produto não encontrado", 404);
     return ok(res, { deleted: true });
   } catch (e) {
@@ -242,7 +242,7 @@ router.delete("/vcn/products/:productId", async (req: Request, res: Response) =>
 router.get("/vcn/companies/:id/knowledge", async (req: Request, res: Response) => {
   try {
     const { type } = req.query;
-    const conditions = [eq(vcnKnowledgeTable.companyId, req.params.id), eq(vcnKnowledgeTable.published, true)];
+    const conditions = [eq(vcnKnowledgeTable.companyId, (req.params.id as string)), eq(vcnKnowledgeTable.published, true)];
     if (type) conditions.push(eq(vcnKnowledgeTable.type, String(type)));
     const docs = await db.select().from(vcnKnowledgeTable).where(and(...conditions))
       .orderBy(vcnKnowledgeTable.type, vcnKnowledgeTable.title);
@@ -255,7 +255,7 @@ router.get("/vcn/companies/:id/knowledge", async (req: Request, res: Response) =
 
 router.post("/vcn/companies/:id/knowledge", async (req: Request, res: Response) => {
   try {
-    const parsed = insertVcnKnowledgeSchema.safeParse({ ...req.body, companyId: req.params.id });
+    const parsed = insertVcnKnowledgeSchema.safeParse({ ...req.body, companyId: (req.params.id as string) });
     if (!parsed.success) return err(res, parsed.error.message);
     const [doc] = await db.insert(vcnKnowledgeTable).values(parsed.data).returning();
     return ok(res, doc, 201);
@@ -272,7 +272,7 @@ router.patch("/vcn/knowledge/:docId", async (req: Request, res: Response) => {
     const [updated] = await db
       .update(vcnKnowledgeTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(vcnKnowledgeTable.id, req.params.docId))
+      .where(eq(vcnKnowledgeTable.id, (req.params.docId as string)))
       .returning();
     if (!updated) return err(res, "Documento não encontrado", 404);
     return ok(res, updated);
@@ -284,7 +284,7 @@ router.patch("/vcn/knowledge/:docId", async (req: Request, res: Response) => {
 
 router.delete("/vcn/knowledge/:docId", async (req: Request, res: Response) => {
   try {
-    const [del] = await db.delete(vcnKnowledgeTable).where(eq(vcnKnowledgeTable.id, req.params.docId)).returning({ id: vcnKnowledgeTable.id });
+    const [del] = await db.delete(vcnKnowledgeTable).where(eq(vcnKnowledgeTable.id, (req.params.docId as string))).returning({ id: vcnKnowledgeTable.id });
     if (!del) return err(res, "Documento não encontrado", 404);
     return ok(res, { deleted: true });
   } catch (e) {
@@ -334,7 +334,7 @@ router.get("/vcn/companies/:id/analytics", async (req: Request, res: Response) =
       specificationsCount: vcnCompaniesTable.specificationsCount,
       quotationsCount:     vcnCompaniesTable.quotationsCount,
       specialistsCount:    vcnCompaniesTable.specialistsCount,
-    }).from(vcnCompaniesTable).where(eq(vcnCompaniesTable.id, req.params.id));
+    }).from(vcnCompaniesTable).where(eq(vcnCompaniesTable.id, (req.params.id as string)));
     if (!company) return err(res, "Empresa não encontrada", 404);
     return ok(res, {
       ...company,

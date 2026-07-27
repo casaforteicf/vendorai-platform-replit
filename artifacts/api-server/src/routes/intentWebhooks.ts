@@ -109,7 +109,7 @@ async function saveSignalAndUpdateScore(
 // ── POST /tenants/:tenantId/webhooks/intent/google ────────────────────────────
 
 router.post("/tenants/:tenantId/webhooks/intent/google", async (req: Request, res: Response) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { leadId, searchTerm, productName, value } = req.body as {
@@ -138,7 +138,7 @@ router.post("/tenants/:tenantId/webhooks/intent/google", async (req: Request, re
 // ── POST /tenants/:tenantId/webhooks/intent/meta ──────────────────────────────
 
 router.post("/tenants/:tenantId/webhooks/intent/meta", async (req: Request, res: Response) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { leadId, eventType, productName, value } = req.body as {
@@ -168,7 +168,7 @@ router.post("/tenants/:tenantId/webhooks/intent/meta", async (req: Request, res:
 // ── POST /tenants/:tenantId/webhooks/intent/site ──────────────────────────────
 
 router.post("/tenants/:tenantId/webhooks/intent/site", async (req: Request, res: Response) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { leadId, url, productName, value } = req.body as {
@@ -197,7 +197,7 @@ router.post("/tenants/:tenantId/webhooks/intent/site", async (req: Request, res:
 // ── POST /tenants/:tenantId/webhooks/intent/whatsapp ─────────────────────────
 
 router.post("/tenants/:tenantId/webhooks/intent/whatsapp", async (req: Request, res: Response) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const { leadId, question, productName, value } = req.body as {
@@ -228,7 +228,7 @@ router.post("/tenants/:tenantId/webhooks/intent/whatsapp", async (req: Request, 
 // ── GET /tenants/:tenantId/intent-signals ────────────────────────────────────
 
 router.get("/tenants/:tenantId/intent-signals", async (req: Request, res: Response) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const signals = await db
@@ -243,7 +243,8 @@ router.get("/tenants/:tenantId/intent-signals", async (req: Request, res: Respon
 // ── GET /tenants/:tenantId/leads/:leadId/intent-signals ──────────────────────
 
 router.get("/tenants/:tenantId/leads/:leadId/intent-signals", async (req: Request, res: Response) => {
-  const { tenantId, leadId } = req.params;
+  const tenantId = req.params.tenantId as string;
+  const leadId = req.params.leadId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const signals = await db
