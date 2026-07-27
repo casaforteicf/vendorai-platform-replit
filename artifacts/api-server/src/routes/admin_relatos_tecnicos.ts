@@ -61,7 +61,7 @@ router.patch("/admin/relatos-tecnicos/:id", requireRole("super_admin"), async (r
   const [existing] = await db
     .select({ id: relatosTecnicosTable.id })
     .from(relatosTecnicosTable)
-    .where(eq(relatosTecnicosTable.id, req.params.id!))
+    .where(eq(relatosTecnicosTable.id, ((req.params.id as string) as string)))
     .limit(1);
 
   if (!existing) {
@@ -72,10 +72,10 @@ router.patch("/admin/relatos-tecnicos/:id", requireRole("super_admin"), async (r
   const [updated] = await db
     .update(relatosTecnicosTable)
     .set({ status: parsed.data.status })
-    .where(eq(relatosTecnicosTable.id, req.params.id!))
+    .where(eq(relatosTecnicosTable.id, ((req.params.id as string) as string)))
     .returning();
 
-  logger.info({ relatoId: req.params.id, status: parsed.data.status }, "admin: relato_tecnico status updated");
+  logger.info({ relatoId: (req.params.id as string), status: parsed.data.status }, "admin: relato_tecnico status updated");
 
   return res.json(updated);
 });

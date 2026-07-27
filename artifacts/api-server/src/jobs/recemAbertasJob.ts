@@ -151,7 +151,7 @@ export async function runRecemAbertas(log: Logger = rootLogger): Promise<void> {
             leadId: lead.id,
             funilId: firstFunil.id,
             titulo: `${empresa.nomeFantasia || empresa.razaoSocial} — Recém-aberta`,
-            estagio: "novo",
+            etapa: "novo",
           });
 
           // Log activity
@@ -159,8 +159,9 @@ export async function runRecemAbertas(log: Logger = rootLogger): Promise<void> {
             tenantId: tenant.id,
             leadId: lead.id,
             tipo: "tarefa",
+            titulo: "Lead importado via Recém-abertas",
             descricao: `Lead gerado via Recém-abertas (CNAE ${empresa.cnaeCode} as any) — ${empresa.municipio}`,
-            concluida: true,
+            status: "concluida",
           });
 
           // Enrich with +20 score boost

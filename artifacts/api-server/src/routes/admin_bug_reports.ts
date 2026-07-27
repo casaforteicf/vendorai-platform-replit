@@ -74,7 +74,7 @@ router.patch("/admin/bug-reports/:id", requireRole("super_admin"), async (req, r
   const [existing] = await db
     .select()
     .from(bugReportsTable)
-    .where(eq(bugReportsTable.id, req.params.id))
+    .where(eq(bugReportsTable.id, (req.params.id as string)))
     .limit(1);
 
   if (!existing) {
@@ -90,7 +90,7 @@ router.patch("/admin/bug-reports/:id", requireRole("super_admin"), async (req, r
       ...(status === "resolvido" ? { resolvidoAt: new Date() } : {}),
       updatedAt: new Date(),
     } as any)
-    .where(eq(bugReportsTable.id, req.params.id))
+    .where(eq(bugReportsTable.id, (req.params.id as string)))
     .returning();
 
   if (status === "resolvido") {
