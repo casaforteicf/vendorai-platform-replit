@@ -242,6 +242,77 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   res.json({ imported: toInsert.length, errors });
 });
 
+// ── Promoções configuráveis ───────────────────────────────────────────────
+const promocaoBodySchema = z.object({
+  precoPromocional: z.union([z.string(), z.number()]).transform((v) => String(v)),
+  ativaAte: z.string().datetime().or(z.string().min(1)), // aceita ISO ou data simples
+});
+
+router.post("/produtos-catalogo/:id/promocao", async (req, res) => {
+  const parsed = promocaoBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId, precoBase: produtosCatalogoTable.precoBase })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (Number(parsed.data.precoPromocional) >= Number(existing.precoBase)) {
+    res.status(422).json({ error: "Preço promocional precisa ser menor que o preço base." });
+    return;
+  }
+
+  const [product] = await db
+    .update(produtosCatalogoTable)
+    .set({
+      precoPromocional: parsed.data.precoPromocional,
+      promocaoAtivaAte: new Date(parsed.data.ativaAte),
+      updatedAt: new Date(),
+    })
+    .where(eq(produtosCatalogoTable.id, existing.id))
+    .returning();
+
+  res.json(product);
+});
+
+router.delete("/produtos-catalogo/:id/promocao", async (req, res) => {
+  const [existing] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [product] = await db
+    .update(produtosCatalogoTable)
+    .set({ precoPromocional: null, promocaoAtivaAte: null, updatedAt: new Date() })
+    .where(eq(produtosCatalogoTable.id, existing.id))
+    .returning();
+
+  res.json(product);
+});
+
 router.delete("/produtos-catalogo/:id", async (req, res) => {
   const [existing] = await db
     .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })

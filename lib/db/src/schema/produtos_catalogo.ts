@@ -37,12 +37,18 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   destaque: boolean("destaque").notNull().default(false),
   imagemUrl: text("imagem_url"),
   imagens: jsonb("imagens").$type<string[]>(),
+  videoUrl: text("video_url"),
   peso: numeric("peso", { precision: 10, scale: 3 }),
   dimensoes: jsonb("dimensoes").$type<ProdutoDimensoes>(),
   recorrencia: text("recorrencia"),
   prazoContrato: integer("prazo_contrato"),
   exigeAgendamento: boolean("exige_agendamento").notNull().default(false),
   comissaoPercentual: numeric("comissao_percentual", { precision: 5, scale: 2 }),
+  // Promoção configurável (Complemento — Praça.ai/Vendor.ai): preço com
+  // desconto e até quando vale. Quando promocaoAtivaAte no passado ou nulo,
+  // considerar a promoção inativa mesmo com precoPromocional preenchido.
+  precoPromocional: numeric("preco_promocional", { precision: 12, scale: 2 }),
+  promocaoAtivaAte: timestamp("promocao_ativa_ate"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -70,6 +76,7 @@ export const insertProdutoCatalogoSchema = createInsertSchema(
     precoBase: precoDecimalSchema,
     precoImplantacao: precoDecimalSchema.nullable().optional(),
     precoMensalidade: precoDecimalSchema.nullable().optional(),
+    precoPromocional: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
     comissaoPercentual: comissaoPercentualSchema.optional(),
   }
@@ -81,6 +88,7 @@ export const updateProdutoCatalogoSchema = createSelectSchema(
     precoBase: precoDecimalSchema.optional(),
     precoImplantacao: precoDecimalSchema.nullable().optional(),
     precoMensalidade: precoDecimalSchema.nullable().optional(),
+    precoPromocional: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
     comissaoPercentual: comissaoPercentualSchema.optional(),
   }
