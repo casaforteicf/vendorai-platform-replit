@@ -315,6 +315,13 @@ export async function runDealClosure(
     })
     .where(eq(dealsTable.id, dealId));
 
+  // Load lead for subsequent steps (moved earlier — era usado antes de ser
+  // declarado logo abaixo, o que lançaria erro em runtime: "Cannot access
+  // 'lead' before initialization").
+  const [lead] = deal.leadId
+    ? await db.select().from(leadsTable).where(eq(leadsTable.id, deal.leadId))
+    : [null];
+
   // ── 2. Update lead to convertido ────────────────────────────────────────
   if (deal.leadId) {
     await db
@@ -349,11 +356,7 @@ export async function runDealClosure(
     });
   }
 
-  // Load lead and tenant for subsequent steps
-  const [lead] = deal.leadId
-    ? await db.select().from(leadsTable).where(eq(leadsTable.id, deal.leadId))
-    : [null];
-
+  // Load tenant for subsequent steps
   const tenantResult = await db.execute(
     sql`SELECT id, name, nome_empresa, cnpj, contract_template_html, asaas_api_key FROM tenants WHERE id = ${tenantId}`
   );

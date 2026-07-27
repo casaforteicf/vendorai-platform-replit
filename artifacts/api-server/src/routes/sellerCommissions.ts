@@ -8,7 +8,7 @@ const router = Router();
 // ── GET /tenants/:tenantId/seller-commissions ─────────────────────────────────
 // Vendedor vê as próprias; admin vê todas do tenant
 router.get("/tenants/:tenantId/seller-commissions", authenticate, async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   const user = req.user!;
 
   if (user.tenantId !== tenantId && user.platformRole !== "super_admin") {
@@ -47,7 +47,7 @@ router.get("/tenants/:tenantId/seller-commissions", authenticate, async (req, re
 
 // ── GET /tenants/:tenantId/seller-commissions/summary ────────────────────────
 router.get("/tenants/:tenantId/seller-commissions/summary", authenticate, async (req, res) => {
-  const { tenantId } = req.params;
+  const tenantId = req.params.tenantId as string;
   const user = req.user!;
 
   if (user.tenantId !== tenantId && user.platformRole !== "super_admin") {
@@ -74,7 +74,8 @@ router.get("/tenants/:tenantId/seller-commissions/summary", authenticate, async 
 // ── PATCH /tenants/:tenantId/seller-commissions/:id ──────────────────────────
 // Apenas admins podem alterar status/observações
 router.patch("/tenants/:tenantId/seller-commissions/:id", authenticate, async (req, res) => {
-  const { tenantId, id } = req.params;
+  const tenantId = req.params.tenantId as string;
+  const id = req.params.id as string;
   const user = req.user!;
 
   const isAdmin = user.platformRole === "super_admin" || user.platformRole === "tenant_admin";
