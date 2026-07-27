@@ -69,6 +69,7 @@ import financeiroObraRouter from "./financeiro_obra";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
 import supermercadoRouter from "./supermercado";
+import farmaciaRouter from "./farmacia";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
 import productPresentationsRouter from "./product_presentations";
@@ -260,6 +261,7 @@ router.use(varejoRouter);
 
 // Supermercado Hub
 router.use(supermercadoRouter);
+router.use(farmaciaRouter);
 
 // Site Generator Hub
 router.use(siteGeneratorRouter);

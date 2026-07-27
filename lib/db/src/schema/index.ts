@@ -49,6 +49,8 @@ export * from "./varejo_combo_itens";
 export * from "./supermercado_configuracoes";
 export * from "./supermercado_produtos";
 export * from "./supermercado_pedidos";
+export * from "./farmacia_produtos";
+export * from "./farmacia_pedidos";
 export * from "./supermercado_campanhas";
 export * from "./generated_sites";
 export * from "./instagram_connections";
