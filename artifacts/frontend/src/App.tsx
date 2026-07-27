@@ -134,6 +134,8 @@ const ServicosOrdens     = lazy(() => import("@/pages/servicos/ServicosOrdens"))
 const ServicosCadastros  = lazy(() => import("@/pages/servicos/ServicosCadastros"));
 const FarmaciaProdutos   = lazy(() => import("@/pages/farmacia/FarmaciaProdutos"));
 const FarmaciaPedidos    = lazy(() => import("@/pages/farmacia/FarmaciaPedidos"));
+const ImoveisPropriedades = lazy(() => import("@/pages/imoveis/ImoveisPropriedades"));
+const ImoveisVisitas     = lazy(() => import("@/pages/imoveis/ImoveisVisitas"));
 const BeautyAgenda       = lazy(() => import("@/pages/beauty/Agenda"));
 const BeautyServicos     = lazy(() => import("@/pages/beauty/Servicos"));
 const BeautyProfissionais= lazy(() => import("@/pages/beauty/Profissionais"));
@@ -738,6 +740,12 @@ function AppRoutes() {
         </Route>
         <Route path="/farmacia/pedidos">
           {() => <ProtectedRoute component={FarmaciaPedidos} />}
+        </Route>
+        <Route path="/imoveis/propriedades">
+          {() => <ProtectedRoute component={ImoveisPropriedades} />}
+        </Route>
+        <Route path="/imoveis/visitas">
+          {() => <ProtectedRoute component={ImoveisVisitas} />}
         </Route>
         <Route path="/supermercado/produtos">
           {() => <SupermercadoRoute component={SupermercadoProdutos} />}
