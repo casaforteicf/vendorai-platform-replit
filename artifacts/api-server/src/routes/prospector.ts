@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import type { Logger } from "pino";
 import { z } from "zod/v4";
 import { and, asc, eq, desc, or, sql, inArray, isNotNull } from "drizzle-orm";
 import {
@@ -52,7 +53,7 @@ async function gerarBriefingDeal(
   reviewCount: number | null,
   pontosFortes: string[],
   doresPrincipais: string[],
-  log: { error: (obj: Record<string, unknown>, msg: string) => void },
+  log: Logger,
 ): Promise<void> {
   try {
     const ai = await gatewayCallOpenAI(
@@ -1571,7 +1572,7 @@ router.post("/prospector/cnpj/prospectar", async (req, res) => {
       leadId: lead.id,
       funilId: firstFunil.id,
       titulo: `${d.nomeFantasia || d.razaoSocial} — Prospector CNPJ`,
-      estagio: "novo",
+      etapa: "novo",
     });
   }
 
@@ -1580,8 +1581,9 @@ router.post("/prospector/cnpj/prospectar", async (req, res) => {
     tenantId,
     leadId: lead.id,
     tipo: "tarefa",
+    titulo: "Lead importado via Busca CNPJ",
     descricao: `Lead importado via Busca CNPJ (CNAE ${d.cnaeCode ?? "?"}) — ${d.municipio ?? ""}`,
-    concluida: true,
+    status: "concluida",
   });
 
   // Enrich (fire-and-forget) with boost if recently opened
