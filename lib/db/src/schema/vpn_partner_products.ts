@@ -59,7 +59,7 @@ export const vpnPartnerProductsTable = pgTable("vpn_partner_products", {
 
 export const insertVpnPartnerProductSchema = createInsertSchema(vpnPartnerProductsTable, {
   name:           z.string().min(1).max(255),
-  price:          z.coerce.number().nonnegative().optional(),
+  price:          z.coerce.number().nonnegative().transform((v) => String(v)).optional(),
   images:         z.array(z.string()).optional(),
   specs:          z.record(z.string(), z.unknown()).optional(),
   certifications: z.array(z.string()).optional(),

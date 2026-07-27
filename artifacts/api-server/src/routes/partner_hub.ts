@@ -96,7 +96,7 @@ router.post("/partner-hub/partners", async (req: Request, res: Response) => {
 
 router.get("/partner-hub/partners/:id", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const [partner] = await db
       .select()
       .from(vpnPartnersTable)
@@ -113,7 +113,7 @@ router.get("/partner-hub/partners/:id", async (req: Request, res: Response) => {
 
 router.patch("/partner-hub/partners/:id", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const parsed = insertVpnPartnerSchema.partial().safeParse(req.body);
     if (!parsed.success) return err(res, parsed.error.message);
 
@@ -134,7 +134,7 @@ router.patch("/partner-hub/partners/:id", async (req: Request, res: Response) =>
 
 router.delete("/partner-hub/partners/:id", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const [deleted] = await db
       .delete(vpnPartnersTable)
       .where(eq(vpnPartnersTable.id, id))
@@ -151,7 +151,7 @@ router.delete("/partner-hub/partners/:id", async (req: Request, res: Response) =
 
 router.get("/partner-hub/partners/:id/products", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { category, active } = req.query;
 
     const conditions = [eq(vpnPartnerProductsTable.partnerId, id)];
@@ -175,7 +175,7 @@ router.get("/partner-hub/partners/:id/products", async (req: Request, res: Respo
 
 router.post("/partner-hub/partners/:id/products", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const parsed = insertVpnPartnerProductSchema.safeParse({ ...req.body, partnerId: id });
     if (!parsed.success) return err(res, parsed.error.message);
 
@@ -194,7 +194,7 @@ router.post("/partner-hub/partners/:id/products", async (req: Request, res: Resp
 
 router.patch("/partner-hub/products/:productId", async (req: Request, res: Response) => {
   try {
-    const { productId } = req.params;
+    const productId = req.params.productId as string;
     const parsed = insertVpnPartnerProductSchema.partial().safeParse(req.body);
     if (!parsed.success) return err(res, parsed.error.message);
 
@@ -215,7 +215,7 @@ router.patch("/partner-hub/products/:productId", async (req: Request, res: Respo
 
 router.delete("/partner-hub/products/:productId", async (req: Request, res: Response) => {
   try {
-    const { productId } = req.params;
+    const productId = req.params.productId as string;
     const [deleted] = await db
       .delete(vpnPartnerProductsTable)
       .where(eq(vpnPartnerProductsTable.id, productId))
@@ -232,7 +232,7 @@ router.delete("/partner-hub/products/:productId", async (req: Request, res: Resp
 
 router.get("/partner-hub/partners/:id/contacts", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const contacts = await db
       .select()
       .from(vpnPartnerContactsTable)
@@ -249,7 +249,7 @@ router.get("/partner-hub/partners/:id/contacts", async (req: Request, res: Respo
 
 router.post("/partner-hub/partners/:id/contacts", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const parsed = insertVpnPartnerContactSchema.safeParse({ ...req.body, partnerId: id });
     if (!parsed.success) return err(res, parsed.error.message);
 
@@ -268,7 +268,7 @@ router.post("/partner-hub/partners/:id/contacts", async (req: Request, res: Resp
 
 router.delete("/partner-hub/contacts/:contactId", async (req: Request, res: Response) => {
   try {
-    const { contactId } = req.params;
+    const contactId = req.params.contactId as string;
     const [deleted] = await db
       .delete(vpnPartnerContactsTable)
       .where(eq(vpnPartnerContactsTable.id, contactId))
