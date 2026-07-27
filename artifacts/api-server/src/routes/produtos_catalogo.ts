@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
   db,
   produtosCatalogoTable,
@@ -311,6 +312,67 @@ router.delete("/produtos-catalogo/:id/promocao", async (req, res) => {
     .returning();
 
   res.json(product);
+});
+
+// ── Pergunta de produto respondida por IA (chamado pelo Praça.ai) ──────────
+const perguntaProdutoBodySchema = z.object({ pergunta: z.string().min(1).max(1000) });
+
+const PRODUTO_QA_SYSTEM_PROMPT = `Você responde perguntas de clientes sobre um produto específico, no
+contexto de um marketplace (Praça.ai). Use APENAS as informações do produto
+fornecidas — nunca invente característica, preço, prazo ou disponibilidade que
+não esteja nos dados. Se a pergunta não puder ser respondida com o que foi
+fornecido, diga isso claramente e sugira que o cliente use o chat direto com
+o vendedor para tirar a dúvida. Responda em português brasileiro, direto e
+em no máximo 3 frases — sem saudação, sem se apresentar, só a resposta.`;
+
+router.post("/produtos-catalogo/:id/responder-pergunta", async (req, res) => {
+  const parsed = perguntaProdutoBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [product] = await db
+    .select()
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+
+  if (!product) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  const contexto = [
+    `Nome: ${product.nome}`,
+    product.descricaoLonga ? `Descrição: ${product.descricaoLonga}` : product.descricao ? `Descrição: ${product.descricao}` : null,
+    product.marca ? `Marca: ${product.marca}` : null,
+    `Preço: R$ ${product.precoBase}`,
+    product.precoPromocional ? `Preço promocional ativo: R$ ${product.precoPromocional}` : null,
+    product.unidade ? `Unidade de venda: ${product.unidade}` : null,
+    product.peso ? `Peso: ${product.peso}kg` : null,
+  ].filter(Boolean).join("\n");
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 300,
+      system: PRODUTO_QA_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Dados do produto:\n${contexto}\n\nPergunta do cliente: ${parsed.data.pergunta}` }],
+    });
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    const resposta = textBlock && textBlock.type === "text" ? textBlock.text.trim() : null;
+
+    if (!resposta) {
+      res.status(502).json({ error: "IA não retornou resposta de texto." });
+      return;
+    }
+
+    res.json({ resposta });
+  } catch (err) {
+    console.error("[produtos_catalogo] erro ao responder pergunta via IA:", err);
+    res.status(500).json({ error: "Não foi possível gerar a resposta agora." });
+  }
 });
 
 router.delete("/produtos-catalogo/:id", async (req, res) => {
