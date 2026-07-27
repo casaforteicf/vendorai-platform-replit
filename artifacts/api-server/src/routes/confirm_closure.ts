@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { storeConvertedEmbedding, markFeedbackConverted } from "../lib/prospectorMemory.js";
 import {
   db,
@@ -321,6 +321,37 @@ export async function runDealClosure(
   const [lead] = deal.leadId
     ? await db.select().from(leadsTable).where(eq(leadsTable.id, deal.leadId))
     : [null];
+
+  // ── Programa de Embaixadores (Praça.ai): se esse tenant foi indicado por
+  // um embaixador e essa é a PRIMEIRA venda dele, avisa o Praça.ai pra
+  // creditar a comissão. Fire-and-forget — nunca deve travar o fechamento.
+  try {
+    const [tenantRow] = await db
+      .select({ codigoIndicacaoPraca: tenantsTable.codigoIndicacaoPraca })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId));
+
+    if (tenantRow?.codigoIndicacaoPraca) {
+      const [{ totalGanhos }] = await db
+        .select({ totalGanhos: sql<number>`count(*)` })
+        .from(dealsTable)
+        .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho")));
+
+      if (Number(totalGanhos) === 1) {
+        const pracaBaseUrl = process.env.PRACA_API_BASE_URL || "https://praca.ai/api";
+        fetch(`${pracaBaseUrl}/embaixadores/confirmar-conversao-lojista`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tenantId }),
+          signal: AbortSignal.timeout(8000),
+        }).catch((err) => {
+          log.error({ err, tenantId }, "confirm-closure: falha ao confirmar conversão de embaixador (lojista) no Praça.ai");
+        });
+      }
+    }
+  } catch (err) {
+    log.error({ err, tenantId }, "confirm-closure: erro ao checar indicação de embaixador (lojista)");
+  }
 
   // ── 2. Update lead to convertido ────────────────────────────────────────
   if (deal.leadId) {

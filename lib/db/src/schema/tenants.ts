@@ -114,6 +114,10 @@ export const tenantsTable = pgTable(
     // Comissão da Praça.ai sobre venda originada de lá (distinta de
     // comissaoPadraoPercentual, que é do módulo de rede de parceiros/revenda).
     comissaoPracaAiPercentual: numeric("comissao_praca_ai_percentual", { precision: 5, scale: 2 }).default("8.00"),
+    // Código de embaixador do Praça.ai usado no cadastro (?ref=CODIGO) —
+    // guardado pra rastreabilidade, mesmo que a chamada de indicação em si
+    // já tenha sido disparada no momento do signup.
+    codigoIndicacaoPraca: text("codigo_indicacao_praca"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

@@ -82,6 +82,9 @@ const demoSignupSchema = z.object({
   email: z.email(),
   senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
   telefone: z.string().optional(),
+  // Código de embaixador do Praça.ai (?ref=CODIGO) — se vier, dispara
+  // registro de indicação de lojista pro Praça.ai depois do cadastro.
+  codigoIndicacaoPraca: z.string().optional(),
 });
 
 router.post("/auth/demo-signup", async (req, res) => {
@@ -91,7 +94,7 @@ router.post("/auth/demo-signup", async (req, res) => {
     return;
   }
 
-  const { nomeEmpresa, nomePessoa, email, senha, telefone } = parsed.data;
+  const { nomeEmpresa, nomePessoa, email, senha, telefone, codigoIndicacaoPraca } = parsed.data;
 
   const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
   const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
@@ -109,8 +112,23 @@ router.post("/auth/demo-signup", async (req, res) => {
         isDemo: true,
         demoExpiresAt,
         planId: null,
+        codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
       })
       .returning();
+
+    // Registra a indicação de lojista no Praça.ai — fire-and-forget, nunca
+    // trava nem falha o cadastro se o Praça.ai estiver fora do ar.
+    if (codigoIndicacaoPraca) {
+      const pracaBaseUrl = process.env.PRACA_API_BASE_URL || "https://praca.ai/api";
+      fetch(`${pracaBaseUrl}/embaixadores/indicar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo: codigoIndicacaoPraca, indicadoTenantId: tenant.id }),
+        signal: AbortSignal.timeout(8000),
+      }).catch((err) => {
+        req.log?.error({ err, tenantId: tenant.id }, "auth: falha ao registrar indicação de lojista no Praça.ai");
+      });
+    }
 
     const { seedDemoData } = await import("./tenants.js");
     await seedDemoData(tenant.id);
