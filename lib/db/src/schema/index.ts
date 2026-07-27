@@ -53,6 +53,8 @@ export * from "./farmacia_produtos";
 export * from "./farmacia_pedidos";
 export * from "./imoveis_propriedades";
 export * from "./imoveis_visitas";
+export * from "./fretes_veiculos";
+export * from "./fretes_cargas";
 export * from "./restaurante_cardapio";
 export * from "./restaurante_pedidos";
 export * from "./supermercado_campanhas";
