@@ -81,6 +81,7 @@ import prospectorFlowsRouter from "./prospector-flows";
 import contentStudioRouter from "./content_studio";
 import videoProcessingRouter from "./video_processing";
 import beautyRouter from "./beauty";
+import servicosRouter from "./servicos";
 import clinicRouter from "./clinic";
 import scoutRouter from "./scout";
 import intentWebhooksRouter from "./intentWebhooks";
@@ -296,6 +297,7 @@ router.use(archThemePreferencesRouter);
 // Beauty (Salão de Beleza) Hub
 router.use(sdrTemplatesRouter);
 router.use(beautyRouter);
+router.use(servicosRouter);
 
 // Clínica Hub
 router.use(clinicRouter);
