@@ -2136,12 +2136,15 @@ router.post("/arch/ai-render/:id/approve", async (req, res) => {
     return res.status(400).json({ error: "Somente renders concluídos podem ser aprovados" });
   }
 
-  const body = req.body as { notes?: string; approvedBy?: string };
+  // Corrigido: approvedBy vem do JWT autenticado, não do corpo da
+  // requisição (antes qualquer chamador podia alegar ser qualquer pessoa) —
+  // e agora fica persistido no banco, não só num log transiente.
+  const approvedBy = (req as any).user?.sub as string | undefined;
   await db.update(archAiRendersTable)
-    .set({ versionTag: "fiel_ao_original" })
+    .set({ versionTag: "fiel_ao_original", approvedBy: approvedBy ?? null, approvedAt: new Date() })
     .where(eq(archAiRendersTable.id, job.id));
 
-  req.log.info({ tenantId: tid, renderId: job.id, approvedBy: body.approvedBy }, "arch/ai-render: aprovado");
+  req.log.info({ tenantId: tid, renderId: job.id, approvedBy }, "arch/ai-render: aprovado");
   return res.json({ success: true, render_id: job.id, result_image_url: job.resultImageUrl });
 });
 

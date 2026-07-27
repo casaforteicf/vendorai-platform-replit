@@ -40,6 +40,11 @@ export const archAiRendersTable = pgTable("arch_ai_renders", {
   prompt:           text("prompt"),
   motor:            varchar("motor", { length: 50 }),
   retentativas:     varchar("retentativas", { length: 5 }).default("0"),
+  // Aprovação real — antes só existia no corpo da requisição (não
+  // verificado contra o usuário autenticado, nem persistido no banco,
+  // só logado). Agora vem do JWT autenticado, não do body.
+  approvedBy:       text("approved_by"),
+  approvedAt:       timestamp("approved_at"),
   createdAt:        timestamp("created_at").notNull().defaultNow(),
   concluidoEm:      timestamp("concluido_em"),
 });
