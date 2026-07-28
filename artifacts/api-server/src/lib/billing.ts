@@ -30,9 +30,14 @@ function prevMonthKey(ref: Date): string {
 
 function isFirstBilling(tenantCreatedAt: Date, mes: string): boolean {
   const [year, month] = mes.split("-").map(Number) as [number, number];
-  const activationMes = `${tenantCreatedAt.getFullYear()}-${String(tenantCreatedAt.getMonth() + 1).padStart(2, "0")}`;
-  const [aYear, aMonth] = activationMes.split("-").map(Number) as [number, number];
-  return year === aYear && month === aMonth + 1;
+  const activationYear = tenantCreatedAt.getFullYear();
+  const activationMonth = tenantCreatedAt.getMonth() + 1; // 1-12
+  // "Primeira cobrança" = mês seguinte ao mês de ativação, com virada de ano
+  // tratada — sem isso, tenant ativado em dezembro (mês 12) nunca batia com
+  // 'mês 13', então nunca recebia o desconto de meio mês na primeira cobrança.
+  const nextMonth = activationMonth === 12 ? 1 : activationMonth + 1;
+  const nextYear = activationMonth === 12 ? activationYear + 1 : activationYear;
+  return year === nextYear && month === nextMonth;
 }
 
 export async function runMonthlyBilling(log: Logger): Promise<void> {

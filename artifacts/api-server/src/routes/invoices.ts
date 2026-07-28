@@ -6,10 +6,11 @@ import {
   insertInvoiceSchema,
   updateInvoiceSchema,
 } from "@workspace/db";
+import { authenticate } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
-router.post("/invoices", async (req, res) => {
+router.post("/invoices", authenticate, async (req, res) => {
   const parsed = insertInvoiceSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -28,11 +29,22 @@ router.post("/invoices", async (req, res) => {
   res.status(201).json(invoice);
 });
 
-router.get("/tenants/:tenantId/invoices", async (req, res) => {
+router.get("/tenants/:tenantId/invoices", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  // BUG DE SEGURANÇA CORRIGIDO: esse endpoint não checava autorização —
+  // qualquer usuário autenticado podia passar qualquer tenantId na URL e
+  // ver as faturas de outro tenant. Todos os outros handlers deste mesmo
+  // arquivo (POST/PATCH/DELETE) já faziam essa checagem corretamente.
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const { status } = req.query as Record<string, string | undefined>;
 
   const conditions = [
-    eq(invoicesTable.tenantId, String(req.params.tenantId)),
+    eq(invoicesTable.tenantId, tenantId),
   ];
 
   if (status) {
@@ -50,7 +62,7 @@ router.get("/tenants/:tenantId/invoices", async (req, res) => {
   res.json(invoices);
 });
 
-router.get("/invoices/:id", async (req, res) => {
+router.get("/invoices/:id", authenticate, async (req, res) => {
   const [invoice] = await db
     .select()
     .from(invoicesTable)
@@ -61,10 +73,18 @@ router.get("/invoices/:id", async (req, res) => {
     return;
   }
 
+  // BUG DE SEGURANÇA CORRIGIDO: mesmo problema do endpoint de lista — sem
+  // checagem, qualquer usuário autenticado conseguia buscar fatura de
+  // qualquer tenant só sabendo o id.
+  if (req.user?.platformRole !== "super_admin" && invoice.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   res.json(invoice);
 });
 
-router.patch("/invoices/:id", async (req, res) => {
+router.patch("/invoices/:id", authenticate, async (req, res) => {
   const parsed = updateInvoiceSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -95,7 +115,7 @@ router.patch("/invoices/:id", async (req, res) => {
   res.json(invoice);
 });
 
-router.delete("/invoices/:id", async (req, res) => {
+router.delete("/invoices/:id", authenticate, async (req, res) => {
   const [existing] = await db
     .select({ id: invoicesTable.id, tenantId: invoicesTable.tenantId })
     .from(invoicesTable)
