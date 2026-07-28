@@ -28,6 +28,7 @@ import {
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
 import { checkCatalogMatch, type CatalogCheckItem } from "../lib/catalog-price-check.js";
+import { ensureTenantPlanAndCommission } from "../lib/deal-closure-commission.js";
 import { buildInviteUrl } from "./invites.js";
 import { sendInviteEmail } from "../lib/email.js";
 import {
@@ -387,152 +388,25 @@ router.patch("/deals/:id", async (req, res) => {
           })
           .where(eq(dealsTable.id, deal.id));
 
-        // ── Resolve tenant: usar existing ou criar novo do lead ───────────────
-        let tenantId = existing.tenantId;
-        let tenant: { name: string; webhookEstoqueUrl: string | null; partnerId: string | null; tipoFechamentoDefault: string | null; integrationType: string | null } | undefined;
-        if (tenantId) {
-          tenant = await db
-            .select({
-              name: tenantsTable.name,
-              webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
-              partnerId: tenantsTable.partnerId,
-              tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
-              integrationType: tenantsTable.integrationType,
-            })
-            .from(tenantsTable)
-            .where(eq(tenantsTable.id, tenantId))
-            .then((rows) => rows[0]);
-        }
-        if (!tenant) {
-          const slugBase = (deal.titulo ?? deal.id).toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
-          const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
-          const [newTenant] = await db
-            .insert(tenantsTable)
-            .values({
-              name: deal.titulo,
-              slug,
-              status: "active",
-              partnerId: null,
-            })
-            .returning({
-              id: tenantsTable.id,
-              name: tenantsTable.name,
-              webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
-              partnerId: tenantsTable.partnerId,
-              tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
-              integrationType: tenantsTable.integrationType,
-            });
-          tenantId = newTenant.id;
-          tenant = newTenant;
-          await db.update(dealsTable).set({ tenantId: newTenant.id }).where(eq(dealsTable.id, deal.id));
-          req.log.info({ dealId: deal.id, tenantId: newTenant.id }, "deal-ganho: auto-created tenant");
-        }
-
-        // Atribuir plano ao tenant (obrigatório — nunca deixar em modo legacy)
-        await db
-          .update(tenantsTable)
-          .set({
-            planId: plano.id,
-            billingCycle: "monthly",
-            planStartedAt: new Date(),
-            isDemo: false,
-            demoExpiresAt: null,
-            updatedAt: new Date(),
-          })
-          .where(eq(tenantsTable.id, tenantId));
-        await db.insert(planAssignmentLogTable).values({
-          tenantId,
-          dealId: deal.id,
-          planId: plano.id,
-          assignedBy: "sistema_fechamento_deal",
-        });
-        bgLog.info({ dealId: deal.id, tenantId, planId: plano.id }, "deal-ganho: plano atribuído ao tenant");
-
-        // ── Auto-gerar comissão do vendedor ──────────────────────────────────
-        // Hierarquia: produto.comissaoPercentual → tenant.comissaoPadraoPercentual → 20 (SaaS default)
-        if (earlyDeal.assignedTo) {
-          try {
-            const [sellerUser] = await db
-              .select({ tenantId: usersTable.tenantId })
-              .from(usersTable)
-              .where(eq(usersTable.id, earlyDeal.assignedTo))
-              .limit(1);
-            const commTenantId = sellerUser?.tenantId ?? tenantId;
-
-            // Buscar proposta para obter valorTotal e produtoId do primeiro item
-            const [propComm] = await db
-              .select({ valorTotal: propostasTable.valorTotal, itens: propostasTable.itens })
-              .from(propostasTable)
-              .where(eq(propostasTable.dealId, deal.id))
-              .orderBy(desc(propostasTable.createdAt))
-              .limit(1);
-
-            // 1. Comissão do produto (primeiro item com produtoId)
-            let comissaoPercentual: number | null = null;
-            if (propComm?.itens && propComm.itens.length > 0) {
-              const firstProdutoId = propComm.itens.find((i: any) => i.produtoId)?.produtoId;
-              if (firstProdutoId) {
-                const [produto] = await db
-                  .select({ comissaoPercentual: produtosCatalogoTable.comissaoPercentual })
-                  .from(produtosCatalogoTable)
-                  .where(eq(produtosCatalogoTable.id, firstProdutoId))
-                  .limit(1);
-                if (produto?.comissaoPercentual != null) {
-                  comissaoPercentual = parseFloat(String(produto.comissaoPercentual));
-                }
-              }
-            }
-
-            // 2. Comissão padrão do tenant
-            if (comissaoPercentual === null) {
-              const [tenantComm] = await db
-                .select({ comissaoPadraoPercentual: tenantsTable.comissaoPadraoPercentual })
-                .from(tenantsTable)
-                .where(eq(tenantsTable.id, tenantId))
-                .limit(1);
-              if (tenantComm?.comissaoPadraoPercentual != null) {
-                const parsed = parseFloat(String(tenantComm.comissaoPadraoPercentual));
-                if (parsed > 0) comissaoPercentual = parsed;
-              }
-            }
-
-            // 3. Fallback: 20% sobre implantação SaaS (comportamento legado)
-            const useLegacySaaS = comissaoPercentual === null && plano.implantationPriceCents && plano.implantationPriceCents > 0;
-            if (useLegacySaaS) comissaoPercentual = 20;
-
-            // Valor base: proposta.valorTotal > plano.implantationPriceCents
-            const valorBaseCents = propComm?.valorTotal
-              ? Math.round(Number(propComm.valorTotal) * 100)
-              : (plano.implantationPriceCents ?? 0);
-
-            if (earlyDeal.assignedTo && comissaoPercentual !== null && valorBaseCents > 0) {
-              const comissaoCents = Math.round(valorBaseCents * comissaoPercentual / 100);
-              // Idempotência: não criar duplicata para o mesmo deal
-              const existingComm = await db
-                .select({ id: sellerCommissionsTable.id })
-                .from(sellerCommissionsTable)
-                .where(eq(sellerCommissionsTable.dealId, deal.id))
-                .limit(1);
-              if (existingComm.length === 0) {
-                await db.insert(sellerCommissionsTable).values({
-                  tenantId: commTenantId,
-                  sellerUserId: earlyDeal.assignedTo,
-                  clienteTenantId: tenantId ?? null,
-                  dealId: deal.id,
-                  planSlug: deal.planoContratado ?? null,
-                  clienteNome: earlyDeal.titulo ?? deal.titulo ?? null,
-                  valorImplantacaoCents: valorBaseCents,
-                  percentual: comissaoPercentual,
-                  valorComissaoCents: comissaoCents,
-                  status: "pendente",
-                });
-                bgLog.info({ dealId: deal.id, sellerUserId: earlyDeal.assignedTo, comissaoCents, comissaoPercentual }, "deal-ganho: comissão de vendedor gerada");
-              }
-            }
-          } catch (commErr) {
-            bgLog.warn({ commErr, dealId: deal.id }, "deal-ganho: falha ao gerar comissão (não crítico)");
-          }
-        }
+        // ── Tenant + plano + comissão de vendedor (função compartilhada com
+        // confirm_closure.ts — extraída numa auditoria pra eliminar a
+        // duplicação e garantir que os dois caminhos de fechamento
+        // ('Vendido' e arrastar no Kanban) façam a mesma coisa) ────────────
+        const tpcResult = await ensureTenantPlanAndCommission(deal.id, bgLog);
+        const tenantId = tpcResult.tenantId ?? existing.tenantId ?? (req.user?.tenantId || "");
+        const tenant = tenantId
+          ? await db
+              .select({
+                name: tenantsTable.name,
+                webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+                partnerId: tenantsTable.partnerId,
+                tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
+                integrationType: tenantsTable.integrationType,
+              })
+              .from(tenantsTable)
+              .where(eq(tenantsTable.id, tenantId))
+              .then((rows) => rows[0])
+          : undefined;
 
         // Atualizar deal_closing_status: plano_atribuido → concluido (ou travado em erro)
         await db

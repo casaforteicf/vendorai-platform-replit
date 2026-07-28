@@ -18,6 +18,7 @@ import { decrypt } from "../lib/crypto.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { checkCatalogMatch, type CatalogCheckItem } from "../lib/catalog-price-check.js";
 import { reconcileScoutOnDealWon } from "../services/revenueScout.js";
+import { ensureTenantPlanAndCommission } from "../lib/deal-closure-commission.js";
 import type { Logger } from "pino";
 
 const router = Router();
@@ -321,6 +322,19 @@ export async function runDealClosure(
   const [lead] = deal.leadId
     ? await db.select().from(leadsTable).where(eq(leadsTable.id, deal.leadId))
     : [null];
+
+  // ── Tenant + plano + comissão de vendedor ───────────────────────────────
+  // CORREÇÃO DE AUDITORIA: esse passo só existia no fluxo do Kanban (PATCH
+  // /deals/:id) — o botão "Vendido" (esse arquivo) nunca chamava isso, então
+  // negócios fechados por aqui nunca geravam tenant automático, plano
+  // atribuído, nem comissão de vendedor registrada. Não trava o fechamento
+  // se falhar — o negócio já está marcado 'ganho', isso é complementar.
+  try {
+    const result = await ensureTenantPlanAndCommission(dealId, log);
+    log.info({ dealId, ...result }, "confirm-closure: tenant/plano/comissão verificados");
+  } catch (tpcErr) {
+    log.error({ err: tpcErr, dealId }, "confirm-closure: falha ao garantir tenant/plano/comissão (não trava o fechamento)");
+  }
 
   // ── Programa de Embaixadores (Praça.ai): se esse tenant foi indicado por
   // um embaixador e essa é a PRIMEIRA venda dele, avisa o Praça.ai pra
