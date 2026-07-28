@@ -969,6 +969,7 @@ function RightPanel({
   step, arq, ambiente, setAmbiente, imageFile, renderUrl, versions, loading, err,
   melhoriaPrompt, setMelhoriaPrompt, melhoriaMode, setMelhoriaMode,
   approved, specDone, specData,
+  specificationId, enviandoOrcamento, orcamentoMsg, onEnviarOrcamento,
   onNextStep, onStartRender, onApplyMelhoria, onApprove, onSendToSpec,
   onShowCreateModal, onUpload,
   selections, selectedMaterial, onOpenMaterialLib, onClearSelection, onRemoveSelection,
@@ -982,6 +983,7 @@ function RightPanel({
   melhoriaPrompt: string; setMelhoriaPrompt: (v: string) => void;
   melhoriaMode: "improve" | "change-material" | "change-lighting"; setMelhoriaMode: (v: "improve" | "change-material" | "change-lighting") => void;
   approved: boolean; specDone: boolean; specData: any[];
+  specificationId: string | null; enviandoOrcamento: boolean; orcamentoMsg: string | null; onEnviarOrcamento: () => void;
   onNextStep: () => void; onStartRender: () => void;
   onApplyMelhoria: () => void; onApprove: () => void; onSendToSpec: () => void;
   onShowCreateModal: () => void; onUpload: () => void;
@@ -1280,6 +1282,14 @@ function RightPanel({
                           a.href = url; a.download = `especificacao-${arq.projectMeta?.titulo ?? "arqdor"}-${new Date().toISOString().split("T")[0]}.json`;
                           a.click(); URL.revokeObjectURL(url);
                         }}>⬇ Exportar especificação</DkBtn>
+                        {specificationId && (
+                          <DkBtn disabled={enviandoOrcamento} onClick={onEnviarOrcamento}>
+                            {enviandoOrcamento ? "Enviando…" : "→ Enviar para Orçamento"}
+                          </DkBtn>
+                        )}
+                        {orcamentoMsg && (
+                          <div style={{ padding: "8px", borderRadius: 7, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontSize: 11, textAlign: "center" }}>✅ {orcamentoMsg}</div>
+                        )}
                       </>
                     ) : (
                       <>
@@ -1531,6 +1541,9 @@ function RenderStudioInner() {
   const [approved, setApproved] = useState(false);
   const [specDone, setSpecDone] = useState(false);
   const [specData, setSpecData] = useState<any[]>([]);
+  const [specificationId, setSpecificationId] = useState<string | null>(null);
+  const [enviandoOrcamento, setEnviandoOrcamento] = useState(false);
+  const [orcamentoMsg, setOrcamentoMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [melhoriaPrompt, setMelhoriaPrompt] = useState("");
@@ -1813,10 +1826,27 @@ function RenderStudioInner() {
         confirmedByUser: item.materialId ? materialIds.has(item.materialId) : false,
       }));
       setSpecData(specItems); setSpecDone(true);
+      setSpecificationId(data.spec?.id ?? null);
       logEvent("spec_generated", `Especificação gerada · ${specItems.length} itens`);
       setSaveState("saved"); setLastSavedAt(new Date());
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { setLoading(false); }
+  }
+
+  // Enviar especificação pro orçamento — ponte real (antes só existia render
+  // → especificação; especificação → orçamento nunca tinha sido conectada).
+  async function handleEnviarOrcamento() {
+    if (!specificationId) return;
+    setEnviandoOrcamento(true); setErr(null); setOrcamentoMsg(null);
+    try {
+      const data = await apiPost(`/api/arch/specification/${specificationId}/enviar-orcamento`, {});
+      logEvent("spec_sent_to_budget", `Especificação enviada pro orçamento · ${data.itensCriados} itens`);
+      setOrcamentoMsg(`${data.itensCriados} item(ns) enviado(s) pro orçamento.`);
+    } catch (e: unknown) {
+      setErr(categorizeError(e));
+    } finally {
+      setEnviandoOrcamento(false);
+    }
   }
 
   // P0-4 unified handleNextStep
@@ -1893,6 +1923,8 @@ function RenderStudioInner() {
           melhoriaPrompt={melhoriaPrompt} setMelhoriaPrompt={setMelhoriaPrompt}
           melhoriaMode={melhoriaMode} setMelhoriaMode={setMelhoriaMode}
           approved={approved} specDone={specDone} specData={specData}
+          specificationId={specificationId} enviandoOrcamento={enviandoOrcamento}
+          orcamentoMsg={orcamentoMsg} onEnviarOrcamento={handleEnviarOrcamento}
           onNextStep={handleNextStep} onStartRender={startRender}
           onApplyMelhoria={applyMelhoria} onApprove={handleApprove} onSendToSpec={handleSendToSpec}
           onShowCreateModal={() => setShowCreateModal(true)} onUpload={handleUpload}

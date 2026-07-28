@@ -3293,6 +3293,83 @@ router.patch("/arch/specification/item/:itemId", authenticate, async (req, res) 
   return res.json(updated);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/arch/specification/:specificationId/enviar-orcamento
+// Ponte real especificação técnica → orçamento. Resolve cada item
+// especificado (via catálogo vinculado ou override manual) e cria a linha
+// correspondente em arch_orcamento_itens. Quality gate: só permite enviar
+// se não sobrar nenhum item 'pendente' (todo item precisa ter sido resolvido
+// como especificado ou marcado explicitamente como não-especificado).
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/arch/specification/:specificationId/enviar-orcamento", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const specificationId = req.params.specificationId as string;
+
+  const [spec] = await db
+    .select()
+    .from(archSpecificationsTable)
+    .where(and(eq(archSpecificationsTable.id, specificationId), eq(archSpecificationsTable.tenantId, tid)))
+    .limit(1);
+
+  if (!spec) return res.status(404).json({ error: "Especificação não encontrada." });
+
+  const items = await db
+    .select()
+    .from(archSpecItemsTable)
+    .where(eq(archSpecItemsTable.specificationId, specificationId));
+
+  // Nota: os itens nascem com status 'pendente' assim que a IA gera a
+  // especificação (endpoint /analyze) — a tela atual ainda não tem controle
+  // pra marcar item por item como 'especificado', então travar o envio até
+  // isso não existiria caminho nenhum pro usuário desbloquear. Envia tudo
+  // que não foi explicitamente rejeitado ('nao_especificado'); item
+  // 'pendente' ainda tem descrição/quantidade sugeridas pela IA, então é
+  // dado válido pra semear a linha de orçamento (marcado geradoPorIa=true,
+  // editável depois na tela de orçamento).
+  const enviaveis = items.filter((i) => i.status !== "nao_especificado");
+  if (enviaveis.length === 0) {
+    return res.status(422).json({ error: "Nenhum item disponível pra enviar pro orçamento (todos marcados como não especificados)." });
+  }
+
+  // Resolve nome/preço/fornecedor de cada item — catálogo vinculado tem
+  // prioridade, override manual é o fallback (mesma regra usada na tela de
+  // especificação pra decidir o que mostrar).
+  const catalogoIds = enviaveis.map((i) => i.catalogoItemId).filter(Boolean) as string[];
+  const catalogoItens = catalogoIds.length
+    ? await db.select().from(archCatalogoTable).where(inArray(archCatalogoTable.id, catalogoIds))
+    : [];
+  const catalogoMap = new Map(catalogoItens.map((c) => [c.id, c]));
+
+  const novosItens = enviaveis.map((item) => {
+    const catalogo = item.catalogoItemId ? catalogoMap.get(item.catalogoItemId) : undefined;
+    const valorUnitario = catalogo?.precoBase ?? item.overridePreco ?? "0";
+    const quantidade = item.quantidade ?? 1;
+    return {
+      projetoId: spec.projetoId,
+      categoria: item.categoria,
+      descricao: catalogo?.nome ?? item.overrideNome ?? item.descricao,
+      quantidade: String(quantidade),
+      unidade: catalogo?.unidade ?? "un",
+      valorUnitario: String(valorUnitario),
+      valorTotal: String(Number(valorUnitario) * Number(quantidade)),
+      fornecedor: catalogo?.fornecedor ?? item.overrideFornecedor ?? null,
+      produtoId: item.catalogoItemId ?? null,
+      geradoPorIa: true,
+    };
+  });
+
+  const inseridos = await db.insert(archOrcamentoItensTable).values(novosItens).returning();
+
+  await db
+    .update(archSpecificationsTable)
+    .set({ status: "enviado_orcamento", updatedAt: new Date() })
+    .where(eq(archSpecificationsTable.id, specificationId));
+
+  req.log.info({ tenantId: tid, specificationId, itensCriados: inseridos.length }, "arch/specification: enviado pro orçamento");
+
+  return res.status(201).json({ success: true, itensCriados: inseridos.length, itens: inseridos });
+});
+
 // ═════════════════════════════════════════════════════════════════════════════
 // SPRINT 6 — ECOSYSTEM ENGINE: Partner Directory + Solicitações
 // ═════════════════════════════════════════════════════════════════════════════
