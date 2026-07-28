@@ -44,7 +44,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const userFunction = user?.userFunction as UserFunction | undefined;
   const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";
-  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos";
+  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos" || effectiveVertical === "Floricultura" || effectiveVertical === "Adega e Bebidas" || effectiveVertical === "Produtos Naturais e Suplementos" || effectiveVertical === "Armarinho e Tecidos" || effectiveVertical === "Papelaria Criativa e Artesanato" || effectiveVertical === "Games e Informática";
   const isSupermercado = effectiveVertical === "Supermercado";
   const isSalao   = effectiveVertical === "Salão de Beleza";
   const isClinica = effectiveVertical === "Clínica";
@@ -216,6 +216,42 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
       "/varejo/combos",
     ]),
+    "Floricultura": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Adega e Bebidas": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Produtos Naturais e Suplementos": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Armarinho e Tecidos": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Papelaria Criativa e Artesanato": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Games e Informática": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
     "Supermercado": new Set([
       ...CORE_VERTICAL_HREFS,
       "/supermercado", "/supermercado/produtos", "/supermercado/pedidos",
@@ -298,6 +334,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Brinquedos": "Varejo",
     "Instrumentos Musicais": "Varejo",
     "Perfumaria e Cosméticos": "Varejo",
+    "Floricultura": "Varejo",
+    "Adega e Bebidas": "Varejo",
+    "Produtos Naturais e Suplementos": "Varejo",
+    "Armarinho e Tecidos": "Varejo",
+    "Papelaria Criativa e Artesanato": "Varejo",
+    "Games e Informática": "Varejo",
     "Supermercado": "Supermercado",
     "Seguros Corporativos": "Seguros",
     "Clínica": "Clínica",
