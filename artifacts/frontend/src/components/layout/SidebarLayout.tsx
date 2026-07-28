@@ -44,9 +44,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const userFunction = user?.userFunction as UserFunction | undefined;
   const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";
-  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos" || effectiveVertical === "Floricultura" || effectiveVertical === "Adega e Bebidas" || effectiveVertical === "Produtos Naturais e Suplementos" || effectiveVertical === "Armarinho e Tecidos" || effectiveVertical === "Papelaria Criativa e Artesanato" || effectiveVertical === "Games e Informática";
+  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos" || effectiveVertical === "Floricultura" || effectiveVertical === "Adega e Bebidas" || effectiveVertical === "Produtos Naturais e Suplementos" || effectiveVertical === "Armarinho e Tecidos" || effectiveVertical === "Papelaria Criativa e Artesanato" || effectiveVertical === "Games e Informática" || effectiveVertical === "Pet Shop (Varejo)" || effectiveVertical === "Material de Construção — Varejo";
   const isSupermercado = effectiveVertical === "Supermercado";
-  const isSalao   = effectiveVertical === "Salão de Beleza";
+  const isSalao   = effectiveVertical === "Salão de Beleza" || effectiveVertical === "Barbearia";
   const isClinica = effectiveVertical === "Clínica";
 
   const allNavItems = [
@@ -252,6 +252,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
       "/varejo/combos",
     ]),
+    "Pet Shop (Varejo)": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Material de Construção — Varejo": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
     "Supermercado": new Set([
       ...CORE_VERTICAL_HREFS,
       "/supermercado", "/supermercado/produtos", "/supermercado/pedidos",
@@ -266,6 +278,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       "/clinic", "/clinic/agenda", "/clinic/medicos",
     ]),
     "Salão de Beleza": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/beauty", "/beauty/agenda", "/beauty/servicos",
+      "/beauty/profissionais",
+    ]),
+    "Barbearia": new Set([
       ...CORE_VERTICAL_HREFS,
       "/beauty", "/beauty/agenda", "/beauty/servicos",
       "/beauty/profissionais",
@@ -340,6 +357,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Armarinho e Tecidos": "Varejo",
     "Papelaria Criativa e Artesanato": "Varejo",
     "Games e Informática": "Varejo",
+    "Pet Shop (Varejo)": "Varejo",
+    "Material de Construção — Varejo": "Varejo",
+    "Barbearia": "Salão",
+    "Bicicletaria / Oficina de Bike": "CRM",
+    "Gráfica Rápida": "CRM",
     "Supermercado": "Supermercado",
     "Seguros Corporativos": "Seguros",
     "Clínica": "Clínica",
