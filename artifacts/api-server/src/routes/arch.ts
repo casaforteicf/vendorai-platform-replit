@@ -42,6 +42,7 @@ import {
   archSpecificationsTable,
   archSpecItemsTable,
   updateArchSpecItemSchema,
+  updateArchSpecificationSchema,
   archPartnersTable,
   archSolicitacoesTable,
   insertArchPartnerSchema,
@@ -3241,6 +3242,28 @@ router.get("/arch/specification/:projetoId", authenticate, async (req, res) => {
     .orderBy(archSpecItemsTable.categoria, archSpecItemsTable.descricao);
 
   return res.json({ spec, items });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/arch/specification/:id — atualiza medidas do ambiente (área,
+// pé-direito) — preenchimento manual, não estimado por IA.
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch("/arch/specification/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const specId = req.params.id as string;
+
+  const parsed = updateArchSpecificationSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: String(parsed.error) });
+
+  const [updated] = await db
+    .update(archSpecificationsTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(archSpecificationsTable.id, specId), eq(archSpecificationsTable.tenantId, tid)))
+    .returning();
+
+  if (!updated) return res.status(404).json({ error: "Especificação não encontrada." });
+
+  return res.json(updated);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

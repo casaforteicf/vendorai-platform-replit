@@ -15,6 +15,10 @@ export const archSpecificationsTable = pgTable("arch_specifications", {
   status:         text("status").notNull().default("draft"),       // draft | complete
   itemsCount:     integer("items_count").default(0),
   specifiedCount: integer("specified_count").default(0),
+  // Medidas do ambiente/cômodo — preenchidas manualmente pelo usuário (não
+  // estimadas por IA a partir da foto, que não é confiável pra medida real).
+  areaM2:         numeric("area_m2", { precision: 8, scale: 2 }),
+  peDireitoM:     numeric("pe_direito_m", { precision: 5, scale: 2 }),
   createdAt:      timestamp("created_at").notNull().defaultNow(),
   updatedAt:      timestamp("updated_at").notNull().defaultNow(),
 });
@@ -34,6 +38,10 @@ export const archSpecItemsTable = pgTable("arch_spec_items", {
   overrideNome:       text("override_nome"),
   overrideFornecedor: text("override_fornecedor"),
   overridePreco:      numeric("override_preco", { precision: 10, scale: 2 }),
+  // Dimensões do item — preenchidas manualmente (não estimadas por IA).
+  larguraCm:          numeric("largura_cm", { precision: 8, scale: 1 }),
+  alturaCm:           numeric("altura_cm", { precision: 8, scale: 1 }),
+  profundidadeCm:     numeric("profundidade_cm", { precision: 8, scale: 1 }),
   notes:              text("notes"),
   createdAt:          timestamp("created_at").notNull().defaultNow(),
 });
@@ -43,10 +51,21 @@ export const archSpecItemsTable = pgTable("arch_spec_items", {
 export const insertArchSpecificationSchema = createInsertSchema(archSpecificationsTable)
   .omit({ id: true, createdAt: true, updatedAt: true });
 
+export const updateArchSpecificationSchema = createSelectSchema(archSpecificationsTable, {
+  areaM2: z.coerce.number().nonnegative().transform((v) => String(v)).optional().nullable(),
+  peDireitoM: z.coerce.number().nonnegative().transform((v) => String(v)).optional().nullable(),
+})
+  .omit({ id: true, tenantId: true, projetoId: true, createdAt: true, updatedAt: true })
+  .partial();
+
 export const insertArchSpecItemSchema = createInsertSchema(archSpecItemsTable)
   .omit({ id: true, createdAt: true });
 
-export const updateArchSpecItemSchema = createSelectSchema(archSpecItemsTable)
+export const updateArchSpecItemSchema = createSelectSchema(archSpecItemsTable, {
+  larguraCm: z.coerce.number().nonnegative().transform((v) => String(v)).optional().nullable(),
+  alturaCm: z.coerce.number().nonnegative().transform((v) => String(v)).optional().nullable(),
+  profundidadeCm: z.coerce.number().nonnegative().transform((v) => String(v)).optional().nullable(),
+})
   .omit({ id: true, specificationId: true, createdAt: true })
   .partial();
 
@@ -55,5 +74,6 @@ export const updateArchSpecItemSchema = createSelectSchema(archSpecItemsTable)
 export type ArchSpecification   = typeof archSpecificationsTable.$inferSelect;
 export type ArchSpecItem        = typeof archSpecItemsTable.$inferSelect;
 export type InsertArchSpecification = z.infer<typeof insertArchSpecificationSchema>;
+export type UpdateArchSpecification = z.infer<typeof updateArchSpecificationSchema>;
 export type InsertArchSpecItem      = z.infer<typeof insertArchSpecItemSchema>;
 export type UpdateArchSpecItem      = z.infer<typeof updateArchSpecItemSchema>;

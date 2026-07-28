@@ -92,6 +92,12 @@ async function apiGet(path: string) {
   if (!res.ok) throw new Error(`Erro ${res.status}`);
   return res.json().catch(() => { throw new Error("Resposta inválida do servidor"); });
 }
+async function apiPatch(path: string, body: unknown) {
+  const res = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeader() } as Record<string, string>, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as any).error ?? `Erro ${res.status}`);
+  return data;
+}
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = reject; r.readAsDataURL(file); });
 }
@@ -970,6 +976,7 @@ function RightPanel({
   melhoriaPrompt, setMelhoriaPrompt, melhoriaMode, setMelhoriaMode,
   approved, specDone, specData,
   specificationId, enviandoOrcamento, orcamentoMsg, onEnviarOrcamento,
+  areaM2, setAreaM2, peDireitoM, setPeDireitoM, onSalvarMedidasAmbiente, onSalvarMedidasItem,
   onNextStep, onStartRender, onApplyMelhoria, onApprove, onSendToSpec,
   onShowCreateModal, onUpload,
   selections, selectedMaterial, onOpenMaterialLib, onClearSelection, onRemoveSelection,
@@ -984,6 +991,9 @@ function RightPanel({
   melhoriaMode: "improve" | "change-material" | "change-lighting"; setMelhoriaMode: (v: "improve" | "change-material" | "change-lighting") => void;
   approved: boolean; specDone: boolean; specData: any[];
   specificationId: string | null; enviandoOrcamento: boolean; orcamentoMsg: string | null; onEnviarOrcamento: () => void;
+  areaM2: string; setAreaM2: (v: string) => void; peDireitoM: string; setPeDireitoM: (v: string) => void;
+  onSalvarMedidasAmbiente: () => void;
+  onSalvarMedidasItem: (itemId: string, patch: { larguraCm?: string; alturaCm?: string; profundidadeCm?: string }) => void;
   onNextStep: () => void; onStartRender: () => void;
   onApplyMelhoria: () => void; onApprove: () => void; onSendToSpec: () => void;
   onShowCreateModal: () => void; onUpload: () => void;
@@ -1260,11 +1270,42 @@ function RightPanel({
                     {specDone ? (
                       <>
                         <div style={{ padding: "8px", borderRadius: 7, background: D.greenDim, border: `1px solid ${D.green}44`, color: D.green, fontSize: 11, textAlign: "center" }}>✅ Especificação gerada</div>
+
+                        {/* Medidas do ambiente — preenchimento manual */}
+                        <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 9, color: D.muted, marginBottom: 3 }}>Área (m²)</div>
+                            <input type="number" min={0} step={0.01} value={areaM2}
+                              onChange={(e) => setAreaM2(e.target.value)}
+                              onBlur={onSalvarMedidasAmbiente}
+                              style={{ width: "100%", padding: "5px 7px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 11 }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 9, color: D.muted, marginBottom: 3 }}>Pé-direito (m)</div>
+                            <input type="number" min={0} step={0.01} value={peDireitoM}
+                              onChange={(e) => setPeDireitoM(e.target.value)}
+                              onBlur={onSalvarMedidasAmbiente}
+                              style={{ width: "100%", padding: "5px 7px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 11 }} />
+                          </div>
+                        </div>
+
                         {specData.map((item, i) => (
                           <div key={i} style={{ padding: "7px 9px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}`, fontSize: 11 }}>
                             <div style={{ fontWeight: 700, color: D.text, marginBottom: 2 }}>{item.nome ?? `Item ${i + 1}`}</div>
                             {item.material && <div style={{ fontSize: 10, color: D.muted }}>Material: {item.material}</div>}
                             {item.quantidade && <div style={{ fontSize: 10, color: D.muted }}>Qtd: {item.quantidade}</div>}
+                            {/* Dimensões do item — preenchimento manual */}
+                            {item.id && (
+                              <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                                {(["larguraCm", "alturaCm", "profundidadeCm"] as const).map((campo) => (
+                                  <input key={campo} type="number" min={0} step={0.5}
+                                    placeholder={campo === "larguraCm" ? "L cm" : campo === "alturaCm" ? "A cm" : "P cm"}
+                                    defaultValue={item[campo] ?? ""}
+                                    onBlur={(e) => onSalvarMedidasItem(item.id, { [campo]: e.target.value || undefined })}
+                                    style={{ width: 0, flex: 1, padding: "4px 5px", borderRadius: 5, border: `1px solid ${D.border}`, background: D.bg, color: D.text, fontSize: 10 }} />
+                                ))}
+                              </div>
+                            )}
                             {/* P2-21: source attribution */}
                             <div style={{ marginTop: 4 }}>
                               <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: item.confirmedByUser ? `${D.green}22` : `${D.amber}22`, color: item.confirmedByUser ? D.green : D.amber, border: `1px solid ${item.confirmedByUser ? D.green : D.amber}44` }}>
@@ -1544,6 +1585,8 @@ function RenderStudioInner() {
   const [specificationId, setSpecificationId] = useState<string | null>(null);
   const [enviandoOrcamento, setEnviandoOrcamento] = useState(false);
   const [orcamentoMsg, setOrcamentoMsg] = useState<string | null>(null);
+  const [areaM2, setAreaM2] = useState<string>("");
+  const [peDireitoM, setPeDireitoM] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [melhoriaPrompt, setMelhoriaPrompt] = useState("");
@@ -1787,6 +1830,41 @@ function RenderStudioInner() {
       if (compareMode) setCompareVersionBId(render_id);
       setSaveState("saved"); setLastSavedAt(new Date());
       setSelections([]); setSelectionMode("off"); setSelectedMaterial(null); setMelhoriaPrompt("");
+
+      // Conecta troca de material com a especificação, se já existir uma
+      // gerada — casa a região selecionada (label) com o item de
+      // especificação correspondente (por categoria/descrição, comparação
+      // solta já que não existe vínculo direto entre seleção e item).
+      if (melhoriaMode === "change-material" && selectedMaterial && specificationId && specData.length > 0) {
+        const selecaoLabel = (selections[0]?.label ?? "").toLowerCase().trim();
+        const itemCorrespondente = selecaoLabel
+          ? specData.find((item: any) =>
+              item.categoria?.toLowerCase().includes(selecaoLabel) ||
+              item.descricao?.toLowerCase().includes(selecaoLabel) ||
+              selecaoLabel.includes(item.categoria?.toLowerCase() ?? "__none__"))
+          : undefined;
+
+        if (itemCorrespondente?.id) {
+          try {
+            await apiPatch(`/api/arch/specification/item/${itemCorrespondente.id}`, {
+              catalogoItemId: selectedMaterial.id,
+              overrideNome: null,
+              overrideFornecedor: null,
+              overridePreco: null,
+              status: "especificado",
+            });
+            setSpecData(prev => prev.map((item: any) =>
+              item.id === itemCorrespondente.id
+                ? { ...item, catalogoItemId: selectedMaterial.id, nome: selectedMaterial.nome, material: selectedMaterial.nome, confirmedByUser: true, status: "especificado" }
+                : item));
+            logEvent("spec_material_synced", `Item "${itemCorrespondente.descricao}" atualizado com material "${selectedMaterial.nome}"`);
+          } catch {
+            // Não trava o fluxo de render por causa disso — a especificação
+            // pode ser corrigida manualmente depois se a sincronização falhar.
+          }
+        }
+      }
+
       go("versao");
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { clearProgressStages(); setLoading(false); }
@@ -1831,6 +1909,26 @@ function RenderStudioInner() {
       setSaveState("saved"); setLastSavedAt(new Date());
     } catch (e: unknown) { setErr(categorizeError(e)); setSaveState("error"); }
     finally { setLoading(false); }
+  }
+
+  // Medidas manuais (ambiente e item) — não estimadas por IA, preenchidas
+  // e salvas pelo usuário na tela de especificação.
+  async function handleSalvarMedidasAmbiente() {
+    if (!specificationId) return;
+    try {
+      await apiPatch(`/api/arch/specification/${specificationId}`, {
+        areaM2: areaM2 || null,
+        peDireitoM: peDireitoM || null,
+      });
+      logEvent("spec_room_measurements_saved", `Medidas do ambiente salvas (${areaM2 || "?"}m² · pé-direito ${peDireitoM || "?"}m)`);
+    } catch (e: unknown) { setErr(categorizeError(e)); }
+  }
+
+  async function handleSalvarMedidasItem(itemId: string, patch: { larguraCm?: string; alturaCm?: string; profundidadeCm?: string }) {
+    setSpecData(prev => prev.map((item: any) => item.id === itemId ? { ...item, ...patch } : item));
+    try {
+      await apiPatch(`/api/arch/specification/item/${itemId}`, patch);
+    } catch (e: unknown) { setErr(categorizeError(e)); }
   }
 
   // Enviar especificação pro orçamento — ponte real (antes só existia render
@@ -1925,6 +2023,8 @@ function RenderStudioInner() {
           approved={approved} specDone={specDone} specData={specData}
           specificationId={specificationId} enviandoOrcamento={enviandoOrcamento}
           orcamentoMsg={orcamentoMsg} onEnviarOrcamento={handleEnviarOrcamento}
+          areaM2={areaM2} setAreaM2={setAreaM2} peDireitoM={peDireitoM} setPeDireitoM={setPeDireitoM}
+          onSalvarMedidasAmbiente={handleSalvarMedidasAmbiente} onSalvarMedidasItem={handleSalvarMedidasItem}
           onNextStep={handleNextStep} onStartRender={startRender}
           onApplyMelhoria={applyMelhoria} onApprove={handleApprove} onSendToSpec={handleSendToSpec}
           onShowCreateModal={() => setShowCreateModal(true)} onUpload={handleUpload}
