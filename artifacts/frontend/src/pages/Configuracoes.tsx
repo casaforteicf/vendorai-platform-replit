@@ -1221,6 +1221,63 @@ export default function Configuracoes() {
   const [zapiSaving, setZapiSaving] = useState(false);
   const [syncedZapi, setSyncedZapi] = useState(false);
 
+  // ── Messenger connection state ───────────────────────────────────────────
+  // Campos ainda não fazem parte do cliente de API gerado (adicionados hoje
+  // no schema) — usa fetch direto em vez do hook gerado, mesmo padrão já
+  // usado nos módulos novos de hoje, pra não depender de regenerar o cliente.
+  const [messengerTokenInput, setMessengerTokenInput] = useState<string>("");
+  const [messengerPageIdInput, setMessengerPageIdInput] = useState<string>("");
+  const [messengerSaving, setMessengerSaving] = useState(false);
+  const [syncedMessenger, setSyncedMessenger] = useState(false);
+
+  if (agentQuery.data && !syncedMessenger) {
+    const data = agentQuery.data as any;
+    setMessengerTokenInput(data.messengerPageAccessToken ?? "");
+    setMessengerPageIdInput(data.messengerPageId ?? "");
+    setSyncedMessenger(true);
+  }
+
+  async function patchAgentConfigRaw(id: string, data: Record<string, unknown>) {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/agent-configs/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Erro ao salvar");
+    return res.json();
+  }
+
+  function onSaveMessenger() {
+    if (!agentQuery.data?.id) return;
+    setMessengerSaving(true);
+    patchAgentConfigRaw(agentQuery.data.id, {
+      messengerPageAccessToken: messengerTokenInput.trim() || null,
+      messengerPageId: messengerPageIdInput.trim() || null,
+    })
+      .then((updated) => {
+        queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
+        setSyncedMessenger(false);
+        toast({ title: "Credenciais do Messenger salvas com sucesso." });
+      })
+      .catch(() => toast({ title: "Erro ao salvar credenciais do Messenger.", variant: "destructive" }))
+      .finally(() => setMessengerSaving(false));
+  }
+
+  function onDisconnectMessenger() {
+    if (!agentQuery.data?.id) return;
+    setMessengerSaving(true);
+    patchAgentConfigRaw(agentQuery.data.id, { messengerPageAccessToken: null, messengerPageId: null })
+      .then((updated) => {
+        queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
+        setMessengerTokenInput("");
+        setMessengerPageIdInput("");
+        toast({ title: "Messenger desconectado." });
+      })
+      .catch(() => toast({ title: "Erro ao desconectar Messenger.", variant: "destructive" }))
+      .finally(() => setMessengerSaving(false));
+  }
+
   if (agentQuery.data && !syncedZapi) {
     setZapiInstanceInput(agentQuery.data.zapiInstanceId ?? "");
     setZapiTokenInput(agentQuery.data.zapiToken ?? "");
@@ -3395,6 +3452,112 @@ Body:
                             className="shrink-0 h-7 w-7"
                             onClick={() => {
                               navigator.clipboard.writeText(`https://${window.location.hostname}/api/tenants/${tenantId}/webhooks/zapi`);
+                              toast({ title: "URL copiada." });
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Messenger — Facebook Page Access Token */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-blue-600" />
+                    Messenger (Facebook)
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Conecte sua Página do Facebook pra receber e responder mensagens do Messenger. Gere o token de acesso da página no Meta for Developers.
+                  </p>
+                </div>
+                {(agentQuery.data as any)?.messengerPageAccessToken && (
+                  <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Conectado
+                  </span>
+                )}
+              </div>
+
+              {agentQuery.isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Page ID</label>
+                    <Input
+                      placeholder="ID numérico da Página do Facebook"
+                      value={messengerPageIdInput}
+                      onChange={(e) => setMessengerPageIdInput(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Page Access Token</label>
+                    <Input
+                      type="password"
+                      placeholder="Token de acesso da página (Meta for Developers)"
+                      value={messengerTokenInput}
+                      onChange={(e) => setMessengerTokenInput(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">Gerado no painel do App no Meta for Developers, com permissão pages_messaging.</p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onSaveMessenger}
+                      disabled={messengerSaving || !agentQuery.data?.id || !messengerTokenInput.trim() || !messengerPageIdInput.trim()}
+                      className="gap-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      {messengerSaving ? "Salvando…" : (agentQuery.data as any)?.messengerPageAccessToken ? "Atualizar credenciais" : "Conectar Messenger"}
+                    </Button>
+                    {(agentQuery.data as any)?.messengerPageAccessToken && (
+                      <Button
+                        variant="outline"
+                        onClick={onDisconnectMessenger}
+                        disabled={messengerSaving}
+                        className="gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Desconectar
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Webhook de entrada — URL Messenger */}
+                  {(agentQuery.data as any)?.messengerPageAccessToken && tenantId && (
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                      <p className="text-sm font-semibold flex items-center gap-1.5">
+                        <span className="text-base">📥</span>
+                        Webhook de entrada (receber mensagens)
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        No Meta for Developers, configure o webhook do Messenger com a URL abaixo (mesmo verify token usado no WhatsApp/Instagram Meta).
+                      </p>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground font-medium">URL do webhook:</p>
+                        <div className="flex gap-2 items-center">
+                          <code className="flex-1 text-xs break-all bg-muted border rounded px-2 py-1.5 text-foreground/80">
+                            {`https://${window.location.hostname}/api/webhooks/meta/messenger`}
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="shrink-0 h-7 w-7"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`https://${window.location.hostname}/api/webhooks/meta/messenger`);
                               toast({ title: "URL copiada." });
                             }}
                           >
