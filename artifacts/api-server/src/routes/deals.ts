@@ -862,7 +862,10 @@ router.patch("/deals/:id", async (req, res) => {
               "Asaas charge created",
             );
 
-            // Salvar cobrança na tabela billing_records
+            // BUG CORRIGIDO: splitPercent registrado aqui dizia "40", mas o
+            // split de verdade enviado pra Asaas (linha acima, percentualValue)
+            // é 50 — mesmo valor usado em billing.ts pra split de parceiro.
+            // Reconciliação de comissão de parceiro lia o número errado.
             await db.insert(billingRecordsTable).values({
               tenantId,
               dealId: deal.id,
@@ -871,7 +874,7 @@ router.patch("/deals/:id", async (req, res) => {
               valor: deal.valor ?? null,
               status: charge.status ?? "pending",
               partnerWalletId: partnerWalletId ?? null,
-              splitPercent: partnerWalletId ? "40" : null,
+              splitPercent: partnerWalletId ? "50" : null,
             }).catch((e) => req.log.warn({ err: e }, "deal-ganho: billing_records insert failed"));
 
             await logAutomation("asaas_charge", "success");
