@@ -44,7 +44,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const userFunction = user?.userFunction as UserFunction | undefined;
   const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";
-  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados";
+  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos";
   const isSupermercado = effectiveVertical === "Supermercado";
   const isSalao   = effectiveVertical === "Salão de Beleza";
   const isClinica = effectiveVertical === "Clínica";
@@ -186,6 +186,36 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
       "/varejo/combos",
     ]),
+    "Móveis": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Cama, Mesa e Banho": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Brinquedos": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Instrumentos Musicais": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Perfumaria e Cosméticos": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
     "Supermercado": new Set([
       ...CORE_VERTICAL_HREFS,
       "/supermercado", "/supermercado/produtos", "/supermercado/pedidos",
@@ -263,6 +293,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Papelaria e Livraria": "Varejo",
     "Joias, Relógios e Óticas": "Varejo",
     "Calçados": "Varejo",
+    "Móveis": "Varejo",
+    "Cama, Mesa e Banho": "Varejo",
+    "Brinquedos": "Varejo",
+    "Instrumentos Musicais": "Varejo",
+    "Perfumaria e Cosméticos": "Varejo",
     "Supermercado": "Supermercado",
     "Seguros Corporativos": "Seguros",
     "Clínica": "Clínica",
