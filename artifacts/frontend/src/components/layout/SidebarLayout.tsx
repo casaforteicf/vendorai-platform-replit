@@ -44,7 +44,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const userFunction = user?.userFunction as UserFunction | undefined;
   const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";
-  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades";
+  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados";
   const isSupermercado = effectiveVertical === "Supermercado";
   const isSalao   = effectiveVertical === "Salão de Beleza";
   const isClinica = effectiveVertical === "Clínica";
@@ -150,6 +150,42 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
       "/varejo/combos",
     ]),
+    "Bebês e Crianças": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Esportes e Lazer": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Automotivo — Acessórios e Som": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Papelaria e Livraria": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Joias, Relógios e Óticas": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
+    "Calçados": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
     "Supermercado": new Set([
       ...CORE_VERTICAL_HREFS,
       "/supermercado", "/supermercado/produtos", "/supermercado/pedidos",
@@ -221,6 +257,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Varejo de Roupas & Acessórios": "Varejo",
     "Varejo de Eletroeletrônicos": "Varejo",
     "Varejo de Decoração, Variedades & Utilidades": "Varejo",
+    "Bebês e Crianças": "Varejo",
+    "Esportes e Lazer": "Varejo",
+    "Automotivo — Acessórios e Som": "Varejo",
+    "Papelaria e Livraria": "Varejo",
+    "Joias, Relógios e Óticas": "Varejo",
+    "Calçados": "Varejo",
     "Supermercado": "Supermercado",
     "Seguros Corporativos": "Seguros",
     "Clínica": "Clínica",
