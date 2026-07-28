@@ -2377,7 +2377,7 @@ router.post("/arch/surfaces/:surfaceId/material", async (req, res) => {
 
   const [applied] = await db
     .insert(renderSurfaceMaterialsTable)
-    .values({ ...parsed.data, surfaceId, appliedBy: (req as any).user?.id ?? null })
+    .values({ ...parsed.data, surfaceId, appliedBy: (req as any).user?.sub ?? null })
     .returning();
 
   return res.status(201).json(applied);

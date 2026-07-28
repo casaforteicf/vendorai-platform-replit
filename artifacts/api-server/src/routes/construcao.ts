@@ -36,6 +36,10 @@ import {
   insertObraOrcamentoEtapaSchema,
   updateObraOrcamentoEtapaSchema,
   insertObraOrcamentoItemSchema,
+  insertCompraObraSchema,
+  insertInsumoSchema,
+  insertComposicaoSchema,
+  insertComposicaoInsumoSchema,
   updateObraOrcamentoItemSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
@@ -246,7 +250,7 @@ router.post("/tenants/:tenantId/obras/:obraId/etapas/:etapaId/medicoes", async (
     percentualAnterior: etapa.percentualExecutado,
     percentualNovo,
     observacao: req.body.observacao,
-    responsavelId: (req as any).user?.id,
+    responsavelId: (req as any).user?.sub,
   }).returning();
 
   await db.update(obraEtapasTable)
@@ -388,7 +392,7 @@ router.post("/tenants/:tenantId/obras/:obraId/diario", async (req, res) => {
   const parsed = insertObraDiarioSchema.safeParse({
     ...req.body,
     obraId,
-    responsavelId: (req as any).user?.id,
+    responsavelId: (req as any).user?.sub,
   });
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
@@ -416,7 +420,7 @@ router.put("/tenants/:tenantId/obras/diario/:diarioId", async (req, res) => {
 
   const extra: Record<string, unknown> = {};
   if (req.body.status === "aprovado") {
-    extra.aprovadoPorId = (req as any).user?.id;
+    extra.aprovadoPorId = (req as any).user?.sub;
     extra.aprovadoEm = new Date();
   }
 
@@ -437,7 +441,7 @@ router.put("/tenants/:tenantId/obras/:obraId/diario/:diarioId", async (req, res)
 
   const extra: Record<string, unknown> = {};
   if (req.body.status === "aprovado") {
-    extra.aprovadoPorId = (req as any).user?.id;
+    extra.aprovadoPorId = (req as any).user?.sub;
     extra.aprovadoEm = new Date();
   }
 
@@ -611,7 +615,10 @@ router.post("/tenants/:tenantId/obras/:obraId/compras", async (req, res) => {
   const { tenantId: tid, obraId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const [compra] = await db.insert(comprasObrasTable).values({ ...req.body, tenantId: tid, obraId } as any).returning();
+  const parsed = insertCompraObraSchema.safeParse({ ...req.body, tenantId: tid, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [compra] = await db.insert(comprasObrasTable).values(parsed.data).returning();
   return res.status(201).json(compra);
 });
 
@@ -645,7 +652,10 @@ router.post("/tenants/:tenantId/insumos", async (req, res) => {
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const [insumo] = await db.insert(insumosTable).values({ ...req.body, tenantId: tid } as any).returning();
+  const parsed = insertInsumoSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [insumo] = await db.insert(insumosTable).values(parsed.data).returning();
   return res.status(201).json(insumo);
 });
 
@@ -760,7 +770,7 @@ router.post("/tenants/:tenantId/estoque-obras/movimentacoes", async (req, res) =
     origemObraId,
     destinoTipo,
     destinoObraId,
-    responsavelId: (req as any).user?.id,
+    responsavelId: (req as any).user?.sub,
     observacao,
   }).returning();
 
@@ -784,11 +794,19 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const { itens, ...rest } = req.body as { itens?: Array<{ insumoId: string; quantidade: string; precoUnitario?: string }>; [key: string]: unknown };
-  const [composicao] = await db.insert(composicoesTable).values({ ...rest, tenantId: tid } as any).returning();
+  const { itens, ...rest } = req.body as { itens?: unknown[]; [key: string]: unknown };
+
+  const parsedComposicao = insertComposicaoSchema.safeParse({ ...rest, tenantId: tid });
+  if (!parsedComposicao.success) return res.status(422).json({ error: parsedComposicao.error.message });
+
+  const [composicao] = await db.insert(composicoesTable).values(parsedComposicao.data).returning();
 
   if (itens && itens.length > 0) {
-    await db.insert(composicaoInsumosTable).values(itens.map((i) => ({ composicaoId: composicao.id, ...i })) as any);
+    const parsedItens = z.array(insertComposicaoInsumoSchema).safeParse(
+      itens.map((i) => ({ ...(i as object), composicaoId: composicao.id }))
+    );
+    if (!parsedItens.success) return res.status(422).json({ error: parsedItens.error.message });
+    await db.insert(composicaoInsumosTable).values(parsedItens.data);
   }
 
   return res.status(201).json(composicao);

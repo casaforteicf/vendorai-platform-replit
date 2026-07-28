@@ -64,6 +64,11 @@ export const estoqueCentralObrasTable = pgTable("estoque_central_obras", {
 
 export type EstoqueCentralObra = typeof estoqueCentralObrasTable.$inferSelect;
 
+export const insertEstoqueCentralObraSchema = createInsertSchema(estoqueCentralObrasTable, {
+  quantidadeAtual: decimalOptional,
+  quantidadeMinima: decimalOptional,
+}).omit({ id: true, updatedAt: true });
+
 // ─── Estoque por Obra ─────────────────────────────────────────────────────────
 
 export const estoqueObrasTable = pgTable("estoque_obras", {
@@ -82,6 +87,11 @@ export const estoqueObrasTable = pgTable("estoque_obras", {
 });
 
 export type EstoqueObra = typeof estoqueObrasTable.$inferSelect;
+
+export const insertEstoqueObraSchema = createInsertSchema(estoqueObrasTable, {
+  quantidadeAtual: decimalOptional,
+  quantidadeMinima: decimalOptional,
+}).omit({ id: true, updatedAt: true });
 
 // ─── Movimentações de Estoque ─────────────────────────────────────────────────
 
@@ -149,3 +159,10 @@ export const updateCompraObraSchema = createSelectSchema(comprasObrasTable, {
 export type InsertCompraObra = z.infer<typeof insertCompraObraSchema>;
 export type UpdateCompraObra = z.infer<typeof updateCompraObraSchema>;
 export type CompraObra = typeof comprasObrasTable.$inferSelect;
+
+export const insertMovimentacaoEstoqueObraSchema = createInsertSchema(movimentacoesEstoqueObrasTable, {
+  quantia: z.union([z.string(), z.number()]).transform((v) => String(v)).pipe(z.string().regex(/^\d+(\.\d+)?$/, "Invalid decimal")),
+  tipo: z.enum(["entrada", "saida", "alocacao", "devolucao", "transferencia"]),
+}).omit({ id: true, createdAt: true });
+
+export type InsertMovimentacaoEstoqueObra = z.infer<typeof insertMovimentacaoEstoqueObraSchema>;

@@ -12,6 +12,16 @@ import {
   varejoComboTable,
   varejoComboItemTable,
   leadsTable,
+  insertVarejoColecaoSchema,
+  insertVarejoFornecedorSchema,
+  insertVarejoProdutoSchema,
+  insertVarejoGradeSchema,
+  insertVarejoPedidoCompraSchema,
+  insertVarejoPedidoCompraItemSchema,
+  insertVarejoFidelidadeSchema,
+  updateVarejoFidelidadeSchema,
+  insertVarejoComboSchema,
+  insertVarejoComboItemSchema,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -46,7 +56,10 @@ router.post("/tenants/:tenantId/varejo/colecoes", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const [row] = await db.insert(varejoColecaoTable).values({ ...req.body, tenantId } as any).returning();
+  const parsed = insertVarejoColecaoSchema.safeParse({ ...req.body, tenantId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(varejoColecaoTable).values(parsed.data).returning();
   return res.status(201).json(row);
 });
 
@@ -99,7 +112,10 @@ router.post("/tenants/:tenantId/varejo/fornecedores", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const [row] = await db.insert(varejoFornecedorTable).values({ ...req.body, tenantId } as any).returning();
+  const parsed = insertVarejoFornecedorSchema.safeParse({ ...req.body, tenantId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(varejoFornecedorTable).values(parsed.data).returning();
   return res.status(201).json(row);
 });
 
@@ -179,7 +195,10 @@ router.post("/tenants/:tenantId/varejo/produtos", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const [row] = await db.insert(varejoProdutoTable).values({ ...req.body, tenantId } as any).returning();
+  const parsed = insertVarejoProdutoSchema.safeParse({ ...req.body, tenantId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(varejoProdutoTable).values(parsed.data).returning();
   return res.status(201).json(row);
 });
 
@@ -239,8 +258,11 @@ router.post("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, 
   const { tenantId, produtoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const parsed = insertVarejoGradeSchema.safeParse({ ...req.body, tenantId, produtoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
   const [row] = await db.insert(varejoGradeTable)
-    .values({ ...req.body, tenantId, produtoId } as any)
+    .values(parsed.data)
     .returning();
   return res.status(201).json(row);
 });
@@ -304,7 +326,10 @@ router.post("/tenants/:tenantId/varejo/pedidos-compra", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const [row] = await db.insert(varejoPedidoCompraTable).values({ ...req.body, tenantId } as any).returning();
+  const parsed = insertVarejoPedidoCompraSchema.safeParse({ ...req.body, tenantId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(varejoPedidoCompraTable).values(parsed.data).returning();
   return res.status(201).json(row);
 });
 
@@ -373,8 +398,11 @@ router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (r
   const { tenantId, pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const parsed = insertVarejoPedidoCompraItemSchema.safeParse({ ...req.body, pedidoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
   const [row] = await db.insert(varejoPedidoCompraItemTable)
-    .values({ ...req.body, pedidoId } as any)
+    .values(parsed.data)
     .returning();
   return res.status(201).json(row);
 });
@@ -460,13 +488,17 @@ router.put("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
 
   let row;
   if (existing) {
+    const parsed = updateVarejoFidelidadeSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
     [row] = await db.update(varejoFidelidadeTable)
-      .set({ ...req.body, updatedAt: new Date() })
+      .set({ ...parsed.data, updatedAt: new Date() })
       .where(and(eq(varejoFidelidadeTable.leadId, leadId), eq(varejoFidelidadeTable.tenantId, tenantId)))
       .returning();
   } else {
+    const parsed = insertVarejoFidelidadeSchema.safeParse({ ...req.body, tenantId, leadId });
+    if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
     [row] = await db.insert(varejoFidelidadeTable)
-      .values({ ...req.body, tenantId, leadId } as any)
+      .values(parsed.data)
       .returning();
   }
 
@@ -499,7 +531,10 @@ router.post("/tenants/:tenantId/varejo/combos", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const [row] = await db.insert(varejoComboTable).values({ ...req.body, tenantId } as any).returning();
+  const parsed = insertVarejoComboSchema.safeParse({ ...req.body, tenantId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(varejoComboTable).values(parsed.data).returning();
   return res.status(201).json(row);
 });
 
@@ -557,8 +592,11 @@ router.post("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) 
   const { tenantId, comboId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const parsed = insertVarejoComboItemSchema.safeParse({ ...req.body, comboId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
   const [row] = await db.insert(varejoComboItemTable)
-    .values({ ...req.body, comboId } as any)
+    .values(parsed.data)
     .returning();
   return res.status(201).json(row);
 });
