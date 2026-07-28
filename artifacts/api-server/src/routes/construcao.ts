@@ -74,7 +74,13 @@ router.param("tenantId", async (req: any, res: any, next: any, tid: string) => {
     .select({ vertical: tenantsTable.vertical })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tid));
-  if (!tenant || tenant.vertical !== "construcao") {
+  // BUG CORRIGIDO (auditoria): comparava com o literal "construcao", que
+  // NUNCA bate com o nome real de nenhum segment_template no banco (ex:
+  // "Construção & Reforma") — o módulo inteiro era inacessível pra
+  // qualquer tenant real, só super_admin passava. Comparação por
+  // conteúdo (case-insensitive) em vez de string exata, resiliente a
+  // pequenas variações de nome do template no futuro.
+  if (!tenant?.vertical || !tenant.vertical.toLowerCase().includes("constru")) {
     return res.status(403).json({ error: "Acesso restrito à vertical de construção civil." });
   }
   return next();

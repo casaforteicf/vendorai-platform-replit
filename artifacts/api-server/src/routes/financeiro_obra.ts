@@ -52,7 +52,10 @@ router.param("tenantId", async (req: any, res: any, next: any, tid: string) => {
     .select({ vertical: tenantsTable.vertical })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tid));
-  if (!tenant || tenant.vertical !== "construcao") {
+  // BUG CORRIGIDO (auditoria) — mesmo problema de construcao.ts: literal
+  // "construcao" nunca batia com nome real de template ("Construção &
+  // Reforma"). Comparação por conteúdo, case-insensitive.
+  if (!tenant?.vertical || !tenant.vertical.toLowerCase().includes("constru")) {
     return res.status(403).json({ error: "Acesso restrito à vertical de construção civil." });
   }
   return next();

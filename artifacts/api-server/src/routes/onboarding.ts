@@ -383,7 +383,6 @@ router.post(
       .returning({ setupCompletedAt: tenantsTable.setupCompletedAt, subdomainSlug: tenantsTable.subdomainSlug });
 
     req.log.info({ tenantId, subdomainSlug }, "Onboarding: profile saved, setup marked complete, subdomain assigned");
-
     // ── 2. Auto-config IA via segment template ─────────────────────────────
     const promptsApplied: string[] = [];
     let funilCriado = false;
@@ -402,6 +401,17 @@ router.post(
     const segmentTips: Record<string, string> = template
       ? ((template.promptsSugeridos ?? {}) as Record<string, string>)
       : {};
+
+    // BUG CORRIGIDO (auditoria): tenants.vertical nunca era setado por
+    // nenhum fluxo real de onboarding — só um endpoint separado
+    // (segment-templates/:id/apply) que o frontend nunca chama. Isso
+    // deixava tenant novo bloqueado (403) de qualquer módulo com gate de
+    // vertical (ex: construcao.ts, financeiro_obra.ts) desde o primeiro
+    // dia, sem caminho nenhum de correção visível pro usuário.
+    await db
+      .update(tenantsTable)
+      .set({ vertical: data.vertical, updatedAt: now })
+      .where(eq(tenantsTable.id, tenantId));
 
     // Apply behavioral prompts to ALL 7 agent types (always, regardless of segment template)
     const [existingConfig] = await db
@@ -615,6 +625,13 @@ router.patch("/onboarding/step/1", authenticate, async (req, res) => {
     .set({
       nomeEmpresa,
       segmento,
+      // BUG CORRIGIDO (auditoria): tenants.vertical nunca era setado em
+      // NENHUM fluxo real de onboarding (o handler /onboarding/complete
+      // que setava isso não é chamado pelo frontend — código morto). Sem
+      // isso, tenant novo ficava bloqueado (403) de qualquer módulo com
+      // gate de vertical (construcao.ts, financeiro_obra.ts) desde o
+      // primeiro dia, sem nenhum caminho de correção visível.
+      vertical: segmento,
       site: site ?? null,
       descricao: descricao ?? null,
       corPrimaria: corPrimaria ?? undefined,
