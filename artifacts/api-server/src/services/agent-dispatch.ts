@@ -659,19 +659,26 @@ export async function processAgentInternal(params: {
               message: `Lead *${ctx.lead.nome ?? leadId}* respondeu com padrões de bot por ${newCount} vezes seguidas. Status alterado para revisão manual. ${transcript.slice(0, 200)}`,
               type: "warning",
               category: "prospector_bot",
-            } as any).catch((err: unknown) => log.warn({ err }, "dispatch: failed to insert bot notification"));
+            }).catch((err: unknown) => log.warn({ err }, "dispatch: failed to insert bot notification"));
 
             // Log activity
             await db.insert(activitiesTable).values({
               tenantId,
               leadId,
-              tipo: "prospector_bot_detectado",
+              // BUG CORRIGIDO: 'prospector_bot_detectado' não existe no enum
+              // activity_tipo (só ligacao|whatsapp|email|visita|tarefa|
+              // reuniao|escalacao_humano|handoff_agente|feedback_entrega) —
+              // esse insert sempre falhava (violação de enum), sempre
+              // engolido silenciosamente pelo .catch() abaixo. O 'as any'
+              // que existia aqui escondia o erro de tipo em vez de expor o
+              // problema real.
+              tipo: "tarefa",
               titulo: "Prospecção pausada — bot de atendimento detectado",
               descricao: transcript.slice(0, 500),
               status: "concluida",
               concluidaEm: new Date(),
               resultadoExecucao: `sinais_bot:${newCount}`,
-            } as any).catch((err: unknown) => log.warn({ err }, "dispatch: failed to insert bot activity"));
+            }).catch((err: unknown) => log.warn({ err }, "dispatch: failed to insert bot activity"));
 
             // Best-effort: notify responsible via WhatsApp
             if (ctx.lead.assignedTo) {
