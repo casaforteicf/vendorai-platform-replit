@@ -481,73 +481,90 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
 
   req.log.info({ telefone, nome, tipoConteudo, type: payload.type }, "zapi-webhook: processing message");
 
-  // ── 4. Find or create lead (dedup-aware) ───────────────────────────────────
-  const normalized = storePhone(telefone);
-  const match = await findLeadByDedup(tenantId, telefone, null, null);
-
+  // ── 4-7. Find/create lead, conversa, inserir mensagem ───────────────────
+  // CORREÇÃO DE AUDITORIA: até aqui, todo passo de detecção de conteúdo
+  // (áudio/imagem/documento) sempre respondia 200 mesmo em erro — mas essa
+  // parte central (lead/conversa/mensagem) não tinha a mesma proteção. Se
+  // um insert falhasse por qualquer motivo transitório, o handler de erro
+  // global (app.ts) devolvia 500 — inconsistente com o resto do arquivo, e
+  // arriscado: Z-API reenviaria o mesmo webhook depois de um 500, podendo
+  // duplicar lead/mensagem quando o reenvio desse certo.
   let lead: typeof leadsTable.$inferSelect;
-  if (match.found) {
-    lead = match.lead;
-    await db
-      .update(leadsTable)
-      .set({ updatedAt: new Date() })
-      .where(eq(leadsTable.id, lead.id));
-    req.log.info({ leadId: lead.id, telefone: normalized, matchBy: match.matchBy }, "zapi-webhook: existing lead found (dedup)");
-  } else {
-    [lead] = await db
-      .insert(leadsTable)
-      .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp" })
-      .returning();
-    req.log.info({ leadId: lead.id, telefone: normalized }, "zapi-webhook: new lead created");
-    await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
-  }
+  let conversation: typeof conversationsTable.$inferSelect;
+  let message: typeof messagesTable.$inferSelect;
+  try {
+    const normalized = storePhone(telefone);
+    const match = await findLeadByDedup(tenantId, telefone, null, null);
 
-  // ── 5. Find or create whatsapp conversation ────────────────────────────────
-  let [conversation] = await db
-    .select()
-    .from(conversationsTable)
-    .where(
-      and(
-        eq(conversationsTable.tenantId, tenantId),
-        eq(conversationsTable.leadId, lead.id),
-        eq(conversationsTable.channel, "whatsapp")
+    if (match.found) {
+      lead = match.lead;
+      await db
+        .update(leadsTable)
+        .set({ updatedAt: new Date() })
+        .where(eq(leadsTable.id, lead.id));
+      req.log.info({ leadId: lead.id, telefone: normalized, matchBy: match.matchBy }, "zapi-webhook: existing lead found (dedup)");
+    } else {
+      [lead] = await db
+        .insert(leadsTable)
+        .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp" })
+        .returning();
+      req.log.info({ leadId: lead.id, telefone: normalized }, "zapi-webhook: new lead created");
+      await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
+    }
+
+    // ── 5. Find or create whatsapp conversation ──────────────────────────
+    const [existingConv] = await db
+      .select()
+      .from(conversationsTable)
+      .where(
+        and(
+          eq(conversationsTable.tenantId, tenantId),
+          eq(conversationsTable.leadId, lead.id),
+          eq(conversationsTable.channel, "whatsapp")
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
-  if (!conversation) {
-    [conversation] = await db
-      .insert(conversationsTable)
-      .values({ tenantId, leadId: lead.id, channel: "whatsapp", status: "open", naoLidas: 0 })
+    if (existingConv) {
+      conversation = existingConv;
+    } else {
+      [conversation] = await db
+        .insert(conversationsTable)
+        .values({ tenantId, leadId: lead.id, channel: "whatsapp", status: "open", naoLidas: 0 })
+        .returning();
+    }
+
+    // ── 6. Insert incoming message ───────────────────────────────────────
+    [message] = await db
+      .insert(messagesTable)
+      .values({
+        tenantId,
+        conversationId: conversation.id,
+        leadId: lead.id,
+        direcao: "entrada",
+        canal: "whatsapp",
+        conteudo: mensagem,
+        enviadoPor: "lead",
+        tipoConteudo,
+        status: "entregue",
+      })
       .returning();
+
+    // ── 7. Update conversation counters ──────────────────────────────────
+    await db
+      .update(conversationsTable)
+      .set({
+        ultimaMensagemEm: new Date(),
+        lastInboundAt: new Date(),
+        naoLidas: sql`${conversationsTable.naoLidas} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(conversationsTable.id, conversation.id));
+  } catch (persistErr) {
+    req.log.error({ err: persistErr, tenantId, telefone }, "zapi-webhook: falha ao persistir lead/conversa/mensagem");
+    res.status(200).json({ ignored: true, reason: "persist_failed" });
+    return;
   }
-
-  // ── 6. Insert incoming message ─────────────────────────────────────────────
-  const [message] = await db
-    .insert(messagesTable)
-    .values({
-      tenantId,
-      conversationId: conversation.id,
-      leadId: lead.id,
-      direcao: "entrada",
-      canal: "whatsapp",
-      conteudo: mensagem,
-      enviadoPor: "lead",
-      tipoConteudo,
-      status: "entregue",
-    })
-    .returning();
-
-  // ── 7. Update conversation counters ───────────────────────────────────────
-  await db
-    .update(conversationsTable)
-    .set({
-      ultimaMensagemEm: new Date(),
-      lastInboundAt: new Date(),
-      naoLidas: sql`${conversationsTable.naoLidas} + 1`,
-      updatedAt: new Date(),
-    })
-    .where(eq(conversationsTable.id, conversation.id));
 
   // ── 8. Confirmação de agendamento (SIM/NÃO) — intercept antes do agente ──
   const _zapiApptHandled = await handleAppointmentConfirmation(tenantId, lead.id, mensagem, req.log);
