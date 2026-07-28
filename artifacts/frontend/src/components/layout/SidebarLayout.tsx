@@ -44,7 +44,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const userFunction = user?.userFunction as UserFunction | undefined;
   const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";
-  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos";
+  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades";
   const isSupermercado = effectiveVertical === "Supermercado";
   const isSalao   = effectiveVertical === "Salão de Beleza";
   const isClinica = effectiveVertical === "Clínica";
@@ -144,6 +144,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
       "/varejo/combos",
     ]),
+    "Varejo de Decoração, Variedades & Utilidades": new Set([
+      ...CORE_VERTICAL_HREFS,
+      "/estoque", "/varejo/produtos", "/varejo/colecoes",
+      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
+      "/varejo/combos",
+    ]),
     "Supermercado": new Set([
       ...CORE_VERTICAL_HREFS,
       "/supermercado", "/supermercado/produtos", "/supermercado/pedidos",
@@ -214,6 +220,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "Construção & Reforma": "Construção",
     "Varejo de Roupas & Acessórios": "Varejo",
     "Varejo de Eletroeletrônicos": "Varejo",
+    "Varejo de Decoração, Variedades & Utilidades": "Varejo",
     "Supermercado": "Supermercado",
     "Seguros Corporativos": "Seguros",
     "Clínica": "Clínica",
