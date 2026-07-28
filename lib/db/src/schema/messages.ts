@@ -13,6 +13,7 @@ export const messageDirecaoEnum = pgEnum("message_direcao", [
 export const messageCanalEnum = pgEnum("message_canal", [
   "whatsapp",
   "instagram",
+  "messenger",
   "email",
   "chat",
 ]);

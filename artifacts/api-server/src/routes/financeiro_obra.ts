@@ -207,30 +207,15 @@ router.post("/tenants/:tenantId/obras/:obraId/lancamentos", async (req, res) => 
 
   const [row] = await db.insert(obraLancamentosTable).values(parsed.data).returning();
 
-  // Opcional: integração Asaas — só se ASAAS_API_KEY configurado e lançamento tem vencimento
-  if (process.env["ASAAS_API_KEY"] && row && parsed.data.dataVencimento && Number(parsed.data.valor ?? 0) > 0) {
-    try {
-      const { createCharge } = await import("../lib/asaas.js");
-      const charge = await createCharge({
-        customer: "none",  // sem cliente vinculado — conta a pagar interna
-        billingType: "BOLETO",
-        value: Number(parsed.data.valor),
-        dueDate: parsed.data.dataVencimento,
-        description: parsed.data.descricao ?? `Lançamento obra #${row.id.slice(0, 8)}`,
-        externalReference: row.id,
-      });
-      if (charge?.id) {
-        await db
-          .update(obraLancamentosTable)
-          .set({ asaasPaymentId: charge.id })
-          .where(eq(obraLancamentosTable.id, row.id));
-        await recalcCustoRealizado(obraId, tenantId);
-        return res.status(201).json({ ...row, asaasPaymentId: charge.id });
-      }
-    } catch {
-      // Asaas falhou — retorna row sem ID Asaas (não-bloqueante)
-    }
-  }
+  // REMOVIDO (achado de auditoria): existia aqui uma tentativa de criar
+  // cobrança na Asaas pra lançamento interno de obra, usando customer:
+  // "none" e a chave da PLATAFORMA (não do tenant) — conceitualmente
+  // errado desde o início. Lançamento interno é conta a pagar (o que a
+  // obra deve a um fornecedor), não é "cobrar um cliente" — não existe
+  // cliente real pra vincular. A chamada sempre falhava silenciosamente
+  // (Asaas exige um customer válido), então nunca funcionou de verdade;
+  // era código morto que só confundia. dataVencimento e valor já ficam
+  // salvos direto na tabela, suficiente pra controle interno sem Asaas.
 
   await recalcCustoRealizado(obraId, tenantId);
   return res.status(201).json(row);

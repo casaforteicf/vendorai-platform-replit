@@ -35,6 +35,10 @@ export const leadsTable = pgTable("leads", {
   pendingSequenceOportunidadeId: text("pending_sequence_oportunidade_id"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   instagramScopedId: text("instagram_scoped_id"),
+  // PSID (page-scoped ID) do Messenger — mesmo conceito do Instagram
+  // Scoped ID, mas namespace separado (Messenger e Instagram Direct têm
+  // IDs diferentes mesmo quando é a mesma pessoa/página).
+  messengerScopedId: text("messenger_scoped_id"),
   instagramHandle: text("instagram_handle"),
   endereco: text("endereco"),
   dataNascimento: text("data_nascimento"),

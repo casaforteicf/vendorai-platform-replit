@@ -26,7 +26,7 @@ export interface SendOutgoingMessageInput {
   tenantId: string;
   leadId: string;
   conteudo: string;
-  canal: "whatsapp" | "instagram" | "email" | "chat";
+  canal: "whatsapp" | "instagram" | "messenger" | "email" | "chat";
   agentName?: string | null;
 }
 
@@ -57,6 +57,22 @@ export class InstagramScopedIdMissingError extends Error {
   constructor(leadId: string) {
     super(`Lead "${leadId}" não tem Instagram Scoped ID. O lead precisa ter enviado uma mensagem primeiro via Instagram.`);
     this.name = "InstagramScopedIdMissingError";
+  }
+}
+
+export class MessengerNotConnectedError extends Error {
+  readonly statusCode = 422;
+  constructor() {
+    super("Messenger não conectado. Configure o token de acesso da página em Configurações > Integrações.");
+    this.name = "MessengerNotConnectedError";
+  }
+}
+
+export class MessengerScopedIdMissingError extends Error {
+  readonly statusCode = 422;
+  constructor(leadId: string) {
+    super(`Lead "${leadId}" não tem Messenger PSID. O lead precisa ter enviado uma mensagem primeiro via Messenger.`);
+    this.name = "MessengerScopedIdMissingError";
   }
 }
 
@@ -113,6 +129,40 @@ async function sendInstagramMessage(
   }
 
   log.info({ recipientIgsid }, "omnichannel: instagram message sent");
+}
+
+// Messenger usa exatamente o mesmo endpoint da Graph API (/me/messages) —
+// só troca o token de página e o campo de log/erro, pra não confundir com
+// Instagram nos logs quando os dois estiverem configurados no mesmo tenant.
+async function sendMessengerMessage(
+  pageAccessToken: string,
+  recipientPsid: string,
+  messageText: string,
+  log: Logger
+): Promise<void> {
+  const url = `https://graph.facebook.com/v19.0/me/messages`;
+  const body = {
+    recipient: { id: recipientPsid },
+    message: { text: messageText },
+    messaging_type: "RESPONSE",
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${pageAccessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    log.error({ err, recipientPsid }, "omnichannel: messenger send failed");
+    throw new Error(`Messenger API error: ${JSON.stringify(err)}`);
+  }
+
+  log.info({ recipientPsid }, "omnichannel: messenger message sent");
 }
 
 function normalizePhoneBR(raw: string): string {
@@ -666,6 +716,33 @@ export async function sendOutgoingMessage(
     await sendInstagramMessage(
       config.instagramPageAccessToken,
       lead.instagramScopedId,
+      conteudo,
+      log
+    );
+  }
+
+  // ── 3b. Messenger: validate credentials + actually send
+  if (canal === "messenger") {
+    const [config] = await db
+      .select({
+        messengerPageAccessToken: agentConfigsTable.messengerPageAccessToken,
+        messengerPageId: agentConfigsTable.messengerPageId,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1);
+
+    if (!config?.messengerPageAccessToken) {
+      throw new MessengerNotConnectedError();
+    }
+
+    if (!lead.messengerScopedId) {
+      throw new MessengerScopedIdMissingError(leadId);
+    }
+
+    await sendMessengerMessage(
+      config.messengerPageAccessToken,
+      lead.messengerScopedId,
       conteudo,
       log
     );

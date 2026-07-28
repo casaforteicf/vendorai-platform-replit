@@ -64,6 +64,11 @@ export const agentConfigsTable = pgTable(
     churnAutoWhatsapp: boolean("churn_auto_whatsapp").notNull().default(false),
     instagramPageAccessToken: text("instagram_page_access_token"),
     instagramPageId: text("instagram_page_id"),
+    // Messenger usa a mesma família de API (Facebook Graph API) — token de
+    // página próprio, já que a página do Messenger pode ser diferente da
+    // conta do Instagram mesmo quando estão vinculadas.
+    messengerPageAccessToken: text("messenger_page_access_token"),
+    messengerPageId: text("messenger_page_id"),
     instagramUsername: text("instagram_username"),
     zapiInstanceId: text("zapi_instance_id"),
     zapiToken: text("zapi_token"),

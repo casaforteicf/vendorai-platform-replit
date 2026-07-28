@@ -1652,3 +1652,192 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
 });
 
 export default router;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Meta Graph API Messenger Webhook
+// ═════════════════════════════════════════════════════════════════════════════
+// GET /api/webhooks/meta/messenger — Subscription verification
+// POST /api/webhooks/meta/messenger — Receive incoming messages
+//
+// Mesma família de API do Instagram/WhatsApp (Meta Graph API), mas payload
+// próprio: object="page", entry[].messaging[] com sender.id (PSID) e
+// message.text — não usa a estrutura de "comments" do Instagram nem o
+// formato de mensagem do WhatsApp Business.
+
+router.get("/webhooks/meta/messenger", async (req, res) => {
+  const mode = String(req.query["hub.mode"] ?? "");
+  const token = String(req.query["hub.verify_token"] ?? "");
+  const challenge = req.query["hub.challenge"];
+
+  if (mode !== "subscribe" || !token) {
+    req.log.warn({ mode }, "meta/messenger: invalid verification request");
+    return res.status(400).json({ error: "Invalid verification request" });
+  }
+
+  // Mesmo padrão de verificação já usado pro WhatsApp/Instagram: aceita o
+  // verify token global do app (env) OU um metaVerifyToken por tenant.
+  const envToken = process.env["WHATSAPP_VERIFY_TOKEN"];
+  let verified = !!envToken && token === envToken;
+
+  if (!verified) {
+    const [config] = await db
+      .select({ id: agentConfigsTable.id })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.metaVerifyToken, token))
+      .limit(1);
+    verified = !!config;
+  }
+
+  if (!verified) {
+    req.log.warn({ mode }, "meta/messenger: verify_token mismatch");
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  req.log.info("meta/messenger: webhook verified");
+  return res.status(200).send(challenge);
+});
+
+router.post("/webhooks/meta/messenger", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+
+  req.log.info(
+    { object: body.object, entries: (body.entry as any[])?.length },
+    "meta/messenger: webhook received"
+  );
+
+  // Acknowledge immediately (200 OK) — mesmo padrão seguro já usado nos
+  // outros webhooks Meta: nunca deixa uma falha de processamento virar 500
+  // e disparar reenvio (que poderia duplicar lead/mensagem).
+  res.status(200).json({ status: "received" });
+
+  try {
+    if (body.object !== "page") {
+      req.log.warn({ object: body.object }, "meta/messenger: ignoring non-page object");
+      return;
+    }
+
+    const entries = (body.entry ?? []) as Array<Record<string, unknown>>;
+    for (const entry of entries) {
+      const pageId = String(entry.id ?? "");
+      const messagingEvents = (entry.messaging ?? []) as Array<Record<string, unknown>>;
+
+      for (const event of messagingEvents) {
+        const sender = event.sender as Record<string, unknown> | undefined;
+        const psid = String(sender?.id ?? "");
+        if (!psid) continue;
+
+        const message = event.message as Record<string, unknown> | undefined;
+
+        // Echo da própria página respondendo (via API ou manualmente no
+        // Meta Business Suite) — nunca processar como mensagem de entrada.
+        if (message?.is_echo) {
+          req.log.debug({ psid }, "meta/messenger: discarded — echo message");
+          continue;
+        }
+
+        // Read receipts, delivery, postbacks etc. sem texto — nada a
+        // processar como mensagem de entrada por enquanto.
+        const texto = typeof message?.text === "string" ? message.text.trim() : "";
+        if (!texto) {
+          req.log.debug({ psid }, "meta/messenger: discarded — no text content");
+          continue;
+        }
+
+        // Resolve tenant a partir do pageId
+        const [agentCfg] = await db
+          .select({ tenantId: agentConfigsTable.tenantId })
+          .from(agentConfigsTable)
+          .where(eq(agentConfigsTable.messengerPageId, pageId))
+          .limit(1);
+
+        if (!agentCfg) {
+          req.log.warn({ pageId }, "meta/messenger: no tenant found for pageId");
+          continue;
+        }
+
+        const { tenantId } = agentCfg;
+
+        try {
+          // Lead: encontra por messengerScopedId (não tem telefone, PSID é
+          // o identificador único aqui — diferente do fluxo de WhatsApp).
+          let [lead] = await db
+            .select()
+            .from(leadsTable)
+            .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.messengerScopedId, psid)))
+            .limit(1);
+
+          if (lead) {
+            await db.update(leadsTable).set({ updatedAt: new Date() }).where(eq(leadsTable.id, lead.id));
+          } else {
+            [lead] = await db
+              .insert(leadsTable)
+              .values({
+                tenantId,
+                nome: `Contato Messenger ${psid.slice(-6)}`,
+                status: "novo",
+                source: "messenger",
+                messengerScopedId: psid,
+              })
+              .returning();
+            req.log.info({ leadId: lead.id, psid }, "meta/messenger: new lead created");
+            await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
+          }
+
+          let [conversation] = await db
+            .select()
+            .from(conversationsTable)
+            .where(
+              and(
+                eq(conversationsTable.tenantId, tenantId),
+                eq(conversationsTable.leadId, lead.id),
+                eq(conversationsTable.channel, "messenger")
+              )
+            )
+            .limit(1);
+
+          if (!conversation) {
+            [conversation] = await db
+              .insert(conversationsTable)
+              .values({ tenantId, leadId: lead.id, channel: "messenger", status: "open", naoLidas: 0 })
+              .returning();
+          }
+
+          const [insertedMessage] = await db
+            .insert(messagesTable)
+            .values({
+              tenantId,
+              conversationId: conversation.id,
+              leadId: lead.id,
+              direcao: "entrada",
+              canal: "messenger",
+              conteudo: texto,
+              enviadoPor: "lead",
+              tipoConteudo: "texto",
+              status: "entregue",
+            })
+            .returning();
+
+          await db
+            .update(conversationsTable)
+            .set({
+              ultimaMensagemEm: new Date(),
+              lastInboundAt: new Date(),
+              naoLidas: sql`${conversationsTable.naoLidas} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+
+          dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem: texto, log: req.log });
+          req.log.info({ messageId: insertedMessage.id, leadId: lead.id }, "meta/messenger: agent dispatched");
+        } catch (persistErr) {
+          // Mesma proteção aplicada hoje no webhook Z-API: falha de
+          // persistência não pode propagar (resposta já foi enviada, isso
+          // só afeta o log — mas mantém o padrão do resto do arquivo).
+          req.log.error({ err: persistErr, tenantId, psid }, "meta/messenger: falha ao persistir lead/conversa/mensagem");
+        }
+      }
+    }
+  } catch (err) {
+    req.log.error({ err }, "meta/messenger: error processing webhook");
+  }
+});
