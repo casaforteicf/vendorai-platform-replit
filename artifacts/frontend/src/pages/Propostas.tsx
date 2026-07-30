@@ -169,6 +169,10 @@ const catFormSchema = z.object({
   ativo: z.boolean().default(true),
   recorrente: z.boolean().default(false),
   prazoContrato: z.coerce.number().int().min(1).optional(),
+  // Controle específico do Praça.ai: "herda" segue o switch geral da loja
+  // (tenants.vendeNoPracaAi); "sim"/"nao" sobrepõe só pra esse produto.
+  vendeNoPracaAi: z.enum(["herda", "sim", "nao"]).default("herda"),
+  precoPracaAi: z.coerce.number().min(0).optional(),
 });
 type CatFormValues = z.infer<typeof catFormSchema>;
 
@@ -231,19 +235,20 @@ function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined },
+    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined },
   });
 
   const watchRecorrente = form.watch("recorrente");
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined });
+    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined });
     setFormOpen(true);
   }
 
   function openEdit(p: ProdutoCatalogo) {
     setEditingProd(p);
+    const vendeNoPracaAiValue = (p as any).vendeNoPracaAi;
     form.reset({
       nome: p.nome,
       categoriaId: p.categoriaId ?? undefined,
@@ -255,6 +260,8 @@ function CatalogoModal({
       ativo: p.ativo,
       recorrente: p.recorrencia === "mensal",
       prazoContrato: p.prazoContrato ?? undefined,
+      vendeNoPracaAi: vendeNoPracaAiValue === true ? "sim" : vendeNoPracaAiValue === false ? "nao" : "herda",
+      precoPracaAi: (p as any).precoPracaAi != null ? parseFloat((p as any).precoPracaAi) : undefined,
     });
     setFormOpen(true);
   }
@@ -275,7 +282,11 @@ function CatalogoModal({
       ativo: vals.ativo,
       recorrencia: vals.recorrente ? ("mensal" as const) : null,
       prazoContrato: vals.recorrente ? (vals.prazoContrato ?? null) : null,
-    };
+      // Campos do Praça.ai — ainda não sincronizados no client gerado
+      // (orval/openapi.yaml), backend já aceita (schema Drizzle da tabela).
+      vendeNoPracaAi: vals.vendeNoPracaAi === "sim" ? true : vals.vendeNoPracaAi === "nao" ? false : null,
+      precoPracaAi: vals.precoPracaAi != null ? vals.precoPracaAi.toFixed(2) : null,
+    } as any;
     if (editingProd) {
       updateMut.mutate(
         { id: editingProd.id, data: body },
@@ -633,6 +644,48 @@ function CatalogoModal({
                     </FormItem>
                   )} />
                 )}
+              </div>
+
+              {/* Praça.ai — visibilidade e preço específico */}
+              <div className="rounded-lg border border-border p-3 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Praça.ai</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Controle desse produto na vitrine do marketplace, separado do resto do catálogo</p>
+                </div>
+                <FormField control={form.control} name="vendeNoPracaAi" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm">Vender no Praça.ai</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="herda">Padrão da loja</SelectItem>
+                        <SelectItem value="sim">Sim, sempre</SelectItem>
+                        <SelectItem value="nao">Não, esconder da vitrine</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="precoPracaAi" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm">Preço específico no Praça.ai <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="Deixe em branco pra usar o preço normal"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">Sobrepõe o preço normal só na vitrine do Praça.ai (ex: já embutindo a comissão)</p>
+                    <FormMessage />
+                  </FormItem>
+                )} />
               </div>
 
               <div className="flex gap-2 pt-1">
