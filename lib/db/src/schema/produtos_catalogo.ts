@@ -49,6 +49,16 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // considerar a promoção inativa mesmo com precoPromocional preenchido.
   precoPromocional: numeric("preco_promocional", { precision: 12, scale: 2 }),
   promocaoAtivaAte: timestamp("promocao_ativa_ate"),
+  // Estoque (opt-in por produto — Complemento Praça.ai): quando
+  // controlaEstoque=false (padrão), comportamento antigo sem limite é
+  // mantido; quando true, estoqueQuantidade passa a valer e o Praça.ai
+  // bloqueia venda além do disponível. Coluna já existe fisicamente no
+  // banco (aplicada via migração do lado do Praça.ai/Railway, já que
+  // ambos compartilham o mesmo Supabase); aqui só formaliza no schema
+  // Drizzle do Vendor.ai pra esse código reconhecer o campo quando
+  // for republicado.
+  controlaEstoque: boolean("controla_estoque").notNull().default(false),
+  estoqueQuantidade: integer("estoque_quantidade"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
