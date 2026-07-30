@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
@@ -140,7 +140,52 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
   res.json(product);
 });
 
-// ── POST /tenants/:tenantId/produtos-catalogo/import ─────────────────────────
+// ── PATCH /tenants/:tenantId/produtos-catalogo/praca-ai-bulk ─────────────────
+// Ajusta visibilidade e/ou preço específico do Praça.ai pra vários produtos
+// de uma vez (ex: "tirar essa lista toda da vitrine" ou "embutir a comissão
+// no preço desses 40 produtos"). Cada campo é opcional — só atualiza o que
+// vier preenchido, os outros produtos/campos não selecionados ficam intactos.
+const bulkPracaAiBodySchema = z.object({
+  productIds: z.array(z.string()).min(1),
+  vendeNoPracaAi: z.boolean().nullable().optional(),
+  precoPracaAi: z.union([z.string(), z.number()]).nullable().optional(),
+});
+
+router.patch("/tenants/:tenantId/produtos-catalogo/praca-ai-bulk", async (req, res) => {
+  const { tenantId } = req.params;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const parsed = bulkPracaAiBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { productIds, vendeNoPracaAi, precoPracaAi } = parsed.data;
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (vendeNoPracaAi !== undefined) updateData.vendeNoPracaAi = vendeNoPracaAi;
+  if (precoPracaAi !== undefined) updateData.precoPracaAi = precoPracaAi === null ? null : String(precoPracaAi);
+
+  if (Object.keys(updateData).length === 1) {
+    res.status(422).json({ error: "Informe vendeNoPracaAi e/ou precoPracaAi." });
+    return;
+  }
+
+  const updated = await db
+    .update(produtosCatalogoTable)
+    .set(updateData as any)
+    .where(and(eq(produtosCatalogoTable.tenantId, tenantId), inArray(produtosCatalogoTable.id, productIds)))
+    .returning({ id: produtosCatalogoTable.id });
+
+  res.json({ atualizados: updated.length });
+});
+
+
 const importBodySchema = z.object({ csv: z.string().min(1) });
 
 router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {

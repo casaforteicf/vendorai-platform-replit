@@ -59,6 +59,13 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // for republicado.
   controlaEstoque: boolean("controla_estoque").notNull().default(false),
   estoqueQuantidade: integer("estoque_quantidade"),
+  // Controle por produto do Praça.ai (Complemento) — a loja pode vender no
+  // Praça.ai como um todo (tenants.vendeNoPracaAi) mas ainda assim tirar
+  // produtos específicos da vitrine, ou cobrar diferente lá (ex: já embutir
+  // a comissão da plataforma no preço). null = herda o comportamento
+  // padrão (visível, preço igual ao do Vendor.ai); explícito sobrepõe.
+  vendeNoPracaAi: boolean("vende_no_praca_ai_produto"), // nullable de propósito — não confundir com tenants.vendeNoPracaAi (switch geral da loja)
+  precoPracaAi: numeric("preco_praca_ai", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -87,6 +94,7 @@ export const insertProdutoCatalogoSchema = createInsertSchema(
     precoImplantacao: precoDecimalSchema.nullable().optional(),
     precoMensalidade: precoDecimalSchema.nullable().optional(),
     precoPromocional: precoDecimalSchema.nullable().optional(),
+    precoPracaAi: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
     comissaoPercentual: comissaoPercentualSchema.optional(),
   }
@@ -99,6 +107,7 @@ export const updateProdutoCatalogoSchema = createSelectSchema(
     precoImplantacao: precoDecimalSchema.nullable().optional(),
     precoMensalidade: precoDecimalSchema.nullable().optional(),
     precoPromocional: precoDecimalSchema.nullable().optional(),
+    precoPracaAi: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
     comissaoPercentual: comissaoPercentualSchema.optional(),
   }
