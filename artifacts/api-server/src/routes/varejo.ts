@@ -22,6 +22,7 @@ import {
   updateVarejoFidelidadeSchema,
   insertVarejoComboSchema,
   insertVarejoComboItemSchema,
+  erpTitulosTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -373,6 +374,23 @@ router.put("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res
     .where(and(eq(varejoPedidoCompraTable.id, pedidoId), eq(varejoPedidoCompraTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Pedido not found" });
+  if (row.status === "confirmado" && row.valorTotal) {
+    const [supplier] = row.fornecedorId
+      ? await db.select({ nome: varejoFornecedorTable.nome }).from(varejoFornecedorTable).where(eq(varejoFornecedorTable.id, row.fornecedorId))
+      : [];
+    const due = row.dataPrevista ? new Date(`${row.dataPrevista}T12:00:00`) : new Date();
+    await db.insert(erpTitulosTable).values({
+      tenantId,
+      tipo: "pagar",
+      categoria: "custo",
+      descricao: `Pedido de compra ${row.id.slice(0, 8)}`,
+      pessoa: supplier?.nome,
+      valorOriginal: row.valorTotal,
+      vencimento: due,
+      origemTipo: "pedido_compra",
+      origemId: row.id,
+    }).onConflictDoNothing();
+  }
   return res.json(row);
 });
 

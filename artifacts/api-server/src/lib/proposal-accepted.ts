@@ -12,6 +12,7 @@ import {
   agentTasksTable,
   notificationsTable,
   usersTable,
+  erpTitulosTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { analyzeLeadIntelligence } from "./analyze-intelligence.js";
@@ -523,6 +524,26 @@ export async function proposalAccepted(
     await createEntregasFromProposta(propostaId, log);
   } catch (err) {
     log.warn({ err, dealId: deal.id }, "proposalAccepted: entrega creation failed (non-fatal)");
+  }
+
+  // Financeiro integrado: toda venda aceita gera uma conta a receber.
+  // Idempotente pela origem e não bloqueia o fechamento comercial.
+  try {
+    if (proposta.valorTotal) {
+      await db.insert(erpTitulosTable).values({
+        tenantId: proposta.tenantId,
+        tipo: "receber",
+        categoria: "receita",
+        descricao: proposta.titulo,
+        documento: proposta.numero,
+        valorOriginal: proposta.valorTotal,
+        vencimento: proposta.acceptedAt ?? new Date(),
+        origemTipo: "proposta",
+        origemId: proposta.id,
+      }).onConflictDoNothing();
+    }
+  } catch (err) {
+    log.warn({ err, propostaId }, "proposalAccepted: ERP receivable creation failed (non-fatal)");
   }
 
   // 7. Dispatch ERP webhook (non-blocking)
