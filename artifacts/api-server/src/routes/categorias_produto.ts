@@ -7,6 +7,7 @@ import {
   insertCategoriaProdutoSchema,
   updateCategoriaProdutoSchema,
 } from "@workspace/db";
+import { ensureOfficialItemCategories } from "../lib/itemCategories";
 
 const router: IRouter = Router();
 
@@ -17,6 +18,8 @@ router.get("/tenants/:tenantId/categorias-produto", async (req, res) => {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+
+  await ensureOfficialItemCategories(String(tenantId));
 
   const categorias = await db
     .select()

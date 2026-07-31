@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { findOfficialItemCategory } from "../lib/itemCategories";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
   db,
@@ -291,7 +292,12 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     }
 
     const imagemUrl = iImagem >= 0 ? (cols[iImagem]?.trim() || null) : null;
-    const categoriaNome = iCategoria >= 0 ? (cols[iCategoria]?.trim() || null) : null;
+    const categoriaInformada = iCategoria >= 0 ? (cols[iCategoria]?.trim() || null) : null;
+    const categoriaNome = categoriaInformada ? findOfficialItemCategory(categoriaInformada) : null;
+    if (categoriaInformada && !categoriaNome) {
+      errors.push({ row: rowNum, message: `Categoria não reconhecida: "${categoriaInformada}"` });
+      continue;
+    }
     const categoriaId = await resolveCategoriaId(categoriaNome);
 
     toInsert.push({
