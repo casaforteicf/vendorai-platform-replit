@@ -187,12 +187,16 @@ interface CsvPreviewRow {
   unidade?: string;
   descricao?: string;
   imagem_url?: string;
+  marca?: string;
+  imagens?: string;
+  video_url?: string;
+  especificacoes?: string;
 }
 
 const CSV_TEMPLATE =
-  "nome,sku,categoria,preco_base,unidade,descricao,imagem_url\n" +
-  "Camiseta Básica,SKU001,Feminino,79.90,un,100% algodão,https://exemplo.com/img1.jpg\n" +
-  "Calça Jeans,SKU002,Masculino,199.90,un,Slim fit,,\n";
+  "nome,sku,categoria,preco_base,unidade,descricao,imagem_url,marca,imagens,video_url,especificacoes\n" +
+  "Camiseta Básica,SKU001,Feminino,79.90,un,100% algodão,https://exemplo.com/img1.jpg,Marca X,https://exemplo.com/img2.jpg|https://exemplo.com/img3.jpg,,Cor:Azul;Tamanho:M\n" +
+  "Calça Jeans,SKU002,Masculino,199.90,un,Slim fit,,,,,\n";
 
 function downloadTemplate() {
   const blob = new Blob([CSV_TEMPLATE], { type: "text/csv;charset=utf-8;" });
@@ -348,6 +352,10 @@ function CatalogoModal({
           unidade: get(["unidade", "un", "unit"]) || "un",
           descricao: get(["descricao", "description"]),
           imagem_url: get(["imagem_url", "imagem", "image", "foto"]),
+          marca: get(["marca", "brand"]),
+          imagens: get(["imagens", "images", "fotos", "galeria"]),
+          video_url: get(["video_url", "video"]),
+          especificacoes: get(["especificacoes", "especifica_es", "atributos", "specs"]),
         });
       }
       setCsvPreview(rows);
@@ -769,18 +777,28 @@ function CatalogoModal({
                     <TableHead>Categoria</TableHead>
                     <TableHead>Preço</TableHead>
                     <TableHead>Un.</TableHead>
+                    <TableHead>Extras</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {csvPreview.map((row, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium">{row.nome || <span className="text-destructive text-xs">vazio!</span>}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{row.sku || "—"}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{row.categoria || "—"}</TableCell>
-                      <TableCell className="font-mono text-xs">{row.preco_base || <span className="text-destructive">inválido</span>}</TableCell>
-                      <TableCell className="text-xs">{row.unidade || "un"}</TableCell>
-                    </TableRow>
-                  ))}
+                  {csvPreview.map((row, i) => {
+                    const extras = [
+                      row.marca && "Marca",
+                      row.imagens && "+imagens",
+                      row.video_url && "Vídeo",
+                      row.especificacoes && "Especificações",
+                    ].filter(Boolean) as string[];
+                    return (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium">{row.nome || <span className="text-destructive text-xs">vazio!</span>}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{row.sku || "—"}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{row.categoria || "—"}</TableCell>
+                        <TableCell className="font-mono text-xs">{row.preco_base || <span className="text-destructive">inválido</span>}</TableCell>
+                        <TableCell className="text-xs">{row.unidade || "un"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{extras.length > 0 ? extras.join(", ") : "—"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

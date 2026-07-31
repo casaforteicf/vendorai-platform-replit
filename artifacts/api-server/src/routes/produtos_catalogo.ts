@@ -221,6 +221,10 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   const iUnidade   = idx(["unidade", "un", "unit"]);
   const iDesc      = idx(["descricao", "description", "obs", "observacao"]);
   const iImagem    = idx(["imagem_url", "imagem", "image", "image_url", "foto", "url_imagem"]);
+  const iMarca         = idx(["marca", "brand"]);
+  const iImagens       = idx(["imagens", "images", "fotos", "galeria"]);
+  const iVideo          = idx(["video_url", "video", "url_video"]);
+  const iEspecificacoes = idx(["especificacoes", "atributos", "specs", "ficha_tecnica"]);
 
   if (iNome < 0 || iPreco < 0) {
     res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome' e 'preco_base'. Encontrado: ${headers.join(", ")}` });
@@ -246,6 +250,28 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       .returning({ id: categoriasProdutoTable.id });
     categoriaByNome.set(key, created.id);
     return created.id;
+  }
+
+  // "https://a.jpg|https://b.jpg" -> ["https://a.jpg", "https://b.jpg"]
+  function parseImagensCell(raw: string | undefined): string[] | null {
+    if (!raw?.trim()) return null;
+    const urls = raw.split("|").map((u) => u.trim()).filter(Boolean);
+    return urls.length > 0 ? urls : null;
+  }
+
+  // "Marca:Genérica;Cor:Branco" -> [{label:"Marca",value:"Genérica"}, {label:"Cor",value:"Branco"}]
+  function parseEspecificacoesCell(raw: string | undefined): { label: string; value: string }[] | null {
+    if (!raw?.trim()) return null;
+    const pairs = raw
+      .split(";")
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => {
+        const [label, ...rest] = p.split(":");
+        return { label: label?.trim() ?? "", value: rest.join(":").trim() };
+      })
+      .filter((p) => p.label && p.value);
+    return pairs.length > 0 ? pairs : null;
   }
 
   const errors: { row: number; message: string }[] = [];
@@ -276,6 +302,10 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       unidade:    iUnidade >= 0 ? (cols[iUnidade]?.trim() || "un") : "un",
       descricao:  iDesc    >= 0 ? (cols[iDesc]?.trim()    || null) : null,
       imagemUrl,
+      marca:          iMarca         >= 0 ? (cols[iMarca]?.trim() || null) : null,
+      imagens:        iImagens       >= 0 ? parseImagensCell(cols[iImagens]) : null,
+      videoUrl:       iVideo          >= 0 ? (cols[iVideo]?.trim() || null) : null,
+      especificacoes: iEspecificacoes >= 0 ? parseEspecificacoesCell(cols[iEspecificacoes]) : null,
       precoBase: preco.toFixed(2),
       ativo: true,
     });
