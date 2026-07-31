@@ -42,7 +42,7 @@ import type {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
@@ -173,6 +173,9 @@ const catFormSchema = z.object({
   // (tenants.vendeNoPracaAi); "sim"/"nao" sobrepõe só pra esse produto.
   vendeNoPracaAi: z.enum(["herda", "sim", "nao"]).default("herda"),
   precoPracaAi: z.coerce.number().min(0).optional(),
+  // Tabela de especificações livre do produto (Complemento Praça.ai —
+  // paridade com Mercado Livre: Marca/Modelo/Cor/etc), pares label/value.
+  especificacoes: z.array(z.object({ label: z.string(), value: z.string() })).default([]),
 });
 type CatFormValues = z.infer<typeof catFormSchema>;
 
@@ -235,14 +238,15 @@ function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined },
+    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [] },
   });
 
   const watchRecorrente = form.watch("recorrente");
+  const especFieldArray = useFieldArray({ control: form.control, name: "especificacoes" });
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined });
+    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [] });
     setFormOpen(true);
   }
 
@@ -262,6 +266,7 @@ function CatalogoModal({
       prazoContrato: p.prazoContrato ?? undefined,
       vendeNoPracaAi: vendeNoPracaAiValue === true ? "sim" : vendeNoPracaAiValue === false ? "nao" : "herda",
       precoPracaAi: (p as any).precoPracaAi != null ? parseFloat((p as any).precoPracaAi) : undefined,
+      especificacoes: Array.isArray((p as any).especificacoes) ? (p as any).especificacoes : [],
     });
     setFormOpen(true);
   }
@@ -286,6 +291,7 @@ function CatalogoModal({
       // (orval/openapi.yaml), backend já aceita (schema Drizzle da tabela).
       vendeNoPracaAi: vals.vendeNoPracaAi === "sim" ? true : vals.vendeNoPracaAi === "nao" ? false : null,
       precoPracaAi: vals.precoPracaAi != null ? vals.precoPracaAi.toFixed(2) : null,
+      especificacoes: vals.especificacoes.filter(e => e.label.trim() && e.value.trim()),
     } as any;
     if (editingProd) {
       updateMut.mutate(
@@ -686,6 +692,50 @@ function CatalogoModal({
                     <FormMessage />
                   </FormItem>
                 )} />
+              </div>
+
+              {/* Tabela de especificações — Marca/Modelo/Cor/etc, pra alimentar
+                  a tabela de detalhes do produto no Praça.ai */}
+              <div className="rounded-lg border border-border p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Especificações</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Atributos que aparecem na tabela de detalhes do produto no Praça.ai</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => especFieldArray.append({ label: "", value: "" })}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Adicionar
+                  </Button>
+                </div>
+                {especFieldArray.fields.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Nenhuma especificação ainda.</p>
+                )}
+                {especFieldArray.fields.map((field, index) => (
+                  <div key={field.id} className="flex gap-2 items-start">
+                    <Input
+                      placeholder="Ex: Marca"
+                      {...form.register(`especificacoes.${index}.label` as const)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Ex: Genérica"
+                      {...form.register(`especificacoes.${index}.value` as const)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => especFieldArray.remove(index)}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
               </div>
 
               <div className="flex gap-2 pt-1">

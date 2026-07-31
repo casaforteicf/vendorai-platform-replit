@@ -13,6 +13,11 @@ export interface ProdutoDimensoes {
   profundidade?: number;
 }
 
+export interface ProdutoEspecificacao {
+  label: string;
+  value: string;
+}
+
 export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   id: text("id")
     .primaryKey()
@@ -66,6 +71,11 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // padrão (visível, preço igual ao do Vendor.ai); explícito sobrepõe.
   vendeNoPracaAi: boolean("vende_no_praca_ai_produto"), // nullable de propósito — não confundir com tenants.vendeNoPracaAi (switch geral da loja)
   precoPracaAi: numeric("preco_praca_ai", { precision: 12, scale: 2 }),
+  // Tabela de especificações livre (Complemento Praça.ai — pedido de
+  // paridade com Mercado Livre: Marca/Modelo/Cor/etc). Lista de pares
+  // label/value pra caber qualquer categoria (material de construção,
+  // eletrônico, o que for), sem precisar de coluna fixa por atributo.
+  especificacoes: jsonb("especificacoes").$type<ProdutoEspecificacao[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
