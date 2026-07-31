@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRequestUploadUrl } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Truck, Loader2 } from "lucide-react";
+import { Plus, Pencil, Truck, Loader2, Camera } from "lucide-react";
+
+function objectUrl(objectPath: string) {
+  return `/api/storage/objects${objectPath.replace("/objects", "")}`;
+}
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -26,7 +31,7 @@ const TIPOS = [
   { value: "carreta", label: "Carreta" },
 ] as const;
 
-const EMPTY_FORM = { placa: "", tipo: "van" as string, capacidadeKg: "", capacidadeM3: "", ativo: true };
+const EMPTY_FORM = { placa: "", tipo: "van" as string, capacidadeKg: "", capacidadeM3: "", ativo: true, fotoUrl: "" };
 
 export default function FretesVeiculos() {
   const { user } = useAuth();
@@ -37,6 +42,9 @@ export default function FretesVeiculos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const requestUploadUrl = useRequestUploadUrl();
+  const [uploadingFoto, setUploadingFoto] = useState(false);
+  const fotoInputRef = useRef<HTMLInputElement>(null);
 
   const QK = ["fretes-veiculos", tenantId];
 
@@ -84,13 +92,32 @@ export default function FretesVeiculos() {
       capacidadeKg: v.capacidadeKg != null ? String(v.capacidadeKg) : "",
       capacidadeM3: v.capacidadeM3 != null ? String(v.capacidadeM3) : "",
       ativo: v.ativo !== false,
+      fotoUrl: v.fotoUrl ?? "",
     });
     setDialogOpen(true);
+  }
+  async function handleFotoUpload(file: File) {
+    setUploadingFoto(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!uploadRes.ok) throw new Error("Falha no upload");
+      setForm((f) => ({ ...f, fotoUrl: result.objectPath }));
+    } catch {
+      toast({ title: "Erro no upload da foto. Tente novamente.", variant: "destructive" });
+    } finally {
+      setUploadingFoto(false);
+    }
   }
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.placa) { toast({ title: "Placa é obrigatória", variant: "destructive" }); return; }
-    save.mutate({ ...form, capacidadeKg: form.capacidadeKg || undefined, capacidadeM3: form.capacidadeM3 || undefined });
+    save.mutate({ ...form, capacidadeKg: form.capacidadeKg || undefined, capacidadeM3: form.capacidadeM3 || undefined, fotoUrl: form.fotoUrl || undefined });
   }
 
   return (
@@ -117,6 +144,13 @@ export default function FretesVeiculos() {
             <div className="divide-y">
               {veiculos.map((v: any) => (
                 <div key={v.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+                  {v.fotoUrl ? (
+                    <img src={objectUrl(v.fotoUrl)} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      <Truck className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{v.placa}</span>
@@ -146,6 +180,23 @@ export default function FretesVeiculos() {
             <div className="space-y-1.5">
               <Label>Placa <span className="text-destructive">*</span></Label>
               <Input value={form.placa} onChange={(e) => setForm((f) => ({ ...f, placa: e.target.value.toUpperCase() }))} placeholder="ABC1D23" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Foto do veículo</Label>
+              <div className="flex items-center gap-3">
+                {form.fotoUrl ? (
+                  <img src={objectUrl(form.fotoUrl)} className="w-14 h-14 rounded-lg object-cover border" />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg border-2 border-dashed flex items-center justify-center text-muted-foreground">
+                    <Truck className="h-5 w-5" />
+                  </div>
+                )}
+                <Button type="button" variant="outline" size="sm" onClick={() => fotoInputRef.current?.click()} disabled={uploadingFoto}>
+                  {uploadingFoto ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Camera className="h-3.5 w-3.5 mr-1.5" />}
+                  {form.fotoUrl ? "Trocar" : "Adicionar"}
+                </Button>
+                <input ref={fotoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleFotoUpload(e.target.files[0])} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Tipo</Label>

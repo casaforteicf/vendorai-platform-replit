@@ -16,6 +16,7 @@ export const fretesVeiculosTable = pgTable("fretes_veiculos", {
   capacidadeKg: numeric("capacidade_kg", { precision: 10, scale: 2 }),
   capacidadeM3: numeric("capacidade_m3", { precision: 10, scale: 2 }),
   motoristaId: text("motorista_id").references(() => usersTable.id, { onDelete: "set null" }),
+  fotoUrl: text("foto_url"),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
