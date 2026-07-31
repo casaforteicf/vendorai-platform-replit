@@ -176,6 +176,11 @@ const catFormSchema = z.object({
   // Tabela de especificações livre do produto (Complemento Praça.ai —
   // paridade com Mercado Livre: Marca/Modelo/Cor/etc), pares label/value.
   especificacoes: z.array(z.object({ label: z.string(), value: z.string() })).default([]),
+  // Compatibilidade veicular — filtro "selecione seu carro" no Praça.ai
+  compatibilidadeVeicular: z.array(z.object({
+    marca: z.string(), modelo: z.string(),
+    anoInicio: z.coerce.number(), anoFim: z.coerce.number().optional(),
+  })).default([]),
 });
 type CatFormValues = z.infer<typeof catFormSchema>;
 
@@ -242,15 +247,16 @@ function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [] },
+    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [] },
   });
 
   const watchRecorrente = form.watch("recorrente");
   const especFieldArray = useFieldArray({ control: form.control, name: "especificacoes" });
+  const compatVeicularFieldArray = useFieldArray({ control: form.control, name: "compatibilidadeVeicular" });
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [] });
+    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [] });
     setFormOpen(true);
   }
 
@@ -271,6 +277,7 @@ function CatalogoModal({
       vendeNoPracaAi: vendeNoPracaAiValue === true ? "sim" : vendeNoPracaAiValue === false ? "nao" : "herda",
       precoPracaAi: (p as any).precoPracaAi != null ? parseFloat((p as any).precoPracaAi) : undefined,
       especificacoes: Array.isArray((p as any).especificacoes) ? (p as any).especificacoes : [],
+      compatibilidadeVeicular: Array.isArray((p as any).compatibilidadeVeicular) ? (p as any).compatibilidadeVeicular : [],
     });
     setFormOpen(true);
   }
@@ -296,6 +303,7 @@ function CatalogoModal({
       vendeNoPracaAi: vals.vendeNoPracaAi === "sim" ? true : vals.vendeNoPracaAi === "nao" ? false : null,
       precoPracaAi: vals.precoPracaAi != null ? vals.precoPracaAi.toFixed(2) : null,
       especificacoes: vals.especificacoes.filter(e => e.label.trim() && e.value.trim()),
+      compatibilidadeVeicular: vals.compatibilidadeVeicular.filter(c => c.marca.trim() && c.modelo.trim() && c.anoInicio),
     } as any;
     if (editingProd) {
       updateMut.mutate(
@@ -739,6 +747,62 @@ function CatalogoModal({
                       variant="ghost"
                       size="icon"
                       onClick={() => especFieldArray.remove(index)}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Compatibilidade veicular — filtro "selecione seu carro" no Praça.ai
+                  (categoria Acessórios para Veículos, tipo Tuning Parts) */}
+              <div className="rounded-lg border border-border p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Compatibilidade veicular</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Pra quais carros essa peça serve — alimenta o filtro "selecione seu carro" no Praça.ai</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => compatVeicularFieldArray.append({ marca: "", modelo: "", anoInicio: new Date().getFullYear(), anoFim: undefined })}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Adicionar
+                  </Button>
+                </div>
+                {compatVeicularFieldArray.fields.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Nenhum veículo cadastrado — peça não aparece no filtro.</p>
+                )}
+                {compatVeicularFieldArray.fields.map((field, index) => (
+                  <div key={field.id} className="flex gap-2 items-start">
+                    <Input
+                      placeholder="Marca (ex: Volkswagen)"
+                      {...form.register(`compatibilidadeVeicular.${index}.marca` as const)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Modelo (ex: Gol)"
+                      {...form.register(`compatibilidadeVeicular.${index}.modelo` as const)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="De"
+                      {...form.register(`compatibilidadeVeicular.${index}.anoInicio` as const)}
+                      className="w-20"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Até"
+                      {...form.register(`compatibilidadeVeicular.${index}.anoFim` as const)}
+                      className="w-20"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => compatVeicularFieldArray.remove(index)}
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
                     </Button>

@@ -18,6 +18,15 @@ export interface ProdutoEspecificacao {
   value: string;
 }
 
+// Compatibilidade veicular (Complemento Praça.ai — filtro "selecione seu
+// carro" tipo Tuning Parts). anoFim vazio/null = "até hoje" (ano corrente).
+export interface ProdutoCompatibilidadeVeicular {
+  marca: string;
+  modelo: string;
+  anoInicio: number;
+  anoFim?: number | null;
+}
+
 export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   id: text("id")
     .primaryKey()
@@ -76,6 +85,10 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // label/value pra caber qualquer categoria (material de construção,
   // eletrônico, o que for), sem precisar de coluna fixa por atributo.
   especificacoes: jsonb("especificacoes").$type<ProdutoEspecificacao[]>(),
+  // Compatibilidade veicular — lista de {marca, modelo, anoInicio, anoFim},
+  // usada pelo filtro "selecione seu carro" da categoria Acessórios para
+  // Veículos no Praça.ai. Vazio/null para produtos sem aplicação automotiva.
+  compatibilidadeVeicular: jsonb("compatibilidade_veicular").$type<ProdutoCompatibilidadeVeicular[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
