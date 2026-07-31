@@ -67,6 +67,7 @@ import { runObjectionsExtraction } from "./objectionsExtraction.js";
 import { runRecemAbertas } from "./recemAbertasJob.js";
 import { runMicroEventsRescan } from "./microEventsRescan.js";
 import { runWeeklyFeedbackLoop } from "./feedbackLoop.js";
+import { dispatchPendingEntregas } from "../lib/entregas.js";
 import {
   prospectorConfigTable,
   prospectorQueueTable,
@@ -1777,7 +1778,45 @@ export function startScheduler(log: Logger): void {
     });
   }, { timezone: "America/Sao_Paulo" });
 
+  // Job 24: Logistics queue closing - two collection waves per business day.
+  // 11:00 schedules the afternoon route; 17:00 schedules the next morning.
+  cron.schedule("0 11 * * 1-6", () => {
+    runAutomaticDeliveryDispatch("tarde", false, log).catch((err) => {
+      log.error({ err }, "scheduler/delivery-dispatch-afternoon: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  cron.schedule("0 17 * * 1-6", () => {
+    runAutomaticDeliveryDispatch("manha", true, log).catch((err) => {
+      log.error({ err }, "scheduler/delivery-dispatch-next-morning: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
   log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, pos-venda-inactivity @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT, feedback-loop @mon-06:00-BRT)");
+}
+
+async function runAutomaticDeliveryDispatch(
+  periodo: "manha" | "tarde",
+  nextDay: boolean,
+  log: Logger
+): Promise<void> {
+  const tenants = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.status, "active"));
+
+  const deliveryDate = new Date();
+  if (nextDay) deliveryDate.setDate(deliveryDate.getDate() + 1);
+  if (deliveryDate.getDay() === 0) deliveryDate.setDate(deliveryDate.getDate() + 1);
+  deliveryDate.setHours(periodo === "manha" ? 9 : 14, 0, 0, 0);
+
+  for (const tenant of tenants) {
+    try {
+      await dispatchPendingEntregas(tenant.id, new Date(deliveryDate), periodo, log);
+    } catch (err) {
+      log.error({ err, tenantId: tenant.id, periodo }, "scheduler/delivery-dispatch: tenant failed");
+    }
+  }
 }
 
 // ── Job 16: Automatic prospector sync ─────────────────────────────────────────
