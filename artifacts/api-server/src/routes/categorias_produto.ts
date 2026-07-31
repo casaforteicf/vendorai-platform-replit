@@ -6,7 +6,7 @@ import {
   produtosCatalogoTable,
   insertCategoriaProdutoSchema,
   updateCategoriaProdutoSchema,
-} from "@workspace/db";
+} from "@workspace/db";`nimport { ensureOfficialItemCategories } from "../lib/itemCategories";
 
 const router: IRouter = Router();
 
@@ -18,7 +18,7 @@ router.get("/tenants/:tenantId/categorias-produto", async (req, res) => {
     return;
   }
 
-  const categorias = await db
+  await ensureOfficialItemCategories(String(tenantId));`n`n  const categorias = await db
     .select()
     .from(categoriasProdutoTable)
     .where(eq(categoriasProdutoTable.tenantId, String(tenantId)))
