@@ -34,6 +34,7 @@ import { sendWelcomeEmail } from "../lib/email.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
 import { createCustomHostname } from "../lib/cloudflare.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { parseCsvLine, normalizeCsvHeader } from "./produtos_catalogo.js";
 
 const router: IRouter = Router();
 
@@ -849,6 +850,133 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     }
     throw err;
   }
+});
+
+// POST /superadmin/tenants/import — cadastro em massa de lojistas via CSV.
+// Reaproveita a mesma lógica de criação de tenant+usuário+e-mail de boas-vindas
+// do /superadmin/tenants/provision acima, linha por linha do CSV. Cada lojista
+// recebe o e-mail de acesso automaticamente (mesmo texto do fluxo manual).
+router.post("/superadmin/tenants/import", requireRole("super_admin"), async (req, res) => {
+  const { z } = await import("zod/v4");
+  const bodySchema = z.object({ csv: z.string().min(1) });
+  const parsedBody = bodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    res.status(422).json({ error: "CSV ausente ou inválido" });
+    return;
+  }
+
+  const lines = parsedBody.data.csv.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) {
+    res.status(422).json({ error: "CSV deve ter cabeçalho + ao menos uma linha de dados" });
+    return;
+  }
+
+  const headers = parseCsvLine(lines[0]).map(normalizeCsvHeader);
+  const idx = (aliases: string[]) => {
+    for (const a of aliases) {
+      const i = headers.indexOf(a);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const iEmpresa = idx(["empresa", "razao_social", "nome_da_empresa", "company", "loja"]);
+  const iResponsavel = idx(["responsavel", "nome_responsavel", "contato", "name"]);
+  const iEmail = idx(["email", "e_mail"]);
+  const iTelefone = idx(["telefone", "whatsapp", "phone", "celular"]);
+  const iCnpj = idx(["cnpj"]);
+
+  if (iEmpresa < 0 || iResponsavel < 0 || iEmail < 0) {
+    res.status(422).json({
+      error: "CSV precisa das colunas: empresa, responsavel, email (telefone e cnpj são opcionais)",
+    });
+    return;
+  }
+
+  const results: Array<{
+    linha: number;
+    empresa: string;
+    email: string;
+    status: "criado" | "erro";
+    emailEnviado?: boolean;
+    erro?: string;
+  }> = [];
+
+  for (let li = 1; li < lines.length; li++) {
+    const cols = parseCsvLine(lines[li]!);
+    const companyName = cols[iEmpresa]?.trim();
+    const responsibleName = cols[iResponsavel]?.trim();
+    const email = cols[iEmail]?.trim();
+    const phone = iTelefone >= 0 ? cols[iTelefone]?.trim() || undefined : undefined;
+    const cnpj = iCnpj >= 0 ? cols[iCnpj]?.trim() || undefined : undefined;
+
+    if (!companyName || !responsibleName || !email) {
+      results.push({ linha: li + 1, empresa: companyName ?? "", email: email ?? "", status: "erro", erro: "Empresa, responsável e e-mail são obrigatórios" });
+      continue;
+    }
+
+    const slug = companyName
+      .trim().toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+      .substring(0, 40) + "-" + Math.random().toString(36).substring(2, 6);
+
+    try {
+      const subdomainSlug = await generateSubdomainSlug(companyName);
+      const tempPassword = generateTempPassword(8);
+      const hashed = await bcrypt.hash(tempPassword, 12);
+
+      const [tenant] = await db.insert(tenantsTable).values({
+        name: companyName,
+        slug,
+        subdomainSlug,
+        status: "active",
+        provisioningMethod: "manual",
+        createdByAdminId: req.user?.sub,
+        internalNotes: cnpj ?? null,
+      }).returning();
+
+      if (!tenant) throw new Error("Falha ao criar tenant");
+
+      await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
+      createCustomHostname(`${subdomainSlug}.appvendorai.com`).catch(() => { /* CF não configurado ou erro — não crítico */ });
+
+      const [user] = await db.insert(usersTable).values({
+        tenantId: tenant.id,
+        name: responsibleName,
+        email,
+        password: hashed,
+        role: "admin",
+        platformRole: "tenant_admin",
+        telefone: phone ?? null,
+        forcePasswordReset: true,
+      }).returning();
+
+      if (!user) throw new Error("Falha ao criar usuário");
+
+      const emailSent = await sendWelcomeEmail({
+        to: email,
+        name: responsibleName,
+        tenantName: companyName,
+        loginUrl: "https://appvendorai.com/app/",
+        tempPassword,
+      });
+      if (emailSent) {
+        await db.update(tenantsTable).set({ accessSentAt: new Date() }).where(eq(tenantsTable.id, tenant.id));
+      }
+
+      results.push({ linha: li + 1, empresa: companyName, email, status: "criado", emailEnviado: emailSent });
+    } catch (err: unknown) {
+      const erro = isUniqueViolation(err) ? "E-mail ou empresa já cadastrado" : (err instanceof Error ? err.message : "Erro desconhecido");
+      results.push({ linha: li + 1, empresa: companyName, email, status: "erro", erro });
+    }
+  }
+
+  res.json({
+    total: results.length,
+    criados: results.filter((r) => r.status === "criado").length,
+    comErro: results.filter((r) => r.status === "erro").length,
+    results,
+  });
 });
 
 router.post("/superadmin/tenants/:id/resend-access", requireRole("super_admin"), async (req, res) => {

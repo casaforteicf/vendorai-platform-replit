@@ -44,7 +44,7 @@ async function attachCategoriaInfo<T extends { categoriaId: string | null }>(
 }
 
 // ── CSV parser (handles quoted fields) ───────────────────────────────────────
-function parseCsvLine(line: string): string[] {
+export function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
   let cur = "";
   let inQuotes = false;
@@ -63,7 +63,7 @@ function parseCsvLine(line: string): string[] {
   return fields;
 }
 
-function normalizeCsvHeader(h: string): string {
+export function normalizeCsvHeader(h: string): string {
   return h.toLowerCase().replace(/[^a-z0-9]/g, "_");
 }
 

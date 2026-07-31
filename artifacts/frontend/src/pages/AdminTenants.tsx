@@ -21,7 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2, Plus, Copy, Check, Mail, Loader2, RefreshCw, UserCheck, Clock,
-  HardHat, Stethoscope, Car, Warehouse, Shirt, UtensilsCrossed, Briefcase, Cpu, Trash2,
+  HardHat, Stethoscope, Car, Warehouse, Shirt, UtensilsCrossed, Briefcase, Cpu, Trash2, Upload,
 } from "lucide-react";
 
 interface VerticalDef {
@@ -88,6 +88,43 @@ export default function AdminTenants() {
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [importCsv, setImportCsv] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    total: number; criados: number; comErro: number;
+    results: Array<{ linha: number; empresa: string; email: string; status: "criado" | "erro"; emailEnviado?: boolean; erro?: string }>;
+  } | null>(null);
+
+  const IMPORT_TEMPLATE =
+    "empresa,responsavel,email,telefone,cnpj\n" +
+    "Materiais Chapecó Ltda,João Silva,joao@materiaischapeco.com.br,49999998888,12345678000199\n" +
+    "Casa & Construção,Maria Souza,maria@casaeconstrucao.com.br,,\n";
+
+  async function handleImport() {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await fetch("/api/superadmin/tenants/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ csv: importCsv }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast({ title: data.error ?? "Erro ao importar", variant: "destructive" }); return; }
+      setImportResult(data);
+      void qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function closeImport() {
+    setImportOpen(false);
+    setImportCsv("");
+    setImportResult(null);
+  }
 
   const VERTICAL_OPTIONS = [
     { value: "__none__",                        label: "— CRM Geral —" },
@@ -236,9 +273,14 @@ export default function AdminTenants() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">{tenants.length} tenant(s) cadastrado(s)</p>
         </div>
-        <Button onClick={() => setFormOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Novo Tenant
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
+            <Upload className="h-4 w-4" /> Importar CSV
+          </Button>
+          <Button onClick={() => setFormOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Novo Tenant
+          </Button>
+        </div>
       </div>
 
       {/* Verticais do Mercado */}
@@ -681,6 +723,86 @@ export default function AdminTenants() {
                 <Button variant="ghost" className="w-full" onClick={() => setResult(null)}>
                   Fechar
                 </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!o) closeImport(); else setImportOpen(true); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Importar lojistas em massa</DialogTitle>
+            <DialogDescription>
+              Cole abaixo um CSV com as colunas <code>empresa,responsavel,email,telefone,cnpj</code> (telefone e cnpj são opcionais).
+              Cada linha cria um tenant novo e envia automaticamente o e-mail de acesso com senha provisória.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!importResult ? (
+            <div className="space-y-3">
+              <Textarea
+                value={importCsv}
+                onChange={(e) => setImportCsv(e.target.value)}
+                placeholder={IMPORT_TEMPLATE}
+                className="font-mono text-xs h-48"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() => setImportCsv(IMPORT_TEMPLATE)}
+              >
+                Usar modelo de exemplo
+              </Button>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={closeImport}>Cancelar</Button>
+                <Button onClick={handleImport} disabled={importing || !importCsv.trim()} className="gap-2">
+                  {importing && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Importar e enviar acessos
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex gap-4 text-sm">
+                <span className="text-emerald-600 font-semibold">{importResult.criados} criado(s)</span>
+                {importResult.comErro > 0 && (
+                  <span className="text-red-600 font-semibold">{importResult.comErro} com erro</span>
+                )}
+              </div>
+              <div className="max-h-80 overflow-y-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Linha</TableHead>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>E-mail</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {importResult.results.map((r) => (
+                      <TableRow key={r.linha}>
+                        <TableCell className="text-xs text-muted-foreground">{r.linha}</TableCell>
+                        <TableCell className="text-sm">{r.empresa || "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.email || "—"}</TableCell>
+                        <TableCell>
+                          {r.status === "criado" ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                              {r.emailEnviado ? "Criado + e-mail enviado" : "Criado (e-mail falhou)"}
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-red-100 text-red-600 border-red-200">{r.erro}</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={closeImport}>Fechar</Button>
               </div>
             </div>
           )}
