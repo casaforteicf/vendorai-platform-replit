@@ -183,3 +183,72 @@ export async function pickNextMotorista(
 
   return null;
 }
+
+export interface DispatchEntregasResult {
+  scheduled: number;
+  skipped: number;
+  deliveryDate: Date;
+  periodo: "manha" | "tarde";
+}
+
+/**
+ * Converts the tenant delivery queue into driver routes for one collection
+ * window. Capacity and agenda blocks are enforced by pickNextMotorista.
+ * Updating each delivery before selecting the next driver makes the capacity
+ * counter safe for the whole batch.
+ */
+export async function dispatchPendingEntregas(
+  tenantId: string,
+  deliveryDate: Date,
+  periodo: "manha" | "tarde",
+  log: Logger = logger
+): Promise<DispatchEntregasResult> {
+  const pending = await db
+    .select({ id: entregasTable.id })
+    .from(entregasTable)
+    .where(
+      and(
+        eq(entregasTable.tenantId, tenantId),
+        eq(entregasTable.status, "aguardando"),
+        isNull(entregasTable.assignedTo)
+      )
+    )
+    .orderBy(asc(entregasTable.createdAt));
+
+  let scheduled = 0;
+  let skipped = 0;
+
+  for (const entrega of pending) {
+    const motoristaId = await pickNextMotorista(tenantId, deliveryDate, periodo);
+    if (!motoristaId) {
+      skipped += pending.length - scheduled;
+      break;
+    }
+
+    await db
+      .update(entregasTable)
+      .set({
+        assignedTo: motoristaId,
+        dataPrevista: deliveryDate,
+        periodo,
+        modo: "agendada",
+        status: "agendada",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(entregasTable.id, entrega.id),
+          eq(entregasTable.status, "aguardando"),
+          isNull(entregasTable.assignedTo)
+        )
+      );
+    scheduled++;
+  }
+
+  log.info(
+    { tenantId, scheduled, skipped, deliveryDate, periodo },
+    "delivery-dispatch: pending deliveries assigned"
+  );
+
+  return { scheduled, skipped, deliveryDate, periodo };
+}

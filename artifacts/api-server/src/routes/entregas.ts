@@ -8,7 +8,7 @@ import {
   updateEntregaSchema,
 } from "@workspace/db";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
-import { checkTurnoCapacity, pickNextMotorista } from "../lib/entregas.js";
+import { checkTurnoCapacity, dispatchPendingEntregas, pickNextMotorista } from "../lib/entregas.js";
 import { triggerDeliveryFeedbackRequest } from "../services/post-venda.js";
 
 const router: IRouter = Router();
@@ -71,6 +71,38 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
 
   const [entrega] = await db.insert(entregasTable).values(data).returning();
   res.status(201).json(entrega);
+});
+
+const dispatchBodySchema = z.object({
+  data: z.coerce.date().optional(),
+  periodo: z.enum(["manha", "tarde"]).default("tarde"),
+});
+
+// POST /tenants/:tenantId/entregas/dispatch - closes the current queue and
+// creates one route per available driver for the selected date/shift.
+router.post("/tenants/:tenantId/entregas/dispatch", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!isAdmin || (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId)) {
+    res.status(403).json({ error: "Apenas administradores podem gerar rotas" });
+    return;
+  }
+
+  const parsed = dispatchBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
+    return;
+  }
+
+  const deliveryDate = parsed.data.data ?? new Date();
+  // A morning wave requested after noon belongs to the next collection day.
+  if (!parsed.data.data && parsed.data.periodo === "manha" && deliveryDate.getHours() >= 12) {
+    deliveryDate.setDate(deliveryDate.getDate() + 1);
+  }
+  if (deliveryDate.getDay() === 0) deliveryDate.setDate(deliveryDate.getDate() + 1);
+  deliveryDate.setHours(parsed.data.periodo === "manha" ? 9 : 14, 0, 0, 0);
+  const result = await dispatchPendingEntregas(tenantId, deliveryDate, parsed.data.periodo, req.log);
+  res.json(result);
 });
 
 router.get("/entregas/:id", async (req, res) => {
