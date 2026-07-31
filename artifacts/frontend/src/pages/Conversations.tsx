@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import PracaPerguntas from "./PracaPerguntas";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListTenantConversations,
@@ -597,6 +598,7 @@ export default function Conversations() {
   const [selectedId, setSelectedId] = useState<string | null>(initialConvId);
   const [showMobileChat, setShowMobileChat] = useState(!!initialConvId);
   const [channelFilter, setChannelFilter] = useState<string>("all");
+  const [activeView, setActiveView] = useState<"whatsapp" | "praca">("whatsapp");
 
   const { data: conversations = [], isLoading: convsLoading } =
     useListTenantConversations(tenantId, {
@@ -680,7 +682,37 @@ export default function Conversations() {
   const totalUnread = conversations.reduce((acc, c) => acc + c.naoLidas, 0);
 
   return (
-    <div className="flex h-full -mx-4 -my-4 md:-mx-8 md:-my-8 overflow-hidden">
+    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-8 md:-my-8 overflow-hidden">
+      {/* ── View tabs: WhatsApp x Perguntas Praça.ai ── */}
+      <div className="flex gap-1 px-4 pt-3 border-b border-border shrink-0 bg-background">
+        <button
+          onClick={() => setActiveView("whatsapp")}
+          className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+            activeView === "whatsapp"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          WhatsApp
+        </button>
+        <button
+          onClick={() => setActiveView("praca")}
+          className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+            activeView === "praca"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Perguntas Praça.ai
+        </button>
+      </div>
+
+      {activeView === "praca" ? (
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+          <PracaPerguntas />
+        </div>
+      ) : (
+      <div className="flex flex-1 overflow-hidden">
       {/* ── Left sidebar ── */}
       <div className={`${showMobileChat ? "hidden md:flex" : "flex"} flex-col border-r border-border bg-background w-full md:w-80 md:shrink-0`}>
         {/* Sidebar header */}
@@ -773,6 +805,8 @@ export default function Conversations() {
           </div>
         )}
       </div>
+      </div>
+      )}
     </div>
   );
 }

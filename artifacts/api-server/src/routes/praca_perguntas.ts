@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
 
-const PRACA_API_BASE_URL = process.env.PRACA_API_BASE_URL || "https://praca.ai/api";
+const PRACA_API_BASE_URL = process.env.PRACA_API_BASE_URL || "https://pra-aai-production.up.railway.app/api";
 
 function canAccess(req: Express.Request, tenantId: string) {
   const user = (req as any).user;
