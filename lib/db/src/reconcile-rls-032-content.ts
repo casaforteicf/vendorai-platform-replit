@@ -59,6 +59,27 @@ if (!fs.existsSync(FOUNDATION_PATH)) {
 const foundationSql = fs.readFileSync(FOUNDATION_PATH, "utf8");
 const foundationChecksum = sha256(foundationSql);
 
+// Supabase's migration connection can create roles (via the DO block's
+// CREATE ROLE ... IF NOT EXISTS, which already sets the correct restricted
+// attributes at creation time) but is not allowed to ALTER ROLE afterward —
+// same constraint already worked around in reconcile-rls-032.ts. The
+// standalone ALTER ROLE right after the DO block is redundant when the role
+// was just created with those exact attributes, so it's safe to skip.
+const roleAlterationSql = `ALTER ROLE vendorai_app
+  NOLOGIN
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOINHERIT
+  NOBYPASSRLS;`;
+const reconciliationSql = foundationSql.replace(
+  roleAlterationSql,
+  "-- Existing vendorai_app attributes were set at CREATE ROLE time or validated by the reconciler.",
+);
+if (reconciliationSql === foundationSql) {
+  throw new Error("Could not isolate the canonical vendorai_app ALTER ROLE block.");
+}
+
 const connectionString =
   process.env.MIGRATION_DATABASE_URL ??
   process.env.SUPABASE_DATABASE_URL ??
@@ -190,7 +211,7 @@ async function run(): Promise<void> {
       throw new Error("Migration 032 record changed after preview; reconciliation aborted.");
     }
 
-    await client.query(foundationSql);
+    await client.query(reconciliationSql);
     await validateHardenedState(client);
     await updateMigrationRecord(client, schema, locked.checksum, locked.name);
 
