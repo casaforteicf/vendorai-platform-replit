@@ -368,7 +368,7 @@ export function EcosystemHubPage() {
   }), [companies]);
 
   return (
-    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "#0f1117", color: "#e2e8f0", fontFamily: "system-ui,sans-serif", overflow: "hidden" }}>
+    <div className="vendor-light-module" style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "#0f1117", color: "#e2e8f0", fontFamily: "system-ui,sans-serif", overflow: "hidden" }}>
 
       {/* ── HEADER ── */}
       <div style={{ padding: "14px 20px", borderBottom: "1px solid #2d2e3a", background: "#1a1b23", flexShrink: 0 }}>

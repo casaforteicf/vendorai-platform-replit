@@ -285,13 +285,12 @@ export default function AdminTenants() {
 
       {/* Verticais do Mercado */}
       <div
-        className="rounded-2xl p-6 space-y-5"
-        style={{ background: "#1B1438" }}
+        className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm"
       >
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-white">Verticais do Mercado</h2>
-            <p className="text-sm mt-0.5" style={{ color: "#A78BFA99" }}>
+            <h2 className="text-lg font-semibold text-slate-900">Verticais do Mercado</h2>
+            <p className="text-sm mt-0.5 text-slate-500">
               Módulos especializados disponíveis na plataforma VendorAI
             </p>
           </div>
@@ -316,10 +315,10 @@ export default function AdminTenants() {
                 style={{
                   background: isAtivo
                     ? "linear-gradient(135deg,#A78BFA18,#22D3EE18)"
-                    : "#ffffff08",
+                    : "#F8FAFC",
                   border: isAtivo
                     ? "1px solid #A78BFA44"
-                    : "1px solid #ffffff12",
+                    : "1px solid #E2E8F0",
                 }}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -328,12 +327,12 @@ export default function AdminTenants() {
                     style={{
                       background: isAtivo
                         ? "linear-gradient(135deg,#A78BFA33,#22D3EE33)"
-                        : "#ffffff10",
+                        : "#F1F5F9",
                     }}
                   >
                     <Icon
                       className="h-4 w-4"
-                      style={{ color: isAtivo ? "#A78BFA" : "#ffffff40" }}
+                      style={{ color: isAtivo ? "#7C3AED" : "#94A3B8" }}
                     />
                   </div>
                   <span
@@ -341,7 +340,7 @@ export default function AdminTenants() {
                     style={
                       isAtivo
                         ? { background: "#A78BFA22", color: "#A78BFA", border: "1px solid #A78BFA55" }
-                        : { background: "#ffffff10", color: "#ffffff40", border: "1px solid #ffffff18" }
+                        : { background: "#F1F5F9", color: "#64748B", border: "1px solid #E2E8F0" }
                     }
                   >
                     {isAtivo ? "Ativo" : "Em breve"}
@@ -351,7 +350,7 @@ export default function AdminTenants() {
                 <div>
                   <p
                     className="text-sm font-medium leading-tight"
-                    style={{ color: isAtivo ? "#fff" : "#ffffff60" }}
+                    style={{ color: isAtivo ? "#0F172A" : "#64748B" }}
                   >
                     {v.label}
                   </p>
@@ -363,7 +362,7 @@ export default function AdminTenants() {
                         : "none",
                       WebkitBackgroundClip: isAtivo ? "text" : undefined,
                       WebkitTextFillColor: isAtivo ? "transparent" : undefined,
-                      color: isAtivo ? undefined : "#ffffff30",
+                      color: isAtivo ? undefined : "#94A3B8",
                     }}
                   >
                     {isAtivo

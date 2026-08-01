@@ -171,3 +171,50 @@
     touch-action: manipulation;
   }
 }
+
+/* Painéis avançados seguem o mesmo tema claro das telas administrativas. */
+.vendor-light-module {
+  background: #f8fafc !important;
+  color: #1e293b !important;
+}
+
+.vendor-light-module [style*="background: rgb(15, 17, 23)"],
+.vendor-light-module [style*="background: #0f1117"],
+.vendor-light-module [style*="background: rgb(26, 27, 35)"],
+.vendor-light-module [style*="background: #1a1b23"] {
+  background: #ffffff !important;
+}
+
+.vendor-light-module [style*="rgba(255, 255, 255, 0.04)"],
+.vendor-light-module [style*="rgba(255,255,255,0.04)"] {
+  background: #f8fafc !important;
+}
+
+.vendor-light-module [style*="border: 1px solid rgb(45, 46, 58)"],
+.vendor-light-module [style*="border: 1px solid #2d2e3a"],
+.vendor-light-module [style*="border-bottom: 1px solid rgb(45, 46, 58)"],
+.vendor-light-module [style*="border-bottom: 1px solid #2d2e3a"] {
+  border-color: #e2e8f0 !important;
+}
+
+.vendor-light-module [style*="color: rgb(255, 255, 255)"],
+.vendor-light-module [style*="color: #fff"],
+.vendor-light-module [style*="color: rgb(226, 232, 240)"],
+.vendor-light-module [style*="color: #e2e8f0"] {
+  color: #0f172a !important;
+}
+
+.vendor-light-module input,
+.vendor-light-module select,
+.vendor-light-module textarea {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.vendor-light-module button[style*="background: rgb(124, 58, 237)"],
+.vendor-light-module button[style*="background: #7c3aed"],
+.vendor-light-module button[style*="background: rgb(16, 185, 129)"],
+.vendor-light-module button[style*="background: #10b981"] {
+  color: #ffffff !important;
+}
