@@ -38,6 +38,7 @@ export interface BrainContext {
   tenantId:   string
   userId:     string
   userRole:   string
+  vertical?:  string
   workspace?: string
   projectId?: string
   clientId?:  string
