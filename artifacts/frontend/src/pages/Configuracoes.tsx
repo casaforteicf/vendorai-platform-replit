@@ -8,6 +8,10 @@ import * as z from "zod";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+
+function getToken(): string | null {
+  return localStorage.getItem("vendorai_token");
+}
 import {
   getGetMeQueryKey,
   useGetBusinessProfileByTenant,
