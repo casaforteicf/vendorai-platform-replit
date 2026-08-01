@@ -48,7 +48,7 @@ const EMPTY_FORM = {
   titulo: "", descricao: "", tipo: "casa" as string, finalidade: "venda" as string,
   endereco: "", bairro: "", cidade: "", cep: "",
   areaM2: "", quartos: "", banheiros: "", vagas: "",
-  valor: "", valorCondominio: "", valorIptu: "", destaque: false,
+  valor: "", valorCondominio: "", valorIptu: "", destaque: false, vendeNoPracaAi: false,
 };
 
 export default function ImoveisPropriedades() {
@@ -118,6 +118,7 @@ export default function ImoveisPropriedades() {
       banheiros: p.banheiros != null ? String(p.banheiros) : "", vagas: p.vagas != null ? String(p.vagas) : "",
       valor: p.valor != null ? String(p.valor) : "", valorCondominio: p.valorCondominio != null ? String(p.valorCondominio) : "",
       valorIptu: p.valorIptu != null ? String(p.valorIptu) : "", destaque: !!p.destaque,
+      vendeNoPracaAi: !!p.vendeNoPracaAi,
     });
     setDialogOpen(true);
   }
@@ -302,6 +303,13 @@ export default function ImoveisPropriedades() {
             <div className="flex items-center gap-2">
               <Switch checked={form.destaque} onCheckedChange={(v) => setForm((f) => ({ ...f, destaque: v }))} />
               <Label>Destacar anúncio</Label>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border p-3">
+              <Switch checked={form.vendeNoPracaAi} onCheckedChange={(v) => setForm((f) => ({ ...f, vendeNoPracaAi: v }))} />
+              <div>
+                <Label>Publicar no Praça.ai</Label>
+                <p className="text-xs text-muted-foreground">Fotos, valor, localização e características deste cadastro serão exibidos no marketplace.</p>
+              </div>
             </div>
             <div className="flex gap-2 justify-end pt-1">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>

@@ -40,6 +40,7 @@ export const imoveisPropriedadesTable = pgTable("imoveis_propriedades", {
   fotos: jsonb("fotos").$type<string[]>(),
   status: imoveisStatusEnum("status").notNull().default("disponivel"),
   destaque: boolean("destaque").notNull().default(false),
+  vendeNoPracaAi: boolean("vende_no_praca_ai").notNull().default(false),
   corretorResponsavelId: text("corretor_responsavel_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

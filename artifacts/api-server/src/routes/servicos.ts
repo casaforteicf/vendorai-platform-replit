@@ -7,6 +7,7 @@ import {
   servicosOrdensTable,
   leadsTable,
 } from "@workspace/db";
+import { SERVICE_CATALOG, SERVICE_TEMPLATES } from "../lib/serviceCatalog";
 
 const router: IRouter = Router();
 
@@ -83,6 +84,20 @@ router.delete("/tenants/:tenantId/servicos/prestadores/:id", async (req, res) =>
 });
 
 // ─── Tipos de Serviço ─────────────────────────────────────────────────────────
+
+router.get("/servicos/catalogo-modelo", (_req, res) => res.json(SERVICE_CATALOG));
+
+router.post("/tenants/:tenantId/servicos/importar-catalogo", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const existentes = await db.select({ nome: servicosTiposTable.nome }).from(servicosTiposTable).where(eq(servicosTiposTable.tenantId, tenantId));
+  const nomes = new Set(existentes.map((item) => item.nome.toLocaleLowerCase("pt-BR")));
+  const novos = SERVICE_TEMPLATES.filter((item) => !nomes.has(item.nome.toLocaleLowerCase("pt-BR")));
+  if (novos.length) {
+    await db.insert(servicosTiposTable).values(novos.map((item) => ({ ...item, tenantId, ativo: true, vendeNoPracaAi: false })) as any);
+  }
+  return res.status(201).json({ adicionados: novos.length, existentes: SERVICE_TEMPLATES.length - novos.length, totalCatalogo: SERVICE_TEMPLATES.length });
+});
 
 router.get("/tenants/:tenantId/servicos/tipos", async (req, res) => {
   const tenantId = req.params.tenantId as string;
