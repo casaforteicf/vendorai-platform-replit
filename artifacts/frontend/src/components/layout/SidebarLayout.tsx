@@ -59,6 +59,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Minhas Entregas", href: "/entregas",    icon: Truck,           sellerHidden: false, section: "crm", fn: ["entrega", "administrador"] as UserFunction[] },
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -121,7 +122,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // approved for that vertical.
   const CORE_VERTICAL_HREFS = [
     "/", "/leads", "/app/prospector", "/deals", "/comissoes",
-    "/conversations", "/agenda", "/propostas", "/campanhas",
+    "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas",
     "/agents/config", "/analytics", "/usuarios", "/configuracoes",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades",
     "/praca-perguntas",
