@@ -31,6 +31,10 @@ const TIPO_LABELS: Record<string, string> = {
   reativacao:  "Reativação",
   upgrade:     "Upgrade",
   aniversario: "Aniversário",
+  follow_up: "Follow-up",
+  renovacao: "Renovação",
+  manutencao: "Manutenção",
+  sequencia_produto: "Próxima etapa",
 };
 const TIPO_COLORS: Record<string, string> = {
   recompra:    "#3b82f6",
@@ -38,6 +42,10 @@ const TIPO_COLORS: Record<string, string> = {
   reativacao:  "#f59e0b",
   upgrade:     "#22c55e",
   aniversario: "#ec4899",
+  follow_up: "#06b6d4",
+  renovacao: "#8b5cf6",
+  manutencao: "#14b8a6",
+  sequencia_produto: "#0ea5e9",
 };
 const STATUS_COLORS: Record<string, string> = {
   pendente:  "bg-slate-100 text-slate-600 border-slate-200",
@@ -45,6 +53,9 @@ const STATUS_COLORS: Record<string, string> = {
   respondeu: "bg-amber-100 text-amber-700 border-amber-200",
   converteu: "bg-emerald-100 text-emerald-700 border-emerald-200",
   ignorado:  "bg-red-100 text-red-600 border-red-200",
+  pendente_aprovacao: "bg-violet-100 text-violet-700 border-violet-200",
+  aprovado: "bg-cyan-100 text-cyan-700 border-cyan-200",
+  adiado: "bg-orange-100 text-orange-700 border-orange-200",
 };
 const STATUS_LABELS: Record<string, string> = {
   pendente:  "Pendente",
@@ -52,6 +63,9 @@ const STATUS_LABELS: Record<string, string> = {
   respondeu: "Respondeu",
   converteu: "Convertido",
   ignorado:  "Ignorado",
+  pendente_aprovacao: "Aguardando aprovação",
+  aprovado: "Aprovado",
+  adiado: "Adiado",
 };
 
 export default function RevenueDashboard() {
@@ -161,7 +175,7 @@ export default function RevenueDashboard() {
             Inteligência de retenção e expansão de receita
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <Link href="/scout/regras">
             <Button variant="outline" size="sm">Gerenciar Regras</Button>
           </Link>
@@ -181,6 +195,28 @@ export default function RevenueDashboard() {
           </Link>
         </div>
       </div>
+
+      {dash?.verticalProfile && (
+        <Card className="p-4 border-emerald-200 bg-emerald-50/40">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className="bg-emerald-700 hover:bg-emerald-700">{dash.verticalProfile.label}</Badge>
+                <span className="text-xs text-muted-foreground">Scout especializado por vertical</span>
+              </div>
+              <p className="font-semibold mt-2">Foco: {dash.verticalProfile.focus}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ciclo sugerido: {dash.verticalProfile.cycleDays} dias · Reativação: {dash.verticalProfile.dormantDays} dias · contato somente após aprovação humana
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 lg:max-w-xl">
+              {dash.verticalProfile.signals.map((signal: string) => (
+                <Badge key={signal} variant="outline" className="bg-white">{signal}</Badge>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
