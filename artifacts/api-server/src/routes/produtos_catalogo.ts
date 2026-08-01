@@ -277,6 +277,7 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
 
   const errors: { row: number; message: string }[] = [];
   const toInsert: typeof produtosCatalogoTable.$inferInsert[] = [];
+  const normalizedCategories = new Map<string, { official: string; rows: number }>();
 
   for (let i = 1; i < lines.length; i++) {
     const rowNum = i + 1;
@@ -297,6 +298,13 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     if (categoriaInformada && !categoriaNome) {
       errors.push({ row: rowNum, message: `Categoria não reconhecida: "${categoriaInformada}"` });
       continue;
+    }
+    if (categoriaInformada && categoriaNome && categoriaInformada !== categoriaNome) {
+      const current = normalizedCategories.get(categoriaInformada);
+      normalizedCategories.set(categoriaInformada, {
+        official: categoriaNome,
+        rows: (current?.rows ?? 0) + 1,
+      });
     }
     const categoriaId = await resolveCategoriaId(categoriaNome);
 
@@ -321,7 +329,15 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     await db.insert(produtosCatalogoTable).values(toInsert);
   }
 
-  res.json({ imported: toInsert.length, errors });
+  res.json({
+    imported: toInsert.length,
+    errors,
+    normalizedCategories: Array.from(normalizedCategories, ([received, value]) => ({
+      received,
+      official: value.official,
+      rows: value.rows,
+    })),
+  });
 });
 
 // ── Promoções configuráveis ───────────────────────────────────────────────
