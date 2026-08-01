@@ -63,7 +63,7 @@ const Estoque            = lazy(() => import("@/pages/Estoque"));
 const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
 const Onboarding                = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes     = lazy(() => import("@/pages/OnboardingIntegracoes"));
-const Content            = lazy(() => import("@/pages/Content"));
+const Content            = lazy(() => import("@/pages/ContentHub"));
 const ContentStudio      = lazy(() => import("@/pages/ContentStudio"));
 const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
 const VideoAvatarPage    = lazy(() => import("@/pages/video/VideoAvatarPage"));
