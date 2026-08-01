@@ -40,6 +40,7 @@ const Configuracoes      = lazy(() => import("@/pages/Configuracoes"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
 const Campanhas          = lazy(() => import("@/pages/Campanhas"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
+const CatalogoProdutos   = lazy(() => import("@/pages/CatalogoProdutos"));
 const PropostaPrint      = lazy(() => import("@/pages/PropostaPrint"));
 const AdminAIUsage       = lazy(() => import("@/pages/AdminAIUsage"));
 const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
@@ -530,6 +531,9 @@ function AppRoutes() {
         </Route>
         <Route path="/propostas">
           {() => <ProtectedRoute component={Propostas} />}
+        </Route>
+        <Route path="/catalogo">
+          {() => <ProtectedRoute component={CatalogoProdutos} />}
         </Route>
         <Route path="/propostas/:id/print">
           {() => <ProtectedRoute component={PropostaPrint} />}

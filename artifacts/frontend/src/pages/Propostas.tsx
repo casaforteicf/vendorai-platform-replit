@@ -116,7 +116,6 @@ import {
   Send,
   CheckCircle2,
   XCircle,
-  BookOpen,
   X,
   Sparkles,
   Upload,
@@ -211,7 +210,7 @@ function downloadTemplate() {
   URL.revokeObjectURL(url);
 }
 
-function CatalogoModal({
+export function CatalogoModal({
   open,
   onClose,
   tenantId,
@@ -2448,7 +2447,6 @@ export default function Propostas() {
   const defaultStatus = urlStatus === "ativa" ? "enviada" : undefined;
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [catOpen, setCatOpen] = useState(false);
   const [detailProposta, setDetailProposta] = useState<Proposta | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Proposta | null>(null);
   const [viewProposta, setViewProposta] = useState<Proposta | null>(null);
@@ -2518,10 +2516,6 @@ export default function Propostas() {
           <p className="text-muted-foreground text-sm mt-0.5">Gerencie orçamentos e propostas comerciais</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setCatOpen(true)} className="flex-1 sm:flex-none min-h-[44px]">
-            <BookOpen className="h-4 w-4 mr-2" />
-            Catálogo
-          </Button>
           <Button onClick={() => setModalOpen(true)} className="flex-1 sm:flex-none min-h-[44px]">
             <Plus className="h-4 w-4 mr-2" />
             Novo Orçamento
@@ -2723,7 +2717,6 @@ export default function Propostas() {
         tenantId={tenantId}
         catalog={catalog}
       />
-      <CatalogoModal open={catOpen} onClose={() => setCatOpen(false)} tenantId={tenantId} />
       <PropostaDetailSheet
         proposta={detailProposta}
         leadName={detailProposta ? (leadMap[detailProposta.leadId] ?? "—") : ""}
