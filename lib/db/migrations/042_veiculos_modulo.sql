@@ -1,8 +1,20 @@
 -- Módulo Veículos — 5º e último dos 6 segmentos operacionais pendentes.
-CREATE TYPE veiculos_combustivel AS ENUM ('flex', 'gasolina', 'diesel', 'eletrico', 'hibrido', 'gnv');
-CREATE TYPE veiculos_cambio AS ENUM ('manual', 'automatico', 'cvt');
-CREATE TYPE veiculos_status AS ENUM ('disponivel', 'reservado', 'vendido', 'inativo');
-CREATE TYPE veiculos_test_drive_status AS ENUM ('agendado', 'confirmado', 'realizado', 'cancelado');
+DO $$ BEGIN
+  CREATE TYPE veiculos_combustivel AS ENUM ('flex', 'gasolina', 'diesel', 'eletrico', 'hibrido', 'gnv');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE veiculos_cambio AS ENUM ('manual', 'automatico', 'cvt');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE veiculos_status AS ENUM ('disponivel', 'reservado', 'vendido', 'inativo');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE veiculos_test_drive_status AS ENUM ('agendado', 'confirmado', 'realizado', 'cancelado');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS veiculos_estoque (
   id text PRIMARY KEY,

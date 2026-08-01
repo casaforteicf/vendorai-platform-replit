@@ -1,9 +1,15 @@
 -- Módulo Fretes — 4º dos 6 segmentos operacionais pendentes.
-CREATE TYPE fretes_veiculo_tipo AS ENUM ('utilitario', 'van', 'caminhao_toco', 'caminhao_truck', 'carreta');
-CREATE TYPE fretes_carga_status AS ENUM (
-  'cotacao_pendente', 'cotado', 'aprovado', 'coletado', 'em_transito',
-  'entregue', 'cancelado'
-);
+DO $$ BEGIN
+  CREATE TYPE fretes_veiculo_tipo AS ENUM ('utilitario', 'van', 'caminhao_toco', 'caminhao_truck', 'carreta');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE fretes_carga_status AS ENUM (
+    'cotacao_pendente', 'cotado', 'aprovado', 'coletado', 'em_transito',
+    'entregue', 'cancelado'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS fretes_veiculos (
   id text PRIMARY KEY,

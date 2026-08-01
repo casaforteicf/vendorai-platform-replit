@@ -1,16 +1,25 @@
 -- Módulo Farmácia — 2º dos 6 segmentos operacionais pendentes.
-CREATE TYPE farmacia_categoria_produto AS ENUM (
-  'medicamento_generico', 'medicamento_referencia', 'medicamento_similar',
-  'perfumaria', 'higiene_pessoal', 'dermocosmeticos', 'infantil',
-  'ortopedicos', 'suplementos', 'outros'
-);
+DO $$ BEGIN
+  CREATE TYPE farmacia_categoria_produto AS ENUM (
+    'medicamento_generico', 'medicamento_referencia', 'medicamento_similar',
+    'perfumaria', 'higiene_pessoal', 'dermocosmeticos', 'infantil',
+    'ortopedicos', 'suplementos', 'outros'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE farmacia_pedido_status AS ENUM (
-  'aguardando_confirmacao', 'aguardando_receita', 'confirmado',
-  'em_separacao', 'saiu_para_entrega', 'entregue', 'cancelado'
-);
+DO $$ BEGIN
+  CREATE TYPE farmacia_pedido_status AS ENUM (
+    'aguardando_confirmacao', 'aguardando_receita', 'confirmado',
+    'em_separacao', 'saiu_para_entrega', 'entregue', 'cancelado'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE farmacia_pedido_origem AS ENUM ('whatsapp', 'app', 'balcao');
+DO $$ BEGIN
+  CREATE TYPE farmacia_pedido_origem AS ENUM ('whatsapp', 'app', 'balcao');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS farmacia_produtos (
   id text PRIMARY KEY,

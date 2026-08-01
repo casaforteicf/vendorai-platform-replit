@@ -5,7 +5,10 @@
 -- lojista (B2B direto) ou cliente final (vindo do Praça.ai) — pra o mesmo
 -- parceiro freteiro atender os dois fluxos dentro do Vendor.ai.
 
-CREATE TYPE fretes_origem AS ENUM ('direto', 'lojista', 'cliente_final');
+DO $$ BEGIN
+  CREATE TYPE fretes_origem AS ENUM ('direto', 'lojista', 'cliente_final');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 ALTER TABLE fretes_cargas
   ADD COLUMN IF NOT EXISTS tipo_veiculo_desejado fretes_veiculo_tipo,

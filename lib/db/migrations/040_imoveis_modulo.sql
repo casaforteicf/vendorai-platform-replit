@@ -1,8 +1,20 @@
 -- Módulo Imóveis — 3º dos 6 segmentos operacionais pendentes.
-CREATE TYPE imoveis_tipo AS ENUM ('casa', 'apartamento', 'terreno', 'comercial', 'rural', 'sala_comercial');
-CREATE TYPE imoveis_finalidade AS ENUM ('venda', 'aluguel');
-CREATE TYPE imoveis_status AS ENUM ('disponivel', 'reservado', 'vendido', 'alugado', 'inativo');
-CREATE TYPE imoveis_visita_status AS ENUM ('agendada', 'confirmada', 'realizada', 'cancelada');
+DO $$ BEGIN
+  CREATE TYPE imoveis_tipo AS ENUM ('casa', 'apartamento', 'terreno', 'comercial', 'rural', 'sala_comercial');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE imoveis_finalidade AS ENUM ('venda', 'aluguel');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE imoveis_status AS ENUM ('disponivel', 'reservado', 'vendido', 'alugado', 'inativo');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE imoveis_visita_status AS ENUM ('agendada', 'confirmada', 'realizada', 'cancelada');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS imoveis_propriedades (
   id text PRIMARY KEY,
