@@ -1,8 +1,9 @@
-import { pgTable, text, timestamp, numeric, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, pgEnum, jsonb, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
+import { usersTable } from "./users";
 import { fretesVeiculosTable, fretesVeiculoTipoEnum } from "./fretes_veiculos";
 
 // status: cotacao_pendente | cotado | aprovado | coletado | em_transito |
@@ -32,6 +33,16 @@ export const fretesCargasTable = pgTable("fretes_cargas", {
   // o cliente/lojista escolhe só o TIPO de veículo que precisa.
   tipoVeiculoDesejado: fretesVeiculoTipoEnum("tipo_veiculo_desejado"),
   veiculoId: text("veiculo_id").references(() => fretesVeiculosTable.id, { onDelete: "set null" }),
+  // Motorista que aceitou essa carga (estilo Uber — fica disponível pra
+  // qualquer motorista do tenant aceitar depois que status = aprovado, até
+  // alguém aceitar primeiro). Null = ninguém aceitou ainda.
+  motoristaId: text("motorista_id").references(() => usersTable.id, { onDelete: "set null" }),
+  // Localização ao vivo — só o ponto mais recente (sem histórico completo,
+  // suficiente pro mapa em tempo real). Atualizado pelo motorista enquanto
+  // a carga está coletado/em_transito.
+  localizacaoLat: doublePrecision("localizacao_lat"),
+  localizacaoLng: doublePrecision("localizacao_lng"),
+  localizacaoAtualizadaEm: timestamp("localizacao_atualizada_em"),
   origem: fretesOrigemEnum("origem").notNull().default("direto"),
   enderecoColeta: text("endereco_coleta").notNull(),
   enderecoEntrega: text("endereco_entrega").notNull(),

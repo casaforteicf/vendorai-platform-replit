@@ -138,6 +138,7 @@ const ImoveisPropriedades = lazy(() => import("@/pages/imoveis/ImoveisPropriedad
 const ImoveisVisitas     = lazy(() => import("@/pages/imoveis/ImoveisVisitas"));
 const FretesCargas       = lazy(() => import("@/pages/fretes/FretesCargas"));
 const FretesVeiculos     = lazy(() => import("@/pages/fretes/FretesVeiculos"));
+const FretesMotorista    = lazy(() => import("@/pages/fretes/FretesMotorista"));
 const VeiculosEstoque    = lazy(() => import("@/pages/veiculos/VeiculosEstoque"));
 const VeiculosTestDrives = lazy(() => import("@/pages/veiculos/VeiculosTestDrives"));
 const PracaPerguntas     = lazy(() => import("@/pages/PracaPerguntas"));
@@ -757,6 +758,9 @@ function AppRoutes() {
         </Route>
         <Route path="/fretes/veiculos">
           {() => <ProtectedRoute component={FretesVeiculos} />}
+        </Route>
+        <Route path="/fretes/motorista">
+          {() => <ProtectedRoute component={FretesMotorista} />}
         </Route>
         <Route path="/veiculos/estoque">
           {() => <ProtectedRoute component={VeiculosEstoque} />}

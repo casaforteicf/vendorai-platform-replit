@@ -12,7 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Package, Loader2, ArrowRight, Camera, Phone, X } from "lucide-react";
+import { Plus, Package, Loader2, ArrowRight, Camera, Phone, X, MapPin } from "lucide-react";
+import { LiveDeliveryMap } from "@/components/LiveDeliveryMap";
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -323,7 +324,9 @@ export default function FretesCargas() {
     queryKey: QK,
     queryFn: () => fetch(`/api/tenants/${tenantId}/fretes/cargas`, { headers: authHeaders() }).then((r) => r.json()),
     enabled: !!tenantId,
+    refetchInterval: 20_000,
   });
+  const [expandedMapId, setExpandedMapId] = useState<string | null>(null);
 
   const advanceStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
@@ -423,6 +426,32 @@ export default function FretesCargas() {
                           )}
                         </div>
                         <p className="text-xs mt-1">{c.valorCotado != null ? fmt(c.valorCotado) : "Sem cotação ainda"}</p>
+                        {c.motorista?.name && (
+                          <p className="text-xs text-muted-foreground mt-0.5">Motorista: {c.motorista.name}</p>
+                        )}
+                        {c.localizacaoLat != null && c.localizacaoLng != null && (c.status === "coletado" || c.status === "em_transito") && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="link"
+                              className="h-auto p-0 mt-1 text-xs"
+                              onClick={() => setExpandedMapId(expandedMapId === c.id ? null : c.id)}
+                            >
+                              <MapPin className="h-3 w-3 mr-1" />
+                              {expandedMapId === c.id ? "Esconder mapa" : "Ver localização ao vivo"}
+                            </Button>
+                            {expandedMapId === c.id && (
+                              <div className="mt-2">
+                                <LiveDeliveryMap
+                                  lat={c.localizacaoLat}
+                                  lng={c.localizacaoLng}
+                                  label={c.motorista?.name ? `Motorista: ${c.motorista.name}` : "Localização da entrega"}
+                                  updatedAt={c.localizacaoAtualizadaEm}
+                                />
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-col gap-1.5 shrink-0">
                         {c.cliente?.telefone && (

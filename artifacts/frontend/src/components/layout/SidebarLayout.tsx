@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
-  Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
+  Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle,
@@ -98,6 +98,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Visitas",       href: "/imoveis/visitas",          icon: Calendar,    sellerHidden: false, section: "imoveis",  fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Cargas",        href: "/fretes/cargas",            icon: Package,     sellerHidden: false, section: "fretes",   fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Frota",         href: "/fretes/veiculos",          icon: Truck,       sellerHidden: false, section: "fretes",   fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Minhas Entregas", href: "/fretes/motorista",       icon: Navigation,  sellerHidden: false, section: "fretes",   fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Estoque",       href: "/veiculos/estoque",         icon: Car,         sellerHidden: false, section: "veiculos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Test-Drives",   href: "/veiculos/test-drives",     icon: Calendar,    sellerHidden: false, section: "veiculos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Clínica",       href: "/clinic",                   icon: Stethoscope, sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
@@ -300,7 +301,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     ]),
     "Fretes": new Set([
       ...CORE_VERTICAL_HREFS,
-      "/fretes/cargas", "/fretes/veiculos",
+      "/fretes/cargas", "/fretes/veiculos", "/fretes/motorista",
     ]),
     "Veículos": new Set([
       ...CORE_VERTICAL_HREFS,
