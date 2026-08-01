@@ -60,6 +60,7 @@ const PartnerCommissions = lazy(() => import("@/pages/partner/PartnerCommissions
 const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
 const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
+const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
 const Onboarding                = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes     = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/Content"));
@@ -547,6 +548,9 @@ function AppRoutes() {
         </Route>
         <Route path="/estoque">
           {() => <ProtectedRoute component={Estoque} />}
+        </Route>
+        <Route path="/erp">
+          {() => <ProtectedRoute component={GestaoErp} />}
         </Route>
         <Route path="/faturamento">
           <RedirectPage to="/configuracoes" />

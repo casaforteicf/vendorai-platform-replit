@@ -185,3 +185,4 @@ export * from "./churn_actions";
 export * from "./intent_signals";
 export * from "./insurance_revenue_scout";
 export * from "./tenant_nav_modules";
+export * from "./erp_financeiro";

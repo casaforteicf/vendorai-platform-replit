@@ -12,7 +12,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Variedades Praça.ai", href: "/praca-variedades", icon: Sparkles, sellerHidden: true, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -126,7 +127,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas",
     "/agents/config", "/analytics", "/usuarios", "/configuracoes",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades",
-    "/praca-perguntas",
+    "/praca-perguntas", "/erp",
   ];
 
   const verticalHrefAllowlists: Record<string, Set<string>> = {
