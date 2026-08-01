@@ -4,6 +4,7 @@
 // Sem dependências externas — React + SVG puro.
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { T } from '../arqdor/shared/arqdor-theme'
 
 // ─── Demo dataset ─────────────────────────────────────────────────────────────
@@ -159,7 +160,23 @@ export function VKGDemoView() {
   const [searchTerm,   setSearchTerm]   = useState('')
   const [showInferred, setShowInferred] = useState(true)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches)
-  const [mobileView, setMobileView] = useState<'graph' | 'details'>('graph')
+  const [mobileView, setMobileView] = useState<'list' | 'graph' | 'details'>('list')
+  const { data: liveGraph, isLoading } = useQuery<{ nodes:Array<{ id:string; type:string; label:string; domain:string; properties:Record<string, unknown> }>; edges:Array<{ id:string; source:string; target:string; label:string; weight:number; inferred:boolean }>; vertical?:string; generatedAt:string }>({
+    queryKey:['knowledge-graph-snapshot'],
+    queryFn:async () => {
+      const response = await fetch('/api/knowledge-graph/snapshot')
+      if (!response.ok) throw new Error('Não foi possível carregar o mapa de conhecimento')
+      return response.json()
+    },
+  })
+  const nodes = useMemo<DemoNode[]>(() => (liveGraph?.nodes ?? []).map((node, index, all) => {
+    const angle = (index / Math.max(1, all.length)) * Math.PI * 2
+    const ring = index === 0 ? 0 : 170 + (index % 3) * 70
+    const icon:Record<string,string> = { Tenant:'🏢', Customer:'🤝', Proposal:'📄', Product:'📦' }
+    const color = DOMAIN_COLORS[node.domain] ?? '#94a3b8'
+    return { ...node, props:Object.fromEntries(Object.entries(node.properties ?? {}).map(([key,value]) => [key, String(value ?? '—')])), icon:icon[node.type] ?? '●', color, x:400 + Math.cos(angle) * ring, y:340 + Math.sin(angle) * ring }
+  }), [liveGraph])
+  const edges = useMemo<DemoEdge[]>(() => (liveGraph?.edges ?? []), [liveGraph])
 
   const svgRef   = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -216,21 +233,21 @@ export function VKGDemoView() {
   // ── Filtered data ───────────────────────────────────────────────────────────
 
   const visibleNodes = useMemo(() => {
-    let ns = DEMO_NODES
+    let ns = nodes
     if (filterDomain) ns = ns.filter(n => n.domain === filterDomain)
     if (searchTerm)   ns = ns.filter(n =>
       n.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
       n.type.toLowerCase().includes(searchTerm.toLowerCase())
     )
     return ns
-  }, [filterDomain, searchTerm])
+  }, [nodes, filterDomain, searchTerm])
 
   const visibleNodeIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes])
 
-  const visibleEdges = useMemo(() => DEMO_EDGES.filter(e =>
+  const visibleEdges = useMemo(() => edges.filter(e =>
     visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target) &&
     (showInferred || !e.inferred)
-  ), [visibleNodeIds, showInferred])
+  ), [edges, visibleNodeIds, showInferred])
 
   // ── Highlight neighbors ─────────────────────────────────────────────────────
 
@@ -247,7 +264,7 @@ export function VKGDemoView() {
 
   const stats = useMemo(() => getStats(visibleNodes, visibleEdges), [visibleNodes, visibleEdges])
 
-  const domains = useMemo(() => [...new Set(DEMO_NODES.map(n => n.domain))], [])
+  const domains = useMemo(() => [...new Set(nodes.map(n => n.domain))], [nodes])
 
   // ── Node position in transformed space ─────────────────────────────────────
 
@@ -270,7 +287,7 @@ export function VKGDemoView() {
             <h2 style={{ margin:0, fontSize:16, fontWeight:900, color:'#fff' }}>
               📊 Vendor Knowledge Graph
             </h2>
-            <p style={{ margin:0, fontSize:10, color:T.dim }}>FASE 18 — Camada de inteligência da Vendor.ai</p>
+            <p style={{ margin:0, fontSize:10, color:T.dim }}>Mapa vivo de clientes, propostas e produtos · {liveGraph?.vertical ?? 'multivertical'}</p>
           </div>
 
           {/* Stats */}
@@ -349,10 +366,10 @@ export function VKGDemoView() {
       </div>
 
       {isMobile && (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', padding:6, gap:6, background:T.sidebar, borderBottom:`1px solid ${T.border}` }}>
-          {(['graph', 'details'] as const).map(view => (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', padding:6, gap:6, background:T.sidebar, borderBottom:`1px solid ${T.border}` }}>
+          {(['list', 'graph', 'details'] as const).map(view => (
             <button key={view} onClick={() => setMobileView(view)} style={{ padding:'8px 10px', borderRadius:7, border:`1px solid ${mobileView === view ? T.purple : T.border}`, background:mobileView === view ? 'rgba(124,58,237,.22)' : 'transparent', color:mobileView === view ? '#fff' : T.dim, fontSize:11, fontWeight:700 }}>
-              {view === 'graph' ? 'Grafo interativo' : selectedNode ? `Detalhes: ${selectedNode.label}` : 'Detalhes e legenda'}
+              {view === 'list' ? 'Entidades' : view === 'graph' ? 'Grafo' : selectedNode ? 'Detalhes' : 'Detalhes'}
             </button>
           ))}
         </div>
@@ -361,8 +378,18 @@ export function VKGDemoView() {
       {/* ── BODY ── */}
       <div style={{ flex:1, display:'flex', flexDirection:isMobile ? 'column' : 'row', overflow:'hidden', minHeight:0 }}>
 
+        {isMobile && mobileView === 'list' && (
+          <div style={{ flex:1, overflowY:'auto', padding:10 }}>
+            {isLoading ? <p style={{ color:T.dim, textAlign:'center' }}>Carregando mapa…</p> : visibleNodes.map(node => (
+              <button key={node.id} onClick={() => { setSelectedNode(node); setMobileView('details') }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:12, marginBottom:7, borderRadius:8, border:`1px solid ${T.border}`, background:T.sidebar, color:'#fff', textAlign:'left' }}>
+                <span style={{ fontSize:20 }}>{node.icon}</span><span style={{ flex:1 }}><strong style={{ display:'block', fontSize:11 }}>{node.label}</strong><small style={{ color:node.color }}>{node.type} · {node.domain}</small></span><span>›</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* ── GRAPH SVG ── */}
-        <div style={{ flex:1, position:'relative' as const, overflow:'hidden', cursor:'grab', display:isMobile && mobileView !== 'graph' ? 'none' : 'block', minHeight:0, touchAction:'none' }}>
+        <div style={{ flex:1, position:'relative' as const, overflow:'hidden', cursor:'grab', display:isMobile && mobileView !== 'graph' ? 'none' : 'block', minHeight:isMobile ? 420 : 0, touchAction:'none' }}>
           <svg
             ref={svgRef}
             width="100%" height="100%"
@@ -559,11 +586,11 @@ export function VKGDemoView() {
               {/* Connections */}
               <div style={{ marginTop:8 }}>
                 <p style={{ margin:'0 0 4px', fontSize:9, color:T.dim, fontWeight:700 }}>CONEXÕES</p>
-                {DEMO_EDGES.filter(e => e.source === selectedNode.id || e.target === selectedNode.id)
+                {edges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id)
                   .slice(0, 6)
                   .map(edge => {
                     const otherId   = edge.source === selectedNode.id ? edge.target : edge.source
-                    const otherNode = DEMO_NODES.find(n => n.id === otherId)
+                    const otherNode = nodes.find(n => n.id === otherId)
                     const dir       = edge.source === selectedNode.id ? '→' : '←'
                     return otherNode ? (
                       <div key={edge.id} style={{ display:'flex', alignItems:'center', gap:4, padding:'3px 0', borderBottom:`1px solid ${T.border}` }}>
@@ -590,7 +617,7 @@ export function VKGDemoView() {
                 <div style={{ width:8, height:8, borderRadius:'50%', background:DOMAIN_COLORS[d] ?? T.dim, flexShrink:0 }}/>
                 <span style={{ fontSize:10, color:T.text }}>{d}</span>
                 <span style={{ marginLeft:'auto', fontSize:9, color:T.dim }}>
-                  {DEMO_NODES.filter(n => n.domain === d).length} nós
+                  {nodes.filter(n => n.domain === d).length} nós
                 </span>
               </div>
             ))}
@@ -607,7 +634,7 @@ export function VKGDemoView() {
 
             <p style={{ margin:'12px 0 8px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>TIPOS DE NÓS ({Object.keys(stats.byType).length})</p>
             {Object.entries(stats.byType).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
-              const sample = DEMO_NODES.find(n => n.type === type)
+              const sample = nodes.find(n => n.type === type)
               return (
                 <div key={type} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
                   <span style={{ fontSize:12 }}>{sample?.icon ?? '●'}</span>
@@ -621,10 +648,10 @@ export function VKGDemoView() {
           {/* VKG version info */}
           <div style={{ padding:'10px 14px', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
             <p style={{ margin:0, fontSize:9, color:T.dim, lineHeight:1.5 }}>
-              VKG v0.1 · {DEMO_NODES.length} node types · {[...new Set(DEMO_EDGES.map(e => e.label))].length} relation types
+              Dados do tenant · {nodes.length} entidades · {[...new Set(edges.map(e => e.label))].length} tipos de relação
             </p>
             <p style={{ margin:'2px 0 0', fontSize:9, color:T.dim }}>
-              Motor: in-memory · LLM: pendente (FASE 19)
+              Atualizado: {liveGraph?.generatedAt ? new Date(liveGraph.generatedAt).toLocaleString('pt-BR') : 'carregando'}
             </p>
           </div>
         </div>
