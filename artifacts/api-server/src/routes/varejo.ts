@@ -23,7 +23,11 @@ import {
   insertVarejoComboSchema,
   insertVarejoComboItemSchema,
   erpTitulosTable,
+  compraRecebimentosTable,
+  compraRecebimentoItensTable,
+  erpAuditoriaTable,
 } from "@workspace/db";
+import { z } from "zod/v4";
 
 const router: IRouter = Router();
 
@@ -455,6 +459,29 @@ router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (re
   const rows = await db.select().from(varejoPedidoCompraItemTable)
     .where(eq(varejoPedidoCompraItemTable.pedidoId, pedidoId));
   return res.json(rows);
+});
+
+router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/recebimentos", async (req,res)=>{
+  const {tenantId,pedidoId}=req.params;if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
+  const recebimentos=await db.select().from(compraRecebimentosTable).where(and(eq(compraRecebimentosTable.tenantId,tenantId),eq(compraRecebimentosTable.pedidoId,pedidoId))).orderBy(desc(compraRecebimentosTable.recebidoEm));
+  const ids=recebimentos.map(r=>r.id);const itens=ids.length?await db.select().from(compraRecebimentoItensTable).where(sql`${compraRecebimentoItensTable.recebimentoId} = ANY(${ids})`):[];
+  return res.json(recebimentos.map(r=>({...r,itens:itens.filter(i=>i.recebimentoId===r.id)})));
+});
+
+router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/recebimentos", async (req,res)=>{
+  const {tenantId,pedidoId}=req.params;if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
+  const parsed=z.object({numeroDocumento:z.string().optional(),observacoes:z.string().optional(),itens:z.array(z.object({pedidoItemId:z.string(),quantidade:z.number().positive(),lote:z.string().optional(),validade:z.string().optional(),localizacao:z.string().optional(),custoUnitario:z.union([z.string(),z.number()]).transform(String).optional()})).min(1)}).safeParse(req.body);
+  if(!parsed.success)return res.status(422).json({error:"Recebimento inválido",issues:parsed.error.issues});
+  const [pedido]=await db.select().from(varejoPedidoCompraTable).where(and(eq(varejoPedidoCompraTable.id,pedidoId),eq(varejoPedidoCompraTable.tenantId,tenantId)));if(!pedido)return res.status(404).json({error:"Pedido não encontrado"});
+  const orderItems=await db.select().from(varejoPedidoCompraItemTable).where(eq(varejoPedidoCompraItemTable.pedidoId,pedidoId));
+  const previous=await db.execute(sql`SELECT cri.pedido_item_id,coalesce(sum(cri.quantidade),0)::numeric AS quantidade FROM compra_recebimento_itens cri JOIN compra_recebimentos cr ON cr.id=cri.recebimento_id WHERE cr.pedido_id=${pedidoId} GROUP BY cri.pedido_item_id`);
+  const received=new Map(previous.rows.map((r:any)=>[String(r.pedido_item_id),Number(r.quantidade)]));
+  for(const item of parsed.data.itens){const ordered=orderItems.find(i=>i.id===item.pedidoItemId);if(!ordered)return res.status(422).json({error:"Item não pertence ao pedido"});if((received.get(item.pedidoItemId)||0)+item.quantidade>ordered.quantidade)return res.status(409).json({error:`Quantidade recebida excede o pedido para ${ordered.tamanho}/${ordered.cor}`});}
+  const result=await db.transaction(async tx=>{const [receipt]=await tx.insert(compraRecebimentosTable).values({tenantId,pedidoId,numeroDocumento:parsed.data.numeroDocumento,observacoes:parsed.data.observacoes,responsavelId:(req as any).user?.id??null}).returning();if(!receipt)throw new Error("Falha ao criar recebimento");
+    for(const input of parsed.data.itens){const orderItem=orderItems.find(i=>i.id===input.pedidoItemId)!;await tx.insert(compraRecebimentoItensTable).values({...input,tenantId,quantidade:String(input.quantidade),recebimentoId:receipt.id});if(orderItem.produtoId){const [grade]=await tx.select().from(varejoGradeTable).where(and(eq(varejoGradeTable.tenantId,tenantId),eq(varejoGradeTable.produtoId,orderItem.produtoId),eq(varejoGradeTable.tamanho,orderItem.tamanho),eq(varejoGradeTable.cor,orderItem.cor)));if(grade)await tx.update(varejoGradeTable).set({estoque:sql`${varejoGradeTable.estoque}+${input.quantidade}`,updatedAt:new Date()}).where(eq(varejoGradeTable.id,grade.id));else await tx.insert(varejoGradeTable).values({tenantId,produtoId:orderItem.produtoId,tamanho:orderItem.tamanho,cor:orderItem.cor,estoque:input.quantidade});}}
+    await tx.insert(erpAuditoriaTable).values({tenantId,usuarioId:(req as any).user?.id??null,modulo:"compras",acao:"recebimento_parcial",entidade:"pedido_compra",entidadeId:pedidoId,depois:parsed.data as any,ip:(req as any).ip});return receipt;});
+  const totals=orderItems.every(i=>(received.get(i.id)||0)+(parsed.data.itens.find(x=>x.pedidoItemId===i.id)?.quantidade||0)>=i.quantidade);if(totals)await db.update(varejoPedidoCompraTable).set({status:"entregue",updatedAt:new Date()}).where(eq(varejoPedidoCompraTable.id,pedidoId));
+  return res.status(201).json({...result,pedidoConcluido:totals});
 });
 
 router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (req, res) => {
