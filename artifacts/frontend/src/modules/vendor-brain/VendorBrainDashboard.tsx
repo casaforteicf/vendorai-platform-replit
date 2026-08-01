@@ -133,7 +133,7 @@ export function VendorBrainDashboard() {
   }, [activePlans])
 
   return (
-    <div style={{ height: isMobile ? 'auto' : 'calc(100vh - 64px)', minHeight: isMobile ? 'calc(100dvh - 72px)' : 700, display: 'flex', flexDirection: 'column' as const, background: T.bg, color: T.text, fontFamily: 'system-ui,sans-serif', overflow: isMobile ? 'visible' : 'hidden' }}>
+    <div className="vendor-light-module" style={{ height: isMobile ? 'auto' : 'calc(100vh - 64px)', minHeight: isMobile ? 'calc(100dvh - 72px)' : 700, display: 'flex', flexDirection: 'column' as const, background: T.bg, color: T.text, fontFamily: 'system-ui,sans-serif', overflow: isMobile ? 'visible' : 'hidden' }}>
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div style={{ padding: isMobile ? 12 : '12px 20px', borderBottom: `1px solid ${T.border}`, background: T.sidebar, flexShrink: 0 }}>
