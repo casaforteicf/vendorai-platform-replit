@@ -5,6 +5,7 @@
 import type {
   Intent, BrainContext, ExecutionPlan, PlanStep, AgentType,
 } from '../types'
+import { resolveBrainVerticalProfile } from '../vertical-profiles'
 
 let _seq = 0
 function nextId(prefix: string): string { return `${prefix}_${Date.now()}_${++_seq}` }
@@ -90,7 +91,20 @@ export interface IPlanningEngine {
 export class TemplatePlanningEngine implements IPlanningEngine {
   plan(intent: Intent, context: BrainContext): ExecutionPlan {
     const planId   = nextId('plan')
-    const template = TEMPLATES[intent.type] ?? DEFAULT_TEMPLATE
+    const profile = resolveBrainVerticalProfile(context.vertical)
+    const baseTemplate = TEMPLATES[intent.type] ?? DEFAULT_TEMPLATE
+    const template = context.vertical && profile.key !== 'construction'
+      ? baseTemplate.map((step, index) => ({
+          ...step,
+          description: index === 0
+            ? `${step.description}. Contexto: ${profile.focus}`
+            : step.description
+                .replace(/projeto/gi, profile.operation)
+                .replace(/materiais e serviços/gi, profile.offer)
+                .replace(/materiais/gi, profile.offer)
+                .replace(/cliente/gi, profile.customer),
+        }))
+      : baseTemplate
 
     const steps: PlanStep[] = template.map((t, idx) => {
       const stepId = `${planId}_step_${idx}`

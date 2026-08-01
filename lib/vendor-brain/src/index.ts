@@ -16,6 +16,8 @@ export type {
 } from './types'
 
 export { INTENT_TYPES, AGENT_TYPES } from './types'
+export { resolveBrainVerticalProfile } from './vertical-profiles'
+export type { BrainVerticalProfile } from './vertical-profiles'
 
 // Schemas
 export {
@@ -86,7 +88,7 @@ export interface VendorBrainInstance {
   policies:      ReturnType<typeof createDefaultPolicies>
 
   /** High-level: classify → plan → route → simulate */
-  think(raw: string, tenantId: string, userId: string): Promise<{
+  think(raw: string, tenantId: string, userId: string, options?: { vertical?: string }): Promise<{
     intent:  Intent
     context: BrainContext
     plan:    ExecutionPlan
@@ -109,9 +111,10 @@ export function createVendorBrain(): VendorBrainInstance {
   const observability = new InMemoryObservabilityEngine()
   const policies      = createDefaultPolicies()
 
-  async function think(raw: string, tenantId: string, userId: string) {
+  async function think(raw: string, tenantId: string, userId: string, options?: { vertical?: string }) {
     const classifiedIntent = intent.classify(raw, tenantId, userId)
     const ctx              = await context.assemble(tenantId, userId)
+    ctx.vertical           = options?.vertical
     const plan             = planning.plan(classifiedIntent, ctx)
     const policyResult     = policies.runAll(ctx, plan)
 

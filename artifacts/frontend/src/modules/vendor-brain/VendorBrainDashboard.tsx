@@ -3,10 +3,11 @@
 // Mostra objetivos ativos, planos, agentes, status e observabilidade.
 // UI mockada — motores reais integrados na próxima fase.
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 import { T } from '../arqdor/shared/arqdor-theme'
 import {
-  createVendorBrain, DOMAIN_RULES,
+  createVendorBrain, DOMAIN_RULES, resolveBrainVerticalProfile,
   type ExecutionPlan, type Intent, type AgentType,
   type PolicyViolation,
 } from '@workspace/vendor-brain'
@@ -52,19 +53,15 @@ const STATUS_COLORS: Record<string, string> = {
 
 const brain = createVendorBrain()
 
-// ─── Demo goals ───────────────────────────────────────────────────────────────
-
-const DEMO_GOALS = [
-  'Criar projeto de residência para família Rodrigues',
-  'Gerar render da cozinha com estilo Japandi',
-  'Revisar render aprovado pelo cliente',
-  'Criar proposta comercial com orçamento',
-  'Criar campanha de marketing no Instagram',
-]
-
 // ─── VendorBrainDashboard ─────────────────────────────────────────────────────
 
 export function VendorBrainDashboard() {
+  const { user, tenantOverride } = useAuth()
+  const vertical = tenantOverride?.vertical ?? user?.tenantVertical ?? null
+  const verticalProfile = useMemo(() => resolveBrainVerticalProfile(vertical), [vertical])
+  const tenantId = user?.tenantId ?? 'tenant-pendente'
+  const userId = user?.id ?? 'usuario-pendente'
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches)
   const [goalInput,      setGoalInput]      = useState('')
   const [selectedGoal,   setSelectedGoal]   = useState<string | null>(null)
   const [activePlans,    setActivePlans]     = useState<ExecutionPlan[]>([])
@@ -73,6 +70,14 @@ export function VendorBrainDashboard() {
   const [selectedPlanId, setSelectedPlanId]  = useState<string | null>(null)
   const [isThinking,     setIsThinking]      = useState(false)
   const [tab,            setTab]             = useState<'objectives'|'plans'|'agents'|'reasoning'|'observability'>('objectives')
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)')
+    const update = () => setIsMobile(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
 
   const selectedPlan = useMemo(
     () => activePlans.find(p => p.id === selectedPlanId) ?? null,
@@ -86,11 +91,11 @@ export function VendorBrainDashboard() {
     setIsThinking(true)
     setViolations([])
     try {
-      const result    = await brain.think(goal, 'demo-tenant', 'demo-user')
+      const result    = await brain.think(goal, tenantId, userId, { vertical: vertical ?? undefined })
       const simulated = brain.orchestration.simulateRun(result.plan)
       brain.memory.record({
-        tenantId:  'demo-tenant',
-        userId:    'demo-user',
+        tenantId,
+        userId,
         goal,
         planId:    simulated.id,
         result:    simulated.status,
@@ -114,9 +119,9 @@ export function VendorBrainDashboard() {
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
-  const obsStats  = brain.observability.stats('demo-tenant')
+  const obsStats  = brain.observability.stats(tenantId)
   const decisions = brain.decision.all()
-  const learnings = brain.memory.learnings('demo-tenant')
+  const learnings = brain.memory.learnings(tenantId)
 
   const agentUsage = useMemo(() => {
     const counts: Partial<Record<AgentType, number>> = {}
@@ -128,14 +133,17 @@ export function VendorBrainDashboard() {
   }, [activePlans])
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' as const, background: T.bg, color: T.text, fontFamily: 'system-ui,sans-serif', overflow: 'hidden' }}>
+    <div style={{ height: isMobile ? 'calc(100dvh - 72px)' : 'calc(100vh - 64px)', minHeight: isMobile ? 680 : 700, display: 'flex', flexDirection: 'column' as const, background: T.bg, color: T.text, fontFamily: 'system-ui,sans-serif', overflow: 'hidden' }}>
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
-      <div style={{ padding: '12px 20px', borderBottom: `1px solid ${T.border}`, background: T.sidebar, flexShrink: 0 }}>
+      <div style={{ padding: isMobile ? 12 : '12px 20px', borderBottom: `1px solid ${T.border}`, background: T.sidebar, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' as const }}>
-          <div>
+          <div style={{ flex: isMobile ? '1 1 100%' : undefined }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: '#fff' }}>🧠 Vendor Brain</h2>
-            <p style={{ margin: 0, fontSize: 10, color: T.dim }}>FASE 19 — Cognitive Operating System · sem LLM · arquitetura pura</p>
+            <p style={{ margin: 0, fontSize: 10, color: T.dim }}>Centro de decisões e planos operacionais do tenant</p>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:5, marginTop:5, padding:'3px 8px', borderRadius:12, background:'rgba(124,58,237,.16)', border:`1px solid ${T.purple}`, color:T.purpleL, fontSize:9, fontWeight:700 }}>
+              {verticalProfile.icon} {verticalProfile.label} · {verticalProfile.focus}
+            </div>
           </div>
           {([
             ['Objetivos', activePlans.length],
@@ -143,21 +151,21 @@ export function VendorBrainDashboard() {
             ['Decisões',  decisions.length],
             ['Learnings', learnings.length],
           ] as [string, number][]).map(([label, value]) => (
-            <div key={label} style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, textAlign: 'center' as const }}>
+            <div key={label} style={{ padding: isMobile ? '5px 7px' : '4px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, textAlign: 'center' as const }}>
               <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: T.purpleL }}>{value}</p>
               <p style={{ margin: 0, fontSize: 9, color: T.dim }}>{label}</p>
             </div>
           ))}
-          <div style={{ marginLeft: 'auto', fontSize: 9, color: T.dim }}>Motor: in-memory · LLM: FASE 20</div>
+          {!isMobile && <div style={{ marginLeft: 'auto', fontSize: 9, color: T.dim }}>Contexto isolado por tenant · planejamento por vertical</div>}
         </div>
 
         {/* Goal input */}
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <div style={{ display: 'flex', flexDirection:isMobile ? 'column' : 'row', gap: 8, marginTop: 10 }}>
           <input
             value={goalInput}
             onChange={e => setGoalInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && void handleThink(goalInput)}
-            placeholder="Digite um objetivo… ex: Criar projeto para família Rodrigues"
+            placeholder={`Digite um objetivo para ${verticalProfile.label.toLowerCase()}…`}
             style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: `1px solid ${T.border}`, background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 12, outline: 'none' }}
           />
           <button
@@ -171,7 +179,7 @@ export function VendorBrainDashboard() {
 
         {/* Quick goal chips */}
         <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' as const }}>
-          {DEMO_GOALS.map(g => (
+          {verticalProfile.goals.map(g => (
             <button
               key={g}
               onClick={() => handleDemoGoal(g)}
@@ -197,7 +205,7 @@ export function VendorBrainDashboard() {
         )}
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 2, marginTop: 10 }}>
+        <div style={{ display: 'flex', gap: 2, marginTop: 10, overflowX:'auto', paddingBottom:isMobile ? 2 : 0 }}>
           {([
             ['objectives',    '🎯 Objetivos'],
             ['plans',         '📋 Planos'],
@@ -209,7 +217,7 @@ export function VendorBrainDashboard() {
               key={id}
               onClick={() => setTab(id)}
               style={{
-                padding: '5px 10px', borderRadius: '6px 6px 0 0', fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                padding: '7px 10px', borderRadius: '6px 6px 0 0', fontSize: 10, fontWeight: 700, cursor: 'pointer', whiteSpace:'nowrap',
                 background: tab === id ? T.bg : 'transparent',
                 border: `1px solid ${tab === id ? T.border : 'transparent'}`,
                 borderBottom: tab === id ? `1px solid ${T.bg}` : `1px solid ${T.border}`,
