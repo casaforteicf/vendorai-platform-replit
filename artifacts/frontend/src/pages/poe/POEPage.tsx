@@ -3,6 +3,7 @@
 // Toda recomendação é justificada. Nunca baseada em publicidade.
 
 import { useState, useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Cpu, Search, Filter, Plus, ChevronRight, CheckCircle2, AlertTriangle,
@@ -296,24 +297,70 @@ export function POEPage() {
   const [typeFilter, setType]   = useState("all");
   const [statusFilter, setStatus] = useState("all");
   const [search, setSearch]     = useState("");
+  const [showAnalyzer, setShowAnalyzer] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectContext, setProjectContext] = useState("");
+  const queryClient = useQueryClient();
+  const { data: opportunities = [], isLoading } = useQuery<PoeOpportunity[]>({
+    queryKey: ["poe-opportunities"],
+    queryFn: async () => {
+      const response = await fetch("/api/poe/opportunities");
+      if (!response.ok) throw new Error("Não foi possível carregar as oportunidades");
+      return response.json();
+    },
+  });
+  const { data: quotations = [] } = useQuery<PoeQuotationRequest[]>({
+    queryKey: ["poe-quotations"],
+    queryFn: async () => {
+      const response = await fetch("/api/poe/quotations");
+      if (!response.ok) throw new Error("Não foi possível carregar as cotações");
+      return response.json();
+    },
+  });
+  const analyze = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/poe/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectName, notes: projectContext, requirements: projectContext.split(/[,;\n]/).map(item => item.trim()).filter(Boolean) }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Erro ao analisar");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["poe-opportunities"] });
+      setShowAnalyzer(false);
+      setProjectName("");
+      setProjectContext("");
+    },
+  });
 
-  const filtered = useMemo(() => MOCK_OPPORTUNITIES.filter(o => {
+  const filtered = useMemo(() => opportunities.filter(o => {
     if (typeFilter   !== "all" && o.type   !== typeFilter)   return false;
     if (statusFilter !== "all" && o.status !== statusFilter) return false;
     const q = search.toLowerCase();
     if (q && !o.title.toLowerCase().includes(q) && !(o.category ?? "").toLowerCase().includes(q)) return false;
     return true;
-  }), [typeFilter, statusFilter, search]);
+  }), [opportunities, typeFilter, statusFilter, search]);
 
   const stats = {
-    critical: MOCK_OPPORTUNITIES.filter(o => o.priority >= 9).length,
-    total:    MOCK_OPPORTUNITIES.length,
-    ready:    MOCK_OPPORTUNITIES.filter(o => o.status === "ready").length,
-    quotations: MOCK_QUOTATIONS.length,
+    critical: opportunities.filter(o => o.priority >= 9).length,
+    total:    opportunities.length,
+    ready:    opportunities.filter(o => o.status === "ready").length,
+    quotations: quotations.length,
   };
+  const categorySummary = useMemo(() => Object.values(opportunities.reduce<Record<string, { label: string; count: number; priority: number }>>((acc, opportunity) => {
+    const label = opportunity.category ?? opportunity.environment ?? "Geral";
+    const current = acc[label] ?? { label, count: 0, priority: 0 };
+    current.count += 1;
+    current.priority = Math.max(current.priority, opportunity.priority);
+    acc[label] = current;
+    return acc;
+  }, {})).slice(0, 8), [opportunities]);
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "#0f1117", color: "#e2e8f0", fontFamily: "system-ui,sans-serif", overflow: "hidden" }}>
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "#0f1117", color: "#e2e8f0", fontFamily: "system-ui,sans-serif", overflow: "hidden" }}>
 
       {/* ── HEADER ── */}
       <div style={{ padding: "14px 20px", borderBottom: "1px solid #2d2e3a", background: "#1a1b23", flexShrink: 0 }}>
@@ -323,7 +370,7 @@ export function POEPage() {
               <Cpu size={18} color="#10b981" />
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#fff" }}>Project Opportunity Engine</h2>
             </div>
-            <p style={{ margin: 0, fontSize: 10, color: "#64748b" }}>Motor de oportunidades comerciais baseadas em contexto técnico · FASE 23</p>
+            <p style={{ margin: 0, fontSize: 10, color: "#64748b" }}>Análise de lacunas, riscos, fornecedores e expansão adaptada à vertical</p>
           </div>
 
           {[
@@ -338,11 +385,11 @@ export function POEPage() {
             </div>
           ))}
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            <button style={{ padding: "7px 12px", borderRadius: 6, background: "transparent", border: "1px solid #2d2e3a", color: "#94a3b8", cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => setShowAnalyzer(value => !value)} style={{ padding: "7px 12px", borderRadius: 6, background: "transparent", border: "1px solid #2d2e3a", color: "#94a3b8", cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
               <Cpu size={11} /> Analisar Projeto
             </button>
-            <button style={{ padding: "7px 12px", borderRadius: 6, background: "#10b981", color: "#fff", border: "none", cursor: "pointer", fontWeight: 700, fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
+            <button onClick={() => setShowAnalyzer(true)} style={{ padding: "7px 12px", borderRadius: 6, background: "#10b981", color: "#fff", border: "none", cursor: "pointer", fontWeight: 700, fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
               <Plus size={11} /> Nova Oportunidade
             </button>
           </div>
@@ -358,7 +405,7 @@ export function POEPage() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 2, marginTop: 12 }}>
+        <div style={{ display: "flex", gap: 2, marginTop: 12, overflowX: "auto" }}>
           {([
             ["opportunities", "🔍 Oportunidades"],
             ["quotations",    "📋 Cotações"],
@@ -366,7 +413,7 @@ export function POEPage() {
             ["rules",         "⚙️ Regras"],
           ] as const).map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{
-              padding: "5px 12px", borderRadius: "6px 6px 0 0", fontSize: 10, fontWeight: 700, cursor: "pointer",
+              padding: "7px 12px", borderRadius: "6px 6px 0 0", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
               background: tab === id ? "#0f1117" : "transparent",
               border: `1px solid ${tab === id ? "#2d2e3a" : "transparent"}`,
               borderBottom: tab === id ? "1px solid #0f1117" : "1px solid #2d2e3a",
@@ -378,6 +425,18 @@ export function POEPage() {
 
       {/* ── BODY ── */}
       <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+
+        {showAnalyzer && (
+          <div style={{ marginBottom: 16, padding: 16, borderRadius: 8, background: "#1a1b23", border: "1px solid #10b98150" }}>
+            <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 12, color: "#fff" }}>Analisar nova demanda</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input value={projectName} onChange={event => setProjectName(event.target.value)} placeholder="Nome do projeto, venda ou operação" style={{ flex: "1 1 220px", padding: 9, borderRadius: 6, border: "1px solid #2d2e3a", background: "#0f1117", color: "#fff" }} />
+              <textarea value={projectContext} onChange={event => setProjectContext(event.target.value)} placeholder="Descreva o que já está definido: itens, fornecedores, prazos, regiões, ambientes…" rows={3} style={{ flex: "2 1 320px", padding: 9, borderRadius: 6, border: "1px solid #2d2e3a", background: "#0f1117", color: "#fff", resize: "vertical" }} />
+              <button disabled={!projectName.trim() || analyze.isPending} onClick={() => analyze.mutate()} style={{ alignSelf: "stretch", padding: "9px 16px", borderRadius: 6, border: 0, background: "#10b981", color: "#fff", fontWeight: 800, cursor: "pointer" }}>{analyze.isPending ? "Analisando…" : "Executar análise"}</button>
+            </div>
+            {analyze.isError && <p style={{ color: "#ef4444", fontSize: 10 }}>{(analyze.error as Error).message}</p>}
+          </div>
+        )}
 
         {/* ── OPPORTUNITIES ── */}
         {tab === "opportunities" && (
@@ -402,22 +461,13 @@ export function POEPage() {
 
             {/* Opportunity Matrix Summary */}
             <div style={{ marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 8 }}>
-              {[
-                ["🏠","Cozinha",     2, "partial"],
-                ["🛁","Banheiro",    1, "missing"],
-                ["🛋️","Sala de Estar",1, "partial"],
-                ["🏊","Área Externa",1, "missing"],
-                ["⚡","Automação",   1, "cross_sell"],
-                ["💡","Iluminação",  2, "missing"],
-              ].map(([e, label, count, _status]) => {
-                const isRed = _status === "missing";
-                const isAmber = _status === "partial";
-                const c = isRed ? "#ef4444" : isAmber ? "#f59e0b" : "#10b981";
+              {categorySummary.map(({ label, count, priority }) => {
+                const c = priority >= 9 ? "#ef4444" : priority >= 7 ? "#f59e0b" : "#10b981";
                 return (
                   <div key={label as string} style={{ padding: "8px 10px", borderRadius: 6, background: "#1a1b23", border: `1px solid ${c}30`, textAlign: "center" }}
                     onMouseEnter={e => (e.currentTarget.style.borderColor = c)}
                     onMouseLeave={e => (e.currentTarget.style.borderColor = `${c}30`)}>
-                    <p style={{ margin: "0 0 2px", fontSize: 18 }}>{e}</p>
+                    <p style={{ margin: "0 0 2px", fontSize: 18 }}>🔎</p>
                     <p style={{ margin: "0 0 3px", fontSize: 9, fontWeight: 600, color: "#fff" }}>{label}</p>
                     <p style={{ margin: 0, fontSize: 9, color: c }}>
                       {count} oportunidade{(count as number) !== 1 ? "s" : ""}
@@ -428,7 +478,9 @@ export function POEPage() {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {filtered.length === 0 ? (
+              {isLoading ? (
+                <div style={{ padding: 48, textAlign: "center", color: "#64748b" }}>Carregando oportunidades…</div>
+              ) : filtered.length === 0 ? (
                 <div style={{ padding: 48, textAlign: "center", color: "#64748b" }}>
                   <p style={{ fontSize: 32 }}>✅</p><p>Nenhuma oportunidade encontrada com os filtros atuais.</p>
                 </div>
@@ -465,7 +517,7 @@ export function POEPage() {
 
             <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#64748b" }}>COTAÇÕES ABERTAS</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {MOCK_QUOTATIONS.map(q => (
+              {quotations.map(q => (
                 <div key={q.id} style={{ background: "#1a1b23", border: "1px solid #2d2e3a", borderRadius: 8, padding: "12px 14px" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                     <div style={{ flex: 1 }}>

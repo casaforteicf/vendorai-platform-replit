@@ -41,6 +41,7 @@ import {
   insertPoeRecommendationSchema,
   insertPoeQuotationRequestSchema,
   insertPoeQuotationResponseSchema,
+  tenantsTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -350,13 +351,68 @@ router.post("/poe/quotation-responses/:respId/select", async (req: Request, res:
   }
 });
 
-// ─── Analysis Engine (stub — will be backed by AI in next iteration) ──────────
+const VERTICAL_REQUIREMENTS = [
+  { match:/constru|arquitet|reforma/, label:"Construção", items:[
+    ["Iluminação", ["iluminação", "luminária"], "missing_category", 8, ["ABNT NBR 5410", "NBR ISO/CIE 8995-1"]],
+    ["Acabamentos", ["revestimento", "piso", "acabamento"], "missing_item", 7, ["ABNT NBR 15575"]],
+    ["Instalações", ["elétrica", "hidráulica", "instalação"], "missing_category", 9, ["ABNT NBR 5410", "ABNT NBR 5626"]],
+  ]},
+  { match:/varejo|loja|comerc/, label:"Varejo", items:[
+    ["Mix e estoque", ["estoque", "mix", "produto"], "missing_item", 8, ["Cobertura de estoque", "Curva ABC"]],
+    ["Preço e margem", ["preço", "margem", "tabela"], "missing_category", 8, ["Margem de contribuição"]],
+    ["Entrega", ["frete", "entrega", "retirada"], "missing_supplier", 6, ["Prazo prometido", "Capacidade logística"]],
+  ]},
+  { match:/restaurante|alimenta|gastronomia/, label:"Restaurante", items:[
+    ["Insumos", ["insumo", "ingrediente", "fornecedor"], "missing_supplier", 8, ["Ficha técnica", "Rastreabilidade"]],
+    ["Capacidade", ["mesa", "reserva", "capacidade"], "missing_category", 6, ["Capacidade de atendimento"]],
+    ["Entrega", ["delivery", "entrega", "retirada"], "cross_sell", 6, ["Raio de atendimento", "Tempo de entrega"]],
+  ]},
+  { match:/clinic|saude|odonto|beleza|estetica/, label:"Saúde e bem-estar", items:[
+    ["Agenda", ["agenda", "horário", "profissional"], "missing_category", 8, ["Capacidade assistencial"]],
+    ["Insumos", ["insumo", "material", "produto"], "missing_supplier", 8, ["Validade e rastreabilidade"]],
+    ["Retorno", ["retorno", "acompanhamento", "pós"], "cross_sell", 7, ["Continuidade do cuidado"]],
+  ]},
+  { match:/imove|imobili/, label:"Imóveis", items:[
+    ["Documentação", ["documento", "matrícula", "certidão"], "missing_item", 10, ["Validação documental"]],
+    ["Visita", ["visita", "agenda", "tour"], "missing_category", 7, ["Jornada comercial"]],
+    ["Financiamento", ["financiamento", "crédito", "simulação"], "cross_sell", 6, ["Capacidade financeira"]],
+  ]},
+  { match:/veiculo|automot/, label:"Veículos", items:[
+    ["Histórico", ["laudo", "histórico", "vistoria"], "missing_item", 10, ["Procedência e segurança"]],
+    ["Avaliação", ["avaliação", "troca", "seminovo"], "missing_category", 7, ["Valor de mercado"]],
+    ["Financiamento", ["financiamento", "crédito", "parcela"], "cross_sell", 6, ["Capacidade financeira"]],
+  ]},
+  { match:/logistica|frete|transport/, label:"Logística", items:[
+    ["Rota", ["rota", "origem", "destino"], "missing_item", 9, ["Malha e distância"]],
+    ["Capacidade", ["peso", "volume", "capacidade"], "missing_category", 9, ["Capacidade do veículo"]],
+    ["SLA", ["prazo", "sla", "janela"], "missing_item", 8, ["Nível de serviço"]],
+  ]},
+  { match:/viagem|hotel|turismo/, label:"Viagens e hotelaria", items:[
+    ["Datas e ocupação", ["data", "diária", "ocupação"], "missing_item", 9, ["Disponibilidade"]],
+    ["Transporte", ["transfer", "transporte", "voo"], "cross_sell", 6, ["Conectividade da viagem"]],
+    ["Experiências", ["passeio", "experiência", "atração"], "cross_sell", 5, ["Perfil do viajante"]],
+  ]},
+  { match:/.*/, label:"Operação comercial", items:[
+    ["Escopo", ["escopo", "produto", "serviço"], "missing_item", 8, ["Definição de necessidade"]],
+    ["Fornecedor", ["fornecedor", "parceiro"], "missing_supplier", 7, ["Capacidade de atendimento"]],
+    ["Prazo", ["prazo", "entrega", "cronograma"], "missing_item", 8, ["Viabilidade operacional"]],
+  ]},
+] as const;
+
+// ─── Analysis Engine multivertical ───────────────────────────────────────────
 
 router.post("/poe/analyze", async (req: Request, res: Response) => {
   try {
     const tenantId = getTenantId(req);
     if (!tenantId) return err(res, "Tenant obrigatório", 401);
-    const { projectId, projectName, environments, materials, components } = req.body;
+    const { projectId, projectName, environments, materials, components, requirements, notes } = req.body;
+    if (!projectName || String(projectName).trim().length < 2) return err(res, "Nome da oportunidade/projeto é obrigatório", 422);
+    const [tenant] = await db.select({ vertical: tenantsTable.vertical }).from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId)).limit(1);
+    const normalizedVertical = String(tenant?.vertical ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const profile = VERTICAL_REQUIREMENTS.find(candidate => candidate.match.test(normalizedVertical))!;
+    const context = [notes, ...(environments ?? []), ...(materials ?? []), ...(components ?? []), ...(requirements ?? [])]
+      .filter(Boolean).join(" ").toLocaleLowerCase("pt-BR");
 
     // Generate opportunity stubs from the project inputs
     const opportunities: Array<{
@@ -374,34 +430,45 @@ router.post("/poe/analyze", async (req: Request, res: Response) => {
       aiGenerated: boolean;
     }> = [];
 
-    const envList: string[] = environments ?? ["Geral"];
-    for (const env of envList) {
-      if (!(components as string[] ?? []).some((c: string) => c.toLowerCase().includes("iluminação"))) {
+    const envList: string[] = environments?.length ? environments : ["Geral"];
+    for (const [category, keywords, type, priority, basis] of profile.items) {
+      if (!keywords.some(keyword => context.includes(keyword))) {
+        const env = envList[0] ?? "Geral";
         opportunities.push({
           tenantId,
           projectId,
           projectName,
-          type:         "missing_category",
-          title:        `Iluminação não especificada — ${env}`,
-          description:  `O ambiente ${env} não possui especificação de iluminação.`,
+          type,
+          title:        `${category} ainda não definido — ${projectName}`,
+          description:  `A análise de ${profile.label.toLowerCase()} não encontrou informação suficiente sobre ${category.toLowerCase()}.`,
           environment:  env,
-          category:     "Iluminação",
-          justification:"Todo ambiente habitável deve ter projeto luminotécnico. A norma NBR 5413 define os níveis mínimos de iluminância por tipo de uso.",
-          technicalBasis: ["NBR 5413", "NBR ISO/CIE 8995-1"],
-          priority:     7,
+          category,
+          justification:`Definir ${category.toLowerCase()} reduz risco, retrabalho e perda de margem antes de solicitar propostas comerciais.`,
+          technicalBasis: [...basis],
+          priority,
           aiGenerated:  true,
         });
       }
     }
 
-    if (opportunities.length > 0) {
-      await db.insert(poeOpportunitiesTable).values(opportunities);
+    const existing = await db.select({ title: poeOpportunitiesTable.title }).from(poeOpportunitiesTable)
+      .where(and(
+        eq(poeOpportunitiesTable.tenantId, tenantId),
+        eq(poeOpportunitiesTable.projectName, String(projectName)),
+        eq(poeOpportunitiesTable.dismissed, false),
+      ));
+    const existingTitles = new Set(existing.map(item => item.title));
+    const newOpportunities = opportunities.filter(item => !existingTitles.has(item.title));
+    if (newOpportunities.length > 0) {
+      await db.insert(poeOpportunitiesTable).values(newOpportunities);
     }
 
     return ok(res, {
       analyzed: true,
-      opportunitiesGenerated: opportunities.length,
+      opportunitiesGenerated: newOpportunities.length,
       projectId,
+      vertical: tenant?.vertical,
+      profile: profile.label,
     });
   } catch (e) {
     req.log?.error(e, "poe analyze error");
