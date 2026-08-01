@@ -96,12 +96,22 @@ function MinhaEntregaCard({ carga, tenantId }: { carga: any; tenantId: string })
   const [sharing, setSharing] = useState(carga.status === "coletado" || carga.status === "em_transito");
   const [photoDialogField, setPhotoDialogField] = useState<"fotosColetaUrls" | "fotosEntregaUrls" | null>(null);
 
+  const { data: rota } = useQuery<{ lat: number; lng: number }[]>({
+    queryKey: ["fretes-rota", tenantId, carga.id],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/fretes/cargas/${carga.id}/localizacao-historico`, { headers: authHeaders() }).then((r) => r.json()),
+    enabled: carga.status === "coletado" || carga.status === "em_transito",
+    refetchInterval: sharing ? 15_000 : false,
+  });
+
   const updateLocation = useMutation({
     mutationFn: (coords: { lat: number; lng: number }) =>
       fetch(`/api/tenants/${tenantId}/fretes/cargas/${carga.id}/localizacao`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify(coords),
       }).then((r) => r.json()),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["fretes-minhas-entregas", tenantId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["fretes-minhas-entregas", tenantId] });
+      qc.invalidateQueries({ queryKey: ["fretes-rota", tenantId, carga.id] });
+    },
   });
 
   useLocationSharing(sharing, (lat, lng) => updateLocation.mutate({ lat, lng }));
@@ -159,7 +169,10 @@ function MinhaEntregaCard({ carga, tenantId }: { carga: any; tenantId: string })
             lng={carga.localizacaoLng}
             label="Sua localização atual"
             updatedAt={carga.localizacaoAtualizadaEm}
-            height={200}
+            height={220}
+            route={rota}
+            origin={carga.enderecoColetaLat != null ? { lat: carga.enderecoColetaLat, lng: carga.enderecoColetaLng } : null}
+            destination={carga.enderecoEntregaLat != null ? { lat: carga.enderecoEntregaLat, lng: carga.enderecoEntregaLng } : null}
           />
         )}
 

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Package, Loader2, ArrowRight, Camera, Phone, MapPin } from "lucide-react";
 import { LiveDeliveryMap } from "@/components/LiveDeliveryMap";
+import { LocationPickerMap } from "@/components/LocationPickerMap";
 import { PhotoProofDialog } from "@/components/PhotoProofDialog";
 
 function authHeaders() {
@@ -66,6 +67,10 @@ function NovaCargaDialog({ tenantId, open, onOpenChange }: { tenantId: string; o
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [enderecoColeta, setEnderecoColeta] = useState("");
   const [enderecoEntrega, setEnderecoEntrega] = useState("");
+  const [pontoColeta, setPontoColeta] = useState<{ lat: number; lng: number } | null>(null);
+  const [pontoEntrega, setPontoEntrega] = useState<{ lat: number; lng: number } | null>(null);
+  const [showPickerColeta, setShowPickerColeta] = useState(false);
+  const [showPickerEntrega, setShowPickerEntrega] = useState(false);
   const [contatoColetaNome, setContatoColetaNome] = useState("");
   const [contatoColetaTelefone, setContatoColetaTelefone] = useState("");
   const [contatoEntregaNome, setContatoEntregaNome] = useState("");
@@ -87,6 +92,7 @@ function NovaCargaDialog({ tenantId, open, onOpenChange }: { tenantId: string; o
 
   function resetForm() {
     setClienteSearch(""); setSelectedLead(null); setEnderecoColeta(""); setEnderecoEntrega("");
+    setPontoColeta(null); setPontoEntrega(null);
     setContatoColetaNome(""); setContatoColetaTelefone(""); setContatoEntregaNome(""); setContatoEntregaTelefone("");
     setTipoVeiculoDesejado(""); setTipoCarga(""); setPesoKg(""); setValorDeclarado(""); setValorCotado(""); setInstrucoesEspeciais("");
   }
@@ -116,6 +122,8 @@ function NovaCargaDialog({ tenantId, open, onOpenChange }: { tenantId: string; o
     }
     create.mutate({
       clienteId: selectedLead.id, enderecoColeta, enderecoEntrega,
+      enderecoColetaLat: pontoColeta?.lat, enderecoColetaLng: pontoColeta?.lng,
+      enderecoEntregaLat: pontoEntrega?.lat, enderecoEntregaLng: pontoEntrega?.lng,
       contatoColetaNome: contatoColetaNome || undefined,
       contatoColetaTelefone: contatoColetaTelefone || undefined,
       contatoEntregaNome: contatoEntregaNome || undefined,
@@ -164,6 +172,14 @@ function NovaCargaDialog({ tenantId, open, onOpenChange }: { tenantId: string; o
           <div className="space-y-1.5">
             <Label>Endereço de coleta <span className="text-destructive">*</span></Label>
             <Textarea value={enderecoColeta} onChange={(e) => setEnderecoColeta(e.target.value)} rows={2} />
+            <button
+              type="button"
+              onClick={() => setShowPickerColeta((v) => !v)}
+              className="text-xs text-primary font-medium flex items-center gap-1"
+            >
+              <MapPin className="h-3 w-3" /> {pontoColeta ? "Ponto marcado no mapa ✓" : "Marcar ponto exato no mapa (opcional)"}
+            </button>
+            {showPickerColeta && <LocationPickerMap value={pontoColeta} onChange={setPontoColeta} />}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -179,16 +195,14 @@ function NovaCargaDialog({ tenantId, open, onOpenChange }: { tenantId: string; o
           <div className="space-y-1.5">
             <Label>Endereço de entrega <span className="text-destructive">*</span></Label>
             <Textarea value={enderecoEntrega} onChange={(e) => setEnderecoEntrega(e.target.value)} rows={2} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Contato na entrega</Label>
-              <Input value={contatoEntregaNome} onChange={(e) => setContatoEntregaNome(e.target.value)} placeholder="Nome" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">&nbsp;</Label>
-              <Input value={contatoEntregaTelefone} onChange={(e) => setContatoEntregaTelefone(e.target.value)} placeholder="Telefone" />
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowPickerEntrega((v) => !v)}
+              className="text-xs text-primary font-medium flex items-center gap-1"
+            >
+              <MapPin className="h-3 w-3" /> {pontoEntrega ? "Ponto marcado no mapa ✓" : "Marcar ponto exato no mapa (opcional)"}
+            </button>
+            {showPickerEntrega && <LocationPickerMap value={pontoEntrega} onChange={setPontoEntrega} />}
           </div>
 
           <div className="space-y-1.5">
@@ -227,6 +241,28 @@ function NovaCargaDialog({ tenantId, open, onOpenChange }: { tenantId: string; o
 }
 
 
+
+// Mapa expandido na lista do despachante — busca o rastro percorrido pra
+// desenhar a linha, não só o pontinho da posição atual.
+function ExpandedCargaMap({ tenantId, carga }: { tenantId: string; carga: any }) {
+  const { data: rota } = useQuery<{ lat: number; lng: number }[]>({
+    queryKey: ["fretes-rota", tenantId, carga.id],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/fretes/cargas/${carga.id}/localizacao-historico`, { headers: authHeaders() }).then((r) => r.json()),
+    refetchInterval: 20_000,
+  });
+
+  return (
+    <LiveDeliveryMap
+      lat={carga.localizacaoLat}
+      lng={carga.localizacaoLng}
+      label={carga.motorista?.name ? `Motorista: ${carga.motorista.name}` : "Localização da entrega"}
+      updatedAt={carga.localizacaoAtualizadaEm}
+      route={rota}
+      origin={carga.enderecoColetaLat != null ? { lat: carga.enderecoColetaLat, lng: carga.enderecoColetaLng } : null}
+      destination={carga.enderecoEntregaLat != null ? { lat: carga.enderecoEntregaLat, lng: carga.enderecoEntregaLng } : null}
+    />
+  );
+}
 
 export default function FretesCargas() {
   const { user } = useAuth();
@@ -361,12 +397,7 @@ export default function FretesCargas() {
                             </Button>
                             {expandedMapId === c.id && (
                               <div className="mt-2">
-                                <LiveDeliveryMap
-                                  lat={c.localizacaoLat}
-                                  lng={c.localizacaoLng}
-                                  label={c.motorista?.name ? `Motorista: ${c.motorista.name}` : "Localização da entrega"}
-                                  updatedAt={c.localizacaoAtualizadaEm}
-                                />
+                                <ExpandedCargaMap tenantId={tenantId} carga={c} />
                               </div>
                             )}
                           </>

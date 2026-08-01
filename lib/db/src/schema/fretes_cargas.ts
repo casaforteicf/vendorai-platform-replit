@@ -46,6 +46,12 @@ export const fretesCargasTable = pgTable("fretes_cargas", {
   origem: fretesOrigemEnum("origem").notNull().default("direto"),
   enderecoColeta: text("endereco_coleta").notNull(),
   enderecoEntrega: text("endereco_entrega").notNull(),
+  // Ponto exato marcado no mapa (opcional — complementa o endereço em
+  // texto, útil quando o endereço escrito não é preciso o bastante).
+  enderecoColetaLat: doublePrecision("endereco_coleta_lat"),
+  enderecoColetaLng: doublePrecision("endereco_coleta_lng"),
+  enderecoEntregaLat: doublePrecision("endereco_entrega_lat"),
+  enderecoEntregaLng: doublePrecision("endereco_entrega_lng"),
   // Contato no local — pode ser diferente de quem pediu o frete (ex: lojista
   // pede, mas quem recebe na obra é outra pessoa).
   contatoColetaNome: text("contato_coleta_nome"),

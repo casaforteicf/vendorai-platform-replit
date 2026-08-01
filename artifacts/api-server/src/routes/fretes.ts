@@ -4,6 +4,7 @@ import {
   db,
   fretesVeiculosTable,
   fretesCargasTable,
+  fretesLocalizacoesHistoricoTable,
   leadsTable,
   usersTable,
 } from "@workspace/db";
@@ -163,7 +164,27 @@ router.patch("/tenants/:tenantId/fretes/cargas/:id/localizacao", async (req, res
     .returning();
 
   if (!row) return res.status(404).json({ error: "Carga não encontrada ou você não é o motorista responsável" });
+
+  // Rastro do trajeto — cada atualização vira um ponto no histórico, além
+  // de atualizar a posição atual acima.
+  await db.insert(fretesLocalizacoesHistoricoTable).values({ tenantId, cargaId: id, lat, lng });
+
   return res.json(row);
+});
+
+// Rastro completo do trajeto — usado pra desenhar a linha percorrida no
+// mapa, não só o ponto atual.
+router.get("/tenants/:tenantId/fretes/cargas/:id/localizacao-historico", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const id = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const pontos = await db.select({ lat: fretesLocalizacoesHistoricoTable.lat, lng: fretesLocalizacoesHistoricoTable.lng, registradoEm: fretesLocalizacoesHistoricoTable.registradoEm })
+    .from(fretesLocalizacoesHistoricoTable)
+    .where(and(eq(fretesLocalizacoesHistoricoTable.cargaId, id), eq(fretesLocalizacoesHistoricoTable.tenantId, tenantId)))
+    .orderBy(fretesLocalizacoesHistoricoTable.registradoEm);
+
+  return res.json(pontos);
 });
 
 router.get("/tenants/:tenantId/fretes/cargas", async (req, res) => {
