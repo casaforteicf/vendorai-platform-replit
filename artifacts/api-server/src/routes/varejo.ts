@@ -369,11 +369,49 @@ router.put("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res
   const { tenantId, pedidoId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const [before] = await db.select().from(varejoPedidoCompraTable)
+    .where(and(eq(varejoPedidoCompraTable.id, pedidoId), eq(varejoPedidoCompraTable.tenantId, tenantId)));
+  if (!before) return res.status(404).json({ error: "Pedido not found" });
+  if (before.status === "entregue" && req.body.status && req.body.status !== "entregue") {
+    return res.status(409).json({ error: "Pedido já recebido. Faça um ajuste de estoque para estornar o recebimento." });
+  }
+
   const [row] = await db.update(varejoPedidoCompraTable)
     .set({ ...req.body, updatedAt: new Date() })
     .where(and(eq(varejoPedidoCompraTable.id, pedidoId), eq(varejoPedidoCompraTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Pedido not found" });
+
+  // O primeiro recebimento do pedido alimenta a grade de estoque. A checagem
+  // do estado anterior torna a operação idempotente em reenvios da API.
+  if (row.status === "entregue" && before.status !== "entregue") {
+    const items = await db.select().from(varejoPedidoCompraItemTable)
+      .where(eq(varejoPedidoCompraItemTable.pedidoId, pedidoId));
+    await db.transaction(async (tx) => {
+      for (const item of items) {
+        if (!item.produtoId) continue;
+        const [grade] = await tx.select().from(varejoGradeTable).where(and(
+          eq(varejoGradeTable.tenantId, tenantId),
+          eq(varejoGradeTable.produtoId, item.produtoId),
+          eq(varejoGradeTable.tamanho, item.tamanho),
+          eq(varejoGradeTable.cor, item.cor),
+        ));
+        if (grade) {
+          await tx.update(varejoGradeTable)
+            .set({ estoque: sql`${varejoGradeTable.estoque} + ${item.quantidade}`, updatedAt: new Date() })
+            .where(eq(varejoGradeTable.id, grade.id));
+        } else {
+          await tx.insert(varejoGradeTable).values({
+            tenantId,
+            produtoId: item.produtoId,
+            tamanho: item.tamanho,
+            cor: item.cor,
+            estoque: item.quantidade,
+          });
+        }
+      }
+    });
+  }
   if (row.status === "confirmado" && row.valorTotal) {
     const [supplier] = row.fornecedorId
       ? await db.select({ nome: varejoFornecedorTable.nome }).from(varejoFornecedorTable).where(eq(varejoFornecedorTable.id, row.fornecedorId))
@@ -390,6 +428,13 @@ router.put("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res
       origemTipo: "pedido_compra",
       origemId: row.id,
     }).onConflictDoNothing();
+  }
+  if (row.status === "cancelado") {
+    await db.update(erpTitulosTable).set({ status: "cancelado", updatedAt: new Date() }).where(and(
+      eq(erpTitulosTable.tenantId, tenantId),
+      eq(erpTitulosTable.origemTipo, "pedido_compra"),
+      eq(erpTitulosTable.origemId, row.id),
+    ));
   }
   return res.json(row);
 });
