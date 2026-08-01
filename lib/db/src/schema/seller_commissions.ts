@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, numeric, jsonb, timestamp, index } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -22,8 +22,19 @@ export const sellerCommissionsTable = pgTable(
     planSlug: text("plan_slug"),
     clienteNome: text("cliente_nome"),
     valorImplantacaoCents: integer("valor_implantacao_cents").notNull(),
-    percentual: integer("percentual").notNull().default(20),
+    percentual: numeric("percentual", { precision: 7, scale: 4 }).notNull().default("0"),
     valorComissaoCents: integer("valor_comissao_cents").notNull(),
+    detalhes: jsonb("detalhes").$type<Array<{
+      produtoId: string | null;
+      sku: string | null;
+      nome: string;
+      quantidade: number;
+      valorUnitarioCents: number;
+      valorBaseCents: number;
+      percentual: number;
+      valorComissaoCents: number;
+      promocional: boolean;
+    }>>().notNull().default([]),
     status: text("status").notNull().default("pendente"),
     observacoes: text("observacoes"),
     paidAt: timestamp("paid_at"),
