@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -100,7 +100,8 @@ export async function ensureTenantPlanAndCommission(
   log.info({ dealId, tenantId, planId: plano.id }, "ensureTenantPlanAndCommission: plano atribuído ao tenant");
 
   // ── Auto-gerar comissão do vendedor ──────────────────────────────────────
-  // Hierarquia: produto.comissaoPercentual → tenant.comissaoPadraoPercentual → 20 (SaaS default)
+  // A comissão pertence ao vendedor do tenant e é calculada por item vendido.
+  // valorUnitario representa o preço efetivamente fechado, inclusive promoções.
   let commissionCreated = false;
   if (deal.assignedTo) {
     try {
@@ -109,7 +110,11 @@ export async function ensureTenantPlanAndCommission(
         .from(usersTable)
         .where(eq(usersTable.id, deal.assignedTo))
         .limit(1);
-      const commTenantId = sellerUser?.tenantId ?? tenantId;
+      if (!sellerUser?.tenantId) {
+        log.warn({ dealId, sellerUserId: deal.assignedTo }, "ensureTenantPlanAndCommission: vendedor sem tenant");
+        return { tenantId, tenantCreated, commissionCreated: false };
+      }
+      const commTenantId = sellerUser.tenantId;
 
       const [propComm] = await db
         .select({ valorTotal: propostasTable.valorTotal, itens: propostasTable.itens })
@@ -118,42 +123,53 @@ export async function ensureTenantPlanAndCommission(
         .orderBy(desc(propostasTable.createdAt))
         .limit(1);
 
-      let comissaoPercentual: number | null = null;
-      if (propComm?.itens && propComm.itens.length > 0) {
-        const firstProdutoId = propComm.itens.find((i: any) => i.produtoId)?.produtoId;
-        if (firstProdutoId) {
-          const [produto] = await db
-            .select({ comissaoPercentual: produtosCatalogoTable.comissaoPercentual })
-            .from(produtosCatalogoTable)
-            .where(eq(produtosCatalogoTable.id, firstProdutoId))
-            .limit(1);
-          if (produto?.comissaoPercentual != null) {
-            comissaoPercentual = parseFloat(String(produto.comissaoPercentual));
-          }
-        }
+      const [tenantComm] = await db
+        .select({ comissaoPadraoPercentual: tenantsTable.comissaoPadraoPercentual })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, commTenantId))
+        .limit(1);
+      const percentualPadrao = Number(tenantComm?.comissaoPadraoPercentual ?? 0);
+      const detalhes = [] as Array<{
+        produtoId: string | null; sku: string | null; nome: string; quantidade: number;
+        valorUnitarioCents: number; valorBaseCents: number; percentual: number;
+        valorComissaoCents: number; promocional: boolean;
+      }>;
+
+      for (const item of propComm?.itens ?? []) {
+        const selectProduto = () => db.select({
+          id: produtosCatalogoTable.id,
+          sku: produtosCatalogoTable.sku,
+          comissaoPercentual: produtosCatalogoTable.comissaoPercentual,
+          precoPromocional: produtosCatalogoTable.precoPromocional,
+          promocaoAtivaAte: produtosCatalogoTable.promocaoAtivaAte,
+        }).from(produtosCatalogoTable);
+        const produto = item.produtoId
+          ? await selectProduto().where(and(eq(produtosCatalogoTable.id, item.produtoId), eq(produtosCatalogoTable.tenantId, commTenantId))).limit(1).then(rows => rows[0])
+          : item.sku
+            ? await selectProduto().where(and(eq(produtosCatalogoTable.sku, item.sku), eq(produtosCatalogoTable.tenantId, commTenantId))).limit(1).then(rows => rows[0])
+            : undefined;
+        const percentual = produto?.comissaoPercentual != null ? Number(produto.comissaoPercentual) : percentualPadrao;
+        const quantidade = Number(item.quantidade);
+        const valorUnitarioCents = Math.round(Number(item.valorUnitario) * 100);
+        const valorBaseCents = Math.round(valorUnitarioCents * quantidade);
+        detalhes.push({
+          produtoId: produto?.id ?? item.produtoId ?? null,
+          sku: produto?.sku ?? item.sku ?? null,
+          nome: item.nome,
+          quantidade,
+          valorUnitarioCents,
+          valorBaseCents,
+          percentual,
+          valorComissaoCents: Math.round(valorBaseCents * percentual / 100),
+          promocional: Boolean(produto?.precoPromocional && produto.promocaoAtivaAte && produto.promocaoAtivaAte >= new Date()),
+        });
       }
 
-      if (comissaoPercentual === null) {
-        const [tenantComm] = await db
-          .select({ comissaoPadraoPercentual: tenantsTable.comissaoPadraoPercentual })
-          .from(tenantsTable)
-          .where(eq(tenantsTable.id, tenantId))
-          .limit(1);
-        if (tenantComm?.comissaoPadraoPercentual != null) {
-          const parsed = parseFloat(String(tenantComm.comissaoPadraoPercentual));
-          if (parsed > 0) comissaoPercentual = parsed;
-        }
-      }
+      const valorBaseCents = detalhes.reduce((total, item) => total + item.valorBaseCents, 0);
+      const comissaoCents = detalhes.reduce((total, item) => total + item.valorComissaoCents, 0);
+      const comissaoPercentual = valorBaseCents > 0 ? (comissaoCents / valorBaseCents) * 100 : 0;
 
-      const useLegacySaaS = comissaoPercentual === null && plano.implantationPriceCents && plano.implantationPriceCents > 0;
-      if (useLegacySaaS) comissaoPercentual = 20;
-
-      const valorBaseCents = propComm?.valorTotal
-        ? Math.round(Number(propComm.valorTotal) * 100)
-        : (plano.implantationPriceCents ?? 0);
-
-      if (deal.assignedTo && comissaoPercentual !== null && valorBaseCents > 0) {
-        const comissaoCents = Math.round(valorBaseCents * comissaoPercentual / 100);
+      if (detalhes.length > 0 && valorBaseCents > 0) {
         const existingComm = await db
           .select({ id: sellerCommissionsTable.id })
           .from(sellerCommissionsTable)
@@ -168,12 +184,13 @@ export async function ensureTenantPlanAndCommission(
             planSlug: deal.planoContratado ?? null,
             clienteNome: deal.titulo ?? null,
             valorImplantacaoCents: valorBaseCents,
-            percentual: comissaoPercentual,
+            percentual: String(comissaoPercentual),
             valorComissaoCents: comissaoCents,
+            detalhes,
             status: "pendente",
           });
           commissionCreated = true;
-          log.info({ dealId, sellerUserId: deal.assignedTo, comissaoCents, comissaoPercentual }, "ensureTenantPlanAndCommission: comissão de vendedor gerada");
+          log.info({ dealId, sellerUserId: deal.assignedTo, comissaoCents, itens: detalhes.length }, "ensureTenantPlanAndCommission: comissão por produto gerada");
         }
       }
     } catch (commErr) {

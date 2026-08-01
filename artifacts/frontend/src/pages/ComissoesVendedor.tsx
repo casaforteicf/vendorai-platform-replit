@@ -39,8 +39,19 @@ interface Commission {
   planSlug: string | null;
   clienteNome: string | null;
   valorImplantacaoCents: number;
-  percentual: number;
+  percentual: number | string;
   valorComissaoCents: number;
+  detalhes: Array<{
+    produtoId: string | null;
+    sku: string | null;
+    nome: string;
+    quantidade: number;
+    valorUnitarioCents: number;
+    valorBaseCents: number;
+    percentual: number;
+    valorComissaoCents: number;
+    promocional: boolean;
+  }>;
   status: CommissionStatus;
   observacoes: string | null;
   paidAt: string | null;
@@ -98,14 +109,14 @@ function StatusBadge({ status }: { status: CommissionStatus }) {
   );
 }
 
-export default function ComissoesVendedor() {
+export default function ComissoesVendedor({ embedded = false }: { embedded?: boolean }) {
   const { user, token } = useAuth();
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState<CommissionStatus>("pendente");
   const [editObs, setEditObs] = useState("");
 
-  const isAdmin = user?.role === "administrador" || user?.role === "super_admin";
+  const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin" || user?.userFunction === "administrador";
   const tenantId = user?.tenantId;
 
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -184,9 +195,8 @@ export default function ComissoesVendedor() {
     },
   ];
 
-  return (
-    <SidebarLayout>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
+  const content = (
+      <div className={embedded ? "space-y-6" : "p-6 max-w-6xl mx-auto space-y-6"}>
         {/* Header */}
         <div className="flex items-center gap-3">
           <div className="p-2 bg-indigo-100 rounded-lg">
@@ -197,7 +207,7 @@ export default function ComissoesVendedor() {
               {isAdmin ? "Comissões de Vendedores" : "Minhas Comissões"}
             </h1>
             <p className="text-sm text-gray-500">
-              20% do valor de implantação de cada contrato fechado
+              Regras definidas por produto ou linha para os vendedores deste tenant
             </p>
           </div>
         </div>
@@ -239,10 +249,10 @@ export default function ComissoesVendedor() {
                 <TableRow className="bg-gray-50">
                   {isAdmin && <TableHead className="text-xs">Vendedor</TableHead>}
                   <TableHead className="text-xs">Cliente</TableHead>
-                  <TableHead className="text-xs">Plano</TableHead>
+                  <TableHead className="text-xs">Produtos / linha</TableHead>
                   <TableHead className="text-xs">Data</TableHead>
-                  <TableHead className="text-xs text-right">Implantação</TableHead>
-                  <TableHead className="text-xs text-right">Comissão (20%)</TableHead>
+                  <TableHead className="text-xs text-right">Base vendida</TableHead>
+                  <TableHead className="text-xs text-right">Comissão</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
                   {isAdmin && <TableHead className="text-xs"></TableHead>}
                 </TableRow>
@@ -261,8 +271,13 @@ export default function ComissoesVendedor() {
                     <TableCell className="text-sm font-medium">
                       {c.clienteNome ?? "—"}
                     </TableCell>
-                    <TableCell className="text-sm text-gray-500">
-                      {c.planSlug ?? "—"}
+                    <TableCell className="text-sm text-gray-500 max-w-[260px]">
+                      {c.detalhes?.length ? c.detalhes.map((item) => (
+                        <div key={`${item.produtoId ?? item.sku ?? item.nome}-${item.percentual}`} className="flex flex-wrap items-center gap-x-1">
+                          <span>{item.quantidade}× {item.nome}</span>
+                          <span className="text-xs text-gray-400">({Number(item.percentual).toLocaleString("pt-BR")}%{item.promocional ? ", promoção" : ""})</span>
+                        </div>
+                      )) : (c.planSlug ?? "—")}
                     </TableCell>
                     <TableCell className="text-sm text-gray-500">
                       {formatDate(c.createdAt)}
@@ -300,7 +315,10 @@ export default function ComissoesVendedor() {
           )}
         </div>
       </div>
+  );
 
+  const dialog = (
+    <>
       {/* Admin edit dialog */}
       <Dialog open={!!editingId} onOpenChange={(open) => !open && setEditingId(null)}>
         <DialogContent className="sm:max-w-md">
@@ -351,6 +369,9 @@ export default function ComissoesVendedor() {
           </div>
         </DialogContent>
       </Dialog>
-    </SidebarLayout>
+    </>
   );
+
+  if (embedded) return <>{content}{dialog}</>;
+  return <SidebarLayout>{content}{dialog}</SidebarLayout>;
 }

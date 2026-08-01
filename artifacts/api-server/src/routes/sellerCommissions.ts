@@ -29,6 +29,7 @@ router.get("/tenants/:tenantId/seller-commissions", authenticate, async (req, re
       valorImplantacaoCents: sellerCommissionsTable.valorImplantacaoCents,
       percentual: sellerCommissionsTable.percentual,
       valorComissaoCents: sellerCommissionsTable.valorComissaoCents,
+      detalhes: sellerCommissionsTable.detalhes,
       status: sellerCommissionsTable.status,
       observacoes: sellerCommissionsTable.observacoes,
       paidAt: sellerCommissionsTable.paidAt,
