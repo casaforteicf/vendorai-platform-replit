@@ -1,11 +1,11 @@
-import { pgTable, text, timestamp, boolean, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, pgEnum, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 
 export const supermercadoCampanhaTipoEnum = pgEnum("supermercado_campanha_tipo", [
-  "promocao", "receita", "dica", "data_comemorativa", "reativacao",
+  "promocao", "receita", "dica", "lugar", "historia", "data_comemorativa", "reativacao",
 ]);
 
 export const supermercadoCampanhaStatusEnum = pgEnum("supermercado_campanha_status", [
@@ -24,6 +24,14 @@ export const supermercadoCampanhaTable = pgTable("supermercado_campanhas", {
   status: supermercadoCampanhaStatusEnum("status").notNull().default("rascunho"),
   conteudo: text("conteudo").notNull(),
   imagemUrl: text("imagem_url"),
+  publicarNoPraca: boolean("publicar_no_praca").notNull().default(false),
+  resumoPraca: text("resumo_praca"),
+  passosPraca: jsonb("passos_praca").$type<string[]>().notNull().default([]),
+  produtoIdsPraca: jsonb("produto_ids_praca").$type<string[]>().notNull().default([]),
+  publicacaoPracaEm: timestamp("publicacao_praca_em"),
+  ofertaPracaEm: timestamp("oferta_praca_em"),
+  ofertaTituloPraca: text("oferta_titulo_praca"),
+  ofertaResumoPraca: text("oferta_resumo_praca"),
   agendadoPara: timestamp("agendado_para"),
   enviadoEm: timestamp("enviado_em"),
   totalEnviados: integer("total_enviados").notNull().default(0),

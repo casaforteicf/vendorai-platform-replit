@@ -68,7 +68,7 @@ import archThemePreferencesRouter from "./arch_theme_preferences";
 import financeiroObraRouter from "./financeiro_obra";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
-import supermercadoRouter from "./supermercado";
+import supermercadoRouter, { supermercadoPublicRouter } from "./supermercado";
 import farmaciaRouter from "./farmacia";
 import imoveisRouter from "./imoveis";
 import fretesRouter from "./fretes";
@@ -131,6 +131,7 @@ router.use(googleCallbackRouter);
 router.use(instagramCallbackRouter);
 router.use(whatsappCallbackRouter);
 router.use(publicProposalsRouter);
+router.use(supermercadoPublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);

@@ -14,6 +14,7 @@ import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 
 const router: IRouter = Router();
+export const supermercadoPublicRouter: IRouter = Router();
 
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
@@ -261,6 +262,45 @@ router.put("/tenants/:tenantId/supermercado/pedidos/:pedidoId", async (req, res)
 
 // ─── Campanhas ────────────────────────────────────────────────────────────────
 
+// Conteúdo editorial público consumido pelo Praça.ai. Somente campanhas
+// explicitamente publicadas são expostas, sem dados internos do tenant.
+supermercadoPublicRouter.get("/public/praca/variedades", async (_req, res) => {
+  const [conteudo] = await db.select({
+    id: supermercadoCampanhaTable.id,
+    tipo: supermercadoCampanhaTable.tipo,
+    titulo: supermercadoCampanhaTable.titulo,
+    resumo: supermercadoCampanhaTable.resumoPraca,
+    conteudo: supermercadoCampanhaTable.conteudo,
+    imagemUrl: supermercadoCampanhaTable.imagemUrl,
+    passos: supermercadoCampanhaTable.passosPraca,
+    produtoIds: supermercadoCampanhaTable.produtoIdsPraca,
+    publicacaoEm: supermercadoCampanhaTable.publicacaoPracaEm,
+  }).from(supermercadoCampanhaTable)
+    .where(and(
+      eq(supermercadoCampanhaTable.publicarNoPraca, true),
+      sql`date(timezone('America/Sao_Paulo', ${supermercadoCampanhaTable.publicacaoPracaEm})) = date(timezone('America/Sao_Paulo', now()))`,
+    ))
+    .orderBy(desc(supermercadoCampanhaTable.publicacaoPracaEm))
+    .limit(1);
+
+  const [oferta] = await db.select({
+    id: supermercadoCampanhaTable.id,
+    titulo: supermercadoCampanhaTable.ofertaTituloPraca,
+    resumo: supermercadoCampanhaTable.ofertaResumoPraca,
+    produtoIds: supermercadoCampanhaTable.produtoIdsPraca,
+    ofertaEm: supermercadoCampanhaTable.ofertaPracaEm,
+  }).from(supermercadoCampanhaTable)
+    .where(and(
+      eq(supermercadoCampanhaTable.publicarNoPraca, true),
+      sql`date(timezone('America/Sao_Paulo', ${supermercadoCampanhaTable.ofertaPracaEm})) = date(timezone('America/Sao_Paulo', now()))`,
+    ))
+    .orderBy(desc(supermercadoCampanhaTable.ofertaPracaEm))
+    .limit(1);
+
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=900");
+  return res.json({ conteudo: conteudo ?? null, oferta: oferta ?? null });
+});
+
 router.get("/tenants/:tenantId/supermercado/campanhas", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -391,6 +431,8 @@ const TIPO_PROMPTS: Record<string, string> = {
   promocao: "Você é um assistente de marketing de supermercado. Crie uma mensagem promocional atrativa para WhatsApp com emojis, destacando promoções da semana. Máx. 300 caracteres. Inclua chamada para ação.",
   receita: "Você é um chef de cozinha de supermercado. Crie uma receita rápida e deliciosa para WhatsApp com emojis. Inclua ingredientes simples e modo de preparo conciso. Máx. 400 caracteres.",
   dica: "Você é um consultor de compras de supermercado. Crie uma dica útil de economia, organização doméstica ou alimentação saudável para WhatsApp com emojis. Máx. 250 caracteres.",
+  lugar: "Você é um guia local. Apresente um lugar, passeio, restaurante ou experiência da cidade de forma convidativa e útil. Inclua o que fazer e uma chamada para conhecer negócios próximos. Máx. 400 caracteres.",
+  historia: "Você é um jornalista de comércio local. Conte uma história curta e humana sobre um produtor, lojista ou iniciativa da região e convide o leitor a conhecer os produtos relacionados. Máx. 400 caracteres.",
   data_comemorativa: "Você é um assistente de relacionamento de supermercado. Crie uma mensagem especial para uma data comemorativa com emojis, incluindo desejo de felicidades e uma oferta especial. Máx. 300 caracteres.",
   reativacao: "Você é um assistente de CRM de supermercado. Crie uma mensagem de reativação para clientes que não compram há algum tempo, com desconto especial de retorno. Máx. 300 caracteres.",
 };
@@ -423,6 +465,8 @@ router.post("/tenants/:tenantId/supermercado/campanhas/gerar-conteudo", async (r
     promocao: "Promoção",
     receita: "Receita",
     dica: "Dica",
+    lugar: "Lugar",
+    historia: "História local",
     data_comemorativa: "Data Especial",
     reativacao: "Reativação",
   };

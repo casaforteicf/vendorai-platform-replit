@@ -62,6 +62,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Variedades Praça.ai", href: "/praca-variedades", icon: Sparkles, sellerHidden: true, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },

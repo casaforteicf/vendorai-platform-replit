@@ -44,6 +44,8 @@ const TIPO_OPTIONS = [
   { value: "promocao",          label: "Promoção" },
   { value: "receita",           label: "Receita" },
   { value: "dica",              label: "Dica" },
+  { value: "lugar",             label: "Lugar" },
+  { value: "historia",          label: "História local" },
   { value: "data_comemorativa", label: "Data Comemorativa" },
   { value: "reativacao",        label: "Reativação" },
 ];
@@ -60,6 +62,14 @@ const campanhaSchema = z.object({
   titulo: z.string().min(1, "Título obrigatório"),
   tipo: z.string().min(1, "Tipo obrigatório"),
   conteudo: z.string().min(1, "Conteúdo obrigatório"),
+  publicarNoPraca: z.boolean().default(false),
+  resumoPraca: z.string().optional(),
+  passosPraca: z.string().optional(),
+  produtoIdsPraca: z.string().optional(),
+  publicacaoPracaEm: z.string().optional(),
+  ofertaPracaEm: z.string().optional(),
+  ofertaTituloPraca: z.string().optional(),
+  ofertaResumoPraca: z.string().optional(),
 });
 type CampanhaForm = z.infer<typeof campanhaSchema>;
 
@@ -86,29 +96,38 @@ export default function SupermercadoCampanhas() {
 
   const form = useForm<CampanhaForm>({
     resolver: zodResolver(campanhaSchema),
-    defaultValues: { titulo: "", tipo: "promocao", conteudo: "" },
+    defaultValues: { titulo: "", tipo: "promocao", conteudo: "", publicarNoPraca: false },
   });
 
   function openCreate() {
-    form.reset({ titulo: "", tipo: "promocao", conteudo: "" });
+    form.reset({ titulo: "", tipo: "promocao", conteudo: "", publicarNoPraca: false, resumoPraca: "", passosPraca: "", produtoIdsPraca: "", publicacaoPracaEm: "", ofertaPracaEm: "", ofertaTituloPraca: "", ofertaResumoPraca: "" });
     setEditTarget(null);
     setDialogOpen(true);
   }
 
   function openEdit(c: SupermercadoCampanha) {
-    form.reset({ titulo: c.titulo, tipo: c.tipo, conteudo: c.conteudo });
+    const item = c as any;
+    const localDate = (value?: string | null) => value ? new Date(value).toISOString().slice(0, 16) : "";
+    form.reset({ titulo: c.titulo, tipo: c.tipo, conteudo: c.conteudo, publicarNoPraca: item.publicarNoPraca ?? false, resumoPraca: item.resumoPraca ?? "", passosPraca: (item.passosPraca ?? []).join("\n"), produtoIdsPraca: (item.produtoIdsPraca ?? []).join(", "), publicacaoPracaEm: localDate(item.publicacaoPracaEm), ofertaPracaEm: localDate(item.ofertaPracaEm), ofertaTituloPraca: item.ofertaTituloPraca ?? "", ofertaResumoPraca: item.ofertaResumoPraca ?? "" });
     setEditTarget(c);
     setDialogOpen(true);
   }
 
   function onSubmit(values: CampanhaForm) {
+    const payload = {
+      ...values,
+      passosPraca: values.passosPraca?.split("\n").map((v) => v.trim()).filter(Boolean) ?? [],
+      produtoIdsPraca: values.produtoIdsPraca?.split(",").map((v) => v.trim()).filter(Boolean) ?? [],
+      publicacaoPracaEm: values.publicacaoPracaEm ? new Date(values.publicacaoPracaEm).toISOString() : null,
+      ofertaPracaEm: values.ofertaPracaEm ? new Date(values.ofertaPracaEm).toISOString() : null,
+    };
     if (editTarget) {
-      updateMut.mutate({ tenantId, campanhaId: editTarget.id, data: values as any }, {
+      updateMut.mutate({ tenantId, campanhaId: editTarget.id, data: payload as any }, {
         onSuccess: () => { toast({ title: "Campanha atualizada." }); qc.invalidateQueries({ queryKey: qKey }); setDialogOpen(false); },
         onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
       });
     } else {
-      createMut.mutate({ tenantId, data: { ...values } as any }, {
+      createMut.mutate({ tenantId, data: payload as any }, {
         onSuccess: () => { toast({ title: "Campanha criada." }); qc.invalidateQueries({ queryKey: qKey }); setDialogOpen(false); },
         onError: () => toast({ title: "Erro ao criar", variant: "destructive" }),
       });
@@ -145,9 +164,9 @@ export default function SupermercadoCampanhas() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Campanhas WhatsApp</h1>
+          <h1 className="text-xl font-bold tracking-tight">Campanhas e Variedades Praça.ai</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Promoções, receitas e dicas enviadas automaticamente para seus clientes.
+            Publique conteúdo no Praça.ai, programe a oferta do dia seguinte e, se quiser, envie também pelo WhatsApp.
           </p>
         </div>
         <Button size="sm" onClick={openCreate}>
@@ -182,6 +201,7 @@ export default function SupermercadoCampanhas() {
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 capitalize">
                       {TIPO_OPTIONS.find((t) => t.value === c.tipo)?.label ?? c.tipo}
                     </Badge>
+                    {(c as any).publicarNoPraca && <Badge className="text-[10px] px-1.5 py-0 h-4 bg-emerald-600">Praça.ai</Badge>}
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">{c.conteudo}</p>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -271,6 +291,23 @@ export default function SupermercadoCampanhas() {
                     <FormMessage />
                   </FormItem>
                 )} />
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <FormField control={form.control} name="publicarNoPraca" render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 space-y-0"><FormControl><input type="checkbox" className="h-4 w-4 accent-primary" checked={field.value} onChange={field.onChange} /></FormControl><FormLabel className="!mt-0">Publicar em Variedades do Praça.ai</FormLabel></FormItem>
+                )} />
+                {form.watch("publicarNoPraca") && <>
+                  <FormField control={form.control} name="resumoPraca" render={({ field }) => <FormItem><FormLabel>Resumo do card</FormLabel><FormControl><Textarea rows={2} placeholder="Texto curto mostrado na página inicial" {...field} /></FormControl></FormItem>} />
+                  <FormField control={form.control} name="passosPraca" render={({ field }) => <FormItem><FormLabel>Etapas interativas</FormLabel><FormControl><Textarea rows={3} placeholder={'Uma etapa por linha'} {...field} /></FormControl></FormItem>} />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <FormField control={form.control} name="publicacaoPracaEm" render={({ field }) => <FormItem><FormLabel>Publicar conteúdo em</FormLabel><FormControl><Input type="datetime-local" {...field} /></FormControl></FormItem>} />
+                    <FormField control={form.control} name="ofertaPracaEm" render={({ field }) => <FormItem><FormLabel>Levar para Ofertas em</FormLabel><FormControl><Input type="datetime-local" {...field} /></FormControl></FormItem>} />
+                  </div>
+                  <FormField control={form.control} name="produtoIdsPraca" render={({ field }) => <FormItem><FormLabel>IDs dos produtos relacionados</FormLabel><FormControl><Input placeholder="Separe os IDs por vírgula" {...field} /></FormControl></FormItem>} />
+                  <FormField control={form.control} name="ofertaTituloPraca" render={({ field }) => <FormItem><FormLabel>Título da oferta</FormLabel><FormControl><Input placeholder="Ex: Ingredientes da receita em oferta" {...field} /></FormControl></FormItem>} />
+                  <FormField control={form.control} name="ofertaResumoPraca" render={({ field }) => <FormItem><FormLabel>Resumo da oferta</FormLabel><FormControl><Textarea rows={2} {...field} /></FormControl></FormItem>} />
+                </>}
               </div>
 
               <div className="flex gap-2">
