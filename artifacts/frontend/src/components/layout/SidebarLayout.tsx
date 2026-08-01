@@ -60,8 +60,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
-    { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Variedades Praça.ai", href: "/praca-variedades", icon: Sparkles, sellerHidden: true, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -531,6 +529,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Clapperboard className="h-3.5 w-3.5" /> Content Studio
+              </Link>
+              <Link
+                href="/content?tab=campanhas"
+                onClick={onNavigate}
+                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <Megaphone className="h-3.5 w-3.5" /> Campanhas
+              </Link>
+              <Link
+                href="/content?tab=variedades"
+                onClick={onNavigate}
+                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Variedades Praça.ai
               </Link>
             </div>
           )}
