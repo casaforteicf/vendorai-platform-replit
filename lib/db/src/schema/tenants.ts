@@ -33,6 +33,13 @@ export const tenantsTable = pgTable(
       .default(0),
     dailyMessageLimit: integer("daily_message_limit"),
     messagesSentToday: integer("messages_sent_today").notNull().default(0),
+    // Horário comercial pra mensagens PROATIVAS (campanhas de reativação,
+    // follow-up automático, Revenue Scout) — mensagens de RESPOSTA a um
+    // cliente que chamou nunca são bloqueadas por isso, só o disparo
+    // espontâneo do sistema. Horas em fuso America/Sao_Paulo (produto
+    // 100% Brasil); domingo sempre fora do expediente.
+    horarioComercialInicio: integer("horario_comercial_inicio").notNull().default(8),
+    horarioComercialFim: integer("horario_comercial_fim").notNull().default(18),
     analysisStalenessHours: integer("analysis_staleness_hours"),
     analysisMessageThreshold: integer("analysis_message_threshold"),
     maxAnalysesPerHour: integer("max_analyses_per_hour"),

@@ -14,6 +14,7 @@
 import cron from "node-cron";
 import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, not, sql } from "drizzle-orm";
 import { runMonthlyBilling } from "../lib/billing.js";
+import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { runPartnerCommissions } from "./partnerCommission.js";
 import { runPartnerProspectorJob } from "./partnerProspector.js";
 import { processFlowExecutions } from "./contentFlow.js";
@@ -92,6 +93,12 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
 
   for (const tenant of tenants) {
     try {
+      // Mensagem espontânea de retenção só sai em horário comercial — fica
+      // pra próxima rodada, nada se perde, só adia.
+      if (!(await tenantIsWithinBusinessHours(tenant.id))) {
+        continue;
+      }
+
       // Load agent config once per tenant (needed for autonomy check)
       const [agentConfig] = await db
         .select({ churnAutoWhatsapp: agentConfigsTable.churnAutoWhatsapp })
@@ -592,6 +599,12 @@ async function runLostDealReactivation(log: Logger): Promise<void> {
         continue;
       }
 
+      // Mensagem espontânea de reativação só sai em horário comercial — item
+      // fica pending e é reconsiderado na próxima rodada, nada se perde.
+      if (!(await tenantIsWithinBusinessHours(deal.tenantId))) {
+        continue;
+      }
+
       // Determinar o primeiro estágio do funil do deal
       let targetEtapa = "novo";
       if (deal.funilId) {
@@ -1066,6 +1079,12 @@ async function runInactivityCheck(log: Logger): Promise<void> {
 
   for (const tenant of tenants) {
     try {
+      // Mensagem espontânea de reengajamento só sai em horário comercial —
+      // fica pra próxima rodada, nada se perde, só adia.
+      if (!(await tenantIsWithinBusinessHours(tenant.id))) {
+        continue;
+      }
+
       const [agentCfg] = await db
         .select({
           posVendaInactivityDays: agentConfigsTable.posVendaInactivityDays,

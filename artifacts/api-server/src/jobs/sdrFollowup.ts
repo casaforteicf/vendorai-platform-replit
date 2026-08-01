@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { sendSdrFollowup } from "../services/sdrService.js";
+import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 
 const FOLLOWUP_WINDOW_H   = 48;  // send follow-up after 48h no reply
 const REACTIVATION_WINDOW_H = 120; // 48 + 72 = 120h → move to reactivation
@@ -56,6 +57,10 @@ export async function runSdrFollowup(log: Logger): Promise<void> {
     try {
       const { leadId, dealId, tenantId, sentAt } = approach;
       if (!leadId || !tenantId || !sentAt) continue;
+
+      // Follow-up é mensagem espontânea — só sai em horário comercial, fica
+      // pra próxima rodada (a janela de 48h+ segue valendo, só adia o envio).
+      if (!(await tenantIsWithinBusinessHours(tenantId))) continue;
 
       // Check if lead replied after approach (any incoming whatsapp message or entry)
       const [reply] = await db

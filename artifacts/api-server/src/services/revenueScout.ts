@@ -32,6 +32,7 @@ import { triggerSequenceOffer } from "./sequence-offer.js";
 import { runInsuranceRenewalForTenant } from "./insuranceRenewalEngine.js";
 import { runInsuranceWhitespaceForTenant } from "./insuranceWhitespaceEngine.js";
 import { runDistributorRevenueForTenant } from "./distributorRevenueEngine.js";
+import { isWithinBusinessHours, renderTemplate } from "../lib/proactiveMessageGuard.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -490,6 +491,18 @@ export async function processarOportunidades(
   tenantId: string,
   log: Logger,
 ): Promise<void> {
+  const [tenant] = await db
+    .select({ horarioComercialInicio: tenantsTable.horarioComercialInicio, horarioComercialFim: tenantsTable.horarioComercialFim })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+
+  // Scout só dispara mensagem ESPONTÂNEA dentro do horário comercial do
+  // tenant — fica pra próxima rodada, nada se perde, só adia.
+  if (!tenant || !isWithinBusinessHours(tenant)) {
+    log.info({ tenantId }, "scout/processar: fora do horário comercial, adiado");
+    return;
+  }
+
   const oportunidades = await db
     .select()
     .from(scoutOportunidadesTable)
@@ -542,10 +555,19 @@ export async function processarOportunidades(
       const acao = parseAcao(regra?.acao);
       const canal = acao.canal ?? "whatsapp";
 
-      // Personaliza mensagem
-      const mensagem = (acao.mensagem ?? "Olá {nome}, temos uma novidade para você!")
-        .replace("{nome}", lead.nome ?? "")
-        .replace("{nome_cliente}", lead.nome ?? "");
+      // Personaliza mensagem — recusa enviar se sobrar placeholder não
+      // resolvido em vez de mandar algo tipo "Olá {Nome Errado}," pro cliente.
+      const template = acao.mensagem ?? "Olá {nome}, temos uma novidade para você!";
+      const rendered = renderTemplate(template, { nome: lead.nome ?? "", nome_cliente: lead.nome ?? "" });
+      if (!rendered.ok) {
+        log.error({ tenantId, oportunidadeId: op.id, regraId: op.regraId, motivo: rendered.motivoFalha }, "scout/processar: mensagem da regra com placeholder quebrado, envio bloqueado");
+        await db
+          .update(scoutOportunidadesTable)
+          .set({ status: "ignorado" })
+          .where(eq(scoutOportunidadesTable.id, op.id));
+        continue;
+      }
+      const mensagem = rendered.mensagem;
 
       if (canal === "whatsapp") {
         await sendDirectWhatsAppMessage(tenantId, lead.telefone, mensagem, log);
