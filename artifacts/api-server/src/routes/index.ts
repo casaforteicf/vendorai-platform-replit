@@ -46,6 +46,7 @@ import partnerHubRouter from "./partner_hub";
 import ecosystemHubRouter from "./ecosystem_hub";
 import vcnRouter from "./vcn";
 import poeRouter from "./poe";
+import knowledgeGraphRouter from "./knowledge_graph";
 import adminPartnersRouter from "./admin_partners";
 import adminPlansRouter from "./admin_plans";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
@@ -332,6 +333,7 @@ router.use(vcnRouter);
 
 // Project Opportunity Engine (POE — FASE 23)
 router.use(poeRouter);
+router.use(knowledgeGraphRouter);
 
 // Render Hub
 router.use(renderRouter);
