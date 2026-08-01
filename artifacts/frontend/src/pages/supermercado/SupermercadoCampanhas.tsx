@@ -62,6 +62,7 @@ const campanhaSchema = z.object({
   titulo: z.string().min(1, "Título obrigatório"),
   tipo: z.string().min(1, "Tipo obrigatório"),
   conteudo: z.string().min(1, "Conteúdo obrigatório"),
+  imagemUrl: z.string().optional(),
   publicarNoPraca: z.boolean().default(false),
   resumoPraca: z.string().optional(),
   passosPraca: z.string().optional(),
@@ -96,11 +97,11 @@ export default function SupermercadoCampanhas() {
 
   const form = useForm<CampanhaForm>({
     resolver: zodResolver(campanhaSchema),
-    defaultValues: { titulo: "", tipo: "promocao", conteudo: "", publicarNoPraca: false },
+    defaultValues: { titulo: "", tipo: "promocao", conteudo: "", imagemUrl: "", publicarNoPraca: false },
   });
 
   function openCreate() {
-    form.reset({ titulo: "", tipo: "promocao", conteudo: "", publicarNoPraca: false, resumoPraca: "", passosPraca: "", produtoIdsPraca: "", publicacaoPracaEm: "", ofertaPracaEm: "", ofertaTituloPraca: "", ofertaResumoPraca: "" });
+    form.reset({ titulo: "", tipo: "promocao", conteudo: "", imagemUrl: "", publicarNoPraca: false, resumoPraca: "", passosPraca: "", produtoIdsPraca: "", publicacaoPracaEm: "", ofertaPracaEm: "", ofertaTituloPraca: "", ofertaResumoPraca: "" });
     setEditTarget(null);
     setDialogOpen(true);
   }
@@ -108,7 +109,7 @@ export default function SupermercadoCampanhas() {
   function openEdit(c: SupermercadoCampanha) {
     const item = c as any;
     const localDate = (value?: string | null) => value ? new Date(value).toISOString().slice(0, 16) : "";
-    form.reset({ titulo: c.titulo, tipo: c.tipo, conteudo: c.conteudo, publicarNoPraca: item.publicarNoPraca ?? false, resumoPraca: item.resumoPraca ?? "", passosPraca: (item.passosPraca ?? []).join("\n"), produtoIdsPraca: (item.produtoIdsPraca ?? []).join(", "), publicacaoPracaEm: localDate(item.publicacaoPracaEm), ofertaPracaEm: localDate(item.ofertaPracaEm), ofertaTituloPraca: item.ofertaTituloPraca ?? "", ofertaResumoPraca: item.ofertaResumoPraca ?? "" });
+    form.reset({ titulo: c.titulo, tipo: c.tipo, conteudo: c.conteudo, imagemUrl: item.imagemUrl ?? "", publicarNoPraca: item.publicarNoPraca ?? false, resumoPraca: item.resumoPraca ?? "", passosPraca: (item.passosPraca ?? []).join("\n"), produtoIdsPraca: (item.produtoIdsPraca ?? []).join(", "), publicacaoPracaEm: localDate(item.publicacaoPracaEm), ofertaPracaEm: localDate(item.ofertaPracaEm), ofertaTituloPraca: item.ofertaTituloPraca ?? "", ofertaResumoPraca: item.ofertaResumoPraca ?? "" });
     setEditTarget(c);
     setDialogOpen(true);
   }
@@ -298,6 +299,7 @@ export default function SupermercadoCampanhas() {
                   <FormItem className="flex items-center gap-2 space-y-0"><FormControl><input type="checkbox" className="h-4 w-4 accent-primary" checked={field.value} onChange={field.onChange} /></FormControl><FormLabel className="!mt-0">Publicar em Variedades do Praça.ai</FormLabel></FormItem>
                 )} />
                 {form.watch("publicarNoPraca") && <>
+                  <FormField control={form.control} name="imagemUrl" render={({ field }) => <FormItem><FormLabel>Vídeo ou imagem do story</FormLabel><FormControl><Input placeholder="URL de vídeo MP4/WebM ou imagem vertical" {...field} /></FormControl><p className="text-xs text-muted-foreground">O conteúdo é editorial: não inclua preço, desconto ou chamada de compra nesta mídia.</p></FormItem>} />
                   <FormField control={form.control} name="resumoPraca" render={({ field }) => <FormItem><FormLabel>Resumo do card</FormLabel><FormControl><Textarea rows={2} placeholder="Texto curto mostrado na página inicial" {...field} /></FormControl></FormItem>} />
                   <FormField control={form.control} name="passosPraca" render={({ field }) => <FormItem><FormLabel>Etapas interativas</FormLabel><FormControl><Textarea rows={3} placeholder={'Uma etapa por linha'} {...field} /></FormControl></FormItem>} />
                   <div className="grid gap-3 sm:grid-cols-2">
