@@ -31,6 +31,9 @@ export const erpTitulosTable = pgTable("erp_titulos", {
   origemTipo: text("origem_tipo"),
   origemId: text("origem_id"),
   observacoes: text("observacoes"),
+  provedorCobranca: text("provedor_cobranca"),
+  provedorCobrancaId: text("provedor_cobranca_id"),
+  urlCobranca: text("url_cobranca"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [uniqueIndex("erp_titulos_origem_unique").on(table.tenantId, table.origemTipo, table.origemId)]);

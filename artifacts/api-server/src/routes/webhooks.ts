@@ -12,6 +12,9 @@ import {
   dealsTable,
   prospectorFlowExecutionsTable,
   campaignSentLogsTable,
+  erpTitulosTable,
+  erpPagamentosTable,
+  erpIntegracaoEventosTable,
 } from "@workspace/db";
 import { dispatchSkuDelivery } from "../lib/product-delivery.js";
 import { z } from "zod";
@@ -843,10 +846,17 @@ const asaasWebhookBody = z.object({
     externalReference: z.string().optional().nullable(),
     dueDate: z.string().optional().nullable(),
     status: z.string().optional(),
+    value: z.number().optional(),
+    netValue: z.number().optional(),
   }),
 });
 
 router.post("/webhooks/asaas", async (req, res) => {
+  const expectedToken = process.env.ASAAS_WEBHOOK_ACCESS_TOKEN;
+  if (expectedToken && req.header("asaas-access-token") !== expectedToken) {
+    res.status(401).json({ error: "Invalid Asaas webhook token" });
+    return;
+  }
   const parsed = asaasWebhookBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: "Invalid payload" });
@@ -898,6 +908,32 @@ router.post("/webhooks/asaas", async (req, res) => {
         .from(dealsTable)
         .where(eq(dealsTable.asaasChargeId, payment.id))
         .limit(1);
+
+  // ERP receivables use externalReference `erp_titulo:<id>` and retain the
+  // provider id. The event table is the idempotency gate for webhook retries.
+  const erpTitleId = payment.externalReference?.startsWith("erp_titulo:")
+    ? payment.externalReference.slice("erp_titulo:".length)
+    : null;
+  const [erpTitle] = await db.select().from(erpTitulosTable).where(
+    erpTitleId ? eq(erpTitulosTable.id, erpTitleId) : eq(erpTitulosTable.provedorCobrancaId, payment.id)
+  ).limit(1);
+  if (erpTitle) tenantId = erpTitle.tenantId;
+
+  const eventKey = `${event}:${payment.id}`;
+  const insertedEvent = await db.insert(erpIntegracaoEventosTable).values({tenantId,provedor:"asaas",eventoId:eventKey,tipo:event,payload:req.body}).onConflictDoNothing().returning({id:erpIntegracaoEventosTable.id});
+  if (!insertedEvent.length) { res.status(200).json({ok:true,duplicate:true}); return; }
+
+  if (erpTitle && (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED")) {
+    const due = Number(erpTitle.valorOriginal)+Number(erpTitle.juros)+Number(erpTitle.multa)-Number(erpTitle.desconto);
+    const amount = Math.min(payment.value ?? due, Math.max(0,due-Number(erpTitle.valorPago)));
+    if (amount > 0) await db.transaction(async tx=>{
+      await tx.insert(erpPagamentosTable).values({tenantId:erpTitle.tenantId,tituloId:erpTitle.id,valor:String(amount),forma:"asaas",conciliacaoId:payment.id});
+      const paid=Number(erpTitle.valorPago)+amount;
+      await tx.update(erpTitulosTable).set({valorPago:String(paid),status:paid>=due?"pago":erpTitle.status,pagoEm:paid>=due?new Date():erpTitle.pagoEm,updatedAt:new Date()}).where(eq(erpTitulosTable.id,erpTitle.id));
+    });
+  } else if (erpTitle && event === "PAYMENT_OVERDUE") {
+    await db.update(erpTitulosTable).set({status:"vencido",updatedAt:new Date()}).where(eq(erpTitulosTable.id,erpTitle.id));
+  }
 
   if (linkedDeal) {
     if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
