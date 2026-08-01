@@ -158,11 +158,21 @@ export function VKGDemoView() {
   const [filterDomain, setFilterDomain] = useState<string | null>(null)
   const [searchTerm,   setSearchTerm]   = useState('')
   const [showInferred, setShowInferred] = useState(true)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches)
+  const [mobileView, setMobileView] = useState<'graph' | 'details'>('graph')
 
   const svgRef   = useRef<SVGSVGElement>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(0.9)
   const dragging = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)')
+    const update = () => setIsMobile(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
 
   // ── Pan & Zoom ──────────────────────────────────────────────────────────────
 
@@ -171,12 +181,13 @@ export function VKGDemoView() {
     setZoom(z => Math.min(2, Math.max(0.4, z - e.deltaY * 0.001)))
   }, [])
 
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
+  const onPointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if ((e.target as SVGElement).closest('.node-group')) return
+    e.currentTarget.setPointerCapture(e.pointerId)
     dragging.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y }
   }, [pan])
 
-  const onMouseMove = useCallback((e: React.MouseEvent) => {
+  const onPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (!dragging.current) return
     setPan({
       x: dragging.current.panX + (e.clientX - dragging.current.startX),
@@ -184,7 +195,23 @@ export function VKGDemoView() {
     })
   }, [])
 
-  const onMouseUp = useCallback(() => { dragging.current = null }, [])
+  const onPointerUp = useCallback(() => { dragging.current = null }, [])
+
+  const fitGraph = useCallback(() => {
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect?.width || !rect.height) return
+    const nextZoom = Math.min(1.05, Math.max(0.4, Math.min(rect.width / 800, rect.height / 720) * 0.92))
+    setZoom(nextZoom)
+    setPan({
+      x: (rect.width - 800 * nextZoom) / 2,
+      y: (rect.height - 720 * nextZoom) / 2,
+    })
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(fitGraph, 0)
+    return () => window.clearTimeout(timer)
+  }, [fitGraph, isMobile, mobileView])
 
   // ── Filtered data ───────────────────────────────────────────────────────────
 
@@ -234,10 +261,10 @@ export function VKGDemoView() {
   }
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif', overflow:'hidden' }}>
+    <div style={{ height:isMobile ? 'calc(100dvh - 72px)' : 'calc(100vh - 64px)', minHeight:isMobile ? 620 : 680, display:'flex', flexDirection:'column' as const, background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif', overflow:'hidden' }}>
 
       {/* ── HEADER ── */}
-      <div style={{ padding:'12px 20px', borderBottom:`1px solid ${T.border}`, background:T.sidebar, flexShrink:0 }}>
+      <div style={{ padding:isMobile ? '12px' : '12px 20px', borderBottom:`1px solid ${T.border}`, background:T.sidebar, flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' as const }}>
           <div>
             <h2 style={{ margin:0, fontSize:16, fontWeight:900, color:'#fff' }}>
@@ -247,14 +274,14 @@ export function VKGDemoView() {
           </div>
 
           {/* Stats */}
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' as const }}>
+          <div style={{ display:'grid', gridTemplateColumns:isMobile ? 'repeat(4, minmax(0, 1fr))' : undefined, gap:isMobile ? 6 : 10, flexWrap:'wrap' as const, width:isMobile ? '100%' : undefined }}>
             {[
               ['Nós',      stats.nodes],
               ['Arestas',  stats.edges],
               ['Domínios', stats.domains],
               ['Inferidas', stats.inferred],
             ].map(([label, value]) => (
-              <div key={label as string} style={{ padding:'4px 10px', borderRadius:6, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}`, textAlign:'center' as const }}>
+              <div key={label as string} style={{ padding:isMobile ? '6px 3px' : '4px 10px', borderRadius:6, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}`, textAlign:'center' as const }}>
                 <p style={{ margin:0, fontSize:14, fontWeight:900, color:T.purpleL }}>{value}</p>
                 <p style={{ margin:0, fontSize:9, color:T.dim }}>{label}</p>
               </div>
@@ -268,7 +295,7 @@ export function VKGDemoView() {
             placeholder="Buscar nó…"
             style={{
               padding:'6px 10px', borderRadius:6, border:`1px solid ${T.border}`,
-              background:'rgba(255,255,255,0.06)', color:'#fff', fontSize:11, outline:'none', minWidth:160,
+              background:'rgba(255,255,255,0.06)', color:'#fff', fontSize:11, outline:'none', minWidth:160, flex:isMobile ? '1 1 100%' : undefined,
             }}
           />
 
@@ -284,7 +311,7 @@ export function VKGDemoView() {
 
           {/* Reset */}
           <button
-            onClick={() => { setPan({ x:0, y:0 }); setZoom(0.9) }}
+            onClick={fitGraph}
             style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}
           >
             ⟳ Reset
@@ -321,19 +348,29 @@ export function VKGDemoView() {
         </div>
       </div>
 
+      {isMobile && (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', padding:6, gap:6, background:T.sidebar, borderBottom:`1px solid ${T.border}` }}>
+          {(['graph', 'details'] as const).map(view => (
+            <button key={view} onClick={() => setMobileView(view)} style={{ padding:'8px 10px', borderRadius:7, border:`1px solid ${mobileView === view ? T.purple : T.border}`, background:mobileView === view ? 'rgba(124,58,237,.22)' : 'transparent', color:mobileView === view ? '#fff' : T.dim, fontSize:11, fontWeight:700 }}>
+              {view === 'graph' ? 'Grafo interativo' : selectedNode ? `Detalhes: ${selectedNode.label}` : 'Detalhes e legenda'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── BODY ── */}
-      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+      <div style={{ flex:1, display:'flex', flexDirection:isMobile ? 'column' : 'row', overflow:'hidden', minHeight:0 }}>
 
         {/* ── GRAPH SVG ── */}
-        <div style={{ flex:1, position:'relative' as const, overflow:'hidden', cursor:'grab' }}>
+        <div style={{ flex:1, position:'relative' as const, overflow:'hidden', cursor:'grab', display:isMobile && mobileView !== 'graph' ? 'none' : 'block', minHeight:0, touchAction:'none' }}>
           <svg
             ref={svgRef}
             width="100%" height="100%"
             onWheel={onWheel}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMove}
-            onMouseUp={onMouseUp}
-            onMouseLeave={onMouseUp}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
             style={{ userSelect:'none' }}
           >
             <defs>
@@ -406,7 +443,10 @@ export function VKGDemoView() {
                 <g
                   key={node.id}
                   className="node-group"
-                  onClick={() => setSelectedNode(prev => prev?.id === node.id ? null : node)}
+                  onClick={() => {
+                    setSelectedNode(prev => prev?.id === node.id ? null : node)
+                    if (isMobile) setMobileView('details')
+                  }}
                   onMouseEnter={() => setHoveredNode(node.id)}
                   onMouseLeave={() => setHoveredNode(null)}
                   style={{ cursor:'pointer' }}
@@ -478,16 +518,17 @@ export function VKGDemoView() {
                 display:'flex', alignItems:'center', justifyContent:'center',
               }}>{btn.label}</button>
             ))}
+            <button onClick={fitGraph} aria-label="Ajustar grafo à tela" style={{ width:28, height:28, borderRadius:6, border:`1px solid ${T.border}`, background:T.sidebar, color:'#fff', cursor:'pointer', fontSize:12 }}>⌂</button>
           </div>
 
           {/* Hint */}
-          <div style={{ position:'absolute' as const, bottom:16, left:16, fontSize:9, color:T.dim }}>
-            Scroll: zoom · Arrastar: pan · Clique no nó: detalhes
+          <div style={{ position:'absolute' as const, bottom:16, left:16, fontSize:9, color:T.dim, maxWidth:isMobile ? 180 : undefined }}>
+            {isMobile ? 'Arraste para mover · Toque no nó para detalhes' : 'Scroll: zoom · Arrastar: pan · Clique no nó: detalhes'}
           </div>
         </div>
 
         {/* ── RIGHT PANEL — Node detail + Legend ── */}
-        <div style={{ width:260, flexShrink:0, background:T.sidebar, borderLeft:`1px solid ${T.border}`, display:'flex', flexDirection:'column' as const, overflow:'hidden' }}>
+        <div style={{ width:isMobile ? '100%' : 260, flex:1, flexShrink:0, background:T.sidebar, borderLeft:isMobile ? undefined : `1px solid ${T.border}`, borderTop:isMobile ? `1px solid ${T.border}` : undefined, display:isMobile && mobileView !== 'details' ? 'none' : 'flex', flexDirection:'column' as const, overflow:'hidden', minHeight:0 }}>
 
           {/* Selected node detail */}
           {selectedNode ? (
