@@ -266,7 +266,26 @@ router.patch("/tenants/:tenantId/fretes/cargas/:id/status", async (req, res) => 
     return res.status(422).json({ error: `status inválido. Valores: ${statusValidos.join(", ")}` });
   }
 
+  // Foto de prova é obrigatória de verdade — não só na tela. Aceita tanto a
+  // foto já salva na carga (fluxo normal: PATCH da carga primeiro, depois
+  // avança o status) quanto vinda junto nesse mesmo request.
+  const photoField = status === "coletado" ? "fotosColetaUrls" : status === "entregue" ? "fotosEntregaUrls" : null;
+  if (photoField) {
+    const incomingPhotos = (req.body as any)[photoField];
+    const hasIncomingPhotos = Array.isArray(incomingPhotos) && incomingPhotos.length > 0;
+    if (!hasIncomingPhotos) {
+      const [current] = await db.select({ photos: fretesCargasTable[photoField] }).from(fretesCargasTable)
+        .where(and(eq(fretesCargasTable.id, id), eq(fretesCargasTable.tenantId, tenantId)));
+      const hasStoredPhotos = Array.isArray(current?.photos) && current.photos.length > 0;
+      if (!hasStoredPhotos) {
+        const etapa = status === "coletado" ? "coleta" : "entrega";
+        return res.status(422).json({ error: `É preciso enviar ao menos uma foto de prova da ${etapa} antes de avançar pra esse status.` });
+      }
+    }
+  }
+
   const updates: Record<string, unknown> = { status, updatedAt: new Date() };
+  if (photoField && Array.isArray((req.body as any)[photoField])) updates[photoField] = (req.body as any)[photoField];
   if (status === "coletado") updates.dataColetaReal = new Date();
   if (status === "entregue") updates.dataEntregaReal = new Date();
 

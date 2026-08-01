@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { LiveDeliveryMap } from "@/components/LiveDeliveryMap";
+import { LiveDeliveryMap } from "@/components/LiveDeliveryMap"
+import { PhotoProofDialog } from "@/components/PhotoProofDialog";
 import { Truck, MapPin, ArrowRight, Loader2, Navigation, Package } from "lucide-react";
 
 function authHeaders() {
@@ -93,6 +94,7 @@ function MinhaEntregaCard({ carga, tenantId }: { carga: any; tenantId: string })
   const qc = useQueryClient();
   const { toast } = useToast();
   const [sharing, setSharing] = useState(carga.status === "coletado" || carga.status === "em_transito");
+  const [photoDialogField, setPhotoDialogField] = useState<"fotosColetaUrls" | "fotosEntregaUrls" | null>(null);
 
   const updateLocation = useMutation({
     mutationFn: (coords: { lat: number; lng: number }) =>
@@ -120,6 +122,15 @@ function MinhaEntregaCard({ carga, tenantId }: { carga: any; tenantId: string })
   });
 
   const next = nextStatus(carga.status);
+  // Foto de prova é exigida pelo servidor pra avançar pra esses dois status
+  // — abre o diálogo primeiro em vez de tentar avançar direto.
+  const photoField = next === "coletado" ? "fotosColetaUrls" : next === "entregue" ? "fotosEntregaUrls" : null;
+
+  function handleAdvanceClick() {
+    if (!next) return;
+    if (photoField) setPhotoDialogField(photoField);
+    else advance.mutate(next);
+  }
 
   return (
     <Card>
@@ -153,9 +164,20 @@ function MinhaEntregaCard({ carga, tenantId }: { carga: any; tenantId: string })
         )}
 
         {next && (
-          <Button className="w-full" variant="outline" onClick={() => advance.mutate(next)} disabled={advance.isPending}>
+          <Button className="w-full" variant="outline" onClick={handleAdvanceClick} disabled={advance.isPending}>
             {advance.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Avançar → {STATUS_LABELS[next]}
           </Button>
+        )}
+
+        {photoDialogField && next && (
+          <PhotoProofDialog
+            tenantId={tenantId}
+            cargaId={carga.id}
+            field={photoDialogField}
+            open={!!photoDialogField}
+            onOpenChange={(v) => { if (!v) setPhotoDialogField(null); }}
+            onDone={() => { advance.mutate(next); setPhotoDialogField(null); }}
+          />
         )}
       </CardContent>
     </Card>
