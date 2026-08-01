@@ -202,6 +202,19 @@ router.delete("/ecosystem-hub/professionals/:profId", async (req: Request, res: 
 
 // ─── GET /ecosystem-hub/companies/:id/portfolio ───────────────────────────────
 
+router.get("/ecosystem-hub/portfolio", async (req: Request, res: Response) => {
+  try {
+    const items = await db.select().from(vepPortfolioTable)
+      .where(eq(vepPortfolioTable.published, true))
+      .orderBy(vepPortfolioTable.featured, vepPortfolioTable.createdAt)
+      .limit(100);
+    return ok(res, items);
+  } catch (e) {
+    req.log?.error(e, "ecosystem-hub portfolio directory error");
+    return err(res, "Erro ao carregar portfólios", 500);
+  }
+});
+
 router.get("/ecosystem-hub/companies/:id/portfolio", async (req: Request, res: Response) => {
   try {
     const { type } = req.query;
@@ -317,12 +330,41 @@ router.get("/ecosystem-hub/directory", async (req: Request, res: Response) => {
 
 router.get("/ecosystem-hub/smart-match", async (req: Request, res: Response) => {
   try {
-    const { style, segments } = req.query;
-    const segList = segments ? String(segments).split(",") : [];
+    const { style, segments, region, type } = req.query;
+    const terms = [style, segments, region, type]
+      .flatMap(value => String(value ?? "").split(","))
+      .map(value => value.trim().toLocaleLowerCase("pt-BR"))
+      .filter(Boolean);
+    if (terms.length === 0) return err(res, "Informe ao menos um segmento, especialidade, região ou tipo", 422);
+
+    const companies = await db.select().from(vepCompaniesTable)
+      .where(eq(vepCompaniesTable.status, "active"));
+    const matches = companies.map(company => {
+      const fields = {
+        type: company.type.toLocaleLowerCase("pt-BR"),
+        location: [company.city, company.state, ...(company.regions ?? [])].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR"),
+        expertise: [...(company.segments ?? []), ...(company.specialties ?? []), ...(company.tags ?? [])].join(" ").toLocaleLowerCase("pt-BR"),
+        profile: [company.tradeName, company.legalName, company.description].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR"),
+      };
+      const reasons: string[] = [];
+      let score = company.verified ? 8 : 0;
+      if (["premium", "enterprise"].includes(company.tier)) score += 5;
+      for (const term of terms) {
+        if (fields.type.includes(term)) { score += 30; reasons.push(`tipo compatível: ${term}`); }
+        if (fields.expertise.includes(term)) { score += 24; reasons.push(`especialidade: ${term}`); }
+        if (fields.location.includes(term)) { score += 18; reasons.push(`atende a região: ${term}`); }
+        if (fields.profile.includes(term)) { score += 12; reasons.push(`perfil relacionado: ${term}`); }
+      }
+      return { company, score: Math.min(99, score), reasons: [...new Set(reasons)].slice(0, 3) };
+    }).filter(match => match.score > 8)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12);
+
     return ok(res, {
-      matches: [],
-      message: "Smart Match engine connected in FASE 22",
-      context: { style, segments: segList },
+      matches,
+      totalEvaluated: companies.length,
+      context: { terms },
+      humanApprovalRequired: true,
     });
   } catch (e) {
     req.log?.error(e, "ecosystem-hub smart-match error");

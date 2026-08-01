@@ -2,6 +2,7 @@
 // Vendor Ecosystem Platform: diretório de todas as empresas do ecossistema.
 
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Building2, Users, Star, Globe, MapPin, Search, Filter, Plus,
@@ -34,6 +35,18 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   CONSULTING:      <TrendingUp size={12} />,
   LANDSCAPING:     <TreePine size={12} />,
   OTHER:           <Globe size={12} />,
+  RETAIL:          <Package size={12} />,
+  SUPERMARKET:     <Package size={12} />,
+  BEAUTY:          <Star size={12} />,
+  HEALTHCARE:      <Heart size={12} />,
+  RESTAURANT:      <Star size={12} />,
+  REAL_ESTATE:     <Home size={12} />,
+  AUTOMOTIVE:      <Truck size={12} />,
+  LOGISTICS:       <Truck size={12} />,
+  TRAVEL:          <Globe size={12} />,
+  PHARMACY:        <Heart size={12} />,
+  AGRIBUSINESS:    <TreePine size={12} />,
+  TECHNOLOGY:      <Settings size={12} />,
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -56,6 +69,18 @@ const TYPE_LABELS: Record<string, string> = {
   CONSULTING:      "Consultoria",
   LANDSCAPING:     "Paisagismo",
   OTHER:           "Outro",
+  RETAIL:          "Varejo",
+  SUPERMARKET:     "Supermercado",
+  BEAUTY:          "Beleza e bem-estar",
+  HEALTHCARE:      "Saúde e clínicas",
+  RESTAURANT:      "Restaurantes",
+  REAL_ESTATE:     "Imóveis",
+  AUTOMOTIVE:      "Veículos",
+  LOGISTICS:       "Logística e fretes",
+  TRAVEL:          "Viagens e hotelaria",
+  PHARMACY:        "Farmácia",
+  AGRIBUSINESS:    "Agronegócio",
+  TECHNOLOGY:      "Tecnologia",
 };
 
 const TIER_CONFIG: Record<string, { label: string; color: string }> = {
@@ -295,32 +320,62 @@ export function EcosystemHubPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [tierFilter, setTierFilter] = useState("all");
   const [tab, setTab] = useState<"directory" | "portfolio" | "network" | "smartmatch">("directory");
+  const [matchQuery, setMatchQuery] = useState("");
+  const [submittedMatch, setSubmittedMatch] = useState("");
 
-  const filtered = useMemo(() => MOCK_COMPANIES.filter(c => {
+  const { data: apiCompanies, isLoading: companiesLoading } = useQuery<VepCompany[]>({
+    queryKey: ["ecosystem-hub-companies"],
+    queryFn: async () => {
+      const response = await fetch("/api/ecosystem-hub/companies?status=active");
+      if (!response.ok) throw new Error("Não foi possível carregar as empresas");
+      return response.json();
+    },
+  });
+  const companies = apiCompanies ?? [];
+  const { data: portfolio = [] } = useQuery<VepPortfolioItem[]>({
+    queryKey: ["ecosystem-hub-portfolio"],
+    queryFn: async () => {
+      const response = await fetch("/api/ecosystem-hub/portfolio");
+      if (!response.ok) throw new Error("Não foi possível carregar os portfólios");
+      return response.json();
+    },
+  });
+  const { data: matchData, isFetching: matching } = useQuery<{ matches: Array<{ company: VepCompany; score: number; reasons: string[] }> }>({
+    queryKey: ["ecosystem-smart-match", submittedMatch],
+    queryFn: async () => {
+      const response = await fetch(`/api/ecosystem-hub/smart-match?segments=${encodeURIComponent(submittedMatch)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Erro ao buscar parceiros");
+      return data;
+    },
+    enabled: submittedMatch.trim().length > 0,
+  });
+
+  const filtered = useMemo(() => companies.filter(c => {
     if (typeFilter !== "all" && c.type !== typeFilter) return false;
     if (tierFilter !== "all" && c.tier !== tierFilter) return false;
     if (search && !c.legalName.toLowerCase().includes(search.toLowerCase()) &&
         !(c.tradeName ?? "").toLowerCase().includes(search.toLowerCase()) &&
         !(c.description ?? "").toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  }), [search, typeFilter, tierFilter]);
+  }), [companies, search, typeFilter, tierFilter]);
 
   const stats = useMemo(() => ({
-    total:     MOCK_COMPANIES.length,
-    verified:  MOCK_COMPANIES.filter(c => c.verified).length,
-    premium:   MOCK_COMPANIES.filter(c => c.tier === "premium" || c.tier === "enterprise").length,
-    portfolio: MOCK_COMPANIES.reduce((s, c) => s + c.portfolioCount, 0),
-  }), []);
+    total:     companies.length,
+    verified:  companies.filter(c => c.verified).length,
+    premium:   companies.filter(c => c.tier === "premium" || c.tier === "enterprise").length,
+    portfolio: companies.reduce((s, c) => s + c.portfolioCount, 0),
+  }), [companies]);
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "#0f1117", color: "#e2e8f0", fontFamily: "system-ui,sans-serif", overflow: "hidden" }}>
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", background: "#0f1117", color: "#e2e8f0", fontFamily: "system-ui,sans-serif", overflow: "hidden" }}>
 
       {/* ── HEADER ── */}
       <div style={{ padding: "14px 20px", borderBottom: "1px solid #2d2e3a", background: "#1a1b23", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#fff" }}>🌐 Ecosystem Hub</h2>
-            <p style={{ margin: 0, fontSize: 10, color: "#64748b" }}>Vendor Ecosystem Platform · FASE 21 · Cadeia completa da construção</p>
+            <p style={{ margin: 0, fontSize: 10, color: "#64748b" }}>Rede de parceiros, fornecedores e especialistas de todas as verticais</p>
           </div>
           {[["Empresas", stats.total], ["Verificadas", stats.verified], ["Premium+", stats.premium], ["Portfólios", stats.portfolio]].map(([l, v]) => (
             <div key={l as string} style={{ padding: "4px 10px", borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid #2d2e3a", textAlign: "center" }}>
@@ -336,7 +391,7 @@ export function EcosystemHubPage() {
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 2, marginTop: 12 }}>
+        <div style={{ display: "flex", gap: 2, marginTop: 12, overflowX: "auto", paddingBottom: 2 }}>
           {([
             ["directory",  "🏢 Diretório"],
             ["portfolio",  "🖼️ Portfólios"],
@@ -344,7 +399,7 @@ export function EcosystemHubPage() {
             ["smartmatch", "🎯 Smart Match"],
           ] as const).map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{
-              padding: "5px 12px", borderRadius: "6px 6px 0 0", fontSize: 10, fontWeight: 700, cursor: "pointer",
+              padding: "7px 12px", borderRadius: "6px 6px 0 0", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
               background: tab === id ? "#0f1117" : "transparent",
               border: `1px solid ${tab === id ? "#2d2e3a" : "transparent"}`,
               borderBottom: tab === id ? "1px solid #0f1117" : "1px solid #2d2e3a",
@@ -385,7 +440,9 @@ export function EcosystemHubPage() {
 
           {/* ── DIRECTORY ── */}
           {tab === "directory" && (
-            filtered.length === 0 ? (
+            companiesLoading ? (
+              <div style={{ padding: 48, textAlign: "center", color: "#94a3b8" }}>Carregando empresas do ecossistema…</div>
+            ) : filtered.length === 0 ? (
               <div style={{ padding: 48, textAlign: "center", color: "#64748b" }}>
                 <p style={{ fontSize: 32 }}>🏢</p><p>Nenhuma empresa encontrada.</p>
               </div>
@@ -399,9 +456,9 @@ export function EcosystemHubPage() {
           {/* ── PORTFOLIO ── */}
           {tab === "portfolio" && (
             <div>
-              <p style={{ margin: "0 0 14px", fontSize: 11, fontWeight: 700, color: "#64748b" }}>PORTFÓLIOS EM DESTAQUE ({MOCK_PORTFOLIO.length})</p>
+              <p style={{ margin: "0 0 14px", fontSize: 11, fontWeight: 700, color: "#64748b" }}>PORTFÓLIOS EM DESTAQUE ({portfolio.length})</p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-                {MOCK_PORTFOLIO.map(item => (
+                {portfolio.map(item => (
                   <PortfolioCard key={item.id} item={item} onClick={() => navigate(`/ecosystem-hub/${item.companyId}`)} />
                 ))}
               </div>
@@ -421,7 +478,7 @@ export function EcosystemHubPage() {
           {tab === "network" && (
             <div style={{ maxWidth: 700 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
-                {[["🏢", "Empresas conectadas", "47"],["🤝", "Parcerias ativas", "12"],["⭐", "Recomendações", "89"]].map(([e, l, v]) => (
+                {[["🏢", "Empresas disponíveis", String(stats.total)],["✅", "Perfis verificados", String(stats.verified)],["⭐", "Parceiros em destaque", String(companies.filter(c => c.featured).length)]].map(([e, l, v]) => (
                   <div key={l as string} style={{ padding: 16, borderRadius: 8, background: "#1a1b23", border: "1px solid #2d2e3a", textAlign: "center" }}>
                     <p style={{ margin: "0 0 4px", fontSize: 28 }}>{e}</p>
                     <p style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#a78bfa" }}>{v}</p>
@@ -431,14 +488,14 @@ export function EcosystemHubPage() {
               </div>
               <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#64748b" }}>SUGESTÕES DE CONEXÃO</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {MOCK_COMPANIES.filter(c => !c.featured).map(c => (
+                {companies.filter(c => !c.featured).slice(0, 8).map(c => (
                   <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, background: "#1a1b23", border: "1px solid #2d2e3a" }}>
                     <div style={{ width: 36, height: 36, borderRadius: 8, background: "#7c3aed20", border: "1px solid #7c3aed40", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🏢</div>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#fff" }}>{c.tradeName ?? c.legalName}</p>
                       <p style={{ margin: 0, fontSize: 9, color: "#64748b" }}>{TYPE_LABELS[c.type]} · {c.city}, {c.state}</p>
                     </div>
-                    <button style={{ padding: "5px 10px", borderRadius: 5, background: "#7c3aed", color: "#fff", border: "none", cursor: "pointer", fontSize: 9, fontWeight: 700 }}>+ Conectar</button>
+                    <button onClick={() => navigate(`/ecosystem-hub/${c.id}`)} style={{ padding: "5px 10px", borderRadius: 5, background: "#7c3aed", color: "#fff", border: "none", cursor: "pointer", fontSize: 9, fontWeight: 700 }}>Ver perfil</button>
                   </div>
                 ))}
               </div>
@@ -453,38 +510,34 @@ export function EcosystemHubPage() {
                   <div style={{ width: 40, height: 40, borderRadius: 8, background: "#7c3aed20", border: "1px solid #7c3aed40", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🎯</div>
                   <div>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#fff" }}>Smart Match Engine</p>
-                    <p style={{ margin: 0, fontSize: 9, color: "#64748b" }}>Recomendações inteligentes baseadas no projeto</p>
+                    <p style={{ margin: 0, fontSize: 9, color: "#64748b" }}>Parceiros compatíveis com qualquer vertical e necessidade</p>
                   </div>
-                  <span style={{ marginLeft: "auto", fontSize: 8, padding: "2px 6px", borderRadius: 4, background: "#fbbf2420", color: "#fbbf24" }}>FASE 22</span>
+                  <span style={{ marginLeft: "auto", fontSize: 8, padding: "2px 6px", borderRadius: 4, background: "#10b98120", color: "#10b981" }}>ATIVO</span>
                 </div>
                 <p style={{ margin: "0 0 14px", fontSize: 10, color: "#94a3b8" }}>
-                  Informe o estilo e segmentos do projeto para receber recomendações dos melhores parceiros do ecossistema.
+                  Descreva o serviço, produto, especialidade ou região para receber recomendações explicadas dos parceiros mais compatíveis.
                 </p>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <input placeholder="Estilo do projeto (ex: Japandi, Minimalista…)" style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #2d2e3a", background: "#0f1117", color: "#fff", fontSize: 11, outline: "none" }} />
-                  <button style={{ padding: "8px 16px", borderRadius: 6, background: "#7c3aed40", color: "#a78bfa", border: "1px solid #7c3aed", cursor: "pointer", fontSize: 10, fontWeight: 700 }}>🎯 Match</button>
+                  <input value={matchQuery} onChange={event => setMatchQuery(event.target.value)} onKeyDown={event => event.key === "Enter" && setSubmittedMatch(matchQuery)} placeholder="O que você precisa? Ex: transportadora em SC, clínica odontológica…" style={{ flex: "1 1 220px", padding: "8px 12px", borderRadius: 6, border: "1px solid #2d2e3a", background: "#0f1117", color: "#fff", fontSize: 11, outline: "none" }} />
+                  <button disabled={!matchQuery.trim() || matching} onClick={() => setSubmittedMatch(matchQuery)} style={{ padding: "8px 16px", borderRadius: 6, background: "#7c3aed40", color: "#a78bfa", border: "1px solid #7c3aed", cursor: "pointer", fontSize: 10, fontWeight: 700 }}>{matching ? "Analisando…" : "🎯 Encontrar"}</button>
                 </div>
               </div>
 
-              <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#64748b" }}>EXEMPLO — Projeto Japandi</p>
+              <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#64748b" }}>{submittedMatch ? `PARCEIROS RECOMENDADOS (${matchData?.matches.length ?? 0})` : "DESCREVA SUA NECESSIDADE PARA INICIAR"}</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {[
-                  { segment: "Marcenaria",    company: "Madeirama", match: 97 },
-                  { segment: "Iluminação",    company: "Luminotécnica Studio", match: 94 },
-                  { segment: "Automação",     company: "SmartHome BR", match: 91 },
-                  { segment: "Marmoraria",    company: "Elegance Stones", match: 88 },
-                ].map(({ segment, company, match }) => (
-                  <div key={segment} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, background: "#1a1b23", border: "1px solid #2d2e3a" }}>
+                {(matchData?.matches ?? []).map(({ company, score, reasons }) => (
+                  <div key={company.id} onClick={() => navigate(`/ecosystem-hub/${company.id}`)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, background: "#1a1b23", border: "1px solid #2d2e3a", cursor: "pointer" }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontSize: 10, color: "#64748b" }}>{segment}</p>
-                      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#fff" }}>{company}</p>
+                      <p style={{ margin: 0, fontSize: 10, color: "#64748b" }}>{TYPE_LABELS[company.type] ?? company.type} · {company.city ?? "Atendimento remoto"}</p>
+                      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#fff" }}>{company.tradeName ?? company.legalName}</p>
+                      <p style={{ margin: "3px 0 0", fontSize: 9, color: "#94a3b8" }}>{reasons.join(" · ")}</p>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#10b981" }}>{match}%</p>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#10b981" }}>{score}%</p>
                       <p style={{ margin: 0, fontSize: 8, color: "#64748b" }}>match</p>
                     </div>
                     <div style={{ width: 60, height: 4, borderRadius: 2, background: "#2d2e3a", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${match}%`, background: "#10b981", borderRadius: 2 }} />
+                      <div style={{ height: "100%", width: `${score}%`, background: "#10b981", borderRadius: 2 }} />
                     </div>
                   </div>
                 ))}

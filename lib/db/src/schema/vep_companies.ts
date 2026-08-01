@@ -11,6 +11,9 @@ export const VEP_COMPANY_TYPES = [
   "CABINETRY", "STONE", "LIGHTING", "AUTOMATION", "PAINT", "FLOORING",
   "WINDOWS", "PVC", "SUPPLIER", "MANUFACTURER", "DISTRIBUTOR",
   "SERVICE", "CONSULTING", "OTHER",
+  "RETAIL", "SUPERMARKET", "BEAUTY", "HEALTHCARE", "RESTAURANT",
+  "REAL_ESTATE", "AUTOMOTIVE", "LOGISTICS", "TRAVEL", "PHARMACY",
+  "AGRIBUSINESS", "TECHNOLOGY",
 ] as const;
 
 export const VEP_COMPANY_TIERS = ["basic", "verified", "certified", "premium", "enterprise"] as const;
