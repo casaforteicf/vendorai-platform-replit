@@ -133,11 +133,11 @@ export function VendorBrainDashboard() {
   }, [activePlans])
 
   return (
-    <div style={{ height: isMobile ? 'calc(100dvh - 72px)' : 'calc(100vh - 64px)', minHeight: isMobile ? 680 : 700, display: 'flex', flexDirection: 'column' as const, background: T.bg, color: T.text, fontFamily: 'system-ui,sans-serif', overflow: 'hidden' }}>
+    <div style={{ height: isMobile ? 'auto' : 'calc(100vh - 64px)', minHeight: isMobile ? 'calc(100dvh - 72px)' : 700, display: 'flex', flexDirection: 'column' as const, background: T.bg, color: T.text, fontFamily: 'system-ui,sans-serif', overflow: isMobile ? 'visible' : 'hidden' }}>
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div style={{ padding: isMobile ? 12 : '12px 20px', borderBottom: `1px solid ${T.border}`, background: T.sidebar, flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' as const }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16, flexWrap: 'wrap' as const }}>
           <div style={{ flex: isMobile ? '1 1 100%' : undefined }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: '#fff' }}>🧠 Vendor Brain</h2>
             <p style={{ margin: 0, fontSize: 10, color: T.dim }}>Centro de decisões e planos operacionais do tenant</p>
@@ -151,7 +151,7 @@ export function VendorBrainDashboard() {
             ['Decisões',  decisions.length],
             ['Learnings', learnings.length],
           ] as [string, number][]).map(([label, value]) => (
-            <div key={label} style={{ padding: isMobile ? '5px 7px' : '4px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, textAlign: 'center' as const }}>
+            <div key={label} style={{ flex: isMobile ? '1 1 0' : undefined, minWidth: isMobile ? 0 : undefined, padding: isMobile ? '5px 3px' : '4px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, textAlign: 'center' as const }}>
               <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: T.purpleL }}>{value}</p>
               <p style={{ margin: 0, fontSize: 9, color: T.dim }}>{label}</p>
             </div>
@@ -178,13 +178,13 @@ export function VendorBrainDashboard() {
         </div>
 
         {/* Quick goal chips */}
-        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' as const }}>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: isMobile ? 'nowrap' : 'wrap' as const, overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? 4 : 0 }}>
           {verticalProfile.goals.map(g => (
             <button
               key={g}
               onClick={() => handleDemoGoal(g)}
               style={{
-                padding: '3px 8px', borderRadius: 10, fontSize: 9, cursor: 'pointer',
+                flexShrink: 0, padding: '3px 8px', borderRadius: 10, fontSize: 9, cursor: 'pointer',
                 background: selectedGoal === g ? 'rgba(124,58,237,0.2)' : 'transparent',
                 border: `1px solid ${selectedGoal === g ? T.purple : T.border}`,
                 color: selectedGoal === g ? T.purpleL : T.dim,
@@ -205,7 +205,20 @@ export function VendorBrainDashboard() {
         )}
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 2, marginTop: 10, overflowX:'auto', paddingBottom:isMobile ? 2 : 0 }}>
+        {isMobile ? (
+          <select
+            aria-label="Área do Vendor Brain"
+            value={tab}
+            onChange={event => setTab(event.target.value as typeof tab)}
+            style={{ width:'100%', marginTop:8, padding:'9px 10px', borderRadius:6, background:T.bg, border:`1px solid ${T.border}`, color:'#fff', fontSize:11, fontWeight:700 }}
+          >
+            <option value="objectives">🎯 Objetivos</option>
+            <option value="plans">📋 Planos</option>
+            <option value="agents">🤖 Agentes</option>
+            <option value="reasoning">🔍 Raciocínio</option>
+            <option value="observability">📊 Observabilidade</option>
+          </select>
+        ) : <div style={{ display: 'flex', gap: 2, marginTop: 10, overflowX:'auto' }}>
           {([
             ['objectives',    '🎯 Objetivos'],
             ['plans',         '📋 Planos'],
@@ -227,11 +240,11 @@ export function VendorBrainDashboard() {
               {label}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
       {/* ── BODY ───────────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+      <div style={{ flex: 1, overflow: isMobile ? 'visible' : 'hidden', display: 'flex', minHeight: 0 }}>
 
         {/* ── TAB: OBJECTIVES ── */}
         {tab === 'objectives' && (
@@ -285,17 +298,18 @@ export function VendorBrainDashboard() {
 
         {/* ── TAB: PLANS ── */}
         {tab === 'plans' && (
-          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: isMobile ? 'visible' : 'hidden', minWidth: 0 }}>
             {/* Plan list sidebar */}
-            <div style={{ width: 240, flexShrink: 0, borderRight: `1px solid ${T.border}`, overflowY: 'auto' as const, padding: 12 }}>
+            <div style={{ width: isMobile ? '100%' : 240, flexShrink: 0, borderRight: isMobile ? 'none' : `1px solid ${T.border}`, borderBottom: isMobile ? `1px solid ${T.border}` : 'none', overflowY: isMobile ? 'hidden' : 'auto' as const, overflowX: isMobile ? 'auto' : 'hidden', padding: 12, boxSizing:'border-box' }}>
               <p style={{ margin: '0 0 8px', fontSize: 9, fontWeight: 700, color: T.dim }}>PLANOS ({activePlans.length})</p>
               {activePlans.length === 0 && <p style={{ fontSize: 10, color: T.dim }}>Nenhum plano ainda.</p>}
+              <div style={{ display:isMobile ? 'flex' : 'block', gap:isMobile ? 8 : 0 }}>
               {activePlans.map(plan => (
                 <div
                   key={plan.id}
                   onClick={() => setSelectedPlanId(plan.id)}
                   style={{
-                    padding: '8px 10px', borderRadius: 6, marginBottom: 6, cursor: 'pointer',
+                    minWidth:isMobile ? 210 : undefined, padding: '8px 10px', borderRadius: 6, marginBottom: 6, cursor: 'pointer',
                     background: selectedPlanId === plan.id ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)',
                     border: `1px solid ${selectedPlanId === plan.id ? T.purple : T.border}`,
                   }}
@@ -309,10 +323,11 @@ export function VendorBrainDashboard() {
                   </div>
                 </div>
               ))}
+              </div>
             </div>
 
             {/* Plan detail */}
-            <div style={{ flex: 1, overflowY: 'auto' as const, padding: 16 }}>
+            <div style={{ flex: 1, minWidth:0, overflowY: isMobile ? 'visible' : 'auto' as const, padding: isMobile ? 12 : 16 }}>
               {!selectedPlan ? (
                 <p style={{ color: T.dim, fontSize: 12 }}>Selecione um plano à esquerda.</p>
               ) : (
