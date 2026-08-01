@@ -32,6 +32,7 @@ import { triggerSequenceOffer } from "./sequence-offer.js";
 import { runInsuranceRenewalForTenant } from "./insuranceRenewalEngine.js";
 import { runInsuranceWhitespaceForTenant } from "./insuranceWhitespaceEngine.js";
 import { runDistributorRevenueForTenant } from "./distributorRevenueEngine.js";
+import { runVerticalRevenueForTenant } from "./verticalRevenueEngine.js";
 import { isWithinBusinessHours, renderTemplate } from "../lib/proactiveMessageGuard.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
@@ -275,6 +276,10 @@ export async function analisarCliente(
 
   for (const regra of regras) {
     const cond = parseCond(regra.condicoes);
+
+    // The vertical engine evaluates these rules from accepted proposals.
+    // Skipping them here prevents duplicate generic opportunities.
+    if ((regra.condicoes as { engine?: string } | null)?.engine === "vertical_revenue_v1") continue;
 
     // "sequencia_produto" tem elegibilidade (async, baseada em compra) e dedup
     // próprios — não usa o fluxo genérico de "pendente" abaixo, pois precisa
@@ -659,6 +664,7 @@ export async function runRevenueScoutForTenant(
   // Distribuidoras usam histórico de propostas aceitas e ciclos próprios por segmento.
   // As sugestões ficam em pendente_aprovacao e nunca são contatadas automaticamente.
   await runDistributorRevenueForTenant(tenantId, log);
+  await runVerticalRevenueForTenant(tenantId, log);
 
   await processarOportunidades(tenantId, log);
 

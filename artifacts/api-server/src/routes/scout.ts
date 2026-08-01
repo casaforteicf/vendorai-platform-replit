@@ -8,10 +8,12 @@ import {
   leadsTable,
   insuranceProductsTable,
   insuranceAccountProductPositionsTable,
+  tenantsTable,
 } from "@workspace/db";
 import { runRevenueScoutForTenant } from "../services/revenueScout.js";
 import { runInsuranceRenewalForTenant } from "../services/insuranceRenewalEngine.js";
 import { runInsuranceWhitespaceForTenant } from "../services/insuranceWhitespaceEngine.js";
+import { resolveVerticalRevenueProfile } from "../services/verticalRevenueEngine.js";
 
 const router: IRouter = Router();
 
@@ -322,6 +324,10 @@ router.get("/tenants/:tenantId/scout/dashboard", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const [tenant] = await db.select({ vertical: tenantsTable.vertical })
+    .from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const profile = resolveVerticalRevenueProfile(tenant?.vertical);
+
   const todas = await db
     .select({
       status:        scoutOportunidadesTable.status,
@@ -348,6 +354,15 @@ router.get("/tenants/:tenantId/scout/dashboard", async (req, res) => {
     taxaConversao,
     receitaEstimada: Number(receitaEstimada.toFixed(2)),
     receitaGerada:   Number(receitaGerada.toFixed(2)),
+    verticalProfile: profile ? {
+      key: profile.key,
+      label: profile.label,
+      focus: profile.focus,
+      cycleDays: profile.cycleDays,
+      dormantDays: profile.dormantDays,
+      cycleType: profile.cycleType,
+      signals: profile.signals,
+    } : null,
   });
 });
 
