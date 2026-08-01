@@ -31,8 +31,10 @@ async function run() {
       console.log("✓ Migration 033 already matches the canonical checksum.");
       return;
     }
-    const expectedName = current ? "033_rls_support_tables.sql" : "admin audit log";
-    if (record.name.toLowerCase() !== expectedName) throw new Error(`Unexpected migration 033 name: ${record.name}`);
+    const expectedNames = current
+      ? ["033_rls_support_tables.sql", "rls support tables"]
+      : ["admin audit log", "rls support tables"];
+    if (!expectedNames.includes(record.name.toLowerCase())) throw new Error(`Unexpected migration 033 name: ${record.name}`);
     const coverage = await client.query(`
       SELECT c.relname, c.relrowsecurity,
         EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid=c.oid AND p.polname='vendorai_tenant_access') access,
