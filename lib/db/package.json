@@ -17,6 +17,7 @@
     "migrate:reconcile-rls-032": "tsx src/reconcile-rls-032.ts",
     "migrate:reconcile-rls-032-content": "tsx src/reconcile-rls-032-content.ts",
     "migrate:reconcile-rls-033": "tsx src/reconcile-rls-033.ts",
+    "migrate:reconcile-content": "tsx src/reconcile-content-drift.ts",
     "diagnose:rls-032": "tsx src/diagnose-rls-032.ts",
     "provision:app-role": "tsx src/provision-app-role.ts",
     "audit:rls": "tsx src/audit-rls.ts",
