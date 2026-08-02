@@ -558,9 +558,14 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 <Megaphone className="h-3.5 w-3.5" /> Campanhas
               </Link>
               <Link
-                href="/content?tab=variedades"
+                href="/variedades-dia"
                 onClick={onNavigate}
-                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/variedades-dia"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
               >
                 <Sparkles className="h-3.5 w-3.5" /> Variedades Praça.ai
               </Link>
