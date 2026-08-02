@@ -93,6 +93,7 @@ const replitDevDomain = (process.env["REPLIT_DEV_DOMAIN"] ?? "").trim();
 const MAIN_HOSTNAMES = new Set([
   ROOT_DOMAIN,
   `www.${ROOT_DOMAIN}`,
+  `app.${ROOT_DOMAIN}`,
   "localhost",
   "127.0.0.1",
   ...replitDomains,
@@ -136,6 +137,10 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     : null;
 
   if (!subdomainFromHeader && MAIN_HOSTNAMES.has(hostname)) return next();
+  // <slug>.app.appvendorai.com é o CRM com link exclusivo por lojista, não
+  // o site público dele — mesma regra do MAIN_HOSTNAMES, só que como padrão
+  // em vez de lista fixa (não dá pra listar todo slug de antemão).
+  if (!subdomainFromHeader && hostname.endsWith(`.app.${ROOT_DOMAIN}`)) return next();
 
   const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
   const isApi = req.path.startsWith("/api/");
