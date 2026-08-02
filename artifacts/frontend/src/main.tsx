@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import SubdomainSite from "./SubdomainSite";
+import { ErrorBoundary } from "./ErrorBoundary";
 import "./index.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
@@ -21,5 +22,7 @@ const isAppHost = hostname === "app.appvendorai.com" || /^[a-z0-9-]+\.app\.appve
 const tenantSlugForSite = isAppHost ? null : (tenantSiteMatch?.[1] ?? null);
 
 createRoot(document.getElementById("root")!).render(
-  tenantSlugForSite ? <SubdomainSite slug={tenantSlugForSite} /> : <App />,
+  <ErrorBoundary>
+    {tenantSlugForSite ? <SubdomainSite slug={tenantSlugForSite} /> : <App />}
+  </ErrorBoundary>,
 );
