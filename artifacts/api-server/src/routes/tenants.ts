@@ -27,6 +27,7 @@ import {
   agentDefaultsTable,
   tenantAgentConfigsTable,
   knowledgeBaseTable,
+  plansTable,
 } from "@workspace/db";
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { encrypt } from "../lib/crypto.js";
@@ -78,7 +79,17 @@ router.get("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
     return;
   }
 
-  res.json(tenant);
+  // planSlug embutido aqui pro frontend gatear o menu por plano (ex: Start
+  // só vê Catálogo/Pedidos/Configurações) sem precisar de outra chamada —
+  // rota admin de planos é super_admin-only, mas todo tenant precisa saber
+  // o próprio slug de plano.
+  let planSlug: string | null = null;
+  if (tenant.planId) {
+    const [plan] = await db.select({ slug: plansTable.slug }).from(plansTable).where(eq(plansTable.id, tenant.planId));
+    planSlug = plan?.slug ?? null;
+  }
+
+  res.json({ ...tenant, planSlug });
 });
 
 router.get("/superadmin/tenants/:id/agents", requireRole("super_admin"), async (req, res) => {
@@ -227,6 +238,13 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
   const hasAdminOnlyField = ADMIN_ONLY_FIELDS.some((f) => f in parsed.data && parsed.data[f] !== undefined);
   if (hasAdminOnlyField && req.user?.platformRole === "member") {
     res.status(403).json({ error: "Only admins can update analysis thresholds" });
+    return;
+  }
+
+  // Comissão do Praça.ai é negociação de plataforma — nem o próprio lojista
+  // (tenant_admin) pode mudar isso, só o super_admin.
+  if ("comissaoPracaAiPercentual" in parsed.data && parsed.data.comissaoPracaAiPercentual !== undefined && req.user?.platformRole !== "super_admin") {
+    res.status(403).json({ error: "Só o admin da plataforma pode alterar a comissão do Praça.ai" });
     return;
   }
 

@@ -25,6 +25,22 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
+  const { data: tenantData } = useQuery<{ planSlug: string | null }>({
+    queryKey: ["tenant-plan", user?.tenantId],
+    enabled: !!user?.tenantId && !!token,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const r = await fetch(`/api/tenants/${user!.tenantId}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return { planSlug: null };
+      return r.json();
+    },
+  });
+  // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
+  // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
+  // só a partir de um plano pago. Super admin nunca é restringido por isso.
+  const START_PLAN_HREFS = new Set(["/", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia/produtos", "/deals", "/configuracoes", "/guia-implantacao"]);
+  const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin;
+
   const { data: openBugsData } = useQuery<{ count: number }>({
     queryKey: ["admin", "bug-reports-open-count"],
     enabled: isSuperAdmin && !!token,
@@ -377,6 +393,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     : undefined;
 
   function isVisible(item: typeof allNavItems[0]) {
+    if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
     const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "inteligencia", "hub"];

@@ -3,7 +3,7 @@ import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { z } from "zod/v4";
-import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable, leadsTable, dealsTable, funisTable } from "@workspace/db";
+import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable, leadsTable, dealsTable, funisTable, plansTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { sendPasswordResetEmail } from "../lib/email.js";
@@ -84,6 +84,15 @@ const demoSignupSchema = z.object({
   telefone: z.string().optional(),
   // Código de embaixador do Praça.ai (?ref=CODIGO) — se vier, dispara
   // registro de indicação de lojista pro Praça.ai depois do cadastro.
+  codigoIndicacaoPraca: z.string().optional(),
+});
+
+const pracaSignupSchema = z.object({
+  nomeEmpresa: z.string().min(1, "Nome da loja é obrigatório"),
+  nomePessoa: z.string().min(1, "Seu nome é obrigatório"),
+  email: z.email(),
+  senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
+  telefone: z.string().optional(),
   codigoIndicacaoPraca: z.string().optional(),
 });
 
@@ -198,6 +207,121 @@ router.post("/auth/demo-signup", async (req, res) => {
       user,
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, isDemo: true, demoExpiresAt },
       demoUrl: `/app?tenant=${tenant.slug}`,
+    });
+  } catch (err: unknown) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: "Email ou slug do tenant já existe" });
+      return;
+    }
+    throw err;
+  }
+});
+
+// Cadastro gratuito e PERMANENTE pra vender no Praça.ai — diferente do
+// /auth/demo-signup acima (que é trial de 5 dias, isDemo=true). Aqui o
+// tenant nasce ativo, no plano Start (grátis, sem custo, ferramentas
+// mínimas: Catálogo/Pedidos/Configurações), já habilitado pra vender no
+// Praça.ai (vendeNoPracaAi=true) com a comissão padrão (8%, editável só
+// por super_admin depois, caso a caso). Lojista pode assinar um plano
+// pago a qualquer momento pra liberar mais ferramentas — nunca é cobrado
+// nesse cadastro.
+router.post("/auth/praca-signup", async (req, res) => {
+  const parsed = pracaSignupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { nomeEmpresa, nomePessoa, email, senha, telefone, codigoIndicacaoPraca } = parsed.data;
+
+  const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
+  const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
+  const hashed = await bcrypt.hash(senha, 12);
+
+  try {
+    const [startPlan] = await db.select().from(plansTable).where(eq(plansTable.slug, "start"));
+
+    const [tenant] = await db
+      .insert(tenantsTable)
+      .values({
+        name: nomeEmpresa,
+        slug,
+        status: "active",
+        isDemo: false,
+        planId: startPlan?.id ?? null,
+        provisioningMethod: "self_service",
+        vendeNoPracaAi: true,
+        codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
+      })
+      .returning();
+
+    // Registra a indicação de lojista no Praça.ai — fire-and-forget, nunca
+    // trava nem falha o cadastro se o Praça.ai estiver fora do ar.
+    if (codigoIndicacaoPraca) {
+      const pracaBaseUrl = process.env.PRACA_API_BASE_URL || "https://praca.ai/api";
+      fetch(`${pracaBaseUrl}/embaixadores/indicar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo: codigoIndicacaoPraca, indicadoTenantId: tenant.id }),
+        signal: AbortSignal.timeout(8000),
+      }).catch((err) => {
+        req.log?.error({ err, tenantId: tenant.id }, "auth: falha ao registrar indicação de lojista no Praça.ai");
+      });
+    }
+
+    const [user] = await db
+      .insert(usersTable)
+      .values({
+        tenantId: tenant.id,
+        name: nomePessoa,
+        email,
+        password: hashed,
+        role: "admin",
+        platformRole: "tenant_admin",
+        telefone: telefone ?? null,
+      })
+      .returning(PUBLIC_FIELDS);
+
+    // Mesmo pipeline de acompanhamento comercial do trial — registra como
+    // lead/deal no tenant de vendas da VendorAI, só que já sinalizando que
+    // entrou grátis pelo Praça.ai (não é trial expirando).
+    try {
+      const [vendorai] = await db.select().from(tenantsTable).where(eq(tenantsTable.slug, "vendorai"));
+      if (vendorai) {
+        const [funil] = await db
+          .select()
+          .from(funisTable)
+          .where(and(eq(funisTable.tenantId, vendorai.id), eq(funisTable.nome, "Funil de Vendas \u2014 VendorAI")));
+        const [lead] = await db
+          .insert(leadsTable)
+          .values({ tenantId: vendorai.id, nome: nomePessoa, empresa: nomeEmpresa, email, telefone: telefone ?? null, source: "praca_ai_signup" })
+          .returning();
+        await db.insert(dealsTable).values({
+          tenantId: vendorai.id,
+          leadId: lead.id,
+          titulo: `Plano Start (Pra\u00e7a.ai) \u2014 ${nomeEmpresa}`,
+          etapa: "novo",
+          funilId: funil?.id ?? null,
+          probabilidade: 15,
+        });
+      }
+    } catch {
+      // Falha no pipeline não bloqueia o cadastro
+    }
+
+    const token = signToken({
+      sub: user.id,
+      email: user.email,
+      platformRole: user.platformRole,
+      tenantId: user.tenantId,
+      role: user.role,
+    });
+
+    res.status(201).json({
+      token,
+      user,
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, comissaoPracaAiPercentual: tenant.comissaoPracaAiPercentual },
+      appUrl: `/app?tenant=${tenant.slug}`,
     });
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {

@@ -25,6 +25,8 @@ type TenantDetail = {
   status: "active" | "suspended" | "cancelled";
   vertical?: string | null;
   planId?: string | null;
+  comissaoPracaAiPercentual?: string | null;
+  vendeNoPracaAi?: boolean | null;
   provisioningMethod?: string | null;
   firstLoginAt?: string | null;
   accessSentAt?: string | null;
@@ -158,6 +160,9 @@ export default function AdminTenantDetail() {
   const [zapiToken, setZapiToken] = useState("");
   const [zapiClientToken, setZapiClientToken] = useState("");
   const [savingZapiCredentials, setSavingZapiCredentials] = useState(false);
+  const [editingComissao, setEditingComissao] = useState(false);
+  const [comissaoInput, setComissaoInput] = useState("");
+  const [savingComissao, setSavingComissao] = useState(false);
 
   const authHeaders = { Authorization: `Bearer ${token}` };
 
@@ -333,6 +338,32 @@ export default function AdminTenantDetail() {
     }
   }
 
+  async function handleSaveComissao() {
+    const value = Number(comissaoInput.replace(",", "."));
+    if (Number.isNaN(value) || value < 0 || value > 100) {
+      toast({ title: "Informe um percentual válido (0 a 100)", variant: "destructive" });
+      return;
+    }
+    setSavingComissao(true);
+    try {
+      const r = await fetch(`/api/tenants/${id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ comissaoPracaAiPercentual: value.toFixed(2) }),
+      });
+      const data = await r.json() as { error?: string };
+      if (!r.ok) {
+        toast({ title: data.error ?? "Erro ao atualizar comissão", variant: "destructive" });
+        return;
+      }
+      void qc.invalidateQueries({ queryKey: ["admin-tenant-detail", id] });
+      toast({ title: "Comissão do Praça.ai atualizada" });
+      setEditingComissao(false);
+    } finally {
+      setSavingComissao(false);
+    }
+  }
+
   async function handleResend() {
     setResending(true);
     try {
@@ -487,6 +518,40 @@ export default function AdminTenantDetail() {
                 : "—"}
             />
             <InfoRow label="Plano" value={tenant.planId ?? "Sem plano"} />
+            {tenant.vendeNoPracaAi && (
+              <>
+                <Separator />
+                <InfoRow
+                  label="Comissão Praça.ai"
+                  value={
+                    editingComissao ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="text"
+                          value={comissaoInput}
+                          onChange={(e) => setComissaoInput(e.target.value)}
+                          className="h-8 w-20 text-right"
+                          placeholder="8.00"
+                        />
+                        <span className="text-xs text-muted-foreground">%</span>
+                        <Button size="sm" onClick={handleSaveComissao} disabled={savingComissao}>
+                          {savingComissao ? <Loader2 className="h-3 w-3 animate-spin" /> : "Salvar"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingComissao(false)}>Cancelar</Button>
+                      </div>
+                    ) : (
+                      <button
+                        className="flex items-center gap-2 hover:underline"
+                        onClick={() => { setComissaoInput(tenant.comissaoPracaAiPercentual ?? "8.00"); setEditingComissao(true); }}
+                      >
+                        {tenant.comissaoPracaAiPercentual ?? "8.00"}%
+                        <span className="text-xs text-muted-foreground">(editar)</span>
+                      </button>
+                    )
+                  }
+                />
+              </>
+            )}
             <Separator />
             <InfoRow
               label="Primeiro acesso"

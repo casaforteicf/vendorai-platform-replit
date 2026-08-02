@@ -3,6 +3,23 @@ import { eq } from "drizzle-orm";
 
 const PLANS = [
   {
+    slug: "start",
+    name: "Start",
+    implantationPriceCents: 0,
+    monthlyPriceCents: 0,
+    monthlyPriceAnnualCents: 0,
+    aiQuotaUsd: "0",
+    maxUsers: 2,
+    extraUserPriceCents: null,
+    isActive: true,
+    // Gratuito de propósito — só o essencial pra operar e vender no
+    // Praça.ai (Catálogo, Pedidos, Configurações). Sem agentes de IA: o
+    // custo desses módulos é coberto pela mensalidade dos planos pagos,
+    // não faria sentido no plano grátis. Lojista sobe de plano quando
+    // quiser mais ferramentas — nada aqui bloqueia o upgrade.
+    modules: [] as string[],
+  },
+  {
     slug: "starter",
     name: "Starter",
     implantationPriceCents: 300_000,
