@@ -187,3 +187,4 @@ export * from "./insurance_revenue_scout";
 export * from "./tenant_nav_modules";
 export * from "./erp_financeiro";
 export * from "./erp_operacional";
+export * from "./vendor_stories";
