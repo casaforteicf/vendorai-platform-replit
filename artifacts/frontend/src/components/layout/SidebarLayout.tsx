@@ -81,7 +81,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Stories",       href: "/stories",       icon: Camera,          sellerHidden: false, section: "crm", fn: ["vendedor", "administrador", "outro"] as UserFunction[] },
+    // "Stories" agora é um item dentro do dropdown "Conteúdo" (renomeado
+    // "Stories Praça.ai"), não mais um item de topo — ver bloco do
+    // dropdown mais abaixo.
     { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Obras",         href: "/obras",                    icon: Building2,   sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
@@ -562,6 +564,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               >
                 <Sparkles className="h-3.5 w-3.5" /> Variedades Praça.ai
               </Link>
+              {!isStartPlan && (
+                <Link
+                  href="/stories"
+                  onClick={onNavigate}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                    location === "/stories"
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <Camera className="h-3.5 w-3.5" /> Stories Praça.ai
+                </Link>
+              )}
             </div>
           )}
         </div>
