@@ -663,6 +663,23 @@ export default function Configuracoes() {
     );
   }
 
+  // ── Tenant Color (tema do dashboard) ───────────────────────────────────────
+  function saveTenantColor(hex: string) {
+    updateTenant.mutate(
+      { id: tenantId, data: { corPrimaria: hex } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+          queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+          // SidebarLayout busca a cor por essa chave própria (não passa pelo client gerado)
+          queryClient.invalidateQueries({ queryKey: ["tenant-plan", tenantId] });
+          toast({ title: "Cor da marca salva com sucesso." });
+        },
+        onError: () => toast({ title: "Erro ao salvar cor.", variant: "destructive" }),
+      }
+    );
+  }
+
   // ── Business Profile ───────────────────────────────────────────────────────
   const profileQuery   = useGetBusinessProfileByTenant(tenantId, { query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false } });
   const createProfile  = useCreateBusinessProfile();
@@ -1792,6 +1809,26 @@ export default function Configuracoes() {
                   }
                   {tenantLogoUploading ? "Enviando..." : "Enviar logo"}
                 </Button>
+              </div>
+            </div>
+
+            {/* Cor de marca — aplicada na sidebar/botões/destaques do dashboard */}
+            <div className="pt-4 border-t">
+              <p className="text-sm font-medium mb-1">Cor da marca</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Usada na sidebar, botões e destaques do seu dashboard (co-branding de cor).
+              </p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  className="h-10 w-14 rounded-md border cursor-pointer bg-transparent p-1"
+                  value={tenantQuery.data?.corPrimaria || "#A78BFA"}
+                  onChange={(e) => saveTenantColor(e.target.value)}
+                  disabled={updateTenant.isPending}
+                />
+                <span className="text-sm text-muted-foreground font-mono">
+                  {tenantQuery.data?.corPrimaria || "#A78BFA"}
+                </span>
               </div>
             </div>
           </div>

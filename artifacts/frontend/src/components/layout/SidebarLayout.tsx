@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
 import { StoreSwitcher } from "@/components/StoreSwitcher";
+import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, tenantOverride, clearTenantOverride, token, isEffectiveAdmin } = useAuth();
@@ -25,7 +26,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
-  const { data: tenantData } = useQuery<{ planSlug: string | null }>({
+  const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null }>({
     queryKey: ["tenant-plan", user?.tenantId],
     enabled: !!user?.tenantId && !!token,
     staleTime: 5 * 60_000,
@@ -35,6 +36,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       return r.json();
     },
   });
+
+  // Co-branding de cor: a sidebar/botões/destaques passam a usar a cor de
+  // marca do tenant (mesma ideia da logo no header). Reseta pro padrão do
+  // Vendor.ai se o tenant não tiver cor definida ou ao desmontar (logout).
+  React.useEffect(() => {
+    if (tenantData?.corPrimaria) {
+      applyTenantTheme(tenantData.corPrimaria);
+    } else {
+      resetTenantTheme();
+    }
+    return () => resetTenantTheme();
+  }, [tenantData?.corPrimaria]);
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
