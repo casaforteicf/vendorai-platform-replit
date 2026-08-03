@@ -71,6 +71,48 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isTenantAdmin = isEffectiveAdmin;
   const isSeller = user?.platformRole === "tenant_seller" && user?.userFunction !== "administrador";
   const userFunction = user?.userFunction as UserFunction | undefined;
+
+  // Telas e módulos do tenant (Configurações do Admin → "Aplicar recomendado
+  // pra vertical" etc). Só reage a OVERRIDE EXPLÍCITO (hasOverride:true) —
+  // nunca ao valor padrão do catálogo, que pra maioria dos módulos é "false"
+  // e esconderia telas que todo tenant já usa hoje se fosse tratado como
+  // real. Tenant sem nenhum override (o caso de praticamente todos hoje):
+  // zero mudança no menu.
+  type NavModule = { moduleKey: string; isEnabled: boolean; hasOverride: boolean };
+  const { data: tenantNavModules } = useQuery<NavModule[]>({
+    queryKey: ["tenant-nav-modules", user?.tenantId],
+    enabled: !!user?.tenantId && !!token,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const r = await fetch(`/api/tenants/${user!.tenantId}/nav-modules`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+  const MODULE_TO_HREFS: Record<string, string[]> = {
+    dashboard:  ["/"],
+    leads:      ["/leads", "/deals"],
+    prospector: ["/app/prospector"],
+    scheduler:  ["/agenda"],
+    revenue:    ["/scout", "/scout/regras", "/scout/oportunidades", "/scout/seguros/renovacoes"],
+    analytics:  ["/analytics"],
+    arch:       ["/arch", "/arch/projetos", "/arch/render", "/arch/catalogo", "/arch/marketplace"],
+    obras:      ["/obras", "/insumos", "/composicoes"],
+    financeiro: ["/erp"],
+    settings:   ["/configuracoes"],
+    varejo:       ["/varejo/produtos", "/varejo/colecoes", "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade", "/varejo/combos"],
+    supermercado: ["/supermercado", "/supermercado/produtos", "/supermercado/pedidos", "/supermercado/campanhas", "/supermercado/config"],
+    beauty:       ["/beauty", "/beauty/agenda", "/beauty/servicos", "/beauty/profissionais"],
+    clinic:       ["/clinic", "/clinic/agenda", "/clinic/medicos"],
+    // sdr, content, campaigns, churn: sem tela própria no menu hoje —
+    // desligar não esconde nada (não são páginas, são só flags de catálogo)
+  };
+  const disabledHrefs = new Set(
+    (tenantNavModules ?? [])
+      .filter((m) => m.hasOverride && !m.isEnabled)
+      .flatMap((m) => MODULE_TO_HREFS[m.moduleKey] ?? [])
+  );
+
   const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";
   const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos" || effectiveVertical === "Floricultura" || effectiveVertical === "Adega e Bebidas" || effectiveVertical === "Produtos Naturais e Suplementos" || effectiveVertical === "Armarinho e Tecidos" || effectiveVertical === "Papelaria Criativa e Artesanato" || effectiveVertical === "Games e Informática" || effectiveVertical === "Pet Shop (Varejo)" || effectiveVertical === "Material de Construção — Varejo";
@@ -410,6 +452,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   function isVisible(item: typeof allNavItems[0]) {
     if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
+    if (disabledHrefs.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
     const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "inteligencia", "hub"];
     if (!knownSections.includes(item.section)) return false;

@@ -18,6 +18,12 @@ export const NAV_MODULE_KEYS = [
   "obras",
   "financeiro",
   "settings",
+  // Seções por vertical — já existiam como dados reais no banco (gravados
+  // antes dessas chaves estarem no catálogo), agora reconhecidas de verdade
+  "varejo",
+  "supermercado",
+  "beauty",
+  "clinic",
 ] as const;
 
 export type NavModuleKey = (typeof NAV_MODULE_KEYS)[number];
@@ -45,6 +51,10 @@ export const NAV_MODULE_CATALOG: NavModuleCatalogEntry[] = [
   { moduleKey: "obras",       moduleName: "Obras",           icon: "HardHat",         description: "Gestão de obras e projetos",        isDefault: false },
   { moduleKey: "financeiro",  moduleName: "Financeiro",      icon: "Wallet",          description: "Cobranças e financeiro",            isDefault: false },
   { moduleKey: "settings",    moduleName: "Configurações",   icon: "Settings",        description: "Configurações do sistema",          isDefault: true  },
+  { moduleKey: "varejo",       moduleName: "Varejo",         icon: "ShoppingBag",     description: "Produtos, coleções e compras (seção Varejo)", isDefault: true },
+  { moduleKey: "supermercado", moduleName: "Supermercado",   icon: "ShoppingCart",    description: "Produtos, pedidos e campanhas de mercado",     isDefault: true },
+  { moduleKey: "beauty",       moduleName: "Salão",          icon: "Scissors",        description: "Agenda, serviços e profissionais do salão",    isDefault: true },
+  { moduleKey: "clinic",       moduleName: "Clínica",        icon: "Stethoscope",     description: "Agenda e médicos da clínica",                   isDefault: true },
 ];
 
 export const tenantNavModulesTable = pgTable(

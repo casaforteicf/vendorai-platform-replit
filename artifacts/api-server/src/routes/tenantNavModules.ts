@@ -68,6 +68,11 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     isEnabled:   overrideMap.has(entry.moduleKey)
       ? overrideMap.get(entry.moduleKey)!
       : entry.isDefault,
+    // Distingue "desligado porque um admin decidiu isso pra esse tenant" de
+    // "desligado porque é o padrão do catálogo, nunca foi tocado" — quem
+    // consome isso pra decidir o que esconder no menu real (SidebarLayout)
+    // só deve agir sobre overrides explícitos, nunca sobre o default puro.
+    hasOverride: overrideMap.has(entry.moduleKey),
   }));
 
   res.json(modules);
