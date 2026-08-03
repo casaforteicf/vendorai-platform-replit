@@ -442,37 +442,46 @@ async function callAI(
   log: { info: (obj: object, msg: string) => void }
 ): Promise<{ content: string; provider: string; model: string }> {
   if (useAnthropic && anthropic) {
-    log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for site generation");
-    const system = messages.find((m) => m.role === "assistant")?.content;
-    const userMessages = messages.filter((m) => m.role === "user");
-    const stream = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 64000,
-      stream: true,
-      messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
-      ...(system ? { system } : {}),
-    });
-    const chunks: string[] = [];
-    let stopReason: string | null = null;
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        chunks.push(event.delta.text);
+    try {
+      log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for site generation");
+      const system = messages.find((m) => m.role === "assistant")?.content;
+      const userMessages = messages.filter((m) => m.role === "user");
+      const stream = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 64000,
+        stream: true,
+        messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
+        ...(system ? { system } : {}),
+      });
+      const chunks: string[] = [];
+      let stopReason: string | null = null;
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          chunks.push(event.delta.text);
+        }
+        if (event.type === "message_stop") {
+          stopReason = "end_turn";
+        }
+        if (event.type === "message_delta" && event.delta?.stop_reason) {
+          stopReason = event.delta.stop_reason;
+        }
       }
-      if (event.type === "message_stop") {
-        stopReason = "end_turn";
+      const content = chunks.join("");
+      if (stopReason === "max_tokens") {
+        const err = new Error(`Anthropic resposta truncada: max_tokens atingido (${content.length} chars gerados). Tente um site mais simples ou aumente o limite.`);
+        (err as any).truncated = true;
+        (err as any).generatedLength = content.length;
+        throw err;
       }
-      if (event.type === "message_delta" && event.delta?.stop_reason) {
-        stopReason = event.delta.stop_reason;
-      }
+      return { content, provider: "anthropic", model: "claude-sonnet-4-6" };
+    } catch (err) {
+      // Erro de billing/conta (ex: "credit balance too low") não deve derrubar
+      // a geração do site inteira — cai pro OpenAI em vez de propagar o erro.
+      // Erros de "resposta truncada" (max_tokens) continuam subindo, porque
+      // trocar de provedor não resolveria o problema real (site complexo demais).
+      if ((err as any)?.truncated) throw err;
+      log.info({ err, provider: "anthropic" }, "Anthropic falhou (provavelmente billing) — caindo pro OpenAI");
     }
-    const content = chunks.join("");
-    if (stopReason === "max_tokens") {
-      const err = new Error(`Anthropic resposta truncada: max_tokens atingido (${content.length} chars gerados). Tente um site mais simples ou aumente o limite.`);
-      (err as any).truncated = true;
-      (err as any).generatedLength = content.length;
-      throw err;
-    }
-    return { content, provider: "anthropic", model: "claude-sonnet-4-6" };
   }
 
   log.info({ provider: "openai", model: AI_MODEL }, "Calling OpenAI for site generation");
