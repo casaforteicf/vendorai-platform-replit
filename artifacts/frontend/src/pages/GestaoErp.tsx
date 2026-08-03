@@ -66,7 +66,7 @@ export default function GestaoErp() {
       <TabsContent value="operacao" className="mt-4"><div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">{[
         {title:"Vendas e preços",desc:"Pedidos, conversão, propostas e tabelas de preço.",href:"/propostas",icon:Receipt},
         {title:"Estoque",desc:"Produtos, localização, entradas, saídas e inventário.",href:"/erp?tab=estoque",icon:Boxes},
-        {title:"Compras",desc:"Fornecedores, ordens de compra e recebimento.",href:"/varejo/compras",icon:ShoppingCart},
+        {title:"Compras",desc:"Fornecedores, ordens de compra e recebimento.",href:"/solicitacao-compra",icon:ShoppingCart},
         {title:"Códigos",desc:"SKU e estrutura preparada para código de barras e QR Code.",href:"/erp?tab=estoque",icon:Barcode},
       ].map(({title,desc,href,icon:Icon})=><Link key={title} href={href}><Card className="h-full hover:border-primary cursor-pointer transition-colors"><CardContent className="p-5"><Icon className="h-7 w-7 text-primary"/><h3 className="font-semibold mt-4">{title}</h3><p className="text-sm text-muted-foreground mt-1">{desc}</p></CardContent></Card></Link>)}</div></TabsContent>
       <TabsContent value="controle" className="mt-4 space-y-4">

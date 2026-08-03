@@ -38,6 +38,7 @@ const Agenda             = lazy(() => import("@/pages/Agenda"));
 const MinhasEntregas      = lazy(() => import("@/pages/MinhasEntregas"));
 const Configuracoes      = lazy(() => import("@/pages/Configuracoes"));
 const KnowledgeBase      = lazy(() => import("@/pages/KnowledgeBase"));
+const SolicitacaoCompra  = lazy(() => import("@/pages/SolicitacaoCompra"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
 const Campanhas          = lazy(() => import("@/pages/Campanhas"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
@@ -542,6 +543,9 @@ function AppRoutes() {
         </Route>
         <Route path="/base-conhecimento">
           {() => <ProtectedRoute component={KnowledgeBase} />}
+        </Route>
+        <Route path="/solicitacao-compra">
+          {() => <ProtectedRoute component={SolicitacaoCompra} />}
         </Route>
         <Route path="/propostas/:id/print">
           {() => <ProtectedRoute component={PropostaPrint} />}
