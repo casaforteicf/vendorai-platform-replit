@@ -8,6 +8,7 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -58,6 +59,7 @@ import {
   Telescope,
   Loader2,
   Paperclip,
+  BookOpen,
   Upload,
   X,
   FileText,
@@ -115,6 +117,7 @@ type AgentCardData = {
   systemPromptBase: string;
   systemPromptCustom: string | null;
   parametros: Record<string, unknown> | null;
+  knowledgeBaseIds?: string[] | null;
 };
 
 type TomOption = { value: string; label: string };
@@ -294,6 +297,8 @@ function AgentConfigSheet({
   onSaved: (updated: Partial<AgentCardData>) => void;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
   const meta = AGENT_META[agent.agentKey];
   const Icon = meta?.icon ?? UserSearch;
 
@@ -351,6 +356,36 @@ function AgentConfigSheet({
       toast({ title: "Erro no upload", description: err instanceof Error ? err.message : "Falha ao enviar arquivo", variant: "destructive" });
     } finally {
       setUploading(false);
+    }
+  }
+
+  // ── Conhecimento (base compartilhada do tenant) state ──
+  interface KnowledgeEntry { id: string; titulo: string; categoria: string; tags: string[] }
+  const { data: knowledgeEntries = [], isLoading: knowledgeLoading } = useQuery<KnowledgeEntry[]>({
+    queryKey: ["knowledge-base", tenantId],
+    queryFn: () =>
+      fetch(`/api/tenants/${tenantId}/knowledge-base`, { headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` } })
+        .then((r) => r.json()),
+    enabled: !!tenantId,
+  });
+  const [selectedKnowledgeIds, setSelectedKnowledgeIds] = useState<string[]>(
+    Array.isArray(agent.knowledgeBaseIds) ? agent.knowledgeBaseIds : []
+  );
+  const [savingKnowledge, setSavingKnowledge] = useState(false);
+
+  async function toggleKnowledgeEntry(id: string) {
+    const next = selectedKnowledgeIds.includes(id)
+      ? selectedKnowledgeIds.filter((k) => k !== id)
+      : [...selectedKnowledgeIds, id];
+    setSelectedKnowledgeIds(next);
+    setSavingKnowledge(true);
+    try {
+      await patchAgent(agent.agentKey, { knowledgeBaseIds: next } as Partial<AgentCardData>);
+    } catch {
+      setSelectedKnowledgeIds(selectedKnowledgeIds); // reverte em caso de erro
+      toast({ title: "Erro ao salvar seleção", variant: "destructive" });
+    } finally {
+      setSavingKnowledge(false);
     }
   }
 
@@ -511,6 +546,15 @@ function AgentConfigSheet({
               {attachments.length > 0 && (
                 <span className="ml-1.5 rounded-full bg-primary/15 text-primary text-[10px] font-semibold px-1.5 py-0.5 leading-none">
                   {attachments.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="conhecimento">
+              <BookOpen className="h-3.5 w-3.5 mr-1.5" />
+              Conhecimento
+              {selectedKnowledgeIds.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-primary/15 text-primary text-[10px] font-semibold px-1.5 py-0.5 leading-none">
+                  {selectedKnowledgeIds.length}
                 </span>
               )}
             </TabsTrigger>
@@ -684,6 +728,53 @@ function AgentConfigSheet({
                     </button>
                   </li>
                 ))}
+              </ul>
+            )}
+          </TabsContent>
+
+          {/* ABA CONHECIMENTO — seleção da base compartilhada do tenant */}
+          <TabsContent value="conhecimento" className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 px-3 py-2.5 flex items-start gap-2">
+              <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700 dark:text-blue-400">
+                Marque quais itens da base de conhecimento do tenant este agente deve usar como contexto. Pra adicionar novos itens, vá em <span className="font-medium">Base de Conhecimento</span> no menu.
+              </p>
+            </div>
+            {knowledgeLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : knowledgeEntries.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
+                <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Nenhum item na base de conhecimento ainda.</p>
+                <p className="text-xs mt-1">Vá em "Base de Conhecimento" no menu pra adicionar catálogos e materiais.</p>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {knowledgeEntries.map((entry) => {
+                  const checked = selectedKnowledgeIds.includes(entry.id);
+                  return (
+                    <li key={entry.id}>
+                      <label className="flex items-start gap-3 rounded-lg border bg-card px-3 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors">
+                        <Checkbox
+                          checked={checked}
+                          disabled={savingKnowledge}
+                          onCheckedChange={() => toggleKnowledgeEntry(entry.id)}
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{entry.titulo}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                            <Badge variant="outline" className="text-xs">{entry.categoria}</Badge>
+                            {entry.tags.map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                          </div>
+                        </div>
+                      </label>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </TabsContent>

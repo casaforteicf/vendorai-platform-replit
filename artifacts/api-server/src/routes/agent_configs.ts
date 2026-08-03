@@ -142,6 +142,7 @@ router.get("/agent-configs", async (req, res) => {
       systemPromptBase:   d.systemPromptBase,
       systemPromptCustom: tc?.systemPromptCustom ?? null,
       parametros:         tc?.parametros ?? null,
+      knowledgeBaseIds:   tc?.knowledgeBaseIds ?? [],
     };
   });
 

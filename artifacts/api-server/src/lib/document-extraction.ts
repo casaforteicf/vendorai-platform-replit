@@ -129,7 +129,7 @@ export type DocumentExtractionResult = z.infer<
   typeof documentExtractionResultSchema
 >;
 
-async function extractTextFromBuffer(
+export async function extractTextFromBuffer(
   buffer: Buffer,
   mimeType: string,
   originalName: string,

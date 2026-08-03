@@ -37,6 +37,7 @@ const Conversations      = lazy(() => import("@/pages/Conversations"));
 const Agenda             = lazy(() => import("@/pages/Agenda"));
 const MinhasEntregas      = lazy(() => import("@/pages/MinhasEntregas"));
 const Configuracoes      = lazy(() => import("@/pages/Configuracoes"));
+const KnowledgeBase      = lazy(() => import("@/pages/KnowledgeBase"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
 const Campanhas          = lazy(() => import("@/pages/Campanhas"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
@@ -538,6 +539,9 @@ function AppRoutes() {
         </Route>
         <Route path="/catalogo">
           {() => <ProtectedRoute component={CatalogoProdutos} />}
+        </Route>
+        <Route path="/base-conhecimento">
+          {() => <ProtectedRoute component={KnowledgeBase} />}
         </Route>
         <Route path="/propostas/:id/print">
           {() => <ProtectedRoute component={PropostaPrint} />}
