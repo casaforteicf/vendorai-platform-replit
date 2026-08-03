@@ -133,6 +133,16 @@ export default function AdminTenants() {
     { value: "Supermercado",                    label: "Supermercado" },
     { value: "Salão de Beleza",                 label: "Salão de Beleza" },
     { value: "Clínica",                         label: "Clínica" },
+    { value: "Restaurante",                     label: "Restaurante" },
+    { value: "Imóveis",                         label: "Imóveis" },
+    { value: "Veículos",                        label: "Veículos" },
+    { value: "Autopeças",                       label: "Autopeças" },
+    { value: "Fretes & Logística",              label: "Fretes & Logística" },
+    { value: "Viagens & Hotelaria",             label: "Viagens & Hotelaria" },
+    { value: "Farmácia",                        label: "Farmácia" },
+    { value: "Piscinas & Spas",                 label: "Piscinas & Spas" },
+    { value: "Seguros Corporativos",            label: "Seguros Corporativos" },
+    { value: "Distribuidoras",                  label: "Distribuidoras" },
   ];
 
   const filtered = tenants.filter((t) => {
