@@ -26,3 +26,11 @@ createRoot(document.getElementById("root")!).render(
     {tenantSlugForSite ? <SubdomainSite slug={tenantSlugForSite} /> : <App />}
   </ErrorBoundary>,
 );
+
+// PWA — só registra pro CRM em si (não pro site público do lojista) e só em
+// produção, pra não gerar cache confuso durante o desenvolvimento local.
+if (import.meta.env.PROD && !tenantSlugForSite && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
