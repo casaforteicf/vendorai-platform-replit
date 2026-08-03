@@ -32,7 +32,7 @@ import { triggerSequenceOffer } from "./sequence-offer.js";
 import { runInsuranceRenewalForTenant } from "./insuranceRenewalEngine.js";
 import { runInsuranceWhitespaceForTenant } from "./insuranceWhitespaceEngine.js";
 import { runDistributorRevenueForTenant } from "./distributorRevenueEngine.js";
-import { runVerticalRevenueForTenant } from "./verticalRevenueEngine.js";
+import { runVerticalRevenueForTenant, normalize } from "./verticalRevenueEngine.js";
 import { isWithinBusinessHours, renderTemplate } from "../lib/proactiveMessageGuard.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
@@ -658,8 +658,17 @@ export async function runRevenueScoutForTenant(
 
   // Seguros Corporativos opera em modo de aprovação: cria/atualiza oportunidades,
   // mas não as envia automaticamente (status pendente_aprovacao).
-  await runInsuranceRenewalForTenant(tenantId, log);
-  await runInsuranceWhitespaceForTenant(tenantId, log);
+  // Só roda pra tenants dessa vertical — antes rodava pra TODO tenant da
+  // plataforma sem checar nada, criando as regras "Whitespace de seguros" e
+  // "Renovação de apólices" até pra loja de piscina, salão de beleza etc.
+  const [tenantVerticalRow] = await db
+    .select({ vertical: tenantsTable.vertical })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+  if (normalize(tenantVerticalRow?.vertical ?? "").includes("seguro")) {
+    await runInsuranceRenewalForTenant(tenantId, log);
+    await runInsuranceWhitespaceForTenant(tenantId, log);
+  }
 
   // Distribuidoras usam histórico de propostas aceitas e ciclos próprios por segmento.
   // As sugestões ficam em pendente_aprovacao e nunca são contatadas automaticamente.

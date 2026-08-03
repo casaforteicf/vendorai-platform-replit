@@ -35,7 +35,7 @@ const PROFILES: VerticalRevenueProfile[] = [
   { key:"pharmacy", label:"Farmácia e saúde", cycleDays:30, dormantDays:75, cycleType:"recompra", cycleLabel:"reposição recorrente", focus:"recorrência, cuidado e categoria", signals:["ciclo de reposição", "cliente inativo", "categoria complementar", "continuidade de cuidado"] },
 ];
 
-function normalize(value: string) {
+export function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
