@@ -31,6 +31,7 @@ const TIPO_OPTS = [
   { value: "upgrade",     label: "Upgrade" },
   { value: "aniversario", label: "Aniversário" },
   { value: "sequencia_produto", label: "Sequência de produto" },
+  { value: "reativacao_sazonal", label: "Reativação sazonal (por mês)" },
   { value: "whitespace_seguro",  label: "Whitespace de seguros (por perfil)" },
   { value: "renovacao_seguro",   label: "Renovação de apólices" },
 ];
@@ -41,6 +42,7 @@ const TIPO_COLORS: Record<string, string> = {
   upgrade:     "bg-emerald-50 text-emerald-700 border-emerald-200",
   aniversario: "bg-pink-50 text-pink-700 border-pink-200",
   sequencia_produto:  "bg-violet-50 text-violet-700 border-violet-200",
+  reativacao_sazonal: "bg-teal-50 text-teal-700 border-teal-200",
   whitespace_seguro:  "bg-cyan-50 text-cyan-700 border-cyan-200",
   renovacao_seguro:   "bg-orange-50 text-orange-700 border-orange-200",
 };
@@ -65,6 +67,8 @@ interface FormState {
   produtoOrigemId: string;
   produtoSugeridoId: string;
   diasApos: string;
+  mesGatilho: string;
+  diasSemCompraMinimo: string;
 }
 const EMPTY_FORM: FormState = {
   nome: "", tipo: "", canal: "whatsapp", mensagem: "",
@@ -72,6 +76,7 @@ const EMPTY_FORM: FormState = {
   servicoBase: "", servicoSugerido: "",
   servicoAtual: "", servicoPremium: "",
   produtoOrigemId: "", produtoSugeridoId: "", diasApos: "15",
+  mesGatilho: "10", diasSemCompraMinimo: "0",
 };
 
 export default function Regras() {
@@ -118,6 +123,12 @@ export default function Regras() {
         produtoOrigemId: form.produtoOrigemId,
         produtoSugeridoId: form.produtoSugeridoId,
         diasApos: Number(form.diasApos),
+      };
+    }
+    if (form.tipo === "reativacao_sazonal") {
+      condicoes = {
+        mesGatilho: Number(form.mesGatilho),
+        diasSemCompraMinimo: Number(form.diasSemCompraMinimo || 0),
       };
     }
     if (ENGINE_MANAGED_TIPOS.has(form.tipo)) condicoes = {};
@@ -375,6 +386,30 @@ export default function Regras() {
                     value={form.diasApos}
                     onChange={(e) => setForm((f) => ({ ...f, diasApos: e.target.value }))} />
                   <span className="text-sm text-muted-foreground">dias após a compra</span>
+                </div>
+              </div>
+            )}
+            {form.tipo === "reativacao_sazonal" && (
+              <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
+                <p className="text-xs text-muted-foreground">
+                  A partir do mês escolhido, dispara pra clientes que compraram em temporadas passadas mas ainda não compraram nesse ano. Uma oportunidade por cliente por ano.
+                </p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Mês de início da campanha</Label>
+                  <Select value={form.mesGatilho} onValueChange={(v) => setForm((f) => ({ ...f, mesGatilho: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m, i) => (
+                        <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Dias mínimos sem comprar (opcional)</Label>
+                  <Input type="number" min={0} value={form.diasSemCompraMinimo}
+                    onChange={(e) => setForm((f) => ({ ...f, diasSemCompraMinimo: e.target.value }))} />
                 </div>
               </div>
             )}

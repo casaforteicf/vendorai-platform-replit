@@ -47,6 +47,8 @@ interface Condicoes {
   produtoOrigemId?: string;
   produtoSugeridoId?: string;
   diasApos?: number;
+  mesGatilho?: number;
+  diasSemCompraMinimo?: number;
 }
 
 /**
@@ -78,6 +80,30 @@ async function dataUltimaCompraProduto(
   for (const p of propostas) {
     const itens = (p.itens ?? []) as PropostaItem[];
     if (!itens.some((i) => i.produtoId === produtoId)) continue;
+    const data = p.acceptedAt ?? p.updatedAt;
+    if (!melhorData || data > melhorData) melhorData = data;
+  }
+  return melhorData;
+}
+
+/**
+ * Retorna a data da compra (proposta aceita) mais recente do lead, de
+ * qualquer produto — usada pra reativação sazonal, que não olha um produto
+ * específico, só "esse cliente comprou alguma coisa na temporada passada?".
+ */
+async function dataUltimaCompraGeral(tenantId: string, leadId: string): Promise<Date | null> {
+  const propostas = await db
+    .select({ acceptedAt: propostasTable.acceptedAt, updatedAt: propostasTable.updatedAt })
+    .from(propostasTable)
+    .where(
+      and(
+        eq(propostasTable.tenantId, tenantId),
+        eq(propostasTable.leadId, leadId),
+        eq(propostasTable.status, "aceita"),
+      ),
+    );
+  let melhorData: Date | null = null;
+  for (const p of propostas) {
     const data = p.acceptedAt ?? p.updatedAt;
     if (!melhorData || data > melhorData) melhorData = data;
   }
@@ -123,6 +149,7 @@ function calcularScoreOportunidade(
     upgrade:           75,
     cross_sell:        65,
     aniversario:       60,
+    reativacao_sazonal:58,
     recompra:          55,
     reativacao:        45,
   };
@@ -350,6 +377,68 @@ export async function analisarCliente(
         .where(eq(scoutRegrasTable.id, regra.id));
 
       log.info({ tenantId, clienteId, regraId: regra.id, tipo: regra.tipo, score: scoreSeq }, "scout: oportunidade sequencia_produto inserida");
+      continue;
+    }
+
+    // "reativacao_sazonal" dispara uma vez por ano, a partir do mês
+    // configurado (ex: outubro, pra antecipar a campanha de verão) — pra
+    // clientes que compraram em temporadas passadas mas ainda não compraram
+    // nesta janela. Diferente de "reativacao" (baseada só em dias corridos),
+    // aqui o gatilho é o calendário, não a recência absoluta.
+    if (regra.tipo === "reativacao_sazonal") {
+      const mesGatilho = cond.mesGatilho;
+      if (!mesGatilho || mesGatilho < 1 || mesGatilho > 12) continue;
+
+      const now = new Date();
+      const anoAtual = now.getFullYear();
+      // Janela da campanha: do dia 1 do mês-gatilho até o fim do ano.
+      const inicioJanela = new Date(anoAtual, mesGatilho - 1, 1);
+      if (now < inicioJanela) continue;
+
+      const dataCompra = await dataUltimaCompraGeral(tenantId, clienteId);
+      if (!dataCompra) continue; // nunca comprou — não é reativação, é prospecção
+
+      // Já comprou dentro da janela desta temporada? Não precisa reativar.
+      if (dataCompra >= inicioJanela) continue;
+
+      const diasSemComprar = Math.floor((Date.now() - dataCompra.getTime()) / (1000 * 60 * 60 * 24));
+      if (diasSemComprar < (cond.diasSemCompraMinimo ?? 0)) continue;
+
+      // Dedup: só uma oportunidade por cliente+regra por ano-safra.
+      const [jaDisparouEsteAno] = await db
+        .select({ id: scoutOportunidadesTable.id })
+        .from(scoutOportunidadesTable)
+        .where(
+          and(
+            eq(scoutOportunidadesTable.tenantId, tenantId),
+            eq(scoutOportunidadesTable.clienteId, clienteId),
+            eq(scoutOportunidadesTable.regraId, regra.id),
+            gte(scoutOportunidadesTable.createdAt, inicioJanela),
+          ),
+        )
+        .limit(1);
+      if (jaDisparouEsteAno) continue;
+
+      const baseScoreSaz = calcularScoreOportunidade("reativacao_sazonal", diasSemComprar, 180);
+      const intentBoostSaz = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
+      const scoreSaz = Math.min(baseScoreSaz + intentBoostSaz, 100);
+
+      await db.insert(scoutOportunidadesTable).values({
+        tenantId,
+        clienteId,
+        regraId:           regra.id,
+        tipo:              regra.tipo,
+        descricao:         `Reativação sazonal: ${lead.nome ?? clienteId} comprou na temporada passada e ainda não voltou este ano`,
+        status:            "pendente",
+        scoreOportunidade: String(scoreSaz),
+      } as any);
+
+      await db
+        .update(scoutRegrasTable)
+        .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
+        .where(eq(scoutRegrasTable.id, regra.id));
+
+      log.info({ tenantId, clienteId, regraId: regra.id }, "scout: oportunidade reativacao_sazonal inserida");
       continue;
     }
 
