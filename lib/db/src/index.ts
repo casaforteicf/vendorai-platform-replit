@@ -22,7 +22,19 @@ if (!connectionString) {
   );
 }
 
-export const pool = new Pool({ connectionString });
+// Pool sem `max` explícito cai no default do node-postgres (10 conexões
+// simultâneas). O front dispara ~10-15 chamadas em paralelo por troca de
+// tela (visto nos logs do Railway) — acima de 10, as requisições extras
+// ficam na fila esperando uma conexão liberar, e é exatamente esse
+// enfileiramento que produzia respostas de 1-2,8s mesmo com o servidor
+// praticamente ocioso (CPU <1%) e o Postgres longe de saturado (18/60
+// conexões em uso). O banco tem folga de sobra pra um pool maior.
+export const pool = new Pool({
+  connectionString,
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+});
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
