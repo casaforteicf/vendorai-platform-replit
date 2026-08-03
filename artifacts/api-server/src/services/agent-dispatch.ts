@@ -1410,8 +1410,8 @@ export async function processAgentInternal(params: {
       });
     }
 
-    // 11. Post-response: extract and persist qualification answers after SDR, Closer, and Reactivation turns (async, non-blocking)
-    if (["sdr", "closer", "reactivation"].includes(resolvedAgentName)) {
+    // 11. Post-response: extract and persist qualification answers after Reception, SDR, Closer, and Reactivation turns (async, non-blocking)
+    if (["reception", "sdr", "closer", "reactivation"].includes(resolvedAgentName)) {
       extractAndSaveQualification(
         tenantId,
         leadId,
@@ -1793,6 +1793,10 @@ async function extractAndSaveQualification(
     if (extracted.dor_principal && !lead.dorPrincipal) update.dorPrincipal = String(extracted.dor_principal);
     if (extracted.orcamento && !lead.orcamento)        update.orcamento = String(extracted.orcamento);
     if (extracted.urgencia && !lead.urgencia)          update.urgencia = String(extracted.urgencia);
+    // Segmento: extraído pela IA mas antes só ficava perdido em discoveryData —
+    // agora também vai pra mercadoSegmento, que é o campo que o gerador de
+    // perguntas SPIN da tela de Briefing realmente lê
+    if (extracted.segmento && !lead.mercadoSegmento)   update.mercadoSegmento = String(extracted.segmento);
     if (extracted.numero_funcionarios && !lead.tamanhoEquipe) {
       update.tamanhoEquipe = String(extracted.numero_funcionarios);
     }
