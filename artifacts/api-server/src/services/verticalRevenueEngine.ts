@@ -52,7 +52,7 @@ export function resolveVerticalRevenueProfile(vertical?: string | null): Vertica
   if (/frete|logistica|transport/.test(value)) return PROFILES[8]!;
   if (/viagem|hotel|turismo|pousada/.test(value)) return PROFILES[9]!;
   if (/farmacia|saude/.test(value)) return PROFILES[10]!;
-  if (/varejo|roupa|eletron|decoracao|bebe|esporte|papelaria|joia|calcado|moveis|brinquedo|instrumento|perfumaria|floricultura|adega|pet shop|games|informatica/.test(value)) return PROFILES[1]!;
+  if (/varejo|roupa|eletron|decoracao|bebe|esporte|papelaria|joia|calcado|moveis|brinquedo|instrumento|perfumaria|floricultura|adega|pet shop|games|informatica|piscina|spa\b/.test(value)) return PROFILES[1]!;
   return null;
 }
 
