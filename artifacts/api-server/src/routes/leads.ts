@@ -806,21 +806,22 @@ router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
         .join("\n")
     : null;
 
-  const segmento = lead.mercadoSegmento?.trim() || lead.objetivo?.trim() || "negócio não identificado";
+  const segmento = lead.mercadoSegmento?.trim() || lead.objetivo?.trim() || null;
 
   const systemPrompt = `Você é um especialista em vendas consultivas com profundo conhecimento em diferentes setores de negócio.
 Sua tarefa é gerar perguntas de briefing SPIN altamente específicas para o tipo de negócio do CLIENTE — não perguntas genéricas sobre atendimento ou canais.
 
 REGRAS OBRIGATÓRIAS:
-1. As perguntas devem refletir o COTIDIANO OPERACIONAL do segmento do cliente (ex: para construtora → orçamentos, obras em andamento, relação com fornecedores, subcontratados; para clínica → agenda, retorno de pacientes, convênios; para restaurante → cardápio, delivery, sazonalidade, giro de estoque).
-2. NÃO pergunte sobre canais de atendimento (WhatsApp, Instagram etc.) — isso já está em outra parte do formulário.
-3. NÃO use linguagem corporativa genérica. As perguntas devem soar naturais numa conversa de WhatsApp ou ligação.
-4. Cada pergunta deve revelar algo diferente e complementar — evite variações da mesma dor.
-5. Use o contexto da conversa para tornar as perguntas ainda mais específicas ao momento atual do cliente.`;
+1. As perguntas devem refletir o COTIDIANO OPERACIONAL real do segmento do cliente informado abaixo — nunca invente ou assuma um segmento diferente do que foi passado.
+2. Se o segmento do cliente vier como "não identificado" (campo vazio no CRM), NÃO assuma nenhum setor específico. Em vez disso, gere perguntas de DESCOBERTA que ajudem o vendedor a entender rapidamente que tipo de negócio é esse — como funciona a operação, quem são os clientes dele, qual o principal processo do dia a dia — pra só então, numa próxima rodada, aprofundar no segmento certo.
+3. NÃO pergunte sobre canais de atendimento (WhatsApp, Instagram etc.) — isso já está em outra parte do formulário.
+4. NÃO use linguagem corporativa genérica. As perguntas devem soar naturais numa conversa de WhatsApp ou ligação.
+5. Cada pergunta deve revelar algo diferente e complementar — evite variações da mesma dor.
+6. Use o contexto da conversa para tornar as perguntas ainda mais específicas ao momento atual do cliente.`;
 
   const userPrompt = `## Cliente
 Empresa/Nome: ${lead.empresa ?? lead.nome ?? "não informado"}
-Segmento: ${segmento}
+Segmento: ${segmento ?? "não identificado — peça pro vendedor descobrir isso na conversa, não assuma um setor"}
 Objetivo registrado: ${lead.objetivo ?? "não informado"}
 
 ## Empresa vendedora
@@ -833,8 +834,9 @@ ${profile?.diferenciais ? `Diferenciais: ${profile.diferenciais}` : ""}
 ${conversaTexto ? `## Trechos recentes da conversa com o cliente\n${conversaTexto}\n` : ""}
 
 ## Tarefa
-Gere exatamente 3 perguntas para cada bloco SPIN, específicas para um negócio do tipo "${segmento}".
-As perguntas devem explorar a realidade operacional, as dores e os processos internos típicos desse segmento.
+${segmento
+  ? `Gere exatamente 3 perguntas para cada bloco SPIN, específicas para um negócio do tipo "${segmento}". As perguntas devem explorar a realidade operacional, as dores e os processos internos típicos desse segmento.`
+  : `O segmento desse cliente ainda não foi identificado no CRM. Gere exatamente 3 perguntas para cada bloco SPIN focadas em DESCOBRIR o tipo de negócio e sua operação — nada específico de um setor que você não tem certeza que se aplica.`}
 
 Retorne APENAS JSON válido neste formato:
 {
