@@ -32,6 +32,7 @@ const TIPO_OPTS = [
   { value: "aniversario", label: "Aniversário" },
   { value: "sequencia_produto", label: "Sequência de produto" },
   { value: "reativacao_sazonal", label: "Reativação sazonal (por mês)" },
+  { value: "orcamento_parado", label: "Orçamento parado" },
   { value: "whitespace_seguro",  label: "Whitespace de seguros (por perfil)" },
   { value: "renovacao_seguro",   label: "Renovação de apólices" },
 ];
@@ -43,6 +44,7 @@ const TIPO_COLORS: Record<string, string> = {
   aniversario: "bg-pink-50 text-pink-700 border-pink-200",
   sequencia_produto:  "bg-violet-50 text-violet-700 border-violet-200",
   reativacao_sazonal: "bg-teal-50 text-teal-700 border-teal-200",
+  orcamento_parado:   "bg-rose-50 text-rose-700 border-rose-200",
   whitespace_seguro:  "bg-cyan-50 text-cyan-700 border-cyan-200",
   renovacao_seguro:   "bg-orange-50 text-orange-700 border-orange-200",
 };
@@ -69,6 +71,8 @@ interface FormState {
   diasApos: string;
   mesGatilho: string;
   diasSemCompraMinimo: string;
+  diasParado: string;
+  valorMinimo: string;
 }
 const EMPTY_FORM: FormState = {
   nome: "", tipo: "", canal: "whatsapp", mensagem: "",
@@ -77,6 +81,7 @@ const EMPTY_FORM: FormState = {
   servicoAtual: "", servicoPremium: "",
   produtoOrigemId: "", produtoSugeridoId: "", diasApos: "15",
   mesGatilho: "10", diasSemCompraMinimo: "0",
+  diasParado: "7", valorMinimo: "",
 };
 
 export default function Regras() {
@@ -129,6 +134,12 @@ export default function Regras() {
       condicoes = {
         mesGatilho: Number(form.mesGatilho),
         diasSemCompraMinimo: Number(form.diasSemCompraMinimo || 0),
+      };
+    }
+    if (form.tipo === "orcamento_parado") {
+      condicoes = {
+        diasParado: Number(form.diasParado || 7),
+        ...(form.valorMinimo ? { valorMinimo: Number(form.valorMinimo) } : {}),
       };
     }
     if (ENGINE_MANAGED_TIPOS.has(form.tipo)) condicoes = {};
@@ -410,6 +421,24 @@ export default function Regras() {
                   <Label className="text-xs">Dias mínimos sem comprar (opcional)</Label>
                   <Input type="number" min={0} value={form.diasSemCompraMinimo}
                     onChange={(e) => setForm((f) => ({ ...f, diasSemCompraMinimo: e.target.value }))} />
+                </div>
+              </div>
+            )}
+            {form.tipo === "orcamento_parado" && (
+              <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
+                <p className="text-xs text-muted-foreground">
+                  Dispara pra orçamentos enviados/pendentes que não avançaram (não viraram venda nem foram recusados) há X dias.
+                </p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Dias parado</Label>
+                  <Input type="number" min={1} value={form.diasParado}
+                    onChange={(e) => setForm((f) => ({ ...f, diasParado: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Valor mínimo do orçamento (opcional)</Label>
+                  <Input type="number" step="0.01" placeholder="R$" value={form.valorMinimo}
+                    onChange={(e) => setForm((f) => ({ ...f, valorMinimo: e.target.value }))} />
                 </div>
               </div>
             )}

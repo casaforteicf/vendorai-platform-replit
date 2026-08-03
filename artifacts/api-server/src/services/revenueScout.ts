@@ -8,7 +8,7 @@
  *
  * runRevenueScoutJob: orquestrador diário chamado pelo scheduler.
  */
-import { and, eq, desc, gte, ne, isNotNull, or, lte, isNull } from "drizzle-orm";
+import { and, eq, desc, gte, ne, isNotNull, or, lte, isNull, inArray } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -49,6 +49,8 @@ interface Condicoes {
   diasApos?: number;
   mesGatilho?: number;
   diasSemCompraMinimo?: number;
+  diasParado?: number;
+  valorMinimo?: number;
 }
 
 /**
@@ -147,6 +149,7 @@ function calcularScoreOportunidade(
   const bases: Record<string, number> = {
     sequencia_produto: 80,
     upgrade:           75,
+    orcamento_parado:  70,
     cross_sell:        65,
     aniversario:       60,
     reativacao_sazonal:58,
@@ -439,6 +442,83 @@ export async function analisarCliente(
         .where(eq(scoutRegrasTable.id, regra.id));
 
       log.info({ tenantId, clienteId, regraId: regra.id }, "scout: oportunidade reativacao_sazonal inserida");
+      continue;
+    }
+
+    // "orcamento_parado" — orçamento enviado/pendente que não avançou (não
+    // virou venda nem foi recusado) há X dias. Universal, qualquer vertical
+    // que use o módulo de Propostas — não precisa de catálogo nem histórico
+    // de compra, só um orçamento parado no funil.
+    if (regra.tipo === "orcamento_parado") {
+      const diasParado = cond.diasParado ?? 7;
+      const cutoffParado = new Date(Date.now() - diasParado * 24 * 60 * 60 * 1000);
+
+      const parados = await db
+        .select({
+          id: propostasTable.id,
+          titulo: propostasTable.titulo,
+          valorTotal: propostasTable.valorTotal,
+          updatedAt: propostasTable.updatedAt,
+        })
+        .from(propostasTable)
+        .where(
+          and(
+            eq(propostasTable.tenantId, tenantId),
+            eq(propostasTable.leadId, clienteId),
+            inArray(propostasTable.status, ["enviada", "pendente"]),
+            lte(propostasTable.updatedAt, cutoffParado),
+          ),
+        )
+        .orderBy(desc(propostasTable.valorTotal));
+
+      for (const proposta of parados) {
+        const valor = Number(proposta.valorTotal ?? 0);
+        if (cond.valorMinimo && valor < cond.valorMinimo) continue;
+
+        // Dedup por orçamento específico — cada proposta parada só vira
+        // 1 oportunidade ativa por vez (nova checagem depois que ela
+        // deixar de estar pendente/ignorada libera de novo).
+        const [existentePendente] = await db
+          .select({ id: scoutOportunidadesTable.id })
+          .from(scoutOportunidadesTable)
+          .where(
+            and(
+              eq(scoutOportunidadesTable.tenantId, tenantId),
+              eq(scoutOportunidadesTable.clienteId, clienteId),
+              eq(scoutOportunidadesTable.regraId, regra.id),
+              eq(scoutOportunidadesTable.propostaId, proposta.id),
+              eq(scoutOportunidadesTable.status, "pendente"),
+            ),
+          )
+          .limit(1);
+        if (existentePendente) continue;
+
+        const diasParadoReal = Math.floor((Date.now() - proposta.updatedAt.getTime()) / (1000 * 60 * 60 * 24));
+        const baseScoreOrc = calcularScoreOportunidade("orcamento_parado", diasParadoReal, diasParado);
+        const intentBoostOrc = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
+        // Orçamento de valor alto pesa mais na priorização — sobe até +15
+        const valorBoost = valor > 5000 ? 15 : valor > 1000 ? 8 : 0;
+        const scoreOrc = Math.min(baseScoreOrc + intentBoostOrc + valorBoost, 100);
+
+        await db.insert(scoutOportunidadesTable).values({
+          tenantId,
+          clienteId,
+          regraId:           regra.id,
+          propostaId:        proposta.id,
+          tipo:              regra.tipo,
+          descricao:         `Orçamento "${proposta.titulo}" (R$ ${valor.toFixed(2)}) parado há ${diasParadoReal} dias — ${lead.nome ?? clienteId}`,
+          status:            "pendente",
+          valorEstimado:     String(valor),
+          scoreOportunidade: String(scoreOrc),
+        } as any);
+
+        await db
+          .update(scoutRegrasTable)
+          .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
+          .where(eq(scoutRegrasTable.id, regra.id));
+
+        log.info({ tenantId, clienteId, regraId: regra.id, propostaId: proposta.id }, "scout: oportunidade orcamento_parado inserida");
+      }
       continue;
     }
 

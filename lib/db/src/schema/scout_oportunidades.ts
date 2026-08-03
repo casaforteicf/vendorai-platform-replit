@@ -60,6 +60,9 @@ export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
   // Preenchido automaticamente quando um deal do mesmo lead vira "ganho" dentro
   // da janela de correlação (ver reconcileScoutOnDealWon) — fecha o placar do
   // Scout sem depender de conversão manual via /converter.
+  // Vincula a oportunidade a um orçamento específico — usado por
+  // "orcamento_parado", pra saber exatamente qual proposta está travada.
+  propostaId:      text("proposta_id"),
   dealId:          text("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
   // Contador de sinais de bot detectados em respostas do lead nesta oportunidade.
   // Quando atingir o limite (default: 3), muda o status para "pendente_revisao_bot".
