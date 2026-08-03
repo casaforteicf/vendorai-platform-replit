@@ -14,6 +14,7 @@ export const AGENT_TYPES = [
   "relacionamento",
   "financeiro",
   "cobranca",
+  "reception",
 ] as const;
 
 export type AgentType = (typeof AGENT_TYPES)[number];
@@ -36,6 +37,7 @@ export const agentsMapSchema = z.object({
   relacionamento: agentEntrySchema.optional(),
   financeiro: agentEntrySchema.optional(),
   cobranca: agentEntrySchema.optional(),
+  reception: agentEntrySchema.optional(),
 });
 
 export type AgentsMap = z.infer<typeof agentsMapSchema>;

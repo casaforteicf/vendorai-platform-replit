@@ -51,7 +51,7 @@ export type LimitOk = {
 type LimitExceeded = { ok: false; httpStatus: 429; body: object };
 export type LimitResult = LimitOk | LimitExceeded;
 
-export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca";
+export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca" | "reception";
 export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null) => string;
 
 /** A single SPIN qualification question customized for a tenant's niche. */
@@ -88,6 +88,10 @@ const AGENT_FEATURE_MAP: Record<AgentName, AiFeature> = {
   scheduler: "agent_scheduler",
   service: "agent_service",
   onboarding: "agent_onboarding",
+  // Recepção usa o mesmo bucket de billing/módulo do SDR (mesmo critério já
+  // adotado em plan-guard.ts) — é o agente de primeiro contato, só que sem
+  // qualificar/empurrar venda.
+  reception: "agent_sdr",
   relacionamento: "agent_relacionamento",
   financeiro: "agent_financeiro",
   cobranca: "agent_cobranca",
@@ -115,6 +119,7 @@ export const AGENT_NAME_TO_KEY: Partial<Record<AgentName, string>> = {
   relacionamento: "pos_venda",
   financeiro:   "financeiro",
   cobranca:     "cobranca",
+  reception:    "recepcao",
 };
 
 const TOM_INSTRUCTIONS: Record<string, string> = {
@@ -1354,6 +1359,29 @@ export function buildCobrancaPrompt(customPrompt: string | undefined, ctx: Agent
   return joinWithCalibration(parts);
 }
 
+export function buildReceptionPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
+  const { lead, ci } = ctx;
+  const parts: string[] = [];
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else {
+    parts.push(
+      "Você é o agente de recepção — o primeiro contato humano de verdade que a empresa tem com quem chega pelo site ou WhatsApp.\n" +
+      "Missão: dar boas-vindas de forma calorosa, entender rapidamente o que a pessoa precisa e encaminhar para o próximo passo certo (nunca empurrar venda de cara).\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom acolhedor e natural, como uma recepção bem treinada — nunca robótico\n" +
+      "- Máximo 2 parágrafos curtos na primeira resposta\n" +
+      "- Faça no máximo 1 pergunta por vez pra entender a necessidade\n" +
+      "- Não tente fechar venda nem qualificar a fundo — isso é trabalho de outro agente depois; seu papel é acolher e direcionar\n" +
+      "- Se a pessoa já disser claramente o que quer (ex: preço, agendar demo, suporte técnico), reconheça isso e diga que vai encaminhar"
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  }
+  parts.push(buildLeadSection(lead));
+  if (ci?.goalAnalysis) parts.push(`## CONTEXTO\nObjetivo aparente do contato: ${ci.goalAnalysis}`);
+  return joinWithCalibration(parts);
+}
+
 export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
@@ -1508,4 +1536,5 @@ export const PROMPT_BUILDERS: Record<AgentName, PromptBuilder> = {
   relacionamento: buildRelacionamentoPrompt,
   financeiro:  buildFinanceiroPrompt,
   cobranca:    buildCobrancaPrompt,
+  reception:   buildReceptionPrompt,
 };

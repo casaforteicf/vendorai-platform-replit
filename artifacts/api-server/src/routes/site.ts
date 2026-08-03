@@ -7,11 +7,14 @@ import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
 import { storePhone, findLeadByDedup } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
-import { sendSdrFirstApproach } from "../services/sdrService.js";
+import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 
 const router: IRouter = Router();
 
-const INSTITUTIONAL_TENANT_ID = "vendorai-institucional";
+// Tenant real do Vendor.ai institucional (slug "vendorai") — não é o literal
+// "vendorai-institucional" (esse id não existe na tabela tenants; usá-lo
+// quebrava a FK e fazia todo lead do site cair silenciosamente).
+const INSTITUTIONAL_TENANT_ID = "1d4ea673-58d0-413a-a554-c9aca72a3121";
 
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
@@ -149,23 +152,25 @@ router.post("/site/contato", async (req, res) => {
           "site/contato: lead e deal criados no pipeline institucional",
         );
 
-        // 2d — Disparar SDR (primeira abordagem via WhatsApp — ignora se não configurado)
+        // 2d — Disparar Recepção (primeira resposta via WhatsApp — ignora se não configurado)
         if (telefoneSanitizado) {
-          sendSdrFirstApproach(leadId, createdDeal.id, INSTITUTIONAL_TENANT_ID, logger).then(
-            (result) => {
-              logger.info(
-                { leadId, result },
-                "site/contato: SDR primeira abordagem executada",
-              );
-            },
-          ).catch((err) => {
-            logger.warn(
-              { err, leadId },
-              "site/contato: SDR primeira abordagem falhou (não bloqueia fluxo)",
-            );
+          // dispatchAgentBackground é fire-and-forget (void) — já loga erro
+          // internamente via o `log` passado, não retorna Promise pra encadear.
+          dispatchAgentBackground({
+            tenantId: INSTITUTIONAL_TENANT_ID,
+            leadId,
+            mensagem: `[NOVO CONTATO PELO SITE] ${nome} preencheu o formulário "Fale com Especialistas".` +
+              (empresa ? ` Empresa: ${empresa}.` : "") +
+              ` Mensagem: "${mensagem}"` +
+              (origem ? ` (origem: ${origem})` : "") +
+              ` Dê boas-vindas e entenda o que precisa — a mensagem foi enviada pelo site, ainda não é uma conversa em andamento.`,
+            log: logger,
+            forcedAgent: "reception",
+            scenario: { origem: "site_contato", origemDetalhe: origem ?? null },
           });
+          logger.info({ leadId }, "site/contato: recepção disparada em background");
         } else {
-          logger.info({ leadId }, "site/contato: sem telefone — SDR via WhatsApp não disparado");
+          logger.info({ leadId }, "site/contato: sem telefone — recepção via WhatsApp não disparada");
         }
       }
     } catch (err) {

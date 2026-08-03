@@ -278,7 +278,7 @@ function hasOverdueCharge(deals: Deal[]): boolean {
  *     (a) deal in qualificado/proposta/negociacao/ganho (active negotiation or won), OR
  *     (b) agent replied within the last 4h (mid-conversation gap ≠ churn), OR
  *     (c) lead sent a message within the past 24h (not truly inactive).
- *  2. lead.status === "novo" → sdr
+ *  2. lead.status === "novo" → reception (front-desk: welcomes and routes, doesn't qualify/pitch)
  *  3. lead.status === "cliente" → refinamento: cobrança vencida > dúvida financeira (LLM) > service
  *  4. open deal etapa  → closer when deal is advancing
  *  5. days since contact ≥ 3 → followup
@@ -355,7 +355,7 @@ export async function determineAgent(
   }
 
   // 2. Lead status → direct mapping
-  if (lead.status === "novo") return "sdr";
+  if (lead.status === "novo") return "reception";
   if (lead.status === "cliente") {
     // 3a. Fatura vencida/em atraso vinculada a algum deal do cliente → cobrança
     if (hasOverdueCharge(deals)) {
