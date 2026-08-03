@@ -24,7 +24,7 @@ function fmt(v: number) {
 }
 
 const TIPO_OPTS = [
-  { value: "",            label: "Todos os tipos" },
+  { value: "todos",       label: "Todos os tipos" },
   { value: "recompra",    label: "Recompra" },
   { value: "cross_sell",  label: "Cross-sell" },
   { value: "reativacao",  label: "Reativação" },
@@ -32,7 +32,7 @@ const TIPO_OPTS = [
   { value: "aniversario", label: "Aniversário" },
 ];
 const STATUS_OPTS = [
-  { value: "",           label: "Todos os status" },
+  { value: "todos",      label: "Todos os status" },
   { value: "pendente",   label: "Pendente" },
   { value: "enviado",    label: "Enviado" },
   { value: "respondeu",  label: "Respondeu" },
@@ -74,12 +74,12 @@ export default function Oportunidades() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [tipoFiltro, setTipoFiltro]     = useState("");
-  const [statusFiltro, setStatusFiltro] = useState("");
+  const [tipoFiltro, setTipoFiltro]     = useState("todos");
+  const [statusFiltro, setStatusFiltro] = useState("todos");
 
   const qs = new URLSearchParams();
-  if (tipoFiltro)   qs.set("tipo",   tipoFiltro);
-  if (statusFiltro) qs.set("status", statusFiltro);
+  if (tipoFiltro !== "todos")   qs.set("tipo",   tipoFiltro);
+  if (statusFiltro !== "todos") qs.set("status", statusFiltro);
 
   const QK = ["scout-oportunidades", tenantId, tipoFiltro, statusFiltro];
 
@@ -131,7 +131,7 @@ export default function Oportunidades() {
           </SelectTrigger>
           <SelectContent>
             {TIPO_OPTS.map((o) => (
-              <SelectItem key={o.value || "__all"} value={o.value}>{o.label}</SelectItem>
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -141,13 +141,13 @@ export default function Oportunidades() {
           </SelectTrigger>
           <SelectContent>
             {STATUS_OPTS.map((o) => (
-              <SelectItem key={o.value || "__all"} value={o.value}>{o.label}</SelectItem>
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {(tipoFiltro || statusFiltro) && (
+        {(tipoFiltro !== "todos" || statusFiltro !== "todos") && (
           <Button variant="ghost" size="sm" className="h-8 text-xs"
-            onClick={() => { setTipoFiltro(""); setStatusFiltro(""); }}>
+            onClick={() => { setTipoFiltro("todos"); setStatusFiltro("todos"); }}>
             Limpar
           </Button>
         )}
@@ -183,7 +183,7 @@ export default function Oportunidades() {
                 <td colSpan={7} className="px-4 py-16 text-center text-muted-foreground">
                   <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">Nenhuma oportunidade encontrada.</p>
-                  {(tipoFiltro || statusFiltro) && (
+                  {(tipoFiltro !== "todos" || statusFiltro !== "todos") && (
                     <p className="text-xs mt-1">Tente remover os filtros.</p>
                   )}
                 </td>
