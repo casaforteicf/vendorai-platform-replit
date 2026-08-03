@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "VendorAI Mobile",
-    "slug": "mobile",
+    "name": "Vendor.ai",
+    "slug": "vendor-ai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "vendorai",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -14,21 +14,29 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": true,
+      "bundleIdentifier": "com.appvendorai.vendorai",
+      "infoPlist": {
+        "NSCameraUsageDescription": "A câmera é usada para cadastrar produtos, documentos e comprovantes.",
+        "NSPhotoLibraryUsageDescription": "Suas fotos podem ser anexadas a produtos, clientes e documentos.",
+        "NSLocationWhenInUseUsageDescription": "A localização ajuda no atendimento, nas visitas e na logística da operação."
+      }
     },
-    "android": {},
+    "android": {
+      "package": "com.appvendorai.vendorai",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
