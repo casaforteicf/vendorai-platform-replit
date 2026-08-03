@@ -30,6 +30,9 @@ const TIPO_OPTS = [
   { value: "reativacao",  label: "Reativação" },
   { value: "upgrade",     label: "Upgrade" },
   { value: "aniversario", label: "Aniversário" },
+  { value: "sequencia_produto", label: "Sequência de produto" },
+  { value: "whitespace_seguro",  label: "Whitespace de seguros (por perfil)" },
+  { value: "renovacao_seguro",   label: "Renovação de apólices" },
 ];
 const TIPO_COLORS: Record<string, string> = {
   recompra:    "bg-blue-50 text-blue-700 border-blue-200",
@@ -37,7 +40,14 @@ const TIPO_COLORS: Record<string, string> = {
   reativacao:  "bg-amber-50 text-amber-700 border-amber-200",
   upgrade:     "bg-emerald-50 text-emerald-700 border-emerald-200",
   aniversario: "bg-pink-50 text-pink-700 border-pink-200",
+  sequencia_produto:  "bg-violet-50 text-violet-700 border-violet-200",
+  whitespace_seguro:  "bg-cyan-50 text-cyan-700 border-cyan-200",
+  renovacao_seguro:   "bg-orange-50 text-orange-700 border-orange-200",
 };
+// Tipos cuja lógica de disparo é 100% controlada pelo motor no backend — o
+// tenant só liga/desliga; não recebe mensagem/canal customizado próprio, pois
+// o motor já gera a notificação para cada apólice/gap específico.
+const ENGINE_MANAGED_TIPOS = new Set(["whitespace_seguro", "renovacao_seguro"]);
 const CHIPS = ["{{nome}}", "{{servico}}", "{{desconto}}"];
 
 interface FormState {
@@ -52,12 +62,16 @@ interface FormState {
   servicoSugerido: string;
   servicoAtual: string;
   servicoPremium: string;
+  produtoOrigemId: string;
+  produtoSugeridoId: string;
+  diasApos: string;
 }
 const EMPTY_FORM: FormState = {
   nome: "", tipo: "", canal: "whatsapp", mensagem: "",
   diasSemRetornar: "30", diasSemVisita: "60",
   servicoBase: "", servicoSugerido: "",
   servicoAtual: "", servicoPremium: "",
+  produtoOrigemId: "", produtoSugeridoId: "", diasApos: "15",
 };
 
 export default function Regras() {
@@ -80,18 +94,41 @@ export default function Regras() {
     enabled: !!tenantId,
   });
 
+  // Só busca o catálogo quando o form de "Sequência de produto" está aberto
+  const { data: produtos = [] } = useQuery<any[]>({
+    queryKey: ["produtos-catalogo", tenantId],
+    queryFn: () =>
+      fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : [])),
+    enabled: !!tenantId && open && form.tipo === "sequencia_produto",
+  });
+  const produtosArr = Array.isArray(produtos) ? produtos : [];
+
   function buildPayload() {
     let condicoes: Record<string, unknown> = {};
-    if (form.tipo === "recompra")   condicoes = { diasSemRetornar: Number(form.diasSemRetornar) };
-    if (form.tipo === "reativacao") condicoes = { diasSemVisita:   Number(form.diasSemVisita) };
-    if (form.tipo === "cross_sell") condicoes = { servicoBase: form.servicoBase, servicoSugerido: form.servicoSugerido };
-    if (form.tipo === "upgrade")    condicoes = { servicoAtual: form.servicoAtual, servicoPremium: form.servicoPremium };
+    // Nomes abaixo têm que bater exatamente com o que o motor lê em
+    // revenueScout.ts — não são só rótulos de exibição.
+    if (form.tipo === "recompra")   condicoes = { diasSemCompra: Number(form.diasSemRetornar) };
+    if (form.tipo === "reativacao") condicoes = { diasSemVisita: Number(form.diasSemVisita) };
+    if (form.tipo === "cross_sell") condicoes = { servicoId: form.servicoBase, servicoSugeridoId: form.servicoSugerido };
+    if (form.tipo === "upgrade")    condicoes = { servicoAtualId: form.servicoAtual, servicoPremiumId: form.servicoPremium };
     if (form.tipo === "aniversario") condicoes = {};
+    if (form.tipo === "sequencia_produto") {
+      condicoes = {
+        produtoOrigemId: form.produtoOrigemId,
+        produtoSugeridoId: form.produtoSugeridoId,
+        diasApos: Number(form.diasApos),
+      };
+    }
+    if (ENGINE_MANAGED_TIPOS.has(form.tipo)) condicoes = {};
+    const acao = ENGINE_MANAGED_TIPOS.has(form.tipo)
+      ? { requiresApproval: true, autoSend: false }
+      : { mensagem: form.mensagem, canal: form.canal };
     return {
       nome: form.nome,
       tipo: form.tipo,
       condicoes,
-      acao: { mensagem: form.mensagem, canal: form.canal },
+      acao,
     };
   }
 
@@ -132,8 +169,12 @@ export default function Regras() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.nome || !form.tipo || !form.mensagem) {
-      toast({ title: "Nome, tipo e mensagem são obrigatórios", variant: "destructive" });
+    if (!form.nome || !form.tipo) {
+      toast({ title: "Nome e tipo são obrigatórios", variant: "destructive" });
+      return;
+    }
+    if (!ENGINE_MANAGED_TIPOS.has(form.tipo) && !form.mensagem) {
+      toast({ title: "Mensagem é obrigatória", variant: "destructive" });
       return;
     }
     create.mutate(buildPayload());
@@ -263,14 +304,17 @@ export default function Regras() {
             {form.tipo === "cross_sell" && (
               <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
+                <p className="text-xs text-muted-foreground">
+                  IDs de serviço (veja em Catálogo → Serviços) — cross-sell só existe hoje pra Beleza/Clínica.
+                </p>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Serviço base</Label>
-                  <Input placeholder="Ex: Corte de cabelo" value={form.servicoBase}
+                  <Label className="text-xs">ID do serviço base</Label>
+                  <Input placeholder="ID do serviço já usado pelo cliente" value={form.servicoBase}
                     onChange={(e) => setForm((f) => ({ ...f, servicoBase: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Serviço sugerido</Label>
-                  <Input placeholder="Ex: Coloração" value={form.servicoSugerido}
+                  <Label className="text-xs">ID do serviço sugerido</Label>
+                  <Input placeholder="ID do serviço a oferecer" value={form.servicoSugerido}
                     onChange={(e) => setForm((f) => ({ ...f, servicoSugerido: e.target.value }))} />
                 </div>
               </div>
@@ -278,14 +322,17 @@ export default function Regras() {
             {form.tipo === "upgrade" && (
               <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
+                <p className="text-xs text-muted-foreground">
+                  IDs de serviço (veja em Catálogo → Serviços) — upgrade só existe hoje pra Beleza/Clínica.
+                </p>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Serviço atual</Label>
-                  <Input placeholder="Ex: Plano Básico" value={form.servicoAtual}
+                  <Label className="text-xs">ID do serviço atual</Label>
+                  <Input placeholder="ID do serviço/especialidade atual" value={form.servicoAtual}
                     onChange={(e) => setForm((f) => ({ ...f, servicoAtual: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Serviço premium</Label>
-                  <Input placeholder="Ex: Plano Premium" value={form.servicoPremium}
+                  <Label className="text-xs">ID do serviço premium</Label>
+                  <Input placeholder="ID do serviço/especialidade a oferecer" value={form.servicoPremium}
                     onChange={(e) => setForm((f) => ({ ...f, servicoPremium: e.target.value }))} />
                 </div>
               </div>
@@ -295,39 +342,93 @@ export default function Regras() {
                 Dispara automaticamente no aniversário do cliente. Nenhuma condição adicional necessária.
               </div>
             )}
-
-            {/* Mensagem */}
-            <div className="space-y-1.5">
-              <Label>Mensagem <span className="text-destructive">*</span></Label>
-              <div className="flex flex-wrap gap-1 mb-1">
-                {CHIPS.map((chip) => (
-                  <button key={chip} type="button"
-                    onClick={() => insertChip(chip)}
-                    className="text-xs px-2 py-0.5 rounded border bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-mono">
-                    {chip}
-                  </button>
-                ))}
+            {form.tipo === "sequencia_produto" && (
+              <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
+                <p className="text-xs text-muted-foreground">
+                  Quando o cliente compra o produto de origem, sugere o produto seguinte após X dias.
+                </p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Produto de origem</Label>
+                  <Select value={form.produtoOrigemId} onValueChange={(v) => setForm((f) => ({ ...f, produtoOrigemId: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o produto" /></SelectTrigger>
+                    <SelectContent>
+                      {produtosArr.map((p: any) => (
+                        <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Produto sugerido</Label>
+                  <Select value={form.produtoSugeridoId} onValueChange={(v) => setForm((f) => ({ ...f, produtoSugeridoId: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o produto" /></SelectTrigger>
+                    <SelectContent>
+                      {produtosArr.map((p: any) => (
+                        <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input type="number" min={1} max={365} className="w-24"
+                    value={form.diasApos}
+                    onChange={(e) => setForm((f) => ({ ...f, diasApos: e.target.value }))} />
+                  <span className="text-sm text-muted-foreground">dias após a compra</span>
+                </div>
               </div>
-              <Textarea
-                ref={msgRef}
-                rows={4}
-                placeholder="Olá {{nome}}, temos uma oferta especial para você..."
-                value={form.mensagem}
-                onChange={(e) => setForm((f) => ({ ...f, mensagem: e.target.value }))}
-              />
-            </div>
+            )}
+            {form.tipo === "whitespace_seguro" && (
+              <div className="p-3 rounded-lg border bg-muted/30 text-sm text-muted-foreground">
+                Compara o perfil de cada conta corporativa (setor, porte, frota, patrimônio) com os produtos
+                esperados e sinaliza os que faltam. Roda automaticamente todo dia; aqui você só liga/desliga.
+                Sem mensagem própria — cada gap vira uma oportunidade individual pra aprovação manual.
+              </div>
+            )}
+            {form.tipo === "renovacao_seguro" && (
+              <div className="p-3 rounded-lg border bg-muted/30 text-sm text-muted-foreground">
+                Varre apólices que vencem nos próximos 90 dias (janelas de 90/60/30/10 dias) e considera
+                sinistros abertos e risco de não-renovação. Roda automaticamente todo dia; aqui você só
+                liga/desliga. Sem mensagem própria — cada apólice vira uma oportunidade pra aprovação manual.
+              </div>
+            )}
 
-            {/* Canal */}
-            <div className="space-y-1.5">
-              <Label>Canal</Label>
-              <Select value={form.canal} onValueChange={(v) => setForm((f) => ({ ...f, canal: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  <SelectItem value="email">E-mail</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!ENGINE_MANAGED_TIPOS.has(form.tipo) && (
+              <>
+                {/* Mensagem */}
+                <div className="space-y-1.5">
+                  <Label>Mensagem <span className="text-destructive">*</span></Label>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {CHIPS.map((chip) => (
+                      <button key={chip} type="button"
+                        onClick={() => insertChip(chip)}
+                        className="text-xs px-2 py-0.5 rounded border bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-mono">
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                  <Textarea
+                    ref={msgRef}
+                    rows={4}
+                    placeholder="Olá {{nome}}, temos uma oferta especial para você..."
+                    value={form.mensagem}
+                    onChange={(e) => setForm((f) => ({ ...f, mensagem: e.target.value }))}
+                  />
+                </div>
+
+                {/* Canal */}
+                <div className="space-y-1.5">
+                  <Label>Canal</Label>
+                  <Select value={form.canal} onValueChange={(v) => setForm((f) => ({ ...f, canal: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                      <SelectItem value="email">E-mail</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
 
             <div className="flex gap-2 justify-end pt-1">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
