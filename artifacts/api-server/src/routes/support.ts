@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, bugReportsTable } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -71,20 +72,51 @@ router.post("/support/chat", async (req, res) => {
   let fullResponse = "";
 
   try {
-    const stream = anthropic.messages.stream({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      system: SUPPORT_SYSTEM_PROMPT,
-      messages: parsed.data.messages,
-    });
+    try {
+      const stream = anthropic.messages.stream({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        system: SUPPORT_SYSTEM_PROMPT,
+        messages: parsed.data.messages,
+      });
 
-    for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
-        fullResponse += event.delta.text;
-        const visibleChunk = event.delta.text.replace(reportMarkerRegex, "");
+      for await (const event of stream) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta.type === "text_delta"
+        ) {
+          fullResponse += event.delta.text;
+          const visibleChunk = event.delta.text.replace(reportMarkerRegex, "");
+          if (visibleChunk) {
+            res.write(`data: ${JSON.stringify({ content: visibleChunk })}\n\n`);
+            flush();
+          }
+        }
+      }
+    } catch (anthropicErr) {
+      // Se a Anthropic falhou (ex: billing) ANTES de mandar qualquer chunk,
+      // cai pro OpenAI em vez de quebrar o chat de suporte inteiro. Se já
+      // tinha mandado parte da resposta, não dá pra reiniciar sem duplicar
+      // texto na tela — nesse caso sobe o erro mesmo.
+      if (fullResponse !== "") throw anthropicErr;
+      req.log?.warn({ err: anthropicErr }, "support: anthropic falhou, caindo pro OpenAI");
+
+      const openai = await getOpenAIForTenant(tenantId ?? "");
+      const openaiStream = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_tokens: 8192,
+        stream: true,
+        messages: [
+          { role: "system", content: SUPPORT_SYSTEM_PROMPT },
+          ...parsed.data.messages,
+        ],
+      });
+
+      for await (const chunk of openaiStream) {
+        const delta = chunk.choices[0]?.delta?.content ?? "";
+        if (!delta) continue;
+        fullResponse += delta;
+        const visibleChunk = delta.replace(reportMarkerRegex, "");
         if (visibleChunk) {
           res.write(`data: ${JSON.stringify({ content: visibleChunk })}\n\n`);
           flush();
