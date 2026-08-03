@@ -20,7 +20,7 @@ router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_
   const tenantId = req.params.tenantId as string;
   const user = (req as any).user;
 
-  if (user.role !== "super_admin" && user.tenantId !== tenantId) {
+  if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -47,7 +47,7 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  if (user.role !== "super_admin" && user.tenantId !== tenantId) {
+  if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -85,7 +85,7 @@ router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("tenant_ad
   const moduleKey = req.params.moduleKey as string;
   const user = (req as any).user;
 
-  if (user.role !== "super_admin" && user.tenantId !== tenantId) {
+  if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -120,7 +120,7 @@ router.put("/tenants/:tenantId/nav-modules", requireRole("tenant_admin", "super_
   const tenantId = req.params.tenantId as string;
   const user = (req as any).user;
 
-  if (user.role !== "super_admin" && user.tenantId !== tenantId) {
+  if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }

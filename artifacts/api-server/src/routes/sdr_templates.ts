@@ -15,7 +15,7 @@ import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 const router = Router();
 
 function resolveTenantId(req: any): string {
-  return req.user?.role === "super_admin"
+  return req.user?.platformRole === "super_admin"
     ? ((req.query.tenantId as string) ?? req.user.tenantId)
     : req.user.tenantId;
 }

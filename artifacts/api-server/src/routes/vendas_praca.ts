@@ -21,7 +21,7 @@ router.get("/tenants/:tenantId/vendas-praca-resumo", async (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  if (user.role !== "super_admin" && user.tenantId !== tenantId) {
+  if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
