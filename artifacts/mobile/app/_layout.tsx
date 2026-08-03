@@ -17,7 +17,13 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 
-setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
+const apiBaseUrl =
+  process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "") ||
+  (process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+    : "https://appvendorai.com");
+
+setBaseUrl(apiBaseUrl);
 
 SplashScreen.preventAutoHideAsync();
 
