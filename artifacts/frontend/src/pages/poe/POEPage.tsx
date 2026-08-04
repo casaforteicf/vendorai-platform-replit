@@ -112,7 +112,7 @@ const MOCK_QUOTATIONS: PoeQuotationRequest[] = [
   {
     id: "q1", tenantId: "t1", projectId: "p1", projectName: "Residência São Paulo — Torre 3",
     items: [{ opportunityId: "o2", productId: "p1", productName: "Scala Bianco 120×240cm", quantity: 180, unit: "m²" }],
-    vcnCompanyId: "v1", companyName: "Portobello",
+    vcnCompanyId: "v1", partnerTenantId: null, companyName: "Portobello",
     contactEmail: "especificacao@portobello.com.br", contactPhone: "(47) 2106-0000",
     region: "SP", deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     notes: "Projeto residencial alto padrão. Lote único obrigatório.", attachments: [],
@@ -292,7 +292,7 @@ function OpportunityCard({ opp, expanded, onToggle }: { opp: PoeOpportunity; exp
 // ─── POEPage ──────────────────────────────────────────────────────────────────
 
 export function POEPage() {
-  const [tab, setTab]           = useState<"opportunities" | "quotations" | "analytics" | "rules">("opportunities");
+  const [tab, setTab]           = useState<"opportunities" | "quotations" | "recebidas" | "analytics" | "rules">("opportunities");
   const [expandedId, setExpanded] = useState<string | null>("o1");
   const [typeFilter, setType]   = useState("all");
   const [statusFilter, setStatus] = useState("all");
@@ -300,6 +300,10 @@ export function POEPage() {
   const [showAnalyzer, setShowAnalyzer] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [projectContext, setProjectContext] = useState("");
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [respPreco, setRespPreco] = useState("");
+  const [respPrazo, setRespPrazo] = useState("");
+  const [respNotas, setRespNotas] = useState("");
   const queryClient = useQueryClient();
   const { data: opportunities = [], isLoading } = useQuery<PoeOpportunity[]>({
     queryKey: ["poe-opportunities"],
@@ -315,6 +319,35 @@ export function POEPage() {
       const response = await fetch("/api/poe/quotations");
       if (!response.ok) throw new Error("Não foi possível carregar as cotações");
       return response.json();
+    },
+  });
+  const { data: recebidas = [] } = useQuery<Array<PoeQuotationRequest & { tenantOrigemNome: string | null }>>({
+    queryKey: ["poe-quotations-recebidas"],
+    queryFn: async () => {
+      const response = await fetch("/api/poe/quotations-recebidas");
+      if (!response.ok) throw new Error("Não foi possível carregar as cotações recebidas");
+      return response.json();
+    },
+  });
+  const responder = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/poe/quotations/${id}/responses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{ productName: "Proposta", quantity: 1, unitPrice: respPreco || "0", totalPrice: respPreco || "0", unit: "un", inStock: true }],
+          totalPrice: respPreco || "0",
+          leadTimeDays: respPrazo ? Number(respPrazo) : undefined,
+          notes: respNotas || undefined,
+        }),
+      });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? "Erro ao responder");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["poe-quotations-recebidas"] });
+      setRespondingId(null);
+      setRespPreco(""); setRespPrazo(""); setRespNotas("");
     },
   });
   const analyze = useMutation({
@@ -409,6 +442,7 @@ export function POEPage() {
           {([
             ["opportunities", "🔍 Oportunidades"],
             ["quotations",    "📋 Cotações"],
+            ["recebidas",     "📬 Recebidas"],
             ["analytics",     "📊 Analytics"],
             ["rules",         "⚙️ Regras"],
           ] as const).map(([id, label]) => (
@@ -544,6 +578,63 @@ export function POEPage() {
                 <Plus size={12} /> Nova Cotação
               </button>
             </div>
+          </div>
+        )}
+
+        {tab === "recebidas" && (
+          <div>
+            <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: "#64748b" }}>COTAÇÕES RECEBIDAS DE PARCEIROS</p>
+            <p style={{ margin: "0 0 14px", fontSize: 9, color: "#64748b" }}>Solicitações que outros tenants da Rede de Parceiros endereçaram a você. Só aparecem aqui as que foram enviadas especificamente pra sua empresa.</p>
+            {recebidas.length === 0 ? (
+              <div style={{ padding: 24, textAlign: "center", color: "#64748b", fontSize: 10, border: "1px dashed #2d2e3a", borderRadius: 8 }}>
+                Nenhuma cotação recebida ainda.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {recebidas.map((q) => (
+                  <div key={q.id} style={{ background: "#1a1b23", border: "1px solid #2d2e3a", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#fff" }}>{q.tenantOrigemNome ?? "Parceiro"}</p>
+                          <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: "#3b82f615", color: "#3b82f6" }}>
+                            {q.status === "sent" ? "📤 Aguardando resposta" : q.status === "received" ? "📬 Você já respondeu" : q.status === "approved" ? "✅ Aprovada" : q.status}
+                          </span>
+                        </div>
+                        <p style={{ margin: "0 0 6px", fontSize: 9, color: "#94a3b8" }}>Projeto: {q.projectName ?? "—"}</p>
+                        <div style={{ display: "flex", gap: 12, fontSize: 9, color: "#64748b" }}>
+                          <span>📦 {q.items?.length ?? 0} item(ns)</span>
+                          {q.deadline && <span>⏰ Prazo {new Date(q.deadline).toLocaleDateString("pt-BR")}</span>}
+                        </div>
+                        {q.notes && <p style={{ margin: "6px 0 0", fontSize: 9, color: "#94a3b8" }}>{q.notes}</p>}
+                      </div>
+                      {q.status !== "approved" && (
+                        <button onClick={() => setRespondingId(respondingId === q.id ? null : q.id)}
+                          style={{ padding: "5px 10px", borderRadius: 5, background: "#3b82f6", border: "none", color: "#fff", cursor: "pointer", fontSize: 9, fontWeight: 700 }}>
+                          {respondingId === q.id ? "Cancelar" : "Responder"}
+                        </button>
+                      )}
+                    </div>
+                    {respondingId === q.id && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #2d2e3a", display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input placeholder="Valor total (R$)" value={respPreco} onChange={(e) => setRespPreco(e.target.value)}
+                            style={{ flex: 1, padding: "6px 8px", borderRadius: 5, background: "#0f1117", border: "1px solid #2d2e3a", color: "#fff", fontSize: 10 }} />
+                          <input placeholder="Prazo (dias)" value={respPrazo} onChange={(e) => setRespPrazo(e.target.value)}
+                            style={{ width: 100, padding: "6px 8px", borderRadius: 5, background: "#0f1117", border: "1px solid #2d2e3a", color: "#fff", fontSize: 10 }} />
+                        </div>
+                        <textarea placeholder="Observações (opcional)" value={respNotas} onChange={(e) => setRespNotas(e.target.value)} rows={2}
+                          style={{ padding: "6px 8px", borderRadius: 5, background: "#0f1117", border: "1px solid #2d2e3a", color: "#fff", fontSize: 10, resize: "vertical" }} />
+                        <button onClick={() => responder.mutate(q.id)} disabled={!respPreco || responder.isPending}
+                          style={{ padding: "7px 10px", borderRadius: 5, background: "#22c55e", border: "none", color: "#fff", cursor: "pointer", fontSize: 10, fontWeight: 700, opacity: !respPreco ? 0.5 : 1 }}>
+                          {responder.isPending ? "Enviando..." : "Enviar resposta"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

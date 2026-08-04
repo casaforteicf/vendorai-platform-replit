@@ -1831,6 +1831,47 @@ export default function Configuracoes() {
                 </span>
               </div>
             </div>
+
+            {/* Rede de Parceiros — opt-in pra receber cotações de outros tenants (Opportunity Engine) */}
+            <div className="pt-4 border-t">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-medium">Rede de Parceiros</p>
+                <Switch
+                  checked={!!tenantQuery.data?.parceiroRedeAtivo}
+                  onCheckedChange={(checked) => {
+                    updateTenant.mutate(
+                      { id: tenantId, data: { parceiroRedeAtivo: checked } },
+                      {
+                        onSuccess: () => {
+                          queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+                          toast({ title: checked ? "Rede de Parceiros ativada." : "Rede de Parceiros desativada." });
+                        },
+                      }
+                    );
+                  }}
+                  disabled={updateTenant.isPending}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                Ativando, outros tenants Vendor.ai (ex: escritórios de arquitetura) podem endereçar cotações específicas pra você. Você só vê as cotações enviadas diretamente a você, nunca o restante do negócio de quem pediu.
+              </p>
+              {tenantQuery.data?.parceiroRedeAtivo && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Categorias que você atende (separadas por vírgula)</Label>
+                  <Input
+                    placeholder="Ex: Marcenaria, Iluminação, Automação"
+                    defaultValue={(tenantQuery.data?.parceiroCategorias ?? []).join(", ")}
+                    onBlur={(e) => {
+                      const categorias = e.target.value.split(",").map((c) => c.trim()).filter(Boolean);
+                      updateTenant.mutate(
+                        { id: tenantId, data: { parceiroCategorias: categorias } },
+                        { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) }) }
+                      );
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="rounded-xl border bg-card p-6 space-y-6">

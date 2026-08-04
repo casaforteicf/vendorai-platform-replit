@@ -86,6 +86,7 @@ export interface PoeQuotationRequest {
   projectName:   string | null;
   items:         QuotationItem[];
   vcnCompanyId:  string | null;
+  partnerTenantId: string | null;
   companyName:   string | null;
   contactEmail:  string | null;
   contactPhone:  string | null;

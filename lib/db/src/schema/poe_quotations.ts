@@ -30,6 +30,10 @@ export const poeQuotationRequestsTable = pgTable("poe_quotation_requests", {
 
   // Routing
   vcnCompanyId: text("vcn_company_id"),
+  // Rede de Parceiros entre tenants — quando preenchido, a cotação foi
+  // endereçada a outro tenant Vendor.ai de verdade (não um contato de
+  // diretório), que enxerga essa cotação específica na própria conta.
+  partnerTenantId: text("partner_tenant_id"),
   companyName:  text("company_name"),
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
@@ -55,6 +59,7 @@ export const poeQuotationRequestsTable = pgTable("poe_quotation_requests", {
   index("idx_poe_quot_req_tenant").on(t.tenantId),
   index("idx_poe_quot_req_status").on(t.status),
   index("idx_poe_quot_req_company").on(t.vcnCompanyId),
+  index("idx_poe_quot_req_partner_tenant").on(t.partnerTenantId),
 ]);
 
 export const poeQuotationResponsesTable = pgTable("poe_quotation_responses", {

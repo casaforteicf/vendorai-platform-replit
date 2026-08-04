@@ -115,6 +115,13 @@ export const tenantsTable = pgTable(
     // migration direta antes deste schema ser atualizado), adicionadas aqui
     // pra bater com a realidade do banco de produção.
     vendeNoPracaAi: boolean("vende_no_praca_ai").notNull().default(false),
+    // Rede de Parceiros entre tenants (Opportunity Engine) — opt-in
+    // explícito: um tenant fornecedor/indústria/prestador marca que quer
+    // receber cotações de outros tenants (ex: escritórios de arquitetura),
+    // filtradas pelas categorias que ele escolhe. Nunca visibilidade
+    // aberta — só cotações endereçadas especificamente a ele.
+    parceiroRedeAtivo: boolean("parceiro_rede_ativo").notNull().default(false),
+    parceiroCategorias: json("parceiro_categorias").$type<string[]>().default([]),
     freteMesmaCidade: numeric("frete_mesma_cidade", { precision: 10, scale: 2 }).default("0"),
     freteOutraCidade: numeric("frete_outra_cidade", { precision: 10, scale: 2 }).default("15.90"),
     freteGratisAcimaDe: numeric("frete_gratis_acima_de", { precision: 10, scale: 2 }).default("79.00"),

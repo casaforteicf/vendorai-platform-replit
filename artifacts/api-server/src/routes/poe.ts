@@ -30,7 +30,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import {
   db,
   poeOpportunitiesTable,
@@ -54,6 +54,12 @@ function err(res: Response, message: string, status = 400) {
 }
 function getTenantId(req: Request): string | null {
   return (req as unknown as Record<string, unknown>).tenantId as string ?? null;
+}
+// Uma cotação é visível/editável pelo tenant dono (quem gerou a
+// oportunidade) OU pelo tenant parceiro endereçado (quem foi convidado a
+// responder) — nunca por qualquer outro tenant.
+function canAccessQuotation(quot: { tenantId: string; partnerTenantId: string | null }, tenantId: string): boolean {
+  return quot.tenantId === tenantId || quot.partnerTenantId === tenantId;
 }
 
 // ─── Opportunities ────────────────────────────────────────────────────────────
@@ -255,8 +261,11 @@ router.post("/poe/quotations", async (req: Request, res: Response) => {
 
 router.get("/poe/quotations/:id", async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return err(res, "Tenant obrigatório", 401);
     const [quot] = await db.select().from(poeQuotationRequestsTable).where(eq(poeQuotationRequestsTable.id, (req.params.id as string)));
     if (!quot) return err(res, "Cotação não encontrada", 404);
+    if (!canAccessQuotation(quot, tenantId)) return err(res, "Acesso negado", 403);
     const responses = await db.select().from(poeQuotationResponsesTable).where(eq(poeQuotationResponsesTable.requestId, (req.params.id as string)));
     return ok(res, { ...quot, responses });
   } catch (e) {
@@ -267,6 +276,12 @@ router.get("/poe/quotations/:id", async (req: Request, res: Response) => {
 
 router.patch("/poe/quotations/:id", async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return err(res, "Tenant obrigatório", 401);
+    const [existing] = await db.select({ tenantId: poeQuotationRequestsTable.tenantId })
+      .from(poeQuotationRequestsTable).where(eq(poeQuotationRequestsTable.id, (req.params.id as string)));
+    if (!existing) return err(res, "Cotação não encontrada", 404);
+    if (existing.tenantId !== tenantId) return err(res, "Acesso negado", 403);
     const parsed = insertPoeQuotationRequestSchema.partial().safeParse(req.body);
     if (!parsed.success) return err(res, parsed.error.message);
     const [updated] = await db.update(poeQuotationRequestsTable)
@@ -283,6 +298,12 @@ router.patch("/poe/quotations/:id", async (req: Request, res: Response) => {
 
 router.post("/poe/quotations/:id/send", async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return err(res, "Tenant obrigatório", 401);
+    const [existing] = await db.select({ tenantId: poeQuotationRequestsTable.tenantId })
+      .from(poeQuotationRequestsTable).where(eq(poeQuotationRequestsTable.id, (req.params.id as string)));
+    if (!existing) return err(res, "Cotação não encontrada", 404);
+    if (existing.tenantId !== tenantId) return err(res, "Acesso negado", 403);
     const [updated] = await db.update(poeQuotationRequestsTable)
       .set({ status: "sent", sentAt: new Date(), updatedAt: new Date() })
       .where(eq(poeQuotationRequestsTable.id, (req.params.id as string)))
@@ -297,6 +318,12 @@ router.post("/poe/quotations/:id/send", async (req: Request, res: Response) => {
 
 router.post("/poe/quotations/:id/responses", async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return err(res, "Tenant obrigatório", 401);
+    const [existing] = await db.select({ tenantId: poeQuotationRequestsTable.tenantId, partnerTenantId: poeQuotationRequestsTable.partnerTenantId })
+      .from(poeQuotationRequestsTable).where(eq(poeQuotationRequestsTable.id, (req.params.id as string)));
+    if (!existing) return err(res, "Cotação não encontrada", 404);
+    if (!canAccessQuotation(existing, tenantId)) return err(res, "Acesso negado", 403);
     const parsed = insertPoeQuotationResponseSchema.safeParse({ ...req.body, requestId: (req.params.id as string) });
     if (!parsed.success) return err(res, parsed.error.message);
     const [resp] = await db.insert(poeQuotationResponsesTable).values(parsed.data).returning();
@@ -313,6 +340,14 @@ router.post("/poe/quotations/:id/responses", async (req: Request, res: Response)
 
 router.patch("/poe/quotation-responses/:respId", async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return err(res, "Tenant obrigatório", 401);
+    const [existingResp] = await db.select({ requestId: poeQuotationResponsesTable.requestId })
+      .from(poeQuotationResponsesTable).where(eq(poeQuotationResponsesTable.id, (req.params.respId as string)));
+    if (!existingResp) return err(res, "Resposta não encontrada", 404);
+    const [parent] = await db.select({ tenantId: poeQuotationRequestsTable.tenantId, partnerTenantId: poeQuotationRequestsTable.partnerTenantId })
+      .from(poeQuotationRequestsTable).where(eq(poeQuotationRequestsTable.id, existingResp.requestId));
+    if (!parent || !canAccessQuotation(parent, tenantId)) return err(res, "Acesso negado", 403);
     const parsed = insertPoeQuotationResponseSchema.partial().safeParse(req.body);
     if (!parsed.success) return err(res, parsed.error.message);
     const [updated] = await db.update(poeQuotationResponsesTable)
@@ -329,9 +364,16 @@ router.patch("/poe/quotation-responses/:respId", async (req: Request, res: Respo
 
 router.post("/poe/quotation-responses/:respId/select", async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return err(res, "Tenant obrigatório", 401);
     const [resp] = await db.select({ requestId: poeQuotationResponsesTable.requestId })
       .from(poeQuotationResponsesTable).where(eq(poeQuotationResponsesTable.id, (req.params.respId as string)));
     if (!resp) return err(res, "Resposta não encontrada", 404);
+    // Selecionar a resposta vencedora é decisão de quem PEDIU a cotação —
+    // não do parceiro que respondeu.
+    const [parent] = await db.select({ tenantId: poeQuotationRequestsTable.tenantId })
+      .from(poeQuotationRequestsTable).where(eq(poeQuotationRequestsTable.id, resp.requestId));
+    if (!parent || parent.tenantId !== tenantId) return err(res, "Acesso negado", 403);
     // Deselect siblings
     await db.update(poeQuotationResponsesTable)
       .set({ selected: false })
@@ -533,6 +575,73 @@ router.get("/poe/analytics", async (req: Request, res: Response) => {
   } catch (e) {
     req.log?.error(e, "poe analytics error");
     return err(res, "Erro ao buscar analytics", 500);
+  }
+});
+
+// ─── Rede de Parceiros entre tenants ────────────────────────────────────────
+// Um tenant fornecedor/indústria/prestador opta em participar (marca
+// parceiroRedeAtivo + escolhe categorias em tenants), e passa a poder ser
+// escolhido como destinatário de cotações de outros tenants. Nunca dá pra
+// ver oportunidades de outros — só as cotações endereçadas a ele.
+
+// GET /partner-network/tenants?categoria=X — buscar parceiros disponíveis
+// pra endereçar uma cotação (usado pelo tenant que está pedindo cotação).
+router.get("/partner-network/tenants", async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return err(res, "Tenant obrigatório", 401);
+    const { categoria } = req.query;
+
+    const parceiros = await db.select({
+      id: tenantsTable.id,
+      name: tenantsTable.name,
+      vertical: tenantsTable.vertical,
+      categorias: tenantsTable.parceiroCategorias,
+    })
+      .from(tenantsTable)
+      .where(and(eq(tenantsTable.parceiroRedeAtivo, true), eq(tenantsTable.status, "active")));
+
+    // Filtro por categoria em memória (lista pequena, jsonb) — evita
+    // depender de operador jsonb específico do driver.
+    const filtrados = categoria
+      ? parceiros.filter((p) => (p.categorias as string[] | null)?.includes(String(categoria)))
+      : parceiros;
+
+    return ok(res, filtrados.filter((p) => p.id !== tenantId));
+  } catch (e) {
+    req.log?.error(e, "partner-network tenants list error");
+    return err(res, "Erro ao buscar parceiros", 500);
+  }
+});
+
+// GET /poe/quotations-recebidas — cotações que outros tenants endereçaram
+// a ESTE tenant como parceiro (não as que ele mesmo criou).
+router.get("/poe/quotations-recebidas", async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return err(res, "Tenant obrigatório", 401);
+    const { status } = req.query;
+
+    const conditions = [eq(poeQuotationRequestsTable.partnerTenantId, tenantId)];
+    if (status) conditions.push(eq(poeQuotationRequestsTable.status, String(status)));
+
+    const quotations = await db.select().from(poeQuotationRequestsTable)
+      .where(and(...conditions))
+      .orderBy(desc(poeQuotationRequestsTable.createdAt));
+
+    // Nome de quem pediu, pra exibir na lista — só o nome, nada mais do
+    // tenant de origem.
+    const tenantIds = [...new Set(quotations.map((q) => q.tenantId))];
+    const origens = tenantIds.length
+      ? await db.select({ id: tenantsTable.id, name: tenantsTable.name }).from(tenantsTable)
+          .where(inArray(tenantsTable.id, tenantIds))
+      : [];
+    const origemMap = Object.fromEntries(origens.map((t) => [t.id, t.name]));
+
+    return ok(res, quotations.map((q) => ({ ...q, tenantOrigemNome: origemMap[q.tenantId] ?? null })));
+  } catch (e) {
+    req.log?.error(e, "poe quotations-recebidas error");
+    return err(res, "Erro ao buscar cotações recebidas", 500);
   }
 });
 
