@@ -26,6 +26,9 @@ import {
   compraRecebimentosTable,
   compraRecebimentoItensTable,
   erpAuditoriaTable,
+  produtosCatalogoTable,
+  categoriasProdutoTable,
+  type VarejoGrade,
 } from "@workspace/db";
 import { z } from "zod/v4";
 
@@ -41,6 +44,46 @@ function isSuperAdmin(req: Express.Request) {
 
 function canAccess(req: Express.Request, tenantId: string) {
   return isSuperAdmin(req) || tid(req) === tenantId;
+}
+
+/**
+ * Sincroniza uma grade (tamanho/cor) de varejo com o catálogo genérico —
+ * é o que faz ela aparecer no Praça.ai e ser vista pelo Revenue Scout
+ * (ex: regra "grade_incompleta"). Cada grade vira 1 produto no catálogo,
+ * todas as grades do mesmo varejo_produto compartilham o grupoVarianteId
+ * (= id do produto pai), pra o Scout saber que são variantes umas das
+ * outras.
+ */
+async function syncVarejoGradeToProdutoCatalogo(
+  tenantId: string,
+  grade: VarejoGrade,
+  produto: { nome: string; precoVenda: string; codigo: string | null },
+): Promise<void> {
+  let [categoria] = await db.select().from(categoriasProdutoTable)
+    .where(and(eq(categoriasProdutoTable.tenantId, tenantId), eq(categoriasProdutoTable.nome, "Varejo")));
+  if (!categoria) {
+    [categoria] = await db.insert(categoriasProdutoTable).values({ tenantId, nome: "Varejo" }).returning();
+  }
+
+  const payload = {
+    tenantId,
+    nome: `${produto.nome} - ${grade.tamanho}/${grade.cor}`,
+    categoriaId: categoria!.id,
+    sku: produto.codigo ? `${produto.codigo}-${grade.tamanho}-${grade.cor}` : undefined,
+    precoBase: String(produto.precoVenda),
+    estoqueQuantidade: grade.estoque,
+    grupoVarianteId: grade.produtoId,
+    tamanho: grade.tamanho,
+    cor: grade.cor,
+    ativo: grade.estoque > 0,
+  };
+
+  if (grade.produtoCatalogoId) {
+    await db.update(produtosCatalogoTable).set(payload as any).where(eq(produtosCatalogoTable.id, grade.produtoCatalogoId));
+  } else {
+    const [criado] = await db.insert(produtosCatalogoTable).values(payload as any).returning();
+    await db.update(varejoGradeTable).set({ produtoCatalogoId: criado!.id }).where(eq(varejoGradeTable.id, grade.id));
+  }
 }
 
 // ─── Coleções ─────────────────────────────────────────────────────────────────
@@ -236,6 +279,12 @@ router.put("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => 
     .where(and(eq(varejoProdutoTable.id, produtoId), eq(varejoProdutoTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Produto not found" });
+
+  const grades = await db.select().from(varejoGradeTable).where(eq(varejoGradeTable.produtoId, produtoId));
+  for (const grade of grades) {
+    await syncVarejoGradeToProdutoCatalogo(tenantId, grade, row);
+  }
+
   return res.json(row);
 });
 
@@ -269,6 +318,10 @@ router.post("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, 
   const [row] = await db.insert(varejoGradeTable)
     .values(parsed.data)
     .returning();
+
+  const [produto] = await db.select().from(varejoProdutoTable).where(eq(varejoProdutoTable.id, produtoId));
+  if (produto) await syncVarejoGradeToProdutoCatalogo(tenantId, row, produto);
+
   return res.status(201).json(row);
 });
 
@@ -285,12 +338,21 @@ router.put("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", asyn
     ))
     .returning();
   if (!row) return res.status(404).json({ error: "Grade not found" });
+
+  const [produto] = await db.select().from(varejoProdutoTable).where(eq(varejoProdutoTable.id, produtoId));
+  if (produto) await syncVarejoGradeToProdutoCatalogo(tenantId, row, produto);
+
   return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", async (req, res) => {
   const { tenantId, produtoId, gradeId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [existing] = await db.select().from(varejoGradeTable).where(eq(varejoGradeTable.id, gradeId));
+  if (existing?.produtoCatalogoId) {
+    await db.update(produtosCatalogoTable).set({ ativo: false }).where(eq(produtosCatalogoTable.id, existing.produtoCatalogoId));
+  }
 
   await db.delete(varejoGradeTable)
     .where(and(
