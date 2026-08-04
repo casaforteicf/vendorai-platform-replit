@@ -9,6 +9,7 @@ import {
   categoriasProdutoTable,
   type VeiculosEstoque,
 } from "@workspace/db";
+import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 
 const router: IRouter = Router();
 
@@ -281,6 +282,14 @@ router.patch("/tenants/:tenantId/veiculos/test-drives/:id", async (req, res) => 
     .where(and(eq(veiculosTestDrivesTable.id, id), eq(veiculosTestDrivesTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Test-drive not found" });
+
+  // Feature store — test-drive é o gatilho de maior sinal de intenção pra
+  // revenda de veículos (o documento que o usuário mandou chama isso de
+  // "lead quente"). Captura só quando o status muda pra realizado.
+  if (req.body?.status === "realizado" && row.clienteId) {
+    captureLeadFeatureSnapshot(tenantId, row.clienteId, "test_drive_realizado", { veiculoId: row.veiculoId }, req.log).catch(() => {});
+  }
+
   return res.json(row);
 });
 

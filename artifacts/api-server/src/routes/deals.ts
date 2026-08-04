@@ -48,6 +48,7 @@ import { extractQuoteData } from "../lib/document-extraction.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateContractPDF } from "../lib/contract-generation.js";
 import { requireRole, buildUserFunctionFilter, type UserFunction } from "../middlewares/auth.js";
+import { captureLeadFeatureSnapshot, backfillResultadoSnapshots } from "../lib/mlFeatureStore.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -283,6 +284,18 @@ router.patch("/deals/:id", async (req, res) => {
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(dealsTable.id, existing.id))
     .returning();
+
+  // Feature store — captura a mudança de etapa e, quando o negócio resolve
+  // (ganho ou perdido), retroage o rótulo em todos os snapshots pendentes
+  // desse lead. Melhor esforço, nunca bloqueia o fechamento do negócio.
+  if (parsed.data.etapa && deal.leadId) {
+    captureLeadFeatureSnapshot(existing.tenantId, deal.leadId, "deal_etapa_change", { dealEtapa: parsed.data.etapa }, req.log).catch(() => {});
+    if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
+      backfillResultadoSnapshots(existing.tenantId, deal.leadId, "ganho", req.log).catch(() => {});
+    } else if (parsed.data.etapa === "perdido" && existing.etapa !== "perdido") {
+      backfillResultadoSnapshots(existing.tenantId, deal.leadId, "perdido", req.log).catch(() => {});
+    }
+  }
 
   // helper: log a step to automation_logs without throwing
   const logAutomation = async (step: string, status: string, errorMessage?: string) => {

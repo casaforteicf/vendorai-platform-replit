@@ -25,6 +25,7 @@ import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
+import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 
 const router: IRouter = Router();
 
@@ -302,6 +303,12 @@ router.patch("/leads/:id", async (req, res) => {
     .set({ ...parsed.data, updatedAt: new Date() } as any)
     .where(eq(leadsTable.id, existing.id))
     .returning();
+
+  // Feature store — captura o momento da mudança de status, primeiro passo
+  // real de ML (nada bloqueia por causa disso, é melhor esforço).
+  if (parsed.data.status) {
+    captureLeadFeatureSnapshot(existing.tenantId, existing.id, "status_change", undefined, req.log).catch(() => {});
+  }
 
   res.json(lead);
 });
