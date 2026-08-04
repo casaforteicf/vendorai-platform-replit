@@ -9,6 +9,7 @@ import {
   tenantsTable,
   type PropostaItem,
 } from "@workspace/db";
+import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 
 export interface VerticalRevenueProfile {
   key: string;
@@ -131,6 +132,7 @@ export async function runVerticalRevenueForTenant(tenantId: string, log: Logger)
         autonomy:{ mode:"human_approval", automaticContact:false, requiredAction:"Validar contexto, disponibilidade e condição comercial antes do contato." },
       },
     });
+    captureLeadFeatureSnapshot(tenantId, leadId, "scout_oportunidade_criada", { tipoRegra: dormant ? "reativacao" : profile.cycleType }, log).catch(() => {});
     opportunitiesCreated += 1;
   }
   log.info({ tenantId, vertical:tenant?.vertical, profile:profile.key, customersAnalyzed:snapshots.size, opportunitiesCreated }, "vertical-revenue-scout: concluído");

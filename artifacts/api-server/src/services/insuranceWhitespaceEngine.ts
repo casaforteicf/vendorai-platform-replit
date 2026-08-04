@@ -8,6 +8,7 @@ import {
   insuranceProductsTable,
   insuranceAccountProductPositionsTable,
 } from "@workspace/db";
+import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 
 export const DEFAULT_INSURANCE_PRODUCTS = [
   { code: "frota", name: "Seguro Frota" },
@@ -183,6 +184,7 @@ export async function runInsuranceWhitespaceForTenant(tenantId: string, log: Log
           autonomy: { cap: 3, requiresHumanApproval: true, autoSend: false },
         },
       } as any);
+      captureLeadFeatureSnapshot(tenantId, profile.accountId, "scout_oportunidade_criada", { tipoRegra: "whitespace" }, log).catch(() => {});
       opportunitiesCreated += 1;
     }
   }

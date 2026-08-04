@@ -9,6 +9,7 @@ import {
   tenantsTable,
   type PropostaItem,
 } from "@workspace/db";
+import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 
 export const DISTRIBUTOR_REVENUE_CONFIG = {
   "Distribuidora de Materiais de Construção": {
@@ -225,6 +226,7 @@ export async function runDistributorRevenueForTenant(
       blocked: false,
       explanation: candidate.explanation,
     });
+    captureLeadFeatureSnapshot(tenantId, candidate.leadId, "scout_oportunidade_criada", { tipoRegra: candidate.tipo }, log).catch(() => {});
     opportunitiesCreated += 1;
   }
 

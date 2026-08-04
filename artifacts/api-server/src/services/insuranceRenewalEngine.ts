@@ -10,6 +10,7 @@ import {
   insurancePolicyClaimsTable,
 } from "@workspace/db";
 import { renewalWindow, scoreInsuranceOpportunity } from "./corporateInsuranceRevenuePack.js";
+import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 
 const DAY_MS = 86_400_000;
 const FINAL_STATUSES = ["converteu", "ignorado"] as const;
@@ -179,6 +180,7 @@ export async function runInsuranceRenewalForTenant(
         insurancePositionId: position.id,
         ...values,
       });
+      captureLeadFeatureSnapshot(tenantId, position.accountId, "scout_oportunidade_criada", { tipoRegra: "renovacao_seguro" }, log).catch(() => {});
       result.opportunitiesCreated += 1;
     }
 

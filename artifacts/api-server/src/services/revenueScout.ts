@@ -34,6 +34,7 @@ import { runInsuranceWhitespaceForTenant } from "./insuranceWhitespaceEngine.js"
 import { runDistributorRevenueForTenant } from "./distributorRevenueEngine.js";
 import { runVerticalRevenueForTenant, normalize } from "./verticalRevenueEngine.js";
 import { isWithinBusinessHours, renderTemplate } from "../lib/proactiveMessageGuard.js";
+import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -373,6 +374,7 @@ export async function analisarCliente(
         valorEstimado:    produtoSugerido ? String(produtoSugerido.precoBase) : undefined,
         scoreOportunidade: String(scoreSeq),
       } as any);
+      captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
 
       await db
         .update(scoutRegrasTable)
@@ -435,6 +437,7 @@ export async function analisarCliente(
         status:            "pendente",
         scoreOportunidade: String(scoreSaz),
       } as any);
+      captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
 
       await db
         .update(scoutRegrasTable)
@@ -511,6 +514,7 @@ export async function analisarCliente(
           valorEstimado:     String(valor),
           scoreOportunidade: String(scoreOrc),
         } as any);
+        captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
 
         await db
           .update(scoutRegrasTable)
@@ -592,6 +596,7 @@ export async function analisarCliente(
       status:            "pendente",
       scoreOportunidade: String(score),
     } as any);
+    captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
 
     // Incrementa contador de disparos da regra
     await db
