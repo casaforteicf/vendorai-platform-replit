@@ -6,6 +6,9 @@ import {
   farmaciaPedidoTable,
   farmaciaPedidoItemTable,
   leadsTable,
+  receitasMedicasTable,
+  insertReceitaMedicaSchema,
+  updateReceitaMedicaSchema,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -192,6 +195,57 @@ router.post("/tenants/:tenantId/farmacia/pedidos/:pedidoId/anexar-receita", asyn
     .returning();
 
   return res.json(row);
+});
+
+// ─── Receitas médicas ───────────────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/farmacia/receitas", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const conditions = [eq(receitasMedicasTable.tenantId, tenantId)];
+  if (req.query.clienteId) conditions.push(eq(receitasMedicasTable.clienteId, String(req.query.clienteId)));
+  if (req.query.status) conditions.push(eq(receitasMedicasTable.status, req.query.status as any));
+
+  const rows = await db.select().from(receitasMedicasTable)
+    .where(and(...conditions))
+    .orderBy(desc(receitasMedicasTable.dataValidade));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/farmacia/receitas", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertReceitaMedicaSchema.safeParse({ ...req.body, tenantId });
+  if (!parsed.success) return res.status(422).json({ error: "Validation error", details: parsed.error.issues });
+
+  const [row] = await db.insert(receitasMedicasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.patch("/farmacia/receitas/:id", async (req, res) => {
+  const [existing] = await db.select({ tenantId: receitasMedicasTable.tenantId }).from(receitasMedicasTable).where(eq(receitasMedicasTable.id, req.params.id as string));
+  if (!existing) return res.status(404).json({ error: "Receita not found" });
+  if (!canAccess(req, existing.tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateReceitaMedicaSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "Validation error", details: parsed.error.issues });
+
+  const [row] = await db.update(receitasMedicasTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(receitasMedicasTable.id, req.params.id as string))
+    .returning();
+  return res.json(row);
+});
+
+router.delete("/farmacia/receitas/:id", async (req, res) => {
+  const [existing] = await db.select({ tenantId: receitasMedicasTable.tenantId }).from(receitasMedicasTable).where(eq(receitasMedicasTable.id, req.params.id as string));
+  if (!existing) return res.status(404).json({ error: "Receita not found" });
+  if (!canAccess(req, existing.tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  await db.delete(receitasMedicasTable).where(eq(receitasMedicasTable.id, req.params.id as string));
+  return res.status(204).send();
 });
 
 export default router;

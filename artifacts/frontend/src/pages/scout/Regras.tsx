@@ -34,6 +34,7 @@ const TIPO_OPTS = [
   { value: "reativacao_sazonal", label: "Reativação sazonal (por mês)" },
   { value: "orcamento_parado", label: "Orçamento parado" },
   { value: "grade_incompleta", label: "Grade incompleta (tamanho/cor)" },
+  { value: "receita_vencendo", label: "Receita médica vencendo" },
   { value: "whitespace_seguro",  label: "Whitespace de seguros (por perfil)" },
   { value: "renovacao_seguro",   label: "Renovação de apólices" },
 ];
@@ -47,6 +48,7 @@ const TIPO_COLORS: Record<string, string> = {
   reativacao_sazonal: "bg-teal-50 text-teal-700 border-teal-200",
   orcamento_parado:   "bg-rose-50 text-rose-700 border-rose-200",
   grade_incompleta:   "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+  receita_vencendo:   "bg-red-50 text-red-700 border-red-200",
   whitespace_seguro:  "bg-cyan-50 text-cyan-700 border-cyan-200",
   renovacao_seguro:   "bg-orange-50 text-orange-700 border-orange-200",
 };
@@ -75,6 +77,7 @@ interface FormState {
   diasSemCompraMinimo: string;
   diasParado: string;
   valorMinimo: string;
+  diasAntesVencimento: string;
 }
 const EMPTY_FORM: FormState = {
   nome: "", tipo: "", canal: "whatsapp", mensagem: "",
@@ -84,6 +87,7 @@ const EMPTY_FORM: FormState = {
   produtoOrigemId: "", produtoSugeridoId: "", diasApos: "15",
   mesGatilho: "10", diasSemCompraMinimo: "0",
   diasParado: "7", valorMinimo: "",
+  diasAntesVencimento: "5",
 };
 
 export default function Regras() {
@@ -146,6 +150,9 @@ export default function Regras() {
     }
     if (form.tipo === "grade_incompleta") {
       condicoes = { diasApos: Number(form.diasApos || 7) };
+    }
+    if (form.tipo === "receita_vencendo") {
+      condicoes = { diasAntesVencimento: Number(form.diasAntesVencimento || 5) };
     }
     if (ENGINE_MANAGED_TIPOS.has(form.tipo)) condicoes = {};
     const acao = ENGINE_MANAGED_TIPOS.has(form.tipo)
@@ -457,6 +464,19 @@ export default function Regras() {
                   <Label className="text-xs">Dias após a compra</Label>
                   <Input type="number" min={1} value={form.diasApos}
                     onChange={(e) => setForm((f) => ({ ...f, diasApos: e.target.value }))} />
+                </div>
+              </div>
+            )}
+            {form.tipo === "receita_vencendo" && (
+              <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
+                <p className="text-xs text-muted-foreground">
+                  Dispara quando a receita médica cadastrada (comum ou controlada) de um cliente está vencendo — cadastre as receitas em Farmácia → Receitas.
+                </p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Dias antes do vencimento</Label>
+                  <Input type="number" min={1} value={form.diasAntesVencimento}
+                    onChange={(e) => setForm((f) => ({ ...f, diasAntesVencimento: e.target.value }))} />
                 </div>
               </div>
             )}

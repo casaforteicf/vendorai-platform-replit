@@ -25,6 +25,7 @@ import {
   propostasTable,
   produtosCatalogoTable,
   intentSignalsTable,
+  receitasMedicasTable,
   type PropostaItem,
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
@@ -52,6 +53,7 @@ interface Condicoes {
   diasSemCompraMinimo?: number;
   diasParado?: number;
   valorMinimo?: number;
+  diasAntesVencimento?: number;
 }
 /**
  * Retorna a data da compra mais recente (proposta aceita) de um produto
@@ -148,6 +150,7 @@ function calcularScoreOportunidade(
 ): number {
   const bases: Record<string, number> = {
     sequencia_produto: 80,
+    receita_vencendo:  78,
     upgrade:           75,
     orcamento_parado:  70,
     grade_incompleta:  68,
@@ -598,6 +601,69 @@ export async function analisarCliente(
 
           log.info({ tenantId, clienteId, regraId: regra.id }, "scout: oportunidade grade_incompleta inserida");
         }
+      }
+      continue;
+    }
+
+    // "receita_vencendo" — receita médica (comum ou controlada) do cliente
+    // vencendo em breve, sem renovação registrada ainda. Farmácia pediu
+    // isso especificamente pra medicamento de uso contínuo/controlado.
+    if (regra.tipo === "receita_vencendo") {
+      const diasAntes = cond.diasAntesVencimento ?? 5;
+      const limite = new Date(Date.now() + diasAntes * 24 * 60 * 60 * 1000);
+
+      const receitasVencendo = await db.select().from(receitasMedicasTable)
+        .where(
+          and(
+            eq(receitasMedicasTable.tenantId, tenantId),
+            eq(receitasMedicasTable.clienteId, clienteId),
+            eq(receitasMedicasTable.status, "ativa"),
+            lte(receitasMedicasTable.dataValidade, limite),
+          ),
+        );
+
+      for (const receita of receitasVencendo) {
+        const diasParaVencer = Math.ceil((receita.dataValidade.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+        const [existentePendente] = await db
+          .select({ id: scoutOportunidadesTable.id })
+          .from(scoutOportunidadesTable)
+          .where(
+            and(
+              eq(scoutOportunidadesTable.tenantId, tenantId),
+              eq(scoutOportunidadesTable.clienteId, clienteId),
+              eq(scoutOportunidadesTable.regraId, regra.id),
+              eq(scoutOportunidadesTable.status, "pendente"),
+            ),
+          );
+        if (existentePendente) continue;
+
+        const urgenciaBoost = diasParaVencer <= 2 ? 15 : diasParaVencer <= 5 ? 8 : 0;
+        const baseScoreReceita = calcularScoreOportunidade("receita_vencendo", diasAntes - diasParaVencer, diasAntes);
+        const intentBoostReceita = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
+        const scoreReceita = Math.min(baseScoreReceita + intentBoostReceita + urgenciaBoost, 100);
+
+        const descricaoVencimento = diasParaVencer < 0
+          ? `Receita de ${receita.medicamentoNome} venceu há ${Math.abs(diasParaVencer)} dias`
+          : `Receita de ${receita.medicamentoNome} vence em ${diasParaVencer} dias`;
+
+        await db.insert(scoutOportunidadesTable).values({
+          tenantId,
+          clienteId,
+          regraId:           regra.id,
+          tipo:              regra.tipo,
+          descricao:         `${descricaoVencimento} — ${lead.nome ?? clienteId}${receita.tipo === "controlado" ? " (medicamento controlado)" : ""}`,
+          status:            "pendente",
+          scoreOportunidade: String(scoreReceita),
+        } as any);
+        captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
+
+        await db
+          .update(scoutRegrasTable)
+          .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
+          .where(eq(scoutRegrasTable.id, regra.id));
+
+        log.info({ tenantId, clienteId, regraId: regra.id, receitaId: receita.id }, "scout: oportunidade receita_vencendo inserida");
       }
       continue;
     }
