@@ -36,6 +36,13 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   nome: text("nome").notNull(),
   sku: text("sku"),
   codigoBarras: text("codigo_barras"),
+  // Grade de variantes (tamanho/cor) — produtos que são a mesma peça em
+  // versões diferentes compartilham o mesmo grupoVarianteId. Null = produto
+  // avulso, sem grade. Usado pelo Scout pra detectar "cliente levou essa
+  // blusa, mas não levou os outros tamanhos/cores que existem".
+  grupoVarianteId: text("grupo_variante_id"),
+  tamanho: text("tamanho"),
+  cor: text("cor"),
   productType: text("product_type").$type<ProductType>().notNull().default("physical"),
   descricao: text("descricao"),
   descricaoLonga: text("descricao_longa"),

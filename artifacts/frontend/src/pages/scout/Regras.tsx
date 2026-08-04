@@ -33,6 +33,7 @@ const TIPO_OPTS = [
   { value: "sequencia_produto", label: "Sequência de produto" },
   { value: "reativacao_sazonal", label: "Reativação sazonal (por mês)" },
   { value: "orcamento_parado", label: "Orçamento parado" },
+  { value: "grade_incompleta", label: "Grade incompleta (tamanho/cor)" },
   { value: "whitespace_seguro",  label: "Whitespace de seguros (por perfil)" },
   { value: "renovacao_seguro",   label: "Renovação de apólices" },
 ];
@@ -45,6 +46,7 @@ const TIPO_COLORS: Record<string, string> = {
   sequencia_produto:  "bg-violet-50 text-violet-700 border-violet-200",
   reativacao_sazonal: "bg-teal-50 text-teal-700 border-teal-200",
   orcamento_parado:   "bg-rose-50 text-rose-700 border-rose-200",
+  grade_incompleta:   "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
   whitespace_seguro:  "bg-cyan-50 text-cyan-700 border-cyan-200",
   renovacao_seguro:   "bg-orange-50 text-orange-700 border-orange-200",
 };
@@ -141,6 +143,9 @@ export default function Regras() {
         diasParado: Number(form.diasParado || 7),
         ...(form.valorMinimo ? { valorMinimo: Number(form.valorMinimo) } : {}),
       };
+    }
+    if (form.tipo === "grade_incompleta") {
+      condicoes = { diasApos: Number(form.diasApos || 7) };
     }
     if (ENGINE_MANAGED_TIPOS.has(form.tipo)) condicoes = {};
     const acao = ENGINE_MANAGED_TIPOS.has(form.tipo)
@@ -439,6 +444,19 @@ export default function Regras() {
                   <Label className="text-xs">Valor mínimo do orçamento (opcional)</Label>
                   <Input type="number" step="0.01" placeholder="R$" value={form.valorMinimo}
                     onChange={(e) => setForm((f) => ({ ...f, valorMinimo: e.target.value }))} />
+                </div>
+              </div>
+            )}
+            {form.tipo === "grade_incompleta" && (
+              <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
+                <p className="text-xs text-muted-foreground">
+                  Cliente comprou uma peça que tem outros tamanhos/cores cadastrados (mesmo grupo de variante no catálogo) e ainda não levou nenhuma das outras. Não precisa escolher produto — funciona pra qualquer peça com grade cadastrada.
+                </p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Dias após a compra</Label>
+                  <Input type="number" min={1} value={form.diasApos}
+                    onChange={(e) => setForm((f) => ({ ...f, diasApos: e.target.value }))} />
                 </div>
               </div>
             )}

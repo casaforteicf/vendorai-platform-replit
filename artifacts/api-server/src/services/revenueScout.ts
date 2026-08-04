@@ -53,7 +53,6 @@ interface Condicoes {
   diasParado?: number;
   valorMinimo?: number;
 }
-
 /**
  * Retorna a data da compra mais recente (proposta aceita) de um produto
  * específico por um lead, ou null se nunca comprou. Fonte genérica cross-vertical:
@@ -151,6 +150,7 @@ function calcularScoreOportunidade(
     sequencia_produto: 80,
     upgrade:           75,
     orcamento_parado:  70,
+    grade_incompleta:  68,
     cross_sell:        65,
     aniversario:       60,
     reativacao_sazonal:58,
@@ -522,6 +522,82 @@ export async function analisarCliente(
           .where(eq(scoutRegrasTable.id, regra.id));
 
         log.info({ tenantId, clienteId, regraId: regra.id, propostaId: proposta.id }, "scout: oportunidade orcamento_parado inserida");
+      }
+      continue;
+    }
+
+    // "grade_incompleta" — cliente comprou uma peça que tem outros
+    // tamanhos/cores cadastrados (mesmo grupoVarianteId) e ainda não levou
+    // nenhuma das outras variantes. Diferente de sequencia_produto (par
+    // fixo origem→sugestão), aqui a sugestão é dinâmica: qualquer variante
+    // irmã ainda não comprada.
+    if (regra.tipo === "grade_incompleta") {
+      const diasApos = cond.diasApos ?? 7;
+
+      const propostasAceitas = await db
+        .select({ itens: propostasTable.itens, acceptedAt: propostasTable.acceptedAt, updatedAt: propostasTable.updatedAt })
+        .from(propostasTable)
+        .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, clienteId), eq(propostasTable.status, "aceita")));
+
+      const produtosCompradosIds = new Set<string>();
+      for (const p of propostasAceitas) {
+        for (const item of p.itens ?? []) {
+          if (item.produtoId) produtosCompradosIds.add(item.produtoId);
+        }
+      }
+
+      for (const p of propostasAceitas) {
+        const dataCompra = p.acceptedAt ?? p.updatedAt;
+        const diasDesdeCompraGrade = Math.floor((Date.now() - dataCompra.getTime()) / (1000 * 60 * 60 * 24));
+        if (diasDesdeCompraGrade < diasApos) continue;
+
+        for (const item of p.itens ?? []) {
+          if (!item.produtoId) continue;
+          const [produtoComprado] = await db.select().from(produtosCatalogoTable).where(eq(produtosCatalogoTable.id, item.produtoId));
+          if (!produtoComprado?.grupoVarianteId) continue;
+
+          const siblings = await db.select().from(produtosCatalogoTable)
+            .where(and(eq(produtosCatalogoTable.grupoVarianteId, produtoComprado.grupoVarianteId), eq(produtosCatalogoTable.ativo, true)));
+          const faltantes = siblings.filter((s) => s.id !== produtoComprado.id && !produtosCompradosIds.has(s.id));
+          if (faltantes.length === 0) continue;
+
+          const [existentePendente] = await db
+            .select({ id: scoutOportunidadesTable.id })
+            .from(scoutOportunidadesTable)
+            .where(
+              and(
+                eq(scoutOportunidadesTable.tenantId, tenantId),
+                eq(scoutOportunidadesTable.clienteId, clienteId),
+                eq(scoutOportunidadesTable.regraId, regra.id),
+                eq(scoutOportunidadesTable.status, "pendente"),
+              ),
+            )
+            .limit(1);
+          if (existentePendente) continue;
+
+          const nomesVariantes = faltantes.slice(0, 4).map((f) => [f.tamanho, f.cor].filter(Boolean).join("/")).join(", ");
+          const baseScoreGrade = calcularScoreOportunidade("grade_incompleta", diasDesdeCompraGrade, diasApos);
+          const intentBoostGrade = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
+          const scoreGrade = Math.min(baseScoreGrade + intentBoostGrade, 100);
+
+          await db.insert(scoutOportunidadesTable).values({
+            tenantId,
+            clienteId,
+            regraId:           regra.id,
+            tipo:              regra.tipo,
+            descricao:         `${lead.nome ?? clienteId} levou "${produtoComprado.nome}" — ainda tem em ${nomesVariantes || "outras variantes"}`,
+            status:            "pendente",
+            scoreOportunidade: String(scoreGrade),
+          } as any);
+          captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
+
+          await db
+            .update(scoutRegrasTable)
+            .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
+            .where(eq(scoutRegrasTable.id, regra.id));
+
+          log.info({ tenantId, clienteId, regraId: regra.id }, "scout: oportunidade grade_incompleta inserida");
+        }
       }
       continue;
     }
