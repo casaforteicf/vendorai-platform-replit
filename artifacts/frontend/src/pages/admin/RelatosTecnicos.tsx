@@ -10,7 +10,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertCircle, CheckCircle2, XCircle, ArrowRightCircle,
-  Clock, ChevronDown, ChevronUp, Building2, MessageSquare,
+  Clock, ChevronDown, ChevronUp, Building2, MessageSquare, User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -22,6 +22,9 @@ interface RelatoTecnico {
   tenantName: string | null;
   leadId: string | null;
   conversationId: string | null;
+  titulo: string | null;
+  usuarioId: string | null;
+  usuarioNome: string | null;
   descricaoProblema: string;
   transcriptRelevante: string | null;
   status: "pendente_revisao" | "confirmado_bug" | "nao_e_bug" | "encaminhado";
@@ -180,13 +183,24 @@ export default function RelatosTecnicos() {
                             {relato.tenantName}
                           </span>
                         )}
+                        {relato.usuarioNome && (
+                          <span className="flex items-center gap-1 text-xs text-slate-500">
+                            <User className="h-3 w-3" />
+                            {relato.usuarioNome}
+                          </span>
+                        )}
                         <span className="text-xs text-slate-400">
                           {format(new Date(relato.criadoEm), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                         </span>
                       </div>
-                      <p className="text-sm font-medium text-slate-800 leading-snug">
-                        {relato.descricaoProblema}
+                      <p className="text-sm font-semibold text-slate-900 leading-snug">
+                        {relato.titulo ?? relato.descricaoProblema}
                       </p>
+                      {relato.titulo && relato.descricaoProblema !== relato.titulo && (
+                        <p className="text-xs text-slate-500 leading-snug mt-0.5">
+                          {relato.descricaoProblema}
+                        </p>
+                      )}
                     </div>
 
                     {/* Actions for pending */}

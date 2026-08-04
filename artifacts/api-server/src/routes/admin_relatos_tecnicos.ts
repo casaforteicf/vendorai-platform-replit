@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, relatosTecnicosTable, tenantsTable } from "@workspace/db";
+import { db, relatosTecnicosTable, tenantsTable, usersTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { logger } from "../lib/logger.js";
 
@@ -23,6 +23,9 @@ router.get("/admin/relatos-tecnicos", requireRole("super_admin"), async (req, re
       tenantName: tenantsTable.name,
       leadId: relatosTecnicosTable.leadId,
       conversationId: relatosTecnicosTable.conversationId,
+      titulo: relatosTecnicosTable.titulo,
+      usuarioId: relatosTecnicosTable.usuarioId,
+      usuarioNome: usersTable.name,
       descricaoProblema: relatosTecnicosTable.descricaoProblema,
       transcriptRelevante: relatosTecnicosTable.transcriptRelevante,
       status: relatosTecnicosTable.status,
@@ -30,6 +33,7 @@ router.get("/admin/relatos-tecnicos", requireRole("super_admin"), async (req, re
     })
     .from(relatosTecnicosTable)
     .leftJoin(tenantsTable, eq(relatosTecnicosTable.tenantId, tenantsTable.id))
+    .leftJoin(usersTable, eq(relatosTecnicosTable.usuarioId, usersTable.id))
     .where(conditions.length > 0 ? and(...(conditions as Parameters<typeof and>)) : undefined)
     .orderBy(desc(relatosTecnicosTable.criadoEm));
 

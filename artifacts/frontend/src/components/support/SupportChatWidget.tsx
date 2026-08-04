@@ -20,6 +20,10 @@ export function SupportChatWidget() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [bugReport, setBugReport] = useState<BugReportResult | null>(null);
+  // Um id por sessão do widget — todo o histórico da conversa (mesmo que
+  // vá e volte "aberto/fechado") vira 1 relato técnico só, não um por
+  // mensagem enviada.
+  const conversationIdRef = useRef<string>(crypto.randomUUID());
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -62,7 +66,7 @@ export function SupportChatWidget() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({ messages: newMessages, conversationId: conversationIdRef.current }),
         signal: abortRef.current.signal,
       });
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { db, bugReportsTable } from "@workspace/db";
+import { db, bugReportsTable, relatosTecnicosTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { z } from "zod/v4";
@@ -51,6 +52,10 @@ const messageSchema = z.object({
 
 const chatBodySchema = z.object({
   messages: z.array(messageSchema).min(1).max(100),
+  // Gerado uma vez no front quando o widget abre, mesmo id em toda a
+  // conversa — usado pra agrupar as mensagens num único relato técnico
+  // em vez de criar um registro por turno.
+  conversationId: z.string().uuid().optional(),
 });
 
 router.post("/support/chat", async (req, res) => {
@@ -161,6 +166,44 @@ router.post("/support/chat", async (req, res) => {
       } catch {
         req.log?.warn({ err: "report_parse_failed" }, "support: failed to parse report marker");
       }
+    }
+
+    // Registro em relatos_tecnicos — TODA interação com o Suporte, não só
+    // quando vira chamado formal em bug_reports. Um relato por conversa
+    // (upsert por conversationId), não um por mensagem.
+    try {
+      if (tenantId && parsed.data.conversationId) {
+        const conversationId = parsed.data.conversationId;
+        const userId = req.user?.sub ?? null;
+        const visibleResponse = fullResponse.replace(reportMarkerRegex, "").trim();
+        const transcript =
+          parsed.data.messages.map((m) => `${m.role === "user" ? "Usuário" : "Suporte"}: ${m.content}`).join("\n\n") +
+          (visibleResponse ? `\n\nSuporte: ${visibleResponse}` : "");
+        const primeiraMensagem = parsed.data.messages.find((m) => m.role === "user")?.content ?? "Conversa com o Suporte";
+        const titulo = primeiraMensagem.length > 80 ? primeiraMensagem.slice(0, 77) + "..." : primeiraMensagem;
+
+        const [existente] = await db.select({ id: relatosTecnicosTable.id })
+          .from(relatosTecnicosTable)
+          .where(and(eq(relatosTecnicosTable.conversationId, conversationId), eq(relatosTecnicosTable.tenantId, tenantId)));
+
+        if (existente) {
+          await db.update(relatosTecnicosTable)
+            .set({ transcriptRelevante: transcript })
+            .where(eq(relatosTecnicosTable.id, existente.id));
+        } else {
+          await db.insert(relatosTecnicosTable).values({
+            tenantId,
+            conversationId,
+            usuarioId: userId,
+            titulo,
+            descricaoProblema: titulo,
+            transcriptRelevante: transcript,
+            status: "pendente_revisao",
+          });
+        }
+      }
+    } catch (err) {
+      req.log?.warn({ err }, "support: falha ao registrar relato técnico da conversa (não bloqueia)");
     }
 
     res.write(
