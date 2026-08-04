@@ -74,6 +74,32 @@ export const fretesCargasTable = pgTable("fretes_cargas", {
   fotosColetaUrls: jsonb("fotos_coleta_urls").$type<string[]>(),
   fotosEntregaUrls: jsonb("fotos_entrega_urls").$type<string[]>(),
   observacoes: text("observacoes"),
+  // Avaliação pós-entrega (cliente avalia o motorista/serviço) — só
+  // preenchível quando status = entregue.
+  avaliacaoNota: numeric("avaliacao_nota", { precision: 2, scale: 0 }),
+  avaliacaoComentario: text("avaliacao_comentario"),
+  avaliadoEm: timestamp("avaliado_em"),
+  // Múltiplas paradas: quando preenchido, essa carga faz parte de uma rota
+  // com outras cargas do mesmo motorista, na ordem indicada.
+  rotaId: text("rota_id"),
+  ordemNaRota: numeric("ordem_na_rota", { precision: 3, scale: 0 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Rota com múltiplas paradas — agrupa várias cargas do mesmo motorista numa
+// sequência otimizada, em vez de uma viagem por carga.
+export const fretesRotasStatusEnum = pgEnum("fretes_rota_status", [
+  "planejada", "em_andamento", "concluida", "cancelada",
+]);
+
+export const fretesRotasTable = pgTable("fretes_rotas", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  motoristaId: text("motorista_id").references(() => usersTable.id, { onDelete: "set null" }),
+  veiculoId: text("veiculo_id").references(() => fretesVeiculosTable.id, { onDelete: "set null" }),
+  status: fretesRotasStatusEnum("status").notNull().default("planejada"),
+  nome: text("nome"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -83,6 +109,8 @@ export const insertFretesCargaSchema = createInsertSchema(fretesCargasTable, {
   volumeM3: decimalField.optional().nullable(),
   valorCotado: decimalField.optional().nullable(),
   valorDeclarado: decimalField.optional().nullable(),
+  avaliacaoNota: decimalField.optional().nullable(),
+  ordemNaRota: decimalField.optional().nullable(),
   fotosColetaUrls: z.array(z.string()).optional().nullable(),
   fotosEntregaUrls: z.array(z.string()).optional().nullable(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
@@ -92,9 +120,17 @@ export const updateFretesCargaSchema = createSelectSchema(fretesCargasTable, {
   volumeM3: decimalField.optional().nullable(),
   valorCotado: decimalField.optional().nullable(),
   valorDeclarado: decimalField.optional().nullable(),
+  avaliacaoNota: decimalField.optional().nullable(),
+  ordemNaRota: decimalField.optional().nullable(),
   fotosColetaUrls: z.array(z.string()).optional().nullable(),
   fotosEntregaUrls: z.array(z.string()).optional().nullable(),
 }).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true }).partial();
 
 export type FretesCarga = typeof fretesCargasTable.$inferSelect;
 export type InsertFretesCarga = z.infer<typeof insertFretesCargaSchema>;
+
+export const insertFretesRotaSchema = createInsertSchema(fretesRotasTable)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+export const updateFretesRotaSchema = createSelectSchema(fretesRotasTable)
+  .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true }).partial();
+export type FretesRota = typeof fretesRotasTable.$inferSelect;

@@ -11,7 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Package, Loader2, ArrowRight, Camera, Phone, MapPin } from "lucide-react";
+import { Plus, Package, Loader2, ArrowRight, Camera, Phone, MapPin, Copy, Route as RouteIcon, Clock } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { LiveDeliveryMap } from "@/components/LiveDeliveryMap";
 import { LocationPickerMap } from "@/components/LocationPickerMap";
 import { PhotoProofDialog } from "@/components/PhotoProofDialog";
@@ -272,6 +273,8 @@ export default function FretesCargas() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [photoDialog, setPhotoDialog] = useState<{ cargaId: string; field: "fotosColetaUrls" | "fotosEntregaUrls"; nextStatus: string } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [routeDialogOpen, setRouteDialogOpen] = useState(false);
 
   const QK = ["fretes-cargas", tenantId];
 
@@ -282,6 +285,39 @@ export default function FretesCargas() {
     refetchInterval: 20_000,
   });
   const [expandedMapId, setExpandedMapId] = useState<string | null>(null);
+
+  const { data: veiculos = [] } = useQuery<any[]>({
+    queryKey: ["fretes-veiculos", tenantId],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/fretes/veiculos`, { headers: authHeaders() }).then((r) => r.json()),
+    enabled: !!tenantId && routeDialogOpen,
+  });
+
+  const criarRota = useMutation({
+    mutationFn: (body: { nome?: string; motoristaId?: string; veiculoId?: string; cargaIds: string[] }) =>
+      fetch(`/api/tenants/${tenantId}/fretes/rotas`, { method: "POST", headers: authHeaders(), body: JSON.stringify(body) })
+        .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro"); return r.json(); }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK });
+      setSelectedIds(new Set());
+      setRouteDialogOpen(false);
+      toast({ title: "Rota criada!" });
+    },
+    onError: (e: any) => toast({ title: "Erro ao criar rota", description: e.message, variant: "destructive" }),
+  });
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function copyTrackingLink(cargaId: string) {
+    const url = `${window.location.origin}/rastreio/${cargaId}`;
+    navigator.clipboard.writeText(url);
+    toast({ title: "Link copiado!", description: "Cole no WhatsApp ou envie pro cliente." });
+  }
 
   const advanceStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
@@ -336,6 +372,11 @@ export default function FretesCargas() {
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" /> Nova Carga
           </Button>
+          {selectedIds.size >= 2 && (
+            <Button variant="outline" onClick={() => setRouteDialogOpen(true)}>
+              <RouteIcon className="h-4 w-4 mr-2" /> Criar rota ({selectedIds.size})
+            </Button>
+          )}
         </div>
       </div>
 
@@ -353,12 +394,21 @@ export default function FretesCargas() {
                 return (
                   <div key={c.id} className="px-4 py-3 hover:bg-muted/30 transition-colors">
                     <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        {c.status === "aprovado" && !c.motoristaId && (
+                          <Checkbox className="mt-1" checked={selectedIds.has(c.id)} onCheckedChange={() => toggleSelected(c.id)} />
+                        )}
+                        <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm">{c.cliente?.nome ?? "Cliente"}</span>
                           <Badge variant="outline" className={`text-xs ${STATUS_COLORS[c.status] ?? ""}`}>
                             {STATUS_LABELS[c.status] ?? c.status}
                           </Badge>
+                          {c.rotaId && (
+                            <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">
+                              <RouteIcon className="h-3 w-3 mr-1" /> parada {c.ordemNaRota}
+                            </Badge>
+                          )}
                           {c.origem && c.origem !== "direto" && (
                             <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">
                               {ORIGEM_LABELS[c.origem] ?? c.origem}
@@ -377,6 +427,11 @@ export default function FretesCargas() {
                           {totalFotos > 0 && (
                             <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <Camera className="h-3 w-3" /> {totalFotos} foto(s)
+                            </span>
+                          )}
+                          {c.etaMinutos != null && (
+                            <span className="text-xs text-blue-600 flex items-center gap-1">
+                              <Clock className="h-3 w-3" /> ~{c.etaMinutos} min
                             </span>
                           )}
                         </div>
@@ -402,8 +457,14 @@ export default function FretesCargas() {
                             )}
                           </>
                         )}
+                        </div>
                       </div>
                       <div className="flex flex-col gap-1.5 shrink-0">
+                        {c.status !== "cotacao_pendente" && (
+                          <Button size="sm" variant="ghost" onClick={() => copyTrackingLink(c.id)}>
+                            <Copy className="h-3.5 w-3.5 mr-1.5" /> Copiar link
+                          </Button>
+                        )}
                         {c.cliente?.telefone && (
                           <Button size="sm" variant="ghost" asChild>
                             <a href={`tel:${c.cliente.telefone}`}><Phone className="h-3.5 w-3.5 mr-1.5" /> Ligar</a>
@@ -444,6 +505,51 @@ export default function FretesCargas() {
           }}
         />
       )}
+
+      <Dialog open={routeDialogOpen} onOpenChange={setRouteDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Criar rota com {selectedIds.size} cargas</DialogTitle></DialogHeader>
+          <RouteCreateForm
+            veiculos={veiculos}
+            cargas={cargas.filter((c: any) => selectedIds.has(c.id))}
+            isPending={criarRota.isPending}
+            onSubmit={(body) => criarRota.mutate({ ...body, cargaIds: Array.from(selectedIds) })}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function RouteCreateForm({ veiculos, cargas, isPending, onSubmit }: {
+  veiculos: any[]; cargas: any[]; isPending: boolean;
+  onSubmit: (body: { nome?: string; motoristaId?: string; veiculoId?: string }) => void;
+}) {
+  const [nome, setNome] = useState("");
+  const [veiculoId, setVeiculoId] = useState("");
+
+  return (
+    <div className="space-y-4">
+      <div className="text-sm text-muted-foreground">
+        Paradas nessa ordem: {cargas.map((c: any) => c.enderecoEntrega).join(" → ")}
+      </div>
+      <div className="space-y-1.5">
+        <Label>Nome da rota (opcional)</Label>
+        <Input placeholder="Ex: Rota manhã — zona norte" value={nome} onChange={(e) => setNome(e.target.value)} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Veículo</Label>
+        <Select value={veiculoId} onValueChange={setVeiculoId}>
+          <SelectTrigger><SelectValue placeholder="Selecione o veículo" /></SelectTrigger>
+          <SelectContent>
+            {veiculos.map((v: any) => <SelectItem key={v.id} value={v.id}>{v.placa}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <Button className="w-full" disabled={isPending} onClick={() => onSubmit({ nome: nome || undefined, veiculoId: veiculoId || undefined })}>
+        {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+        Criar rota
+      </Button>
     </div>
   );
 }

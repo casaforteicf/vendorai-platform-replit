@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { LiveDeliveryMap } from "@/components/LiveDeliveryMap"
 import { PhotoProofDialog } from "@/components/PhotoProofDialog";
-import { Truck, MapPin, ArrowRight, Loader2, Navigation, Package } from "lucide-react";
+import { Truck, MapPin, ArrowRight, Loader2, Navigation, Package, Route, Clock } from "lucide-react";
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -147,8 +147,20 @@ function MinhaEntregaCard({ carga, tenantId }: { carga: any; tenantId: string })
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <span className="font-medium text-sm">{carga.cliente?.nome ?? "Cliente"}</span>
-          <Badge variant="outline" className="text-xs">{STATUS_LABELS[carga.status] ?? carga.status}</Badge>
+          <div className="flex items-center gap-1.5">
+            {carga.rotaId && (
+              <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">
+                <Route className="h-3 w-3 mr-1" /> parada {carga.ordemNaRota}
+              </Badge>
+            )}
+            <Badge variant="outline" className="text-xs">{STATUS_LABELS[carga.status] ?? carga.status}</Badge>
+          </div>
         </div>
+        {carga.etaMinutos != null && (carga.status === "coletado" || carga.status === "em_transito") && (
+          <p className="text-xs text-blue-600 flex items-center gap-1">
+            <Clock className="h-3 w-3" /> Chegada estimada: ~{carga.etaMinutos} min
+          </p>
+        )}
         <p className="text-xs text-muted-foreground flex items-start gap-1">
           <MapPin className="h-3 w-3 shrink-0 mt-0.5" /> {carga.enderecoColeta}
         </p>
@@ -217,7 +229,20 @@ export default function FretesMotorista() {
     refetchInterval: tab === "minhas" ? 15_000 : false,
   });
 
-  const ativas = Array.isArray(minhas) ? minhas.filter((c: any) => c.status !== "entregue" && c.status !== "cancelado") : [];
+  const ativas = Array.isArray(minhas)
+    ? minhas
+        .filter((c: any) => c.status !== "entregue" && c.status !== "cancelado")
+        .sort((a: any, b: any) => {
+          // Cargas da mesma rota ficam juntas, na ordem da parada; o resto
+          // (sem rota) mantém a ordem original (mais recente primeiro).
+          if (a.rotaId && b.rotaId && a.rotaId === b.rotaId) {
+            return Number(a.ordemNaRota ?? 0) - Number(b.ordemNaRota ?? 0);
+          }
+          if (a.rotaId && !b.rotaId) return -1;
+          if (!a.rotaId && b.rotaId) return 1;
+          return 0;
+        })
+    : [];
 
   return (
     <div className="space-y-6">

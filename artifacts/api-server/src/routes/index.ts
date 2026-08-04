@@ -73,7 +73,7 @@ import varejoRouter from "./varejo";
 import supermercadoRouter, { supermercadoPublicRouter } from "./supermercado";
 import farmaciaRouter from "./farmacia";
 import imoveisRouter from "./imoveis";
-import fretesRouter from "./fretes";
+import fretesRouter, { fretesPublicRouter } from "./fretes";
 import storiesRouter from "./stories";
 import manifestRouter from "./manifest";
 import variedadesDiaRouter from "./variedades_dia";
@@ -139,6 +139,7 @@ router.use(instagramCallbackRouter);
 router.use(whatsappCallbackRouter);
 router.use(publicProposalsRouter);
 router.use(supermercadoPublicRouter);
+router.use(fretesPublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
