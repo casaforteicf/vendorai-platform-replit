@@ -246,12 +246,22 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
     onClose();
   }
 
+  // Verticais que têm um programa de marca (white-label) associado — o
+  // preview usa a cor/logo do programa em vez do padrão Vendor.ai. Só tem
+  // "arqdor" hoje; quando o logo for enviado pela tela normal de
+  // Configurações, atualiza o logoUrl aqui também.
+  const BRAND_PROGRAM_BY_VERTICAL: Record<string, { corPrimaria?: string; logoUrl?: string }> = {
+    "Arquitetura & Design": { corPrimaria: "#F4171F" },
+  };
+
   function handlePreview() {
+    const brand = BRAND_PROGRAM_BY_VERTICAL[vertical!];
     setTenantOverride({
       id: `__vertical_preview__:${vertical}`,
       name: "Preview de layout",
       vertical: vertical!,
       preview: true,
+      ...(brand ?? {}),
     });
     setLocation(meta.href);
     onClose();

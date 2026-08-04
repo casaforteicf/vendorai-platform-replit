@@ -10,6 +10,10 @@ export interface TenantOverride {
   vertical: string;
   /** Super Admin layout preview without a persisted tenant. */
   preview?: boolean;
+  /** Marca do programa (ex: Arqdor) aplicada só durante o preview — não
+   * existe tenant real por trás pra buscar isso via API. */
+  corPrimaria?: string | null;
+  logoUrl?: string | null;
 }
 
 interface AuthContextType {

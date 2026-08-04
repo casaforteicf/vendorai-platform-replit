@@ -41,14 +41,19 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Co-branding de cor: a sidebar/botões/destaques passam a usar a cor de
   // marca do tenant (mesma ideia da logo no header). Reseta pro padrão do
   // Vendor.ai se o tenant não tiver cor definida ou ao desmontar (logout).
+  // Em preview de vertical (Admin → Verticais → Visualizar layout) não
+  // existe tenant real pra buscar — usa a cor do programa de marca que
+  // veio junto no override, se tiver.
+  const previewCorPrimaria = isSuperAdmin && tenantOverride?.preview ? tenantOverride.corPrimaria : null;
   React.useEffect(() => {
-    if (tenantData?.corPrimaria) {
-      applyTenantTheme(tenantData.corPrimaria);
+    const cor = previewCorPrimaria ?? tenantData?.corPrimaria;
+    if (cor) {
+      applyTenantTheme(cor);
     } else {
       resetTenantTheme();
     }
     return () => resetTenantTheme();
-  }, [tenantData?.corPrimaria]);
+  }, [previewCorPrimaria, tenantData?.corPrimaria]);
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
