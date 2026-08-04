@@ -867,6 +867,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 <X className="h-5 w-5" />
               </Button>
             </div>
+            <div className="px-3 py-2 border-b">
+              <StoreSwitcher />
+            </div>
             <div className="flex-1 py-3 flex flex-col gap-1 px-3 overflow-y-auto">
               <NavLinks onNavigate={() => setMobileOpen(false)} />
             </div>
