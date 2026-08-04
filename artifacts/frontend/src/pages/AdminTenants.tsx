@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useListTenants, getListTenantsQueryKey, type Tenant } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -68,6 +68,10 @@ export default function AdminTenants() {
   const { toast } = useToast();
 
   const { data: tenants = [], isLoading } = useListTenants();
+  const { data: brandPrograms = [] } = useQuery<Array<{ id: string; nomeExibicao: string }>>({
+    queryKey: ["brand-programs"],
+    queryFn: () => fetch("/api/brand-programs", { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
+  });
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
@@ -213,6 +217,27 @@ export default function AdminTenants() {
         toast({ title: data.error ?? "Erro ao atualizar vertical", variant: "destructive" });
       } else {
         void qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
+      }
+    } finally {
+      setUpdatingVertical(null);
+    }
+  }
+
+  async function handleUpdateProgramaMarca(tenantId: string, programaMarca: string) {
+    setUpdatingVertical(tenantId);
+    try {
+      const body = programaMarca === "__none__" ? { programaMarca: null } : { programaMarca };
+      const res = await fetch(`/api/tenants/${tenantId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast({ title: data.error ?? "Erro ao atualizar programa de marca", variant: "destructive" });
+      } else {
+        void qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
+        toast({ title: "Programa de marca atualizado — logo/cor do programa aplicados." });
       }
     } finally {
       setUpdatingVertical(null);
@@ -469,6 +494,26 @@ export default function AdminTenants() {
                           {VERTICAL_OPTIONS.map((opt) => (
                             <SelectItem key={opt.value} value={opt.value} className="text-xs">
                               {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <p className="text-xs text-muted-foreground mb-1">Programa de marca</p>
+                      <Select
+                        value={(t as any).programaMarca ?? "__none__"}
+                        onValueChange={(v) => handleUpdateProgramaMarca(t.id, v)}
+                        disabled={updatingVertical === t.id}
+                      >
+                        <SelectTrigger className="h-8 text-xs border-dashed">
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__" className="text-xs">— Vendor.ai (padrão) —</SelectItem>
+                          {brandPrograms.map((p) => (
+                            <SelectItem key={p.id} value={p.id} className="text-xs">
+                              {p.nomeExibicao}
                             </SelectItem>
                           ))}
                         </SelectContent>

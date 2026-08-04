@@ -122,6 +122,12 @@ export const tenantsTable = pgTable(
     // aberta — só cotações endereçadas especificamente a ele.
     parceiroRedeAtivo: boolean("parceiro_rede_ativo").notNull().default(false),
     parceiroCategorias: json("parceiro_categorias").$type<string[]>().default([]),
+    // Programa de marca (white-label) — ex: "arqdor". Independente da
+    // vertical: tanto o negócio principal do programa quanto os
+    // fornecedores/parceiros que vendem pra esse público entram aqui.
+    // Quando preenchido, logo/cor do programa substituem o padrão
+    // Vendor.ai na experiência desse tenant.
+    programaMarca: text("programa_marca"),
     freteMesmaCidade: numeric("frete_mesma_cidade", { precision: 10, scale: 2 }).default("0"),
     freteOutraCidade: numeric("frete_outra_cidade", { precision: 10, scale: 2 }).default("15.90"),
     freteGratisAcimaDe: numeric("frete_gratis_acima_de", { precision: 10, scale: 2 }).default("79.00"),

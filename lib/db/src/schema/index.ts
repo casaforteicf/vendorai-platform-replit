@@ -18,6 +18,7 @@ export * from "./campaigns";
 export * from "./produtos_catalogo";
 export * from "./solicitacoes_compra";
 export * from "./changelog";
+export * from "./brand_programs";
 export * from "./categorias_produto";
 export * from "./agendas";
 export * from "./agendamentos";

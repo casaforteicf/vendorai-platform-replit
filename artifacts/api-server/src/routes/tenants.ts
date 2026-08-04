@@ -13,6 +13,7 @@ import {
   planAssignmentLogTable,
   produtosCatalogoTable,
   conversationsTable,
+  brandProgramsTable,
   dealsTable,
   intelligenceAnalysisLogTable,
   agentActionsLogTable,
@@ -44,6 +45,12 @@ router.get("/tenants", async (req, res) => {
   res.json(tenants);
 });
 
+// GET /brand-programs — programas de marca disponíveis (pro seletor ao criar/editar tenant)
+router.get("/brand-programs", requireRole("super_admin"), async (_req, res) => {
+  const programs = await db.select().from(brandProgramsTable);
+  res.json(programs);
+});
+
 router.post("/tenants", requireRole("super_admin"), async (req, res) => {
   const parsed = insertTenantSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -58,7 +65,27 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
   try {
     const [tenant] = await db.insert(tenantsTable).values(insertData).returning();
     await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
-    res.status(201).json(tenant);
+
+    // Programa de marca (white-label, ex: "arqdor") — aplica logo/cor como
+    // ponto de partida. O admin do tenant ainda pode trocar depois em
+    // Configurações → Perfil, isso só evita nascer com a marca padrão
+    // Vendor.ai quando o tenant já entra vinculado a um programa.
+    let finalTenant = tenant;
+    if (tenant.programaMarca) {
+      const [program] = await db.select().from(brandProgramsTable).where(eq(brandProgramsTable.id, tenant.programaMarca));
+      if (program) {
+        const [updated] = await db.update(tenantsTable)
+          .set({
+            ...(program.logoUrl ? { logoUrl: program.logoUrl } : {}),
+            ...(program.corPrimaria ? { corPrimaria: program.corPrimaria } : {}),
+          })
+          .where(eq(tenantsTable.id, tenant.id))
+          .returning();
+        finalTenant = updated ?? tenant;
+      }
+    }
+
+    res.status(201).json(finalTenant);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: "Slug already exists" });
@@ -265,7 +292,25 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
       return;
     }
 
-    res.json(tenant);
+    // Programa de marca definido/trocado agora — aplica logo/cor do
+    // programa nessa hora (sobrescreve, é uma escolha explícita do admin
+    // ao vincular esse tenant à marca). Continua editável depois.
+    let finalTenant = tenant;
+    if ("programaMarca" in parsed.data && parsed.data.programaMarca) {
+      const [program] = await db.select().from(brandProgramsTable).where(eq(brandProgramsTable.id, parsed.data.programaMarca));
+      if (program && (program.logoUrl || program.corPrimaria)) {
+        const [updated] = await db.update(tenantsTable)
+          .set({
+            ...(program.logoUrl ? { logoUrl: program.logoUrl } : {}),
+            ...(program.corPrimaria ? { corPrimaria: program.corPrimaria } : {}),
+          })
+          .where(eq(tenantsTable.id, tenant.id))
+          .returning();
+        finalTenant = updated ?? tenant;
+      }
+    }
+
+    res.json(finalTenant);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: "Slug already exists" });
