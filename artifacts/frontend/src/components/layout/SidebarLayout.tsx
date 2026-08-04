@@ -105,6 +105,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     supermercado: ["/supermercado", "/supermercado/produtos", "/supermercado/pedidos", "/supermercado/campanhas", "/supermercado/config"],
     beauty:       ["/beauty", "/beauty/agenda", "/beauty/servicos", "/beauty/profissionais"],
     clinic:       ["/clinic", "/clinic/agenda", "/clinic/medicos"],
+    knowledge_graph: ["/vkg"],
+    vendor_brain:    ["/brain"],
     // sdr, content, campaigns, churn: sem tela própria no menu hoje —
     // desligar não esconde nada (não são páginas, são só flags de catálogo)
   };
