@@ -78,6 +78,7 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
           .set({
             ...(program.logoUrl ? { logoUrl: program.logoUrl } : {}),
             ...(program.corPrimaria ? { corPrimaria: program.corPrimaria } : {}),
+            whiteLabelCompleto: program.whiteLabelCompleto,
           })
           .where(eq(tenantsTable.id, tenant.id))
           .returning();
@@ -303,6 +304,7 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
           .set({
             ...(program.logoUrl ? { logoUrl: program.logoUrl } : {}),
             ...(program.corPrimaria ? { corPrimaria: program.corPrimaria } : {}),
+            whiteLabelCompleto: program.whiteLabelCompleto,
           })
           .where(eq(tenantsTable.id, tenant.id))
           .returning();

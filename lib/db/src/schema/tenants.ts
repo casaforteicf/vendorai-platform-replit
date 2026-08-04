@@ -128,6 +128,9 @@ export const tenantsTable = pgTable(
     // Quando preenchido, logo/cor do programa substituem o padrão
     // Vendor.ai na experiência desse tenant.
     programaMarca: text("programa_marca"),
+    // Copiado do programa quando aplicado — true esconde "Vendor.ai"
+    // completamente da experiência desse tenant (só a marca do programa).
+    whiteLabelCompleto: boolean("white_label_completo").notNull().default(false),
     freteMesmaCidade: numeric("frete_mesma_cidade", { precision: 10, scale: 2 }).default("0"),
     freteOutraCidade: numeric("frete_outra_cidade", { precision: 10, scale: 2 }).default("15.90"),
     freteGratisAcimaDe: numeric("frete_gratis_acima_de", { precision: 10, scale: 2 }).default("79.00"),

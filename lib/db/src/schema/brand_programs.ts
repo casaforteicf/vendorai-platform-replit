@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,6 +16,10 @@ export const brandProgramsTable = pgTable("brand_programs", {
   logoUrl: text("logo_url"),
   corPrimaria: text("cor_primaria"),
   descricao: text("descricao"),
+  // false (padrão) = co-branding, mostra "Vendor.ai × Logo do tenant".
+  // true = marca branca completa, mostra só a marca do programa, nunca
+  // "Vendor.ai" em lugar nenhum da experiência desse tenant.
+  whiteLabelCompleto: boolean("white_label_completo").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

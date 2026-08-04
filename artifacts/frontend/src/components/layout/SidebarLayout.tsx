@@ -514,11 +514,25 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   function LogoBranding({ size }: { size: "lg" | "md" | "sm" }) {
     const tenantLogo = resolveImgUrl(user?.tenantLogoUrl);
+    const whiteLabelCompleto = !!(user as any)?.tenantWhiteLabel;
     const vendorH    = size === "lg" ? "h-10" : size === "md" ? "h-8" : "h-7";
     const tenantH    = size === "lg" ? "h-9"  : size === "md" ? "h-7" : "h-6";
 
     if (!tenantLogo) {
       return <img src={logoFull} alt="Vendor.ai" className={`${vendorH} w-auto`} />;
+    }
+
+    // Marca branca completa (programa como Arqdor.ai) — nunca mostra
+    // "Vendor.ai", só a marca do programa, sem o "×" de co-branding.
+    if (whiteLabelCompleto) {
+      return (
+        <img
+          src={tenantLogo}
+          alt="Logo"
+          className={`${vendorH} w-auto max-w-[160px] object-contain`}
+          onError={(e) => ((e.currentTarget as HTMLImageElement).src = logoFull)}
+        />
+      );
     }
 
     return (

@@ -630,7 +630,7 @@ router.patch("/onboarding/step/1", authenticate, async (req, res) => {
     "Arquitetura & Design": "arqdor",
   };
   const programaMarca = SEGMENTO_TO_PROGRAM[segmento] ?? null;
-  let brandDefaults: { logoUrl?: string; corPrimaria?: string } = {};
+  let brandDefaults: { logoUrl?: string; corPrimaria?: string; whiteLabelCompleto?: boolean } = {};
   if (programaMarca && !corPrimaria) {
     const [program] = await db.select().from(brandProgramsTable).where(eq(brandProgramsTable.id, programaMarca));
     if (program) {
@@ -641,6 +641,7 @@ router.patch("/onboarding/step/1", authenticate, async (req, res) => {
       brandDefaults = {
         ...(program.logoUrl && !currentTenant?.logoUrl ? { logoUrl: program.logoUrl } : {}),
         ...(program.corPrimaria ? { corPrimaria: program.corPrimaria } : {}),
+        whiteLabelCompleto: program.whiteLabelCompleto,
       };
     }
   }

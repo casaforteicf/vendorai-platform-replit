@@ -8,6 +8,7 @@ import {
   fretesLocalizacoesHistoricoTable,
   leadsTable,
   usersTable,
+  tenantsTable,
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { geocodeAddress, distanceKm, estimarValorFrete, estimarEtaMinutos } from "../lib/geocoding.js";
@@ -397,6 +398,7 @@ router.patch("/tenants/:tenantId/fretes/cargas/:id/status", async (req, res) => 
 fretesPublicRouter.get("/public/fretes/:id", async (req, res) => {
   const id = req.params.id as string;
   const [row] = await db.select({
+    tenantId: fretesCargasTable.tenantId,
     status: fretesCargasTable.status,
     enderecoColeta: fretesCargasTable.enderecoColeta,
     enderecoEntrega: fretesCargasTable.enderecoEntrega,
@@ -419,8 +421,14 @@ fretesPublicRouter.get("/public/fretes/:id", async (req, res) => {
     motoristaNome = m?.name ?? null;
   }
 
-  const { motoristaId, ...safeRow } = row;
-  return res.json({ ...withEta({ ...safeRow, motoristaId } as any), motoristaNome });
+  const [tenant] = await db.select({
+    nome: tenantsTable.name,
+    logoUrl: tenantsTable.logoUrl,
+    whiteLabelCompleto: tenantsTable.whiteLabelCompleto,
+  }).from(tenantsTable).where(eq(tenantsTable.id, row.tenantId));
+
+  const { motoristaId, tenantId, ...safeRow } = row;
+  return res.json({ ...withEta({ ...safeRow, motoristaId } as any), motoristaNome, tenant });
 });
 
 // Avaliação só é aceita depois de entregue, e só uma vez.

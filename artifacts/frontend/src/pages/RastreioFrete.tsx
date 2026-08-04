@@ -20,6 +20,7 @@ interface RastreioData {
   motoristaNome: string | null;
   avaliacaoNota: string | null;
   etaMinutos: number | null;
+  tenant: { nome: string; logoUrl: string | null; whiteLabelCompleto: boolean } | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -147,7 +148,9 @@ export default function RastreioFrete() {
           </div>
         )}
 
-        <p className="text-center text-xs text-muted-foreground pt-2">Powered by Vendor.ai</p>
+        <p className="text-center text-xs text-muted-foreground pt-2">
+          {data.tenant?.whiteLabelCompleto ? `${data.tenant.nome}` : "Powered by Vendor.ai"}
+        </p>
       </div>
     </div>
   );
