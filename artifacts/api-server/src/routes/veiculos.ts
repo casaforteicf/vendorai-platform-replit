@@ -5,6 +5,9 @@ import {
   veiculosEstoqueTable,
   veiculosTestDrivesTable,
   leadsTable,
+  produtosCatalogoTable,
+  categoriasProdutoTable,
+  type VeiculosEstoque,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -17,6 +20,71 @@ function isSuperAdmin(req: Express.Request) {
 }
 function canAccess(req: Express.Request, tenantId: string) {
   return isSuperAdmin(req) || tid(req) === tenantId;
+}
+
+/**
+ * Estoque de Veículos é a fonte única de verdade — essa função mantém o
+ * catálogo genérico (o que o Praça.ai de fato exibe) em sincronia. Um
+ * veículo só fica visível no Praça.ai quando está 'disponivel' E com
+ * vistoria confirmada (mesma regra que já trava o próprio anúncio interno).
+ * Fora disso, o produto vinculado é desativado (não apagado — preserva
+ * histórico de pedidos/avaliações já feitos em cima dele).
+ */
+async function syncVeiculoToProdutoCatalogo(veiculo: VeiculosEstoque): Promise<void> {
+  const publicavel = veiculo.status === "disponivel" && veiculo.vistoriaRealizada;
+
+  if (!publicavel) {
+    if (veiculo.produtoCatalogoId) {
+      await db.update(produtosCatalogoTable)
+        .set({ ativo: false })
+        .where(eq(produtosCatalogoTable.id, veiculo.produtoCatalogoId));
+    }
+    return;
+  }
+
+  let [categoria] = await db.select().from(categoriasProdutoTable)
+    .where(and(eq(categoriasProdutoTable.tenantId, veiculo.tenantId), eq(categoriasProdutoTable.nome, "Veículos")));
+  if (!categoria) {
+    [categoria] = await db.insert(categoriasProdutoTable)
+      .values({ tenantId: veiculo.tenantId, nome: "Veículos" })
+      .returning();
+  }
+
+  const nome = `${veiculo.marca} ${veiculo.modelo}${veiculo.anoModelo ? ` ${veiculo.anoModelo}` : ""}`.trim();
+  const todasFotos = [
+    ...(veiculo.fotos ?? []),
+    ...(veiculo.fotosDetalhes ?? []).map((f) => f.url),
+  ];
+  const detalhes = [
+    veiculo.km != null ? `${veiculo.km.toLocaleString("pt-BR")} km` : null,
+    veiculo.combustivel ?? null,
+    veiculo.cambio ?? null,
+    veiculo.cor ?? null,
+    veiculo.anoFabricacao ? `${veiculo.anoFabricacao}/${veiculo.anoModelo ?? veiculo.anoFabricacao}` : null,
+  ].filter(Boolean).join(" · ");
+  const descricao = [detalhes, veiculo.descricao].filter(Boolean).join("\n\n");
+
+  const payload = {
+    tenantId: veiculo.tenantId,
+    nome,
+    descricao: descricao || null,
+    categoriaId: categoria!.id,
+    marca: veiculo.marca,
+    precoBase: String(veiculo.valorPromocional ?? veiculo.valor),
+    ...(veiculo.valorPromocional ? { precoPromocional: String(veiculo.valorPromocional) } : {}),
+    imagemUrl: todasFotos[0] ?? null,
+    imagens: todasFotos,
+    videoUrl: veiculo.videos?.[0] ?? null,
+    ativo: true,
+    destaque: veiculo.destaque,
+  };
+
+  if (veiculo.produtoCatalogoId) {
+    await db.update(produtosCatalogoTable).set(payload).where(eq(produtosCatalogoTable.id, veiculo.produtoCatalogoId));
+  } else {
+    const [produto] = await db.insert(produtosCatalogoTable).values(payload as any).returning();
+    await db.update(veiculosEstoqueTable).set({ produtoCatalogoId: produto!.id }).where(eq(veiculosEstoqueTable.id, veiculo.id));
+  }
 }
 
 // ─── Estoque ──────────────────────────────────────────────────────────────────
@@ -51,6 +119,7 @@ router.post("/tenants/:tenantId/veiculos/estoque", async (req, res) => {
   const [row] = await db.insert(veiculosEstoqueTable)
     .values(body as any)
     .returning();
+  await syncVeiculoToProdutoCatalogo(row!);
   return res.status(201).json(row);
 });
 
@@ -88,6 +157,7 @@ router.put("/tenants/:tenantId/veiculos/estoque/:id", async (req, res) => {
     .set({ ...body, updatedAt: new Date() })
     .where(and(eq(veiculosEstoqueTable.id, id), eq(veiculosEstoqueTable.tenantId, tenantId)))
     .returning();
+  if (row) await syncVeiculoToProdutoCatalogo(row);
   return res.json(row);
 });
 
@@ -105,6 +175,7 @@ router.patch("/tenants/:tenantId/veiculos/estoque/:id/vistoria", async (req, res
     .where(and(eq(veiculosEstoqueTable.id, id), eq(veiculosEstoqueTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Veículo not found" });
+  await syncVeiculoToProdutoCatalogo(row);
   return res.json(row);
 });
 
@@ -118,6 +189,7 @@ router.delete("/tenants/:tenantId/veiculos/estoque/:id", async (req, res) => {
     .where(and(eq(veiculosEstoqueTable.id, id), eq(veiculosEstoqueTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Veículo not found" });
+  await syncVeiculoToProdutoCatalogo(row);
   return res.json(row);
 });
 

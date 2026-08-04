@@ -11,7 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Car, Loader2, ShieldCheck, ShieldAlert, Gauge } from "lucide-react";
+import { Plus, Pencil, Car, Loader2, ShieldCheck, ShieldAlert, Gauge, ImagePlus, Film } from "lucide-react";
+
+function resolveMediaUrl(url: string) {
+  return url.startsWith("/objects/") ? `/api/storage${url}` : url;
+}
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -42,10 +46,30 @@ function fmt(v: number | string | null) {
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+interface FotoDetalhe { url: string; legenda: string }
 const EMPTY_FORM = {
   marca: "", modelo: "", anoFabricacao: "", anoModelo: "", cor: "", km: "",
   combustivel: "flex" as string, cambio: "manual" as string, valor: "", valorPromocional: "", descricao: "",
+  fotos: [] as string[],
+  fotosDetalhes: [] as FotoDetalhe[],
+  videos: [] as string[],
 };
+
+async function uploadFile(file: File): Promise<string> {
+  const token = localStorage.getItem("vendorai_token");
+  const requestRes = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+  });
+  const payload = await requestRes.json().catch(() => ({})) as { uploadURL?: string; objectPath?: string; error?: string };
+  if (!requestRes.ok || !payload.uploadURL || !payload.objectPath) {
+    throw new Error(payload.error || `Falha ao preparar upload (HTTP ${requestRes.status})`);
+  }
+  const uploadRes = await fetch(payload.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+  if (!uploadRes.ok) throw new Error(`Falha ao enviar arquivo (HTTP ${uploadRes.status})`);
+  return payload.objectPath;
+}
 
 function VistoriaDialog({ tenantId, veiculo, open, onOpenChange }: { tenantId: string; veiculo: any; open: boolean; onOpenChange: (v: boolean) => void }) {
   const qc = useQueryClient();
@@ -104,6 +128,9 @@ export default function VeiculosEstoque() {
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [vistoriaTarget, setVistoriaTarget] = useState<any>(null);
+  const [uploadingFotos, setUploadingFotos] = useState(false);
+  const [uploadingDetalhe, setUploadingDetalhe] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
   const QK = ["veiculos-estoque", tenantId, statusFilter];
 
@@ -160,6 +187,9 @@ export default function VeiculosEstoque() {
       combustivel: v.combustivel ?? "flex", cambio: v.cambio ?? "manual",
       valor: v.valor != null ? String(v.valor) : "", valorPromocional: v.valorPromocional != null ? String(v.valorPromocional) : "",
       descricao: v.descricao ?? "",
+      fotos: v.fotos ?? [],
+      fotosDetalhes: v.fotosDetalhes ?? [],
+      videos: v.videos ?? [],
     });
     setDialogOpen(true);
   }
@@ -175,6 +205,9 @@ export default function VeiculosEstoque() {
       anoModelo: form.anoModelo ? Number(form.anoModelo) : undefined,
       km: form.km ? Number(form.km) : undefined,
       valorPromocional: form.valorPromocional || undefined,
+      fotos: form.fotos,
+      fotosDetalhes: form.fotosDetalhes,
+      videos: form.videos,
     });
   }
 
@@ -330,6 +363,113 @@ export default function VeiculosEstoque() {
             <div className="space-y-1.5">
               <Label>Descrição</Label>
               <Textarea value={form.descricao} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} rows={2} />
+            </div>
+
+            {/* Fotos gerais */}
+            <div className="space-y-2">
+              <Label>Fotos</Label>
+              {form.fotos.length > 0 && (
+                <div className="grid grid-cols-4 gap-2">
+                  {form.fotos.map((url, i) => (
+                    <div key={i} className="relative aspect-square rounded-md overflow-hidden border">
+                      <img src={resolveMediaUrl(url)} className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => setForm((f) => ({ ...f, fotos: f.fotos.filter((_, idx) => idx !== i) }))}
+                        className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full h-5 w-5 text-xs leading-none">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center justify-center gap-2 border border-dashed rounded-md py-2.5 text-sm text-muted-foreground cursor-pointer hover:bg-muted/40">
+                {uploadingFotos ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                Adicionar foto
+                <input type="file" accept="image/*" multiple hidden disabled={uploadingFotos} onChange={async (e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (!files.length) return;
+                  setUploadingFotos(true);
+                  try {
+                    const urls = await Promise.all(files.map(uploadFile));
+                    setForm((f) => ({ ...f, fotos: [...f.fotos, ...urls] }));
+                  } catch (err: any) {
+                    toast({ title: "Erro ao enviar foto", description: err.message, variant: "destructive" });
+                  } finally {
+                    setUploadingFotos(false);
+                    e.target.value = "";
+                  }
+                }} />
+              </label>
+            </div>
+
+            {/* Fotos de detalhe — com legenda (motor, interior, painel etc) */}
+            <div className="space-y-2">
+              <Label>Fotos de detalhe</Label>
+              <p className="text-xs text-muted-foreground">Motor, interior, painel, avarias — o que ajuda o cliente a confiar no anúncio.</p>
+              {form.fotosDetalhes.length > 0 && (
+                <div className="space-y-2">
+                  {form.fotosDetalhes.map((fd, i) => (
+                    <div key={i} className="flex items-center gap-2 border rounded-md p-1.5">
+                      <img src={resolveMediaUrl(fd.url)} className="h-12 w-12 object-cover rounded shrink-0" />
+                      <Input placeholder="Legenda (ex: Motor)" value={fd.legenda}
+                        onChange={(e) => setForm((f) => ({ ...f, fotosDetalhes: f.fotosDetalhes.map((x, idx) => idx === i ? { ...x, legenda: e.target.value } : x) }))}
+                        className="h-8 text-xs" />
+                      <button type="button" onClick={() => setForm((f) => ({ ...f, fotosDetalhes: f.fotosDetalhes.filter((_, idx) => idx !== i) }))}
+                        className="shrink-0 text-destructive text-xs px-1.5">Remover</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center justify-center gap-2 border border-dashed rounded-md py-2.5 text-sm text-muted-foreground cursor-pointer hover:bg-muted/40">
+                {uploadingDetalhe ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                Adicionar foto de detalhe
+                <input type="file" accept="image/*" multiple hidden disabled={uploadingDetalhe} onChange={async (e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (!files.length) return;
+                  setUploadingDetalhe(true);
+                  try {
+                    const urls = await Promise.all(files.map(uploadFile));
+                    setForm((f) => ({ ...f, fotosDetalhes: [...f.fotosDetalhes, ...urls.map((url) => ({ url, legenda: "" }))] }));
+                  } catch (err: any) {
+                    toast({ title: "Erro ao enviar foto", description: err.message, variant: "destructive" });
+                  } finally {
+                    setUploadingDetalhe(false);
+                    e.target.value = "";
+                  }
+                }} />
+              </label>
+            </div>
+
+            {/* Vídeos */}
+            <div className="space-y-2">
+              <Label>Vídeos</Label>
+              {form.videos.length > 0 && (
+                <div className="space-y-1.5">
+                  {form.videos.map((url, i) => (
+                    <div key={i} className="flex items-center gap-2 border rounded-md p-2 text-xs">
+                      <Film className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate flex-1">{url.split("/").pop()}</span>
+                      <button type="button" onClick={() => setForm((f) => ({ ...f, videos: f.videos.filter((_, idx) => idx !== i) }))}
+                        className="shrink-0 text-destructive px-1.5">Remover</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center justify-center gap-2 border border-dashed rounded-md py-2.5 text-sm text-muted-foreground cursor-pointer hover:bg-muted/40">
+                {uploadingVideo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}
+                Adicionar vídeo
+                <input type="file" accept="video/*" multiple hidden disabled={uploadingVideo} onChange={async (e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (!files.length) return;
+                  setUploadingVideo(true);
+                  try {
+                    const urls = await Promise.all(files.map(uploadFile));
+                    setForm((f) => ({ ...f, videos: [...f.videos, ...urls] }));
+                  } catch (err: any) {
+                    toast({ title: "Erro ao enviar vídeo", description: err.message, variant: "destructive" });
+                  } finally {
+                    setUploadingVideo(false);
+                    e.target.value = "";
+                  }
+                }} />
+              </label>
             </div>
             {!editing && (
               <p className="text-xs text-muted-foreground">
