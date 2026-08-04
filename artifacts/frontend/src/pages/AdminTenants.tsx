@@ -129,6 +129,7 @@ export default function AdminTenants() {
   const VERTICAL_OPTIONS = [
     { value: "__none__",                        label: "— CRM Geral —" },
     { value: "Construção & Reforma",            label: "Construção & Reforma" },
+    { value: "Arquitetura & Design",             label: "Arquitetura & Design" },
     { value: "Varejo de Roupas & Acessórios",   label: "Varejo de Roupas & Acessórios" },
     { value: "Supermercado",                    label: "Supermercado" },
     { value: "Salão de Beleza",                 label: "Salão de Beleza" },
