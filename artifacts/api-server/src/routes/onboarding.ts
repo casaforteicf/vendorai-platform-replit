@@ -17,6 +17,7 @@ import {
   instagramConnectionsTable,
   AGENT_TYPES,
   type AgentsMap,
+  brandProgramsTable,
 } from "@workspace/db";
 import { buildAuthUrl } from "../lib/google-calendar.js";
 import { authenticate, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
@@ -620,6 +621,30 @@ router.patch("/onboarding/step/1", authenticate, async (req, res) => {
   const { nomeEmpresa, segmento, site, descricao, corPrimaria } = parsed.data;
   const now = new Date();
 
+  // Segmentos que pertencem a um programa de marca (white-label) — quem se
+  // cadastra escolhendo esse segmento já nasce com a marca do programa,
+  // sem precisar de nenhuma configuração manual depois. Só "arqdor" por
+  // enquanto; se o próprio cadastro já mandou uma cor (corPrimaria acima),
+  // essa escolha do usuário tem prioridade sobre o padrão do programa.
+  const SEGMENTO_TO_PROGRAM: Record<string, string> = {
+    "Arquitetura & Design": "arqdor",
+  };
+  const programaMarca = SEGMENTO_TO_PROGRAM[segmento] ?? null;
+  let brandDefaults: { logoUrl?: string; corPrimaria?: string } = {};
+  if (programaMarca && !corPrimaria) {
+    const [program] = await db.select().from(brandProgramsTable).where(eq(brandProgramsTable.id, programaMarca));
+    if (program) {
+      // Não sobrescreve um logo que o próprio usuário já subiu nesse
+      // mesmo passo (via POST /onboarding/step/1/logo, que roda antes
+      // desse PATCH quando ele escolhe um arquivo).
+      const [currentTenant] = await db.select({ logoUrl: tenantsTable.logoUrl }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+      brandDefaults = {
+        ...(program.logoUrl && !currentTenant?.logoUrl ? { logoUrl: program.logoUrl } : {}),
+        ...(program.corPrimaria ? { corPrimaria: program.corPrimaria } : {}),
+      };
+    }
+  }
+
   await db
     .update(tenantsTable)
     .set({
@@ -635,6 +660,8 @@ router.patch("/onboarding/step/1", authenticate, async (req, res) => {
       site: site ?? null,
       descricao: descricao ?? null,
       corPrimaria: corPrimaria ?? undefined,
+      ...(programaMarca ? { programaMarca } : {}),
+      ...brandDefaults,
       updatedAt: now,
     })
     .where(eq(tenantsTable.id, tenantId));
