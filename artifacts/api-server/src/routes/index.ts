@@ -113,6 +113,7 @@ import contentTrackingRouter from "./content_tracking";
 import tenantNavModulesRouter from "./tenantNavModules";
 import vendasPracaRouter from "./vendas_praca";
 import erpRouter from "./erp";
+import changelogRouter from "./changelog";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -236,6 +237,7 @@ router.use(rulesRouter);
 // Inventory Hub
 router.use(inventoryRouter);
 router.use(erpRouter);
+router.use(changelogRouter);
 
 // Website Hub
 router.use(siteConfigRouter);

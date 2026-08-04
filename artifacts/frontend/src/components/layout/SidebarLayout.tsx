@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { SupportChatWidget } from "@/components/support/SupportChatWidget";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
-  Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
+  Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Bell,
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
 import { StoreSwitcher } from "@/components/StoreSwitcher";
+import { NovidadesBell } from "@/components/NovidadesBell";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
@@ -485,6 +486,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         { name: "Parceiros",   href: "/admin/partners",   icon: Users,        sellerHidden: false, section: "admin", badge: undefined },
         { name: "Suporte",     href: "/admin/suporte",    icon: Bug,          sellerHidden: false, section: "admin", badge: openBugCount > 0 ? openBugCount : undefined },
         { name: "Relatos Técnicos", href: "/admin/relatos-tecnicos", icon: AlertCircle, sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Novidades",   href: "/admin/changelog",  icon: Bell,         sellerHidden: false, section: "admin", badge: undefined },
       ]
     : [];
 
@@ -806,6 +808,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             <p className="text-sm font-medium truncate">{user?.name}</p>
             <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
           </div>
+        </div>
+        <div className="mb-1">
+          <NovidadesBell />
         </div>
         <Button
           variant="outline"

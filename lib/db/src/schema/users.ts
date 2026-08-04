@@ -40,6 +40,9 @@ export const usersTable = pgTable("users", {
   forcePasswordReset: boolean("force_password_reset").notNull().default(false),
   lastAssignedAt: timestamp("last_assigned_at"),
   limiteEntregasPorTurno: numeric("limite_entregas_por_turno", { precision: 6, scale: 0 }),
+  // Última vez que o usuário abriu o painel de "Novidades" — usado só pra
+  // calcular o contador de não lidas, nada além disso.
+  changelogLidoEm: timestamp("changelog_lido_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
