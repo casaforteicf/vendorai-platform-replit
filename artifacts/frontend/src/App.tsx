@@ -55,6 +55,7 @@ const AgentDefaults      = lazy(() => import("@/pages/admin/AgentDefaults"));
 const SupportAdmin       = lazy(() => import("@/pages/admin/SupportAdmin"));
 const RelatosTecnicos    = lazy(() => import("@/pages/admin/RelatosTecnicos"));
 const AdminChangelog     = lazy(() => import("@/pages/admin/AdminChangelog"));
+const AdminMlStatus      = lazy(() => import("@/pages/admin/AdminMlStatus"));
 const AdminFinanceiro    = lazy(() => import("@/pages/AdminFinanceiro"));
 const OrganizacaoPainel  = lazy(() => import("@/pages/OrganizacaoPainel"));
 const PartnerDashboard   = lazy(() => import("@/pages/PartnerDashboard"));
@@ -601,6 +602,9 @@ function AppRoutes() {
         </Route>
         <Route path="/admin/changelog">
           {() => <SuperAdminRoute component={AdminChangelog} />}
+        </Route>
+        <Route path="/admin/ml-status">
+          {() => <SuperAdminRoute component={AdminMlStatus} />}
         </Route>
         <Route path="/admin/financeiro">
           {() => <SuperAdminRoute component={AdminFinanceiro} />}

@@ -497,6 +497,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         { name: "Suporte",     href: "/admin/suporte",    icon: Bug,          sellerHidden: false, section: "admin", badge: openBugCount > 0 ? openBugCount : undefined },
         { name: "Relatos Técnicos", href: "/admin/relatos-tecnicos", icon: AlertCircle, sellerHidden: false, section: "admin", badge: undefined },
         { name: "Novidades",   href: "/admin/changelog",  icon: Bell,         sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Progresso de ML", href: "/admin/ml-status", icon: BrainCircuit, sellerHidden: false, section: "admin", badge: undefined },
       ]
     : [];
 

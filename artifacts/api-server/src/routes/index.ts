@@ -115,6 +115,7 @@ import vendasPracaRouter from "./vendas_praca";
 import erpRouter from "./erp";
 import changelogRouter from "./changelog";
 import pacotesRouter from "./pacotes";
+import mlStatusRouter from "./ml_status";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -240,6 +241,7 @@ router.use(inventoryRouter);
 router.use(erpRouter);
 router.use(changelogRouter);
 router.use(pacotesRouter);
+router.use(mlStatusRouter);
 
 // Website Hub
 router.use(siteConfigRouter);
