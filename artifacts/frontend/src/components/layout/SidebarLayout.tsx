@@ -8,7 +8,7 @@ import { SupportChatWidget } from "@/components/support/SupportChatWidget";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Bell,
-  Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
+  Store, Package, PackagePlus, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
@@ -139,6 +139,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Minhas Entregas", href: "/entregas",    icon: Truck,           sellerHidden: false, section: "crm", fn: ["entrega", "administrador"] as UserFunction[] },
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Base de Conhecimento", href: "/base-conhecimento", icon: BookOpen, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
