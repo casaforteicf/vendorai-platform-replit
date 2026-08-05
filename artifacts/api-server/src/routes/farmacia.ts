@@ -9,6 +9,9 @@ import {
   receitasMedicasTable,
   insertReceitaMedicaSchema,
   updateReceitaMedicaSchema,
+  produtosCatalogoTable,
+  categoriasProdutoTable,
+  type FarmaciaProduto,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -19,6 +22,34 @@ function tid(req: Express.Request): string {
 function canAccess(req: Express.Request, tenantId: string) {
   const role = (req as any).user?.platformRole;
   return role === "super_admin" || tid(req) === tenantId;
+}
+
+/** Sincroniza produto de farmácia com o catálogo genérico (Praça.ai/Scout). */
+async function syncFarmaciaProdutoToProdutoCatalogo(tenantId: string, produto: FarmaciaProduto): Promise<void> {
+  let [categoria] = await db.select().from(categoriasProdutoTable)
+    .where(and(eq(categoriasProdutoTable.tenantId, tenantId), eq(categoriasProdutoTable.nome, "Farmácia")));
+  if (!categoria) {
+    [categoria] = await db.insert(categoriasProdutoTable).values({ tenantId, nome: "Farmácia" }).returning();
+  }
+
+  const payload = {
+    tenantId,
+    nome: produto.nome,
+    descricao: produto.descricao,
+    categoriaId: categoria!.id,
+    sku: produto.erpId ?? undefined,
+    precoBase: String(produto.precoPromocional ?? produto.precoVenda),
+    imagemUrl: produto.imagemUrl,
+    estoqueQuantidade: produto.estoque,
+    ativo: produto.ativo && produto.estoque > 0,
+  };
+
+  if (produto.produtoCatalogoId) {
+    await db.update(produtosCatalogoTable).set(payload as any).where(eq(produtosCatalogoTable.id, produto.produtoCatalogoId));
+  } else {
+    const [criado] = await db.insert(produtosCatalogoTable).values(payload as any).returning();
+    await db.update(farmaciaProdutoTable).set({ produtoCatalogoId: criado!.id }).where(eq(farmaciaProdutoTable.id, produto.id));
+  }
 }
 
 // ─── Produtos ─────────────────────────────────────────────────────────────────
@@ -47,6 +78,7 @@ router.post("/tenants/:tenantId/farmacia/produtos", async (req, res) => {
   const [row] = await db.insert(farmaciaProdutoTable)
     .values({ ...req.body, tenantId })
     .returning();
+  await syncFarmaciaProdutoToProdutoCatalogo(tenantId, row);
   return res.status(201).json(row);
 });
 
@@ -71,6 +103,7 @@ router.put("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res) =
     .where(and(eq(farmaciaProdutoTable.id, produtoId), eq(farmaciaProdutoTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Produto not found" });
+  await syncFarmaciaProdutoToProdutoCatalogo(tenantId, row);
   return res.json(row);
 });
 
@@ -78,6 +111,12 @@ router.delete("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res
   const tenantId = req.params.tenantId as string;
   const produtoId = req.params.produtoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [existing] = await db.select({ produtoCatalogoId: farmaciaProdutoTable.produtoCatalogoId })
+    .from(farmaciaProdutoTable).where(eq(farmaciaProdutoTable.id, produtoId));
+  if (existing?.produtoCatalogoId) {
+    await db.update(produtosCatalogoTable).set({ ativo: false }).where(eq(produtosCatalogoTable.id, existing.produtoCatalogoId));
+  }
 
   await db.delete(farmaciaProdutoTable)
     .where(and(eq(farmaciaProdutoTable.id, produtoId), eq(farmaciaProdutoTable.tenantId, tenantId)));
@@ -104,7 +143,7 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const { itens, receitaUrl, ...pedidoData } = req.body;
+  const { itens, receitaUrl, receitaMedicaId, ...pedidoData } = req.body;
 
   let valorTotal = 0;
   let temItemControlado = false;
@@ -115,10 +154,23 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
     return { ...item, subtotal: String(subtotal.toFixed(2)) };
   });
 
-  // Validação real do setor: se tem item controlado e não veio receita
-  // anexada, o pedido nasce preso em 'aguardando_receita' — não confirma
-  // sozinho, mesmo que o resto do pedido esteja completo.
-  const status = temItemControlado && !receitaUrl ? "aguardando_receita" : "aguardando_confirmacao";
+  // Receita estruturada (validade/tipo/médico) também satisfaz a
+  // exigência — precisa estar ativa, não vencida, e ser do mesmo cliente.
+  let receitaValida = false;
+  if (receitaMedicaId) {
+    const [receita] = await db.select().from(receitasMedicasTable)
+      .where(and(eq(receitasMedicasTable.id, receitaMedicaId), eq(receitasMedicasTable.tenantId, tenantId)));
+    receitaValida = !!receita
+      && receita.status === "ativa"
+      && receita.clienteId === pedidoData.leadId
+      && receita.dataValidade.getTime() >= Date.now();
+  }
+
+  // Validação real do setor: se tem item controlado e não veio nem foto
+  // anexada nem receita estruturada válida, o pedido nasce preso em
+  // 'aguardando_receita' — não confirma sozinho, mesmo que o resto do
+  // pedido esteja completo.
+  const status = temItemControlado && !receitaUrl && !receitaValida ? "aguardando_receita" : "aguardando_confirmacao";
 
   const [pedido] = await db.insert(farmaciaPedidoTable)
     .values({
@@ -127,6 +179,7 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
       valorTotal: String(valorTotal.toFixed(2)),
       temItemControlado,
       receitaUrl: receitaUrl ?? null,
+      receitaMedicaId: receitaValida ? receitaMedicaId : null,
       status,
     })
     .returning();
@@ -134,6 +187,12 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
   if (itensMapped.length > 0) {
     await db.insert(farmaciaPedidoItemTable)
       .values(itensMapped.map((i: any) => ({ ...i, pedidoId: pedido.id })));
+  }
+
+  // Receita usada num pedido confirmado passa pra "utilizada" — mesma
+  // ideia de "Marcar utilizada" que já existia na tela, só que automático.
+  if (receitaValida) {
+    await db.update(receitasMedicasTable).set({ status: "utilizada", updatedAt: new Date() }).where(eq(receitasMedicasTable.id, receitaMedicaId));
   }
 
   return res.status(201).json(pedido);
@@ -180,19 +239,39 @@ router.post("/tenants/:tenantId/farmacia/pedidos/:pedidoId/anexar-receita", asyn
   const pedidoId = req.params.pedidoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const { receitaUrl } = req.body as { receitaUrl?: string };
-  if (!receitaUrl) return res.status(422).json({ error: "receitaUrl é obrigatório" });
+  const { receitaUrl, receitaMedicaId } = req.body as { receitaUrl?: string; receitaMedicaId?: string };
+  if (!receitaUrl && !receitaMedicaId) return res.status(422).json({ error: "receitaUrl ou receitaMedicaId é obrigatório" });
 
   const [pedido] = await db.select().from(farmaciaPedidoTable)
     .where(and(eq(farmaciaPedidoTable.id, pedidoId), eq(farmaciaPedidoTable.tenantId, tenantId)));
   if (!pedido) return res.status(404).json({ error: "Pedido not found" });
 
+  let receitaValida = false;
+  if (receitaMedicaId) {
+    const [receita] = await db.select().from(receitasMedicasTable)
+      .where(and(eq(receitasMedicasTable.id, receitaMedicaId), eq(receitasMedicasTable.tenantId, tenantId)));
+    receitaValida = !!receita
+      && receita.status === "ativa"
+      && receita.clienteId === pedido.leadId
+      && receita.dataValidade.getTime() >= Date.now();
+    if (!receitaValida) return res.status(422).json({ error: "Receita inválida, vencida ou de outro cliente." });
+  }
+
   const novoStatus = pedido.status === "aguardando_receita" ? "aguardando_confirmacao" : pedido.status;
 
   const [row] = await db.update(farmaciaPedidoTable)
-    .set({ receitaUrl, status: novoStatus, updatedAt: new Date() })
+    .set({
+      ...(receitaUrl ? { receitaUrl } : {}),
+      ...(receitaValida ? { receitaMedicaId } : {}),
+      status: novoStatus,
+      updatedAt: new Date(),
+    })
     .where(eq(farmaciaPedidoTable.id, pedidoId))
     .returning();
+
+  if (receitaValida) {
+    await db.update(receitasMedicasTable).set({ status: "utilizada", updatedAt: new Date() }).where(eq(receitasMedicasTable.id, receitaMedicaId!));
+  }
 
   return res.json(row);
 });

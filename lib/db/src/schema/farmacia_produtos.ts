@@ -35,6 +35,8 @@ export const farmaciaProdutoTable = pgTable("farmacia_produtos", {
   imagemUrl: text("imagem_url"),
   ativo: boolean("ativo").notNull().default(true),
   destaqueWhatsapp: boolean("destaque_whatsapp").notNull().default(false),
+  // Vínculo com o catálogo genérico — preenchido pela sincronização.
+  produtoCatalogoId: text("produto_catalogo_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -42,7 +44,7 @@ export const farmaciaProdutoTable = pgTable("farmacia_produtos", {
 export const insertFarmaciaProdutoSchema = createInsertSchema(farmaciaProdutoTable, {
   precoVenda: decimalField,
   precoPromocional: decimalField.optional(),
-}).omit({ id: true, createdAt: true, updatedAt: true });
+}).omit({ id: true, createdAt: true, updatedAt: true, produtoCatalogoId: true });
 
 export const updateFarmaciaProdutoSchema = createSelectSchema(farmaciaProdutoTable, {
   precoVenda: decimalField.optional(),

@@ -29,6 +29,9 @@ export const farmaciaPedidoTable = pgTable("farmacia_pedidos", {
   // preenchido antes do status sair de 'aguardando_receita'.
   temItemControlado: boolean("tem_item_controlado").notNull().default(false),
   receitaUrl: text("receita_url"),
+  // Vínculo com a receita estruturada (validade, tipo, médico) — quando
+  // presente, substitui a necessidade só da foto solta em receitaUrl.
+  receitaMedicaId: text("receita_medica_id"),
   observacoes: text("observacoes"),
   valorTotal: numeric("valor_total", { precision: 12, scale: 2 }).notNull().default("0"),
   erpPedidoId: text("erp_pedido_id"),
