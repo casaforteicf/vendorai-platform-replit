@@ -31,7 +31,7 @@ export const scoutRegrasTable = pgTable("scout_regras", {
   createdAt:     timestamp("created_at").notNull().defaultNow(),
 });
 
-export const SCOUT_REGRA_TIPOS = ["recompra", "cross_sell", "reativacao", "upgrade", "aniversario", "sequencia_produto", "follow_up", "renovacao", "manutencao", "renovacao_seguro", "risco_nao_renovacao", "whitespace_seguro", "reativacao_sazonal", "orcamento_parado", "grade_incompleta", "receita_vencendo", "produto_vencendo"] as const;
+export const SCOUT_REGRA_TIPOS = ["recompra", "cross_sell", "reativacao", "upgrade", "aniversario", "sequencia_produto", "follow_up", "renovacao", "manutencao", "renovacao_seguro", "risco_nao_renovacao", "whitespace_seguro", "reativacao_sazonal", "orcamento_parado", "grade_incompleta", "receita_vencendo", "produto_vencendo", "limite_credito_disponivel"] as const;
 
 export const insertScoutRegraSchema = createInsertSchema(scoutRegrasTable, {
   tipo: z.enum(SCOUT_REGRA_TIPOS),

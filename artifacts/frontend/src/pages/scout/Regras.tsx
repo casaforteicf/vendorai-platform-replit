@@ -36,6 +36,7 @@ const TIPO_OPTS = [
   { value: "grade_incompleta", label: "Grade incompleta (tamanho/cor)" },
   { value: "receita_vencendo", label: "Receita médica vencendo" },
   { value: "produto_vencendo", label: "Produto com validade próxima" },
+  { value: "limite_credito_disponivel", label: "Limite de crédito disponível" },
   { value: "whitespace_seguro",  label: "Whitespace de seguros (por perfil)" },
   { value: "renovacao_seguro",   label: "Renovação de apólices" },
 ];
@@ -51,6 +52,7 @@ const TIPO_COLORS: Record<string, string> = {
   grade_incompleta:   "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
   receita_vencendo:   "bg-red-50 text-red-700 border-red-200",
   produto_vencendo:   "bg-orange-50 text-orange-700 border-orange-200",
+  limite_credito_disponivel: "bg-lime-50 text-lime-700 border-lime-200",
   whitespace_seguro:  "bg-cyan-50 text-cyan-700 border-cyan-200",
   renovacao_seguro:   "bg-orange-50 text-orange-700 border-orange-200",
 };
@@ -81,6 +83,7 @@ interface FormState {
   valorMinimo: string;
   diasAntesVencimento: string;
   diasAntesVencimentoProduto: string;
+  percentualMaximoUtilizado: string;
 }
 const EMPTY_FORM: FormState = {
   nome: "", tipo: "", canal: "whatsapp", mensagem: "",
@@ -92,6 +95,7 @@ const EMPTY_FORM: FormState = {
   diasParado: "7", valorMinimo: "",
   diasAntesVencimento: "5",
   diasAntesVencimentoProduto: "15",
+  percentualMaximoUtilizado: "50",
 };
 
 export default function Regras() {
@@ -160,6 +164,9 @@ export default function Regras() {
     }
     if (form.tipo === "produto_vencendo") {
       condicoes = { diasAntesVencimentoProduto: Number(form.diasAntesVencimentoProduto || 15) };
+    }
+    if (form.tipo === "limite_credito_disponivel") {
+      condicoes = { percentualMaximoUtilizado: Number(form.percentualMaximoUtilizado || 50) };
     }
     if (ENGINE_MANAGED_TIPOS.has(form.tipo)) condicoes = {};
     const acao = ENGINE_MANAGED_TIPOS.has(form.tipo)
@@ -497,6 +504,19 @@ export default function Regras() {
                   <Label className="text-xs">Dias antes do vencimento</Label>
                   <Input type="number" min={1} value={form.diasAntesVencimentoProduto}
                     onChange={(e) => setForm((f) => ({ ...f, diasAntesVencimentoProduto: e.target.value }))} />
+                </div>
+              </div>
+            )}
+            {form.tipo === "limite_credito_disponivel" && (
+              <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Condição</Label>
+                <p className="text-xs text-muted-foreground">
+                  Dispara pra clientes B2B que usaram pouco do limite de crédito (folga real) — cadastre limite e crédito utilizado no cadastro do lead. É estímulo de compra maior, não cobrança.
+                </p>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Só considerar se usou até (%) do limite</Label>
+                  <Input type="number" min={1} max={100} value={form.percentualMaximoUtilizado}
+                    onChange={(e) => setForm((f) => ({ ...f, percentualMaximoUtilizado: e.target.value }))} />
                 </div>
               </div>
             )}

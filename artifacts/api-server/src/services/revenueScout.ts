@@ -55,6 +55,7 @@ interface Condicoes {
   valorMinimo?: number;
   diasAntesVencimento?: number;
   diasAntesVencimentoProduto?: number;
+  percentualMaximoUtilizado?: number;
 }
 /**
  * Retorna a data da compra mais recente (proposta aceita) de um produto
@@ -154,6 +155,7 @@ function calcularScoreOportunidade(
     receita_vencendo:  78,
     produto_vencendo:  76,
     upgrade:           75,
+    limite_credito_disponivel: 60,
     orcamento_parado:  70,
     grade_incompleta:  68,
     cross_sell:        65,
@@ -745,6 +747,61 @@ export async function analisarCliente(
 
         log.info({ tenantId, clienteId, regraId: regra.id, produtoId: produto.id }, "scout: oportunidade produto_vencendo inserida");
       }
+      continue;
+    }
+
+    // "limite_credito_disponivel" — cliente B2B com folga real no limite
+    // de crédito (usou pouco do que tem disponível) e sinal de interesse
+    // recente — oportunidade de estimular compra maior, não de cobrança.
+    // Diferente de todas as outras regras: não é baseada em tempo, é
+    // baseada em proporção usado/limite.
+    if (regra.tipo === "limite_credito_disponivel") {
+      const percentualMax = cond.percentualMaximoUtilizado ?? 50;
+      const limite = lead.limiteCredito != null ? Number(lead.limiteCredito) : null;
+      const utilizado = lead.creditoUtilizado != null ? Number(lead.creditoUtilizado) : 0;
+
+      if (!limite || limite <= 0) { continue; }
+      const percentualUtilizado = (utilizado / limite) * 100;
+      if (percentualUtilizado > percentualMax) { continue; }
+
+      const [existentePendenteCredito] = await db
+        .select({ id: scoutOportunidadesTable.id })
+        .from(scoutOportunidadesTable)
+        .where(
+          and(
+            eq(scoutOportunidadesTable.tenantId, tenantId),
+            eq(scoutOportunidadesTable.clienteId, clienteId),
+            eq(scoutOportunidadesTable.regraId, regra.id),
+            eq(scoutOportunidadesTable.status, "pendente"),
+          ),
+        )
+        .limit(1);
+      if (existentePendenteCredito) { continue; }
+
+      const disponivel = limite - utilizado;
+      const baseScoreCredito = calcularScoreOportunidade("limite_credito_disponivel", 0, 1);
+      const intentBoostCredito = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
+      const folgaBoost = percentualUtilizado <= 20 ? 15 : percentualUtilizado <= 35 ? 8 : 0;
+      const scoreCredito = Math.min(baseScoreCredito + intentBoostCredito + folgaBoost, 100);
+
+      await db.insert(scoutOportunidadesTable).values({
+        tenantId,
+        clienteId,
+        regraId:           regra.id,
+        tipo:              regra.tipo,
+        descricao:         `${lead.nome ?? clienteId} usou só ${percentualUtilizado.toFixed(0)}% do limite de crédito (R$ ${disponivel.toFixed(2)} disponível) — estimular pedido maior`,
+        status:            "pendente",
+        valorEstimado:     String(disponivel),
+        scoreOportunidade: String(scoreCredito),
+      } as any);
+      captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
+
+      await db
+        .update(scoutRegrasTable)
+        .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
+        .where(eq(scoutRegrasTable.id, regra.id));
+
+      log.info({ tenantId, clienteId, regraId: regra.id }, "scout: oportunidade limite_credito_disponivel inserida");
       continue;
     }
 

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, boolean, integer, real, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, boolean, integer, real, index, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -103,6 +103,12 @@ export const leadsTable = pgTable("leads", {
   // pending → enriched → scored → dispatched | discarded
   enrichmentStatus: text("enrichment_status").$type<"pending" | "enriched" | "scored" | "dispatched" | "discarded">().default("pending"),
   propensityScore: integer("propensity_score"),           // 0-100
+  // Limite de crédito B2B — genérico, útil pra distribuidora/atacado em
+  // geral (não só alimentos). erp_titulos não tem vínculo confiável com
+  // o lead (só um campo texto solto "pessoa"), por isso esses dois
+  // campos são diretos aqui, não calculados automaticamente.
+  limiteCredito: numeric("limite_credito", { precision: 14, scale: 2 }),
+  creditoUtilizado: numeric("credito_utilizado", { precision: 14, scale: 2 }),
   roiEstimate: jsonb("roi_estimate").$type<{
     volume_atendimentos_mes?: number;
     perda_estimada_mes?: number;
