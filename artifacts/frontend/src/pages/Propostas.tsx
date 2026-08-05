@@ -180,6 +180,10 @@ const catFormSchema = z.object({
     marca: z.string(), modelo: z.string(),
     anoInicio: z.coerce.number(), anoFim: z.coerce.number().optional(),
   })).default([]),
+  // Validade de lote — genérico, útil pra qualquer produto perecível
+  // (distribuidora de alimentos, farmácia, pet food). Alimenta a regra
+  // "produto_vencendo" do Revenue Scout.
+  dataValidade: z.string().optional(),
 });
 type CatFormValues = z.infer<typeof catFormSchema>;
 
@@ -246,7 +250,7 @@ export function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [] },
+    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
   });
 
   const watchRecorrente = form.watch("recorrente");
@@ -255,7 +259,7 @@ export function CatalogoModal({
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [] });
+    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
     setFormOpen(true);
   }
 
@@ -277,6 +281,7 @@ export function CatalogoModal({
       precoPracaAi: (p as any).precoPracaAi != null ? parseFloat((p as any).precoPracaAi) : undefined,
       especificacoes: Array.isArray((p as any).especificacoes) ? (p as any).especificacoes : [],
       compatibilidadeVeicular: Array.isArray((p as any).compatibilidadeVeicular) ? (p as any).compatibilidadeVeicular : [],
+      dataValidade: (p as any).dataValidade ? String((p as any).dataValidade).slice(0, 10) : "",
     });
     setFormOpen(true);
   }
@@ -303,6 +308,7 @@ export function CatalogoModal({
       precoPracaAi: vals.precoPracaAi != null ? vals.precoPracaAi.toFixed(2) : null,
       especificacoes: vals.especificacoes.filter(e => e.label.trim() && e.value.trim()),
       compatibilidadeVeicular: vals.compatibilidadeVeicular.filter(c => c.marca.trim() && c.modelo.trim() && c.anoInicio),
+      dataValidade: vals.dataValidade || null,
     } as any;
     if (editingProd) {
       updateMut.mutate(
@@ -550,6 +556,13 @@ export function CatalogoModal({
                   <FormItem><FormLabel>Unidade</FormLabel><FormControl><Input placeholder="un, m², h…" {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
+              <FormField control={form.control} name="dataValidade" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Validade do lote <span className="text-muted-foreground text-xs">(opcional — produto perecível)</span></FormLabel>
+                  <FormControl><Input type="date" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={form.control} name="descontoMaximoPercentual" render={({ field }) => {
                 const catSel = categorias.find((c) => c.id === form.watch("categoriaId"));
                 return (

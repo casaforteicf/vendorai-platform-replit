@@ -54,6 +54,7 @@ interface Condicoes {
   diasParado?: number;
   valorMinimo?: number;
   diasAntesVencimento?: number;
+  diasAntesVencimentoProduto?: number;
 }
 /**
  * Retorna a data da compra mais recente (proposta aceita) de um produto
@@ -151,6 +152,7 @@ function calcularScoreOportunidade(
   const bases: Record<string, number> = {
     sequencia_produto: 80,
     receita_vencendo:  78,
+    produto_vencendo:  76,
     upgrade:           75,
     orcamento_parado:  70,
     grade_incompleta:  68,
@@ -664,6 +666,84 @@ export async function analisarCliente(
           .where(eq(scoutRegrasTable.id, regra.id));
 
         log.info({ tenantId, clienteId, regraId: regra.id, receitaId: receita.id }, "scout: oportunidade receita_vencendo inserida");
+      }
+      continue;
+    }
+
+    // "produto_vencendo" — produto com validade de lote próxima que esse
+    // cliente já comprou antes. Diferente de receita_vencendo (validade
+    // de prescrição médica), aqui é validade de PRODUTO/estoque — pedido
+    // da distribuidora de alimentos, mas serve pra qualquer vertical com
+    // produto perecível.
+    if (regra.tipo === "produto_vencendo") {
+      const diasAntesProduto = cond.diasAntesVencimentoProduto ?? 15;
+      const limiteProduto = new Date(Date.now() + diasAntesProduto * 24 * 60 * 60 * 1000);
+
+      const propostasClienteVencendo = await db
+        .select({ itens: propostasTable.itens })
+        .from(propostasTable)
+        .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, clienteId), eq(propostasTable.status, "aceita")));
+
+      const produtosCompradosPorLead = new Set<string>();
+      for (const p of propostasClienteVencendo) {
+        for (const item of p.itens ?? []) {
+          if (item.produtoId) produtosCompradosPorLead.add(item.produtoId);
+        }
+      }
+      if (produtosCompradosPorLead.size === 0) { continue; }
+
+      const produtosVencendo = await db.select().from(produtosCatalogoTable)
+        .where(
+          and(
+            eq(produtosCatalogoTable.tenantId, tenantId),
+            eq(produtosCatalogoTable.ativo, true),
+            isNotNull(produtosCatalogoTable.dataValidade),
+            lte(produtosCatalogoTable.dataValidade, limiteProduto),
+            inArray(produtosCatalogoTable.id, Array.from(produtosCompradosPorLead)),
+          ),
+        );
+
+      for (const produto of produtosVencendo) {
+        const diasParaVencerProduto = produto.dataValidade
+          ? Math.ceil((produto.dataValidade.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+          : 0;
+
+        const [existentePendenteProduto] = await db
+          .select({ id: scoutOportunidadesTable.id })
+          .from(scoutOportunidadesTable)
+          .where(
+            and(
+              eq(scoutOportunidadesTable.tenantId, tenantId),
+              eq(scoutOportunidadesTable.clienteId, clienteId),
+              eq(scoutOportunidadesTable.regraId, regra.id),
+              eq(scoutOportunidadesTable.status, "pendente"),
+            ),
+          )
+          .limit(1);
+        if (existentePendenteProduto) continue;
+
+        const urgenciaBoostProduto = diasParaVencerProduto <= 3 ? 15 : diasParaVencerProduto <= 7 ? 8 : 0;
+        const baseScoreProduto = calcularScoreOportunidade("produto_vencendo", diasAntesProduto - diasParaVencerProduto, diasAntesProduto);
+        const intentBoostProduto = Math.min(Math.floor((lead.intentScore ?? 0) / 10) * 5, 15);
+        const scoreProduto = Math.min(baseScoreProduto + intentBoostProduto + urgenciaBoostProduto, 100);
+
+        await db.insert(scoutOportunidadesTable).values({
+          tenantId,
+          clienteId,
+          regraId:           regra.id,
+          tipo:              regra.tipo,
+          descricao:         `${produto.nome} vence em ${diasParaVencerProduto} dias — ${lead.nome ?? clienteId} já comprou esse produto antes, oferecer com desconto`,
+          status:            "pendente",
+          scoreOportunidade: String(scoreProduto),
+        } as any);
+        captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
+
+        await db
+          .update(scoutRegrasTable)
+          .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
+          .where(eq(scoutRegrasTable.id, regra.id));
+
+        log.info({ tenantId, clienteId, regraId: regra.id, produtoId: produto.id }, "scout: oportunidade produto_vencendo inserida");
       }
       continue;
     }

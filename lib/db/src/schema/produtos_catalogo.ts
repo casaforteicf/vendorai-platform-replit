@@ -80,6 +80,10 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // for republicado.
   controlaEstoque: boolean("controla_estoque").notNull().default(false),
   estoqueQuantidade: integer("estoque_quantidade"),
+  // Validade de lote — genérico pra qualquer vertical com produto
+  // perecível (distribuidora de alimentos, farmácia, pet food). Null =
+  // produto sem controle de validade.
+  dataValidade: timestamp("data_validade"),
   // Controle por produto do Praça.ai (Complemento) — a loja pode vender no
   // Praça.ai como um todo (tenants.vendeNoPracaAi) mas ainda assim tirar
   // produtos específicos da vitrine, ou cobrar diferente lá (ex: já embutir
