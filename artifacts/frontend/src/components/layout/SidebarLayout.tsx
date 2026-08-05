@@ -176,6 +176,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Cadastros",     href: "/servicos/cadastros",       icon: HardHat,     sellerHidden: false, section: "servicos", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Produtos",      href: "/farmacia/produtos",        icon: Pill,        sellerHidden: false, section: "farmacia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Pedidos",       href: "/farmacia/pedidos",         icon: ShoppingCart,sellerHidden: false, section: "farmacia", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Receitas",      href: "/farmacia/receitas",        icon: FileText,    sellerHidden: false, section: "farmacia", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Propriedades",  href: "/imoveis/propriedades",     icon: Home,        sellerHidden: false, section: "imoveis",  fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Visitas",       href: "/imoveis/visitas",          icon: Calendar,    sellerHidden: false, section: "imoveis",  fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Cargas",        href: "/fretes/cargas",            icon: Package,     sellerHidden: false, section: "fretes",   fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
@@ -375,7 +376,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     ]),
     "Farmácia": new Set([
       ...CORE_VERTICAL_HREFS,
-      "/farmacia/produtos", "/farmacia/pedidos",
+      "/farmacia/produtos", "/farmacia/pedidos", "/farmacia/receitas",
     ]),
     "Imóveis": new Set([
       ...CORE_VERTICAL_HREFS,
