@@ -125,7 +125,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isConstrucao = effectiveVertical === "Construção & Reforma";
   const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos" || effectiveVertical === "Floricultura" || effectiveVertical === "Adega e Bebidas" || effectiveVertical === "Produtos Naturais e Suplementos" || effectiveVertical === "Armarinho e Tecidos" || effectiveVertical === "Papelaria Criativa e Artesanato" || effectiveVertical === "Games e Informática" || effectiveVertical === "Pet Shop (Varejo)" || effectiveVertical === "Material de Construção — Varejo";
   const isSupermercado = effectiveVertical === "Supermercado";
-  const isSalao   = effectiveVertical === "Salão de Beleza" || effectiveVertical === "Barbearia";
+  const isSalao   = effectiveVertical === "Salão de Beleza" || effectiveVertical === "Barbearia" || effectiveVertical === "Pet Shop (Varejo)";
+  const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
   const isClinica = effectiveVertical === "Clínica";
 
   const allNavItems = [
@@ -168,7 +169,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Renderização",  href: "/arch/render",              icon: Clapperboard, sellerHidden: true, section: "arch", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/arch/catalogo",            icon: Package,     sellerHidden: true,  section: "arch", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Marketplace",   href: "/arch/marketplace",         icon: Store,       sellerHidden: true,  section: "arch", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Salão",         href: "/beauty",                   icon: Scissors,    sellerHidden: false, section: "salao",    fn: ["administrador", "outro"] as UserFunction[] },
+    { name: isPetShop ? "Banho & Tosa" : "Salão", href: "/beauty", icon: Scissors,    sellerHidden: false, section: "salao",    fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Agenda",        href: "/beauty/agenda",            icon: Calendar,    sellerHidden: false, section: "salao",    fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Serviços",      href: "/beauty/servicos",          icon: Scissors,    sellerHidden: false, section: "salao",    fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Profissionais", href: "/beauty/profissionais",     icon: User2,       sellerHidden: false, section: "salao",    fn: ["administrador", "outro"] as UserFunction[] },
