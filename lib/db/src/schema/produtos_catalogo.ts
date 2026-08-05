@@ -84,6 +84,10 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // perecível (distribuidora de alimentos, farmácia, pet food). Null =
   // produto sem controle de validade.
   dataValidade: timestamp("data_validade"),
+  // Produto sucessor — quando preenchido, indica que existe uma versão
+  // nova desse produto no catálogo. Alimenta "produto com nova versão"
+  // do Revenue Scout comprador do Praça.ai.
+  produtoSucessorId: text("produto_sucessor_id"),
   // Controle por produto do Praça.ai (Complemento) — a loja pode vender no
   // Praça.ai como um todo (tenants.vendeNoPracaAi) mas ainda assim tirar
   // produtos específicos da vitrine, ou cobrar diferente lá (ex: já embutir
