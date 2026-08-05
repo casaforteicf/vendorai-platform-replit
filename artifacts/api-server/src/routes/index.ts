@@ -116,6 +116,7 @@ import erpRouter from "./erp";
 import changelogRouter from "./changelog";
 import pacotesRouter from "./pacotes";
 import mlStatusRouter from "./ml_status";
+import internalScoutSignalRouter from "./internal_scout_signal";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -143,6 +144,7 @@ router.use(whatsappCallbackRouter);
 router.use(publicProposalsRouter);
 router.use(supermercadoPublicRouter);
 router.use(fretesPublicRouter);
+router.use(internalScoutSignalRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
