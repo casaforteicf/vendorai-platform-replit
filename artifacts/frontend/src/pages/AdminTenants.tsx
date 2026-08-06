@@ -148,6 +148,7 @@ export default function AdminTenants() {
     { value: "Piscinas & Spas",                 label: "Piscinas & Spas" },
     { value: "Seguros Corporativos",            label: "Seguros Corporativos" },
     { value: "Distribuidoras",                  label: "Distribuidoras" },
+    { value: "Agropecuária",                    label: "Agropecuária" },
   ];
 
   const filtered = tenants.filter((t) => {

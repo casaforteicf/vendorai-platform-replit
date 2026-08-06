@@ -34,6 +34,7 @@ const PROFILES: VerticalRevenueProfile[] = [
   { key:"logistics", label:"Fretes e logística", cycleDays:30, dormantDays:90, cycleType:"renovacao", cycleLabel:"nova demanda de frete", focus:"rota, recorrência, capacidade e SLA", signals:["rota recorrente", "cliente sem cotar", "capacidade disponível", "renovação de contrato"] },
   { key:"travel", label:"Viagens e hotelaria", cycleDays:90, dormantDays:180, cycleType:"follow_up", cycleLabel:"nova reserva ou experiência", focus:"datas, preferência, ocupação e destino", signals:["datas ociosas", "hóspede recorrente", "preferência de destino", "reserva abandonada"] },
   { key:"pharmacy", label:"Farmácia e saúde", cycleDays:30, dormantDays:75, cycleType:"recompra", cycleLabel:"reposição recorrente", focus:"recorrência, cuidado e categoria", signals:["ciclo de reposição", "cliente inativo", "categoria complementar", "continuidade de cuidado"] },
+  { key:"agro", label:"Agropecuária", cycleDays:35, dormantDays:90, cycleType:"recompra", cycleLabel:"reposição de ração e insumos", focus:"consumo recorrente (ração, suplemento), safra e sazonalidade de plantio", signals:["ciclo de reposição de ração", "cliente inativo", "insumo complementar", "janela de plantio da safra"] },
 ];
 
 export function normalize(value: string) {
@@ -53,6 +54,7 @@ export function resolveVerticalRevenueProfile(vertical?: string | null): Vertica
   if (/frete|logistica|transport/.test(value)) return PROFILES[8]!;
   if (/viagem|hotel|turismo|pousada/.test(value)) return PROFILES[9]!;
   if (/farmacia|saude/.test(value)) return PROFILES[10]!;
+  if (/agropecuari|veterinari|agro\b|rural/.test(value)) return PROFILES[11]!;
   if (/varejo|roupa|eletron|decoracao|bebe|esporte|papelaria|joia|calcado|moveis|brinquedo|instrumento|perfumaria|floricultura|adega|pet shop|games|informatica|piscina|spa\b|autopec/.test(value)) return PROFILES[1]!;
   return null;
 }
