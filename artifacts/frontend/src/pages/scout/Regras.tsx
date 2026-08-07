@@ -84,6 +84,7 @@ interface FormState {
   diasAntesVencimento: string;
   diasAntesVencimentoProduto: string;
   percentualMaximoUtilizado: string;
+  requerAprovacao: boolean;
 }
 const EMPTY_FORM: FormState = {
   nome: "", tipo: "", canal: "whatsapp", mensagem: "",
@@ -96,6 +97,7 @@ const EMPTY_FORM: FormState = {
   diasAntesVencimento: "5",
   diasAntesVencimentoProduto: "15",
   percentualMaximoUtilizado: "50",
+  requerAprovacao: true,
 };
 
 export default function Regras() {
@@ -171,7 +173,7 @@ export default function Regras() {
     if (ENGINE_MANAGED_TIPOS.has(form.tipo)) condicoes = {};
     const acao = ENGINE_MANAGED_TIPOS.has(form.tipo)
       ? { requiresApproval: true, autoSend: false }
-      : { mensagem: form.mensagem, canal: form.canal };
+      : { mensagem: form.mensagem, canal: form.canal, requiresApproval: form.requerAprovacao };
     return {
       nome: form.nome,
       tipo: form.tipo,
@@ -237,6 +239,7 @@ export default function Regras() {
   const [editCondicoesJson, setEditCondicoesJson] = useState("{}");
   const [editMensagem, setEditMensagem] = useState("");
   const [editCanal, setEditCanal] = useState("whatsapp");
+  const [editRequerAprovacao, setEditRequerAprovacao] = useState(true);
   const [editJsonError, setEditJsonError] = useState<string | null>(null);
 
   function openEdit(r: any) {
@@ -246,6 +249,7 @@ export default function Regras() {
     setEditCondicoesJson(JSON.stringify(r.condicoes ?? {}, null, 2));
     setEditMensagem(r.acao?.mensagem ?? "");
     setEditCanal(r.acao?.canal ?? "whatsapp");
+    setEditRequerAprovacao(r.acao?.requiresApproval !== false);
     setEditJsonError(null);
     setEditOpen(true);
   }
@@ -263,7 +267,7 @@ export default function Regras() {
     const isEngineManaged = ENGINE_MANAGED_TIPOS.has(editTarget.tipo);
     const acao = isEngineManaged
       ? editTarget.acao ?? { requiresApproval: true, autoSend: false }
-      : { mensagem: editMensagem, canal: editCanal };
+      : { mensagem: editMensagem, canal: editCanal, requiresApproval: editRequerAprovacao };
     editMut.mutate({ id: editTarget.id, nome: editNome, ativo: editAtivo, condicoes, acao });
   }
 
@@ -683,6 +687,14 @@ export default function Regras() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <Label className="text-sm">Exigir aprovação antes de enviar</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">Fica pendente na tela de Oportunidades até um admin aprovar (com ou sem editar a mensagem). Desligado, envia sozinho.</p>
+                  </div>
+                  <Switch checked={form.requerAprovacao} onCheckedChange={(v) => setForm((f) => ({ ...f, requerAprovacao: v }))} />
+                </div>
               </>
             )}
 
@@ -718,6 +730,10 @@ export default function Regras() {
                     <option value="whatsapp">WhatsApp</option>
                     <option value="email">E-mail</option>
                   </select>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <Label className="text-sm">Exigir aprovação antes de enviar</Label>
+                  <Switch checked={editRequerAprovacao} onCheckedChange={setEditRequerAprovacao} />
                 </div>
               </>
             )}

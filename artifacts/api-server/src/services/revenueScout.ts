@@ -127,7 +127,7 @@ function parseCond(raw: unknown): Condicoes {
   return (raw ?? {}) as Condicoes;
 }
 
-function parseAcao(raw: unknown): Acao {
+export function parseAcao(raw: unknown): Acao {
   return (raw ?? {}) as Acao;
 }
 
@@ -979,6 +979,19 @@ export async function processarOportunidades(
 
   for (const op of oportunidades) {
     try {
+      const [regraCheck] = await db
+        .select({ acao: scoutRegrasTable.acao })
+        .from(scoutRegrasTable)
+        .where(eq(scoutRegrasTable.id, op.regraId));
+      const acaoCheck = parseAcao(regraCheck?.acao);
+
+      // Regra marcada pra exigir aprovação humana — fica "pendente" mesmo,
+      // não dispara sozinha. O ADM aprova (com ou sem editar a mensagem)
+      // na tela de Oportunidades.
+      if (acaoCheck.requiresApproval) {
+        continue;
+      }
+
       if (op.tipo === "sequencia_produto") {
         await triggerSequenceOffer({
           tenantId,

@@ -10,10 +10,12 @@ import {
   insuranceAccountProductPositionsTable,
   tenantsTable,
 } from "@workspace/db";
-import { runRevenueScoutForTenant } from "../services/revenueScout.js";
+import { runRevenueScoutForTenant, parseAcao } from "../services/revenueScout.js";
 import { runInsuranceRenewalForTenant } from "../services/insuranceRenewalEngine.js";
 import { runInsuranceWhitespaceForTenant } from "../services/insuranceWhitespaceEngine.js";
 import { resolveVerticalRevenueProfile } from "../services/verticalRevenueEngine.js";
+import { renderTemplate } from "../lib/proactiveMessageGuard.js";
+import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 
 const router: IRouter = Router();
 
@@ -151,13 +153,80 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
   }
 
   const rows = await db
-    .select()
+    .select({
+      op: scoutOportunidadesTable,
+      clienteNome: leadsTable.nome,
+      regraAcao: scoutRegrasTable.acao,
+    })
     .from(scoutOportunidadesTable)
+    .leftJoin(leadsTable, eq(leadsTable.id, scoutOportunidadesTable.clienteId))
+    .leftJoin(scoutRegrasTable, eq(scoutRegrasTable.id, scoutOportunidadesTable.regraId))
     .where(and(...filters))
     .orderBy(desc(scoutOportunidadesTable.createdAt))
     .limit(200);
 
-  return res.json(rows);
+  const enriched = rows.map(({ op, clienteNome, regraAcao }) => {
+    const acao = parseAcao(regraAcao);
+    let mensagemPreview: string | null = op.mensagemEnviada ?? null;
+    if (!mensagemPreview && op.status === "pendente" && acao.mensagem) {
+      const rendered = renderTemplate(acao.mensagem, { nome: clienteNome ?? "", nome_cliente: clienteNome ?? "" });
+      mensagemPreview = rendered.ok ? rendered.mensagem : null;
+    }
+    return { ...op, clienteNome, mensagemPreview, requerAprovacao: !!acao.requiresApproval };
+  });
+
+  return res.json(enriched);
+});
+
+// Aprova uma oportunidade pendente que exige aprovação — dispara a
+// mensagem agora (opcionalmente editada pelo ADM antes de enviar).
+router.post("/tenants/:tenantId/scout/oportunidades/:id/aprovar", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [op] = await db.select().from(scoutOportunidadesTable)
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
+  if (!op) return res.status(404).json({ error: "Oportunidade not found" });
+  if (op.status !== "pendente") return res.status(409).json({ error: "Essa oportunidade já foi processada." });
+
+  const [lead] = await db.select({ nome: leadsTable.nome, telefone: leadsTable.telefone })
+    .from(leadsTable).where(eq(leadsTable.id, op.clienteId));
+  if (!lead?.telefone) {
+    await db.update(scoutOportunidadesTable).set({ status: "ignorado" }).where(eq(scoutOportunidadesTable.id, id));
+    return res.status(422).json({ error: "Lead sem telefone cadastrado — oportunidade marcada como ignorada." });
+  }
+
+  const { mensagem: mensagemEditada } = req.body as { mensagem?: string };
+  let mensagem = mensagemEditada;
+  if (!mensagem) {
+    const [regra] = await db.select({ acao: scoutRegrasTable.acao }).from(scoutRegrasTable).where(eq(scoutRegrasTable.id, op.regraId));
+    const acao = parseAcao(regra?.acao);
+    const rendered = renderTemplate(acao.mensagem ?? "Olá {nome}, temos uma novidade para você!", { nome: lead.nome ?? "", nome_cliente: lead.nome ?? "" });
+    if (!rendered.ok) return res.status(422).json({ error: `Mensagem com placeholder quebrado: ${rendered.motivoFalha}` });
+    mensagem = rendered.mensagem;
+  }
+
+  await sendDirectWhatsAppMessage(tenantId, lead.telefone, mensagem, req.log as any);
+  const [updated] = await db.update(scoutOportunidadesTable)
+    .set({ status: "enviado", mensagemEnviada: mensagem, canal: "whatsapp", enviadoEm: new Date() })
+    .where(eq(scoutOportunidadesTable.id, id))
+    .returning();
+  return res.json(updated);
+});
+
+router.post("/tenants/:tenantId/scout/oportunidades/:id/rejeitar", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [op] = await db.select().from(scoutOportunidadesTable)
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
+  if (!op) return res.status(404).json({ error: "Oportunidade not found" });
+
+  const [updated] = await db.update(scoutOportunidadesTable)
+    .set({ status: "ignorado" })
+    .where(eq(scoutOportunidadesTable.id, id))
+    .returning();
+  return res.json(updated);
 });
 
 // ─── Seguros Corporativos: Renovações e matriz conta × produto ────────────────

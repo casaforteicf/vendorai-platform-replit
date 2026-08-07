@@ -3,13 +3,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  TrendingUp, CheckCircle2, Filter, ArrowUpRight,
+  TrendingUp, CheckCircle2, Filter, ArrowUpRight, Send, X, Pencil, Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -107,6 +111,37 @@ export default function Oportunidades() {
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
+
+  const aprovar = useMutation({
+    mutationFn: ({ id, mensagem }: { id: string; mensagem?: string }) =>
+      fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}/aprovar`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({ mensagem }),
+      }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro ao aprovar");
+        return r.json();
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scout-oportunidades", tenantId] });
+      toast({ title: "Mensagem enviada!" });
+      setEditTarget(null);
+    },
+    onError: (e: any) => toast({ title: "Erro ao enviar", description: e.message, variant: "destructive" }),
+  });
+
+  const rejeitar = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}/rejeitar`, {
+        method: "POST", headers: authHeaders(),
+      }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro");
+        return r.json();
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["scout-oportunidades", tenantId] }); toast({ title: "Oportunidade rejeitada" }); },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const [editTarget, setEditTarget] = useState<any>(null);
+  const [editMensagem, setEditMensagem] = useState("");
 
   const ops = Array.isArray(oportunidades) ? oportunidades : [];
 
@@ -206,6 +241,9 @@ export default function Oportunidades() {
                   {/* Descrição */}
                   <td className="px-4 py-3 max-w-[240px]">
                     <p className="text-sm text-muted-foreground truncate">{o.descricao ?? "—"}</p>
+                    {o.status === "pendente" && o.mensagemPreview && (
+                      <p className="text-xs text-muted-foreground/80 italic truncate mt-0.5">"{o.mensagemPreview}"</p>
+                    )}
                   </td>
                   {/* Valor estimado */}
                   <td className="px-4 py-3 text-right whitespace-nowrap font-medium">
@@ -226,7 +264,27 @@ export default function Oportunidades() {
                   </td>
                   {/* Ações */}
                   <td className="px-4 py-3 text-center">
-                    {o.status === "enviado" ? (
+                    {o.status === "pendente" ? (
+                      <div className="flex items-center justify-center gap-1">
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                          disabled={aprovar.isPending}
+                          onClick={() => aprovar.mutate({ id: o.id })}
+                        >
+                          <Send className="h-3 w-3" /> Enviar
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                          onClick={() => { setEditTarget(o); setEditMensagem(o.mensagemPreview ?? ""); }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                          disabled={rejeitar.isPending}
+                          onClick={() => rejeitar.mutate(o.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : o.status === "enviado" ? (
                       <Button size="sm" variant="outline"
                         className="h-7 text-xs gap-1 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
                         disabled={converter.isPending}
@@ -248,6 +306,23 @@ export default function Oportunidades() {
           </tbody>
         </table>
       </div>
+
+      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Editar mensagem antes de enviar</DialogTitle></DialogHeader>
+          <div className="space-y-3 mt-2">
+            <p className="text-sm text-muted-foreground">Pra {editTarget?.clienteNome ?? "cliente"} — {editTarget?.descricao}</p>
+            <Textarea rows={5} value={editMensagem} onChange={(e) => setEditMensagem(e.target.value)} />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setEditTarget(null)}>Cancelar</Button>
+              <Button disabled={!editMensagem.trim() || aprovar.isPending} onClick={() => aprovar.mutate({ id: editTarget.id, mensagem: editMensagem })}>
+                {aprovar.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <Send className="h-4 w-4 mr-2" /> Enviar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
