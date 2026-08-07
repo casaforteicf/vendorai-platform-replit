@@ -90,6 +90,28 @@ router.patch("/tenants/:tenantId/scout/regras/:id", async (req, res) => {
   return res.json(row);
 });
 
+router.delete("/tenants/:tenantId/scout/regras/:id", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const [row] = await db
+      .delete(scoutRegrasTable)
+      .where(and(eq(scoutRegrasTable.id, id), eq(scoutRegrasTable.tenantId, tenantId)))
+      .returning();
+
+    if (!row) return res.status(404).json({ error: "Regra not found" });
+    return res.status(204).send();
+  } catch (err: any) {
+    // FK restrict — regra já gerou oportunidade(s), não pode ser apagada
+    // sem apagar o histórico junto. Mensagem clara em vez de 500 cru.
+    if (err?.code === "23503") {
+      return res.status(409).json({ error: "Essa regra já gerou oportunidades e não pode ser excluída. Desative em vez de excluir, pra manter o histórico." });
+    }
+    throw err;
+  }
+});
+
 router.patch("/tenants/:tenantId/scout/regras/:id/toggle", async (req, res) => {
   const { tenantId, id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });

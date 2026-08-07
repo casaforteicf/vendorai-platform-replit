@@ -16,7 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Loader2, TrendingUp, Zap } from "lucide-react";
+import { Plus, Loader2, TrendingUp, Zap, Pencil, Trash2, Upload, Download } from "lucide-react";
 
 const getBase = () => (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 function authHeaders() {
@@ -205,6 +205,107 @@ export default function Regras() {
     onError: () => toast({ title: "Erro", variant: "destructive" }),
   });
 
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/tenants/${tenantId}/scout/regras/${id}`, {
+        method: "DELETE", headers: authHeaders(),
+      }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro ao excluir");
+        return true;
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: QK }); toast({ title: "Regra excluída" }); },
+    onError: (e: any) => toast({ title: "Não foi possível excluir", description: e.message, variant: "destructive" }),
+  });
+
+  const editMut = useMutation({
+    mutationFn: (payload: { id: string; nome: string; ativo: boolean; condicoes: any; acao: any }) =>
+      fetch(`/api/tenants/${tenantId}/scout/regras/${payload.id}`, {
+        method: "PATCH", headers: authHeaders(),
+        body: JSON.stringify({ nome: payload.nome, ativo: payload.ativo, condicoes: payload.condicoes, acao: payload.acao }),
+      }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro ao salvar");
+        return r.json();
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: QK }); toast({ title: "Regra atualizada!" }); setEditOpen(false); },
+    onError: (e: any) => toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" }),
+  });
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<any>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editAtivo, setEditAtivo] = useState(true);
+  const [editCondicoesJson, setEditCondicoesJson] = useState("{}");
+  const [editMensagem, setEditMensagem] = useState("");
+  const [editCanal, setEditCanal] = useState("whatsapp");
+  const [editJsonError, setEditJsonError] = useState<string | null>(null);
+
+  function openEdit(r: any) {
+    setEditTarget(r);
+    setEditNome(r.nome ?? "");
+    setEditAtivo(r.ativo !== false);
+    setEditCondicoesJson(JSON.stringify(r.condicoes ?? {}, null, 2));
+    setEditMensagem(r.acao?.mensagem ?? "");
+    setEditCanal(r.acao?.canal ?? "whatsapp");
+    setEditJsonError(null);
+    setEditOpen(true);
+  }
+
+  function submitEdit() {
+    if (!editTarget) return;
+    let condicoes: any;
+    try {
+      condicoes = JSON.parse(editCondicoesJson);
+    } catch {
+      setEditJsonError("JSON inválido — confira vírgulas e chaves.");
+      return;
+    }
+    setEditJsonError(null);
+    const isEngineManaged = ENGINE_MANAGED_TIPOS.has(editTarget.tipo);
+    const acao = isEngineManaged
+      ? editTarget.acao ?? { requiresApproval: true, autoSend: false }
+      : { mensagem: editMensagem, canal: editCanal };
+    editMut.mutate({ id: editTarget.id, nome: editNome, ativo: editAtivo, condicoes, acao });
+  }
+
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  function exportRegras() {
+    const blob = new Blob([JSON.stringify(regrasArr.map((r: any) => ({ nome: r.nome, tipo: r.tipo, condicoes: r.condicoes, acao: r.acao })), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "regras_scout.json"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const items = JSON.parse(text);
+      if (!Array.isArray(items)) throw new Error("O arquivo precisa ser uma lista de regras (formato exportado por 'Exportar').");
+      let ok = 0; let fail = 0;
+      for (const item of items) {
+        try {
+          const res = await fetch(`/api/tenants/${tenantId}/scout/regras`, {
+            method: "POST", headers: authHeaders(),
+            body: JSON.stringify({ nome: item.nome, tipo: item.tipo, condicoes: item.condicoes ?? {}, acao: item.acao ?? {} }),
+          });
+          if (res.ok) ok++; else fail++;
+        } catch { fail++; }
+      }
+      qc.invalidateQueries({ queryKey: QK });
+      toast({ title: `Importação concluída`, description: `${ok} regra(s) importada(s)${fail ? `, ${fail} falharam` : ""}.` });
+    } catch (err: any) {
+      toast({ title: "Erro ao importar", description: err.message, variant: "destructive" });
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
   function insertChip(chip: string) {
     const el = msgRef.current;
     if (!el) { setForm((f) => ({ ...f, mensagem: f.mensagem + chip })); return; }
@@ -241,9 +342,18 @@ export default function Regras() {
             Configure gatilhos automáticos para identificar oportunidades de receita
           </p>
         </div>
-        <Button onClick={() => { setForm({ ...EMPTY_FORM }); setOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" /> Nova Regra
-        </Button>
+        <div className="flex items-center gap-2">
+          {regrasArr.length > 0 && (
+            <Button variant="outline" onClick={exportRegras}><Download className="h-4 w-4 mr-2" /> Exportar</Button>
+          )}
+          <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportFile} />
+          <Button variant="outline" disabled={importing} onClick={() => importInputRef.current?.click()}>
+            {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />} Importar
+          </Button>
+          <Button onClick={() => { setForm({ ...EMPTY_FORM }); setOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" /> Nova Regra
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -292,6 +402,10 @@ export default function Regras() {
                     onCheckedChange={() => toggle.mutate(r.id)}
                     disabled={toggle.isPending}
                   />
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={remove.isPending} onClick={() => { if (confirm(`Excluir a regra "${r.nome}"? Isso não pode ser desfeito.`)) remove.mutate(r.id); }}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -580,6 +694,54 @@ export default function Regras() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Editar regra</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label>Nome</Label>
+              <Input value={editNome} onChange={(e) => setEditNome(e.target.value)} />
+            </div>
+
+            {editTarget && !ENGINE_MANAGED_TIPOS.has(editTarget.tipo) && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Mensagem</Label>
+                  <Textarea rows={3} value={editMensagem} onChange={(e) => setEditMensagem(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Canal</Label>
+                  <select value={editCanal} onChange={(e) => setEditCanal(e.target.value)} className="w-full h-9 rounded-md border bg-background px-3 text-sm">
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="email">E-mail</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            <div className="space-y-1.5">
+              <Label>Condições (JSON avançado)</Label>
+              <p className="text-xs text-muted-foreground">Os campos variam por tipo de regra — edite com cuidado, mantendo a estrutura.</p>
+              <Textarea rows={6} className="font-mono text-xs" value={editCondicoesJson} onChange={(e) => setEditCondicoesJson(e.target.value)} />
+              {editJsonError && <p className="text-xs text-destructive">{editJsonError}</p>}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Regra ativa</Label>
+              <Switch checked={editAtivo} onCheckedChange={setEditAtivo} />
+            </div>
+
+            <div className="flex gap-2 justify-end pt-1">
+              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+              <Button disabled={editMut.isPending || !editNome.trim()} onClick={submitEdit}>
+                {editMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Salvar
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
