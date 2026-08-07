@@ -29,6 +29,7 @@ import {
   tenantCalendarSettingsTable,
   scoutOportunidadesTable,
   leadBriefingsTable,
+  leadOportunidadesPrevistasTable,
   relatosTecnicosTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
@@ -1850,12 +1851,31 @@ async function extractAndSaveSpinBriefing(
       `N - Necessidade: ${byTipo("necessidade") || "—"}\n`;
   }
 
+  // Oportunidades futuras que o VENDEDOR previu à mão (não vieram da
+  // conversa) — contexto de apoio pra interpretar melhor o que o lead
+  // fala, nunca uma fonte pra "extrair" como se o lead tivesse dito.
+  let vendedorHints = "";
+  try {
+    const previstas = await db.select({ descricao: leadOportunidadesPrevistasTable.descricao })
+      .from(leadOportunidadesPrevistasTable)
+      .where(and(eq(leadOportunidadesPrevistasTable.leadId, leadId), eq(leadOportunidadesPrevistasTable.status, "aberta")))
+      .limit(5);
+    if (previstas.length > 0) {
+      vendedorHints =
+        `\nContexto do vendedor (previsão dele, NÃO é algo que o lead disse — use só pra interpretar melhor a conversa, nunca extraia isso como se fosse fala do lead):\n` +
+        previstas.map((p) => `- ${p.descricao}`).join("\n") + "\n";
+    }
+  } catch (err) {
+    log.warn({ err, leadId, tenantId }, "dispatch: falha ao buscar oportunidades previstas pelo vendedor (segue sem esse contexto)");
+  }
+
   const prompt =
     `Você é um extrator de qualificação SPIN Selling. Analise a conversa e extraia o que o lead afirmou explicitamente. Não infira.\n` +
     `Responda APENAS em JSON válido, sem markdown:\n` +
     `{"situacao":"contexto atual do negócio mencionado ou null","problema":"dificuldades/dores mencionadas ou null","implicacao":"impacto/consequência do problema ou null","necessidade":"o que o lead precisa resolver ou null","valorImpacto":"valor ou número mencionado ou null"}\n` +
     `Regras:\n- Se não foi mencionado explicitamente, use null\n- Valores devem ser curtos (máx 200 caracteres)` +
     customHints +
+    vendedorHints +
     `\n\nConversa:\n${transcript}`;
 
   let extracted: { situacao?: string | null; problema?: string | null; implicacao?: string | null; necessidade?: string | null; valorImpacto?: string | null };

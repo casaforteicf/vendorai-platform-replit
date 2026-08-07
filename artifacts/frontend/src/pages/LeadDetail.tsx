@@ -9,6 +9,7 @@ import { VendidoModal } from "@/components/VendidoModal";
 import { AgendarReuniaoModal } from "@/components/AgendarReuniaoModal";
 import LeadBriefingTab from "./LeadBriefingTab";
 import LeadPropostaTab from "./LeadPropostaTab";
+import { OportunidadesPrevistasCard } from "@/components/OportunidadesPrevistasCard";
 import LeadProductPresentationTab from "./LeadProductPresentationTab";
 import LeadDuplicatasTab from "./LeadDuplicatasTab";
 import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
@@ -2540,6 +2541,9 @@ export default function LeadDetail() {
 
         {/* Proposta Gerada */}
         <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
+
+        {/* Oportunidades futuras previstas pelo vendedor */}
+        <OportunidadesPrevistasCard leadId={id!} />
 
         {/* Orçamentos do Lead */}
         <Card data-testid="card-orcamentos">

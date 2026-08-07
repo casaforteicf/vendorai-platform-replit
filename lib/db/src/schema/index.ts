@@ -23,6 +23,7 @@ export * from "./ml_feature_snapshots";
 export * from "./receitas_medicas";
 export * from "./pacotes";
 export * from "./ml_models";
+export * from "./lead_oportunidades_previstas";
 export * from "./categorias_produto";
 export * from "./agendas";
 export * from "./agendamentos";
