@@ -71,7 +71,7 @@ async def generate_rules(request: GenerateRulesRequest):
     try:
         rules = []
         
-        # 1. Regras de orçamento parado
+        # Regras de orçamento parado
         if 'orcamentos_parados' in request.politicas:
             prazos = request.politicas['orcamentos_parados'].get('prazos_por_produto', {})
             for produto in request.produtos:
@@ -93,50 +93,6 @@ async def generate_rules(request: GenerateRulesRequest):
                         }
                     })
         
-        # 2. Regras sazonais
-        if 'sazonalidade' in request.politicas and request.politicas['sazonalidade'].get('ativo'):
-            for evento in request.politicas['sazonalidade'].get('eventos', []):
-                rules.append({
-                    "id": len(rules) + 1,
-                    "nome": f"Reativação Sazonal - {evento['nome']}",
-                    "tipo": "reativacao_sazonal",
-                    "condicoes": {
-                        "mes": evento['mes'],
-                        "sazonalidade": evento['nome'].lower(),
-                        "dias_sem_interacao": evento.get('dias_sem_interacao', 30)
-                    },
-                    "acao": {
-                        "canal": request.empresa.canais[0] if request.empresa.canais else "whatsapp",
-                        "mensagem": f"Olá {{nome}}! O {evento['nome']} está chegando. Vamos conversar?",
-                        "tipo_mensagem": "sazonal",
-                        "prioridade": 2
-                    }
-                })
-        
-        # 3. Regras de whitespace/cross-sell
-        if 'whitespace_cross_sell' in request.politicas and request.politicas['whitespace_cross_sell'].get('ativo'):
-            for combo in request.politicas['whitespace_cross_sell'].get('combinacoes', []):
-                produto_tem = next((p for p in request.produtos if p.id == combo['produto_tem']), None)
-                produto_nao_tem = next((p for p in request.produtos if p.id == combo['produto_nao_tem']), None)
-                
-                if produto_tem and produto_nao_tem:
-                    rules.append({
-                        "id": len(rules) + 1,
-                        "nome": f"Cross-Sell - {produto_tem.nome} + {produto_nao_tem.nome}",
-                        "tipo": "whitespace_produto",
-                        "condicoes": {
-                            "produto_tem": combo['produto_tem'],
-                            "produto_nao_tem": combo['produto_nao_tem'],
-                            "dias_minimo": combo.get('dias_minimo', 90)
-                        },
-                        "acao": {
-                            "canal": request.empresa.canais[0] if request.empresa.canais else "whatsapp",
-                            "mensagem": f"Olá {{nome}}, vi que você já tem {produto_tem.nome}. Que tal adicionar {produto_nao_tem.nome}?",
-                            "tipo_mensagem": "whitespace",
-                            "prioridade": combo.get('prioridade', 2)
-                        }
-                    })
-        
         return {
             "success": True,
             "message": f"{len(rules)} regras geradas com sucesso!",
@@ -152,10 +108,6 @@ async def generate_rules(request: GenerateRulesRequest):
 async def get_rules(tenant_id: str):
     """Retorna regras de um tenant (simulado)"""
     return {"rules": []}
-
-# ============================================
-# EXECUÇÃO LOCAL
-# ============================================
 
 if __name__ == "__main__":
     import uvicorn
