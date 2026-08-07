@@ -176,9 +176,12 @@ interface ParsedLeadRow {
   endereco: string;
   email: string;
   instagram: string;
+  empresa: string;
+  status: string;
+  responsavel: string;
 }
 
-const CSV_TEMPLATE = "nome,telefone,endereco,email,instagram\nJoão Silva,(11) 99999-1111,Rua das Flores 123 São Paulo SP,joao@email.com,@joaosilva\nMaria Souza,(21) 98888-2222,,maria@empresa.com.br,";
+const CSV_TEMPLATE = "nome,telefone,endereco,email,instagram,empresa,status,responsavel\nJoão Silva,(11) 99999-1111,Rua das Flores 123 São Paulo SP,joao@email.com,@joaosilva,Silva Materiais de Construção,novo,\nMaria Souza,(21) 98888-2222,,maria@empresa.com.br,,,,Ana Paula";
 
 function parseCsvRows(text: string): ParsedLeadRow[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
@@ -191,6 +194,9 @@ function parseCsvRows(text: string): ParsedLeadRow[] {
     endereco: header.indexOf("endereco"),
     email: header.indexOf("email"),
     instagram: header.indexOf("instagram"),
+    empresa: header.indexOf("empresa"),
+    status: header.indexOf("status"),
+    responsavel: header.indexOf("responsavel"),
   };
 
   return lines.slice(1).map((line) => {
@@ -201,6 +207,9 @@ function parseCsvRows(text: string): ParsedLeadRow[] {
       endereco: (idx.endereco >= 0 ? cols[idx.endereco] : cols[2] ?? "").trim(),
       email: (idx.email >= 0 ? cols[idx.email] : cols[3] ?? "").trim(),
       instagram: (idx.instagram >= 0 ? cols[idx.instagram] : cols[4] ?? "").trim(),
+      empresa: (idx.empresa >= 0 ? cols[idx.empresa] ?? "" : "").trim(),
+      status: (idx.status >= 0 ? cols[idx.status] ?? "" : "").trim(),
+      responsavel: (idx.responsavel >= 0 ? cols[idx.responsavel] ?? "" : "").trim(),
     };
   }).filter((r) => r.nome.length > 0);
 }
@@ -478,8 +487,8 @@ export default function Leads() {
                   {/* Instructions */}
                   <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1">
                     <p className="font-medium">Formato esperado (colunas em ordem):</p>
-                    <p className="font-mono text-xs text-muted-foreground">nome, telefone, endereco, email, instagram</p>
-                    <p className="text-xs text-muted-foreground">A primeira linha deve ser o cabeçalho. Máximo 500 leads por importação.</p>
+                    <p className="font-mono text-xs text-muted-foreground">nome, telefone, endereco, email, instagram, empresa, status, responsavel</p>
+                    <p className="text-xs text-muted-foreground">A primeira linha deve ser o cabeçalho. Colunas empresa/status/responsavel são opcionais — responsavel busca pelo nome do vendedor no seu time; se não achar ou ficar em branco, distribui automaticamente. Máximo 500 leads por importação.</p>
                   </div>
 
                   {/* Template download */}
@@ -515,7 +524,7 @@ export default function Leads() {
                         <table className="w-full">
                           <thead className="bg-muted/50">
                             <tr>
-                              {["Nome", "Telefone", "Endereço", "Email", "Instagram"].map((h) => (
+                              {["Nome", "Telefone", "Endereço", "Email", "Instagram", "Empresa", "Status", "Responsável"].map((h) => (
                                 <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
                               ))}
                             </tr>
@@ -528,6 +537,9 @@ export default function Leads() {
                                 <td className="px-3 py-1.5 text-muted-foreground max-w-[120px] truncate">{row.endereco || "—"}</td>
                                 <td className="px-3 py-1.5 text-muted-foreground">{row.email || "—"}</td>
                                 <td className="px-3 py-1.5 text-muted-foreground">{row.instagram || "—"}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground">{row.empresa || "—"}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground">{row.status || "novo"}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground">{row.responsavel || "—"}</td>
                               </tr>
                             ))}
                           </tbody>

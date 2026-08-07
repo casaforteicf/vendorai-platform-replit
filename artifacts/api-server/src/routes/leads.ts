@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray, desc } from "drizzle-orm";
+import { and, eq, inArray, desc, ilike } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -20,6 +20,7 @@ import {
   leadProposalsTable,
   updateLeadBriefingSchema,
   businessProfilesTable,
+  usersTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -130,6 +131,9 @@ const importLeadRowSchema = z.object({
   endereco: z.string().optional().nullable(),
   email: z.string().optional().nullable(),
   instagram: z.string().optional().nullable(),
+  empresa: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+  responsavel: z.string().optional().nullable(),
 });
 
 const importLeadsBodySchema = z.object({
@@ -202,7 +206,19 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         errors.push({ row: i + 1, message: `Duplicate: matched by ${match.matchBy} to lead ${match.lead.id}` });
         continue;
       }
-      const importAssignedTo = await pickNextVendedor(tenantId);
+      // Responsável por nome (busca dentro do tenant, case-insensitive) — se
+      // não vier na planilha ou não achar ninguém com esse nome, cai no
+      // round-robin de sempre, não deixa o lead sem dono.
+      let importAssignedTo: string | null = null;
+      if (row.responsavel?.trim()) {
+        const [vendedor] = await db.select({ id: usersTable.id })
+          .from(usersTable)
+          .where(and(eq(usersTable.tenantId, tenantId), ilike(usersTable.name, row.responsavel.trim())))
+          .limit(1);
+        importAssignedTo = vendedor?.id ?? null;
+      }
+      if (!importAssignedTo) importAssignedTo = await pickNextVendedor(tenantId);
+
       const [importedLead] = await db.insert(leadsTable).values({
         tenantId,
         nome: row.nome,
@@ -211,6 +227,8 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         email: row.email || null,
         endereco: row.endereco || null,
         instagramHandle: row.instagram || null,
+        empresa: row.empresa || null,
+        status: row.status?.trim() || "novo",
         possivelDuplicata: match.similar ? true : false,
         leadSimilarId: match.similar?.id ?? null,
         assignedTo: importAssignedTo,
