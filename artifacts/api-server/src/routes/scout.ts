@@ -193,6 +193,22 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
   return res.json(enriched);
 });
 
+router.delete("/tenants/:tenantId/scout/oportunidades/:id", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const role = (req as any).user?.platformRole;
+  if (role !== "super_admin" && role !== "tenant_admin") {
+    return res.status(403).json({ error: "Somente administradores podem excluir oportunidades do Scout." });
+  }
+
+  const [deleted] = await db.delete(scoutOportunidadesTable)
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)))
+    .returning({ id: scoutOportunidadesTable.id });
+  if (!deleted) return res.status(404).json({ error: "Oportunidade não encontrada." });
+  return res.json({ ok: true, id: deleted.id });
+});
+
 router.patch("/tenants/:tenantId/scout/oportunidades/:id/encaminhar", async (req, res) => {
   const { tenantId, id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });

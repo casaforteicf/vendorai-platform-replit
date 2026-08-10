@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { AgendarReuniaoModal } from "@/components/AgendarReuniaoModal";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -60,7 +60,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, Settings2, Trash2, RotateCcw } from "lucide-react";
 import { ContractGeneratorModal } from "@/components/ContractGeneratorModal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -1948,11 +1948,14 @@ function EditDealSheet({
 export default function Deals() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
+  const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const [, navigate] = useLocation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isStagesOpen, setIsStagesOpen] = useState(false);
+  const [stageConfig, setStageConfig] = useState<Record<string, { label: string; hidden: boolean }>>({});
   const [mobileCol, setMobileCol] = useState<string>("novo");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<string | null>(null);
@@ -1981,6 +1984,35 @@ export default function Deals() {
       queryKey: getListDealsQueryKey(tenantId),
     },
   });
+
+  useEffect(() => {
+    if (!tenantId) return;
+    try {
+      setStageConfig(JSON.parse(localStorage.getItem(`vendorai:deal-stages:${tenantId}`) ?? "{}"));
+    } catch {
+      setStageConfig({});
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (tenantId) localStorage.setItem(`vendorai:deal-stages:${tenantId}`, JSON.stringify(stageConfig));
+  }, [stageConfig, tenantId]);
+
+  const visibleEtapas = useMemo(() => ETAPAS
+    .filter((stage) => !stageConfig[stage.value]?.hidden)
+    .map((stage) => ({ ...stage, label: stageConfig[stage.value]?.label || stage.label })), [stageConfig]);
+  const kanbanColumns = useMemo(() => KANBAN_COLUMNS
+    .filter((column) => !stageConfig[column.onDrop.etapa]?.hidden)
+    .map((column) => {
+      const customLabel = stageConfig[column.onDrop.etapa]?.label;
+      return { ...column, label: customLabel || column.label };
+    }), [stageConfig]);
+
+  useEffect(() => {
+    if (kanbanColumns.length > 0 && !kanbanColumns.some((column) => column.dropId === mobileCol)) {
+      setMobileCol(kanbanColumns[0].dropId);
+    }
+  }, [kanbanColumns, mobileCol]);
 
   const { data: leads = [] } = useListTenantLeads(tenantId, {
     query: {
@@ -2125,9 +2157,9 @@ export default function Deals() {
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over?.id as string | undefined;
-    const col = KANBAN_COLUMNS.find((c) => c.dropId === overId);
+    const col = kanbanColumns.find((c) => c.dropId === overId);
     setOverColumn(col ? col.dropId : null);
-  }, []);
+  }, [kanbanColumns]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -2138,7 +2170,7 @@ export default function Deals() {
       if (!over) return;
 
       const draggedDeal = deals.find((d) => d.id === active.id);
-      const targetCol = KANBAN_COLUMNS.find((c) => c.dropId === over.id);
+      const targetCol = kanbanColumns.find((c) => c.dropId === over.id);
 
       if (!draggedDeal || !targetCol) return;
 
@@ -2146,7 +2178,7 @@ export default function Deals() {
       if (sourceColId === targetCol.dropId) return;
 
       // ── Backward move prevention ─────────────────────────────────────────
-      const sourceCol = KANBAN_COLUMNS.find((c) => c.dropId === sourceColId);
+      const sourceCol = kanbanColumns.find((c) => c.dropId === sourceColId);
       const sourceOrder = sourceCol?.order ?? -1;
       const targetOrder = targetCol.order;
       const isGanhoToAquecimento =
@@ -2244,7 +2276,7 @@ export default function Deals() {
         }
       );
     },
-    [deals, queryClient, tenantId, updateDeal, toast]
+    [deals, kanbanColumns, queryClient, tenantId, updateDeal, toast]
   );
 
   function confirmarPerdido(categoria: string, detalhe: string) {
@@ -2367,6 +2399,33 @@ export default function Deals() {
           </p>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+        {isAdmin && <Dialog open={isStagesOpen} onOpenChange={setIsStagesOpen}>
+          <DialogTrigger asChild><Button variant="outline"><Settings2 className="h-4 w-4 mr-2" /> Etapas</Button></DialogTrigger>
+          <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Gerenciar etapas da pipeline</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground">Edite o nome exibido ou remova etapas vazias. Etapas com negócios não podem ser excluídas.</p>
+            <div className="space-y-2">
+              {ETAPAS.map((stage) => {
+                const count = deals.filter((deal) => deal.etapa === stage.value).length;
+                const hidden = !!stageConfig[stage.value]?.hidden;
+                return <div key={stage.value} className="flex items-center gap-2 rounded-lg border p-2">
+                  <Input
+                    value={stageConfig[stage.value]?.label ?? stage.label}
+                    disabled={hidden}
+                    aria-label={`Nome da etapa ${stage.label}`}
+                    onChange={(event) => setStageConfig((current) => ({ ...current, [stage.value]: { label: event.target.value, hidden: false } }))}
+                  />
+                  <Badge variant="secondary" className="shrink-0">{count}</Badge>
+                  {hidden ? <Button size="icon" variant="outline" title="Restaurar etapa" onClick={() => setStageConfig((current) => ({ ...current, [stage.value]: { label: current[stage.value]?.label || stage.label, hidden: false } }))}><RotateCcw className="h-4 w-4" /></Button>
+                  : <Button size="icon" variant="ghost" className="text-destructive" title={count ? "Mova os negócios antes de excluir" : "Excluir etapa"} disabled={count > 0} onClick={() => {
+                    if (window.confirm(`Excluir a etapa ${stageConfig[stage.value]?.label || stage.label}?`)) setStageConfig((current) => ({ ...current, [stage.value]: { label: current[stage.value]?.label || stage.label, hidden: true } }));
+                  }}><Trash2 className="h-4 w-4" /></Button>}
+                </div>;
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>}
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-novo-negocio">
@@ -2502,7 +2561,7 @@ export default function Deals() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {ETAPAS.map((e) => (
+                          {visibleEtapas.map((e) => (
                             <SelectItem key={e.value} value={e.value}>
                               {e.label}
                             </SelectItem>
@@ -2586,12 +2645,13 @@ export default function Deals() {
             </Form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* ── Pipeline Clássico — Mobile column picker ────────────────────── */}
       <div className="md:hidden flex flex-col gap-3 flex-1 min-h-0">
         <div className="flex gap-2 overflow-x-auto pb-1 shrink-0">
-          {KANBAN_COLUMNS.map((col) => {
+          {kanbanColumns.map((col) => {
             const count = dealsForKanbanColumn(col).length;
             const isSelected = mobileCol === col.dropId;
             return (
@@ -2618,7 +2678,7 @@ export default function Deals() {
               <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />
             ))
           ) : (() => {
-            const col = KANBAN_COLUMNS.find((c) => c.dropId === mobileCol);
+            const col = kanbanColumns.find((c) => c.dropId === mobileCol);
             const colDeals = col ? dealsForKanbanColumn(col) : [];
             if (colDeals.length === 0) {
               return (
@@ -2680,7 +2740,7 @@ export default function Deals() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {ETAPAS.map((e) => (
+                      {visibleEtapas.map((e) => (
                         <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -2713,7 +2773,7 @@ export default function Deals() {
       <div className="hidden md:flex md:flex-col flex-1 min-h-0">
         {isLoading ? (
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {KANBAN_COLUMNS.map((col) => (
+            {kanbanColumns.map((col) => (
               <div key={col.dropId} className="w-72 shrink-0 space-y-2">
                 <div className="h-5 bg-muted animate-pulse rounded w-24" />
                 <div className="h-[400px] bg-muted/30 animate-pulse rounded-lg" />
@@ -2728,7 +2788,7 @@ export default function Deals() {
             onDragEnd={handleDragEnd}
           >
             <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
-              {KANBAN_COLUMNS.map((col) => (
+              {kanbanColumns.map((col) => (
                 <KanbanColumn
                   key={col.dropId}
                   col={col}

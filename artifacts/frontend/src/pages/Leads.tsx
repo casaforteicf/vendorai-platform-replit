@@ -22,7 +22,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle, Flame, Cloud, Snowflake, UserRound } from "lucide-react";
+import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle, Flame, Cloud, Snowflake, Trash2, UserRound } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
 import {
@@ -64,7 +64,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const LEAD_STATUSES = [
@@ -242,6 +242,29 @@ export default function Leads() {
   const [assignDialog, setAssignDialog] = useState<{ open: boolean; leadId: string; currentAssignedTo: string | null }>({ open: false, leadId: "", currentAssignedTo: null });
   const [assignSelectedUser, setAssignSelectedUser] = useState<string>("");
   const updateLead = useUpdateLead();
+  const deleteLead = useMutation({
+    mutationFn: async (lead: Lead) => {
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Não foi possível excluir o lead.");
+      }
+      return lead;
+    },
+    onSuccess: (lead) => {
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+      toast({ title: "Lead excluído", description: `${lead.nome} foi removido.` });
+    },
+    onError: (error: Error) => toast({ title: "Não foi possível excluir", description: error.message, variant: "destructive" }),
+  });
+
+  function confirmDeleteLead(lead: Lead) {
+    if (window.confirm(`Excluir definitivamente o lead ${lead.nome}? Esta ação não pode ser desfeita.`)) deleteLead.mutate(lead);
+  }
 
   const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
@@ -794,6 +817,14 @@ export default function Leads() {
                         )}
                       </div>
                     </div>
+                    {isAdmin && <button
+                      type="button"
+                      title="Excluir lead"
+                      aria-label={`Excluir ${lead.nome}`}
+                      className="p-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      disabled={deleteLead.isPending}
+                      onClick={(event) => { event.stopPropagation(); confirmDeleteLead(lead); }}
+                    ><Trash2 className="h-4 w-4" /></button>}
                     <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                   </div>
                 );
@@ -916,7 +947,17 @@ export default function Leads() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          <span className="flex items-center justify-end gap-1">
+                            {isAdmin && <button
+                              type="button"
+                              title="Excluir lead"
+                              aria-label={`Excluir ${lead.nome}`}
+                              className="p-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              disabled={deleteLead.isPending}
+                              onClick={(event) => { event.stopPropagation(); confirmDeleteLead(lead); }}
+                            ><Trash2 className="h-4 w-4" /></button>}
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          </span>
                         </TableCell>
                       </TableRow>
                     );

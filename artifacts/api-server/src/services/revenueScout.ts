@@ -36,6 +36,7 @@ import { runDistributorRevenueForTenant } from "./distributorRevenueEngine.js";
 import { runVerticalRevenueForTenant, normalize } from "./verticalRevenueEngine.js";
 import { isWithinBusinessHours, renderTemplate } from "../lib/proactiveMessageGuard.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
+import { isSentProposalStatus, requiresSentProposalContext } from "../lib/scoutBudgetGuard.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -475,7 +476,7 @@ export async function analisarCliente(
           and(
             eq(propostasTable.tenantId, tenantId),
             eq(propostasTable.leadId, clienteId),
-            inArray(propostasTable.status, ["enviada", "pendente"]),
+            eq(propostasTable.status, "enviada"),
             lte(propostasTable.updatedAt, cutoffParado),
           ),
         )
@@ -1039,6 +1040,38 @@ export async function processarOportunidades(
         continue;
       }
       const mensagem = rendered.mensagem;
+
+      // Uma mensagem sobre orcamento/proposta nunca pode ser enviada com base
+      // apenas no texto de uma regra. Exigimos o vinculo com a proposta deste
+      // tenant/lead e confirmamos novamente que ela foi realmente enviada.
+      // Isso tambem neutraliza oportunidades antigas ou regras mal configuradas.
+      if (requiresSentProposalContext(op.tipo, mensagem)) {
+        const [propostaEnviada] = op.propostaId
+          ? await db
+              .select({ status: propostasTable.status })
+              .from(propostasTable)
+              .where(
+                and(
+                  eq(propostasTable.id, op.propostaId),
+                  eq(propostasTable.tenantId, tenantId),
+                  eq(propostasTable.leadId, op.clienteId),
+                ),
+              )
+              .limit(1)
+          : [];
+
+        if (!propostaEnviada || !isSentProposalStatus(propostaEnviada.status)) {
+          log.warn(
+            { tenantId, oportunidadeId: op.id, leadId: op.clienteId, propostaId: op.propostaId },
+            "scout/processar: mensagem de orcamento bloqueada sem proposta enviada valida",
+          );
+          await db
+            .update(scoutOportunidadesTable)
+            .set({ status: "ignorado" })
+            .where(eq(scoutOportunidadesTable.id, op.id));
+          continue;
+        }
+      }
 
       if (canal === "whatsapp") {
         await sendDirectWhatsAppMessage(tenantId, lead.telefone, mensagem, log);
