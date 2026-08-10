@@ -208,7 +208,6 @@ router.delete("/tenants/:tenantId/scout/oportunidades/:id", async (req, res) => 
   if (!deleted) return res.status(404).json({ error: "Oportunidade não encontrada." });
   return res.json({ ok: true, id: deleted.id });
 });
-
 router.patch("/tenants/:tenantId/scout/oportunidades/:id/encaminhar", async (req, res) => {
   const { tenantId, id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
