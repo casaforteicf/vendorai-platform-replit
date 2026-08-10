@@ -9,6 +9,7 @@ import {
   insuranceProductsTable,
   insuranceAccountProductPositionsTable,
   tenantsTable,
+  usersTable,
 } from "@workspace/db";
 import { runRevenueScoutForTenant, parseAcao } from "../services/revenueScout.js";
 import { runInsuranceRenewalForTenant } from "../services/insuranceRenewalEngine.js";
@@ -157,25 +158,68 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
       op: scoutOportunidadesTable,
       clienteNome: leadsTable.nome,
       regraAcao: scoutRegrasTable.acao,
+      regraNome: scoutRegrasTable.nome,
+      cliente: leadsTable,
+      responsavelNome: usersTable.name,
     })
     .from(scoutOportunidadesTable)
     .leftJoin(leadsTable, eq(leadsTable.id, scoutOportunidadesTable.clienteId))
     .leftJoin(scoutRegrasTable, eq(scoutRegrasTable.id, scoutOportunidadesTable.regraId))
+    .leftJoin(usersTable, eq(usersTable.id, scoutOportunidadesTable.assignedTo))
     .where(and(...filters))
     .orderBy(desc(scoutOportunidadesTable.createdAt))
     .limit(200);
 
-  const enriched = rows.map(({ op, clienteNome, regraAcao }) => {
+  const enriched = rows.map(({ op, clienteNome, regraAcao, regraNome, cliente, responsavelNome }) => {
     const acao = parseAcao(regraAcao);
     let mensagemPreview: string | null = op.mensagemEnviada ?? null;
     if (!mensagemPreview && op.status === "pendente" && acao.mensagem) {
       const rendered = renderTemplate(acao.mensagem, { nome: clienteNome ?? "", nome_cliente: clienteNome ?? "" });
       mensagemPreview = rendered.ok ? rendered.mensagem : null;
     }
-    return { ...op, clienteNome, mensagemPreview, requerAprovacao: !!acao.requiresApproval };
+    return {
+      ...op,
+      clienteNome,
+      cliente,
+      regraNome,
+      responsavelNome,
+      mensagemPreview,
+      requerAprovacao: !!(acao as { requiresApproval?: boolean }).requiresApproval,
+      percepcao: op.explanation?.inference ?? null,
+      justificativa: op.explanation?.facts ?? null,
+    };
   });
 
   return res.json(enriched);
+});
+
+router.patch("/tenants/:tenantId/scout/oportunidades/:id/encaminhar", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const { userId } = req.body as { userId?: string | null };
+  if (userId) {
+    const [user] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)));
+    if (!user) return res.status(422).json({ error: "Usuario nao pertence a este tenant ou esta inativo." });
+  }
+  const [updated] = await db.update(scoutOportunidadesTable)
+    .set({ assignedTo: userId ?? null, pipelineStage: userId ? "encaminhada" : "identificada" })
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)))
+    .returning();
+  if (!updated) return res.status(404).json({ error: "Oportunidade not found" });
+  return res.json(updated);
+});
+
+router.patch("/tenants/:tenantId/scout/oportunidades/:id/etapa", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const allowed = ["identificada", "em_analise", "encaminhada", "ia_aprovada", "em_contato", "convertida", "descartada"];
+  const { etapa } = req.body as { etapa?: string };
+  if (!etapa || !allowed.includes(etapa)) return res.status(422).json({ error: "Etapa invalida." });
+  const [updated] = await db.update(scoutOportunidadesTable).set({ pipelineStage: etapa })
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId))).returning();
+  if (!updated) return res.status(404).json({ error: "Oportunidade not found" });
+  return res.json(updated);
 });
 
 // Aprova uma oportunidade pendente que exige aprovação — dispara a
@@ -208,7 +252,7 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/aprovar", async (req, re
 
   await sendDirectWhatsAppMessage(tenantId, lead.telefone, mensagem, req.log as any);
   const [updated] = await db.update(scoutOportunidadesTable)
-    .set({ status: "enviado", mensagemEnviada: mensagem, canal: "whatsapp", enviadoEm: new Date() })
+    .set({ status: "enviado", pipelineStage: "em_contato", approvedBy: (req as any).user?.sub ?? null, approvedAt: new Date(), mensagemEnviada: mensagem, canal: "whatsapp", enviadoEm: new Date() })
     .where(eq(scoutOportunidadesTable.id, id))
     .returning();
   return res.json(updated);

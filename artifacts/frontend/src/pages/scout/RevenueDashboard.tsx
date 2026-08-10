@@ -193,6 +193,9 @@ export default function RevenueDashboard() {
           <Link href="/scout/oportunidades">
             <Button size="sm">Ver Oportunidades <ArrowRight className="h-3.5 w-3.5 ml-1" /></Button>
           </Link>
+          <Link href="/scout/pipeline">
+            <Button size="sm" variant="secondary">Pipeline Scout <ArrowRight className="h-3.5 w-3.5 ml-1" /></Button>
+          </Link>
         </div>
       </div>
 
