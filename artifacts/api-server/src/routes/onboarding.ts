@@ -927,30 +927,47 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId));
 
-  if (!tenant?.planId) {
-    res.status(409).json({
-      error: "O plano deve ser definido pelo administrador antes do primeiro acesso",
-    });
+  if (!tenant) {
+    res.status(404).json({ error: "Tenant não encontrado" });
     return;
   }
 
   // The plan is assigned by the platform administrator when the tenant is
   // created. Onboarding must never let the tenant replace that assignment.
-  const planoId = tenant.planId;
+  // Older/imported tenants may have no plan or reference a removed plan.
+  // Repair those references with the free Start plan to avoid a lockout.
+  let planoId = tenant?.planId ?? null;
   const billingCycle: "monthly" | "annual" =
     tenant.billingCycle === "annual" ? "annual" : "monthly";
   const ciclo = billingCycle === "annual" ? "anual" : "mensal";
   const now = new Date();
 
   // Look up the plan
-  const [plan] = await db
-    .select()
-    .from(plansTable)
-    .where(eq(plansTable.id, planoId));
+  let [plan] = planoId
+    ? await db.select().from(plansTable).where(eq(plansTable.id, planoId)).limit(1)
+    : [];
+  let planRepaired = false;
 
   if (!plan) {
-    res.status(404).json({ error: "Plano não encontrado" });
-    return;
+    [plan] = await db
+      .select()
+      .from(plansTable)
+      .where(and(eq(plansTable.slug, "start"), eq(plansTable.isActive, true)))
+      .limit(1);
+
+    if (!plan) {
+      res.status(409).json({
+        error: "Plano inicial indisponível. Solicite ao administrador a configuração do plano Start.",
+      });
+      return;
+    }
+
+    req.log.warn(
+      { tenantId, previousPlanId: planoId, replacementPlanId: plan.id },
+      "Onboarding repaired invalid tenant plan reference",
+    );
+    planoId = plan.id;
+    planRepaired = true;
   }
 
   const priceCents = billingCycle === "annual"
@@ -1034,7 +1051,7 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
     });
 
   req.log.info({ tenantId, planoId, billingCycle, asaasChargeId }, "Onboarding step 4 complete");
-  res.json({ success: true, redirectTo: "/dashboard", asaasChargeId, invoiceUrl });
+  res.json({ success: true, redirectTo: "/dashboard", asaasChargeId, invoiceUrl, planRepaired });
 });
 
 // ── GET /onboarding/whatsapp/test ─────────────────────────────────────────────

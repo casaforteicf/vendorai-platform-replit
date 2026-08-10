@@ -63,6 +63,18 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
   };
 
   try {
+    if (insertData.planId) {
+      const [plan] = await db
+        .select({ id: plansTable.id })
+        .from(plansTable)
+        .where(and(eq(plansTable.id, insertData.planId), eq(plansTable.isActive, true)))
+        .limit(1);
+      if (!plan) {
+        res.status(422).json({ error: "Plano selecionado não existe ou está inativo" });
+        return;
+      }
+    }
+
     const [tenant] = await db.insert(tenantsTable).values(insertData).returning();
     await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
 
@@ -860,6 +872,18 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
   const hashed = await bcrypt.hash(tempPassword, 12);
 
   try {
+    if (planId) {
+      const [plan] = await db
+        .select({ id: plansTable.id })
+        .from(plansTable)
+        .where(and(eq(plansTable.id, planId), eq(plansTable.isActive, true)))
+        .limit(1);
+      if (!plan) {
+        res.status(422).json({ error: "Plano selecionado não existe ou está inativo" });
+        return;
+      }
+    }
+
     const [tenant] = await db.insert(tenantsTable).values({
       name: companyName,
       slug,
