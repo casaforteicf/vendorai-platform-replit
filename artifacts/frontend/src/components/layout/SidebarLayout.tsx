@@ -57,7 +57,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
-  const START_PLAN_HREFS = new Set(["/", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia/produtos", "/deals", "/configuracoes", "/guia-implantacao"]);
+  const START_PLAN_HREFS = new Set(["/", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao"]);
   const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin;
 
   const { data: openBugsData } = useQuery<{ count: number }>({
@@ -208,7 +208,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const CORE_VERTICAL_HREFS = [
     "/", "/leads", "/app/prospector", "/deals", "/comissoes",
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas",
-    "/agents/config", "/analytics", "/usuarios", "/configuracoes",
+    "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
     "/praca-perguntas", "/erp",
   ];
