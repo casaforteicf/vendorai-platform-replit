@@ -478,227 +478,7 @@ router.post(
 
         if (existingFunils.length === 0) {
           await db.insert(funisTable).values({
-            tenantId,
-            nome: `Funil — ${template.nome}`,
-            etapas: funilPadrao,
-          });
-          funilCriado = true;
-        }
-      }
-    }
-
-    req.log.info(
-      { tenantId, promptsApplied, funilCriado },
-      "Onboarding: AI auto-config applied"
-    );
-
-    // ── 3. Populate Knowledge Base ─────────────────────────────────────────
-    const kbArticles: Array<{
-      tenantId: string;
-      titulo: string;
-      conteudo: string;
-      categoria: string;
-      tags: string[];
-    }> = [];
-
-    kbArticles.push({
-      tenantId,
-      titulo: `Sobre a ${data.nomeFantasia}`,
-      categoria: "empresa",
-      tags: ["empresa", "identidade", data.vertical],
-      conteudo: buildAboutContent(data),
-    });
-
-    const produtosValidos = (data.produtos ?? []).filter((p) => p.nome.trim());
-    if (produtosValidos.length > 0) {
-      kbArticles.push({
-        tenantId,
-        titulo: "Produtos e Serviços",
-        categoria: "produtos",
-        tags: ["produtos", "servicos", "catalogo"],
-        conteudo: buildProductsContent({ ...data, produtos: produtosValidos }),
-      });
-    }
-
-    const hasStrategyData =
-      data.diferenciais ||
-      data.publicoAlvo ||
-      (data.concorrentes?.length ?? 0) > 0;
-
-    if (hasStrategyData) {
-      kbArticles.push({
-        tenantId,
-        titulo: "Estratégia Comercial",
-        categoria: "estrategia",
-        tags: ["estrategia", "mercado", "concorrentes", "diferenciais"],
-        conteudo: buildStrategyContent(data),
-      });
-    }
-
-    if (kbArticles.length > 0) {
-      await db.insert(knowledgeBaseTable).values(kbArticles);
-    }
-
-    req.log.info(
-      { tenantId, kbArtigosGerados: kbArticles.length },
-      "Onboarding: knowledge base populated"
-    );
-
-    res.json({
-      setupCompletedAt: tenant.setupCompletedAt!.toISOString(),
-      promptsApplied,
-      funilCriado,
-      kbArtigosGerados: kbArticles.length,
-    });
-  }
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Onboarding wizard (steps 1 & 2)  — rotas sem :tenantId, auth via JWT
-// ─────────────────────────────────────────────────────────────────────────────
-
-const uploadLogo = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (!file.mimetype.startsWith("image/")) {
-      cb(new Error("Apenas imagens são aceitas"));
-      return;
-    }
-    cb(null, true);
-  },
-});
-
-const step1Schema = z.object({
-  nomeEmpresa: z.string().min(1, "nomeEmpresa obrigatório"),
-  segmento: z.string().min(1, "segmento obrigatório"),
-  site: z.string().optional(),
-  descricao: z.string().optional(),
-  corPrimaria: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-});
-
-const step2Schema = z.object({
-  metaPhoneNumberId: z.string().min(1),
-  metaAccessToken:   z.string().min(1),
-  metaWabaId:        z.string().optional(),
-  numeroWhatsapp:    z.string().min(1),
-});
-
-// ── GET /onboarding ───────────────────────────────────────────────────────────
-router.get("/onboarding", authenticate, async (req, res) => {
-  const tenantId = req.user!.tenantId;
-  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
-
-  const [existing] = await db
-    .select()
-    .from(onboardingProgressTable)
-    .where(eq(onboardingProgressTable.tenantId, tenantId));
-
-  if (existing) {
-    res.json(existing);
-    return;
-  }
-
-  const [created] = await db
-    .insert(onboardingProgressTable)
-    .values({ tenantId })
-    .returning();
-
-  res.status(201).json(created);
-});
-
-// ── PATCH /onboarding/step/1 ──────────────────────────────────────────────────
-router.patch("/onboarding/step/1", authenticate, async (req, res) => {
-  const tenantId = req.user!.tenantId;
-  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
-
-  const parsed = step1Schema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message });
-    return;
-  }
-
-  const { nomeEmpresa, segmento, site, descricao, corPrimaria } = parsed.data;
-  const now = new Date();
-
-  // Segmentos que pertencem a um programa de marca (white-label) — quem se
-  // cadastra escolhendo esse segmento já nasce com a marca do programa,
-  // sem precisar de nenhuma configuração manual depois. Só "arqdor" por
-  // enquanto; se o próprio cadastro já mandou uma cor (corPrimaria acima),
-  // essa escolha do usuário tem prioridade sobre o padrão do programa.
-  const SEGMENTO_TO_PROGRAM: Record<string, string> = {
-    "Arquitetura & Design": "arqdor",
-  };
-  const programaMarca = SEGMENTO_TO_PROGRAM[segmento] ?? null;
-  let brandDefaults: { logoUrl?: string; corPrimaria?: string; whiteLabelCompleto?: boolean } = {};
-  if (programaMarca && !corPrimaria) {
-    const [program] = await db.select().from(brandProgramsTable).where(eq(brandProgramsTable.id, programaMarca));
-    if (program) {
-      // Não sobrescreve um logo que o próprio usuário já subiu nesse
-      // mesmo passo (via POST /onboarding/step/1/logo, que roda antes
-      // desse PATCH quando ele escolhe um arquivo).
-      const [currentTenant] = await db.select({ logoUrl: tenantsTable.logoUrl }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-      brandDefaults = {
-        ...(program.logoUrl && !currentTenant?.logoUrl ? { logoUrl: program.logoUrl } : {}),
-        ...(program.corPrimaria ? { corPrimaria: program.corPrimaria } : {}),
-        whiteLabelCompleto: program.whiteLabelCompleto,
-      };
-    }
-  }
-
-  await db
-    .update(tenantsTable)
-    .set({
-      nomeEmpresa,
-      segmento,
-      // BUG CORRIGIDO (auditoria): tenants.vertical nunca era setado em
-      // NENHUM fluxo real de onboarding (o handler /onboarding/complete
-      // que setava isso não é chamado pelo frontend — código morto). Sem
-      // isso, tenant novo ficava bloqueado (403) de qualquer módulo com
-      // gate de vertical (construcao.ts, financeiro_obra.ts) desde o
-      // primeiro dia, sem nenhum caminho de correção visível.
-      vertical: segmento,
-      site: site ?? null,
-      descricao: descricao ?? null,
-      corPrimaria: corPrimaria ?? undefined,
-      ...(programaMarca ? { programaMarca } : {}),
-      ...brandDefaults,
-      updatedAt: now,
-    })
-    .where(eq(tenantsTable.id, tenantId));
-
-  const [existing] = await db
-    .select({ stepAtual: onboardingProgressTable.stepAtual })
-    .from(onboardingProgressTable)
-    .where(eq(onboardingProgressTable.tenantId, tenantId));
-
-  const nextStep = Math.max(existing?.stepAtual ?? 1, 2);
-
-  const [progress] = await db
-    .insert(onboardingProgressTable)
-    .values({
-      tenantId,
-      step1Completo: true,
-      stepAtual: nextStep,
-      dadosStep1: parsed.data as Record<string, unknown>,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: onboardingProgressTable.tenantId,
-      set: {
-        step1Completo: true,
-        stepAtual: nextStep,
-        dadosStep1: parsed.data as Record<string, unknown>,
-        updatedAt: now,
-      },
-    })
-    .returning();
-
-  req.log.info({ tenantId }, "Onboarding step 1 saved");
-  res.json(progress);
-});
-
-// ── POST /onboarding/step/1/logo ──────────────────────────────────────────────
+     …1990 tokens truncated…
 router.post(
   "/onboarding/step/1/logo",
   authenticate,
@@ -927,30 +707,47 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId));
 
-  if (!tenant?.planId) {
-    res.status(409).json({
-      error: "O plano deve ser definido pelo administrador antes do primeiro acesso",
-    });
+  if (!tenant) {
+    res.status(404).json({ error: "Tenant não encontrado" });
     return;
   }
 
   // The plan is assigned by the platform administrator when the tenant is
   // created. Onboarding must never let the tenant replace that assignment.
-  const planoId = tenant.planId;
+  // Older/imported tenants may have no plan or reference a removed plan.
+  // Repair those references with the free Start plan to avoid a lockout.
+  let planoId = tenant?.planId ?? null;
   const billingCycle: "monthly" | "annual" =
     tenant.billingCycle === "annual" ? "annual" : "monthly";
   const ciclo = billingCycle === "annual" ? "anual" : "mensal";
   const now = new Date();
 
   // Look up the plan
-  const [plan] = await db
-    .select()
-    .from(plansTable)
-    .where(eq(plansTable.id, planoId));
+  let [plan] = planoId
+    ? await db.select().from(plansTable).where(eq(plansTable.id, planoId)).limit(1)
+    : [];
+  let planRepaired = false;
 
   if (!plan) {
-    res.status(404).json({ error: "Plano não encontrado" });
-    return;
+    [plan] = await db
+      .select()
+      .from(plansTable)
+      .where(and(eq(plansTable.slug, "start"), eq(plansTable.isActive, true)))
+      .limit(1);
+
+    if (!plan) {
+      res.status(409).json({
+        error: "Plano inicial indisponível. Solicite ao administrador a configuração do plano Start.",
+      });
+      return;
+    }
+
+    req.log.warn(
+      { tenantId, previousPlanId: planoId, replacementPlanId: plan.id },
+      "Onboarding repaired invalid tenant plan reference",
+    );
+    planoId = plan.id;
+    planRepaired = true;
   }
 
   const priceCents = billingCycle === "annual"
@@ -1034,7 +831,7 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
     });
 
   req.log.info({ tenantId, planoId, billingCycle, asaasChargeId }, "Onboarding step 4 complete");
-  res.json({ success: true, redirectTo: "/dashboard", asaasChargeId, invoiceUrl });
+  res.json({ success: true, redirectTo: "/dashboard", asaasChargeId, invoiceUrl, planRepaired });
 });
 
 // ── GET /onboarding/whatsapp/test ─────────────────────────────────────────────
