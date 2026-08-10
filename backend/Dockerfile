@@ -1,16 +1,20 @@
-FROM python:3.11-slim
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-# Copiar e instalar dependências
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# O backend de producao e a API TypeScript do workspace. O antigo main.py
+# expunha apenas uma API demonstrativa do Revenue Scout e, por isso, rotas
+# como /api/onboarding/step/1 retornavam 404 no Railway.
+RUN corepack enable \
+  && corepack prepare pnpm@10.26.1 --activate
 
-# Copiar código
-COPY main.py .
+COPY . .
 
-# Expor porta
-EXPOSE 8000
+RUN pnpm install --frozen-lockfile \
+  && pnpm --filter @workspace/api-server run build
 
-# Comando para rodar
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENV NODE_ENV=production
+
+EXPOSE 5000
+
+CMD ["pnpm", "--filter", "@workspace/api-server", "run", "start"]

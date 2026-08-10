@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, Bot, ExternalLink, KanbanSquare, UserRound } from "lucide-react";
+import { ArrowRight, Bot, ExternalLink, KanbanSquare, Trash2, UserRound } from "lucide-react";
 import { Link } from "wouter";
 
 const STAGES = [
@@ -19,7 +19,7 @@ const STAGES = [
 function headers() {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`, "Content-Type": "application/json" };
 }
-function pretty(value: unknown) {
+function pretty(value: unknown): string {
   if (!value) return "Nao informado";
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(pretty).join("; ");
@@ -39,6 +39,7 @@ export default function ScoutPipeline() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [selected, setSelected] = useState<any>(null);
+  const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
 
   const { data: opportunities = [] } = useQuery<any[]>({
     queryKey: ["scout-pipeline", tenantId], enabled: !!tenantId,
@@ -71,6 +72,24 @@ export default function ScoutPipeline() {
       .then(readJson),
     onSuccess: (data) => { refresh(); setSelected((old: any) => ({ ...old, ...data })); toast({ title: "IA aprovada e sequencia iniciada" }); },
     onError: (error: Error) => toast({ title: "Nao foi possivel aprovar", description: error.message, variant: "destructive" }),
+  });
+  const removeOpportunity = useMutation({
+    mutationFn: (id: string) => fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}`, {
+      method: "DELETE", headers: headers(),
+    }).then(readJson),
+    onSuccess: () => { refresh(); setSelected(null); toast({ title: "Oportunidade excluída" }); },
+    onError: (error: Error) => toast({ title: "Não foi possível excluir", description: error.message, variant: "destructive" }),
+  });
+  const removeLead = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/leads/${id}`, { method: "DELETE", headers: headers() });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Não foi possível excluir o lead.");
+      }
+    },
+    onSuccess: () => { refresh(); qc.invalidateQueries({ queryKey: ["leads"] }); setSelected(null); toast({ title: "Lead excluído definitivamente" }); },
+    onError: (error: Error) => toast({ title: "Não foi possível excluir", description: error.message, variant: "destructive" }),
   });
 
   const columns = useMemo(() => STAGES.map(([id, label]) => ({ id, label, items: opportunities.filter(o => (o.pipelineStage ?? "identificada") === id) })), [opportunities]);
@@ -112,6 +131,14 @@ export default function ScoutPipeline() {
             <div><label className="text-sm font-medium">Etapa da pipeline</label><Select value={selected.pipelineStage ?? "identificada"} onValueChange={etapa => move.mutate({ id: selected.id, etapa })}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{STAGES.map(([id, label]) => <SelectItem key={id} value={id}>{label}</SelectItem>)}</SelectContent></Select></div>
           </div>
           <Button className="w-full" disabled={approve.isPending || selected.status === "enviado"} onClick={() => approve.mutate(selected.id)}><Bot className="h-4 w-4 mr-2" />{selected.status === "enviado" ? "IA aprovada - contato iniciado" : "Aprovar IA para dar sequencia"}</Button>
+          {isAdmin && <div className="border-t pt-4 flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" className="text-destructive" disabled={removeOpportunity.isPending} onClick={() => {
+              if (window.confirm("Excluir somente esta oportunidade do Revenue Scout? O cadastro do lead será mantido.")) removeOpportunity.mutate(selected.id);
+            }}><Trash2 className="h-4 w-4 mr-2" /> Excluir oportunidade</Button>
+            <Button variant="destructive" disabled={removeLead.isPending} onClick={() => {
+              if (window.confirm(`Excluir definitivamente o lead ${selected.clienteNome} e seus dados relacionados? Esta ação não pode ser desfeita.`)) removeLead.mutate(selected.clienteId);
+            }}><Trash2 className="h-4 w-4 mr-2" /> Excluir lead completo</Button>
+          </div>}
         </div>}
       </DialogContent>
     </Dialog>
