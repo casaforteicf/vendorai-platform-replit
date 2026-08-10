@@ -12,7 +12,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -100,7 +100,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     leads:      ["/leads", "/deals"],
     prospector: ["/app/prospector"],
     scheduler:  ["/agenda"],
-    revenue:    ["/scout", "/scout/regras", "/scout/oportunidades", "/scout/seguros/renovacoes"],
+    revenue:    ["/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline", "/scout/seguros/renovacoes"],
     analytics:  ["/analytics"],
     arch:       ["/arch", "/arch/projetos", "/arch/render", "/arch/catalogo", "/arch/marketplace"],
     obras:      ["/obras", "/insumos", "/composicoes"],
@@ -198,6 +198,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Revenue Scout", href: "/scout",                    icon: TrendingUp,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Regras",        href: "/scout/regras",             icon: Zap,         sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Oportunidades", href: "/scout/oportunidades",      icon: ListChecks,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Pipeline Scout",href: "/scout/pipeline",           icon: KanbanSquare,sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Renovações",    href: "/scout/seguros/renovacoes", icon: Shield,      sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
   ];
 
@@ -208,7 +209,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "/", "/leads", "/app/prospector", "/deals", "/comissoes",
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas",
     "/agents/config", "/analytics", "/usuarios", "/configuracoes",
-    "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades",
+    "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
     "/praca-perguntas", "/erp",
   ];
 

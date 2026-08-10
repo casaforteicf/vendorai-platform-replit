@@ -14,6 +14,7 @@ import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { scoutRegrasTable } from "./scout_regras";
 import { dealsTable } from "./deals";
+import { usersTable } from "./users";
 
 // status: pendente | enviado | respondeu | converteu | ignorado | aguardando_etapa | adiado | pendente_revisao_bot
 export const SCOUT_OPORTUNIDADE_STATUS = [
@@ -80,6 +81,11 @@ export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
     inference?: Record<string, unknown>;
     autonomy?: Record<string, unknown>;
   }>(),
+  // Pipeline exclusivo do Revenue Scout. Nao cria nem mistura registros em deals.
+  pipelineStage: varchar("pipeline_stage", { length: 30 }).notNull().default("identificada"),
+  assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
+  approvedBy: text("approved_by").references(() => usersTable.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at"),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
 });
 
