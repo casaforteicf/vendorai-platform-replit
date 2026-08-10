@@ -21,6 +21,16 @@ import {
   updateLeadBriefingSchema,
   businessProfilesTable,
   usersTable,
+  beautyAgendamentosTable,
+  beautyProntuariosTable,
+  clientServiceGapsTable,
+  clinicConsultasTable,
+  clinicProntuariosTable,
+  fretesCargasTable,
+  imoveisVisitasTable,
+  scoutOportunidadesTable,
+  servicosOrdensTable,
+  veiculosTestDrivesTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -354,7 +364,47 @@ router.delete("/leads/:id", async (req, res) => {
     return;
   }
 
-  await db.delete(leadsTable).where(eq(leadsTable.id, existing.id));
+  // Algumas verticais preservam registros operacionais com FK RESTRICT.
+  // Remova primeiro os dados dependentes, na mesma transacao, para que a
+  // exclusao do lead seja atomica e nao deixe historico parcial para tras.
+  await db.transaction(async (tx) => {
+    const tenantAndLead = (tenantColumn: any, leadColumn: any) =>
+      and(eq(tenantColumn, existing.tenantId), eq(leadColumn, existing.id));
+
+    await tx.delete(beautyProntuariosTable).where(
+      tenantAndLead(beautyProntuariosTable.tenantId, beautyProntuariosTable.clienteId),
+    );
+    await tx.delete(beautyAgendamentosTable).where(
+      tenantAndLead(beautyAgendamentosTable.tenantId, beautyAgendamentosTable.clienteId),
+    );
+    await tx.delete(clinicProntuariosTable).where(
+      tenantAndLead(clinicProntuariosTable.tenantId, clinicProntuariosTable.pacienteId),
+    );
+    await tx.delete(clinicConsultasTable).where(
+      tenantAndLead(clinicConsultasTable.tenantId, clinicConsultasTable.pacienteId),
+    );
+    await tx.delete(clientServiceGapsTable).where(
+      tenantAndLead(clientServiceGapsTable.tenantId, clientServiceGapsTable.clienteId),
+    );
+    await tx.delete(scoutOportunidadesTable).where(
+      tenantAndLead(scoutOportunidadesTable.tenantId, scoutOportunidadesTable.clienteId),
+    );
+    await tx.delete(fretesCargasTable).where(
+      tenantAndLead(fretesCargasTable.tenantId, fretesCargasTable.clienteId),
+    );
+    await tx.delete(imoveisVisitasTable).where(
+      tenantAndLead(imoveisVisitasTable.tenantId, imoveisVisitasTable.clienteId),
+    );
+    await tx.delete(servicosOrdensTable).where(
+      tenantAndLead(servicosOrdensTable.tenantId, servicosOrdensTable.clienteId),
+    );
+    await tx.delete(veiculosTestDrivesTable).where(
+      tenantAndLead(veiculosTestDrivesTable.tenantId, veiculosTestDrivesTable.clienteId),
+    );
+    await tx.delete(leadsTable).where(
+      and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId)),
+    );
+  });
 
   res.status(204).send();
 });
