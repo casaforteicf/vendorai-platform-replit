@@ -46,6 +46,16 @@ vi.mock("@workspace/db", () => ({
   intelligenceAnalysisLogTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   leadProposalsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   leadBriefingsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  beautyAgendamentosTable: { tenantId: "tenantId", clienteId: "clienteId" },
+  beautyProntuariosTable: { tenantId: "tenantId", clienteId: "clienteId" },
+  clientServiceGapsTable: { tenantId: "tenantId", clienteId: "clienteId" },
+  clinicConsultasTable: { tenantId: "tenantId", pacienteId: "pacienteId" },
+  clinicProntuariosTable: { tenantId: "tenantId", pacienteId: "pacienteId" },
+  fretesCargasTable: { tenantId: "tenantId", clienteId: "clienteId" },
+  imoveisVisitasTable: { tenantId: "tenantId", clienteId: "clienteId" },
+  scoutOportunidadesTable: { tenantId: "tenantId", clienteId: "clienteId" },
+  servicosOrdensTable: { tenantId: "tenantId", clienteId: "clienteId" },
+  veiculosTestDrivesTable: { tenantId: "tenantId", clienteId: "clienteId" },
   insertLeadSchema: {
     safeParse: () => ({ success: false, error: { message: "not exercised" } }),
   },
@@ -173,6 +183,9 @@ describe("DELETE /api/leads/:id — cross-tenant isolation", () => {
     vi.clearAllMocks();
     setupSelectReturning([recordOwnedByTenantB]);
     setupDeleteSuccess();
+    mockDbTransaction.mockImplementation(async (callback) =>
+      callback({ delete: mockDbDelete }),
+    );
   });
 
   it("returns 403 when tenant A deletes a record owned by tenant B", async () => {
