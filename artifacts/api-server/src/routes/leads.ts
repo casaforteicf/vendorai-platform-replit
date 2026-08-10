@@ -21,6 +21,16 @@ import {
   updateLeadBriefingSchema,
   businessProfilesTable,
   usersTable,
+  beautyAgendamentosTable,
+  beautyProntuariosTable,
+  clientServiceGapsTable,
+  clinicConsultasTable,
+  clinicProntuariosTable,
+  fretesCargasTable,
+  imoveisVisitasTable,
+  scoutOportunidadesTable,
+  servicosOrdensTable,
+  veiculosTestDrivesTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -354,7 +364,47 @@ router.delete("/leads/:id", async (req, res) => {
     return;
   }
 
-  await db.delete(leadsTable).where(eq(leadsTable.id, existing.id));
+  // Algumas verticais preservam registros operacionais com FK RESTRICT.
+  // Remova primeiro os dados dependentes, na mesma transacao, para que a
+  // exclusao do lead seja atomica e nao deixe historico parcial para tras.
+  await db.transaction(async (tx) => {
+    const tenantAndLead = (tenantColumn: any, leadColumn: any) =>
+      and(eq(tenantColumn, existing.tenantId), eq(leadColumn, existing.id));
+
+    await tx.delete(beautyProntuariosTable).where(
+      tenantAndLead(beautyProntuariosTable.tenantId, beautyProntuariosTable.clienteId),
+    );
+    await tx.delete(beautyAgendamentosTable).where(
+      tenantAndLead(beautyAgendamentosTable.tenantId, beautyAgendamentosTable.clienteId),
+    );
+    await tx.delete(clinicProntuariosTable).where(
+      tenantAndLead(clinicProntuariosTable.tenantId, clinicProntuariosTable.pacienteId),
+    );
+    await tx.delete(clinicConsultasTable).where(
+      tenantAndLead(clinicConsultasTable.tenantId, clinicConsultasTable.pacienteId),
+    );
+    await tx.delete(clientServiceGapsTable).where(
+      tenantAndLead(clientServiceGapsTable.tenantId, clientServiceGapsTable.clienteId),
+    );
+    await tx.delete(scoutOportunidadesTable).where(
+      tenantAndLead(scoutOportunidadesTable.tenantId, scoutOportunidadesTable.clienteId),
+    );
+    await tx.delete(fretesCargasTable).where(
+      tenantAndLead(fretesCargasTable.tenantId, fretesCargasTable.clienteId),
+    );
+    await tx.delete(imoveisVisitasTable).where(
+      tenantAndLead(imoveisVisitasTable.tenantId, imoveisVisitasTable.clienteId),
+    );
+    await tx.delete(servicosOrdensTable).where(
+      tenantAndLead(servicosOrdensTable.tenantId, servicosOrdensTable.clienteId),
+    );
+    await tx.delete(veiculosTestDrivesTable).where(
+      tenantAndLead(veiculosTestDrivesTable.tenantId, veiculosTestDrivesTable.clienteId),
+    );
+    await tx.delete(leadsTable).where(
+      and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId)),
+    );
+  });
 
   res.status(204).send();
 });
@@ -506,145 +556,7 @@ router.post("/leads/:id/merge", async (req, res) => {
       if (targetIntel) {
         // Target already has intel — delete duplicate row and keep target.
         await tx
-          .delete(customerIntelligenceTable)
-          .where(eq(customerIntelligenceTable.id, dupIntel.id));
-      } else {
-        // Target has no intel — reassign duplicate row to target.
-        await tx
-          .update(customerIntelligenceTable)
-          .set({ leadId: targetLeadId, updatedAt: new Date() })
-          .where(eq(customerIntelligenceTable.id, dupIntel.id));
-      }
-    }
-
-    await tx
-      .update(agentTasksTable)
-      .set({ leadId: targetLeadId })
-      .where(and(eq(agentTasksTable.tenantId, tenantId), eq(agentTasksTable.leadId, duplicateId)));
-
-    await tx
-      .update(agentActionsLogTable)
-      .set({ leadId: targetLeadId })
-      .where(and(eq(agentActionsLogTable.tenantId, tenantId), eq(agentActionsLogTable.leadId, duplicateId)));
-
-    await tx
-      .update(consentsTable)
-      .set({ leadId: targetLeadId })
-      .where(and(eq(consentsTable.tenantId, tenantId), eq(consentsTable.leadId, duplicateId)));
-
-    await tx
-      .update(intelligenceAnalysisLogTable)
-      .set({ leadId: targetLeadId })
-      .where(and(eq(intelligenceAnalysisLogTable.tenantId, tenantId), eq(intelligenceAnalysisLogTable.leadId, duplicateId)));
-
-    await tx
-      .update(leadBriefingsTable)
-      .set({ leadId: targetLeadId, updatedAt: new Date() })
-      .where(and(eq(leadBriefingsTable.tenantId, tenantId), eq(leadBriefingsTable.leadId, duplicateId)));
-
-    // Delete the duplicate
-    await tx.delete(leadsTable).where(eq(leadsTable.id, duplicateId));
-
-    // Return the merged (target) lead
-    return tx.select().from(leadsTable).where(eq(leadsTable.id, targetLeadId)).limit(1);
-  });
-
-  res.json({
-    success: true,
-    lead: mergedLead,
-    duplicateId,
-    transferredTables: [
-      "conversations",
-      "messages",
-      "deals",
-      "propostas",
-      "lead_proposals",
-      "activities",
-      "customer_intelligence",
-      "agent_tasks",
-      "agent_actions_log",
-      "consents",
-      "intelligence_analysis_log",
-      "lead_briefings",
-    ],
-  });
-});
-
-// ── POST /leads/:id/dismiss-duplicate ─────────────────────────────────
-// Remove the duplicate flag from a lead (user decided to keep them separate).
-router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
-  const leadId = String(req.params.id);
-
-  const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
-    .from(leadsTable)
-    .where(eq(leadsTable.id, leadId));
-
-  if (!existing) {
-    res.status(404).json({ error: "Lead not found" });
-    return;
-  }
-
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  const isAdmin4 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn4 = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin4 && userFn4 === "vendedor" && existing.assignedTo !== req.user?.sub) {
-    res.status(403).json({ error: "Access denied to this lead" });
-    return;
-  }
-
-  const [lead] = await db
-    .update(leadsTable)
-    .set({ possivelDuplicata: false, leadSimilarId: null, updatedAt: new Date() })
-    .where(eq(leadsTable.id, leadId))
-    .returning();
-
-  res.json({ success: true, lead });
-});
-
-// ── GET /tenants/:tenantId/lead-briefings ─────────────────────────────────
-router.get("/tenants/:tenantId/lead-briefings", async (req, res) => {
-  const tenantId = String(req.params["tenantId"]);
-
-  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
-    res.status(403).json({ error: "Acesso negado" });
-    return;
-  }
-
-  const briefings = await db
-    .select()
-    .from(leadBriefingsTable)
-    .where(eq(leadBriefingsTable.tenantId, tenantId));
-
-  res.json(briefings);
-});
-
-// ── GET /leads/:leadId/briefing ────────────────────────────────────────────
-router.get("/leads/:leadId/briefing", async (req, res) => {
-  const leadId = String(req.params.leadId);
-
-  const [lead] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
-    .from(leadsTable)
-    .where(eq(leadsTable.id, leadId));
-
-  if (!lead) {
-    res.status(404).json({ error: "Lead not found" });
-    return;
-  }
-
-  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-
-  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
+       …1219 tokens truncated…min && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
