@@ -9,7 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import {
-  TrendingUp, Send, CheckCircle2, Percent, DollarSign, Plus, ArrowRight, Play, Loader2,
+  TrendingUp, Send, CheckCircle2, Percent, DollarSign, Plus, ArrowRight, ArrowUpRight, Play, Loader2,
 } from "lucide-react";
 import { format, subDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -290,9 +290,20 @@ export default function RevenueDashboard() {
               <div key={o.id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/20 transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <p className="text-sm font-medium truncate">
-                      {o.clienteNome ?? o.clienteId?.slice(0, 8) ?? "—"}
-                    </p>
+                    {o.clienteId ? (
+                      <Link
+                        href={`/leads/${o.clienteId}`}
+                        className="group/client inline-flex min-w-0 items-center gap-1 text-sm font-medium text-primary hover:underline"
+                        aria-label={`Abrir cliente ${o.clienteNome ?? o.clienteId}`}
+                      >
+                        <span className="truncate">
+                          {o.clienteNome ?? o.clienteId.slice(0, 8)}
+                        </span>
+                        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 opacity-60 transition-opacity group-hover/client:opacity-100" />
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-medium truncate">—</p>
+                    )}
                     <Badge variant="outline"
                       className={`text-[10px] shrink-0 ${
                         o.tipo === "recompra"    ? "bg-blue-50 text-blue-700 border-blue-200" :

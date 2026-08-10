@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Link } from "wouter";
 
 const getBase = () => (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 function authHeaders() {
@@ -228,9 +229,20 @@ export default function Oportunidades() {
                 <tr key={o.id} className="hover:bg-muted/20 transition-colors">
                   {/* Cliente */}
                   <td className="px-4 py-3 max-w-[160px]">
-                    <p className="font-medium truncate">
-                      {o.clienteNome ?? o.clienteId?.slice(0, 8) ?? "—"}
-                    </p>
+                    {o.clienteId ? (
+                      <Link
+                        href={`/leads/${o.clienteId}`}
+                        className="group/client inline-flex max-w-full items-center gap-1 font-medium text-primary hover:underline"
+                        aria-label={`Abrir cliente ${o.clienteNome ?? o.clienteId}`}
+                      >
+                        <span className="truncate">
+                          {o.clienteNome ?? o.clienteId.slice(0, 8)}
+                        </span>
+                        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 opacity-60 transition-opacity group-hover/client:opacity-100" />
+                      </Link>
+                    ) : (
+                      <p className="font-medium truncate">—</p>
+                    )}
                   </td>
                   {/* Tipo */}
                   <td className="px-4 py-3 whitespace-nowrap">
