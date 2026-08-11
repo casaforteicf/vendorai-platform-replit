@@ -42,12 +42,13 @@ const TIPO_OPTS = [
 ];
 const STATUS_OPTS = [
   { value: "todos",      label: "Todos os status" },
-  { value: "pendente",   label: "Pendente" },
+  { value: "pendente",   label: "Aguardando confirmação" },
   { value: "enviado",    label: "Enviado" },
   { value: "respondeu",  label: "Respondeu" },
   { value: "converteu",  label: "Convertido" },
   { value: "ignorado",   label: "Ignorado" },
   { value: "aprovado",   label: "Confirmada" },
+  { value: "em_negociacao", label: "Em negociação" },
 ];
 const TIPO_BADGE: Record<string, string> = {
   recompra:    "bg-blue-50 text-blue-700 border-blue-200",
@@ -70,14 +71,16 @@ const STATUS_BADGE: Record<string, string> = {
   converteu: "bg-emerald-100 text-emerald-700 border-emerald-200",
   ignorado:  "bg-red-100 text-red-600 border-red-200",
   aprovado:  "bg-emerald-100 text-emerald-700 border-emerald-200",
+  em_negociacao: "bg-amber-100 text-amber-700 border-amber-200",
 };
 const STATUS_LABELS: Record<string, string> = {
-  pendente:  "Pendente",
+  pendente:  "Aguardando confirmação",
   enviado:   "Enviado",
   respondeu: "Respondeu",
   converteu: "Convertido",
   ignorado:  "Ignorado",
   aprovado:  "Confirmada",
+  em_negociacao: "Em negociação",
 };
 
 export default function Oportunidades() {

@@ -249,14 +249,19 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
   const enriched = rows.map(({ op, clienteNome, regraAcao, regraNome, cliente }) => {
     const pipeline = pipelineByOpportunityId.get(op.id);
     const acao = parseAcao(regraAcao);
+    const hasNegotiation = !!op.propostaId || !!op.dealId;
+    const normalizedStatus = op.status === "em_negociacao" && !hasNegotiation
+      ? "pendente"
+      : op.status;
     let mensagemPreview: string | null = op.mensagemEnviada ?? null;
-    if (!mensagemPreview && op.status === "pendente" && acao.mensagem) {
+    if (!mensagemPreview && normalizedStatus === "pendente" && acao.mensagem) {
       const rendered = renderTemplate(acao.mensagem, { nome: clienteNome ?? "", nome_cliente: clienteNome ?? "" });
       mensagemPreview = rendered.ok ? rendered.mensagem : null;
     }
     const fallbackExplanation = fallbackOpportunityExplanation(op, regraNome);
     return {
       ...op,
+      status: normalizedStatus,
       clienteNome,
       cliente,
       regraNome,
@@ -325,11 +330,18 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/confirmar", async (req, 
   const { tenantId, id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const [op] = await db.select({ id: scoutOportunidadesTable.id, status: scoutOportunidadesTable.status })
+  const [op] = await db.select({
+    id: scoutOportunidadesTable.id,
+    status: scoutOportunidadesTable.status,
+    propostaId: scoutOportunidadesTable.propostaId,
+    dealId: scoutOportunidadesTable.dealId,
+  })
     .from(scoutOportunidadesTable)
     .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
   if (!op) return res.status(404).json({ error: "Oportunidade não encontrada." });
-  if (op.status !== "pendente") return res.status(409).json({ error: "Essa oportunidade já foi validada." });
+  const awaitingConfirmation = op.status === "pendente"
+    || (op.status === "em_negociacao" && !op.propostaId && !op.dealId);
+  if (!awaitingConfirmation) return res.status(409).json({ error: "Essa oportunidade já foi validada." });
 
   const [updated] = await db.update(scoutOportunidadesTable)
     .set({ status: "aprovado", pipelineStage: "identificada", approvedBy: (req as any).user?.sub ?? null, approvedAt: new Date() })
@@ -383,7 +395,9 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/rejeitar", async (req, r
     .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
   if (!op) return res.status(404).json({ error: "Oportunidade not found" });
 
-  if (op.status !== "pendente") {
+  const awaitingConfirmation = op.status === "pendente"
+    || (op.status === "em_negociacao" && !op.propostaId && !op.dealId);
+  if (!awaitingConfirmation) {
     return res.status(409).json({ error: "Somente oportunidades aguardando confirmação podem ser rejeitadas." });
   }
 
