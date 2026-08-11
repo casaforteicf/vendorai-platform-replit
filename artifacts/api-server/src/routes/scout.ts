@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, desc, sum, count } from "drizzle-orm";
+import { and, eq, desc, sum, count, getTableColumns } from "drizzle-orm";
 import {
   db,
   scoutRegrasTable,
@@ -153,24 +153,68 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
     filters.push(eq(scoutOportunidadesTable.clienteId, req.query.clienteId as string));
   }
 
+  // Keep the read endpoint compatible while migration 078 rolls out. The
+  // dashboard only reads legacy columns, so selecting the whole table here
+  // made it possible for the KPI to show opportunities while this endpoint
+  // failed on installations that did not have the pipeline columns yet.
+  const {
+    pipelineStage: _pipelineStage,
+    assignedTo: _assignedTo,
+    approvedBy: _approvedBy,
+    approvedAt: _approvedAt,
+    ...readableOpportunityColumns
+  } = getTableColumns(scoutOportunidadesTable);
+
   const rows = await db
     .select({
-      op: scoutOportunidadesTable,
+      op: readableOpportunityColumns,
       clienteNome: leadsTable.nome,
       regraAcao: scoutRegrasTable.acao,
       regraNome: scoutRegrasTable.nome,
       cliente: leadsTable,
-      responsavelNome: usersTable.name,
     })
     .from(scoutOportunidadesTable)
     .leftJoin(leadsTable, eq(leadsTable.id, scoutOportunidadesTable.clienteId))
     .leftJoin(scoutRegrasTable, eq(scoutRegrasTable.id, scoutOportunidadesTable.regraId))
-    .leftJoin(usersTable, eq(usersTable.id, scoutOportunidadesTable.assignedTo))
     .where(and(...filters))
     .orderBy(desc(scoutOportunidadesTable.createdAt))
     .limit(200);
 
-  const enriched = rows.map(({ op, clienteNome, regraAcao, regraNome, cliente, responsavelNome }) => {
+  // Enrich the legacy-safe result with pipeline data whenever migration 078
+  // is present. Older databases can still list opportunities instead of
+  // turning a schema mismatch into an empty screen.
+  const pipelineByOpportunityId = new Map<string, {
+    pipelineStage: string | null;
+    assignedTo: string | null;
+    approvedBy: string | null;
+    approvedAt: Date | null;
+    responsavelNome: string | null;
+  }>();
+  try {
+    const pipelineRows = await db
+      .select({
+        id: scoutOportunidadesTable.id,
+        pipelineStage: scoutOportunidadesTable.pipelineStage,
+        assignedTo: scoutOportunidadesTable.assignedTo,
+        approvedBy: scoutOportunidadesTable.approvedBy,
+        approvedAt: scoutOportunidadesTable.approvedAt,
+        responsavelNome: usersTable.name,
+      })
+      .from(scoutOportunidadesTable)
+      .leftJoin(usersTable, eq(usersTable.id, scoutOportunidadesTable.assignedTo))
+      .where(and(...filters))
+      .limit(200);
+    for (const row of pipelineRows) pipelineByOpportunityId.set(row.id, row);
+  } catch (error) {
+    const dbError = error as { code?: string; cause?: { code?: string }; message?: string };
+    const isMissingPipelineColumn = dbError.code === "42703"
+      || dbError.cause?.code === "42703"
+      || dbError.message?.includes("does not exist");
+    if (!isMissingPipelineColumn) throw error;
+  }
+
+  const enriched = rows.map(({ op, clienteNome, regraAcao, regraNome, cliente }) => {
+    const pipeline = pipelineByOpportunityId.get(op.id);
     const acao = parseAcao(regraAcao);
     let mensagemPreview: string | null = op.mensagemEnviada ?? null;
     if (!mensagemPreview && op.status === "pendente" && acao.mensagem) {
@@ -182,7 +226,11 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
       clienteNome,
       cliente,
       regraNome,
-      responsavelNome,
+      pipelineStage: pipeline?.pipelineStage ?? "identificada",
+      assignedTo: pipeline?.assignedTo ?? null,
+      approvedBy: pipeline?.approvedBy ?? null,
+      approvedAt: pipeline?.approvedAt ?? null,
+      responsavelNome: pipeline?.responsavelNome ?? null,
       mensagemPreview,
       requerAprovacao: !!(acao as { requiresApproval?: boolean }).requiresApproval,
       percepcao: op.explanation?.inference ?? null,

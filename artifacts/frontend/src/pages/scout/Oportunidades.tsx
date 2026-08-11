@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  TrendingUp, CheckCircle2, Filter, ArrowUpRight, Send, X, Pencil, Loader2,
+  TrendingUp, CheckCircle2, Filter, ArrowUpRight, Send, X, Pencil, Loader2, RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -26,6 +26,14 @@ function authHeaders() {
 }
 function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Não foi possível carregar as oportunidades");
+  }
+  return payload as T;
 }
 
 const TIPO_OPTS = [
@@ -88,12 +96,19 @@ export default function Oportunidades() {
 
   const QK = ["scout-oportunidades", tenantId, tipoFiltro, statusFiltro];
 
-  const { data: oportunidades = [], isLoading } = useQuery<any[]>({
+  const {
+    data: oportunidades = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery<any[]>({
     queryKey: QK,
     queryFn: () =>
       fetch(`/api/tenants/${tenantId}/scout/oportunidades?${qs}`, {
         headers: authHeaders(),
-      }).then((r) => r.json()),
+      }).then(readJson<any[]>),
     enabled: !!tenantId,
   });
 
@@ -214,6 +229,24 @@ export default function Oportunidades() {
                   ))}
                 </tr>
               ))
+            ) : isError ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-16 text-center text-muted-foreground">
+                  <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm font-medium text-foreground">Não foi possível carregar as oportunidades.</p>
+                  <p className="text-xs mt-1">{error instanceof Error ? error.message : "Tente novamente."}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => refetch()}
+                    disabled={isFetching}
+                  >
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+                    Tentar novamente
+                  </Button>
+                </td>
+              </tr>
             ) : ops.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-16 text-center text-muted-foreground">

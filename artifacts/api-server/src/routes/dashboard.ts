@@ -12,6 +12,7 @@ import {
   agentConfigsTable,
   whatsappConnectionsTable,
   tenantsTable,
+  plansTable,
 } from "@workspace/db";
 import {
   eq,
@@ -708,11 +709,18 @@ router.get("/dashboard", authenticate, async (req, res) => {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
   const tenantRow = await db
-    .select({ subdomainSlug: tenantsTable.subdomainSlug })
+    .select({
+      subdomainSlug: tenantsTable.subdomainSlug,
+      aiQuotaUsd: plansTable.aiQuotaUsd,
+    })
     .from(tenantsTable)
+    .leftJoin(plansTable, eq(tenantsTable.planId, plansTable.id))
     .where(eq(tenantsTable.id, tenantId))
     .limit(1);
   const subdomainSlug = tenantRow[0]?.subdomainSlug ?? null;
+  const aiQuotaUsd = tenantRow[0]?.aiQuotaUsd != null
+    ? Number(tenantRow[0].aiQuotaUsd)
+    : null;
 
   const [
     leadsCount,
@@ -723,6 +731,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
     mensagensHojeCount,
     mensagensMesCount,
     tokensMesRaw,
+    custoIaMesRaw,
     usosPorAgenteRaw,
     agentConfigRaw,
     whatsappConnRaw,
@@ -783,6 +792,11 @@ router.get("/dashboard", authenticate, async (req, res) => {
       .from(aiUsageLogsTable)
       .where(and(eq(aiUsageLogsTable.tenantId, tenantId), gte(aiUsageLogsTable.createdAt, monthStart))),
 
+    // custo financeiro no mês — mesma fonte usada no detalhe administrativo do tenant
+    db.select({ total: sql<number>`coalesce(sum(${aiUsageLogsTable.costEstimateUsd}), 0)` })
+      .from(aiUsageLogsTable)
+      .where(and(eq(aiUsageLogsTable.tenantId, tenantId), gte(aiUsageLogsTable.createdAt, monthStart))),
+
     // uso por feature no mês (para usosPorAgente)
     db.select({ feature: aiUsageLogsTable.feature, c: count() })
       .from(aiUsageLogsTable)
@@ -793,7 +807,6 @@ router.get("/dashboard", authenticate, async (req, res) => {
     // configuração de agentes do tenant
     db.select({
       agents:            agentConfigsTable.agents,
-      monthlyTokenLimit: agentConfigsTable.monthlyTokenLimit,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
     }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
 
@@ -956,10 +969,13 @@ router.get("/dashboard", authenticate, async (req, res) => {
   const agentesAtivos = Object.values(agentsMap).filter(a => a?.enabled === true).length;
 
   const tokensMes = parseInt(String(tokensMesRaw[0]?.total ?? "0"), 10) || 0;
-  const monthlyTokenLimit = agentConfig?.monthlyTokenLimit ?? 100000;
-  const quotaUsada = monthlyTokenLimit > 0
-    ? Math.round((tokensMes / monthlyTokenLimit) * 100)
+  const gastoIaMesUsd = Number(custoIaMesRaw[0]?.total ?? 0);
+  // A quota comercial dos planos é financeira. O limite legado de tokens não
+  // pode ser usado aqui, pois produz percentuais incompatíveis com a tela de custos.
+  const quotaUsada = aiQuotaUsd != null && aiQuotaUsd > 0
+    ? (gastoIaMesUsd / aiQuotaUsd) * 100
     : 0;
+  const quotaUsadaExibicao = Math.round(quotaUsada * 10) / 10;
 
   const AGENT_PREFIX = "agent_";
   const usosPorAgente = usosPorAgenteRaw
@@ -1014,13 +1030,13 @@ router.get("/dashboard", authenticate, async (req, res) => {
   if (quotaUsada >= 95) {
     alertas.push({
       tipo: "quota_critica",
-      mensagem: `Quota de IA em ${quotaUsada}% — risco de interrupção. Atualize seu plano.`,
+      mensagem: `Quota de IA em ${quotaUsadaExibicao}% — risco de interrupção. Atualize seu plano.`,
       severidade: "critico",
     });
   } else if (quotaUsada >= 80) {
     alertas.push({
       tipo: "quota_alta",
-      mensagem: `Quota de IA em ${quotaUsada}% do limite mensal.`,
+      mensagem: `Quota de IA em ${quotaUsadaExibicao}% do limite mensal.`,
       severidade: "aviso",
     });
   }
@@ -1106,7 +1122,9 @@ router.get("/dashboard", authenticate, async (req, res) => {
       mensagensMes,
       agentesAtivos,
       tokensMes,
-      quotaUsada,
+      gastoIaMesUsd,
+      quotaUsd: aiQuotaUsd,
+      quotaUsada: quotaUsadaExibicao,
       usosPorAgente,
     },
     atividade: {
