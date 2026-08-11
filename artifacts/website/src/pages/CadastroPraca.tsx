@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, Store, Package, ClipboardList, Settings, TrendingUp, Percent } from "lucide-react";
+import { ArrowRight, CheckCircle2, Store, Package, ClipboardList, Settings, TrendingUp } from "lucide-react";
 import { Link } from "wouter";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
@@ -91,16 +91,6 @@ export default function CadastroPraca() {
           <div className="p-8 md:p-12 md:col-span-3">
             <h2 className="text-2xl font-bold text-slate-900 mb-2">Cadastrar minha loja</h2>
             <p className="text-slate-500 mb-6">Gratuito. Sem cartão de crédito. Sem prazo pra expirar.</p>
-
-            {/* Aviso de comissão — em destaque, antes do formulário, sem letra miúda */}
-            <div className="mb-8 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <Percent className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
-              <p className="text-sm text-amber-900">
-                <strong>Cadastro 100% gratuito.</strong> O Praça.ai cobra <strong>8% de comissão</strong> só sobre
-                as vendas feitas pela plataforma — nada de mensalidade, nada de taxa fixa pra manter a loja.
-                Esse percentual pode ser renegociado depois, caso a caso.
-              </p>
-            </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid md:grid-cols-2 gap-5">
