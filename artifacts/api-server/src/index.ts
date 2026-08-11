@@ -31,15 +31,28 @@ async function runStartupMigrations() {
     // Imported Scout findings used to arrive as "em_negociacao" even when
     // no proposal or deal existed. Keep negotiation reserved for records
     // that actually have a commercial document/process attached.
+    // A aplicação pode entrar no ar antes das migrations 059/078 em um
+    // deploy recém-publicado. Referenciar uma coluna ainda ausente aqui
+    // derrubava toda a API. Normalize somente quando o schema estiver pronto.
     await db.execute(sql`
-      UPDATE scout_oportunidades
-      SET status = 'pendente',
-          pipeline_stage = 'identificada',
-          approved_by = NULL,
-          approved_at = NULL
-      WHERE status = 'em_negociacao'
-        AND proposta_id IS NULL
-        AND deal_id IS NULL
+      DO $$
+      BEGIN
+        IF to_regclass('public.scout_oportunidades') IS NOT NULL
+          AND (SELECT count(*) = 5 FROM information_schema.columns
+               WHERE table_schema = 'public'
+                 AND table_name = 'scout_oportunidades'
+                 AND column_name IN ('pipeline_stage', 'approved_by', 'approved_at', 'proposta_id', 'deal_id'))
+        THEN
+          UPDATE scout_oportunidades
+          SET status = 'pendente',
+              pipeline_stage = 'identificada',
+              approved_by = NULL,
+              approved_at = NULL
+          WHERE status = 'em_negociacao'
+            AND proposta_id IS NULL
+            AND deal_id IS NULL;
+        END IF;
+      END $$
     `);
     logger.info("startup migrations: normalized Scout negotiation statuses OK");
   } catch (err) {
