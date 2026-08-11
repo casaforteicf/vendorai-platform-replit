@@ -285,8 +285,28 @@ router.patch("/tenants/:tenantId/scout/oportunidades/:id/etapa", async (req, res
   return res.json(updated);
 });
 
-// Aprova uma oportunidade pendente que exige aprovação — dispara a
-// mensagem agora (opcionalmente editada pelo ADM antes de enviar).
+// Confirma o achado do Scout sem iniciar contato. A oportunidade so passa a
+// integrar o Pipeline Scout depois desta validacao humana.
+router.post("/tenants/:tenantId/scout/oportunidades/:id/confirmar", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [op] = await db.select({ id: scoutOportunidadesTable.id, status: scoutOportunidadesTable.status })
+    .from(scoutOportunidadesTable)
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
+  if (!op) return res.status(404).json({ error: "Oportunidade não encontrada." });
+  if (op.status !== "pendente") return res.status(409).json({ error: "Essa oportunidade já foi validada." });
+
+  const [updated] = await db.update(scoutOportunidadesTable)
+    .set({ status: "aprovado", pipelineStage: "identificada", approvedBy: (req as any).user?.sub ?? null, approvedAt: new Date() })
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)))
+    .returning();
+
+  req.log.info({ tenantId, opportunityId: id }, "scout: oportunidade confirmada por humano");
+  return res.json(updated);
+});
+
+// Depois da confirmacao, aprova a sequencia automatizada e dispara a mensagem.
 router.post("/tenants/:tenantId/scout/oportunidades/:id/aprovar", async (req, res) => {
   const { tenantId, id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -294,7 +314,7 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/aprovar", async (req, re
   const [op] = await db.select().from(scoutOportunidadesTable)
     .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
   if (!op) return res.status(404).json({ error: "Oportunidade not found" });
-  if (op.status !== "pendente") return res.status(409).json({ error: "Essa oportunidade já foi processada." });
+  if (op.status !== "aprovado") return res.status(409).json({ error: "Confirme primeiro se este achado é uma oportunidade real." });
 
   const [lead] = await db.select({ nome: leadsTable.nome, telefone: leadsTable.telefone })
     .from(leadsTable).where(eq(leadsTable.id, op.clienteId));
@@ -329,11 +349,15 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/rejeitar", async (req, r
     .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
   if (!op) return res.status(404).json({ error: "Oportunidade not found" });
 
-  const [updated] = await db.update(scoutOportunidadesTable)
-    .set({ status: "ignorado" })
-    .where(eq(scoutOportunidadesTable.id, id))
-    .returning();
-  return res.json(updated);
+  if (op.status !== "pendente") {
+    return res.status(409).json({ error: "Somente oportunidades aguardando confirmação podem ser rejeitadas." });
+  }
+
+  const [deleted] = await db.delete(scoutOportunidadesTable)
+    .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)))
+    .returning({ id: scoutOportunidadesTable.id });
+  req.log.info({ tenantId, opportunityId: id }, "scout: achado rejeitado e excluído");
+  return res.json({ ok: true, id: deleted.id });
 });
 
 // ─── Seguros Corporativos: Renovações e matriz conta × produto ────────────────

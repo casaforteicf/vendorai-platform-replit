@@ -92,12 +92,19 @@ export default function ScoutPipeline() {
     onError: (error: Error) => toast({ title: "Não foi possível excluir", description: error.message, variant: "destructive" }),
   });
 
-  const columns = useMemo(() => STAGES.map(([id, label]) => ({ id, label, items: opportunities.filter(o => (o.pipelineStage ?? "identificada") === id) })), [opportunities]);
+  const confirmedOpportunities = useMemo(
+    () => opportunities.filter(op => op.status !== "pendente" && op.status !== "ignorado"),
+    [opportunities],
+  );
+  const columns = useMemo(
+    () => STAGES.map(([id, label]) => ({ id, label, items: confirmedOpportunities.filter(o => (o.pipelineStage ?? "identificada") === id) })),
+    [confirmedOpportunities],
+  );
 
   return <div className="space-y-5">
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <div><h1 className="text-2xl font-bold flex items-center gap-2"><KanbanSquare className="h-6 w-6" /> Pipeline Revenue Scout</h1>
-      <p className="text-sm text-muted-foreground">Somente clientes com oportunidades identificadas pelo Scout.</p></div>
+      <p className="text-sm text-muted-foreground">Somente oportunidades confirmadas. Novos achados precisam ser validados antes de entrar aqui.</p></div>
       <Link href="/scout/oportunidades"><Button variant="outline">Ver lista completa</Button></Link>
     </div>
     <div className="flex gap-4 overflow-x-auto pb-4">

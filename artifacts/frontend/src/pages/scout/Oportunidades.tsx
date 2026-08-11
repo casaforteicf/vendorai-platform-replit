@@ -3,17 +3,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  TrendingUp, CheckCircle2, Filter, ArrowUpRight, Send, X, Pencil, Loader2, RefreshCw,
+  TrendingUp, CheckCircle2, Filter, ArrowUpRight, X, RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -51,6 +47,7 @@ const STATUS_OPTS = [
   { value: "respondeu",  label: "Respondeu" },
   { value: "converteu",  label: "Convertido" },
   { value: "ignorado",   label: "Ignorado" },
+  { value: "aprovado",   label: "Confirmada" },
 ];
 const TIPO_BADGE: Record<string, string> = {
   recompra:    "bg-blue-50 text-blue-700 border-blue-200",
@@ -72,6 +69,7 @@ const STATUS_BADGE: Record<string, string> = {
   respondeu: "bg-amber-100 text-amber-700 border-amber-200",
   converteu: "bg-emerald-100 text-emerald-700 border-emerald-200",
   ignorado:  "bg-red-100 text-red-600 border-red-200",
+  aprovado:  "bg-emerald-100 text-emerald-700 border-emerald-200",
 };
 const STATUS_LABELS: Record<string, string> = {
   pendente:  "Pendente",
@@ -79,6 +77,7 @@ const STATUS_LABELS: Record<string, string> = {
   respondeu: "Respondeu",
   converteu: "Convertido",
   ignorado:  "Ignorado",
+  aprovado:  "Confirmada",
 };
 
 export default function Oportunidades() {
@@ -128,20 +127,21 @@ export default function Oportunidades() {
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
-  const aprovar = useMutation({
-    mutationFn: ({ id, mensagem }: { id: string; mensagem?: string }) =>
-      fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}/aprovar`, {
-        method: "POST", headers: authHeaders(), body: JSON.stringify({ mensagem }),
+  const confirmar = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}/confirmar`, {
+        method: "POST", headers: authHeaders(), body: "{}",
       }).then(async (r) => {
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro ao aprovar");
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro ao confirmar");
         return r.json();
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scout-oportunidades", tenantId] });
-      toast({ title: "Mensagem enviada!" });
-      setEditTarget(null);
+      qc.invalidateQueries({ queryKey: ["scout-pipeline", tenantId] });
+      qc.invalidateQueries({ queryKey: ["scout-dashboard", tenantId] });
+      toast({ title: "Oportunidade confirmada", description: "Ela foi adicionada em Identificadas no Pipeline Scout." });
     },
-    onError: (e: any) => toast({ title: "Erro ao enviar", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Erro ao confirmar", description: e.message, variant: "destructive" }),
   });
 
   const rejeitar = useMutation({
@@ -152,12 +152,13 @@ export default function Oportunidades() {
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro");
         return r.json();
       }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["scout-oportunidades", tenantId] }); toast({ title: "Oportunidade rejeitada" }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scout-oportunidades", tenantId] });
+      qc.invalidateQueries({ queryKey: ["scout-dashboard", tenantId] });
+      toast({ title: "Achado excluído", description: "O cadastro do cliente foi preservado." });
+    },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
-
-  const [editTarget, setEditTarget] = useState<any>(null);
-  const [editMensagem, setEditMensagem] = useState("");
 
   const ops = Array.isArray(oportunidades) ? oportunidades : [];
 
@@ -312,19 +313,17 @@ export default function Oportunidades() {
                     {o.status === "pendente" ? (
                       <div className="flex items-center justify-center gap-1">
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
-                          disabled={aprovar.isPending}
-                          onClick={() => aprovar.mutate({ id: o.id })}
+                          disabled={confirmar.isPending}
+                          onClick={() => confirmar.mutate(o.id)}
                         >
-                          <Send className="h-3 w-3" /> Enviar
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
-                          onClick={() => { setEditTarget(o); setEditMensagem(o.mensagemPreview ?? ""); }}
-                        >
-                          <Pencil className="h-3 w-3" />
+                          <CheckCircle2 className="h-3 w-3" /> Confirmar oportunidade
                         </Button>
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                           disabled={rejeitar.isPending}
-                          onClick={() => rejeitar.mutate(o.id)}
+                          title="Não é uma oportunidade"
+                          onClick={() => {
+                            if (window.confirm("Confirmar que este achado não é uma oportunidade? Ele será excluído, mas o cadastro do cliente será mantido.")) rejeitar.mutate(o.id);
+                          }}
                         >
                           <X className="h-3 w-3" />
                         </Button>
@@ -352,22 +351,6 @@ export default function Oportunidades() {
         </table>
       </div>
 
-      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Editar mensagem antes de enviar</DialogTitle></DialogHeader>
-          <div className="space-y-3 mt-2">
-            <p className="text-sm text-muted-foreground">Pra {editTarget?.clienteNome ?? "cliente"} — {editTarget?.descricao}</p>
-            <Textarea rows={5} value={editMensagem} onChange={(e) => setEditMensagem(e.target.value)} />
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setEditTarget(null)}>Cancelar</Button>
-              <Button disabled={!editMensagem.trim() || aprovar.isPending} onClick={() => aprovar.mutate({ id: editTarget.id, mensagem: editMensagem })}>
-                {aprovar.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                <Send className="h-4 w-4 mr-2" /> Enviar
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PropostaModal } from "./Propostas";
 import { VendidoModal } from "@/components/VendidoModal";
 import { AgendarReuniaoModal } from "@/components/AgendarReuniaoModal";
-import LeadBriefingTab from "./LeadBriefingTab";
+import LeadServiceJourney from "./LeadServiceJourney";
 import LeadPropostaTab from "./LeadPropostaTab";
 import { OportunidadesPrevistasCard } from "@/components/OportunidadesPrevistasCard";
 import LeadProductPresentationTab from "./LeadProductPresentationTab";
@@ -2536,14 +2536,14 @@ export default function LeadDetail() {
           </Card>
         </div>
 
-        {/* Briefing SPIN+PAS */}
-        <LeadBriefingTab leadId={id} tenantId={tenantId} lead={lead} />
+        {/* Jornada de atendimento (inclui o Briefing SPIN na qualificação) */}
+        <LeadServiceJourney leadId={id} tenantId={tenantId} lead={lead} />
 
         {/* Proposta Gerada */}
         <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
 
         {/* Oportunidades futuras previstas pelo vendedor */}
-        <OportunidadesPrevistasCard leadId={id!} />
+        <OportunidadesPrevistasCard leadId={id!} summaryOnly />
 
         {/* Orçamentos do Lead */}
         <Card data-testid="card-orcamentos">

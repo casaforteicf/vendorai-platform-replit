@@ -60,6 +60,14 @@ export const leadBriefingsTable = pgTable("lead_briefings", {
     alertas: string[];
   } | null>(),
 
+  // Jornada de atendimento: progresso operacional do playbook. Dados do lead,
+  // SPIN e oportunidades permanecem em suas fontes originais.
+  journeyStage: text("journey_stage").default("abordagem"),
+  journeyChecklist: jsonb("journey_checklist").$type<Record<string, {
+    checked: boolean;
+    note?: string;
+  }>>().default({}),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
