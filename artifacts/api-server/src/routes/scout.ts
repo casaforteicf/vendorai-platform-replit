@@ -32,6 +32,39 @@ function canAccess(req: Express.Request, tenantId: string) {
   return isSuperAdmin(req) || tid(req) === tenantId;
 }
 
+const OPPORTUNITY_TYPE_LABELS: Record<string, string> = {
+  recompra: "recompra",
+  cross_sell: "venda complementar (cross-sell)",
+  reativacao: "reativação",
+  upgrade: "upgrade",
+  aniversario: "ação de relacionamento",
+  follow_up: "follow-up",
+  renovacao: "renovação",
+  manutencao: "manutenção",
+  sequencia_produto: "próxima etapa de produto",
+};
+
+function fallbackOpportunityExplanation(op: {
+  tipo?: string | null;
+  descricao?: string | null;
+  scoreOportunidade?: string | null;
+}, regraNome?: string | null) {
+  const description = op.descricao?.trim() || "A regra do Revenue Scout identificou um possível movimento comercial.";
+  const signal = description.includes(":") ? description.slice(description.indexOf(":") + 1).trim() : description;
+  const typeLabel = OPPORTUNITY_TYPE_LABELS[op.tipo ?? ""] ?? op.tipo ?? "oportunidade comercial";
+  const imported = /importa(?:ção|cao)/i.test(description);
+
+  return {
+    inference: `O Scout percebeu potencial de ${typeLabel} porque o sinal observado — ${signal} — indica uma necessidade ainda não atendida. A confirmação humana continua necessária antes de qualquer contato.`,
+    facts: {
+      sinal_observado: signal,
+      regra_aplicada: regraNome || "Revenue Scout",
+      origem_do_sinal: imported ? "Dados importados para análise de whitespace" : "Dados e histórico disponíveis no Revenue Scout",
+      ...(op.scoreOportunidade ? { score_de_prioridade: Number(op.scoreOportunidade) } : {}),
+    },
+  };
+}
+
 // ─── Regras ───────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/scout/regras", async (req, res) => {
@@ -216,13 +249,19 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
   const enriched = rows.map(({ op, clienteNome, regraAcao, regraNome, cliente }) => {
     const pipeline = pipelineByOpportunityId.get(op.id);
     const acao = parseAcao(regraAcao);
+    const hasNegotiation = !!op.propostaId || !!op.dealId;
+    const normalizedStatus = op.status === "em_negociacao" && !hasNegotiation
+      ? "pendente"
+      : op.status;
     let mensagemPreview: string | null = op.mensagemEnviada ?? null;
-    if (!mensagemPreview && op.status === "pendente" && acao.mensagem) {
+    if (!mensagemPreview && normalizedStatus === "pendente" && acao.mensagem) {
       const rendered = renderTemplate(acao.mensagem, { nome: clienteNome ?? "", nome_cliente: clienteNome ?? "" });
       mensagemPreview = rendered.ok ? rendered.mensagem : null;
     }
+    const fallbackExplanation = fallbackOpportunityExplanation(op, regraNome);
     return {
       ...op,
+      status: normalizedStatus,
       clienteNome,
       cliente,
       regraNome,
@@ -233,8 +272,8 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
       responsavelNome: pipeline?.responsavelNome ?? null,
       mensagemPreview,
       requerAprovacao: !!(acao as { requiresApproval?: boolean }).requiresApproval,
-      percepcao: op.explanation?.inference ?? null,
-      justificativa: op.explanation?.facts ?? null,
+      percepcao: op.explanation?.inference ?? fallbackExplanation.inference,
+      justificativa: op.explanation?.facts ?? fallbackExplanation.facts,
     };
   });
 
@@ -291,11 +330,18 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/confirmar", async (req, 
   const { tenantId, id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const [op] = await db.select({ id: scoutOportunidadesTable.id, status: scoutOportunidadesTable.status })
+  const [op] = await db.select({
+    id: scoutOportunidadesTable.id,
+    status: scoutOportunidadesTable.status,
+    propostaId: scoutOportunidadesTable.propostaId,
+    dealId: scoutOportunidadesTable.dealId,
+  })
     .from(scoutOportunidadesTable)
     .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
   if (!op) return res.status(404).json({ error: "Oportunidade não encontrada." });
-  if (op.status !== "pendente") return res.status(409).json({ error: "Essa oportunidade já foi validada." });
+  const awaitingConfirmation = op.status === "pendente"
+    || (op.status === "em_negociacao" && !op.propostaId && !op.dealId);
+  if (!awaitingConfirmation) return res.status(409).json({ error: "Essa oportunidade já foi validada." });
 
   const [updated] = await db.update(scoutOportunidadesTable)
     .set({ status: "aprovado", pipelineStage: "identificada", approvedBy: (req as any).user?.sub ?? null, approvedAt: new Date() })
@@ -349,7 +395,9 @@ router.post("/tenants/:tenantId/scout/oportunidades/:id/rejeitar", async (req, r
     .where(and(eq(scoutOportunidadesTable.id, id), eq(scoutOportunidadesTable.tenantId, tenantId)));
   if (!op) return res.status(404).json({ error: "Oportunidade not found" });
 
-  if (op.status !== "pendente") {
+  const awaitingConfirmation = op.status === "pendente"
+    || (op.status === "em_negociacao" && !op.propostaId && !op.dealId);
+  if (!awaitingConfirmation) {
     return res.status(409).json({ error: "Somente oportunidades aguardando confirmação podem ser rejeitadas." });
   }
 

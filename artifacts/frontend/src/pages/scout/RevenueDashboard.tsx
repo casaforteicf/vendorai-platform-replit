@@ -56,9 +56,10 @@ const STATUS_COLORS: Record<string, string> = {
   pendente_aprovacao: "bg-violet-100 text-violet-700 border-violet-200",
   aprovado: "bg-cyan-100 text-cyan-700 border-cyan-200",
   adiado: "bg-orange-100 text-orange-700 border-orange-200",
+  em_negociacao: "bg-amber-100 text-amber-700 border-amber-200",
 };
 const STATUS_LABELS: Record<string, string> = {
-  pendente:  "Pendente",
+  pendente:  "Aguardando confirmação",
   enviado:   "Enviado",
   respondeu: "Respondeu",
   converteu: "Convertido",
@@ -66,6 +67,7 @@ const STATUS_LABELS: Record<string, string> = {
   pendente_aprovacao: "Aguardando aprovação",
   aprovado: "Aprovado",
   adiado: "Adiado",
+  em_negociacao: "Em negociação",
 };
 
 export default function RevenueDashboard() {
