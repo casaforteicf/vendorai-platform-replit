@@ -31,6 +31,16 @@ type TenantDetail = {
   firstLoginAt?: string | null;
   accessSentAt?: string | null;
   createdAt?: string | null;
+  billingCycle?: "monthly" | "annual" | null;
+};
+
+type AdminPlan = {
+  id: string;
+  slug: string;
+  name: string;
+  monthlyPriceCents?: number | null;
+  monthlyPriceAnnualCents?: number | null;
+  aiQuotaUsd?: number | string | null;
 };
 
 type AIUsage = {
@@ -164,6 +174,10 @@ export default function AdminTenantDetail() {
   const [editingComissao, setEditingComissao] = useState(false);
   const [comissaoInput, setComissaoInput] = useState("");
   const [savingComissao, setSavingComissao] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<"monthly" | "annual">("monthly");
+  const [savingPlan, setSavingPlan] = useState(false);
 
   const authHeaders = { Authorization: `Bearer ${token}` };
 
@@ -175,6 +189,16 @@ export default function AdminTenantDetail() {
       return r.json() as Promise<TenantDetail>;
     },
     enabled: !!id && !!token,
+  });
+
+  const { data: availablePlans = [] } = useQuery<AdminPlan[]>({
+    queryKey: ["admin-plans"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/plans", { headers: authHeaders });
+      if (!r.ok) throw new Error("Não foi possível carregar os planos");
+      return r.json() as Promise<AdminPlan[]>;
+    },
+    enabled: !!token,
   });
 
   const { data: aiUsage, isLoading: aiLoading } = useQuery<AIUsage>({
@@ -336,6 +360,41 @@ export default function AdminTenantDetail() {
       toast({ title: newStatus === "active" ? "Tenant reativado com sucesso" : "Tenant suspenso com sucesso" });
     } finally {
       setBlocking(false);
+    }
+  }
+
+  function startEditingPlan() {
+    setSelectedPlanId(tenant?.planId ?? "");
+    setSelectedBillingCycle(tenant?.billingCycle === "annual" ? "annual" : "monthly");
+    setEditingPlan(true);
+  }
+
+  async function handleSavePlan() {
+    if (!selectedPlanId) {
+      toast({ title: "Selecione um plano", variant: "destructive" });
+      return;
+    }
+    setSavingPlan(true);
+    try {
+      const r = await fetch(`/api/admin/tenants/${id}/plan`, {
+        method: "PATCH",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ planId: selectedPlanId, billingCycle: selectedBillingCycle }),
+      });
+      const data = await r.json() as { error?: string };
+      if (!r.ok) {
+        toast({ title: data.error ?? "Erro ao atualizar plano", variant: "destructive" });
+        return;
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["admin-tenant-detail", id] }),
+        qc.invalidateQueries({ queryKey: ["admin-tenant-ai-usage", id] }),
+        qc.invalidateQueries({ queryKey: getListTenantsQueryKey() }),
+      ]);
+      toast({ title: "Plano do tenant atualizado" });
+      setEditingPlan(false);
+    } finally {
+      setSavingPlan(false);
     }
   }
 
@@ -518,7 +577,58 @@ export default function AdminTenantDetail() {
                 ? (PROV_LABELS[tenant.provisioningMethod] ?? tenant.provisioningMethod)
                 : "—"}
             />
-            <InfoRow label="Plano" value={tenant.planId ?? "Sem plano"} />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 min-w-0">
+                <span className="text-xs text-muted-foreground shrink-0">Plano</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-right truncate">
+                    {availablePlans.find((plan) => plan.id === tenant.planId)?.name ?? tenant.planId ?? "Sem plano"}
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={startEditingPlan}>
+                    Editar
+                  </Button>
+                </div>
+              </div>
+              {editingPlan && (
+                <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                  <div className="space-y-1">
+                    <label htmlFor="tenant-plan" className="text-xs font-medium">Plano do cliente</label>
+                    <select
+                      id="tenant-plan"
+                      value={selectedPlanId}
+                      onChange={(e) => setSelectedPlanId(e.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Selecione um plano</option>
+                      {availablePlans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>{plan.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label htmlFor="tenant-billing-cycle" className="text-xs font-medium">Ciclo de cobrança</label>
+                    <select
+                      id="tenant-billing-cycle"
+                      value={selectedBillingCycle}
+                      onChange={(e) => setSelectedBillingCycle(e.target.value as "monthly" | "annual")}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="monthly">Mensal</option>
+                      <option value="annual">Anual</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPlan(false)} disabled={savingPlan}>
+                      Cancelar
+                    </Button>
+                    <Button type="button" size="sm" onClick={handleSavePlan} disabled={savingPlan || !selectedPlanId}>
+                      {savingPlan && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Salvar plano
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
             {tenant.vendeNoPracaAi && (
               <>
                 <Separator />
