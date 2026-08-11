@@ -58,7 +58,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
   const START_PLAN_HREFS = new Set(["/", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao"]);
-  const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin;
+  const isTenantAdmin = isEffectiveAdmin;
+  const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin && !isTenantAdmin;
 
   const { data: openBugsData } = useQuery<{ count: number }>({
     queryKey: ["admin", "bug-reports-open-count"],
@@ -74,7 +75,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     },
   });
   const openBugCount = openBugsData?.count ?? 0;
-  const isTenantAdmin = isEffectiveAdmin;
   const isSeller = user?.platformRole === "tenant_seller" && user?.userFunction !== "administrador";
   const userFunction = user?.userFunction as UserFunction | undefined;
 
