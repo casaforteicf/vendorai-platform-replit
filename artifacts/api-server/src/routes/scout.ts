@@ -32,6 +32,39 @@ function canAccess(req: Express.Request, tenantId: string) {
   return isSuperAdmin(req) || tid(req) === tenantId;
 }
 
+const OPPORTUNITY_TYPE_LABELS: Record<string, string> = {
+  recompra: "recompra",
+  cross_sell: "venda complementar (cross-sell)",
+  reativacao: "reativação",
+  upgrade: "upgrade",
+  aniversario: "ação de relacionamento",
+  follow_up: "follow-up",
+  renovacao: "renovação",
+  manutencao: "manutenção",
+  sequencia_produto: "próxima etapa de produto",
+};
+
+function fallbackOpportunityExplanation(op: {
+  tipo?: string | null;
+  descricao?: string | null;
+  scoreOportunidade?: string | null;
+}, regraNome?: string | null) {
+  const description = op.descricao?.trim() || "A regra do Revenue Scout identificou um possível movimento comercial.";
+  const signal = description.includes(":") ? description.slice(description.indexOf(":") + 1).trim() : description;
+  const typeLabel = OPPORTUNITY_TYPE_LABELS[op.tipo ?? ""] ?? op.tipo ?? "oportunidade comercial";
+  const imported = /importa(?:ção|cao)/i.test(description);
+
+  return {
+    inference: `O Scout percebeu potencial de ${typeLabel} porque o sinal observado — ${signal} — indica uma necessidade ainda não atendida. A confirmação humana continua necessária antes de qualquer contato.`,
+    facts: {
+      sinal_observado: signal,
+      regra_aplicada: regraNome || "Revenue Scout",
+      origem_do_sinal: imported ? "Dados importados para análise de whitespace" : "Dados e histórico disponíveis no Revenue Scout",
+      ...(op.scoreOportunidade ? { score_de_prioridade: Number(op.scoreOportunidade) } : {}),
+    },
+  };
+}
+
 // ─── Regras ───────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/scout/regras", async (req, res) => {
@@ -221,6 +254,7 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
       const rendered = renderTemplate(acao.mensagem, { nome: clienteNome ?? "", nome_cliente: clienteNome ?? "" });
       mensagemPreview = rendered.ok ? rendered.mensagem : null;
     }
+    const fallbackExplanation = fallbackOpportunityExplanation(op, regraNome);
     return {
       ...op,
       clienteNome,
@@ -233,8 +267,8 @@ router.get("/tenants/:tenantId/scout/oportunidades", async (req, res) => {
       responsavelNome: pipeline?.responsavelNome ?? null,
       mensagemPreview,
       requerAprovacao: !!(acao as { requiresApproval?: boolean }).requiresApproval,
-      percepcao: op.explanation?.inference ?? null,
-      justificativa: op.explanation?.facts ?? null,
+      percepcao: op.explanation?.inference ?? fallbackExplanation.inference,
+      justificativa: op.explanation?.facts ?? fallbackExplanation.facts,
     };
   });
 

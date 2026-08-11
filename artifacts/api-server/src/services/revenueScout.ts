@@ -875,6 +875,22 @@ export async function analisarCliente(
       descricao:         `Regra "${regra.nome}" disparada para ${lead.nome ?? clienteId}`,
       status:            "pendente",
       scoreOportunidade: String(score),
+      explanation: {
+        facts: {
+          regra: regra.nome,
+          tipo: regra.tipo,
+          dias_desde_ultimo_atendimento: diasDesdeUltimo,
+          score_de_prioridade: score,
+        },
+        inference: {
+          resumo: `A regra "${regra.nome}" identificou potencial de ${regra.tipo} para este cliente.`,
+          motivo: "As condições configuradas na regra foram atendidas pelos dados disponíveis do lead.",
+        },
+        autonomy: {
+          requer_confirmacao_humana: true,
+          contato_automatico: false,
+        },
+      },
     } as any);
     captureLeadFeatureSnapshot(tenantId, clienteId, "scout_oportunidade_criada", { tipoRegra: regra.tipo }, log).catch(() => {});
 
