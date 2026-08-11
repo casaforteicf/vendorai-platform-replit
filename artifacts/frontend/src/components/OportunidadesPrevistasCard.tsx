@@ -22,7 +22,7 @@ interface OportunidadePrevista {
   createdAt: string;
 }
 
-export function OportunidadesPrevistasCard({ leadId }: { leadId: string }) {
+export function OportunidadesPrevistasCard({ leadId, summaryOnly = false }: { leadId: string; summaryOnly?: boolean }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [aberto, setAberto] = useState(false);
@@ -61,14 +61,14 @@ export function OportunidadesPrevistasCard({ leadId }: { leadId: string }) {
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <TrendingUp className="h-4 w-4" /> Oportunidades futuras previstas
         </CardTitle>
-        <Button size="sm" variant="ghost" onClick={() => setAberto((v) => !v)}><Plus className="h-4 w-4" /></Button>
+        {!summaryOnly && <Button size="sm" variant="ghost" onClick={() => setAberto((v) => !v)}><Plus className="h-4 w-4" /></Button>}
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground -mt-2">
           O que você acha que esse cliente vai precisar mais pra frente — mesmo sem ter sido dito ainda. Vira contexto extra pra IA na hora de qualificar e conduzir a conversa.
         </p>
 
-        {aberto && (
+        {!summaryOnly && aberto && (
           <div className="space-y-2 rounded-lg border p-3">
             <Textarea placeholder="Ex: Deve precisar de manutenção preventiva em uns 6 meses" value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} />
             <div className="flex gap-2">
@@ -99,9 +99,9 @@ export function OportunidadesPrevistasCard({ leadId }: { leadId: string }) {
                     {op.previsaoData && <Badge variant="outline" className="text-xs">{new Date(op.previsaoData).toLocaleDateString("pt-BR")}</Badge>}
                   </div>
                 </div>
-                <button onClick={() => remover.mutate(op.id)} className="shrink-0 text-muted-foreground hover:text-destructive">
+                {!summaryOnly && <button onClick={() => remover.mutate(op.id)} className="shrink-0 text-muted-foreground hover:text-destructive">
                   <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                </button>}
               </div>
             ))}
           </div>

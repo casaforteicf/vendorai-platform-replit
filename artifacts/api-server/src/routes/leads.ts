@@ -772,6 +772,8 @@ router.put("/leads/:leadId/briefing", async (req, res) => {
         nextStepType: data.nextStepType ?? existing.nextStepType,
         nextStepDate: data.nextStepDate ?? existing.nextStepDate,
         freeNotes: data.freeNotes ?? existing.freeNotes,
+        journeyStage: data.journeyStage ?? existing.journeyStage,
+        journeyChecklist: data.journeyChecklist ?? existing.journeyChecklist,
         updatedAt: new Date(),
       })
       .where(eq(leadBriefingsTable.id, existing.id))
@@ -802,6 +804,8 @@ router.put("/leads/:leadId/briefing", async (req, res) => {
         nextStepType: data.nextStepType,
         nextStepDate: data.nextStepDate,
         freeNotes: data.freeNotes,
+        journeyStage: data.journeyStage,
+        journeyChecklist: data.journeyChecklist,
       })
       .returning();
     res.status(201).json(created);
