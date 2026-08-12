@@ -84,11 +84,12 @@ router.post("/tenants/:tenantId/scout/regras", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const { nome, tipo, condicoes, acao } = req.body as {
+  const { nome, tipo, condicoes, acao, ativo } = req.body as {
     nome?: string;
     tipo?: string;
     condicoes?: unknown;
     acao?: unknown;
+    ativo?: boolean;
   };
 
   if (!nome || !tipo || !condicoes || !acao) {
@@ -99,9 +100,13 @@ router.post("/tenants/:tenantId/scout/regras", async (req, res) => {
     return res.status(422).json({ error: `tipo inválido. Valores: ${SCOUT_REGRA_TIPOS.join(", ")}` });
   }
 
+  if (ativo !== undefined && typeof ativo !== "boolean") {
+    return res.status(422).json({ error: "ativo precisa ser booleano" });
+  }
+
   const [row] = await db
     .insert(scoutRegrasTable)
-    .values({ tenantId, nome, tipo, condicoes, acao } as any)
+    .values({ tenantId, nome, tipo, condicoes, acao, ...(ativo !== undefined ? { ativo } : {}) } as any)
     .returning();
 
   return res.status(201).json(row);
