@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, count, and, gte } from "drizzle-orm";
+import { eq, count, and, gte, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import {
   db,
@@ -40,6 +40,22 @@ import { parseCsvLine, normalizeCsvHeader } from "./produtos_catalogo.js";
 
 const router: IRouter = Router();
 
+/**
+ * Compatibilidade com formulários antigos que enviavam o slug do plano
+ * (ex.: "enterprise") no campo planId. A persistência continua usando o UUID.
+ */
+async function resolveActivePlanId(planIdOrSlug: string): Promise<string | null> {
+  const [plan] = await db
+    .select({ id: plansTable.id })
+    .from(plansTable)
+    .where(and(
+      or(eq(plansTable.id, planIdOrSlug), eq(plansTable.slug, planIdOrSlug)),
+      eq(plansTable.isActive, true),
+    ))
+    .limit(1);
+  return plan?.id ?? null;
+}
+
 router.get("/tenants", async (req, res) => {
   const tenants = await db.select().from(tenantsTable).orderBy(tenantsTable.createdAt);
   res.json(tenants);
@@ -64,15 +80,12 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
 
   try {
     if (insertData.planId) {
-      const [plan] = await db
-        .select({ id: plansTable.id })
-        .from(plansTable)
-        .where(and(eq(plansTable.id, insertData.planId), eq(plansTable.isActive, true)))
-        .limit(1);
-      if (!plan) {
+      const resolvedPlanId = await resolveActivePlanId(insertData.planId);
+      if (!resolvedPlanId) {
         res.status(422).json({ error: "Plano selecionado não existe ou está inativo" });
         return;
       }
+      insertData.planId = resolvedPlanId;
     }
 
     const [tenant] = await db.insert(tenantsTable).values(insertData).returning();
@@ -872,13 +885,10 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
   const hashed = await bcrypt.hash(tempPassword, 12);
 
   try {
+    let resolvedPlanId: string | null = null;
     if (planId) {
-      const [plan] = await db
-        .select({ id: plansTable.id })
-        .from(plansTable)
-        .where(and(eq(plansTable.id, planId), eq(plansTable.isActive, true)))
-        .limit(1);
-      if (!plan) {
+      resolvedPlanId = await resolveActivePlanId(planId);
+      if (!resolvedPlanId) {
         res.status(422).json({ error: "Plano selecionado não existe ou está inativo" });
         return;
       }
@@ -892,7 +902,7 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
       provisioningMethod: "manual",
       createdByAdminId: req.user?.sub,
       ...(cnpj ? { internalNotes: [cnpj, internalNotes].filter(Boolean).join(" | ") } : { internalNotes: internalNotes ?? null }),
-      ...(planId ? { planId, billingCycle: billingCycle ?? "monthly", planStartedAt: new Date() } : {}),
+      ...(resolvedPlanId ? { planId: resolvedPlanId, billingCycle: billingCycle ?? "monthly", planStartedAt: new Date() } : {}),
     }).returning();
 
     if (!tenant) throw new Error("Failed to create tenant");
