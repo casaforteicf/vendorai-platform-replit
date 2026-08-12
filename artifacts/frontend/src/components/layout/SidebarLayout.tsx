@@ -12,7 +12,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
-  const START_PLAN_HREFS = new Set(["/", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao"]);
+  const START_PLAN_HREFS = new Set(["/", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao"]);
   const isTenantAdmin = isEffectiveAdmin;
   const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin && !isTenantAdmin;
 
@@ -176,6 +176,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Profissionais", href: "/beauty/profissionais",     icon: User2,       sellerHidden: false, section: "salao",    fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Ordens de Serviço", href: "/servicos",             icon: Wrench,      sellerHidden: false, section: "servicos", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Cadastros",     href: "/servicos/cadastros",       icon: HardHat,     sellerHidden: false, section: "servicos", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Central",       href: "/farmacia",                 icon: ClipboardCheck, sellerHidden: false, section: "farmacia", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Produtos",      href: "/farmacia/produtos",        icon: Pill,        sellerHidden: false, section: "farmacia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Pedidos",       href: "/farmacia/pedidos",         icon: ShoppingCart,sellerHidden: false, section: "farmacia", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Receitas",      href: "/farmacia/receitas",        icon: FileText,    sellerHidden: false, section: "farmacia", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
@@ -379,7 +380,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     ]),
     "Farmácia": new Set([
       ...CORE_VERTICAL_HREFS,
-      "/farmacia/produtos", "/farmacia/pedidos", "/farmacia/receitas",
+      "/farmacia", "/farmacia/produtos", "/farmacia/pedidos", "/farmacia/receitas",
     ]),
     "Imóveis": new Set([
       ...CORE_VERTICAL_HREFS,

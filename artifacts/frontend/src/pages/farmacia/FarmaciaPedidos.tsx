@@ -156,7 +156,10 @@ export default function FarmaciaPedidos() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [statusFilter, setStatusFilter] = useState("todos");
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const requestedStatus = new URLSearchParams(window.location.search).get("status");
+    return STATUS_OPTIONS.some((option) => option.value === requestedStatus) ? requestedStatus! : "todos";
+  });
   const [receitaDialogPedidoId, setReceitaDialogPedidoId] = useState<string | null>(null);
 
   const { data: pedidos = [], isLoading } = useQuery<any[]>({
