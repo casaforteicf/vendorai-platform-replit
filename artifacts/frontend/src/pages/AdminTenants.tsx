@@ -61,6 +61,13 @@ interface ProvisionResult {
   emailSent: boolean;
 }
 
+interface AvailablePlan {
+  id: string;
+  slug: string;
+  name: string;
+  isActive: boolean;
+}
+
 export default function AdminTenants() {
   const [, setLocation] = useLocation();
   const { token } = useAuth();
@@ -71,6 +78,16 @@ export default function AdminTenants() {
   const { data: brandPrograms = [] } = useQuery<Array<{ id: string; nomeExibicao: string }>>({
     queryKey: ["brand-programs"],
     queryFn: () => fetch("/api/brand-programs", { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
+  });
+  const { data: availablePlans = [], isLoading: plansLoading } = useQuery<AvailablePlan[]>({
+    queryKey: ["admin-plans", "active"],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/plans", { headers: { Authorization: `Bearer ${token}` } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível carregar os planos");
+      return data as AvailablePlan[];
+    },
+    enabled: Boolean(token),
   });
 
   const [filterStatus, setFilterStatus] = useState("all");
@@ -663,15 +680,17 @@ export default function AdminTenants() {
               </div>
               <div className="space-y-1.5">
                 <Label>Plano</Label>
-                <Select value={form.planId} onValueChange={(v) => setForm((f) => ({ ...f, planId: v === "none" ? "" : v }))}>
+                <Select value={form.planId || "none"} onValueChange={(v) => setForm((f) => ({ ...f, planId: v === "none" ? "" : v }))}>
                   <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sem plano</SelectItem>
-                    <SelectItem value="growth">Growth</SelectItem>
-                    <SelectItem value="pme_plus">PME+</SelectItem>
-                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                    {availablePlans.map((plan) => (
+                      <SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                {plansLoading ? <p className="text-xs text-muted-foreground">Carregando planos ativos...</p> : null}
+                {!plansLoading && availablePlans.length === 0 ? <p className="text-xs text-amber-600">Nenhum plano ativo. Use “Sem plano” ou ative um plano no painel.</p> : null}
               </div>
               <div className="space-y-1.5">
                 <Label>Ciclo</Label>
