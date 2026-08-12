@@ -471,7 +471,10 @@ export default function Onboarding() {
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o segmento..." />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent
+                      className="max-h-[min(22rem,var(--radix-select-content-available-height))]"
+                      viewportClassName="!h-auto max-h-80 overflow-y-auto pr-1 [scrollbar-color:hsl(var(--muted-foreground))_transparent] [scrollbar-width:thin]"
+                    >
                       {segments.map((s) => (
                         <SelectItem key={s.id} value={s.nome}>{s.nome}</SelectItem>
                       ))}
