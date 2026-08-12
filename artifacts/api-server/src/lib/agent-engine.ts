@@ -51,7 +51,7 @@ export type LimitOk = {
 type LimitExceeded = { ok: false; httpStatus: 429; body: object };
 export type LimitResult = LimitOk | LimitExceeded;
 
-export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca" | "reception";
+export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca" | "reception" | "pharmacy";
 export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null) => string;
 
 /** A single SPIN qualification question customized for a tenant's niche. */
@@ -92,6 +92,7 @@ const AGENT_FEATURE_MAP: Record<AgentName, AiFeature> = {
   // adotado em plan-guard.ts) — é o agente de primeiro contato, só que sem
   // qualificar/empurrar venda.
   reception: "agent_sdr",
+  pharmacy: "agent_service",
   relacionamento: "agent_relacionamento",
   financeiro: "agent_financeiro",
   cobranca: "agent_cobranca",
@@ -120,6 +121,7 @@ export const AGENT_NAME_TO_KEY: Partial<Record<AgentName, string>> = {
   financeiro:   "financeiro",
   cobranca:     "cobranca",
   reception:    "recepcao",
+  pharmacy:     "farmacia",
 };
 
 const TOM_INSTRUCTIONS: Record<string, string> = {
@@ -1377,8 +1379,41 @@ export function buildReceptionPrompt(customPrompt: string | undefined, ctx: Agen
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
+  // Sempre anexado, inclusive quando a empresa usa um prompt personalizado.
+  parts.push(
+    "## ENCAMINHAMENTO PARA FARMÁCIA\n" +
+    "Quando a necessidade for de farmácia — medicamento, disponibilidade, receita, sintomas, entrega ou orientação farmacêutica — responda brevemente que encaminhará para o atendimento da farmácia e acrescente ao final exatamente: {{handoff:farmacia}}\n" +
+    "O marcador {{handoff:farmacia}} é interno e nunca deve ser explicado ao lead."
+  );
   parts.push(buildLeadSection(lead));
   if (ci?.goalAnalysis) parts.push(`## CONTEXTO\nObjetivo aparente do contato: ${ci.goalAnalysis}`);
+  return joinWithCalibration(parts);
+}
+
+export function buildPharmacyPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
+  const { lead } = ctx;
+  const catalog = (scenario?.catalogProducts ?? []) as Array<{ nome: string; precoBase?: string | null }>;
+  const parts: string[] = [];
+
+  parts.push(systemPromptOverride?.trim() ||
+    "Você é o agente de atendimento da farmácia. Continue a conversa recebida da Recepção sem repetir perguntas já respondidas.\n" +
+    "Missão: entender a necessidade, consultar somente os produtos e informações fornecidos pelo sistema, ajudar com disponibilidade, preço, receita, pedido e entrega, e coletar os dados necessários para a farmácia concluir o atendimento.\n" +
+    "Regras:\n" +
+    "- Converse em português brasileiro, com linguagem simples, acolhedora e objetiva\n" +
+    "- Faça uma pergunta por vez e preserve o contexto da conversa\n" +
+    "- Nunca invente estoque, preço, prazo, posologia, contraindicação ou informação sobre medicamento\n" +
+    "- Não conclua diagnóstico nem crie receita; quando a situação exigir decisão clínica, encaminhe claramente para o farmacêutico ou serviço de saúde\n" +
+    "- Em sinais de urgência, oriente atendimento emergencial imediato\n" +
+    "- Não solicite CPF, documento ou endereço antes que sejam realmente necessários ao pedido ou entrega\n" +
+    "- Se não houver informação suficiente, diga que confirmará com a equipe da farmácia");
+
+  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA FARMÁCIA\n" + customPrompt.trim());
+  parts.push(buildLeadSection(lead));
+  if (catalog.length > 0) {
+    parts.push("## PRODUTOS DISPONÍVEIS NO CATÁLOGO\n" + catalog.map((p) =>
+      `- ${p.nome}${p.precoBase ? ` — R$ ${p.precoBase}` : ""}`
+    ).join("\n"));
+  }
   return joinWithCalibration(parts);
 }
 
@@ -1537,4 +1572,5 @@ export const PROMPT_BUILDERS: Record<AgentName, PromptBuilder> = {
   financeiro:  buildFinanceiroPrompt,
   cobranca:    buildCobrancaPrompt,
   reception:   buildReceptionPrompt,
+  pharmacy:    buildPharmacyPrompt,
 };
