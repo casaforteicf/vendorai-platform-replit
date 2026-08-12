@@ -60,7 +60,61 @@ const TIPO_COLORS: Record<string, string> = {
 // tenant só liga/desliga; não recebe mensagem/canal customizado próprio, pois
 // o motor já gera a notificação para cada apólice/gap específico.
 const ENGINE_MANAGED_TIPOS = new Set(["whitespace_seguro", "renovacao_seguro"]);
+const SUPPORTED_TIPOS = new Set(TIPO_OPTS.map((tipo) => tipo.value).concat([
+  "follow_up", "renovacao", "manutencao", "risco_nao_renovacao", "sinal_praca_ai",
+]));
 const CHIPS = ["{{nome}}", "{{servico}}", "{{desconto}}"];
+
+type ImportedRule = Record<string, any>;
+
+function mapImportedTipo(tipoOriginal: string) {
+  if (SUPPORTED_TIPOS.has(tipoOriginal)) return tipoOriginal;
+  if (tipoOriginal.includes("aniversario")) return "aniversario";
+  if (/reativacao|recuperacao_cancelado/.test(tipoOriginal)) return "reativacao";
+  if (/baixa_frequencia|falta_recorrencia|assinatura_automatica|reposicao_urgente/.test(tipoOriginal)) return "recompra";
+  if (/cross_sell|kit_sazonal|promo_dependente|parceria_clinica|servico_farmaceutico/.test(tipoOriginal)) return "cross_sell";
+  if (/upgrade|ticket_baixo|ampliacao_categoria|digitalizacao|omnichannel|ativacao_empresa|migracao_filial/.test(tipoOriginal)) return "upgrade";
+  if (/receita/.test(tipoOriginal)) return "receita_vencendo";
+  return "follow_up";
+}
+
+function normalizeImportedRule(item: ImportedRule) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("Uma das regras não é um objeto válido.");
+  const nome = typeof item.nome === "string" ? item.nome.trim() : "";
+  const tipoOriginal = typeof item.tipo === "string" ? item.tipo.trim() : "";
+  if (!nome || !tipoOriginal) throw new Error("Cada regra precisa ter nome e tipo.");
+  const tipo = mapImportedTipo(tipoOriginal);
+  const condicoesOriginais = item.condicoes && typeof item.condicoes === "object" && !Array.isArray(item.condicoes) ? item.condicoes : {};
+  const condicoes: Record<string, unknown> = {
+    ...condicoesOriginais,
+    ...(tipoOriginal !== tipo ? { tipoOriginal } : {}),
+    ...(item.segmento ? { segmento: item.segmento } : {}),
+    ...(item.metricas ? { metricas: item.metricas } : {}),
+  };
+  if (tipo === "reativacao" && condicoes.diasSemVisita === undefined) {
+    const diasNoTipo = tipoOriginal.match(/(\d+)_?dias/)?.[1];
+    condicoes.diasSemVisita = diasNoTipo ? Number(diasNoTipo) : 60;
+  }
+  if (tipo === "recompra" && condicoes.diasSemCompra === undefined) condicoes.diasSemCompra = 30;
+  const acaoOriginal = item.acao && typeof item.acao === "object" && !Array.isArray(item.acao) ? item.acao : {};
+  const mensagem = typeof acaoOriginal.mensagem === "string" ? acaoOriginal.mensagem.replace(/\{nome\}/g, "{{nome}}") : "";
+  return {
+    nome, tipo, condicoes,
+    acao: { ...acaoOriginal, mensagem, requiresApproval: acaoOriginal.requiresApproval !== false },
+    ativo: item.ativo !== false && item.status !== "inativo",
+    mapped: tipoOriginal !== tipo,
+  };
+}
+
+function extractImportedRules(parsed: unknown): ImportedRule[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") {
+    const envelope = parsed as Record<string, unknown>;
+    if (Array.isArray(envelope.rules)) return envelope.rules as ImportedRule[];
+    if (Array.isArray(envelope.regras)) return envelope.regras as ImportedRule[];
+  }
+  throw new Error("O arquivo precisa conter uma lista de regras ou um objeto com a propriedade 'rules'.");
+}
 
 interface FormState {
   nome: string;
@@ -288,20 +342,31 @@ export default function Regras() {
     setImporting(true);
     try {
       const text = await file.text();
-      const items = JSON.parse(text);
-      if (!Array.isArray(items)) throw new Error("O arquivo precisa ser uma lista de regras (formato exportado por 'Exportar').");
-      let ok = 0; let fail = 0;
+      const items = extractImportedRules(JSON.parse(text)).map(normalizeImportedRule);
+      let ok = 0; let fail = 0; let mapped = 0; let firstError = "";
       for (const item of items) {
         try {
           const res = await fetch(`/api/tenants/${tenantId}/scout/regras`, {
             method: "POST", headers: authHeaders(),
-            body: JSON.stringify({ nome: item.nome, tipo: item.tipo, condicoes: item.condicoes ?? {}, acao: item.acao ?? {} }),
+            body: JSON.stringify({ nome: item.nome, tipo: item.tipo, condicoes: item.condicoes, acao: item.acao, ativo: item.ativo }),
           });
-          if (res.ok) ok++; else fail++;
-        } catch { fail++; }
+          if (res.ok) { ok++; if (item.mapped) mapped++; }
+          else {
+            fail++;
+            const error = await res.json().catch(() => ({}));
+            if (!firstError) firstError = error.error ?? `HTTP ${res.status}`;
+          }
+        } catch (error: any) {
+          fail++;
+          if (!firstError) firstError = error?.message ?? "Erro de conexão";
+        }
       }
       qc.invalidateQueries({ queryKey: QK });
-      toast({ title: `Importação concluída`, description: `${ok} regra(s) importada(s)${fail ? `, ${fail} falharam` : ""}.` });
+      toast({
+        title: fail ? "Importação concluída com ressalvas" : "Importação concluída",
+        description: `${ok} regra(s) importada(s)${mapped ? `; ${mapped} tipo(s) adaptado(s) ao Revenue Scout` : ""}${fail ? `; ${fail} falharam. ${firstError}` : ""}.`,
+        variant: ok === 0 ? "destructive" : "default",
+      });
     } catch (err: any) {
       toast({ title: "Erro ao importar", description: err.message, variant: "destructive" });
     } finally {
