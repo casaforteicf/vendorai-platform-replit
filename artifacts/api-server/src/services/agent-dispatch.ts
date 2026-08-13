@@ -724,6 +724,8 @@ export async function processAgentInternal(params: {
     let agentName: AgentName;
     if (forcedAgent) {
       agentName = forcedAgent;
+    } else if (ctx.conversation?.currentAgent === "pharmacy") {
+      agentName = "pharmacy";
     } else {
       const diasSinceContact = daysSinceLastContact(ctx);
       agentName = await determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact, mensagem, tenantId, log, ctx.recentMessages);
@@ -732,7 +734,11 @@ export async function processAgentInternal(params: {
     // 4b. (currentAgent update deferred to step 4c below, after resolvedAgentName is known)
 
     // 5. Check if that agent is enabled
-    const agentCfg = config.agents?.[agentName];
+    // O agente farmacêutico usa a habilitação operacional de atendimento
+    // enquanto ganha configuração própria na base unificada de agentes.
+    const agentCfg = agentName === "pharmacy"
+      ? config.agents?.service
+      : config.agents?.[agentName];
     if (!agentCfg?.enabled) {
       // Fall back to SDR if the chosen agent is disabled
       const sdrCfg = config.agents?.["sdr"];
@@ -824,6 +830,18 @@ export async function processAgentInternal(params: {
     let enrichedScenario: Record<string, unknown> | null = scenario
       ? { ...(scenario as Record<string, unknown>) }
       : null;
+    if (resolvedAgentName === "pharmacy") {
+      const catalogProducts = await db
+        .select({
+          nome: produtosCatalogoTable.nome,
+          precoBase: produtosCatalogoTable.precoBase,
+        })
+        .from(produtosCatalogoTable)
+        .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
+        .orderBy(produtosCatalogoTable.nome)
+        .limit(100);
+      enrichedScenario = { ...(enrichedScenario ?? {}), catalogProducts };
+    }
     if (resolvedAgentName === "reactivation") {
       const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000);
       const [recentProposal] = await db
@@ -1147,6 +1165,18 @@ export async function processAgentInternal(params: {
 
     // 8. Detect special Closer actions in the response.
     let finalResposta = resposta;
+
+    // A Recepção sinaliza internamente o encaminhamento. O marcador nunca é
+    // enviado ao lead; a próxima mensagem continua com o agente farmacêutico.
+    if (resolvedAgentName === "reception" && finalResposta.includes("{{handoff:farmacia}}")) {
+      finalResposta = finalResposta.replace(/\{\{handoff:farmacia\}\}/g, "").trim();
+      if (ctx.conversation) {
+        await db.update(conversationsTable)
+          .set({ currentAgent: "pharmacy", updatedAt: new Date() })
+          .where(eq(conversationsTable.id, ctx.conversation.id));
+      }
+      log.info({ tenantId, leadId }, "dispatch: reception handed conversation to pharmacy agent");
+    }
 
     // 8a. {{action:generate_quote}} — Closer asked for a formal quote to be generated.
     // Use the most expensive active catalog plan (enterprise-first ordering).
