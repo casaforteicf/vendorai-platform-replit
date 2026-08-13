@@ -159,7 +159,7 @@ function fmtCurrency(val: string | number | null | undefined) {
 // ── Catalog Modal (CRUD) ──────────────────────────────────────────────────────
 const catFormSchema = z.object({
   nome: z.string().min(1, "Obrigatório"),
-  categoriaId: z.string().optional(),
+  categoriaId: z.string().min(1, "Selecione uma categoria"),
   descontoMaximoPercentual: z.coerce.number().min(0).max(100).optional(),
   precoBase: z.coerce.number().min(0, "Preço inválido"),
   unidade: z.string().min(1, "Obrigatório"),
@@ -250,7 +250,7 @@ export function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
+    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
   });
 
   const watchRecorrente = form.watch("recorrente");
@@ -259,7 +259,7 @@ export function CatalogoModal({
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
+    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
     setFormOpen(true);
   }
 
@@ -268,7 +268,7 @@ export function CatalogoModal({
     const vendeNoPracaAiValue = (p as any).vendeNoPracaAi;
     form.reset({
       nome: p.nome,
-      categoriaId: p.categoriaId ?? undefined,
+      categoriaId: p.categoriaId ?? "",
       descontoMaximoPercentual: p.descontoMaximoPercentual != null ? parseFloat(p.descontoMaximoPercentual) : undefined,
       precoBase: parseFloat(p.precoBase),
       unidade: p.unidade,
@@ -293,7 +293,7 @@ export function CatalogoModal({
   function onSubmit(vals: CatFormValues) {
     const body = {
       nome: vals.nome,
-      categoriaId: vals.categoriaId || undefined,
+      categoriaId: vals.categoriaId,
       descontoMaximoPercentual: vals.descontoMaximoPercentual != null ? vals.descontoMaximoPercentual.toFixed(2) : undefined,
       precoBase: vals.precoBase.toFixed(2),
       unidade: vals.unidade,
@@ -538,12 +538,11 @@ export function CatalogoModal({
                 <FormField control={form.control} name="categoriaId" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Categoria</FormLabel>
-                    <Select value={field.value ?? "__none__"} onValueChange={(v) => field.onChange(v === "__none__" ? undefined : v)}>
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="__none__">Sem categoria</SelectItem>
                         {categorias.map((c) => (
                           <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
                         ))}

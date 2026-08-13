@@ -463,21 +463,19 @@ export default function Onboarding() {
                   <Label>
                     Segmento <span className="text-destructive">*</span>
                   </Label>
-                  <Select
+                  <select
                     value={s1Segmento}
-                    onValueChange={setS1Segmento}
+                    onChange={(event) => setS1Segmento(event.target.value)}
                     disabled={segmentsLoading}
+                    aria-label="Segmento da empresa"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-base shadow-sm outline-none ring-offset-background focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o segmento..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {segments.map((s) => (
-                        <SelectItem key={s.id} value={s.nome}>{s.nome}</SelectItem>
-                      ))}
-                      <SelectItem value="Outro">Outro</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <option value="">{segmentsLoading ? "Carregando segmentos..." : "Selecione o segmento..."}</option>
+                    {segments.map((segment) => (
+                      <option key={segment.id} value={segment.nome}>{segment.nome}</option>
+                    ))}
+                    <option value="Outro">Outro</option>
+                  </select>
                 </div>
 
                 <div className="space-y-2">
