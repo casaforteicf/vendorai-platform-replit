@@ -34,6 +34,7 @@ export const farmaciaProdutoTable = pgTable("farmacia_produtos", {
   estoque: integer("estoque").notNull().default(0),
   imagemUrl: text("imagem_url"),
   ativo: boolean("ativo").notNull().default(true),
+  vendeNoPracaAi: boolean("vende_no_praca_ai").notNull().default(false),
   destaqueWhatsapp: boolean("destaque_whatsapp").notNull().default(false),
   // Vínculo com o catálogo genérico — preenchido pela sincronização.
   produtoCatalogoId: text("produto_catalogo_id"),

@@ -27,6 +27,7 @@ export const restauranteCardapioTable = pgTable("restaurante_cardapio", {
   disponivelJantar: boolean("disponivel_jantar").notNull().default(true),
   imagemUrl: text("imagem_url"),
   ativo: boolean("ativo").notNull().default(true),
+  vendeNoPracaAi: boolean("vende_no_praca_ai").notNull().default(false),
   destaqueWhatsapp: boolean("destaque_whatsapp").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

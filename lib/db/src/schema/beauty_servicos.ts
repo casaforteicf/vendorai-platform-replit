@@ -25,6 +25,7 @@ export const beautyServicosTable = pgTable("beauty_servicos", {
   preco:                  numeric("preco",                   { precision: 10, scale: 2 }).notNull(),
   comissaoProfissional:   numeric("comissao_profissional",   { precision: 5,  scale: 2 }).default("0"),
   ativo:                  boolean("ativo").default(true),
+  vendeNoPracaAi:         boolean("vende_no_praca_ai").notNull().default(false),
   createdAt:              timestamp("created_at").notNull().defaultNow(),
 });
 

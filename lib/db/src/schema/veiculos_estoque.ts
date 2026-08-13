@@ -53,6 +53,7 @@ export const veiculosEstoqueTable = pgTable("veiculos_estoque", {
   vistoriaRealizada: boolean("vistoria_realizada").notNull().default(false),
   vistoriaLaudoUrl: text("vistoria_laudo_url"),
   destaque: boolean("destaque").notNull().default(false),
+  vendeNoPracaAi: boolean("vende_no_praca_ai").notNull().default(false),
   vendedorResponsavelId: text("vendedor_responsavel_id").references(() => usersTable.id, { onDelete: "set null" }),
   // Vínculo com o catálogo genérico (Praça.ai) — preenchido/mantido
   // automaticamente pela sincronização, não editado à mão.
