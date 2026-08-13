@@ -970,7 +970,7 @@ function AgentConfigSheet({
 // ── Página principal ───────────────────────────────────────────────────────────
 
 export default function AgentConfig() {
-  const { user } = useAuth();
+  const { user, tenantOverride } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
