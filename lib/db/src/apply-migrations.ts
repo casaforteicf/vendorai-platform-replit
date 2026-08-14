@@ -23,10 +23,50 @@ import { fileURLToPath } from "url";
 
 export const ADVISORY_LOCK_KEY = "7767366262";
 export const CONTROL_TABLE = "vendorai_schema_migrations";
-export const MIGRATIONS_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../migrations",
-);
+
+/**
+ * Resolve a pasta lib/db/migrations de forma resiliente.
+ *
+ * Não dá pra confiar só em `import.meta.url` (caminho relativo a ESTE
+ * arquivo): funciona quando o CLI roda via tsx direto do código-fonte,
+ * mas QUEBRA em silêncio quando este módulo é importado pela API — o
+ * build da API (artifacts/api-server/build.mjs) usa esbuild com
+ * `bundle: true`, empacotando @workspace/db inteiro dentro de um
+ * dist/index.mjs só. Nesse contexto, import.meta.url aponta pro bundle
+ * da API, não mais pra este arquivo, e "../migrations" relativo a ele
+ * não existe — readdir retornava vazio e a função virava um no-op
+ * silencioso (sem erro, sem log, só não aplicava nada). Foi exatamente
+ * o que aconteceu em produção antes desse fix.
+ *
+ * Testa múltiplos candidatos (self-relative + relative ao cwd do
+ * processo, que no container Docker é /app/artifacts/api-server —
+ * WORKDIR /app, `pnpm --filter @workspace/api-server run start`) e usa
+ * o primeiro que existir de verdade. Se nenhum existir, lança erro loud
+ * em vez de devolver silenciosamente uma lista vazia — melhor a API
+ * falhar o boot com um erro claro do que "funcionar" sem nunca aplicar
+ * nenhuma migration pendente.
+ */
+function resolveMigrationsDir(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(here, "../migrations"), // tsx rodando do código-fonte (CLI)
+    path.resolve(here, "../../migrations"), // dist/ compilado um nível mais fundo
+    path.resolve(process.cwd(), "../../lib/db/migrations"), // API bundlada, cwd = artifacts/api-server
+    path.resolve(process.cwd(), "lib/db/migrations"), // cwd = raiz do monorepo
+    "/app/lib/db/migrations", // fallback explícito pro layout do Docker (WORKDIR /app)
+  ];
+  const found = candidates.find((c) => fs.existsSync(c));
+  if (!found) {
+    throw new Error(
+      "Não encontrei a pasta lib/db/migrations em nenhum caminho candidato:\n" +
+        candidates.map((c) => `  - ${c}`).join("\n") +
+        "\nAjuste resolveMigrationsDir() em lib/db/src/apply-migrations.ts se a estrutura de deploy mudou.",
+    );
+  }
+  return found;
+}
+
+export const MIGRATIONS_DIR = resolveMigrationsDir();
 
 export interface MigrationFile {
   version: string;
