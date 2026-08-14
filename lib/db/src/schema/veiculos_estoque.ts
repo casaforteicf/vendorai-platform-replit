@@ -58,6 +58,19 @@ export const veiculosEstoqueTable = pgTable("veiculos_estoque", {
   // Vínculo com o catálogo genérico (Praça.ai) — preenchido/mantido
   // automaticamente pela sincronização, não editado à mão.
   produtoCatalogoId: text("produto_catalogo_id"),
+  // Identificação do veículo — hoje preenchidos manualmente; ficam prontos
+  // pra um provedor de busca por placa/chassi/RENAVAM auto-preencher no
+  // futuro (decisão de negócio pendente, ver migration 084).
+  chassi: text("chassi"),
+  renavam: text("renavam"),
+  versao: text("versao"),
+  // Cache do valor FIPE — atualizado via BrasilAPI (gratuita) buscando por
+  // marca+modelo+ano já cadastrados. fipeCodigo é o código de 6-7 dígitos
+  // da tabela FIPE, único por modelo (não muda entre atualizações mensais).
+  fipeCodigo: text("fipe_codigo"),
+  fipeValor: numeric("fipe_valor", { precision: 12, scale: 2 }),
+  fipeMesReferencia: text("fipe_mes_referencia"),
+  fipeAtualizadoEm: timestamp("fipe_atualizado_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
