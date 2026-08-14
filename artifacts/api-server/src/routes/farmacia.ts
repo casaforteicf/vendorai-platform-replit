@@ -11,8 +11,13 @@ import {
   updateReceitaMedicaSchema,
   produtosCatalogoTable,
   categoriasProdutoTable,
+  knowledgeBaseTable,
+  tenantAgentConfigsTable,
   type FarmaciaProduto,
 } from "@workspace/db";
+import { logger } from "../lib/logger.js";
+import { searchBulaAnvisa, downloadBulaPdf } from "../lib/anvisaBulario.js";
+import { extractTextFromBuffer } from "../lib/document-extraction.js";
 
 const router: IRouter = Router();
 
@@ -325,6 +330,101 @@ router.delete("/farmacia/receitas/:id", async (req, res) => {
 
   await db.delete(receitasMedicasTable).where(eq(receitasMedicasTable.id, req.params.id as string));
   return res.status(204).send();
+});
+
+// ─── Sincronização de bula (ANVISA Bulário) ───────────────────────────────────
+//
+// Busca a bula do produto no Bulário Eletrônico da ANVISA, extrai o texto do
+// PDF e salva como item da Base de Conhecimento — vinculado automaticamente
+// ao agente de farmácia (tenant_agent_configs.knowledgeBaseIds), pra ele
+// passar a citar informação real da bula ao responder.
+//
+// Usa um endpoint não-documentado da ANVISA (ver lib/anvisaBulario.ts) — não
+// rodar em lote sem antes confirmar que funciona pra 1-2 produtos reais.
+router.post("/tenants/:tenantId/farmacia/produtos/:id/sincronizar-bula", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [produto] = await db.select().from(farmaciaProdutoTable)
+    .where(and(eq(farmaciaProdutoTable.id, req.params.id as string), eq(farmaciaProdutoTable.tenantId, tenantId)));
+  if (!produto) return res.status(404).json({ error: "Produto not found" });
+
+  const resultados = await searchBulaAnvisa(produto.nome, logger);
+  if (resultados === null) {
+    return res.status(502).json({
+      error: "Falha ao consultar o Bulário da ANVISA — ver logs do servidor para detalhes (endpoint não-oficial, formato pode ter mudado)",
+    });
+  }
+  if (resultados.length === 0) {
+    return res.status(404).json({ error: `Nenhuma bula encontrada na ANVISA para "${produto.nome}"` });
+  }
+
+  const bula = resultados[0]!;
+  const pdfBuffer = await downloadBulaPdf(bula.id, logger);
+  if (!pdfBuffer) {
+    return res.status(502).json({ error: "Bula encontrada, mas o download do PDF falhou — ver logs do servidor" });
+  }
+
+  let texto: string;
+  try {
+    texto = await extractTextFromBuffer(pdfBuffer, "application/pdf", `bula-${produto.nome}.pdf`, tenantId);
+  } catch (err) {
+    logger.error({ err, produtoId: produto.id }, "farmacia: falha ao extrair texto da bula");
+    return res.status(500).json({ error: "Falha ao extrair texto do PDF da bula" });
+  }
+
+  if (!texto?.trim()) {
+    return res.status(502).json({ error: "PDF da bula baixado, mas sem texto extraível (pode ser um PDF escaneado/imagem)" });
+  }
+
+  const titulo = `Bula — ${bula.nomeProduto}`;
+
+  // Upsert: se já existe um item de Base de Conhecimento pra esse produto
+  // (mesmo título, mesmo tenant), atualiza em vez de duplicar.
+  const [existingItem] = await db.select({ id: knowledgeBaseTable.id }).from(knowledgeBaseTable)
+    .where(and(eq(knowledgeBaseTable.tenantId, tenantId), eq(knowledgeBaseTable.titulo, titulo)));
+
+  let knowledgeItemId: string;
+  if (existingItem) {
+    await db.update(knowledgeBaseTable)
+      .set({ conteudo: texto, ativo: true, updatedAt: new Date() })
+      .where(eq(knowledgeBaseTable.id, existingItem.id));
+    knowledgeItemId = existingItem.id;
+  } else {
+    const [criado] = await db.insert(knowledgeBaseTable).values({
+      tenantId,
+      titulo,
+      conteudo: texto,
+      categoria: "Bulário ANVISA",
+      tags: ["bulario", "anvisa", "farmacia"],
+      ativo: true,
+    }).returning({ id: knowledgeBaseTable.id });
+    knowledgeItemId = criado!.id;
+  }
+
+  // Vincula automaticamente ao agente de farmácia (append, sem duplicar).
+  const [farmaciaCfg] = await db.select().from(tenantAgentConfigsTable)
+    .where(and(eq(tenantAgentConfigsTable.tenantId, tenantId), eq(tenantAgentConfigsTable.agentKey, "farmacia")));
+
+  const currentIds = ((farmaciaCfg?.knowledgeBaseIds ?? []) as string[]);
+  if (!currentIds.includes(knowledgeItemId)) {
+    const newIds = [...currentIds, knowledgeItemId];
+    if (farmaciaCfg) {
+      await db.update(tenantAgentConfigsTable)
+        .set({ knowledgeBaseIds: newIds, updatedAt: new Date() })
+        .where(eq(tenantAgentConfigsTable.id, farmaciaCfg.id));
+    } else {
+      await db.insert(tenantAgentConfigsTable).values({
+        tenantId,
+        agentKey: "farmacia",
+        ativo: true,
+        knowledgeBaseIds: newIds,
+      });
+    }
+  }
+
+  logger.info({ tenantId, produtoId: produto.id, knowledgeItemId }, "farmacia: bula sincronizada com sucesso");
+  return res.json({ ok: true, knowledgeItemId, bulaEncontrada: bula.nomeProduto, tamanhoTexto: texto.length });
 });
 
 export default router;

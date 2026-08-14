@@ -6,7 +6,7 @@
  *   - routes/agents.ts        (HTTP route handlers)
  *   - services/agent-dispatch.ts  (internal dispatch from webhook + scheduler)
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Logger } from "pino";
@@ -22,6 +22,7 @@ import {
   produtosCatalogoTable,
   tenantAgentConfigsTable,
   agentDefaultsTable,
+  knowledgeBaseTable,
 } from "@workspace/db";
 import type { AgentTask, AiFeature } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
@@ -189,6 +190,41 @@ export async function getAgentConfig(tenantId: string, agentKey: string): Promis
       `Arquivos disponíveis:\n${fileList}\n\n` +
       `Use o nome exato como listado acima. Envie apenas um arquivo por mensagem e somente quando agregar valor ao lead.`
     );
+  }
+
+  // ── Inject linked Knowledge Base content ─────────────────────────────────────
+  // A tela Agentes→Configurar→Conhecimento já permitia escolher quais itens da
+  // Base de Conhecimento cada agente usa (tenantCfg.knowledgeBaseIds), mas o
+  // conteúdo nunca era efetivamente buscado e injetado no prompt — a seleção
+  // ficava só salva, sem efeito nenhum na resposta gerada. Corrigido aqui.
+  const knowledgeBaseIds = (tenantCfg?.knowledgeBaseIds ?? []) as string[];
+  if (knowledgeBaseIds.length > 0) {
+    const items = await db
+      .select({
+        titulo: knowledgeBaseTable.titulo,
+        conteudo: knowledgeBaseTable.conteudo,
+      })
+      .from(knowledgeBaseTable)
+      .where(and(
+        eq(knowledgeBaseTable.tenantId, tenantId),
+        inArray(knowledgeBaseTable.id, knowledgeBaseIds),
+        eq(knowledgeBaseTable.ativo, true),
+      ));
+
+    if (items.length > 0) {
+      const MAX_CHARS_PER_ITEM = 6000;
+      const sections = items.map((item) => {
+        const truncated = item.conteudo.length > MAX_CHARS_PER_ITEM;
+        const content = truncated ? item.conteudo.slice(0, MAX_CHARS_PER_ITEM) + "\n[...conteúdo truncado...]" : item.conteudo;
+        return `### ${item.titulo}\n${content}`;
+      });
+      parts.push(
+        "## BASE DE CONHECIMENTO\n" +
+        "Use as informações abaixo como referência ao responder. Não repita o conteúdo literalmente de forma longa; " +
+        "extraia só o que for relevante para a pergunta do lead.\n\n" +
+        sections.join("\n\n---\n\n")
+      );
+    }
   }
 
   return {
