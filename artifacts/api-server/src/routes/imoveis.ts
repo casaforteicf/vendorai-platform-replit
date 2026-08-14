@@ -7,6 +7,8 @@ import {
   leadsTable,
   usersTable,
 } from "@workspace/db";
+import { logger } from "../lib/logger.js";
+import { autoCreateAdCampaignIfNeeded } from "../lib/adAutoCreate.js";
 
 const router: IRouter = Router();
 
@@ -45,6 +47,14 @@ router.post("/tenants/:tenantId/imoveis/propriedades", async (req, res) => {
   const [row] = await db.insert(imoveisPropriedadesTable)
     .values({ ...req.body, tenantId } as any)
     .returning();
+
+  if (row!.status === "disponivel" && row!.vendeNoPracaAi) {
+    await autoCreateAdCampaignIfNeeded(
+      { tenantId, itemTipo: "imovel", itemId: row!.id, vertical: "imoveis" },
+      logger,
+    );
+  }
+
   return res.status(201).json(row);
 });
 
@@ -69,6 +79,14 @@ router.put("/tenants/:tenantId/imoveis/propriedades/:id", async (req, res) => {
     .where(and(eq(imoveisPropriedadesTable.id, id), eq(imoveisPropriedadesTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Propriedade not found" });
+
+  if (row.status === "disponivel" && row.vendeNoPracaAi) {
+    await autoCreateAdCampaignIfNeeded(
+      { tenantId, itemTipo: "imovel", itemId: row.id, vertical: "imoveis" },
+      logger,
+    );
+  }
+
   return res.json(row);
 });
 

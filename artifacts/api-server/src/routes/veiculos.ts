@@ -19,6 +19,7 @@ import {
   encontrarModelosCandidatos,
   type TipoVeiculoFipe,
 } from "../lib/fipeClient.js";
+import { autoCreateAdCampaignIfNeeded } from "../lib/adAutoCreate.js";
 
 const router: IRouter = Router();
 
@@ -95,6 +96,14 @@ async function syncVeiculoToProdutoCatalogo(veiculo: VeiculosEstoque): Promise<v
     const [produto] = await db.insert(produtosCatalogoTable).values(payload as any).returning();
     await db.update(veiculosEstoqueTable).set({ produtoCatalogoId: produto!.id }).where(eq(veiculosEstoqueTable.id, veiculo.id));
   }
+
+  // Item acabou de ficar público de verdade — cria campanha de anúncio
+  // automaticamente (rascunho + criativo gerado, aguardando aprovação
+  // manual). Best-effort, nunca derruba o fluxo de publicar o veículo.
+  await autoCreateAdCampaignIfNeeded(
+    { tenantId: veiculo.tenantId, itemTipo: "veiculo", itemId: veiculo.id, vertical: "veiculos" },
+    logger,
+  );
 }
 
 // ─── Estoque ──────────────────────────────────────────────────────────────────
