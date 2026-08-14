@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { gerarCriativoRSA, type ItemAnunciavel } from "../lib/adContentGenerator.js";
+import { gerarShoppingFeedXml, gerarFeedToken, validarFeedToken } from "../lib/adShoppingFeed.js";
 
 const router: IRouter = Router();
 
@@ -152,3 +153,33 @@ router.post("/tenants/:tenantId/ads/creatives/:id/aprovar", async (req, res) => 
 });
 
 export default router;
+
+// ─── Feed do Google Shopping (Merchant Center) ────────────────────────────────
+//
+// Endpoint AUTENTICADO: devolve a URL assinada do feed (o Merchant Center
+// não autentica com JWT, então o feed em si fica atrás de um token HMAC na
+// própria URL — mesmo princípio do secret usado no webhook do WhatsApp).
+router.get("/tenants/:tenantId/ads/shopping-feed/url", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const token = gerarFeedToken(tenantId);
+  const base = process.env.API_PUBLIC_BASE_URL ?? "https://vendorai-platform-replit-production.up.railway.app";
+  return res.json({ feedUrl: `${base}/api/public/ads/shopping-feed/${tenantId}.xml?token=${token}` });
+});
+
+// Endpoint PÚBLICO (sem middleware de autenticação — precisa ser
+// registrado antes do `authenticate` global, mesmo padrão de
+// publicSiteRouter/fretesPublicRouter): é isso que o Google Merchant
+// Center de fato busca periodicamente.
+export const adsPublicRouter: IRouter = Router();
+adsPublicRouter.get("/public/ads/shopping-feed/:tenantId.xml", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const token = (req.query.token as string | undefined) ?? "";
+  if (!token || !validarFeedToken(tenantId, token)) {
+    return res.status(403).send("Forbidden");
+  }
+  const xml = await gerarShoppingFeedXml(tenantId, logger);
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  return res.send(xml);
+});

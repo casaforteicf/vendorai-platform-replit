@@ -72,7 +72,7 @@ import portalRouter from "./portal";
 import varejoRouter from "./varejo";
 import supermercadoRouter, { supermercadoPublicRouter } from "./supermercado";
 import farmaciaRouter from "./farmacia";
-import adsRouter from "./ads";
+import adsRouter, { adsPublicRouter } from "./ads";
 import imoveisRouter from "./imoveis";
 import fretesRouter, { fretesPublicRouter } from "./fretes";
 import storiesRouter from "./stories";
@@ -146,6 +146,7 @@ router.use(whatsappCallbackRouter);
 router.use(publicProposalsRouter);
 router.use(supermercadoPublicRouter);
 router.use(fretesPublicRouter);
+router.use(adsPublicRouter);
 router.use(internalScoutSignalRouter);
 
 // Protected — all routes below require a valid JWT
