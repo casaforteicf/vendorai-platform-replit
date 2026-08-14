@@ -1,8 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startScheduler } from "./jobs/scheduler.js";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { applyPendingMigrations } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -19,51 +18,31 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
+//
+// O Railway sobe a API (CMD do Dockerfile) sem garantir que
+// `pnpm --filter @workspace/db run migrate` já rodou antes — então um
+// deploy recém-publicado pode ter a API no ar antes de migrations recentes
+// (ex: colunas de journey do lead_briefings, normalização do Scout) terem
+// sido aplicadas no banco. Rotas que dependem delas quebrariam.
+//
+// Em vez de duplicar DDL de migrations específicas aqui dentro (o que já
+// gerou drift no passado — alguém corrigia a migration e esquecia de
+// atualizar a cópia), a API aplica TODAS as migrations pendentes no boot
+// usando o mesmo motor do CLI (lib/db/src/apply-migrations.ts), direto dos
+// arquivos em lib/db/migrations. É seguro rodar em toda subida: cada
+// migration só aplica uma vez (controle em vendorai_schema_migrations) e um
+// advisory lock evita corrida entre réplicas subindo ao mesmo tempo.
 async function runStartupMigrations() {
-  try {
-    await db.execute(sql`
-      ALTER TABLE lead_briefings
-        ADD COLUMN IF NOT EXISTS journey_stage text DEFAULT 'abordagem',
-        ADD COLUMN IF NOT EXISTS journey_checklist jsonb DEFAULT '{}'::jsonb
-    `);
-    logger.info("startup migrations: lead service journey OK");
-
-    // Imported Scout findings used to arrive as "em_negociacao" even when
-    // no proposal or deal existed. Keep negotiation reserved for records
-    // that actually have a commercial document/process attached.
-    // A aplicação pode entrar no ar antes das migrations 059/078 em um
-    // deploy recém-publicado. Referenciar uma coluna ainda ausente aqui
-    // derrubava toda a API. Normalize somente quando o schema estiver pronto.
-    await db.execute(sql`
-      DO $$
-      BEGIN
-        IF to_regclass('public.scout_oportunidades') IS NOT NULL
-          AND (SELECT count(*) = 5 FROM information_schema.columns
-               WHERE table_schema = 'public'
-                 AND table_name = 'scout_oportunidades'
-                 AND column_name IN ('pipeline_stage', 'approved_by', 'approved_at', 'proposta_id', 'deal_id'))
-        THEN
-          UPDATE scout_oportunidades
-          SET status = 'pendente',
-              pipeline_stage = 'identificada',
-              approved_by = NULL,
-              approved_at = NULL
-          WHERE status = 'em_negociacao'
-            AND proposta_id IS NULL
-            AND deal_id IS NULL;
-        END IF;
-      END $$
-    `);
-    logger.info("startup migrations: normalized Scout negotiation statuses OK");
-  } catch (err) {
-    logger.error({ err }, "startup migrations: lead service journey failed");
-    throw err;
+  const result = await applyPendingMigrations(logger);
+  if (result.applied.length > 0) {
+    logger.info(
+      { migrations: result.applied.map((m) => m.version) },
+      "startup migrations: aplicadas com sucesso",
+    );
   }
 }
 
 async function start() {
-  // Apply the idempotent compatibility DDL before routes start selecting the
-  // new columns. The versioned SQL migration remains the schema history.
   await runStartupMigrations();
 
   app.listen(port, (err) => {
