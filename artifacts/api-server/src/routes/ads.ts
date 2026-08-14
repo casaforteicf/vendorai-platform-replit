@@ -1,13 +1,16 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   adCampaignsTable,
   adCreativesTable,
+  adPerformanceSnapshotsTable,
   insertAdCampaignSchema,
   produtosCatalogoTable,
   veiculosEstoqueTable,
   imoveisPropriedadesTable,
+  leadsTable,
+  dealsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { gerarCriativoRSA, type ItemAnunciavel } from "../lib/adContentGenerator.js";
@@ -153,6 +156,66 @@ router.post("/tenants/:tenantId/ads/creatives/:id/aprovar", async (req, res) => 
 });
 
 export default router;
+
+// ─── Performance / atribuição ──────────────────────────────────────────────
+//
+// Combina o que a própria plataforma reporta (impressões/cliques/custo —
+// só existe depois que o job de coleta rodar, que depende do developer
+// token aprovado) com o que a GENTE sabe de verdade: quantos leads e
+// negócios ganhos vieram de cada campanha (via leads.ad_campaign_id).
+// Isso é mais confiável que CTR/CPC isolado — mostra se a campanha trouxe
+// venda de verdade, não só clique.
+router.get("/tenants/:tenantId/ads/campaigns/:id/performance", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [campanha] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, req.params.id as string), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campanha) return res.status(404).json({ error: "Campanha not found" });
+
+  const [metricasPlataforma] = await db
+    .select({
+      impressoes: sql<number>`coalesce(sum(${adPerformanceSnapshotsTable.impressoes}), 0)`,
+      cliques: sql<number>`coalesce(sum(${adPerformanceSnapshotsTable.cliques}), 0)`,
+      custoTotal: sql<string>`coalesce(sum(${adPerformanceSnapshotsTable.custo}), 0)`,
+    })
+    .from(adPerformanceSnapshotsTable)
+    .where(eq(adPerformanceSnapshotsTable.campaignId, campanha.id));
+
+  const [leadsGerados] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(leadsTable)
+    .where(eq(leadsTable.adCampaignId, campanha.id));
+
+  const [negociosGanhos] = await db
+    .select({
+      total: sql<number>`count(*)`,
+      receitaTotal: sql<string>`coalesce(sum(${dealsTable.valor}), 0)`,
+    })
+    .from(dealsTable)
+    .innerJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))
+    .where(and(eq(leadsTable.adCampaignId, campanha.id), eq(dealsTable.etapa, "ganho")));
+
+  const custo = Number(metricasPlataforma?.custoTotal ?? 0);
+  const receita = Number(negociosGanhos?.receitaTotal ?? 0);
+
+  return res.json({
+    campanhaId: campanha.id,
+    plataforma: {
+      impressoes: Number(metricasPlataforma?.impressoes ?? 0),
+      cliques: Number(metricasPlataforma?.cliques ?? 0),
+      custoTotal: custo,
+      obs: custo === 0 ? "Sem snapshot de métricas ainda — depende do job de coleta (aguardando developer token da plataforma)" : undefined,
+    },
+    conversaoReal: {
+      leadsGerados: Number(leadsGerados?.total ?? 0),
+      negociosGanhos: Number(negociosGanhos?.total ?? 0),
+      receitaTotal: receita,
+      roas: custo > 0 ? Number((receita / custo).toFixed(2)) : null,
+      obs: "Só conta lead/negócio com ad_campaign_id preenchido — depende de captura de UTM na origem, ainda não conectada em todos os pontos de entrada",
+    },
+  });
+});
 
 // ─── Feed do Google Shopping (Merchant Center) ────────────────────────────────
 //

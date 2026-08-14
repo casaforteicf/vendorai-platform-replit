@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, jsonb, pgEnum, date, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -58,6 +58,19 @@ export const adCreativesTable = pgTable("ad_creatives", {
   aprovadoEm: timestamp("aprovado_em"),
 });
 
+// Snapshot diário de métricas puxadas da plataforma — populado por job que
+// depende do developer token/API de cada plataforma estar aprovado.
+export const adPerformanceSnapshotsTable = pgTable("ad_performance_snapshots", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  campaignId: text("campaign_id").notNull().references(() => adCampaignsTable.id, { onDelete: "cascade" }),
+  data: date("data").notNull(),
+  impressoes: integer("impressoes").notNull().default(0),
+  cliques: integer("cliques").notNull().default(0),
+  custo: numeric("custo", { precision: 10, scale: 2 }).notNull().default("0"),
+  conversoesPlataforma: integer("conversoes_plataforma"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertAdCampaignSchema = createInsertSchema(adCampaignsTable, {
   orcamentoDiario: decimalField,
 }).omit({ id: true, createdAt: true, updatedAt: true, externalCampaignId: true, status: true });
@@ -69,3 +82,4 @@ export const updateAdCampaignSchema = createSelectSchema(adCampaignsTable, {
 export type AdCampaign = typeof adCampaignsTable.$inferSelect;
 export type InsertAdCampaign = z.infer<typeof insertAdCampaignSchema>;
 export type AdCreative = typeof adCreativesTable.$inferSelect;
+export type AdPerformanceSnapshot = typeof adPerformanceSnapshotsTable.$inferSelect;
