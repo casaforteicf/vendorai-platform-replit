@@ -72,6 +72,7 @@ import portalRouter from "./portal";
 import varejoRouter from "./varejo";
 import supermercadoRouter, { supermercadoPublicRouter } from "./supermercado";
 import farmaciaRouter from "./farmacia";
+import adsRouter from "./ads";
 import imoveisRouter from "./imoveis";
 import fretesRouter, { fretesPublicRouter } from "./fretes";
 import storiesRouter from "./stories";
@@ -288,6 +289,7 @@ router.use(varejoRouter);
 // Supermercado Hub
 router.use(supermercadoRouter);
 router.use(farmaciaRouter);
+router.use(adsRouter);
 router.use(imoveisRouter);
 router.use(fretesRouter);
 router.use(storiesRouter);
