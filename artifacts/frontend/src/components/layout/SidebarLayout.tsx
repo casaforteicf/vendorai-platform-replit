@@ -212,7 +212,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas",
     "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
-    "/praca-perguntas", "/erp",
+    "/praca-perguntas", "/erp", "/ads",
   ];
 
   const verticalHrefAllowlists: Record<string, Set<string>> = {
