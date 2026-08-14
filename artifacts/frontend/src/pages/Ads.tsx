@@ -193,7 +193,7 @@ export default function Ads() {
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
             <li>Plataforma disponível agora: <strong>Google</strong>. Meta, TikTok e LinkedIn entram depois.</li>
             <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search/Performance Max).</li>
-            <li>Farmácia, mercado e distribuidoras usam o feed do Google Shopping.</li>
+            <li>Farmácia (venda livre), mercado e distribuidoras usam o feed do Google Shopping. Medicamento que exige receita nunca entra no feed.</li>
             <li>Nenhuma campanha publica sozinha — todo criativo passa por aprovação antes.</li>
           </ul>
           {feedInfo?.feedUrl && (

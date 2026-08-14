@@ -2,10 +2,15 @@
  * Feed do Google Shopping (Merchant Center) — formato RSS 2.0 com namespace
  * g: (especificação oficial: support.google.com/merchants/answer/7052112).
  *
- * Só produtos físicos com estoque (farmácia, mercado, distribuidoras,
- * autopeças) entram aqui. Farmácia é excluída por enquanto: a certificação
- * de venda livre pro Shopping não foi confirmada disponível pro Brasil
- * (decisão em conversa) — reintroduzir quando/se confirmado.
+ * Produtos físicos com estoque (farmácia, mercado, distribuidoras,
+ * autopeças) entram aqui. Farmácia venda-livre foi liberada por decisão
+ * explícita do usuário (sem confirmação direta de que a certificação do
+ * Google pra Shopping já cobre o Brasil — risco assumido conscientemente).
+ * Medicamento que exige receita (proxy: farmacia_produtos.exigeReceita)
+ * continua excluído sempre, independente dessa decisão — isso não é uma
+ * questão de país, é vedado pelo Google sem certificação separada e mais
+ * rigorosa (fabricante/medicamento controlado), que não foi discutida nem
+ * liberada.
  *
  * IMPORTANTE — pendência de verificação: o campo `link` (URL da página do
  * produto, exigido pelo Google) usa um template configurável via env var
@@ -17,7 +22,7 @@
  */
 import crypto from "crypto";
 import type { Logger } from "pino";
-import { eq, and, isNotNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   db,
   produtosCatalogoTable,
@@ -49,14 +54,14 @@ export function validarFeedToken(tenantId: string, token: string): boolean {
 }
 
 export async function gerarShoppingFeedXml(tenantId: string, log: Logger): Promise<string> {
-  // IDs de produto que vieram da Farmácia — excluídos do feed (ver aviso no
-  // topo do arquivo). produtoCatalogoId é preenchido pela sincronização
-  // farmácia→catálogo já existente.
-  const farmaciaLinks = await db
+  // IDs de produto de farmácia que exigem receita — excluídos do feed
+  // sempre (ver aviso no topo do arquivo). Produtos de farmácia SEM essa
+  // exigência (venda livre) são elegíveis normalmente desde a liberação.
+  const farmaciaControlados = await db
     .select({ produtoCatalogoId: farmaciaProdutoTable.produtoCatalogoId })
     .from(farmaciaProdutoTable)
-    .where(and(eq(farmaciaProdutoTable.tenantId, tenantId), isNotNull(farmaciaProdutoTable.produtoCatalogoId)));
-  const idsExcluidos = new Set(farmaciaLinks.map((f) => f.produtoCatalogoId).filter(Boolean) as string[]);
+    .where(and(eq(farmaciaProdutoTable.tenantId, tenantId), eq(farmaciaProdutoTable.exigeReceita, true)));
+  const idsExcluidos = new Set(farmaciaControlados.map((f) => f.produtoCatalogoId).filter(Boolean) as string[]);
 
   const produtos = await db
     .select()
