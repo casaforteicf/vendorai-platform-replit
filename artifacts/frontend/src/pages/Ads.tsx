@@ -33,6 +33,7 @@ interface AdCampaign {
   orcamentoDiario: string;
   status: string;
   externalCampaignId: string | null;
+  utmCode: string | null;
 }
 
 interface AdCreative {
@@ -227,6 +228,7 @@ export default function Ads() {
                         <Badge variant="outline" className="capitalize">{c.modo === "unico" ? "Item único" : "Carrossel"}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">Orçamento diário: R$ {c.orcamentoDiario}</p>
+                      {c.utmCode && <p className="text-xs text-muted-foreground">Código de atribuição: <code className="bg-muted px-1 rounded">{c.utmCode}</code></p>}
                     </div>
                     <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
                   </div>

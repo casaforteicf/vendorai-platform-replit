@@ -36,6 +36,12 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
   modo: adModoEnum("modo").notNull().default("unico"),
   orcamentoDiario: numeric("orcamento_diario", { precision: 10, scale: 2 }).notNull(),
   status: adCampanhaStatusEnum("status").notNull().default("rascunho"),
+  // Código curto único pra usar como utm_campaign em qualquer link que
+  // aponte pra essa campanha — existe desde o rascunho (independente de
+  // já ter sido publicada na plataforma), pra já poder ir em material de
+  // divulgação. Usado por resolveAdCampaignFromUtm (adAttribution.ts) pra
+  // ligar um lead que chegou por esse link à campanha certa.
+  utmCode: text("utm_code"),
   // Só preenchido depois de publicar de verdade na plataforma (resource
   // name/campaign id retornado pela API)
   externalCampaignId: text("external_campaign_id"),

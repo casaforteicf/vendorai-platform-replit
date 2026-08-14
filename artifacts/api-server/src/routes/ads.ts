@@ -96,7 +96,11 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const parsed = insertAdCampaignSchema.safeParse({ ...req.body, tenantId });
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const [row] = await db.insert(adCampaignsTable).values(parsed.data).returning();
+  // Código curto e único pra usar como utm_campaign em qualquer link de
+  // divulgação dessa campanha (ver adAttribution.ts).
+  const utmCode = `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
+
+  const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, utmCode }).returning();
   return res.status(201).json(row);
 });
 
