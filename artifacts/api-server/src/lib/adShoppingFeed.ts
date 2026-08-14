@@ -27,10 +27,22 @@ import {
   db,
   produtosCatalogoTable,
   farmaciaProdutoTable,
+  tenantsTable,
 } from "@workspace/db";
 
 const PRODUCT_URL_TEMPLATE =
   process.env.PRACA_PRODUCT_URL_TEMPLATE ?? "https://praca.ai/produto/{id}";
+
+function montarFeedVazio(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+  <channel>
+    <title>Catálogo Vendor.ai</title>
+    <link>https://appvendorai.com</link>
+    <description>Feed de produtos gerado automaticamente</description>
+  </channel>
+</rss>`;
+}
 
 function xmlEscape(s: string): string {
   return s
@@ -63,6 +75,19 @@ export async function gerarShoppingFeedXml(tenantId: string, log: Logger): Promi
     .where(and(eq(farmaciaProdutoTable.tenantId, tenantId), eq(farmaciaProdutoTable.exigeReceita, true)));
   const idsExcluidos = new Set(farmaciaControlados.map((f) => f.produtoCatalogoId).filter(Boolean) as string[]);
 
+  // Só entra no feed o que está DE FATO publicado no Praça.ai — o `link`
+  // do feed aponta pra página pública do produto, então anunciar algo que
+  // não está visível lá seria um link quebrado (derruba aprovação no
+  // Merchant Center) ou divulgaria algo que o lojista escolheu não expor.
+  // Regra: switch geral do tenant precisa estar ligado, E o produto não
+  // pode ter sido explicitamente tirado da vitrine (vendeNoPracaAi=false
+  // no produto sobrepõe; null/true = herda/confirma visível).
+  const [tenant] = await db.select({ vendeNoPracaAi: tenantsTable.vendeNoPracaAi }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant?.vendeNoPracaAi) {
+    log.warn({ tenantId }, "adShoppingFeed: tenant não vende no Praça.ai (switch geral desligado) — feed vazio");
+    return montarFeedVazio();
+  }
+
   const produtos = await db
     .select()
     .from(produtosCatalogoTable)
@@ -70,6 +95,7 @@ export async function gerarShoppingFeedXml(tenantId: string, log: Logger): Promi
 
   const elegiveis = produtos.filter((p) => {
     if (idsExcluidos.has(p.id)) return false;
+    if (p.vendeNoPracaAi === false) return false; // tirado explicitamente da vitrine
     if (p.productType !== "physical") return false;
     if (!p.imagemUrl && (!p.imagens || p.imagens.length === 0)) return false;
     if (Number(p.precoBase) <= 0) return false;
@@ -77,7 +103,7 @@ export async function gerarShoppingFeedXml(tenantId: string, log: Logger): Promi
   });
 
   if (elegiveis.length === 0) {
-    log.warn({ tenantId, totalProdutos: produtos.length }, "adShoppingFeed: nenhum produto elegível pro feed (todos excluídos ou sem imagem/preço)");
+    log.warn({ tenantId, totalProdutos: produtos.length }, "adShoppingFeed: nenhum produto elegível pro feed (todos excluídos, fora da vitrine, ou sem imagem/preço)");
   }
 
   const items = elegiveis.map((p) => {
