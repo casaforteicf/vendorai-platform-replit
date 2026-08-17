@@ -24,6 +24,7 @@ import {
   usersTable,
   sellerCommissionsTable,
   produtosCatalogoTable,
+  farmaciaPedidoTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -284,6 +285,27 @@ router.patch("/deals/:id", async (req, res) => {
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(dealsTable.id, existing.id))
     .returning();
+
+  // Negocios e Central da Farmacia sao pipelines distintas, mas compartilham
+  // o mesmo pedido. A confirmacao comercial libera apenas pedidos que nao
+  // dependem de receita; o cancelamento encerra o fluxo operacional.
+  if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
+    await db.update(farmaciaPedidoTable)
+      .set({ status: "confirmado", updatedAt: new Date() })
+      .where(and(
+        eq(farmaciaPedidoTable.dealId, deal.id),
+        eq(farmaciaPedidoTable.tenantId, existing.tenantId),
+        eq(farmaciaPedidoTable.status, "aguardando_confirmacao"),
+      ));
+  } else if (parsed.data.etapa === "perdido" && existing.etapa !== "perdido") {
+    await db.update(farmaciaPedidoTable)
+      .set({ status: "cancelado", updatedAt: new Date() })
+      .where(and(
+        eq(farmaciaPedidoTable.dealId, deal.id),
+        eq(farmaciaPedidoTable.tenantId, existing.tenantId),
+        sql`${farmaciaPedidoTable.status} NOT IN ('entregue', 'cancelado')`,
+      ));
+  }
 
   // Feature store — captura a mudança de etapa e, quando o negócio resolve
   // (ganho ou perdido), retroage o rótulo em todos os snapshots pendentes

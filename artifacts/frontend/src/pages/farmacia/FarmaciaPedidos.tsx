@@ -11,7 +11,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, ChevronDown, Clock, CheckCircle2, Truck, XCircle, Package, ShieldAlert, Loader2 } from "lucide-react";
+import { ShoppingCart, ChevronDown, Clock, CheckCircle2, Truck, XCircle, Package, ShieldAlert, Loader2, BriefcaseBusiness, Radar } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -123,6 +123,18 @@ function PedidoCard({ pedido, onUpdateStatus, onAnexarReceita }: { pedido: any; 
           <p className="text-xs text-muted-foreground">
             {format(parseISO(pedido.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
           </p>
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            {pedido.dealId && (
+              <a href="/negocios" className="inline-flex items-center gap-1 hover:text-primary" title={`Negócio ${pedido.dealId}`}>
+                <BriefcaseBusiness className="h-3 w-3" /> Negócio vinculado
+              </a>
+            )}
+            {pedido.scoutOportunidadeId && (
+              <a href="/scout/pipeline" className="inline-flex items-center gap-1 hover:text-primary">
+                <Radar className="h-3 w-3" /> Revenue Scout
+              </a>
+            )}
+          </div>
         </div>
       </div>
 

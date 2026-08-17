@@ -3,6 +3,8 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
+import { dealsTable } from "./deals";
+import { scoutOportunidadesTable } from "./scout_oportunidades";
 
 export const farmaciaPedidoStatusEnum = pgEnum("farmacia_pedido_status", [
   "aguardando_confirmacao", "aguardando_receita", "confirmado",
@@ -22,6 +24,8 @@ export const farmaciaPedidoTable = pgTable("farmacia_pedidos", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
   leadId: text("lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  dealId: text("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
+  scoutOportunidadeId: text("scout_oportunidade_id").references(() => scoutOportunidadesTable.id, { onDelete: "set null" }),
   origem: farmaciaPedidoOrigemEnum("origem").notNull().default("whatsapp"),
   status: farmaciaPedidoStatusEnum("status").notNull().default("aguardando_confirmacao"),
   enderecoEntrega: text("endereco_entrega"),

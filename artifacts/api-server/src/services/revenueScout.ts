@@ -26,6 +26,9 @@ import {
   produtosCatalogoTable,
   intentSignalsTable,
   receitasMedicasTable,
+  farmaciaPedidoTable,
+  farmaciaPedidoItemTable,
+  farmaciaProdutoTable,
   type PropostaItem,
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
@@ -90,6 +93,28 @@ async function dataUltimaCompraProduto(
     const data = p.acceptedAt ?? p.updatedAt;
     if (!melhorData || data > melhorData) melhorData = data;
   }
+
+  // Compras concluidas na Central da Farmacia tambem alimentam recorrencia e
+  // recompra no Scout. O vinculo usa o produto do catalogo compartilhado.
+  const comprasFarmacia = await db
+    .select({ data: farmaciaPedidoTable.updatedAt })
+    .from(farmaciaPedidoTable)
+    .innerJoin(farmaciaPedidoItemTable, eq(farmaciaPedidoItemTable.pedidoId, farmaciaPedidoTable.id))
+    .innerJoin(farmaciaProdutoTable, eq(farmaciaProdutoTable.id, farmaciaPedidoItemTable.produtoId))
+    .where(and(
+      eq(farmaciaPedidoTable.tenantId, tenantId),
+      eq(farmaciaPedidoTable.leadId, leadId),
+      eq(farmaciaPedidoTable.status, "entregue"),
+      or(
+        eq(farmaciaPedidoItemTable.produtoId, produtoId),
+        eq(farmaciaProdutoTable.produtoCatalogoId, produtoId),
+      ),
+    ))
+    .orderBy(desc(farmaciaPedidoTable.updatedAt))
+    .limit(1);
+
+  const dataFarmacia = comprasFarmacia[0]?.data ?? null;
+  if (dataFarmacia && (!melhorData || dataFarmacia > melhorData)) melhorData = dataFarmacia;
   return melhorData;
 }
 

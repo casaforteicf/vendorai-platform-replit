@@ -1,11 +1,14 @@
 import { Router, type IRouter } from "express";
-import { and, eq, desc, ilike } from "drizzle-orm";
+import { and, eq, desc, ilike, notInArray } from "drizzle-orm";
+import type { Logger } from "pino";
 import {
   db,
   farmaciaProdutoTable,
   farmaciaPedidoTable,
   farmaciaPedidoItemTable,
   leadsTable,
+  dealsTable,
+  scoutOportunidadesTable,
   receitasMedicasTable,
   insertReceitaMedicaSchema,
   updateReceitaMedicaSchema,
@@ -13,6 +16,7 @@ import {
   categoriasProdutoTable,
   type FarmaciaProduto,
 } from "@workspace/db";
+import { reconcileScoutOnDealWon } from "../services/revenueScout.js";
 
 const router: IRouter = Router();
 
@@ -22,6 +26,62 @@ function tid(req: Express.Request): string {
 function canAccess(req: Express.Request, tenantId: string) {
   const role = (req as any).user?.platformRole;
   return role === "super_admin" || tid(req) === tenantId;
+}
+
+type PharmacyOrderStatus = typeof farmaciaPedidoTable.$inferSelect.status;
+
+function dealStageForPharmacyStatus(status: PharmacyOrderStatus) {
+  switch (status) {
+    case "aguardando_confirmacao":
+    case "aguardando_receita":
+      return "qualificado" as const;
+    case "confirmado":
+      return "ganho" as const;
+    case "em_separacao":
+    case "saiu_para_entrega":
+      return "em_execucao" as const;
+    case "entregue":
+      return "entregue" as const;
+    case "cancelado":
+      return "perdido" as const;
+  }
+}
+
+async function syncPharmacyOrderRelations(
+  order: typeof farmaciaPedidoTable.$inferSelect,
+  previousStatus: PharmacyOrderStatus | null,
+  log: Logger,
+) {
+  if (!order.dealId) return;
+
+  const etapa = dealStageForPharmacyStatus(order.status);
+  const now = new Date();
+  await db.update(dealsTable).set({
+    etapa,
+    valor: order.valorTotal,
+    ...(etapa === "ganho" ? { wonAt: now, dataFechamento: now, tipoFechamento: "pedido" as const } : {}),
+    ...(etapa === "perdido" ? { lostAt: now, lostReason: "pedido_farmacia_cancelado" } : {}),
+    updatedAt: now,
+  }).where(and(eq(dealsTable.id, order.dealId), eq(dealsTable.tenantId, order.tenantId)));
+
+  if (order.scoutOportunidadeId) {
+    await db.update(scoutOportunidadesTable).set({
+      dealId: order.dealId,
+      ...(order.status === "confirmado" || order.status === "entregue"
+        ? { status: "converteu", converteu: true }
+        : {}),
+    }).where(and(
+      eq(scoutOportunidadesTable.id, order.scoutOportunidadeId),
+      eq(scoutOportunidadesTable.tenantId, order.tenantId),
+    ));
+  } else if (order.leadId && order.status === "confirmado" && previousStatus !== "confirmado") {
+    await reconcileScoutOnDealWon({
+      tenantId: order.tenantId,
+      leadId: order.leadId,
+      dealId: order.dealId,
+      log,
+    });
+  }
 }
 
 /** Sincroniza produto de farmácia com o catálogo genérico (Praça.ai/Scout). */
@@ -143,7 +203,14 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const { itens, receitaUrl, receitaMedicaId, ...pedidoData } = req.body;
+  const {
+    itens,
+    receitaUrl,
+    receitaMedicaId,
+    dealId: requestedDealId,
+    scoutOportunidadeId: requestedScoutId,
+    ...pedidoData
+  } = req.body;
 
   let valorTotal = 0;
   let temItemControlado = false;
@@ -172,6 +239,67 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
   // pedido esteja completo.
   const status = temItemControlado && !receitaUrl && !receitaValida ? "aguardando_receita" : "aguardando_confirmacao";
 
+  let linkedDealId: string | null = null;
+  let linkedScoutId: string | null = null;
+  let leadNome = "Cliente";
+
+  if (pedidoData.leadId) {
+    const [lead] = await db.select({ id: leadsTable.id, nome: leadsTable.nome })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, pedidoData.leadId), eq(leadsTable.tenantId, tenantId)));
+    if (!lead) return res.status(422).json({ error: "Lead não pertence a este tenant." });
+    leadNome = lead.nome;
+
+    if (requestedDealId) {
+      const [deal] = await db.select({ id: dealsTable.id }).from(dealsTable)
+        .where(and(
+          eq(dealsTable.id, requestedDealId),
+          eq(dealsTable.tenantId, tenantId),
+          eq(dealsTable.leadId, pedidoData.leadId),
+        ));
+      if (!deal) return res.status(422).json({ error: "Negócio inválido ou vinculado a outro cliente." });
+      linkedDealId = deal.id;
+    } else {
+      const [activeDeal] = await db.select({ id: dealsTable.id }).from(dealsTable)
+        .where(and(
+          eq(dealsTable.tenantId, tenantId),
+          eq(dealsTable.leadId, pedidoData.leadId),
+          ilike(dealsTable.titulo, "Pedido Farmácia%"),
+          notInArray(dealsTable.etapa, ["ganho", "entregue", "perdido"]),
+        ))
+        .orderBy(desc(dealsTable.createdAt))
+        .limit(1);
+
+      if (activeDeal) {
+        linkedDealId = activeDeal.id;
+      } else {
+        const [createdDeal] = await db.insert(dealsTable).values({
+          tenantId,
+          leadId: pedidoData.leadId,
+          titulo: `Pedido Farmácia — ${leadNome}`,
+          valor: String(valorTotal.toFixed(2)),
+          etapa: "qualificado",
+          probabilidade: 60,
+          tipoFechamento: "pedido",
+        }).returning({ id: dealsTable.id });
+        linkedDealId = createdDeal!.id;
+      }
+    }
+
+    if (requestedScoutId) {
+      const [scout] = await db.select({ id: scoutOportunidadesTable.id }).from(scoutOportunidadesTable)
+        .where(and(
+          eq(scoutOportunidadesTable.id, requestedScoutId),
+          eq(scoutOportunidadesTable.tenantId, tenantId),
+          eq(scoutOportunidadesTable.clienteId, pedidoData.leadId),
+        ));
+      if (!scout) return res.status(422).json({ error: "Oportunidade do Revenue Scout inválida ou de outro cliente." });
+      linkedScoutId = scout.id;
+    }
+  } else if (requestedDealId || requestedScoutId) {
+    return res.status(422).json({ error: "leadId é obrigatório para vincular Negócios ou Revenue Scout." });
+  }
+
   const [pedido] = await db.insert(farmaciaPedidoTable)
     .values({
       ...pedidoData,
@@ -180,6 +308,8 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
       temItemControlado,
       receitaUrl: receitaUrl ?? null,
       receitaMedicaId: receitaValida ? receitaMedicaId : null,
+      dealId: linkedDealId,
+      scoutOportunidadeId: linkedScoutId,
       status,
     })
     .returning();
@@ -194,6 +324,8 @@ router.post("/tenants/:tenantId/farmacia/pedidos", async (req, res) => {
   if (receitaValida) {
     await db.update(receitasMedicasTable).set({ status: "utilizada", updatedAt: new Date() }).where(eq(receitasMedicasTable.id, receitaMedicaId));
   }
+
+  await syncPharmacyOrderRelations(pedido, null, req.log);
 
   return res.status(201).json(pedido);
 });
@@ -225,11 +357,22 @@ router.put("/tenants/:tenantId/farmacia/pedidos/:pedidoId", async (req, res) => 
   const pedidoId = req.params.pedidoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const [existing] = await db.select().from(farmaciaPedidoTable)
+    .where(and(eq(farmaciaPedidoTable.id, pedidoId), eq(farmaciaPedidoTable.tenantId, tenantId)));
+  if (!existing) return res.status(404).json({ error: "Pedido not found" });
+
+  // A validação clínica nunca pode ser contornada por uma mudança manual de
+  // status ou pela pipeline comercial.
+  if (existing.temItemControlado && !existing.receitaUrl && !existing.receitaMedicaId && req.body.status !== "aguardando_receita" && req.body.status !== "cancelado") {
+    return res.status(422).json({ error: "Pedido controlado permanece bloqueado até receber receita válida." });
+  }
+
   const [row] = await db.update(farmaciaPedidoTable)
     .set({ ...req.body, updatedAt: new Date() })
     .where(and(eq(farmaciaPedidoTable.id, pedidoId), eq(farmaciaPedidoTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Pedido not found" });
+  await syncPharmacyOrderRelations(row, existing.status, req.log);
   return res.json(row);
 });
 
