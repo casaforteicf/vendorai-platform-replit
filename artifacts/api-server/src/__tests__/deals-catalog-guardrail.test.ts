@@ -110,6 +110,10 @@ vi.mock("../services/erp-webhook.js", () => ({
   dispatchVendaWebhook: vi.fn(),
 }));
 
+vi.mock("../services/vehicle-reservation.js", () => ({
+  finalizeVehicleReservation: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../services/omnichannel.js", () => ({
   sendDirectWhatsAppMessage: vi.fn().mockResolvedValue(undefined),
   WhatsAppNotConnectedError: class WhatsAppNotConnectedError extends Error {},

@@ -37,6 +37,7 @@ import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction 
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
+import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 
 const router: IRouter = Router();
 
@@ -129,6 +130,16 @@ router.post("/leads", async (req, res) => {
       etapa: "em_aquecimento",
       assignedTo: resolvedAssignedTo,
     });
+  }
+
+  // Leads atribuídos por UTM a uma campanha de veículo único entram
+  // automaticamente no fluxo de reserva. Campanhas de outros tipos são
+  // ignoradas sem impedir o cadastro normal do lead.
+  if (lead.adCampaignId) {
+    reserveUniqueVehicle({
+      tenantId: lead.tenantId, campaignId: lead.adCampaignId,
+      leadId: lead.id, sellerId: resolvedAssignedTo,
+    }).catch((error) => req.log?.warn?.({ err: error, leadId: lead.id }, "lead: automatic vehicle reservation skipped"));
   }
 
   res.status(201).json(lead);

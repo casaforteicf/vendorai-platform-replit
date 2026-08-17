@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   adCampaignsTable,
@@ -8,11 +8,13 @@ import {
   insertAdCampaignSchema,
   leadsTable,
   dealsTable,
+  vehicleAdReservationsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { gerarCriativoRSA } from "../lib/adContentGenerator.js";
 import { gerarShoppingFeedXml, gerarFeedToken, validarFeedToken } from "../lib/adShoppingFeed.js";
 import { buildResumoItem } from "../lib/adItemSummary.js";
+import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 
 const router: IRouter = Router();
 
@@ -52,6 +54,53 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
 
   const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, utmCode }).returning();
   return res.status(201).json(row);
+});
+
+// Chamado pelo canal que confirmou o interesse (WhatsApp, formulário ou ação
+// manual). Para veículo único, pausa a mídia, reserva o estoque e abre/vincula
+// o negócio ao vendedor com SLA configurável (48h por padrão).
+router.post("/tenants/:tenantId/ads/campaigns/:id/vehicle-interest", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const leadId = typeof req.body?.leadId === "string" ? req.body.leadId : "";
+  if (!leadId) return res.status(422).json({ error: "leadId é obrigatório" });
+  try {
+    const reservation = await reserveUniqueVehicle({
+      tenantId, campaignId: req.params.id as string, leadId,
+      sellerId: typeof req.body?.sellerId === "string" ? req.body.sellerId : null,
+    });
+    return res.status(201).json(reservation);
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : "Não foi possível reservar o veículo" });
+  }
+});
+
+router.get("/tenants/:tenantId/ads/vehicle-reservations", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(vehicleAdReservationsTable)
+    .where(eq(vehicleAdReservationsTable.tenantId, tenantId))
+    .orderBy(desc(vehicleAdReservationsTable.createdAt));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/ads/vehicle-reservations/:id/decision", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const decision = req.body?.decision;
+  if (!["manter", "avancar", "perdido"].includes(decision)) {
+    return res.status(422).json({ error: "decision deve ser manter, avancar ou perdido" });
+  }
+  try {
+    const row = await decideVehicleReservation({
+      tenantId, reservationId: req.params.id as string,
+      userId: (req as any).user?.sub ?? null, decision,
+      justification: typeof req.body?.justification === "string" ? req.body.justification : "",
+    });
+    return res.json(row);
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Decisão inválida" });
+  }
 });
 
 router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, res) => {

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, integer, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -90,6 +90,8 @@ export const dealsTable = pgTable("deals", {
   scoutOportunidadeId: text("scout_oportunidade_id"),
   grupoId: text("grupo_id"),
   origemPedidoPracaId: text("origem_pedido_praca_id"),
+  vehicleReservationDueAt: timestamp("vehicle_reservation_due_at"),
+  vehicleReservationBlocked: boolean("vehicle_reservation_blocked").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, jsonb, pgEnum, date, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, jsonb, pgEnum, date, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -51,6 +51,8 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
   // Só preenchido depois de publicar de verdade na plataforma (resource
   // name/campaign id retornado pela API)
   externalCampaignId: text("external_campaign_id"),
+  pausarAoInteresse: boolean("pausar_ao_interesse").notNull().default(true),
+  slaNegociacaoHoras: integer("sla_negociacao_horas").notNull().default(48),
   responsavelId: text("responsavel_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
