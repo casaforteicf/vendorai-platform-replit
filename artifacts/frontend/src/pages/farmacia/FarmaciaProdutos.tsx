@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, Pencil, Trash2, Pill, Loader2, ShieldAlert } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Pill, Loader2, ShieldAlert, Upload, Plug, Download, Copy, Key } from "lucide-react";
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -34,6 +34,28 @@ const CATEGORIAS = [
 
 function fmt(v: number | string) {
   return Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+const CSV_TEMPLATE = "erp_id,nome,principio_ativo,categoria,exige_receita,unidade,preco_venda,preco_promocional,estoque,ativo,vende_no_praca_ai,destaque_whatsapp,imagem_url\nMED-001,Paracetamol 500mg,Paracetamol,medicamento_generico,false,un,12.90,10.90,50,true,true,true,";
+
+function parseCsvLine(line: string, separator: string) {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' && line[i + 1] === '"' && quoted) { current += '"'; i++; }
+    else if (char === '"') quoted = !quoted;
+    else if (char === separator && !quoted) { cells.push(current.trim()); current = ""; }
+    else current += char;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function csvBoolean(value: string, fallback = false) {
+  if (!value) return fallback;
+  return ["1", "true", "sim", "yes"].includes(value.trim().toLowerCase());
 }
 
 const EMPTY_FORM = {
@@ -58,6 +80,10 @@ export default function FarmaciaProdutos() {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("todos");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [apiOpen, setApiOpen] = useState(false);
+  const [importItems, setImportItems] = useState<any[]>([]);
+  const [importFileName, setImportFileName] = useState("");
   const [editing, setEditing] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -73,6 +99,37 @@ export default function FarmaciaProdutos() {
       return fetch(`/api/tenants/${tenantId}/farmacia/produtos?${params}`, { headers: authHeaders() }).then((r) => r.json());
     },
     enabled: !!tenantId,
+  });
+
+  const { data: integration } = useQuery<{ apiKeyEstoque: string | null }>({
+    queryKey: ["pharmacy-integration", tenantId],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/integration-settings`, { headers: authHeaders() }).then((r) => r.json()),
+    enabled: !!tenantId && apiOpen,
+  });
+
+  const regenerateKey = useMutation({
+    mutationFn: () => fetch(`/api/tenants/${tenantId}/integration-settings/regenerate-key`, { method: "POST", headers: authHeaders() }).then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro ao gerar chave");
+      return r.json();
+    }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pharmacy-integration", tenantId] }),
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const importProducts = useMutation({
+    mutationFn: () => fetch(`/api/tenants/${tenantId}/farmacia/produtos/import`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ items: importItems }),
+    }).then(async (r) => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error ?? "Erro ao importar");
+      return data as { created: number; updated: number; failed: number };
+    }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["farmacia-produtos"] });
+      toast({ title: "Importação concluída", description: `${result.created} criados, ${result.updated} atualizados e ${result.failed} com erro.` });
+      setImportOpen(false); setImportItems([]); setImportFileName("");
+    },
+    onError: (e: any) => toast({ title: "Erro ao importar", description: e.message, variant: "destructive" }),
   });
 
   const save = useMutation({
@@ -111,6 +168,41 @@ export default function FarmaciaProdutos() {
     setEditing(null);
     setForm({ ...EMPTY_FORM });
     setDialogOpen(true);
+  }
+  function downloadTemplate() {
+    const url = URL.createObjectURL(new Blob([CSV_TEMPLATE], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url; a.download = "modelo-produtos-farmacia.csv"; a.click();
+    URL.revokeObjectURL(url);
+  }
+  async function readCsv(file: File) {
+    const text = await file.text();
+    const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length < 2) throw new Error("O CSV precisa ter cabeçalho e ao menos um produto.");
+    const separator = lines[0].includes(";") ? ";" : ",";
+    const headers = parseCsvLine(lines[0], separator).map((h) => h.trim().toLowerCase());
+    const required = ["erp_id", "nome", "preco_venda", "estoque"];
+    const missing = required.filter((h) => !headers.includes(h));
+    if (missing.length) throw new Error(`Colunas obrigatórias ausentes: ${missing.join(", ")}`);
+    const value = (cells: string[], name: string) => cells[headers.indexOf(name)] ?? "";
+    const items = lines.slice(1).map((line) => {
+      const cells = parseCsvLine(line, separator);
+      const decimal = (name: string) => {
+        const raw = value(cells, name).trim();
+        if (raw.includes(",") && raw.includes(".")) return raw.replace(/\./g, "").replace(",", ".");
+        return raw.replace(",", ".");
+      };
+      return {
+        erpId: value(cells, "erp_id"), nome: value(cells, "nome"),
+        principioAtivo: value(cells, "principio_ativo") || null,
+        categoria: value(cells, "categoria") || "outros",
+        exigeReceita: csvBoolean(value(cells, "exige_receita")), unidade: value(cells, "unidade") || "un",
+        precoVenda: decimal("preco_venda"), precoPromocional: decimal("preco_promocional") || null,
+        estoque: Number(value(cells, "estoque")), ativo: csvBoolean(value(cells, "ativo"), true),
+        vendeNoPracaAi: csvBoolean(value(cells, "vende_no_praca_ai")),
+        destaqueWhatsapp: csvBoolean(value(cells, "destaque_whatsapp")), imagemUrl: value(cells, "imagem_url") || null,
+      };
+    });
+    setImportItems(items); setImportFileName(file.name);
   }
   function openEdit(p: any) {
     setEditing(p);
@@ -154,9 +246,17 @@ export default function FarmaciaProdutos() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">{produtos.length} produto{produtos.length !== 1 ? "s" : ""}</p>
         </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-1" /> Novo Produto
-        </Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="h-4 w-4 mr-1" /> Importar produtos
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setApiOpen(true)}>
+            <Plug className="h-4 w-4 mr-1" /> Integrar API
+          </Button>
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-1" /> Novo Produto
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-2 flex-wrap">
@@ -227,6 +327,66 @@ export default function FarmaciaProdutos() {
           ))}
         </div>
       )}
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>Importar produtos da farmácia</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Importe até 1.000 produtos. O campo <code>erp_id</code> identifica o produto: se já existir, preço e estoque serão atualizados.</p>
+            <Button variant="outline" size="sm" onClick={downloadTemplate}><Download className="h-4 w-4 mr-2" />Baixar modelo CSV</Button>
+            <label className="block rounded-lg border-2 border-dashed p-7 text-center cursor-pointer hover:bg-muted/40">
+              <Upload className="h-7 w-7 mx-auto mb-2 text-muted-foreground" />
+              <span className="text-sm font-medium">{importFileName || "Selecionar arquivo CSV"}</span>
+              <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => {
+                const file = e.target.files?.[0]; if (!file) return;
+                try { await readCsv(file); } catch (error) { toast({ title: "CSV inválido", description: error instanceof Error ? error.message : "Confira o arquivo.", variant: "destructive" }); }
+              }} />
+            </label>
+            {importItems.length > 0 && <p className="text-sm"><strong>{importItems.length}</strong> produto(s) pronto(s) para importar.</p>}
+            <Button className="w-full" disabled={!importItems.length || importProducts.isPending} onClick={() => importProducts.mutate()}>
+              {importProducts.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Importar e sincronizar catálogo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={apiOpen} onOpenChange={setApiOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Integração de produtos por API</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Conecte o ERP ou sistema de balcão. Produtos são incluídos ou atualizados pelo <code>erpId</code> e sincronizados com o catálogo geral.</p>
+            <div className="rounded-lg border p-4 space-y-2">
+              <Label>Endpoint</Label>
+              <div className="flex gap-2"><Input readOnly value={`${window.location.origin}/api/tenants/${tenantId}/farmacia/produtos/sync`} className="font-mono text-xs" /><Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/tenants/${tenantId}/farmacia/produtos/sync`)}><Copy className="h-4 w-4" /></Button></div>
+            </div>
+            <div className="rounded-lg border p-4 space-y-2">
+              <Label className="flex items-center gap-2"><Key className="h-4 w-4" />Chave no cabeçalho x-api-key</Label>
+              {integration?.apiKeyEstoque ? (
+                <div className="flex gap-2"><Input readOnly value={integration.apiKeyEstoque} className="font-mono text-xs" /><Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(integration.apiKeyEstoque!)}><Copy className="h-4 w-4" /></Button></div>
+              ) : <Button onClick={() => regenerateKey.mutate()} disabled={regenerateKey.isPending}>Gerar chave de API</Button>}
+            </div>
+            <div className="rounded-lg bg-muted/50 border p-4">
+              <pre className="text-xs whitespace-pre-wrap overflow-x-auto">{`POST /api/tenants/${tenantId}/farmacia/produtos/sync
+Headers: x-api-key: SUA_CHAVE
+
+{
+  "items": [{
+    "erpId": "MED-001",
+    "nome": "Paracetamol 500mg",
+    "principioAtivo": "Paracetamol",
+    "categoria": "medicamento_generico",
+    "exigeReceita": false,
+    "unidade": "un",
+    "precoVenda": 12.90,
+    "estoque": 50,
+    "ativo": true,
+    "vendeNoPracaAi": true
+  }]
+}`}</pre>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">

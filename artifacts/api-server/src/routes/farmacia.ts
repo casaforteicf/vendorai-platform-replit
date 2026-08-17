@@ -19,6 +19,7 @@ import {
 import { logger } from "../lib/logger.js";
 import { searchBulaAnvisa, downloadBulaPdf } from "../lib/anvisaBulario.js";
 import { extractTextFromBuffer } from "../lib/document-extraction.js";
+import { z } from "zod/v4";
 
 const BULAS_BASE = [
   ["Paracetamol", "Dor e febre"], ["Dipirona", "Dor e febre"], ["Ibuprofeno", "Dor, enxaqueca e cólica menstrual"],
@@ -45,6 +46,32 @@ const BULAS_BASE = [
 ] as const;
 
 const router: IRouter = Router();
+export const farmaciaSyncRouter: IRouter = Router();
+
+const farmaciaSyncItemSchema = z.object({
+  erpId: z.string().min(1).max(120),
+  nome: z.string().min(1).max(300),
+  principioAtivo: z.string().max(300).optional().nullable(),
+  descricao: z.string().optional().nullable(),
+  categoria: z.enum([
+    "medicamento_generico", "medicamento_referencia", "medicamento_similar",
+    "perfumaria", "higiene_pessoal", "dermocosmeticos", "infantil",
+    "ortopedicos", "suplementos", "outros",
+  ]).default("outros"),
+  exigeReceita: z.boolean().default(false),
+  unidade: z.string().min(1).max(30).default("un"),
+  precoVenda: z.union([z.number().nonnegative(), z.string().regex(/^\d+(\.\d{1,2})?$/)]),
+  precoPromocional: z.union([z.number().nonnegative(), z.string().regex(/^\d+(\.\d{1,2})?$/)]).optional().nullable(),
+  estoque: z.number().int().nonnegative().default(0),
+  imagemUrl: z.string().url().optional().nullable(),
+  ativo: z.boolean().default(true),
+  vendeNoPracaAi: z.boolean().default(false),
+  destaqueWhatsapp: z.boolean().default(false),
+});
+
+const farmaciaSyncSchema = z.object({
+  items: z.array(farmaciaSyncItemSchema).min(1).max(1000),
+});
 
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
@@ -122,6 +149,60 @@ async function syncFarmaciaProdutoToProdutoCatalogo(tenantId: string, produto: F
   }
 }
 
+async function upsertFarmaciaProdutos(tenantId: string, items: z.infer<typeof farmaciaSyncItemSchema>[]) {
+  let created = 0;
+  let updated = 0;
+  const errors: Array<{ erpId: string; error: string }> = [];
+
+  for (const item of items) {
+    try {
+      const [existing] = await db.select().from(farmaciaProdutoTable)
+        .where(and(eq(farmaciaProdutoTable.tenantId, tenantId), eq(farmaciaProdutoTable.erpId, item.erpId)))
+        .limit(1);
+      const values = {
+        ...item,
+        precoVenda: String(item.precoVenda),
+        precoPromocional: item.precoPromocional == null ? null : String(item.precoPromocional),
+        updatedAt: new Date(),
+      };
+      let produto: FarmaciaProduto;
+      if (existing) {
+        [produto] = await db.update(farmaciaProdutoTable)
+          .set(values)
+          .where(eq(farmaciaProdutoTable.id, existing.id))
+          .returning();
+        updated++;
+      } else {
+        [produto] = await db.insert(farmaciaProdutoTable)
+          .values({ ...values, tenantId })
+          .returning();
+        created++;
+      }
+      await syncFarmaciaProdutoToProdutoCatalogo(tenantId, produto!);
+    } catch (error) {
+      errors.push({ erpId: item.erpId, error: error instanceof Error ? error.message : "Erro desconhecido" });
+    }
+  }
+  return { created, updated, failed: errors.length, errors };
+}
+
+// Integração de ERP/POS da farmácia. Fica antes do middleware JWT e usa a
+// mesma chave de integração gerada em Configurações → Integrações.
+farmaciaSyncRouter.post("/tenants/:tenantId/farmacia/produtos/sync", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const apiKey = req.headers["x-api-key"] as string | undefined;
+  if (!apiKey) return res.status(401).json({ error: "Informe x-api-key" });
+  const [tenant] = await db.select({ apiKeyEstoque: tenantsTable.apiKeyEstoque, vertical: tenantsTable.vertical })
+    .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant || tenant.apiKeyEstoque !== apiKey) return res.status(401).json({ error: "API key inválida" });
+  if (!tenant.vertical?.toLocaleLowerCase("pt-BR").includes("farm")) {
+    return res.status(403).json({ error: "Endpoint disponível somente para a vertical Farmácia" });
+  }
+  const parsed = farmaciaSyncSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  return res.json(await upsertFarmaciaProdutos(tenantId, parsed.data.items));
+});
+
 // ─── Produtos ─────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/farmacia/produtos", async (req, res) => {
@@ -151,6 +232,14 @@ router.post("/tenants/:tenantId/farmacia/produtos", async (req, res) => {
   const [row] = await db.insert(farmaciaProdutoTable).values({ ...payload, tenantId }).returning();
   await syncFarmaciaProdutoToProdutoCatalogo(tenantId, row);
   return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/farmacia/produtos/import", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = farmaciaSyncSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  return res.json(await upsertFarmaciaProdutos(tenantId, parsed.data.items));
 });
 
 router.get("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res) => {
