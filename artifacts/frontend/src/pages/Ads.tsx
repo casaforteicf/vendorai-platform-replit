@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,6 +35,14 @@ interface AdCampaign {
   status: string;
   externalCampaignId: string | null;
   utmCode: string | null;
+  pausarAoInteresse: boolean;
+  slaNegociacaoHoras: number;
+}
+
+interface VehicleReservation {
+  id: string; campaignId: string; vehicleId: string; leadId: string; dealId: string;
+  status: "em_negociacao" | "justificativa_pendente" | "liberado" | "vendido";
+  justificationDueAt: string;
 }
 
 interface AdCreative {
@@ -74,6 +83,7 @@ const EMPTY_FORM = {
   idades: "", generos: "", statusParental: "", rendas: "",
   afinidade: "", noMercado: "", termosPesquisa: "", sites: "", aplicativos: "",
   remarketing: "", customerMatch: "", semelhantes: "",
+  pausarAoInteresse: true, slaNegociacaoHoras: "48",
 };
 
 const lista = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
@@ -88,10 +98,19 @@ export default function Ads() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [itemSearch, setItemSearch] = useState("");
   const [expandedCreative, setExpandedCreative] = useState<Record<string, AdCreative | null>>({});
+  const [reservationDecision, setReservationDecision] = useState<VehicleReservation | null>(null);
+  const [decision, setDecision] = useState<"manter" | "avancar" | "perdido">("manter");
+  const [justification, setJustification] = useState("");
 
   const { data: campaigns = [], isLoading } = useQuery<AdCampaign[]>({
     queryKey: ["ad-campaigns", tenantId],
     queryFn: () => fetch(`/api/tenants/${tenantId}/ads/campaigns`, { headers: authHeaders() }).then((r) => r.json()),
+    enabled: !!tenantId,
+  });
+
+  const { data: reservations = [] } = useQuery<VehicleReservation[]>({
+    queryKey: ["vehicle-ad-reservations", tenantId],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/ads/vehicle-reservations`, { headers: authHeaders() }).then((r) => r.json()),
     enabled: !!tenantId,
   });
 
@@ -145,6 +164,8 @@ export default function Ads() {
           audiencias: { afinidade: lista(form.afinidade), noMercado: lista(form.noMercado), termosPesquisa: lista(form.termosPesquisa), sites: lista(form.sites), aplicativos: lista(form.aplicativos) },
           dadosProprios: { remarketing: lista(form.remarketing), customerMatch: lista(form.customerMatch), semelhantes: lista(form.semelhantes) },
         },
+        pausarAoInteresse: form.itemTipo === "veiculo" && form.modo === "unico" ? form.pausarAoInteresse : false,
+        slaNegociacaoHoras: Number(form.slaNegociacaoHoras || 48),
       };
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
@@ -159,6 +180,23 @@ export default function Ads() {
       setForm({ ...EMPTY_FORM });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const decidirReserva = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/tenants/${tenantId}/ads/vehicle-reservations/${reservationDecision!.id}/decision`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({ decision, justification }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error ?? "Não foi possível registrar a decisão");
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vehicle-ad-reservations", tenantId] });
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      setReservationDecision(null); setJustification("");
+      toast({ title: "Decisão registrada", description: "A pipeline e o anúncio foram atualizados." });
+    },
+    onError: (e: any) => toast({ title: "Justificativa obrigatória", description: e.message, variant: "destructive" }),
   });
 
   const gerarCriativo = useMutation({
@@ -241,6 +279,7 @@ export default function Ads() {
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">Orçamento diário: R$ {c.orcamentoDiario}</p>
                       {c.utmCode && <p className="text-xs text-muted-foreground">Código de atribuição: <code className="bg-muted px-1 rounded">{c.utmCode}</code></p>}
+                      {c.itemTipo === "veiculo" && c.modo === "unico" && <p className="text-xs text-muted-foreground">Reserva automática: {c.pausarAoInteresse ? "pausa o patrocínio" : "não pausa"} · SLA {c.slaNegociacaoHoras}h</p>}
                     </div>
                     <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
                   </div>
@@ -293,6 +332,17 @@ export default function Ads() {
             );
           })}
         </div>
+      )}
+
+      {reservations.some((r) => r.status === "em_negociacao" || r.status === "justificativa_pendente") && (
+        <Card><CardContent className="pt-4 space-y-3"><h2 className="font-semibold">Reservas de veículos em negociação</h2>
+          {reservations.filter((r) => r.status === "em_negociacao" || r.status === "justificativa_pendente").map((r) => (
+            <div key={r.id} className="flex items-center justify-between gap-3 border rounded-lg p-3">
+              <div className="text-sm"><p className="font-medium">Negócio {r.dealId}</p><p className="text-muted-foreground">Prazo: {new Date(r.justificationDueAt).toLocaleString("pt-BR")}</p></div>
+              <Button size="sm" variant={r.status === "justificativa_pendente" ? "default" : "outline"} onClick={() => setReservationDecision(r)}>{r.status === "justificativa_pendente" ? "Justificar agora" : "Atualizar negociação"}</Button>
+            </div>
+          ))}
+        </CardContent></Card>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -365,6 +415,15 @@ export default function Ads() {
               <Input type="number" step="0.01" placeholder="50.00" value={form.orcamentoDiario} onChange={(e) => setForm((f) => ({ ...f, orcamentoDiario: e.target.value }))} />
             </div>
 
+            {form.itemTipo === "veiculo" && form.modo === "unico" && (
+              <div className="rounded-lg border bg-amber-50 p-4 space-y-3">
+                <h3 className="font-semibold">Veículo único</h3>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.pausarAoInteresse} onChange={(e) => setForm((f) => ({ ...f, pausarAoInteresse: e.target.checked }))} /> Pausar o patrocínio quando o lead confirmar interesse</label>
+                <div><Label>Prazo do vendedor para atualizar (horas)</Label><Input type="number" min="1" max="720" value={form.slaNegociacaoHoras} onChange={(e) => setForm((f) => ({ ...f, slaNegociacaoHoras: e.target.value }))} /></div>
+                <p className="text-xs text-muted-foreground">Ao vencer, o negócio fica bloqueado até o vendedor justificar manter, avançar ou perder.</p>
+              </div>
+            )}
+
             <div className="border-t pt-4 space-y-4">
               <div><h3 className="font-semibold">Localização e frequência</h3><p className="text-xs text-muted-foreground">Separe países, estados, cidades, CEPs ou endereços por vírgula.</p></div>
               <Input placeholder="Ex: Curitiba, Paraná, 80000-000" value={form.locais} onChange={(e) => setForm((f) => ({ ...f, locais: e.target.value }))} />
@@ -405,6 +464,15 @@ export default function Ads() {
               {criarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
               Criar campanha (rascunho)
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!reservationDecision} onOpenChange={(value) => !value && setReservationDecision(null)}>
+        <DialogContent><DialogHeader><DialogTitle>Atualizar negociação do veículo</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><Label>Decisão</Label><Select value={decision} onValueChange={(v) => setDecision(v as typeof decision)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manter">Manter nesta etapa por mais 48h</SelectItem><SelectItem value="avancar">Avançar para proposta</SelectItem><SelectItem value="perdido">Marcar como perdido e liberar veículo</SelectItem></SelectContent></Select></div>
+            <div><Label>Justificativa obrigatória</Label><Textarea value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="Descreva o contato, o retorno do cliente e o próximo passo..." /></div>
+            <Button className="w-full" disabled={justification.trim().length < 10 || decidirReserva.isPending} onClick={() => decidirReserva.mutate()}>Registrar decisão</Button>
           </div>
         </DialogContent>
       </Dialog>

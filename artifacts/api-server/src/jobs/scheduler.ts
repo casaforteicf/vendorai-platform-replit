@@ -69,6 +69,7 @@ import { runRecemAbertas } from "./recemAbertasJob.js";
 import { runMicroEventsRescan } from "./microEventsRescan.js";
 import { runWeeklyFeedbackLoop } from "./feedbackLoop.js";
 import { dispatchPendingEntregas } from "../lib/entregas.js";
+import { markOverdueVehicleReservations } from "../services/vehicle-reservation.js";
 import {
   prospectorConfigTable,
   prospectorQueueTable,
@@ -1618,6 +1619,13 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
 }
 
 export function startScheduler(log: Logger): void {
+  // Veículos únicos: ao vencer o SLA, bloqueia alterações até o vendedor
+  // justificar manter, avançar ou perder a negociação.
+  cron.schedule("*/15 * * * *", () => {
+    markOverdueVehicleReservations()
+      .then((total) => total > 0 && log.info({ total }, "scheduler/vehicle-reservations: justification required"))
+      .catch((err) => log.error({ err }, "scheduler/vehicle-reservations: unhandled error"));
+  });
   // Job 1: Churn check — every hour at :05
   cron.schedule("5 * * * *", () => {
     runChurnCheckAll(log).catch((err) => {

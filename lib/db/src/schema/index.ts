@@ -200,3 +200,4 @@ export * from "./erp_operacional";
 export * from "./vendor_stories";
 export * from "./variedades_dia";
 export * from "./vehicle_lookup";
+export * from "./vehicle_ad_reservations";

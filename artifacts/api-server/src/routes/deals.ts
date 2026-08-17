@@ -50,6 +50,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateContractPDF } from "../lib/contract-generation.js";
 import { requireRole, buildUserFunctionFilter, type UserFunction } from "../middlewares/auth.js";
 import { captureLeadFeatureSnapshot, backfillResultadoSnapshots } from "../lib/mlFeatureStore.js";
+import { finalizeVehicleReservation } from "../services/vehicle-reservation.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -150,7 +151,7 @@ router.patch("/deals/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa, assignedTo: dealsTable.assignedTo, wonAt: dealsTable.wonAt })
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa, assignedTo: dealsTable.assignedTo, wonAt: dealsTable.wonAt, vehicleReservationBlocked: dealsTable.vehicleReservationBlocked })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
 
@@ -305,6 +306,20 @@ router.patch("/deals/:id", async (req, res) => {
         eq(farmaciaPedidoTable.tenantId, existing.tenantId),
         sql`${farmaciaPedidoTable.status} NOT IN ('entregue', 'cancelado')`,
       ));
+  }
+
+  if (existing.vehicleReservationBlocked) {
+    res.status(409).json({
+      error: "O prazo desta negociação de veículo venceu. Registre a justificativa e escolha manter, avançar ou perdido antes de alterar o negócio.",
+      code: "VEHICLE_RESERVATION_JUSTIFICATION_REQUIRED",
+    });
+    return;
+  }
+
+  if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
+    await finalizeVehicleReservation(deal.id, "ganho");
+  } else if (parsed.data.etapa === "perdido" && existing.etapa !== "perdido") {
+    await finalizeVehicleReservation(deal.id, "perdido", parsed.data.motivoPerda ?? parsed.data.lostReasonDetail);
   }
 
   // Feature store — captura a mudança de etapa e, quando o negócio resolve
