@@ -40,6 +40,13 @@ vi.mock("@workspace/db", () => ({
   billingEventsTable: { id: "id" },
   notificationsTable: { id: "id", tenantId: "tenantId", title: "title", message: "message", type: "type", category: "category", readAt: "readAt", createdAt: "createdAt" },
   propostasTable: { id: "id", dealId: "dealId", itens: "itens", valorTotal: "valorTotal", createdAt: "createdAt" },
+  farmaciaPedidoTable: {
+    id: "id",
+    tenantId: "tenantId",
+    dealId: "dealId",
+    status: "status",
+    updatedAt: "updatedAt",
+  },
   agentTasksTable: { id: "id", tenantId: "tenantId", leadId: "leadId", agentName: "agentName", actionType: "actionType", payload: "payload" },
   usersTable: {
     id: "id",
