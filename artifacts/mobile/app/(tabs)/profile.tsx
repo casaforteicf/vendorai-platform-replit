@@ -107,6 +107,10 @@ export default function ProfileScreen() {
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 16 }]}>
+        <Row icon="target" label="Anúncios" onPress={() => router.push("/ads")} />
+      </View>
+
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 16 }]}>
         <Row
           icon="log-out"
           label="Sair da conta"

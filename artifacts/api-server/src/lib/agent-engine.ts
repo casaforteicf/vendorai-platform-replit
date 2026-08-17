@@ -6,7 +6,7 @@
  *   - routes/agents.ts        (HTTP route handlers)
  *   - services/agent-dispatch.ts  (internal dispatch from webhook + scheduler)
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Logger } from "pino";
@@ -22,6 +22,7 @@ import {
   produtosCatalogoTable,
   tenantAgentConfigsTable,
   agentDefaultsTable,
+  knowledgeBaseTable,
 } from "@workspace/db";
 import type { AgentTask, AiFeature } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
@@ -51,7 +52,7 @@ export type LimitOk = {
 type LimitExceeded = { ok: false; httpStatus: 429; body: object };
 export type LimitResult = LimitOk | LimitExceeded;
 
-export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca" | "reception";
+export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca" | "reception" | "pharmacy";
 export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null) => string;
 
 /** A single SPIN qualification question customized for a tenant's niche. */
@@ -92,6 +93,7 @@ const AGENT_FEATURE_MAP: Record<AgentName, AiFeature> = {
   // adotado em plan-guard.ts) — é o agente de primeiro contato, só que sem
   // qualificar/empurrar venda.
   reception: "agent_sdr",
+  pharmacy: "agent_service",
   relacionamento: "agent_relacionamento",
   financeiro: "agent_financeiro",
   cobranca: "agent_cobranca",
@@ -120,6 +122,7 @@ export const AGENT_NAME_TO_KEY: Partial<Record<AgentName, string>> = {
   financeiro:   "financeiro",
   cobranca:     "cobranca",
   reception:    "recepcao",
+  pharmacy:     "farmacia",
 };
 
 const TOM_INSTRUCTIONS: Record<string, string> = {
@@ -187,6 +190,41 @@ export async function getAgentConfig(tenantId: string, agentKey: string): Promis
       `Arquivos disponíveis:\n${fileList}\n\n` +
       `Use o nome exato como listado acima. Envie apenas um arquivo por mensagem e somente quando agregar valor ao lead.`
     );
+  }
+
+  // ── Inject linked Knowledge Base content ─────────────────────────────────────
+  // A tela Agentes→Configurar→Conhecimento já permitia escolher quais itens da
+  // Base de Conhecimento cada agente usa (tenantCfg.knowledgeBaseIds), mas o
+  // conteúdo nunca era efetivamente buscado e injetado no prompt — a seleção
+  // ficava só salva, sem efeito nenhum na resposta gerada. Corrigido aqui.
+  const knowledgeBaseIds = (tenantCfg?.knowledgeBaseIds ?? []) as string[];
+  if (knowledgeBaseIds.length > 0) {
+    const items = await db
+      .select({
+        titulo: knowledgeBaseTable.titulo,
+        conteudo: knowledgeBaseTable.conteudo,
+      })
+      .from(knowledgeBaseTable)
+      .where(and(
+        eq(knowledgeBaseTable.tenantId, tenantId),
+        inArray(knowledgeBaseTable.id, knowledgeBaseIds),
+        eq(knowledgeBaseTable.ativo, true),
+      ));
+
+    if (items.length > 0) {
+      const MAX_CHARS_PER_ITEM = 6000;
+      const sections = items.map((item) => {
+        const truncated = item.conteudo.length > MAX_CHARS_PER_ITEM;
+        const content = truncated ? item.conteudo.slice(0, MAX_CHARS_PER_ITEM) + "\n[...conteúdo truncado...]" : item.conteudo;
+        return `### ${item.titulo}\n${content}`;
+      });
+      parts.push(
+        "## BASE DE CONHECIMENTO\n" +
+        "Use as informações abaixo como referência ao responder. Não repita o conteúdo literalmente de forma longa; " +
+        "extraia só o que for relevante para a pergunta do lead.\n\n" +
+        sections.join("\n\n---\n\n")
+      );
+    }
   }
 
   return {
@@ -1377,8 +1415,96 @@ export function buildReceptionPrompt(customPrompt: string | undefined, ctx: Agen
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
+  // Sempre anexado, inclusive quando a empresa usa um prompt personalizado.
+  parts.push(
+    "## ENCAMINHAMENTO PARA FARMÁCIA\n" +
+    "Quando a necessidade for de farmácia — medicamento, disponibilidade, receita, sintomas, entrega ou orientação farmacêutica — responda brevemente que encaminhará para o atendimento da farmácia e acrescente ao final exatamente: {{handoff:farmacia}}\n" +
+    "O marcador {{handoff:farmacia}} é interno e nunca deve ser explicado ao lead."
+  );
   parts.push(buildLeadSection(lead));
   if (ci?.goalAnalysis) parts.push(`## CONTEXTO\nObjetivo aparente do contato: ${ci.goalAnalysis}`);
+  return joinWithCalibration(parts);
+}
+
+export function buildPharmacyPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
+  const { lead } = ctx;
+  const catalog = (scenario?.catalogProducts ?? []) as Array<{
+    nome: string;
+    nomeGenerico?: string | null;
+    precoBase?: string | null;
+    precoVenda?: string | null;
+    exigeReceita?: boolean;
+    estoque?: number;
+    posologia?: {
+      concentracao?: string;
+      formaFarmaceutica?: string;
+      viaAdministracao?: string;
+      faixaEtaria?: string;
+      pesoMinimoKg?: number;
+      pesoMaximoKg?: number;
+      dosePorAdministracao?: string;
+      intervaloMinimo?: string;
+      duracaoMaxima?: string;
+      doseMaximaDiaria?: string;
+      modoDeUsar?: string;
+      contraindicacoes?: string;
+      interacoes?: string;
+      alertas?: string;
+    } | null;
+    posologiaFonteUrl?: string | null;
+    posologiaAprovada?: boolean;
+    posologiaRevisadaPor?: string | null;
+    posologiaRevisadaEm?: Date | null;
+  }>;
+  const parts: string[] = [];
+
+  parts.push(systemPromptOverride?.trim() ||
+    "Você é o agente de atendimento da farmácia. Continue a conversa recebida da Recepção sem repetir perguntas já respondidas.\n" +
+    "Missão: entender a necessidade, fazer uma triagem breve e sugerir, quando seguro, opções de medicamentos isentos de prescrição pelo nome genérico que estejam realmente disponíveis no catálogo da farmácia. Ajude também com preço, receita, pedido e entrega.\n" +
+    "Regras:\n" +
+    "- Converse em português brasileiro, com linguagem simples, acolhedora e objetiva\n" +
+    "- Faça uma pergunta por vez e preserve o contexto da conversa\n" +
+    "- Antes de sugerir medicamento, confirme idade; para criança, também o peso; e pergunte sobre gravidez/amamentação, alergias, doenças relevantes e medicamentos em uso quando aplicável\n" +
+    "- Apresente no máximo 2 opções pelo NOME GENÉRICO, explique que são opções para alívio do sintoma e peça confirmação do cliente; não diagnostique e não diga que o medicamento é certamente seguro para aquela pessoa\n" +
+    "- Só associe uma opção a produto, preço e estoque quando ela estiver no CATÁLOGO DA FARMÁCIA e o princípio ativo corresponder; se não estiver, diga que consultará a equipe\n" +
+    "- Só informe concentração, dose, intervalo, duração e limite diário quando TODOS estiverem cadastrados para a apresentação exata, houver fonte oficial e a posologia estiver aprovada pelo farmacêutico; reproduza literalmente os dados cadastrados\n" +
+    "- Nunca calcule dose, converta apresentação, extrapole faixa de idade/peso nem combine posologias; se os dados do lead não se encaixarem exatamente na ficha aprovada, encaminhe ao farmacêutico\n" +
+    "- Nunca invente estoque, preço, prazo, dose, concentração, posologia, contraindicação ou informação sobre medicamento\n" +
+    "- Não prescreva, não altere receita e não sugira antibiótico, corticoide sistêmico ou medicamento controlado\n" +
+    "- Bloqueie sugestão automática e encaminhe ao farmacêutico para gestantes, lactantes, crianças pequenas, doença renal/hepática/cardíaca, hipertensão descontrolada, anticoagulante, alergia medicamentosa, possível interação, sintomas intensos/recorrentes/persistentes ou item que exija receita\n" +
+    "- Quando houver decisão clínica, dúvida ou risco, encaminhe claramente para o farmacêutico ou serviço de saúde\n" +
+    "- Em sinais de urgência, oriente atendimento emergencial imediato\n" +
+    "- Não solicite CPF, documento ou endereço antes que sejam realmente necessários ao pedido ou entrega\n" +
+    "- Se não houver informação suficiente, diga que confirmará com a equipe da farmácia");
+
+  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA FARMÁCIA\n" + customPrompt.trim());
+  parts.push(
+    "## REFERÊNCIA DE ORIENTAÇÃO INICIAL (NÃO É PRESCRIÇÃO)\n" +
+    "- Dor de cabeça comum: hidratação e repouso; opções genéricas possíveis: paracetamol ou dipirona. Encaminhar se súbita, muito forte, após trauma ou com sintomas neurológicos.\n" +
+    "- Febre: líquidos e roupas leves; opções genéricas possíveis: paracetamol ou dipirona. Encaminhar se alta, persistente, com confusão ou rigidez de nuca.\n" +
+    "- Resfriado/nariz entupido: hidratação e lavagem nasal; cloreto de sódio 0,9%; para dor/febre, paracetamol somente após triagem.\n" +
+    "- Dor muscular leve: calor local e repouso relativo; paracetamol ou dipirona; diclofenaco dietilamônio tópico exige triagem cuidadosa.\n" +
+    "- Alergia leve/coriza: lavagem nasal; loratadina ou cetirizina exigem triagem. Falta de ar, chiado ou inchaço são encaminhamento urgente.\n" +
+    "- Azia ocasional: evitar gatilhos e não se deitar; antiácido ou alginato após triagem. Dor no peito exige avaliação urgente.\n" +
+    "- Diarreia ou vômito leve: priorizar sais para reidratação oral; sangue, febre alta, dor intensa ou desidratação exigem atendimento.\n" +
+    "- Cortes/escoriações superficiais: água, sabonete e curativo; clorexidina aquosa quando necessária.\n" +
+    "- Queimadura leve: água corrente fresca por cerca de 20 minutos; encaminhar áreas extensas, face, mãos, genitais ou bolhas grandes.\n" +
+    "Um asterisco ou a expressão 'após triagem' na política da farmácia significa: não sugerir automaticamente sem validação das contraindicações."
+  );
+  parts.push(buildLeadSection(lead));
+  if (catalog.length > 0) {
+    parts.push("## PRODUTOS DISPONÍVEIS NO CATÁLOGO\n" + catalog.map((p) => {
+      const posologia = p.posologiaAprovada && p.posologiaFonteUrl && p.posologia
+        ? ` | POSOLOGIA APROVADA: ${JSON.stringify(p.posologia)} | fonte: ${p.posologiaFonteUrl} | revisada por: ${p.posologiaRevisadaPor ?? "farmacêutico responsável"}${p.posologiaRevisadaEm ? ` em ${new Date(p.posologiaRevisadaEm).toLocaleDateString("pt-BR")}` : ""}`
+        : " | posologia não liberada: encaminhar ao farmacêutico";
+      return `- Produto: ${p.nome}` +
+      `${p.nomeGenerico ? ` | nome genérico/princípio ativo: ${p.nomeGenerico}` : " | nome genérico não cadastrado"}` +
+      `${(p.precoBase ?? p.precoVenda) ? ` | preço: R$ ${p.precoBase ?? p.precoVenda}` : ""}` +
+      ` | exige receita: ${p.exigeReceita ? "sim" : "não"}` +
+      `${typeof p.estoque === "number" ? ` | estoque: ${p.estoque}` : ""}` + posologia;
+    }
+    ).join("\n"));
+  }
   return joinWithCalibration(parts);
 }
 
@@ -1537,4 +1663,5 @@ export const PROMPT_BUILDERS: Record<AgentName, PromptBuilder> = {
   financeiro:  buildFinanceiroPrompt,
   cobranca:    buildCobrancaPrompt,
   reception:   buildReceptionPrompt,
+  pharmacy:    buildPharmacyPrompt,
 };

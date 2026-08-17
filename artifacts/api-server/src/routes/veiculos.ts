@@ -12,6 +12,16 @@ import {
 } from "@workspace/db";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 import { VehicleLookupService } from "../services/vehicle-lookup.js";
+import { logger } from "../lib/logger.js";
+import {
+  listarMarcas,
+  listarModelosPorMarca,
+  buscarPrecosPorCodigoFipe,
+  encontrarMarca,
+  encontrarModelosCandidatos,
+  type TipoVeiculoFipe,
+} from "../lib/fipeClient.js";
+import { autoCreateAdCampaignIfNeeded } from "../lib/adAutoCreate.js";
 
 const router: IRouter = Router();
 const vehicleLookupService = new VehicleLookupService();
@@ -108,6 +118,14 @@ async function syncVeiculoToProdutoCatalogo(veiculo: VeiculosEstoque): Promise<v
     const [produto] = await db.insert(produtosCatalogoTable).values(payload as any).returning();
     await db.update(veiculosEstoqueTable).set({ produtoCatalogoId: produto!.id }).where(eq(veiculosEstoqueTable.id, veiculo.id));
   }
+
+  // Item acabou de ficar público de verdade — cria campanha de anúncio
+  // automaticamente (rascunho + criativo gerado, aguardando aprovação
+  // manual). Best-effort, nunca derruba o fluxo de publicar o veículo.
+  await autoCreateAdCampaignIfNeeded(
+    { tenantId: veiculo.tenantId, itemTipo: "veiculo", itemId: veiculo.id, vertical: "veiculos" },
+    logger,
+  );
 }
 
 // ─── Estoque ──────────────────────────────────────────────────────────────────
@@ -324,6 +342,91 @@ router.patch("/tenants/:tenantId/veiculos/test-drives/:id", async (req, res) => 
   }
 
   return res.json(row);
+});
+
+// ─── Atualização de valor FIPE (BrasilAPI — gratuita) ─────────────────────────
+//
+// Busca marca+modelo+ano já cadastrados do veículo na tabela FIPE oficial
+// (via BrasilAPI) e atualiza o cache local (fipeCodigo/fipeValor/mês).
+// Nome de modelo em texto livre do dealer raramente bate 100% com o nome
+// formal da FIPE — se houver mais de um candidato plausível, retorna a
+// lista pra escolha manual em vez de arriscar salvar o modelo errado.
+router.post("/tenants/:tenantId/veiculos/:id/atualizar-fipe", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [veiculo] = await db.select().from(veiculosEstoqueTable)
+    .where(and(eq(veiculosEstoqueTable.id, req.params.id as string), eq(veiculosEstoqueTable.tenantId, tenantId)));
+  if (!veiculo) return res.status(404).json({ error: "Veículo not found" });
+
+  // codigoFipeOverride: pula a busca por nome e usa direto o código FIPE
+  // escolhido pelo usuário quando a busca anterior retornou candidatos.
+  const codigoFipeOverride = (req.body?.codigoFipe as string | undefined)?.trim();
+  const tipoVeiculo: TipoVeiculoFipe = (req.body?.tipoVeiculo as TipoVeiculoFipe | undefined) ?? "carros";
+
+  let codigoFipe = codigoFipeOverride;
+
+  if (!codigoFipe) {
+    const marcas = await listarMarcas(tipoVeiculo, logger);
+    if (!marcas) return res.status(502).json({ error: "Falha ao consultar marcas na BrasilAPI — ver logs do servidor" });
+
+    const marca = encontrarMarca(veiculo.marca, marcas);
+    if (!marca) {
+      return res.status(404).json({
+        error: `Marca "${veiculo.marca}" não encontrada (ou ambígua) na tabela FIPE de ${tipoVeiculo}`,
+        marcasDisponiveisAmostra: marcas.slice(0, 5).map((m) => m.nome),
+      });
+    }
+
+    const modelos = await listarModelosPorMarca(tipoVeiculo, marca.codigo, logger);
+    if (!modelos) return res.status(502).json({ error: "Falha ao consultar modelos na BrasilAPI — ver logs do servidor" });
+
+    const candidatos = encontrarModelosCandidatos(veiculo.modelo, modelos);
+    if (candidatos.length === 0) {
+      return res.status(404).json({ error: `Nenhum modelo encontrado na FIPE para "${veiculo.modelo}" (marca ${marca.nome})` });
+    }
+    if (candidatos.length > 1) {
+      return res.status(409).json({
+        error: "Mais de um modelo da FIPE bate com o cadastrado — escolha um e reenvie com { codigoFipe }",
+        candidatos: candidatos.map((c) => ({ nome: c.nome, codigoFipe: c.codigoFipe })),
+      });
+    }
+    codigoFipe = candidatos[0]!.codigoFipe;
+  }
+
+  const precos = await buscarPrecosPorCodigoFipe(codigoFipe, logger);
+  if (!precos || precos.length === 0) {
+    return res.status(404).json({ error: `Nenhum preço encontrado na FIPE pro código ${codigoFipe}` });
+  }
+
+  // Entre os anos/combustíveis retornados pro código FIPE, prioriza o que
+  // bate com o ano do veículo cadastrado; sem match exato, usa o mais
+  // recente disponível.
+  const anoAlvo = veiculo.anoModelo ?? veiculo.anoFabricacao;
+  const escolhido =
+    precos.find((p) => p.anoModelo === anoAlvo) ??
+    precos.slice().sort((a, b) => b.anoModelo - a.anoModelo)[0]!;
+
+  await db.update(veiculosEstoqueTable)
+    .set({
+      fipeCodigo: escolhido.codigoFipe,
+      fipeValor: String(escolhido.valorNumero),
+      fipeMesReferencia: escolhido.mesReferencia,
+      fipeAtualizadoEm: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(veiculosEstoqueTable.id, veiculo.id));
+
+  logger.info({ tenantId, veiculoId: veiculo.id, codigoFipe: escolhido.codigoFipe }, "veiculos: valor FIPE atualizado");
+  return res.json({
+    ok: true,
+    fipeCodigo: escolhido.codigoFipe,
+    fipeValor: escolhido.valorNumero,
+    fipeValorTexto: escolhido.valorTexto,
+    fipeMesReferencia: escolhido.mesReferencia,
+    anoUsado: escolhido.anoModelo,
+    avisoAnoDiferente: escolhido.anoModelo !== anoAlvo,
+  });
 });
 
 export default router;

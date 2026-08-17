@@ -79,39 +79,27 @@ function mapImportedTipo(tipoOriginal: string) {
 }
 
 function normalizeImportedRule(item: ImportedRule) {
-  if (!item || typeof item !== "object" || Array.isArray(item)) {
-    throw new Error("Uma das regras não é um objeto válido.");
-  }
+  if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("Uma das regras não é um objeto válido.");
   const nome = typeof item.nome === "string" ? item.nome.trim() : "";
   const tipoOriginal = typeof item.tipo === "string" ? item.tipo.trim() : "";
   if (!nome || !tipoOriginal) throw new Error("Cada regra precisa ter nome e tipo.");
-
   const tipo = mapImportedTipo(tipoOriginal);
-  const condicoesOriginais = item.condicoes && typeof item.condicoes === "object" && !Array.isArray(item.condicoes)
-    ? item.condicoes
-    : {};
+  const condicoesOriginais = item.condicoes && typeof item.condicoes === "object" && !Array.isArray(item.condicoes) ? item.condicoes : {};
   const condicoes: Record<string, unknown> = {
     ...condicoesOriginais,
     ...(tipoOriginal !== tipo ? { tipoOriginal } : {}),
     ...(item.segmento ? { segmento: item.segmento } : {}),
     ...(item.metricas ? { metricas: item.metricas } : {}),
   };
-
   if (tipo === "reativacao" && condicoes.diasSemVisita === undefined) {
     const diasNoTipo = tipoOriginal.match(/(\d+)_?dias/)?.[1];
     condicoes.diasSemVisita = diasNoTipo ? Number(diasNoTipo) : 60;
   }
   if (tipo === "recompra" && condicoes.diasSemCompra === undefined) condicoes.diasSemCompra = 30;
-
   const acaoOriginal = item.acao && typeof item.acao === "object" && !Array.isArray(item.acao) ? item.acao : {};
-  const mensagem = typeof acaoOriginal.mensagem === "string"
-    ? acaoOriginal.mensagem.replace(/\{nome\}/g, "{{nome}}")
-    : "";
-
+  const mensagem = typeof acaoOriginal.mensagem === "string" ? acaoOriginal.mensagem.replace(/\{nome\}/g, "{{nome}}") : "";
   return {
-    nome,
-    tipo,
-    condicoes,
+    nome, tipo, condicoes,
     acao: { ...acaoOriginal, mensagem, requiresApproval: acaoOriginal.requiresApproval !== false },
     ativo: item.ativo !== false && item.status !== "inativo",
     mapped: tipoOriginal !== tipo,
@@ -362,10 +350,8 @@ export default function Regras() {
             method: "POST", headers: authHeaders(),
             body: JSON.stringify({ nome: item.nome, tipo: item.tipo, condicoes: item.condicoes, acao: item.acao, ativo: item.ativo }),
           });
-          if (res.ok) {
-            ok++;
-            if (item.mapped) mapped++;
-          } else {
+          if (res.ok) { ok++; if (item.mapped) mapped++; }
+          else {
             fail++;
             const error = await res.json().catch(() => ({}));
             if (!firstError) firstError = error.error ?? `HTTP ${res.status}`;

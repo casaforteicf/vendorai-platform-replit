@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -50,7 +51,7 @@ interface FotoDetalhe { url: string; legenda: string }
 const EMPTY_FORM = {
   placa: "", chassi: "", renavam: "", marca: "", modelo: "", versao: "", anoFabricacao: "", anoModelo: "", cor: "", km: "",
   combustivel: "flex" as string, cambio: "manual" as string, valor: "", valorPromocional: "", descricao: "",
-  motor: "", potenciaHp: "", codigoFipe: "",
+  motor: "", potenciaHp: "", codigoFipe: "", vendeNoPracaAi: false,
   fotos: [] as string[],
   fotosDetalhes: [] as FotoDetalhe[],
   videos: [] as string[],
@@ -205,6 +206,7 @@ export default function VeiculosEstoque() {
       valor: v.valor != null ? String(v.valor) : "", valorPromocional: v.valorPromocional != null ? String(v.valorPromocional) : "",
       descricao: v.descricao ?? "",
       motor: v.motor ?? "", potenciaHp: v.potenciaHp != null ? String(v.potenciaHp) : "", codigoFipe: v.codigoFipe ?? "",
+      vendeNoPracaAi: !!v.vendeNoPracaAi,
       fotos: v.fotos ?? [],
       fotosDetalhes: v.fotosDetalhes ?? [],
       videos: v.videos ?? [],
@@ -430,6 +432,14 @@ export default function VeiculosEstoque() {
             <div className="space-y-1.5">
               <Label>Descrição</Label>
               <Textarea value={form.descricao} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} rows={2} />
+            </div>
+
+            <div className="flex items-center gap-2 rounded-lg border p-3">
+              <Switch checked={form.vendeNoPracaAi} onCheckedChange={(v) => setForm((f) => ({ ...f, vendeNoPracaAi: v }))} />
+              <div>
+                <Label>Publicar no Praça.ai</Label>
+                <p className="text-xs text-muted-foreground">O veículo só aparece após a vistoria e quando estiver disponível.</p>
+              </div>
             </div>
 
             {/* Fotos gerais */}

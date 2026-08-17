@@ -66,6 +66,7 @@ import {
   Sparkles,
   CheckCircle2,
   HelpCircle,
+  Pill,
   type LucideIcon,
 } from "lucide-react";
 
@@ -140,7 +141,13 @@ const AGENT_META: Record<string, { icon: LucideIcon; descricaoFallback: string }
   agendamento:  { icon: CalendarCheck, descricaoFallback: "Agendamento de reuniões e visitas comerciais" },
   pos_venda:    { icon: Star,          descricaoFallback: "Relacionamento e fidelização de clientes ativos" },
   prospector:   { icon: Telescope,     descricaoFallback: "Descoberta e captação de novos prospects" },
+  farmacia:     { icon: Pill,          descricaoFallback: "Atendimento de medicamentos, receitas, pedidos e entregas da farmácia" },
 };
+
+function isPharmacyVertical(vertical?: string | null) {
+  return vertical?.trim().toLocaleLowerCase("pt-BR") === "farmácia" ||
+    vertical?.trim().toLocaleLowerCase("pt-BR") === "farmacia";
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -297,7 +304,7 @@ function AgentConfigSheet({
   onSaved: (updated: Partial<AgentCardData>) => void;
 }) {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, tenantOverride } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const meta = AGENT_META[agent.agentKey];
   const Icon = meta?.icon ?? UserSearch;
@@ -963,7 +970,7 @@ function AgentConfigSheet({
 // ── Página principal ───────────────────────────────────────────────────────────
 
 export default function AgentConfig() {
-  const { user } = useAuth();
+  const { user, tenantOverride } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -977,6 +984,10 @@ export default function AgentConfig() {
     queryFn: fetchAgentConfigs,
     enabled: !!user?.tenantId,
   });
+  const effectiveVertical = tenantOverride?.vertical ?? user?.tenantVertical;
+  const visibleAgents = (agents ?? []).filter((agent) =>
+    agent.agentKey !== "farmacia" || isPharmacyVertical(effectiveVertical)
+  );
 
   const toggleMutation = useMutation({
     mutationFn: ({ agentKey, activate }: { agentKey: string; activate: boolean }) =>
@@ -1053,7 +1064,7 @@ export default function AgentConfig() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {isLoading
           ? Array.from({ length: 8 }).map((_, i) => <AgentCardSkeleton key={i} />)
-          : (agents ?? []).map((agent) => (
+          : visibleAgents.map((agent) => (
               <AgentCard
                 key={agent.agentKey}
                 agent={agent}

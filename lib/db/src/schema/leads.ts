@@ -63,6 +63,10 @@ export const leadsTable = pgTable("leads", {
   partnerVisible: boolean("partner_visible").notNull().default(true),
   notasNutricao: text("notas_nutricao"),
   source: text("source").notNull().default("manual"),
+  // Campanha de anúncio que gerou este lead, quando souber (captura de
+  // UTM/parâmetro na origem) — separado de `source` (rótulo livre de
+  // canal), usado pra métrica real de atribuição do módulo de Anúncios.
+  adCampaignId: text("ad_campaign_id"),
   possivelDuplicata: boolean("possivel_duplicata").notNull().default(false),
   leadSimilarId: text("lead_similar_id"),
 

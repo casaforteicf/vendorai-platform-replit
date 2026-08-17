@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, HardHat, Loader2, Wrench } from "lucide-react";
+import { Plus, Pencil, HardHat, Loader2, Wrench, LibraryBig } from "lucide-react";
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -26,6 +26,8 @@ const ESPECIALIDADES = [
   { value: "encanador", label: "Encanador" },
   { value: "geral", label: "Geral" },
 ] as const;
+
+const CATEGORIAS = ["Casa e construção", "Manutenção e assistência", "Automotivo", "Saúde e beleza", "Serviços profissionais", "Eventos e lazer", "Logística", "Imóveis", "Viagens e hotelaria", "Outros"];
 
 const ESP_COLORS: Record<string, string> = {
   pedreiro: "bg-amber-50 text-amber-700 border-amber-200",
@@ -228,8 +230,8 @@ function PrestadoresTab({ tenantId }: { tenantId: string }) {
 // ── Tipos de Serviço ─────────────────────────────────────────────────────────
 
 const EMPTY_TIPO = {
-  nome: "", descricao: "", especialidade: "geral" as string,
-  precoBase: "", requerVisitaTecnica: true, ativo: true,
+  nome: "", descricao: "", categoria: "Casa e construção", especialidade: "geral" as string,
+  precoBase: "", requerVisitaTecnica: true, ativo: true, vendeNoPracaAi: false,
 };
 
 function TiposTab({ tenantId }: { tenantId: string }) {
@@ -270,6 +272,18 @@ function TiposTab({ tenantId }: { tenantId: string }) {
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
+  const importarCatalogo = useMutation({
+    mutationFn: () => fetch(`/api/tenants/${tenantId}/servicos/importar-catalogo`, { method: "POST", headers: authHeaders() }).then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro ao importar catálogo");
+      return r.json();
+    }),
+    onSuccess: (result: any) => {
+      qc.invalidateQueries({ queryKey: QK });
+      toast({ title: "Catálogo de serviços atualizado", description: `${result.adicionados} serviço(s) adicionado(s). Revise preços e publique no Praça.ai quando estiver pronto.` });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
   function openCreate() {
     setEditing(null);
     setForm({ ...EMPTY_TIPO });
@@ -278,9 +292,9 @@ function TiposTab({ tenantId }: { tenantId: string }) {
   function openEdit(t: any) {
     setEditing(t);
     setForm({
-      nome: t.nome ?? "", descricao: t.descricao ?? "", especialidade: t.especialidade ?? "geral",
+      nome: t.nome ?? "", descricao: t.descricao ?? "", categoria: t.categoria ?? "Outros", especialidade: t.especialidade ?? "geral",
       precoBase: t.precoBase != null ? String(t.precoBase) : "",
-      requerVisitaTecnica: t.requerVisitaTecnica !== false, ativo: t.ativo !== false,
+      requerVisitaTecnica: t.requerVisitaTecnica !== false, ativo: t.ativo !== false, vendeNoPracaAi: !!t.vendeNoPracaAi,
     });
     setDialogOpen(true);
   }
@@ -295,7 +309,10 @@ function TiposTab({ tenantId }: { tenantId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2 flex-wrap">
+        <Button variant="outline" onClick={() => importarCatalogo.mutate()} disabled={importarCatalogo.isPending}>
+          {importarCatalogo.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <LibraryBig className="h-4 w-4 mr-2" />} Adicionar catálogo completo
+        </Button>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4 mr-2" /> Novo Tipo de Serviço
         </Button>
@@ -316,6 +333,7 @@ function TiposTab({ tenantId }: { tenantId: string }) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{t.nome}</span>
+                      <Badge variant="secondary" className="text-xs">{t.categoria ?? "Outros"}</Badge>
                       <Badge variant="outline" className={`text-xs ${ESP_COLORS[t.especialidade] ?? ""}`}>
                         {ESPECIALIDADES.find((e) => e.value === t.especialidade)?.label ?? t.especialidade}
                       </Badge>
@@ -354,13 +372,15 @@ function TiposTab({ tenantId }: { tenantId: string }) {
               <Textarea value={form.descricao} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} rows={2} />
             </div>
             <div className="space-y-1.5">
-              <Label>Especialidade</Label>
-              <Select value={form.especialidade} onValueChange={(v) => setForm((f) => ({ ...f, especialidade: v }))}>
+              <Label>Categoria</Label>
+              <Select value={form.categoria} onValueChange={(v) => setForm((f) => ({ ...f, categoria: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ESPECIALIDADES.map((e) => <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>)}
-                </SelectContent>
+                <SelectContent>{CATEGORIAS.map((categoria) => <SelectItem key={categoria} value={categoria}>{categoria}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Especialidade</Label>
+              <Input value={form.especialidade} onChange={(e) => setForm((f) => ({ ...f, especialidade: e.target.value }))} placeholder="ex: eletricista residencial" />
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.requerVisitaTecnica} onCheckedChange={(v) => setForm((f) => ({ ...f, requerVisitaTecnica: v }))} />
@@ -372,6 +392,10 @@ function TiposTab({ tenantId }: { tenantId: string }) {
                 <Input type="number" min={0} step={0.01} value={form.precoBase} onChange={(e) => setForm((f) => ({ ...f, precoBase: e.target.value }))} />
               </div>
             )}
+            <div className="flex items-center gap-2 rounded-lg border p-3">
+              <Switch checked={form.vendeNoPracaAi} onCheckedChange={(v) => setForm((f) => ({ ...f, vendeNoPracaAi: v }))} />
+              <div><Label>Publicar no Praça.ai</Label><p className="text-xs text-muted-foreground">O serviço ficará disponível para busca e solicitação pelos clientes.</p></div>
+            </div>
             <div className="flex gap-2 justify-end pt-1">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={save.isPending}>

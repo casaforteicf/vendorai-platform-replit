@@ -12,7 +12,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,6 @@ import logoFull from "/logo-full-light.svg";
 import { StoreSwitcher } from "@/components/StoreSwitcher";
 import { NovidadesBell } from "@/components/NovidadesBell";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
-import { hasModuleAccess } from "@/lib/moduleAccess";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, tenantOverride, clearTenantOverride, token, isEffectiveAdmin } = useAuth();
@@ -28,7 +27,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
-  const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null }>({
+  const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null; vertical?: string | null }>({
     queryKey: ["tenant-plan", user?.tenantId],
     enabled: !!user?.tenantId && !!token,
     staleTime: 5 * 60_000,
@@ -122,13 +121,23 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       .flatMap((m) => MODULE_TO_HREFS[m.moduleKey] ?? [])
   );
 
-  const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
+  // A vertical do usuário vem da sessão e pode ficar desatualizada quando o
+  // onboarding define o segmento depois do primeiro login. Prefere o valor
+  // atual do tenant retornado pela API para atualizar o menu sem novo login.
+  const effectiveVertical = isSuperAdmin && tenantOverride
+    ? tenantOverride.vertical
+    : tenantData?.vertical ?? user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";
   const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos" || effectiveVertical === "Floricultura" || effectiveVertical === "Adega e Bebidas" || effectiveVertical === "Produtos Naturais e Suplementos" || effectiveVertical === "Armarinho e Tecidos" || effectiveVertical === "Papelaria Criativa e Artesanato" || effectiveVertical === "Games e Informática" || effectiveVertical === "Pet Shop (Varejo)" || effectiveVertical === "Material de Construção — Varejo";
   const isSupermercado = effectiveVertical === "Supermercado";
   const isSalao   = effectiveVertical === "Salão de Beleza" || effectiveVertical === "Barbearia" || effectiveVertical === "Pet Shop (Varejo)";
   const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
   const isClinica = effectiveVertical === "Clínica";
+  const normalizedVertical = (effectiveVertical ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const isFarmacia = normalizedVertical.includes("farmacia");
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
@@ -141,6 +150,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Anúncios",      href: "/ads",           icon: Megaphone,       sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Base de Conhecimento", href: "/base-conhecimento", icon: BookOpen, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -179,6 +189,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Cadastros",     href: "/servicos/cadastros",       icon: HardHat,     sellerHidden: false, section: "servicos", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Central",       href: "/farmacia",                 icon: ClipboardCheck, sellerHidden: false, section: "farmacia", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Produtos",      href: "/farmacia/produtos",        icon: Pill,        sellerHidden: false, section: "farmacia", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Bulas",         href: "/farmacia/bulas",           icon: FileCheck,   sellerHidden: false, section: "farmacia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Pedidos",       href: "/farmacia/pedidos",         icon: ShoppingCart,sellerHidden: false, section: "farmacia", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Receitas",      href: "/farmacia/receitas",        icon: FileText,    sellerHidden: false, section: "farmacia", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Propriedades",  href: "/imoveis/propriedades",     icon: Home,        sellerHidden: false, section: "imoveis",  fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
@@ -212,7 +223,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas",
     "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
-    "/praca-perguntas", "/erp",
+    "/praca-perguntas", "/erp", "/ads",
   ];
 
   const verticalHrefAllowlists: Record<string, Set<string>> = {
@@ -381,7 +392,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     ]),
     "Farmácia": new Set([
       ...CORE_VERTICAL_HREFS,
-      "/farmacia", "/farmacia/produtos", "/farmacia/pedidos", "/farmacia/receitas",
+      "/farmacia", "/farmacia/produtos", "/farmacia/bulas", "/farmacia/pedidos", "/farmacia/receitas",
     ]),
     "Imóveis": new Set([
       ...CORE_VERTICAL_HREFS,
@@ -420,7 +431,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   };
 
   const activeVerticalAllowlist = effectiveVertical
-    ? verticalHrefAllowlists[effectiveVertical]
+    ? verticalHrefAllowlists[effectiveVertical] ?? Object.entries(verticalHrefAllowlists)
+      .find(([name]) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === normalizedVertical)?.[1]
     : undefined;
 
   const scoutVerticalLabels: Record<string, string> = {
@@ -465,18 +477,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     : undefined;
 
   function isVisible(item: typeof allNavItems[0]) {
-    if (!hasModuleAccess(user, item.href)) return false;
     if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (disabledHrefs.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
-    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "inteligencia", "hub"];
+    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "farmacia", "inteligencia", "hub"];
     if (!knownSections.includes(item.section)) return false;
     if (item.section === "construcao" && !isConstrucao) return false;
     if (item.section === "varejo" && !isVarejo) return false;
     if (item.section === "supermercado" && !isSupermercado) return false;
     if (item.section === "salao" && !isSalao) return false;
     if (item.section === "clinica" && !isClinica) return false;
+    if (item.section === "farmacia" && !isFarmacia) return false;
     const isAdmin = isSuperAdmin || isTenantAdmin;
     if (isAdmin) return true;
     return userFunction ? item.fn.includes(userFunction) : true;

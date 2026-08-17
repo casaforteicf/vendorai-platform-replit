@@ -67,6 +67,7 @@ function RootLayoutNav() {
           presentation: "card",
         }}
       />
+      <Stack.Screen name="ads/index" options={{ headerShown: false, presentation: "card" }} />
     </Stack>
   );
 }

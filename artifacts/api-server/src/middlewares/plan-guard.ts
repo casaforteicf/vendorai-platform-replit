@@ -15,6 +15,7 @@ const AGENT_TO_MODULE: Record<string, ModuleKey> = {
   financeiro: "agent_service",
   cobranca: "agent_service",
   reception: "agent_sdr",
+  pharmacy: "agent_service",
 };
 
 export const PLAN_UPGRADE_HINT: Partial<Record<ModuleKey, string>> = {

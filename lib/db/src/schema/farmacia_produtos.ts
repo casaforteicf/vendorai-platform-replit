@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, boolean, pgEnum, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, boolean, pgEnum, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -14,6 +14,23 @@ const decimalField = z
   .transform((v) => String(v))
   .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid decimal"));
 
+export interface FarmaciaPosologia {
+  concentracao?: string;
+  formaFarmaceutica?: string;
+  viaAdministracao?: string;
+  faixaEtaria?: string;
+  pesoMinimoKg?: number;
+  pesoMaximoKg?: number;
+  dosePorAdministracao?: string;
+  intervaloMinimo?: string;
+  duracaoMaxima?: string;
+  doseMaximaDiaria?: string;
+  modoDeUsar?: string;
+  contraindicacoes?: string;
+  interacoes?: string;
+  alertas?: string;
+}
+
 export const farmaciaProdutoTable = pgTable("farmacia_produtos", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
@@ -28,12 +45,18 @@ export const farmaciaProdutoTable = pgTable("farmacia_produtos", {
   // anexada no pedido antes de poder ser confirmado (retenção/controle
   // especial). Validado no momento da criação do pedido.
   exigeReceita: boolean("exige_receita").notNull().default(false),
+  posologia: jsonb("posologia").$type<FarmaciaPosologia>(),
+  posologiaFonteUrl: text("posologia_fonte_url"),
+  posologiaRevisadaPor: text("posologia_revisada_por"),
+  posologiaRevisadaEm: timestamp("posologia_revisada_em"),
+  posologiaAprovada: boolean("posologia_aprovada").notNull().default(false),
   unidade: text("unidade").notNull().default("un"),
   precoVenda: numeric("preco_venda", { precision: 12, scale: 2 }).notNull(),
   precoPromocional: numeric("preco_promocional", { precision: 12, scale: 2 }),
   estoque: integer("estoque").notNull().default(0),
   imagemUrl: text("imagem_url"),
   ativo: boolean("ativo").notNull().default(true),
+  vendeNoPracaAi: boolean("vende_no_praca_ai").notNull().default(false),
   destaqueWhatsapp: boolean("destaque_whatsapp").notNull().default(false),
   // Vínculo com o catálogo genérico — preenchido pela sincronização.
   produtoCatalogoId: text("produto_catalogo_id"),

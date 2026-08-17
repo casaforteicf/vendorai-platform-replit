@@ -21,6 +21,8 @@ import {
   leadsTable,
   messagesTable,
   notificationsTable,
+  farmaciaBulasTable,
+  farmaciaProdutoTable,
   produtosCatalogoTable,
   propostasTable,
   tenantsTable,
@@ -724,6 +726,8 @@ export async function processAgentInternal(params: {
     let agentName: AgentName;
     if (forcedAgent) {
       agentName = forcedAgent;
+    } else if (ctx.conversation?.currentAgent === "pharmacy") {
+      agentName = "pharmacy";
     } else {
       const diasSinceContact = daysSinceLastContact(ctx);
       agentName = await determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact, mensagem, tenantId, log, ctx.recentMessages);
@@ -732,7 +736,11 @@ export async function processAgentInternal(params: {
     // 4b. (currentAgent update deferred to step 4c below, after resolvedAgentName is known)
 
     // 5. Check if that agent is enabled
-    const agentCfg = config.agents?.[agentName];
+    // O agente farmacêutico usa a habilitação operacional de atendimento
+    // enquanto ganha configuração própria na base unificada de agentes.
+    const agentCfg = agentName === "pharmacy"
+      ? config.agents?.service
+      : config.agents?.[agentName];
     if (!agentCfg?.enabled) {
       // Fall back to SDR if the chosen agent is disabled
       const sdrCfg = config.agents?.["sdr"];
@@ -824,6 +832,62 @@ export async function processAgentInternal(params: {
     let enrichedScenario: Record<string, unknown> | null = scenario
       ? { ...(scenario as Record<string, unknown>) }
       : null;
+    if (resolvedAgentName === "pharmacy") {
+      const catalogProductsRaw = await db
+        .select({
+          nome: farmaciaProdutoTable.nome,
+          nomeGenerico: farmaciaProdutoTable.principioAtivo,
+          precoBase: farmaciaProdutoTable.precoPromocional,
+          precoVenda: farmaciaProdutoTable.precoVenda,
+          exigeReceita: farmaciaProdutoTable.exigeReceita,
+          estoque: farmaciaProdutoTable.estoque,
+          posologia: farmaciaProdutoTable.posologia,
+          posologiaFonteUrl: farmaciaProdutoTable.posologiaFonteUrl,
+          posologiaAprovada: farmaciaProdutoTable.posologiaAprovada,
+          posologiaRevisadaPor: farmaciaProdutoTable.posologiaRevisadaPor,
+          posologiaRevisadaEm: farmaciaProdutoTable.posologiaRevisadaEm,
+        })
+        .from(farmaciaProdutoTable)
+        .where(and(
+          eq(farmaciaProdutoTable.tenantId, tenantId),
+          eq(farmaciaProdutoTable.ativo, true),
+          gt(farmaciaProdutoTable.estoque, 0),
+        ))
+        .orderBy(farmaciaProdutoTable.nome)
+        .limit(100);
+      const approvedLeaflets = await db
+        .select({
+          principioAtivo: farmaciaBulasTable.principioAtivo,
+          posologia: farmaciaBulasTable.posologia,
+          fonteUrl: farmaciaBulasTable.fonteUrl,
+          responsavelNome: farmaciaBulasTable.responsavelNome,
+          responsavelRegistro: farmaciaBulasTable.responsavelRegistro,
+          revisadaEm: farmaciaBulasTable.revisadaEm,
+        })
+        .from(farmaciaBulasTable)
+        .where(and(
+          eq(farmaciaBulasTable.tenantId, tenantId),
+          eq(farmaciaBulasTable.status, "aprovada"),
+        ));
+      const leafletByIngredient = new Map(
+        approvedLeaflets.map((leaflet) => [leaflet.principioAtivo.trim().toLocaleLowerCase("pt-BR"), leaflet]),
+      );
+      const catalogProducts = catalogProductsRaw.map((product) => {
+        const leaflet = product.nomeGenerico
+          ? leafletByIngredient.get(product.nomeGenerico.trim().toLocaleLowerCase("pt-BR"))
+          : undefined;
+        if (!leaflet) return product;
+        return {
+          ...product,
+          posologia: leaflet.posologia,
+          posologiaFonteUrl: leaflet.fonteUrl,
+          posologiaAprovada: true,
+          posologiaRevisadaPor: `${leaflet.responsavelNome} (${leaflet.responsavelRegistro})`,
+          posologiaRevisadaEm: leaflet.revisadaEm,
+        };
+      });
+      enrichedScenario = { ...(enrichedScenario ?? {}), catalogProducts };
+    }
     if (resolvedAgentName === "reactivation") {
       const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000);
       const [recentProposal] = await db
@@ -1147,6 +1211,18 @@ export async function processAgentInternal(params: {
 
     // 8. Detect special Closer actions in the response.
     let finalResposta = resposta;
+
+    // A Recepção sinaliza internamente o encaminhamento. O marcador nunca é
+    // enviado ao lead; a próxima mensagem continua com o agente farmacêutico.
+    if (resolvedAgentName === "reception" && finalResposta.includes("{{handoff:farmacia}}")) {
+      finalResposta = finalResposta.replace(/\{\{handoff:farmacia\}\}/g, "").trim();
+      if (ctx.conversation) {
+        await db.update(conversationsTable)
+          .set({ currentAgent: "pharmacy", updatedAt: new Date() })
+          .where(eq(conversationsTable.id, ctx.conversation.id));
+      }
+      log.info({ tenantId, leadId }, "dispatch: reception handed conversation to pharmacy agent");
+    }
 
     // 8a. {{action:generate_quote}} — Closer asked for a formal quote to be generated.
     // Use the most expensive active catalog plan (enterprise-first ordering).
