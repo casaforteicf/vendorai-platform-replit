@@ -128,6 +128,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isSalao   = effectiveVertical === "Salão de Beleza" || effectiveVertical === "Barbearia" || effectiveVertical === "Pet Shop (Varejo)";
   const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
   const isClinica = effectiveVertical === "Clínica";
+  const normalizedVertical = (effectiveVertical ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const isFarmacia = normalizedVertical.includes("farmacia");
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
@@ -421,7 +426,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   };
 
   const activeVerticalAllowlist = effectiveVertical
-    ? verticalHrefAllowlists[effectiveVertical]
+    ? verticalHrefAllowlists[effectiveVertical] ?? Object.entries(verticalHrefAllowlists)
+      .find(([name]) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === normalizedVertical)?.[1]
     : undefined;
 
   const scoutVerticalLabels: Record<string, string> = {
@@ -470,13 +476,14 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (disabledHrefs.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
-    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "inteligencia", "hub"];
+    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "farmacia", "inteligencia", "hub"];
     if (!knownSections.includes(item.section)) return false;
     if (item.section === "construcao" && !isConstrucao) return false;
     if (item.section === "varejo" && !isVarejo) return false;
     if (item.section === "supermercado" && !isSupermercado) return false;
     if (item.section === "salao" && !isSalao) return false;
     if (item.section === "clinica" && !isClinica) return false;
+    if (item.section === "farmacia" && !isFarmacia) return false;
     const isAdmin = isSuperAdmin || isTenantAdmin;
     if (isAdmin) return true;
     return userFunction ? item.fn.includes(userFunction) : true;
