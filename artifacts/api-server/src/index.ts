@@ -28,6 +28,12 @@ async function runStartupMigrations() {
     `);
     logger.info("startup migrations: lead service journey OK");
 
+    await db.execute(sql`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS permissions jsonb DEFAULT NULL
+    `);
+    logger.info("startup migrations: user module permissions OK");
+
     // Imported Scout findings used to arrive as "em_negociacao" even when
     // no proposal or deal existed. Keep negotiation reserved for records
     // that actually have a commercial document/process attached.

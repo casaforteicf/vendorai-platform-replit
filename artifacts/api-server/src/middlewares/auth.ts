@@ -1,6 +1,6 @@
 import { type RequestHandler } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
-import { db, tenantsTable, invoicesTable } from "@workspace/db";
+import { db, tenantsTable, invoicesTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 declare global {
@@ -111,6 +111,58 @@ export function requireAdminOrUserFunction(...functions: UserFunction[]): Reques
     res.status(403).json({ error: "Função do usuário não permite esta ação" });
   };
 }
+
+const API_MODULE_RULES: Array<[RegExp, string]> = [
+  [/^\/(?:tenants\/[^/]+\/)?users(?:\/|$)/, "team"],
+  [/^\/leads(?:\/|$)/, "leads"],
+  [/^\/prospector(?:-|\/|$)/, "prospector"],
+  [/^\/(?:deals|funis|activities)(?:\/|$)/, "deals"],
+  [/^\/(?:conversations|messages)(?:\/|$)/, "conversations"],
+  [/^\/(?:agendas|agendamentos|bloqueios-agenda)(?:\/|$)/, "agenda"],
+  [/^\/(?:entregas|fretes)(?:\/|$)/, "deliveries"],
+  [/^\/(?:propostas|lead-proposals|solicitacoes-compra)(?:\/|$)/, "proposals"],
+  [/^\/(?:produtos-catalogo|categorias-produto|inventory|varejo)(?:\/|$)/, "catalog"],
+  [/^\/(?:erp|invoices|subscriptions)(?:\/|$)/, "erp"],
+  [/^\/(?:agents|agent-configs|agent-tasks)(?:\/|$)/, "agents"],
+  [/^\/knowledge-base(?:\/|$)/, "knowledge"],
+  [/^\/(?:analytics|dashboard)(?:\/|$)/, "analytics"],
+  [/^\/(?:campaigns|content|content-studio|video-processing)(?:\/|$)/, "content"],
+  [/^\/scout(?:\/|$)/, "revenue_scout"],
+  [/^\/farmacia(?:\/|$)/, "pharmacy"],
+];
+
+/** Enforces explicit per-user module permissions on protected APIs. */
+export const enforceModulePermission: RequestHandler = async (req, res, next) => {
+  const current = req.user;
+  if (!current || current.platformRole === "super_admin" || current.platformRole === "tenant_admin" || current.userFunction === "administrador") {
+    next();
+    return;
+  }
+
+  const requiredModule = API_MODULE_RULES.find(([pattern]) => pattern.test(req.path))?.[1];
+  if (!requiredModule) {
+    next();
+    return;
+  }
+
+  const [row] = await db
+    .select({ permissions: usersTable.permissions })
+    .from(usersTable)
+    .where(eq(usersTable.id, current.sub));
+
+  // NULL means the tenant has not customized this user yet; preserve the
+  // existing role/function policy for backwards compatibility.
+  if (row?.permissions == null || row.permissions.includes(requiredModule)) {
+    next();
+    return;
+  }
+
+  res.status(403).json({
+    error: "MODULE_ACCESS_DENIED",
+    message: "Seu usuário não possui acesso a este módulo.",
+    module: requiredModule,
+  });
+};
 
 export function buildUserFunctionFilter(req: Express.Request, table: { tenantId: any; assignedTo: any }): any[] {
   const conditions: any[] = [];

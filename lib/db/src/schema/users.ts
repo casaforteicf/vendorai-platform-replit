@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, pgEnum, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, pgEnum, numeric, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -35,6 +35,9 @@ export const usersTable = pgTable("users", {
   role: userRoleEnum("role").notNull().default("member"),
   platformRole: platformRoleEnum("platform_role").notNull().default("member"),
   userFunction: userFunctionEnum("user_function").default("outro"),
+  // Null keeps the legacy role-based defaults. Once configured, this array is
+  // the user's explicit module allowlist.
+  permissions: jsonb("permissions").$type<string[] | null>().default(null),
   telefone: text("telefone"),
   active: boolean("active").notNull().default(true),
   forcePasswordReset: boolean("force_password_reset").notNull().default(false),
@@ -47,13 +50,17 @@ export const usersTable = pgTable("users", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(usersTable).omit({
+export const insertUserSchema = createInsertSchema(usersTable, {
+  permissions: z.array(z.string()).nullable(),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const updateUserSchema = createSelectSchema(usersTable)
+export const updateUserSchema = createSelectSchema(usersTable, {
+  permissions: z.array(z.string()).nullable(),
+})
   .omit({
     id: true,
     tenantId: true,

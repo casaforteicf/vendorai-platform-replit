@@ -15046,6 +15046,12 @@ components:
           $ref: "#/components/schemas/PlatformRole"
         userFunction:
           $ref: "#/components/schemas/UserFunction"
+        permissions:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Explicit module allowlist; null uses function defaults.
         telefone:
           type: string
           nullable: true
@@ -15101,6 +15107,11 @@ components:
           $ref: "#/components/schemas/PlatformRole"
         userFunction:
           $ref: "#/components/schemas/UserFunction"
+        permissions:
+          type: array
+          nullable: true
+          items:
+            type: string
         telefone:
           type: string
         active:
@@ -15130,6 +15141,11 @@ components:
           $ref: "#/components/schemas/PlatformRole"
         userFunction:
           $ref: "#/components/schemas/UserFunction"
+        permissions:
+          type: array
+          nullable: true
+          items:
+            type: string
         telefone:
           type: string
         active:

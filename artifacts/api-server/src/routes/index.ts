@@ -118,7 +118,7 @@ import pacotesRouter from "./pacotes";
 import mlStatusRouter from "./ml_status";
 import internalScoutSignalRouter from "./internal_scout_signal";
 import leadOportunidadesPrevistasRouter from "./lead_oportunidades_previstas";
-import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
 
@@ -174,6 +174,10 @@ router.use(async (req, res, next) => {
 
 // Auth — protected endpoints (me, refresh)
 router.use(authProtectedRouter);
+
+// Explicit module allowlist configured in Equipe. This protects the API too,
+// so typing a hidden URL directly does not bypass the permission.
+router.use(enforceModulePermission);
 
 // Tenants — super_admin only for write, tenant scope for reads
 router.use(tenantsRouter);

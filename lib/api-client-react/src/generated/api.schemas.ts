@@ -137,6 +137,8 @@ export interface User {
   role: UserRole;
   platformRole: PlatformRole;
   userFunction?: UserFunction;
+  /** Explicit module allowlist. Null/undefined uses defaults for the user's function. */
+  permissions?: string[] | null;
   telefone?: string | null;
   active: boolean;
   /** If true, user must change their password on next login. */
@@ -3123,6 +3125,7 @@ export interface CreateUserBody {
   role?: UserRole;
   platformRole?: PlatformRole;
   userFunction?: UserFunction;
+  permissions?: string[] | null;
   telefone?: string;
   active?: boolean;
   limiteEntregasPorTurno?: string | number;
@@ -3135,6 +3138,7 @@ export interface UpdateUserBody {
   role?: UserRole;
   platformRole?: PlatformRole;
   userFunction?: UserFunction;
+  permissions?: string[] | null;
   telefone?: string;
   active?: boolean;
   limiteEntregasPorTurno?: string | number;

@@ -20,6 +20,7 @@ import logoFull from "/logo-full-light.svg";
 import { StoreSwitcher } from "@/components/StoreSwitcher";
 import { NovidadesBell } from "@/components/NovidadesBell";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
+import { hasModuleAccess } from "@/lib/moduleAccess";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, tenantOverride, clearTenantOverride, token, isEffectiveAdmin } = useAuth();
@@ -464,6 +465,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     : undefined;
 
   function isVisible(item: typeof allNavItems[0]) {
+    if (!hasModuleAccess(user, item.href)) return false;
     if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (disabledHrefs.has(item.href)) return false;

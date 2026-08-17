@@ -14,13 +14,14 @@ const PUBLIC_FIELDS = {
   role: usersTable.role,
   platformRole: usersTable.platformRole,
   userFunction: usersTable.userFunction,
+  permissions: usersTable.permissions,
   telefone: usersTable.telefone,
   active: usersTable.active,
   createdAt: usersTable.createdAt,
   updatedAt: usersTable.updatedAt,
 } as const;
 
-router.get("/tenants/:tenantId/users", async (req, res) => {
+router.get("/tenants/:tenantId/users", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
 
   if (
@@ -45,7 +46,7 @@ router.get("/tenants/:tenantId/users", async (req, res) => {
   res.json(users);
 });
 
-router.get("/users", async (req, res) => {
+router.get("/users", requireRole("super_admin"), async (req, res) => {
   const users = await db
     .select(PUBLIC_FIELDS)
     .from(usersTable)
@@ -85,7 +86,7 @@ router.post("/users", requireRole("super_admin", "tenant_admin"), async (req, re
   }
 });
 
-router.get("/users/:id", async (req, res) => {
+router.get("/users/:id", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const [user] = await db
     .select(PUBLIC_FIELDS)
     .from(usersTable)
@@ -99,7 +100,7 @@ router.get("/users/:id", async (req, res) => {
   res.json(user);
 });
 
-router.patch("/users/:id", async (req, res) => {
+router.patch("/users/:id", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const parsed = updateUserSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });

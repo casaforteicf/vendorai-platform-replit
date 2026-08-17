@@ -6,6 +6,8 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DemoBanner } from "@/components/DemoBanner";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { lazy, Suspense, useEffect } from "react";
+import { ShieldX } from "lucide-react";
+import { hasModuleAccess } from "@/lib/moduleAccess";
 import {
   useGetTenant,
   getGetTenantQueryKey,
@@ -259,6 +261,18 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
     (tenantLoading || invoicesLoading)
   ) return <Spinner />;
   if (isTenantAdmin && (tenant?.status === "suspended" || hasOverdueInvoice)) return <Suspended />;
+
+  if (!hasModuleAccess(user, location)) {
+    return (
+      <SidebarLayout>
+        <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-6 text-center">
+          <ShieldX className="mb-4 h-12 w-12 text-muted-foreground" />
+          <h1 className="text-2xl font-bold">Acesso não autorizado</h1>
+          <p className="mt-2 text-muted-foreground">Seu usuário não possui permissão para este módulo. Solicite o acesso ao administrador da empresa.</p>
+        </div>
+      </SidebarLayout>
+    );
+  }
 
   return (
     <SidebarLayout>
