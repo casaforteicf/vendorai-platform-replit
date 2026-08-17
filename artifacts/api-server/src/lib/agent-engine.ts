@@ -1428,26 +1428,81 @@ export function buildReceptionPrompt(customPrompt: string | undefined, ctx: Agen
 
 export function buildPharmacyPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead } = ctx;
-  const catalog = (scenario?.catalogProducts ?? []) as Array<{ nome: string; precoBase?: string | null }>;
+  const catalog = (scenario?.catalogProducts ?? []) as Array<{
+    nome: string;
+    nomeGenerico?: string | null;
+    precoBase?: string | null;
+    precoVenda?: string | null;
+    exigeReceita?: boolean;
+    estoque?: number;
+    posologia?: {
+      concentracao?: string;
+      formaFarmaceutica?: string;
+      viaAdministracao?: string;
+      faixaEtaria?: string;
+      pesoMinimoKg?: number;
+      pesoMaximoKg?: number;
+      dosePorAdministracao?: string;
+      intervaloMinimo?: string;
+      duracaoMaxima?: string;
+      doseMaximaDiaria?: string;
+      modoDeUsar?: string;
+      contraindicacoes?: string;
+      interacoes?: string;
+      alertas?: string;
+    } | null;
+    posologiaFonteUrl?: string | null;
+    posologiaAprovada?: boolean;
+    posologiaRevisadaPor?: string | null;
+    posologiaRevisadaEm?: Date | null;
+  }>;
   const parts: string[] = [];
 
   parts.push(systemPromptOverride?.trim() ||
     "Você é o agente de atendimento da farmácia. Continue a conversa recebida da Recepção sem repetir perguntas já respondidas.\n" +
-    "Missão: entender a necessidade, consultar somente os produtos e informações fornecidos pelo sistema, ajudar com disponibilidade, preço, receita, pedido e entrega, e coletar os dados necessários para a farmácia concluir o atendimento.\n" +
+    "Missão: entender a necessidade, fazer uma triagem breve e sugerir, quando seguro, opções de medicamentos isentos de prescrição pelo nome genérico que estejam realmente disponíveis no catálogo da farmácia. Ajude também com preço, receita, pedido e entrega.\n" +
     "Regras:\n" +
     "- Converse em português brasileiro, com linguagem simples, acolhedora e objetiva\n" +
     "- Faça uma pergunta por vez e preserve o contexto da conversa\n" +
-    "- Nunca invente estoque, preço, prazo, posologia, contraindicação ou informação sobre medicamento\n" +
-    "- Não conclua diagnóstico nem crie receita; quando a situação exigir decisão clínica, encaminhe claramente para o farmacêutico ou serviço de saúde\n" +
+    "- Antes de sugerir medicamento, confirme idade; para criança, também o peso; e pergunte sobre gravidez/amamentação, alergias, doenças relevantes e medicamentos em uso quando aplicável\n" +
+    "- Apresente no máximo 2 opções pelo NOME GENÉRICO, explique que são opções para alívio do sintoma e peça confirmação do cliente; não diagnostique e não diga que o medicamento é certamente seguro para aquela pessoa\n" +
+    "- Só associe uma opção a produto, preço e estoque quando ela estiver no CATÁLOGO DA FARMÁCIA e o princípio ativo corresponder; se não estiver, diga que consultará a equipe\n" +
+    "- Só informe concentração, dose, intervalo, duração e limite diário quando TODOS estiverem cadastrados para a apresentação exata, houver fonte oficial e a posologia estiver aprovada pelo farmacêutico; reproduza literalmente os dados cadastrados\n" +
+    "- Nunca calcule dose, converta apresentação, extrapole faixa de idade/peso nem combine posologias; se os dados do lead não se encaixarem exatamente na ficha aprovada, encaminhe ao farmacêutico\n" +
+    "- Nunca invente estoque, preço, prazo, dose, concentração, posologia, contraindicação ou informação sobre medicamento\n" +
+    "- Não prescreva, não altere receita e não sugira antibiótico, corticoide sistêmico ou medicamento controlado\n" +
+    "- Bloqueie sugestão automática e encaminhe ao farmacêutico para gestantes, lactantes, crianças pequenas, doença renal/hepática/cardíaca, hipertensão descontrolada, anticoagulante, alergia medicamentosa, possível interação, sintomas intensos/recorrentes/persistentes ou item que exija receita\n" +
+    "- Quando houver decisão clínica, dúvida ou risco, encaminhe claramente para o farmacêutico ou serviço de saúde\n" +
     "- Em sinais de urgência, oriente atendimento emergencial imediato\n" +
     "- Não solicite CPF, documento ou endereço antes que sejam realmente necessários ao pedido ou entrega\n" +
     "- Se não houver informação suficiente, diga que confirmará com a equipe da farmácia");
 
   if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA FARMÁCIA\n" + customPrompt.trim());
+  parts.push(
+    "## REFERÊNCIA DE ORIENTAÇÃO INICIAL (NÃO É PRESCRIÇÃO)\n" +
+    "- Dor de cabeça comum: hidratação e repouso; opções genéricas possíveis: paracetamol ou dipirona. Encaminhar se súbita, muito forte, após trauma ou com sintomas neurológicos.\n" +
+    "- Febre: líquidos e roupas leves; opções genéricas possíveis: paracetamol ou dipirona. Encaminhar se alta, persistente, com confusão ou rigidez de nuca.\n" +
+    "- Resfriado/nariz entupido: hidratação e lavagem nasal; cloreto de sódio 0,9%; para dor/febre, paracetamol somente após triagem.\n" +
+    "- Dor muscular leve: calor local e repouso relativo; paracetamol ou dipirona; diclofenaco dietilamônio tópico exige triagem cuidadosa.\n" +
+    "- Alergia leve/coriza: lavagem nasal; loratadina ou cetirizina exigem triagem. Falta de ar, chiado ou inchaço são encaminhamento urgente.\n" +
+    "- Azia ocasional: evitar gatilhos e não se deitar; antiácido ou alginato após triagem. Dor no peito exige avaliação urgente.\n" +
+    "- Diarreia ou vômito leve: priorizar sais para reidratação oral; sangue, febre alta, dor intensa ou desidratação exigem atendimento.\n" +
+    "- Cortes/escoriações superficiais: água, sabonete e curativo; clorexidina aquosa quando necessária.\n" +
+    "- Queimadura leve: água corrente fresca por cerca de 20 minutos; encaminhar áreas extensas, face, mãos, genitais ou bolhas grandes.\n" +
+    "Um asterisco ou a expressão 'após triagem' na política da farmácia significa: não sugerir automaticamente sem validação das contraindicações."
+  );
   parts.push(buildLeadSection(lead));
   if (catalog.length > 0) {
-    parts.push("## PRODUTOS DISPONÍVEIS NO CATÁLOGO\n" + catalog.map((p) =>
-      `- ${p.nome}${p.precoBase ? ` — R$ ${p.precoBase}` : ""}`
+    parts.push("## PRODUTOS DISPONÍVEIS NO CATÁLOGO\n" + catalog.map((p) => {
+      const posologia = p.posologiaAprovada && p.posologiaFonteUrl && p.posologia
+        ? ` | POSOLOGIA APROVADA: ${JSON.stringify(p.posologia)} | fonte: ${p.posologiaFonteUrl} | revisada por: ${p.posologiaRevisadaPor ?? "farmacêutico responsável"}${p.posologiaRevisadaEm ? ` em ${new Date(p.posologiaRevisadaEm).toLocaleDateString("pt-BR")}` : ""}`
+        : " | posologia não liberada: encaminhar ao farmacêutico";
+      return `- Produto: ${p.nome}` +
+      `${p.nomeGenerico ? ` | nome genérico/princípio ativo: ${p.nomeGenerico}` : " | nome genérico não cadastrado"}` +
+      `${(p.precoBase ?? p.precoVenda) ? ` | preço: R$ ${p.precoBase ?? p.precoVenda}` : ""}` +
+      ` | exige receita: ${p.exigeReceita ? "sim" : "não"}` +
+      `${typeof p.estoque === "number" ? ` | estoque: ${p.estoque}` : ""}` + posologia;
+    }
     ).join("\n"));
   }
   return joinWithCalibration(parts);
