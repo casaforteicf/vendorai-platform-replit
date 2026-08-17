@@ -35,6 +35,12 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
   categoriaFiltro: text("categoria_filtro"),
   modo: adModoEnum("modo").notNull().default("unico"),
   orcamentoDiario: numeric("orcamento_diario", { precision: 10, scale: 2 }).notNull(),
+  segmentacao: jsonb("segmentacao").$type<{
+    localizacao?: { locais: string[]; tipoPresenca: "presenca" | "interesse" | "ambos"; raioKm?: number | null };
+    demografia?: { idades: string[]; generos: string[]; statusParental: string[]; rendas: string[] };
+    audiencias?: { afinidade: string[]; noMercado: string[]; termosPesquisa: string[]; sites: string[]; aplicativos: string[] };
+    dadosProprios?: { remarketing: string[]; customerMatch: string[]; semelhantes: string[] };
+  }>().notNull().default({}),
   status: adCampanhaStatusEnum("status").notNull().default("rascunho"),
   // Código curto único pra usar como utm_campaign em qualquer link que
   // aponte pra essa campanha — existe desde o rascunho (independente de

@@ -70,7 +70,13 @@ const EMPTY_FORM = {
   categoriaFiltro: "",
   orcamentoDiario: "",
   vertical: "",
+  locais: "", tipoPresenca: "presenca" as "presenca" | "interesse" | "ambos", raioKm: "",
+  idades: "", generos: "", statusParental: "", rendas: "",
+  afinidade: "", noMercado: "", termosPesquisa: "", sites: "", aplicativos: "",
+  remarketing: "", customerMatch: "", semelhantes: "",
 };
+
+const lista = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
 
 export default function Ads() {
   const { user } = useAuth();
@@ -133,6 +139,12 @@ export default function Ads() {
         categoriaFiltro: form.modo === "carrossel" ? form.categoriaFiltro : null,
         modo: form.modo,
         orcamentoDiario: form.orcamentoDiario,
+        segmentacao: {
+          localizacao: { locais: lista(form.locais), tipoPresenca: form.tipoPresenca, raioKm: form.raioKm ? Number(form.raioKm) : null },
+          demografia: { idades: lista(form.idades), generos: lista(form.generos), statusParental: lista(form.statusParental), rendas: lista(form.rendas) },
+          audiencias: { afinidade: lista(form.afinidade), noMercado: lista(form.noMercado), termosPesquisa: lista(form.termosPesquisa), sites: lista(form.sites), aplicativos: lista(form.aplicativos) },
+          dadosProprios: { remarketing: lista(form.remarketing), customerMatch: lista(form.customerMatch), semelhantes: lista(form.semelhantes) },
+        },
       };
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
@@ -284,7 +296,7 @@ export default function Ads() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nova campanha</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
@@ -351,6 +363,41 @@ export default function Ads() {
             <div>
               <Label>Orçamento diário (R$)</Label>
               <Input type="number" step="0.01" placeholder="50.00" value={form.orcamentoDiario} onChange={(e) => setForm((f) => ({ ...f, orcamentoDiario: e.target.value }))} />
+            </div>
+
+            <div className="border-t pt-4 space-y-4">
+              <div><h3 className="font-semibold">Localização e frequência</h3><p className="text-xs text-muted-foreground">Separe países, estados, cidades, CEPs ou endereços por vírgula.</p></div>
+              <Input placeholder="Ex: Curitiba, Paraná, 80000-000" value={form.locais} onChange={(e) => setForm((f) => ({ ...f, locais: e.target.value }))} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><Label>Intenção de local / presença</Label><Select value={form.tipoPresenca} onValueChange={(v) => setForm((f) => ({ ...f, tipoPresenca: v as typeof f.tipoPresenca }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="presenca">Pessoas presentes na região</SelectItem><SelectItem value="interesse">Pessoas interessadas na região</SelectItem><SelectItem value="ambos">Presença ou interesse</SelectItem></SelectContent></Select></div>
+                <div><Label>Raio em torno do endereço (km)</Label><Input type="number" min="1" placeholder="Ex: 30" value={form.raioKm} onChange={(e) => setForm((f) => ({ ...f, raioKm: e.target.value }))} /></div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4 space-y-3">
+              <h3 className="font-semibold">Perfil demográfico</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><Label>Faixas de idade</Label><Input placeholder="18-24, 25-34, 35-44" value={form.idades} onChange={(e) => setForm((f) => ({ ...f, idades: e.target.value }))} /></div>
+                <div><Label>Gêneros</Label><Input placeholder="Feminino, Masculino, Desconhecido" value={form.generos} onChange={(e) => setForm((f) => ({ ...f, generos: e.target.value }))} /></div>
+                <div><Label>Status parental</Label><Input placeholder="Com filhos, Sem filhos" value={form.statusParental} onChange={(e) => setForm((f) => ({ ...f, statusParental: e.target.value }))} /></div>
+                <div><Label>Renda familiar</Label><Input placeholder="10% superior, 11-20%, 21-30%" value={form.rendas} onChange={(e) => setForm((f) => ({ ...f, rendas: e.target.value }))} /></div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4 space-y-3">
+              <h3 className="font-semibold">Comportamento e intenção de compra</h3>
+              <div><Label>Afinidade</Label><Input placeholder="Ex: Entusiastas de automóveis, Viajantes" value={form.afinidade} onChange={(e) => setForm((f) => ({ ...f, afinidade: e.target.value }))} /></div>
+              <div><Label>No mercado (In-market)</Label><Input placeholder="Ex: Compra de veículos, Imóveis residenciais" value={form.noMercado} onChange={(e) => setForm((f) => ({ ...f, noMercado: e.target.value }))} /></div>
+              <div><Label>Termos de pesquisa personalizados</Label><Input placeholder="Termos separados por vírgula" value={form.termosPesquisa} onChange={(e) => setForm((f) => ({ ...f, termosPesquisa: e.target.value }))} /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><Label>Sites visitados</Label><Input placeholder="exemplo.com.br" value={form.sites} onChange={(e) => setForm((f) => ({ ...f, sites: e.target.value }))} /></div><div><Label>Aplicativos utilizados</Label><Input placeholder="Apps separados por vírgula" value={form.aplicativos} onChange={(e) => setForm((f) => ({ ...f, aplicativos: e.target.value }))} /></div></div>
+            </div>
+
+            <div className="border-t pt-4 space-y-3">
+              <h3 className="font-semibold">Rastreamento e dados próprios</h3>
+              <p className="text-xs text-muted-foreground">Informe nomes ou IDs de listas consentidas. Dados pessoais brutos não são armazenados neste formulário.</p>
+              <div><Label>Remarketing</Label><Input placeholder="Visitantes do site, YouTube, usuários do app" value={form.remarketing} onChange={(e) => setForm((f) => ({ ...f, remarketing: e.target.value }))} /></div>
+              <div><Label>Customer Match</Label><Input placeholder="Nome ou ID da lista de clientes" value={form.customerMatch} onChange={(e) => setForm((f) => ({ ...f, customerMatch: e.target.value }))} /></div>
+              <div><Label>Públicos semelhantes</Label><Input placeholder="Nome ou ID da lista de origem" value={form.semelhantes} onChange={(e) => setForm((f) => ({ ...f, semelhantes: e.target.value }))} /></div>
             </div>
 
             <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && !form.itemId)}
