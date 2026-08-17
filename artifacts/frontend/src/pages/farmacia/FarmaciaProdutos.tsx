@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -39,6 +40,13 @@ const EMPTY_FORM = {
   nome: "", principioAtivo: "", descricao: "", categoria: "outros" as string,
   exigeReceita: false, unidade: "un", precoVenda: "", precoPromocional: "",
   estoque: 0, ativo: true, destaqueWhatsapp: false,
+  posologiaFonteUrl: "", posologiaRevisadaPor: "", posologiaAprovada: false,
+  posologia: {
+    concentracao: "", formaFarmaceutica: "", viaAdministracao: "", faixaEtaria: "",
+    pesoMinimoKg: "", pesoMaximoKg: "", dosePorAdministracao: "", intervaloMinimo: "",
+    duracaoMaxima: "", doseMaximaDiaria: "", modoDeUsar: "", contraindicacoes: "",
+    interacoes: "", alertas: "",
+  },
 };
 
 export default function FarmaciaProdutos() {
@@ -111,6 +119,9 @@ export default function FarmaciaProdutos() {
       categoria: p.categoria ?? "outros", exigeReceita: !!p.exigeReceita, unidade: p.unidade ?? "un",
       precoVenda: String(p.precoVenda ?? ""), precoPromocional: p.precoPromocional != null ? String(p.precoPromocional) : "",
       estoque: p.estoque ?? 0, ativo: p.ativo !== false, destaqueWhatsapp: !!p.destaqueWhatsapp,
+      posologiaFonteUrl: p.posologiaFonteUrl ?? "", posologiaRevisadaPor: p.posologiaRevisadaPor ?? "",
+      posologiaAprovada: !!p.posologiaAprovada,
+      posologia: { ...EMPTY_FORM.posologia, ...(p.posologia ?? {}), pesoMinimoKg: p.posologia?.pesoMinimoKg ?? "", pesoMaximoKg: p.posologia?.pesoMaximoKg ?? "" },
     });
     setDialogOpen(true);
   }
@@ -120,7 +131,18 @@ export default function FarmaciaProdutos() {
       toast({ title: "Nome e preço são obrigatórios", variant: "destructive" });
       return;
     }
-    save.mutate({ ...form, estoque: Number(form.estoque), precoPromocional: form.precoPromocional || null });
+    save.mutate({
+      ...form,
+      estoque: Number(form.estoque),
+      precoPromocional: form.precoPromocional || null,
+      posologiaFonteUrl: form.posologiaFonteUrl || null,
+      posologiaRevisadaPor: form.posologiaRevisadaPor || null,
+      posologia: {
+        ...form.posologia,
+        pesoMinimoKg: form.posologia.pesoMinimoKg === "" ? undefined : Number(form.posologia.pesoMinimoKg),
+        pesoMaximoKg: form.posologia.pesoMaximoKg === "" ? undefined : Number(form.posologia.pesoMaximoKg),
+      },
+    });
   }
 
   return (
@@ -207,7 +229,7 @@ export default function FarmaciaProdutos() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar Produto" : "Novo Produto"}</DialogTitle>
           </DialogHeader>
@@ -246,6 +268,36 @@ export default function FarmaciaProdutos() {
             <div className="flex items-center gap-2">
               <Switch checked={form.exigeReceita} onCheckedChange={(v) => setForm((f) => ({ ...f, exigeReceita: v }))} />
               <Label>Exige receita médica (produto controlado)</Label>
+            </div>
+            <div className="rounded-lg border p-4 space-y-4">
+              <div>
+                <h3 className="font-semibold text-sm">Posologia oficial da apresentação</h3>
+                <p className="text-xs text-muted-foreground">Copie os dados da bula desta concentração e forma farmacêutica. A IA não fará cálculos nem adaptações.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5"><Label>Concentração</Label><Input value={form.posologia.concentracao} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, concentracao: e.target.value } }))} placeholder="ex: 500 mg" /></div>
+                <div className="space-y-1.5"><Label>Forma farmacêutica</Label><Input value={form.posologia.formaFarmaceutica} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, formaFarmaceutica: e.target.value } }))} placeholder="ex: comprimido" /></div>
+                <div className="space-y-1.5"><Label>Via</Label><Input value={form.posologia.viaAdministracao} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, viaAdministracao: e.target.value } }))} placeholder="ex: oral" /></div>
+                <div className="space-y-1.5"><Label>Faixa etária</Label><Input value={form.posologia.faixaEtaria} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, faixaEtaria: e.target.value } }))} placeholder="ex: adultos e maiores de 12 anos" /></div>
+                <div className="space-y-1.5"><Label>Peso mínimo (kg)</Label><Input type="number" min={0} value={form.posologia.pesoMinimoKg} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, pesoMinimoKg: e.target.value } }))} /></div>
+                <div className="space-y-1.5"><Label>Peso máximo (kg)</Label><Input type="number" min={0} value={form.posologia.pesoMaximoKg} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, pesoMaximoKg: e.target.value } }))} /></div>
+                <div className="space-y-1.5"><Label>Dose por administração</Label><Input value={form.posologia.dosePorAdministracao} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, dosePorAdministracao: e.target.value } }))} /></div>
+                <div className="space-y-1.5"><Label>Intervalo mínimo</Label><Input value={form.posologia.intervaloMinimo} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, intervaloMinimo: e.target.value } }))} /></div>
+                <div className="space-y-1.5"><Label>Duração máxima</Label><Input value={form.posologia.duracaoMaxima} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, duracaoMaxima: e.target.value } }))} /></div>
+                <div className="space-y-1.5 sm:col-span-3"><Label>Dose máxima diária</Label><Input value={form.posologia.doseMaximaDiaria} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, doseMaximaDiaria: e.target.value } }))} /></div>
+              </div>
+              {(["modoDeUsar", "contraindicacoes", "interacoes", "alertas"] as const).map((field) => (
+                <div key={field} className="space-y-1.5">
+                  <Label>{{ modoDeUsar: "Modo de usar", contraindicacoes: "Contraindicações", interacoes: "Interações", alertas: "Alertas" }[field]}</Label>
+                  <Textarea value={form.posologia[field]} onChange={(e) => setForm((f) => ({ ...f, posologia: { ...f.posologia, [field]: e.target.value } }))} rows={2} />
+                </div>
+              ))}
+              <div className="space-y-1.5"><Label>URL da bula oficial</Label><Input type="url" value={form.posologiaFonteUrl} onChange={(e) => setForm((f) => ({ ...f, posologiaFonteUrl: e.target.value }))} placeholder="Bulário Eletrônico da Anvisa" /></div>
+              <div className="space-y-1.5"><Label>Revisada por (farmacêutico/CRF)</Label><Input value={form.posologiaRevisadaPor} onChange={(e) => setForm((f) => ({ ...f, posologiaRevisadaPor: e.target.value }))} /></div>
+              <div className="flex items-center gap-2">
+                <Switch checked={form.posologiaAprovada} onCheckedChange={(v) => setForm((f) => ({ ...f, posologiaAprovada: v }))} />
+                <Label>Liberar esta posologia para o agente após revisão farmacêutica</Label>
+              </div>
             </div>
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">

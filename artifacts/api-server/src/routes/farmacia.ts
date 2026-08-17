@@ -3,6 +3,7 @@ import { and, eq, desc, ilike } from "drizzle-orm";
 import {
   db,
   farmaciaProdutoTable,
+  farmaciaBulasTable,
   farmaciaPedidoTable,
   farmaciaPedidoItemTable,
   leadsTable,
@@ -11,8 +12,33 @@ import {
   updateReceitaMedicaSchema,
   produtosCatalogoTable,
   categoriasProdutoTable,
+  tenantsTable,
   type FarmaciaProduto,
 } from "@workspace/db";
+
+const BULAS_BASE = [
+  ["Paracetamol", "Dor e febre"], ["Dipirona", "Dor e febre"], ["Ibuprofeno", "Dor, enxaqueca e cólica menstrual"],
+  ["Diclofenaco dietilamônio", "Dor muscular, articular e contusão"], ["Cloreto de sódio 0,9%", "Lavagem nasal e ocular"],
+  ["Oximetazolina", "Congestão nasal"], ["Loratadina", "Alergia, coriza e urticária"], ["Cetirizina", "Alergia, coriza e urticária"],
+  ["Dextrometorfano", "Tosse seca"], ["Acetilcisteína", "Tosse com catarro"], ["Ambroxol", "Tosse com catarro"],
+  ["Hedera helix", "Tosse com catarro"], ["Benzidamina", "Garganta irritada"], ["Carboximetilcelulose", "Olho seco"],
+  ["Hipromelose", "Olho seco"], ["Hialuronato de sódio", "Olho seco"],
+  ["Hidróxido de alumínio + hidróxido de magnésio", "Azia e má digestão"], ["Carbonato de cálcio", "Azia"],
+  ["Alginato de sódio", "Azia e refluxo"], ["Simeticona", "Gases"], ["Butilbrometo de escopolamina", "Cólica intestinal"],
+  ["Dimenidrinato", "Enjoo de viagem"], ["Sais para reidratação oral", "Vômito, diarreia e desidratação"],
+  ["Racecadotrila", "Diarreia"], ["Loperamida", "Diarreia"], ["Psyllium", "Prisão de ventre"],
+  ["Lactulose", "Prisão de ventre"], ["Macrogol", "Prisão de ventre"], ["Lactase", "Intolerância à lactose"],
+  ["Albendazol", "Suspeita de vermes"], ["Mebendazol", "Suspeita de vermes"], ["Clorexidina aquosa", "Cortes e escoriações"],
+  ["Petrolato", "Queimadura superficial e pele rachada"], ["Dexpantenol", "Queimadura solar e pele rachada"],
+  ["Óxido de zinco", "Assadura"], ["Calamina", "Brotoeja e picada de inseto"], ["Hidrocortisona tópica", "Dermatite de contato"],
+  ["Ureia", "Pele ressecada"], ["Peróxido de benzoíla", "Acne leve"], ["Clotrimazol", "Micose e candidíase"],
+  ["Miconazol", "Micose e candidíase"], ["Terbinafina", "Micose e frieira"], ["Amorolfina", "Micose de unha"],
+  ["Ciclopirox", "Micose de unha"], ["Cetoconazol", "Caspa"], ["Piritionato de zinco", "Caspa"],
+  ["Sulfeto de selênio", "Caspa"], ["Ácido hialurônico", "Afta"], ["Digluconato de clorexidina", "Gengiva irritada"],
+  ["Nitrato de potássio", "Sensibilidade dentária"], ["Fluoreto estanoso", "Sensibilidade dentária"],
+  ["Aciclovir tópico", "Herpes labial recorrente"], ["Levonorgestrel", "Contracepção de emergência"],
+  ["Melatonina", "Insônia ocasional"],
+] as const;
 
 const router: IRouter = Router();
 
@@ -22,6 +48,46 @@ function tid(req: Express.Request): string {
 function canAccess(req: Express.Request, tenantId: string) {
   const role = (req as any).user?.platformRole;
   return role === "super_admin" || tid(req) === tenantId;
+}
+
+async function canAccessPharmacyLeaflets(req: Express.Request, tenantId: string) {
+  if (!canAccess(req, tenantId)) return false;
+  if ((req as any).user?.platformRole === "super_admin") return true;
+  const [tenant] = await db.select({ vertical: tenantsTable.vertical })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+  return Boolean(tenant?.vertical?.toLocaleLowerCase("pt-BR").includes("farm"));
+}
+
+function normalizePosologyPayload(body: any) {
+  const payload = { ...body };
+  if (!payload.posologiaAprovada) {
+    payload.posologiaAprovada = false;
+    payload.posologiaRevisadaEm = null;
+    return payload;
+  }
+
+  const p = payload.posologia ?? {};
+  const required = [
+    [payload.principioAtivo, "princípio ativo"],
+    [p.concentracao, "concentração"],
+    [p.formaFarmaceutica, "forma farmacêutica"],
+    [p.viaAdministracao, "via de administração"],
+    [p.faixaEtaria, "faixa etária"],
+    [p.dosePorAdministracao, "dose por administração"],
+    [p.intervaloMinimo, "intervalo mínimo"],
+    [p.doseMaximaDiaria, "dose máxima diária"],
+    [payload.posologiaFonteUrl, "fonte oficial da bula"],
+    [payload.posologiaRevisadaPor, "farmacêutico responsável"],
+  ];
+  const missing = required.filter(([value]) => !String(value ?? "").trim()).map(([, label]) => label);
+  if (missing.length) {
+    const error = new Error(`Para aprovar a posologia, preencha: ${missing.join(", ")}`) as Error & { status: number };
+    error.status = 400;
+    throw error;
+  }
+  payload.posologiaRevisadaEm = new Date();
+  return payload;
 }
 
 /** Sincroniza produto de farmácia com o catálogo genérico (Praça.ai/Scout). */
@@ -75,9 +141,10 @@ router.post("/tenants/:tenantId/farmacia/produtos", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const [row] = await db.insert(farmaciaProdutoTable)
-    .values({ ...req.body, tenantId })
-    .returning();
+  let payload;
+  try { payload = normalizePosologyPayload(req.body); }
+  catch (error: any) { return res.status(error.status ?? 400).json({ error: error.message }); }
+  const [row] = await db.insert(farmaciaProdutoTable).values({ ...payload, tenantId }).returning();
   await syncFarmaciaProdutoToProdutoCatalogo(tenantId, row);
   return res.status(201).json(row);
 });
@@ -98,8 +165,11 @@ router.put("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res) =
   const produtoId = req.params.produtoId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  let payload;
+  try { payload = normalizePosologyPayload(req.body); }
+  catch (error: any) { return res.status(error.status ?? 400).json({ error: error.message }); }
   const [row] = await db.update(farmaciaProdutoTable)
-    .set({ ...req.body, updatedAt: new Date() })
+    .set({ ...payload, updatedAt: new Date() })
     .where(and(eq(farmaciaProdutoTable.id, produtoId), eq(farmaciaProdutoTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Produto not found" });
@@ -121,6 +191,77 @@ router.delete("/tenants/:tenantId/farmacia/produtos/:produtoId", async (req, res
   await db.delete(farmaciaProdutoTable)
     .where(and(eq(farmaciaProdutoTable.id, produtoId), eq(farmaciaProdutoTable.tenantId, tenantId)));
   return res.status(204).send();
+});
+
+// ─── Biblioteca de bulas para revisão ───────────────────────────────────────
+
+router.get("/tenants/:tenantId/farmacia/bulas", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
+  const conditions = [eq(farmaciaBulasTable.tenantId, tenantId)];
+  if (req.query.status) conditions.push(eq(farmaciaBulasTable.status, req.query.status as any));
+  const rows = await db.select().from(farmaciaBulasTable)
+    .where(and(...conditions)).orderBy(farmaciaBulasTable.principioAtivo);
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/farmacia/bulas/importar-base", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
+  await db.insert(farmaciaBulasTable).values(BULAS_BASE.map(([principioAtivo, sintomasReferencia]) => ({
+    tenantId, principioAtivo, sintomasReferencia, status: "pendente" as const,
+  }))).onConflictDoNothing();
+  const rows = await db.select().from(farmaciaBulasTable)
+    .where(eq(farmaciaBulasTable.tenantId, tenantId));
+  return res.status(201).json({ imported: rows.length });
+});
+
+router.put("/tenants/:tenantId/farmacia/bulas/:bulaId", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
+  const {
+    principioAtivo,
+    sintomasReferencia,
+    tratamentoInicial,
+    criteriosEncaminhamento,
+    posologia,
+    fonteUrl,
+    observacoesRevisao,
+  } = req.body;
+  const [row] = await db.update(farmaciaBulasTable).set({
+    principioAtivo,
+    sintomasReferencia,
+    tratamentoInicial,
+    criteriosEncaminhamento,
+    posologia,
+    fonteUrl,
+    observacoesRevisao,
+    status: "pendente",
+    responsavelNome: null,
+    responsavelRegistro: null,
+    revisadaEm: null,
+    updatedAt: new Date(),
+  }).where(and(eq(farmaciaBulasTable.id, req.params.bulaId as string), eq(farmaciaBulasTable.tenantId, tenantId))).returning();
+  if (!row) return res.status(404).json({ error: "Bula não encontrada" });
+  return res.json(row);
+});
+
+router.post("/tenants/:tenantId/farmacia/bulas/:bulaId/aprovar", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!await canAccessPharmacyLeaflets(req, tenantId)) return res.status(403).json({ error: "Bulas disponíveis somente para a vertical Farmácia." });
+  const { responsavelNome, responsavelRegistro, fonteUrl, posologia } = req.body;
+  const required = [responsavelNome, responsavelRegistro, fonteUrl, posologia?.concentracao,
+    posologia?.formaFarmaceutica, posologia?.viaAdministracao, posologia?.faixaEtaria,
+    posologia?.dosePorAdministracao, posologia?.intervaloMinimo, posologia?.doseMaximaDiaria];
+  if (required.some((value) => !String(value ?? "").trim())) {
+    return res.status(400).json({ error: "Complete a apresentação, posologia, fonte oficial, nome e registro do farmacêutico." });
+  }
+  const [row] = await db.update(farmaciaBulasTable).set({
+    posologia, fonteUrl, responsavelNome, responsavelRegistro,
+    status: "aprovada", revisadaEm: new Date(), updatedAt: new Date(),
+  }).where(and(eq(farmaciaBulasTable.id, req.params.bulaId as string), eq(farmaciaBulasTable.tenantId, tenantId))).returning();
+  if (!row) return res.status(404).json({ error: "Bula não encontrada" });
+  return res.json(row);
 });
 
 // ─── Pedidos ──────────────────────────────────────────────────────────────────

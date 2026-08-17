@@ -21,6 +21,8 @@ import {
   leadsTable,
   messagesTable,
   notificationsTable,
+  farmaciaBulasTable,
+  farmaciaProdutoTable,
   produtosCatalogoTable,
   propostasTable,
   tenantsTable,
@@ -831,15 +833,59 @@ export async function processAgentInternal(params: {
       ? { ...(scenario as Record<string, unknown>) }
       : null;
     if (resolvedAgentName === "pharmacy") {
-      const catalogProducts = await db
+      const catalogProductsRaw = await db
         .select({
-          nome: produtosCatalogoTable.nome,
-          precoBase: produtosCatalogoTable.precoBase,
+          nome: farmaciaProdutoTable.nome,
+          nomeGenerico: farmaciaProdutoTable.principioAtivo,
+          precoBase: farmaciaProdutoTable.precoPromocional,
+          precoVenda: farmaciaProdutoTable.precoVenda,
+          exigeReceita: farmaciaProdutoTable.exigeReceita,
+          estoque: farmaciaProdutoTable.estoque,
+          posologia: farmaciaProdutoTable.posologia,
+          posologiaFonteUrl: farmaciaProdutoTable.posologiaFonteUrl,
+          posologiaAprovada: farmaciaProdutoTable.posologiaAprovada,
+          posologiaRevisadaPor: farmaciaProdutoTable.posologiaRevisadaPor,
+          posologiaRevisadaEm: farmaciaProdutoTable.posologiaRevisadaEm,
         })
-        .from(produtosCatalogoTable)
-        .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
-        .orderBy(produtosCatalogoTable.nome)
+        .from(farmaciaProdutoTable)
+        .where(and(
+          eq(farmaciaProdutoTable.tenantId, tenantId),
+          eq(farmaciaProdutoTable.ativo, true),
+          gt(farmaciaProdutoTable.estoque, 0),
+        ))
+        .orderBy(farmaciaProdutoTable.nome)
         .limit(100);
+      const approvedLeaflets = await db
+        .select({
+          principioAtivo: farmaciaBulasTable.principioAtivo,
+          posologia: farmaciaBulasTable.posologia,
+          fonteUrl: farmaciaBulasTable.fonteUrl,
+          responsavelNome: farmaciaBulasTable.responsavelNome,
+          responsavelRegistro: farmaciaBulasTable.responsavelRegistro,
+          revisadaEm: farmaciaBulasTable.revisadaEm,
+        })
+        .from(farmaciaBulasTable)
+        .where(and(
+          eq(farmaciaBulasTable.tenantId, tenantId),
+          eq(farmaciaBulasTable.status, "aprovada"),
+        ));
+      const leafletByIngredient = new Map(
+        approvedLeaflets.map((leaflet) => [leaflet.principioAtivo.trim().toLocaleLowerCase("pt-BR"), leaflet]),
+      );
+      const catalogProducts = catalogProductsRaw.map((product) => {
+        const leaflet = product.nomeGenerico
+          ? leafletByIngredient.get(product.nomeGenerico.trim().toLocaleLowerCase("pt-BR"))
+          : undefined;
+        if (!leaflet) return product;
+        return {
+          ...product,
+          posologia: leaflet.posologia,
+          posologiaFonteUrl: leaflet.fonteUrl,
+          posologiaAprovada: true,
+          posologiaRevisadaPor: `${leaflet.responsavelNome} (${leaflet.responsavelRegistro})`,
+          posologiaRevisadaEm: leaflet.revisadaEm,
+        };
+      });
       enrichedScenario = { ...(enrichedScenario ?? {}), catalogProducts };
     }
     if (resolvedAgentName === "reactivation") {

@@ -58,6 +58,7 @@ export * from "./supermercado_configuracoes";
 export * from "./supermercado_produtos";
 export * from "./supermercado_pedidos";
 export * from "./farmacia_produtos";
+export * from "./farmacia_bulas";
 export * from "./farmacia_pedidos";
 export * from "./imoveis_propriedades";
 export * from "./imoveis_visitas";
