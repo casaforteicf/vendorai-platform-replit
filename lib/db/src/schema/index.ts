@@ -197,3 +197,4 @@ export * from "./erp_financeiro";
 export * from "./erp_operacional";
 export * from "./vendor_stories";
 export * from "./variedades_dia";
+export * from "./vehicle_lookup";
