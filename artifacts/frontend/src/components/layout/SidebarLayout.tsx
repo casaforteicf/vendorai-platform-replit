@@ -524,6 +524,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const archNav = navigation.filter((i) => i.section === "arch");
   const salaoNav       = navigation.filter((i) => i.section === "salao");
   const clinicaNav     = navigation.filter((i) => i.section === "clinica");
+  const farmaciaNav    = navigation.filter((i) => i.section === "farmacia");
   const inteligenciaNav= navigation.filter((i) => i.section === "inteligencia");
   const hubNav         = navigation.filter((i) => i.section === "hub");
 
@@ -803,6 +804,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               Clínica
             </p>
             {clinicaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {farmaciaNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <Pill className="h-3 w-3" />
+              Farmácia
+            </p>
+            {farmaciaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
           </div>
         )}
 
