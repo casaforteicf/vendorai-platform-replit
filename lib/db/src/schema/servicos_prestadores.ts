@@ -23,7 +23,7 @@ export const servicosPrestadoresTable = pgTable("servicos_prestadores", {
   nome:                varchar("nome",      { length: 255 }).notNull(),
   email:               varchar("email",     { length: 255 }),
   telefone:            varchar("telefone",  { length: 20  }),
-  especialidade:       varchar("especialidade", { length: 20 }).notNull().default("geral"),
+  especialidade:       varchar("especialidade", { length: 80 }).notNull().default("geral"),
   raioAtendimentoKm:   integer("raio_atendimento_km").default(15),
   comissaoBase:        numeric("comissao_base", { precision: 5, scale: 2 }).default("60"),
   ativo:               boolean("ativo").default(true),
@@ -33,13 +33,13 @@ export const servicosPrestadoresTable = pgTable("servicos_prestadores", {
 export const insertServicosPrestadorSchema = createInsertSchema(servicosPrestadoresTable, {
   comissaoBase: z.coerce.number().nonnegative().optional(),
   raioAtendimentoKm: z.coerce.number().int().positive().optional(),
-  especialidade: z.enum(SERVICOS_ESPECIALIDADES).optional(),
+  especialidade: z.string().min(1).max(80).optional(),
 }).omit({ id: true, createdAt: true });
 
 export const updateServicosPrestadorSchema = createSelectSchema(servicosPrestadoresTable, {
   comissaoBase: z.coerce.number().nonnegative().optional(),
   raioAtendimentoKm: z.coerce.number().int().positive().optional(),
-  especialidade: z.enum(SERVICOS_ESPECIALIDADES).optional(),
+  especialidade: z.string().min(1).max(80).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true })
   .partial();

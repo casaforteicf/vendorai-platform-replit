@@ -30,6 +30,7 @@ export * from "./agendamentos";
 export * from "./subscriptions";
 export * from "./invoices";
 export * from "./knowledge_base";
+export * from "./ad_campaigns";
 export * from "./rules";
 export * from "./intelligence_analysis_log";
 export * from "./inventory_items";

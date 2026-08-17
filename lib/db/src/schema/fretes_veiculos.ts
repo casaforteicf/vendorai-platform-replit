@@ -18,6 +18,7 @@ export const fretesVeiculosTable = pgTable("fretes_veiculos", {
   motoristaId: text("motorista_id").references(() => usersTable.id, { onDelete: "set null" }),
   fotoUrl: text("foto_url"),
   ativo: boolean("ativo").notNull().default(true),
+  vendeNoPracaAi: boolean("vende_no_praca_ai").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
