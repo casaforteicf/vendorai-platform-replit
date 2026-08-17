@@ -17,6 +17,7 @@ import { runInsuranceWhitespaceForTenant } from "../services/insuranceWhitespace
 import { resolveVerticalRevenueProfile } from "../services/verticalRevenueEngine.js";
 import { renderTemplate } from "../lib/proactiveMessageGuard.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { ensureMinimumScoutRulesForTenant } from "../services/scoutVerticalRuleLibrary.js";
 
 const router: IRouter = Router();
 
@@ -70,6 +71,10 @@ function fallbackOpportunityExplanation(op: {
 router.get("/tenants/:tenantId/scout/regras", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  // Regras são tenant-scoped. Ao abrir a tela, preserva tudo que o cliente já
+  // cadastrou e recompõe apenas a biblioteca ausente até o mínimo por vertical.
+  await ensureMinimumScoutRulesForTenant(tenantId);
 
   const rows = await db
     .select()
@@ -598,6 +603,7 @@ router.get("/tenants/:tenantId/scout/insurance/accounts/:accountId/matrix", asyn
 router.get("/tenants/:tenantId/scout/dashboard", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  await ensureMinimumScoutRulesForTenant(tenantId);
 
   const [tenant] = await db.select({ vertical: tenantsTable.vertical })
     .from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
