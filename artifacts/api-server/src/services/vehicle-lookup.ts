@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { request as httpsRequest } from "node:https";
 import { and, eq, gt } from "drizzle-orm";
 import {
   db, vehiclesTable, vehicleLookupCacheTable, vehicleLookupHistoryTable,
@@ -99,19 +101,64 @@ export class MockVehicleProvider implements VehicleLookupProvider {
 
 export class SenatranVehicleProvider implements VehicleLookupProvider {
   readonly name = "senatran";
-  private async lookup(type: VehicleQueryType, query: string): Promise<ProviderResult | null> {
-    const baseUrl = process.env.VEHICLE_LOOKUP_SENATRAN_BASE_URL;
-    const token = process.env.VEHICLE_LOOKUP_SENATRAN_TOKEN;
-    if (!baseUrl || !token) throw Object.assign(new Error("SENATRAN_NOT_CONFIGURED"), { code: "PROVIDER_NOT_CONFIGURED" });
-    const timeoutMs = Number(process.env.VEHICLE_LOOKUP_TIMEOUT_MS ?? 8000);
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/vehicles/${type}/${encodeURIComponent(query)}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-      signal: AbortSignal.timeout(timeoutMs),
+  private certificate(): Buffer {
+    const encoded = process.env.VEHICLE_LOOKUP_SENATRAN_CERT_BASE64?.trim();
+    if (encoded) return Buffer.from(encoded, "base64");
+    const path = process.env.VEHICLE_LOOKUP_SENATRAN_CERT_PATH?.trim();
+    if (path) return readFileSync(path);
+    throw Object.assign(new Error("SENATRAN_CERTIFICATE_NOT_CONFIGURED"), { code: "PROVIDER_NOT_CONFIGURED" });
+  }
+  private officialVehicle(data: Record<string, unknown>): ProviderResult | null {
+    const collection = Array.isArray(data.veiculo) ? data.veiculo : Array.isArray(data.veiculos) ? data.veiculos : null;
+    const row = (collection?.[0] ?? data) as Record<string, unknown>;
+    if (!row || (!row.placa && !row.chassi && !row.codigoRenavam)) return null;
+    const description = String(row.descricaoMarcaModelo ?? "").trim() || null;
+    const [brandToken, ...modelTokens] = description?.split(/[\/\s]+/).filter(Boolean) ?? [];
+    return {
+      plate: row.placa ? String(row.placa) : null, chassis: row.chassi ? String(row.chassi) : null,
+      renavam: row.codigoRenavam ? String(row.codigoRenavam) : null, brand: brandToken || null,
+      model: modelTokens.join(" ") || description, rawDescription: description,
+      manufactureYear: Number.isFinite(Number(row.anoFabricacao)) ? Number(row.anoFabricacao) : null,
+      modelYear: Number.isFinite(Number(row.anoModelo)) ? Number(row.anoModelo) : null,
+      fuel: row.descricaoCombustivel ? String(row.descricaoCombustivel) : null,
+      engine: row.cilindradas ? `${row.cilindradas} cc` : null,
+      powerHp: Number.isFinite(Number(row.potencia)) ? Number(row.potencia) : null,
+      color: row.descricaoCor ? String(row.descricaoCor) : null,
+      vehicleType: row.descricaoTipoVeiculo ? String(row.descricaoTipoVeiculo) : null,
+      source: "SENATRAN", confidence: 0.95, confidenceReasons: ["official_senatran_registry"], providerData: data,
+    };
+  }
+  private request(url: URL, timeoutMs: number): Promise<Record<string, unknown>> {
+    const cpf = String(process.env.VEHICLE_LOOKUP_SENATRAN_USER_CPF ?? "").replace(/\D/g, "");
+    const passphrase = process.env.VEHICLE_LOOKUP_SENATRAN_CERT_PASSPHRASE;
+    if (cpf.length !== 11 || !passphrase) return Promise.reject(Object.assign(new Error("SENATRAN_CREDENTIALS_NOT_CONFIGURED"), { code: "PROVIDER_NOT_CONFIGURED" }));
+    return new Promise((resolve, reject) => {
+      const req = httpsRequest(url, { method: "GET", pfx: this.certificate(), passphrase,
+        headers: { Accept: "application/json", "x-cpf-usuario": cpf }, rejectUnauthorized: true, timeout: timeoutMs }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        res.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf8");
+          if (res.statusCode === 404) return resolve({});
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) return reject(Object.assign(new Error(`SENATRAN_HTTP_${res.statusCode ?? 0}`), { code: res.statusCode === 401 || res.statusCode === 403 ? "PROVIDER_UNAUTHORIZED" : "PROVIDER_ERROR" }));
+          try { resolve(body ? JSON.parse(body) as Record<string, unknown> : {}); }
+          catch { reject(Object.assign(new Error("SENATRAN_INVALID_RESPONSE"), { code: "PROVIDER_ERROR" })); }
+        });
+      });
+      req.on("timeout", () => req.destroy(Object.assign(new Error("SENATRAN_TIMEOUT"), { code: "PROVIDER_TIMEOUT" })));
+      req.on("error", reject);
+      req.end();
     });
-    if (response.status === 404) return null;
-    if (!response.ok) throw Object.assign(new Error(`SENATRAN_HTTP_${response.status}`), { code: "PROVIDER_ERROR" });
-    const data = await response.json() as Record<string, unknown>;
-    return { ...(data as ProviderResult), source: "SENATRAN", providerData: data };
+  }
+  private async lookup(type: VehicleQueryType, query: string): Promise<ProviderResult | null> {
+    const environment = (process.env.VEHICLE_LOOKUP_SENATRAN_ENVIRONMENT ?? "homologacao").toLowerCase();
+    const defaultBaseUrl = environment === "producao" ? "https://renavam.denatran.serpro.gov.br" : "https://wsrenavam.hom.denatran.serpro.gov.br";
+    const baseUrl = process.env.VEHICLE_LOOKUP_SENATRAN_BASE_URL?.trim() || defaultBaseUrl;
+    const timeoutMs = Number(process.env.VEHICLE_LOOKUP_TIMEOUT_MS ?? 8000);
+    const officialType = type === "plate" ? "placa" : "chassi";
+    const url = new URL(`v1/veiculos/${officialType}/${encodeURIComponent(query)}`, `${baseUrl.replace(/\/$/, "")}/`);
+    url.searchParams.set("idUltimoRegistro", "0");
+    return this.officialVehicle(await this.request(url, timeoutMs));
   }
   lookupByPlate(plate: string) { return this.lookup("plate", plate); }
   lookupByChassis(chassis: string) { return this.lookup("chassis", chassis); }
