@@ -221,6 +221,7 @@ const AGENT_LABELS: Record<AgentKey, { label: string; description: string }> = {
 const AGENT_KEYS: AgentKey[] = ["sdr", "closer", "followup", "reactivation", "scheduler", "service", "onboarding", "relacionamento"];
 
 const VERTICAIS = [
+  { value: "Farmácia",       label: "Farmácia" },
   { value: "tecnologia",     label: "Tecnologia" },
   { value: "saude",          label: "Saúde" },
   { value: "educacao",       label: "Educação" },
@@ -727,6 +728,7 @@ export default function Configuracoes() {
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: profileQuery.queryKey });
+            queryClient.invalidateQueries({ queryKey: ["tenant-plan", tenantId] });
             toast({ title: "Perfil atualizado com sucesso." });
           },
           onError: () => toast({ title: "Erro ao salvar perfil.", variant: "destructive" }),
@@ -738,6 +740,7 @@ export default function Configuracoes() {
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: profileQuery.queryKey });
+            queryClient.invalidateQueries({ queryKey: ["tenant-plan", tenantId] });
             toast({ title: "Perfil criado com sucesso." });
           },
           onError: () => toast({ title: "Erro ao criar perfil.", variant: "destructive" }),

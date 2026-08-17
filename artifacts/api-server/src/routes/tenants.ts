@@ -122,7 +122,7 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
 });
 
 router.get("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
-  const [tenant] = await db
+  let [tenant] = await db
     .select()
     .from(tenantsTable)
     .where(eq(tenantsTable.id, String(req.params.id)));
@@ -130,6 +130,25 @@ router.get("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
   if (!tenant) {
     res.status(404).json({ error: "Tenant not found" });
     return;
+  }
+
+  // Compatibilidade com tenants criados antes de o onboarding preencher
+  // tenants.vertical. O perfil comercial já possuía o segmento correto, mas
+  // o menu e os gates dos módulos especializados consultam o tenant.
+  if (!tenant.vertical) {
+    const [profile] = await db
+      .select({ vertical: businessProfilesTable.vertical })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenant.id))
+      .limit(1);
+    if (profile?.vertical) {
+      const [repairedTenant] = await db
+        .update(tenantsTable)
+        .set({ vertical: profile.vertical, segmento: profile.vertical, updatedAt: new Date() })
+        .where(eq(tenantsTable.id, tenant.id))
+        .returning();
+      tenant = repairedTenant ?? tenant;
+    }
   }
 
   // planSlug embutido aqui pro frontend gatear o menu por plano (ex: Start

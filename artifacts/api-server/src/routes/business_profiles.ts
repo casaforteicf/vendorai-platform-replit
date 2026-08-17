@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import {
   db,
   businessProfilesTable,
+  tenantsTable,
   insertBusinessProfileSchema,
   updateBusinessProfileSchema,
 } from "@workspace/db";
@@ -26,6 +27,12 @@ router.post("/business-profiles", async (req, res) => {
       .insert(businessProfilesTable)
       .values(parsed.data)
       .returning();
+    if (parsed.data.vertical) {
+      await db
+        .update(tenantsTable)
+        .set({ vertical: parsed.data.vertical, segmento: parsed.data.vertical, updatedAt: new Date() })
+        .where(eq(tenantsTable.id, parsed.data.tenantId));
+    }
     res.status(201).json(profile);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
@@ -91,6 +98,20 @@ router.patch("/business-profiles/:id", async (req, res) => {
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(businessProfilesTable.id, existing.id))
     .returning();
+
+  // A navegação e os gates dos módulos especializados consultam a vertical
+  // do tenant. Mantém esse valor alinhado ao perfil comercial editável para
+  // que a troca de segmento passe a valer imediatamente em toda a aplicação.
+  if (parsed.data.vertical !== undefined) {
+    await db
+      .update(tenantsTable)
+      .set({
+        vertical: parsed.data.vertical || null,
+        segmento: parsed.data.vertical || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantsTable.id, existing.tenantId));
+  }
 
   res.json(profile);
 });

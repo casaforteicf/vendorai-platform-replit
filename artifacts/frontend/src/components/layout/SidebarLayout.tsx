@@ -27,7 +27,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
-  const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null }>({
+  const { data: tenantData } = useQuery<{ planSlug: string | null; corPrimaria?: string | null; vertical?: string | null }>({
     queryKey: ["tenant-plan", user?.tenantId],
     enabled: !!user?.tenantId && !!token,
     staleTime: 5 * 60_000,
@@ -121,7 +121,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       .flatMap((m) => MODULE_TO_HREFS[m.moduleKey] ?? [])
   );
 
-  const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
+  // A vertical do usuário vem da sessão e pode ficar desatualizada quando o
+  // onboarding define o segmento depois do primeiro login. Prefere o valor
+  // atual do tenant retornado pela API para atualizar o menu sem novo login.
+  const effectiveVertical = isSuperAdmin && tenantOverride
+    ? tenantOverride.vertical
+    : tenantData?.vertical ?? user?.tenantVertical;
   const isConstrucao = effectiveVertical === "Construção & Reforma";
   const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos" || effectiveVertical === "Floricultura" || effectiveVertical === "Adega e Bebidas" || effectiveVertical === "Produtos Naturais e Suplementos" || effectiveVertical === "Armarinho e Tecidos" || effectiveVertical === "Papelaria Criativa e Artesanato" || effectiveVertical === "Games e Informática" || effectiveVertical === "Pet Shop (Varejo)" || effectiveVertical === "Material de Construção — Varejo";
   const isSupermercado = effectiveVertical === "Supermercado";
