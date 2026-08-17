@@ -46,6 +46,7 @@ const PUBLIC_FIELDS = {
   role: usersTable.role,
   platformRole: usersTable.platformRole,
   userFunction: usersTable.userFunction,
+  permissions: usersTable.permissions,
   telefone: usersTable.telefone,
   active: usersTable.active,
   forcePasswordReset: usersTable.forcePasswordReset,

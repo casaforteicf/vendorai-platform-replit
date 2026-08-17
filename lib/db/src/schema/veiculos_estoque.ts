@@ -28,14 +28,20 @@ export const veiculosEstoqueTable = pgTable("veiculos_estoque", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
   placa: text("placa"),
+  chassi: text("chassi"),
+  renavam: text("renavam"),
   marca: text("marca").notNull(),
   modelo: text("modelo").notNull(),
+  versao: text("versao"),
   anoFabricacao: integer("ano_fabricacao"),
   anoModelo: integer("ano_modelo"),
   cor: text("cor"),
   km: integer("km"),
   combustivel: veiculosCombustivelEnum("combustivel"),
   cambio: veiculosCambioEnum("cambio"),
+  motor: text("motor"),
+  potenciaHp: integer("potencia_hp"),
+  codigoFipe: text("codigo_fipe"),
   valor: numeric("valor", { precision: 12, scale: 2 }).notNull(),
   valorPromocional: numeric("valor_promocional", { precision: 12, scale: 2 }),
   descricao: text("descricao"),
@@ -61,9 +67,6 @@ export const veiculosEstoqueTable = pgTable("veiculos_estoque", {
   // Identificação do veículo — hoje preenchidos manualmente; ficam prontos
   // pra um provedor de busca por placa/chassi/RENAVAM auto-preencher no
   // futuro (decisão de negócio pendente, ver migration 084).
-  chassi: text("chassi"),
-  renavam: text("renavam"),
-  versao: text("versao"),
   // Cache do valor FIPE — atualizado via BrasilAPI (gratuita) buscando por
   // marca+modelo+ano já cadastrados. fipeCodigo é o código de 6-7 dígitos
   // da tabela FIPE, único por modelo (não muda entre atualizações mensais).

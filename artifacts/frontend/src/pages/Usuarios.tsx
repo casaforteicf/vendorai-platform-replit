@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { USER_MODULES, modulesForFunction, type UserModuleKey } from "@/lib/moduleAccess";
 import {
   Select,
   SelectContent,
@@ -86,6 +88,7 @@ export default function Usuarios() {
     email: "",
     telefone: "",
     userFunction: "outro" as UserFunction,
+    permissions: modulesForFunction("outro") as UserModuleKey[],
     password: "",
   });
 
@@ -106,6 +109,7 @@ export default function Usuarios() {
       email: "",
       telefone: "",
       userFunction: "outro",
+      permissions: modulesForFunction("outro"),
       password: "",
     });
     setEditingUser(null);
@@ -118,6 +122,9 @@ export default function Usuarios() {
       email: user.email ?? "",
       telefone: user.telefone ?? "",
       userFunction: user.userFunction ?? "outro",
+      permissions: Array.isArray(user.permissions)
+        ? user.permissions
+        : modulesForFunction(user.userFunction ?? "outro"),
       password: "",
     });
     setDialogOpen(true);
@@ -149,6 +156,7 @@ export default function Usuarios() {
           email: formData.email,
           telefone: formData.telefone || undefined,
           userFunction: formData.userFunction,
+          permissions: formData.permissions,
         };
         if (formData.password) payload.password = formData.password;
         await updateUser.mutateAsync({
@@ -168,6 +176,7 @@ export default function Usuarios() {
             password: formData.password,
             telefone: formData.telefone || undefined,
             userFunction: formData.userFunction,
+            permissions: formData.permissions,
           },
         });
         toast({
@@ -402,7 +411,7 @@ export default function Usuarios() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingUser ? "Editar usuário" : "Novo usuário"}
@@ -449,6 +458,7 @@ export default function Usuarios() {
                   setFormData((s) => ({
                     ...s,
                     userFunction: v as UserFunction,
+                    permissions: modulesForFunction(v as UserFunction),
                   }))
                 }
               >
@@ -466,6 +476,61 @@ export default function Usuarios() {
                   <SelectItem value="outro">Outro</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Label className="text-base">Acessos do usuário</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Selecione os módulos que este usuário poderá abrir e utilizar.
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFormData((s) => ({ ...s, permissions: USER_MODULES.map((m) => m.key) }))}
+                  >
+                    Marcar todos
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFormData((s) => ({ ...s, permissions: [] }))}
+                  >
+                    Limpar
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {USER_MODULES.map((module) => {
+                  const checked = formData.permissions.includes(module.key);
+                  return (
+                    <label
+                      key={module.key}
+                      className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 hover:bg-muted/50"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(value) =>
+                          setFormData((s) => ({
+                            ...s,
+                            permissions: value
+                              ? [...s.permissions, module.key]
+                              : s.permissions.filter((key) => key !== module.key),
+                          }))
+                        }
+                      />
+                      <span className="text-sm font-medium">{module.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                A função aplica um conjunto recomendado. Você pode personalizar os acessos depois.
+              </p>
             </div>
             {!editingUser && (
               <div>

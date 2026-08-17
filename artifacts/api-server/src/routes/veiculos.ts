@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { and, eq, desc, gte, lte } from "drizzle-orm";
+import { and, eq, desc, gte, lte, or } from "drizzle-orm";
+import rateLimit from "express-rate-limit";
 import {
   db,
   veiculosEstoqueTable,
@@ -10,6 +11,7 @@ import {
   type VeiculosEstoque,
 } from "@workspace/db";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
+import { VehicleLookupService } from "../services/vehicle-lookup.js";
 import { logger } from "../lib/logger.js";
 import {
   listarMarcas,
@@ -22,6 +24,14 @@ import {
 import { autoCreateAdCampaignIfNeeded } from "../lib/adAutoCreate.js";
 
 const router: IRouter = Router();
+const vehicleLookupService = new VehicleLookupService();
+const vehicleLookupLimiter = rateLimit({
+  windowMs: 60_000,
+  max: Number(process.env.VEHICLE_LOOKUP_RATE_LIMIT ?? 20),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => res.status(429).json({ success: false, errorCode: "RATE_LIMITED", error: "Muitas consultas. Aguarde um minuto." }),
+});
 
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
@@ -32,6 +42,18 @@ function isSuperAdmin(req: Express.Request) {
 function canAccess(req: Express.Request, tenantId: string) {
   return isSuperAdmin(req) || tid(req) === tenantId;
 }
+
+router.post("/vehicles/lookup", vehicleLookupLimiter, async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) return res.status(403).json({ success: false, errorCode: "TENANT_REQUIRED", error: "Tenant obrigatório." });
+  try {
+    return res.json(await vehicleLookupService.lookup(tenantId, req.body?.query));
+  } catch (error) {
+    const typed = error as { status?: number; code?: string; message?: string };
+    req.log.warn({ code: typed.code, tenantId }, "vehicle lookup failed");
+    return res.status(typed.status ?? 500).json({ success: false, errorCode: typed.code ?? "LOOKUP_ERROR", error: typed.message ?? "Erro ao buscar veículo." });
+  }
+});
 
 /**
  * Estoque de Veículos é a fonte única de verdade — essa função mantém o
@@ -131,6 +153,17 @@ router.post("/tenants/:tenantId/veiculos/estoque", async (req, res) => {
   // direto — mesmo que o body peça, força 'inativo' até a vistoria ser
   // confirmada via PATCH /estoque/:id/vistoria.
   const body = { ...req.body, tenantId };
+  if (body.placa || body.chassi) {
+    const conditions = [eq(veiculosEstoqueTable.tenantId, tenantId)];
+    const identities = [];
+    if (body.placa) identities.push(eq(veiculosEstoqueTable.placa, String(body.placa).toUpperCase().replace(/[^A-Z0-9]/g, "")));
+    if (body.chassi) identities.push(eq(veiculosEstoqueTable.chassi, String(body.chassi).toUpperCase().replace(/[^A-Z0-9]/g, "")));
+    const identityFilter = identities.length === 1 ? identities[0] : or(...identities);
+    const [duplicate] = await db.select({ id: veiculosEstoqueTable.id }).from(veiculosEstoqueTable).where(and(...conditions, identityFilter));
+    if (duplicate) return res.status(409).json({ error: "Este veículo já está cadastrado neste tenant.", vehicleId: duplicate.id });
+    if (body.placa) body.placa = String(body.placa).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (body.chassi) body.chassi = String(body.chassi).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
   if (body.status === "disponivel" && !body.vistoriaRealizada) {
     body.status = "inativo";
   }

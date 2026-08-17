@@ -94,11 +94,15 @@ router.delete("/categorias-produto/:id", async (req, res) => {
     return;
   }
 
-  // Products referencing this category fall back to categoriaId = null (0% ceiling unless product override).
-  await db
-    .update(produtosCatalogoTable)
-    .set({ categoriaId: null })
-    .where(eq(produtosCatalogoTable.categoriaId, existing.id));
+  const [produtoVinculado] = await db
+    .select({ id: produtosCatalogoTable.id })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.categoriaId, existing.id))
+    .limit(1);
+  if (produtoVinculado) {
+    res.status(409).json({ error: "Esta categoria possui produtos. Reclassifique-os antes de excluir a categoria." });
+    return;
+  }
   await db.delete(categoriasProdutoTable).where(eq(categoriasProdutoTable.id, existing.id));
 
   res.status(204).send();

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { findOfficialItemCategory } from "../lib/itemCategories";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -13,6 +13,14 @@ import {
 } from "@workspace/db";
 
 const router: IRouter = Router();
+
+async function categoriaPertenceAoTenant(categoriaId: string, tenantId: string): Promise<boolean> {
+  const [categoria] = await db
+    .select({ id: categoriasProdutoTable.id })
+    .from(categoriasProdutoTable)
+    .where(and(eq(categoriasProdutoTable.id, categoriaId), eq(categoriasProdutoTable.tenantId, tenantId)));
+  return Boolean(categoria);
+}
 
 // ── Join helper: attach categoriaNome + categoriaDescontoMaximoPercentual ────
 async function attachCategoriaInfo<T extends { categoriaId: string | null }>(
@@ -79,6 +87,20 @@ router.post("/produtos-catalogo", async (req, res) => {
     return;
   }
 
+  if (!parsed.data.tenantId) {
+    res.status(422).json({ error: "O produto deve pertencer a uma empresa." });
+    return;
+  }
+
+  if (!parsed.data.categoriaId) {
+    res.status(422).json({ error: "Selecione uma categoria para cadastrar o produto." });
+    return;
+  }
+  if (!(await categoriaPertenceAoTenant(parsed.data.categoriaId, parsed.data.tenantId))) {
+    res.status(422).json({ error: "A categoria selecionada não pertence a esta empresa." });
+    return;
+  }
+
   const [product] = await db
     .insert(produtosCatalogoTable)
     .values(parsed.data as any)
@@ -118,7 +140,7 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId, categoriaId: produtosCatalogoTable.categoriaId })
     .from(produtosCatalogoTable)
     .where(eq(produtosCatalogoTable.id, String(req.params.id)));
 
@@ -129,6 +151,21 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!existing.tenantId) {
+    res.status(422).json({ error: "O produto não está vinculado a uma empresa válida." });
+    return;
+  }
+
+  const categoriaIdFinal = parsed.data.categoriaId === undefined ? existing.categoriaId : parsed.data.categoriaId;
+  if (!categoriaIdFinal) {
+    res.status(422).json({ error: "Todo produto deve permanecer vinculado a uma categoria." });
+    return;
+  }
+  if (!(await categoriaPertenceAoTenant(categoriaIdFinal, existing.tenantId))) {
+    res.status(422).json({ error: "A categoria selecionada não pertence a esta empresa." });
     return;
   }
 
@@ -175,6 +212,22 @@ router.patch("/tenants/:tenantId/produtos-catalogo/praca-ai-bulk", async (req, r
   if (Object.keys(updateData).length === 1) {
     res.status(422).json({ error: "Informe vendeNoPracaAi e/ou precoPracaAi." });
     return;
+  }
+
+  if (vendeNoPracaAi === true) {
+    const [semCategoria] = await db
+      .select({ id: produtosCatalogoTable.id })
+      .from(produtosCatalogoTable)
+      .where(and(
+        eq(produtosCatalogoTable.tenantId, tenantId),
+        inArray(produtosCatalogoTable.id, productIds),
+        isNull(produtosCatalogoTable.categoriaId),
+      ))
+      .limit(1);
+    if (semCategoria) {
+      res.status(422).json({ error: "Classifique todos os produtos antes de publicá-los na Praça.ai." });
+      return;
+    }
   }
 
   const updated = await db
@@ -227,8 +280,8 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   const iVideo          = idx(["video_url", "video", "url_video"]);
   const iEspecificacoes = idx(["especificacoes", "atributos", "specs", "ficha_tecnica"]);
 
-  if (iNome < 0 || iPreco < 0) {
-    res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome' e 'preco_base'. Encontrado: ${headers.join(", ")}` });
+  if (iNome < 0 || iPreco < 0 || iCategoria < 0) {
+    res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome', 'categoria' e 'preco_base'. Encontrado: ${headers.join(", ")}` });
     return;
   }
 
@@ -294,6 +347,10 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
 
     const imagemUrl = iImagem >= 0 ? (cols[iImagem]?.trim() || null) : null;
     const categoriaInformada = iCategoria >= 0 ? (cols[iCategoria]?.trim() || null) : null;
+    if (!categoriaInformada) {
+      errors.push({ row: rowNum, message: "Categoria vazia" });
+      continue;
+    }
     const categoriaNome = categoriaInformada ? findOfficialItemCategory(categoriaInformada) : null;
     if (categoriaInformada && !categoriaNome) {
       errors.push({ row: rowNum, message: `Categoria não reconhecida: "${categoriaInformada}"` });

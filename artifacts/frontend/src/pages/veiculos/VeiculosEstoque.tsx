@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Car, Loader2, ShieldCheck, ShieldAlert, Gauge, ImagePlus, Film } from "lucide-react";
+import { Plus, Pencil, Car, Loader2, ShieldCheck, ShieldAlert, Gauge, ImagePlus, Film, Search, CheckCircle2, AlertTriangle } from "lucide-react";
 
 function resolveMediaUrl(url: string) {
   return url.startsWith("/objects/") ? `/api/storage${url}` : url;
@@ -49,8 +49,9 @@ function fmt(v: number | string | null) {
 
 interface FotoDetalhe { url: string; legenda: string }
 const EMPTY_FORM = {
-  marca: "", modelo: "", anoFabricacao: "", anoModelo: "", cor: "", km: "",
-  combustivel: "flex" as string, cambio: "manual" as string, valor: "", valorPromocional: "", descricao: "", vendeNoPracaAi: false,
+  placa: "", chassi: "", renavam: "", marca: "", modelo: "", versao: "", anoFabricacao: "", anoModelo: "", cor: "", km: "",
+  combustivel: "flex" as string, cambio: "manual" as string, valor: "", valorPromocional: "", descricao: "",
+  motor: "", potenciaHp: "", codigoFipe: "", vendeNoPracaAi: false,
   fotos: [] as string[],
   fotosDetalhes: [] as FotoDetalhe[],
   videos: [] as string[],
@@ -132,6 +133,8 @@ export default function VeiculosEstoque() {
   const [uploadingFotos, setUploadingFotos] = useState(false);
   const [uploadingDetalhe, setUploadingDetalhe] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [lookupQuery, setLookupQuery] = useState("");
+  const [lookupResult, setLookupResult] = useState<any>(null);
 
   const QK = ["veiculos-estoque", tenantId, statusFilter];
 
@@ -165,6 +168,18 @@ export default function VeiculosEstoque() {
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
+  const lookup = useMutation({
+    mutationFn: () => fetch("/api/vehicles/lookup", {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ query: lookupQuery }),
+    }).then(async (r) => {
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error ?? "Erro ao buscar veículo");
+      return body;
+    }),
+    onSuccess: (result) => setLookupResult(result),
+    onError: (error: Error) => { setLookupResult(null); toast({ title: "Busca não concluída", description: error.message, variant: "destructive" }); },
+  });
+
   const publicar = useMutation({
     mutationFn: (id: string) =>
       fetch(`/api/tenants/${tenantId}/veiculos/estoque/${id}`, {
@@ -181,13 +196,17 @@ export default function VeiculosEstoque() {
   function openEdit(v: any) {
     setEditing(v);
     setForm({
+      placa: v.placa ?? "", chassi: v.chassi ?? "", renavam: v.renavam ?? "",
       marca: v.marca ?? "", modelo: v.modelo ?? "",
+      versao: v.versao ?? "",
       anoFabricacao: v.anoFabricacao != null ? String(v.anoFabricacao) : "",
       anoModelo: v.anoModelo != null ? String(v.anoModelo) : "",
       cor: v.cor ?? "", km: v.km != null ? String(v.km) : "",
       combustivel: v.combustivel ?? "flex", cambio: v.cambio ?? "manual",
       valor: v.valor != null ? String(v.valor) : "", valorPromocional: v.valorPromocional != null ? String(v.valorPromocional) : "",
-      descricao: v.descricao ?? "", vendeNoPracaAi: !!v.vendeNoPracaAi,
+      descricao: v.descricao ?? "",
+      motor: v.motor ?? "", potenciaHp: v.potenciaHp != null ? String(v.potenciaHp) : "", codigoFipe: v.codigoFipe ?? "",
+      vendeNoPracaAi: !!v.vendeNoPracaAi,
       fotos: v.fotos ?? [],
       fotosDetalhes: v.fotosDetalhes ?? [],
       videos: v.videos ?? [],
@@ -205,6 +224,7 @@ export default function VeiculosEstoque() {
       anoFabricacao: form.anoFabricacao ? Number(form.anoFabricacao) : undefined,
       anoModelo: form.anoModelo ? Number(form.anoModelo) : undefined,
       km: form.km ? Number(form.km) : undefined,
+      potenciaHp: form.potenciaHp ? Number(form.potenciaHp) : undefined,
       valorPromocional: form.valorPromocional || undefined,
       fotos: form.fotos,
       fotosDetalhes: form.fotosDetalhes,
@@ -234,6 +254,43 @@ export default function VeiculosEstoque() {
           </Button>
         </div>
       </div>
+
+      <Card className="border-primary/20">
+        <CardContent className="p-5 space-y-4">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2"><Search className="h-4 w-4 text-primary" /> Buscar veículo</h2>
+            <p className="text-sm text-muted-foreground">Informe uma placa ou chassi. O tipo é identificado automaticamente.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input value={lookupQuery} onChange={(e) => setLookupQuery(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && lookupQuery && lookup.mutate()} placeholder="Placa ou chassi" className="font-mono" />
+            <Button onClick={() => lookup.mutate()} disabled={!lookupQuery.trim() || lookup.isPending}>
+              {lookup.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />} Buscar veículo
+            </Button>
+          </div>
+          {lookupResult?.success === false && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Veículo não encontrado.</div>
+          )}
+          {lookupResult?.vehicle && (() => {
+            const v = lookupResult.vehicle;
+            return <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div><p className="font-bold text-lg">{v.fullName ?? [v.brand, v.model].filter(Boolean).join(" ")}</p><p className="text-sm text-muted-foreground">{v.manufactureYear ?? "—"}/{v.modelYear ?? "—"} · Fonte: {v.source}</p></div>
+                <Badge variant="outline">Confiança {Math.round(v.confidence * 100)}%</Badge>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                {[['Marca', v.brand], ['Modelo', v.model], ['Versão', v.version], ['Motor', v.engine], ['Câmbio', v.transmission], ['Combustível', v.fuel], ['Cor', v.color], ['FIPE', v.fipeCode]].map(([label, value]) => <div key={label}><p className="text-xs text-muted-foreground">{label}</p><p className="font-medium">{value ?? "Não informado"}</p></div>)}
+              </div>
+              {v.possibleVersions?.length > 1 && <div className="rounded-lg bg-amber-50 border border-amber-200 p-3"><p className="text-sm flex gap-2"><AlertTriangle className="h-4 w-4" /> Existem várias versões possíveis. Selecione uma:</p><div className="flex flex-wrap gap-2 mt-2">{v.possibleVersions.map((version: string) => <Button key={version} size="sm" variant={v.version === version ? "default" : "outline"} onClick={() => setLookupResult((r: any) => ({ ...r, vehicle: { ...r.vehicle, version, fullName: [r.vehicle.brand, r.vehicle.model, version].filter(Boolean).join(' ') } }))}>{version}</Button>)}</div></div>}
+              <div className="flex flex-wrap gap-2">{v.confidenceReasons?.map((reason: string) => <span key={reason} className="inline-flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="h-3 w-3" /> {reason.replaceAll('_', ' ')}</span>)}</div>
+              <Button onClick={() => {
+                setEditing(null);
+                setForm({ ...EMPTY_FORM, placa: v.plate ?? "", chassi: v.chassis ?? "", renavam: v.renavam ?? "", marca: v.brand ?? "", modelo: v.model ?? "", versao: v.version ?? "", anoFabricacao: v.manufactureYear ? String(v.manufactureYear) : "", anoModelo: v.modelYear ? String(v.modelYear) : "", cor: v.color ?? "", combustivel: String(v.fuel ?? "flex").toLowerCase(), cambio: String(v.transmission ?? "manual").toLowerCase().startsWith('auto') ? 'automatico' : String(v.transmission ?? "manual").toLowerCase(), motor: v.engine ?? "", potenciaHp: v.powerHp ? String(v.powerHp) : "", codigoFipe: v.fipeCode ?? "" });
+                setDialogOpen(true);
+              }}>Usar este veículo</Button>
+            </div>;
+          })()}
+        </CardContent>
+      </Card>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -305,6 +362,11 @@ export default function VeiculosEstoque() {
             <DialogTitle>{editing ? "Editar Veículo" : "Novo Veículo"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5"><Label>Placa</Label><Input value={form.placa} onChange={(e) => setForm((f) => ({ ...f, placa: e.target.value.toUpperCase() }))} /></div>
+              <div className="space-y-1.5"><Label>Chassi</Label><Input value={form.chassi} onChange={(e) => setForm((f) => ({ ...f, chassi: e.target.value.toUpperCase() }))} /></div>
+              <div className="space-y-1.5"><Label>RENAVAM</Label><Input value={form.renavam} onChange={(e) => setForm((f) => ({ ...f, renavam: e.target.value }))} /></div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Marca <span className="text-destructive">*</span></Label>
@@ -315,6 +377,7 @@ export default function VeiculosEstoque() {
                 <Input value={form.modelo} onChange={(e) => setForm((f) => ({ ...f, modelo: e.target.value }))} />
               </div>
             </div>
+            <div className="space-y-1.5"><Label>Versão</Label><Input value={form.versao} onChange={(e) => setForm((f) => ({ ...f, versao: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Ano fabricação</Label>
@@ -324,6 +387,11 @@ export default function VeiculosEstoque() {
                 <Label>Ano modelo</Label>
                 <Input type="number" value={form.anoModelo} onChange={(e) => setForm((f) => ({ ...f, anoModelo: e.target.value }))} />
               </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5"><Label>Motor</Label><Input value={form.motor} onChange={(e) => setForm((f) => ({ ...f, motor: e.target.value }))} /></div>
+              <div className="space-y-1.5"><Label>Potência (cv)</Label><Input type="number" value={form.potenciaHp} onChange={(e) => setForm((f) => ({ ...f, potenciaHp: e.target.value }))} /></div>
+              <div className="space-y-1.5"><Label>Código FIPE</Label><Input value={form.codigoFipe} onChange={(e) => setForm((f) => ({ ...f, codigoFipe: e.target.value }))} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
