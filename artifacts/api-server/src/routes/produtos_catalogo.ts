@@ -351,10 +351,7 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       errors.push({ row: rowNum, message: "Categoria vazia" });
       continue;
     }
-    const categoriaNome = categoriaInformada ? findOfficialItemCategory(categoriaInformada) : null;
-    if (categoriaInformada && !categoriaNome) {
-      errors.push({ row: rowNum, message: `Categoria não reconhecida: "${categoriaInformada}"` });
-      continue;
+        const categoriaNome = categoriaInformada;
     }
     if (categoriaInformada && categoriaNome && categoriaInformada !== categoriaNome) {
       const current = normalizedCategories.get(categoriaInformada);
