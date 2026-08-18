@@ -9,6 +9,12 @@ import {
   useCreateLead,
   useCreateDeal,
   useUpdateDeal,
+  useCreateProposta,
+  useUpdateProposta,
+  getListTenantLeadsQueryKey,
+  getListProdutosCatalogoQueryKey,
+  getListInventoryItemsQueryKey,
+  getListDealsQueryKey,
 } from "@workspace/api-client-react";
 import type { DealEtapa } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -24,16 +30,19 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarPlus,
+  CalendarDays,
   Check,
   CheckCircle2,
   ClipboardCheck,
   MessageSquareText,
+  Minus,
   PackageCheck,
   Search,
   ShoppingBag,
   BadgePercent,
   ExternalLink,
   Plus,
+  CreditCard,
   Truck,
   UserRound,
 } from "lucide-react";
@@ -50,20 +59,31 @@ export default function CentralTrabalho() {
   const tenantId = user?.tenantId ?? "";
   const request = { headers: { Authorization: `Bearer ${token}` } };
   const enabled = !!tenantId && !!token;
-  const { data: leads = [], isLoading: loadingLeads, refetch: refetchLeads } = useListTenantLeads(tenantId, { request, query: { enabled } });
-  const { data: products = [], isLoading: loadingProducts } = useListProdutosCatalogo(tenantId, { request, query: { enabled } });
-  const { data: inventory = [], isLoading: loadingInventory } = useListInventoryItems(tenantId, { request, query: { enabled } });
-  const { data: deals = [] } = useListDeals(tenantId, undefined, { request, query: { enabled } });
+  const { data: leads = [], isLoading: loadingLeads, refetch: refetchLeads } = useListTenantLeads(tenantId, { request, query: { enabled, queryKey: getListTenantLeadsQueryKey(tenantId) } });
+  const { data: products = [], isLoading: loadingProducts } = useListProdutosCatalogo(tenantId, { request, query: { enabled, queryKey: getListProdutosCatalogoQueryKey(tenantId) } });
+  const { data: inventory = [], isLoading: loadingInventory } = useListInventoryItems(tenantId, { request, query: { enabled, queryKey: getListInventoryItemsQueryKey(tenantId) } });
+  const { data: deals = [] } = useListDeals(tenantId, undefined, { request, query: { enabled, queryKey: getListDealsQueryKey(tenantId) } });
   const createDeal = useCreateDeal({ request });
   const createLead = useCreateLead({ request });
   const updateDeal = useUpdateDeal({ request });
+  const createProposta = useCreateProposta({ request });
+  const updateProposta = useUpdateProposta({ request });
 
   const [step, setStep] = useState(0);
   const [leadSearch, setLeadSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [reviewItems, setReviewItems] = useState<Record<string, { quantity: number; unitPrice: number }>>({});
   const [dealId, setDealId] = useState<string | null>(null);
+  const [proposalId, setProposalId] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"pix" | "boleto" | "cartao_credito" | "cartao_debito" | "transferencia" | "dinheiro" | "a_combinar">("pix");
+  const [paymentCondition, setPaymentCondition] = useState("À vista");
+  const [deliveryMode, setDeliveryMode] = useState("entrega");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [deliveryValue, setDeliveryValue] = useState("0");
+  const [orderDiscount, setOrderDiscount] = useState("0");
+  const [reviewNotes, setReviewNotes] = useState("");
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountPercent, setDiscountPercent] = useState("0");
   const [discountReason, setDiscountReason] = useState("");
@@ -88,7 +108,12 @@ export default function CentralTrabalho() {
     }).slice(0, 60);
   }, [productSearch, products, stockByProduct]);
   const selectedProducts = products.filter((product) => selectedProductIds.includes(product.id));
-  const total = selectedProducts.reduce((sum, product) => sum + Number(product.precoBase || 0), 0);
+  const subtotal = selectedProducts.reduce((sum, product) => {
+    const item = reviewItems[product.id];
+    return sum + (item?.quantity ?? 1) * (item?.unitPrice ?? Number(product.precoBase || 0));
+  }, 0);
+  const discountValue = Math.min(subtotal, Math.max(0, Number(orderDiscount) || 0));
+  const total = Math.max(0, subtotal - discountValue + Math.max(0, Number(deliveryValue) || 0));
   const leadQuery = selectedLead ? `leadId=${encodeURIComponent(selectedLead.id)}` : "";
   const productQuery = selectedProductIds.length ? `&productIds=${encodeURIComponent(selectedProductIds.join(","))}` : "";
   const dealQuery = dealId ? `&dealId=${encodeURIComponent(dealId)}` : "";
@@ -111,6 +136,8 @@ export default function CentralTrabalho() {
     }
     setSelectedLeadId(id);
     setSelectedProductIds([]);
+    setReviewItems({});
+    setProposalId(null);
     setProductSearch("");
     setStep(1);
   }
@@ -142,6 +169,8 @@ export default function CentralTrabalho() {
       setSelectedLeadId(created.id);
       setDealId(activeDeal.id);
       setSelectedProductIds([]);
+      setReviewItems({});
+      setProposalId(null);
       setProductSearch("");
       setStep(1);
       setNewLeadOpen(false);
@@ -185,14 +214,69 @@ export default function CentralTrabalho() {
   }
 
   function toggleProduct(id: string) {
-    setSelectedProductIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    setSelectedProductIds((current) => {
+      if (current.includes(id)) {
+        setReviewItems((items) => { const next = { ...items }; delete next[id]; return next; });
+        return current.filter((item) => item !== id);
+      }
+      const product = products.find((item) => item.id === id);
+      setReviewItems((items) => ({ ...items, [id]: { quantity: 1, unitPrice: Number(product?.precoBase || 0) } }));
+      return [...current, id];
+    });
+  }
+
+  function updateReviewItem(id: string, field: "quantity" | "unitPrice", value: number) {
+    setReviewItems((current) => ({
+      ...current,
+      [id]: { quantity: current[id]?.quantity ?? 1, unitPrice: current[id]?.unitPrice ?? 0, [field]: Math.max(field === "quantity" ? 1 : 0, value || 0) },
+    }));
+  }
+
+  async function saveOrderReview() {
+    if (!dealId || !selectedLead || !selectedProducts.length) return;
+    if (deliveryMode === "entrega" && !deliveryDate) {
+      toast({ title: "Informe a data prevista", description: "A entrega precisa ter uma previsão antes de continuar.", variant: "destructive" });
+      return;
+    }
+    const data = {
+      leadId: selectedLead.id,
+      dealId,
+      titulo: `Pedido - ${selectedLead.nome}`,
+      itens: selectedProducts.map((product) => ({
+        produtoId: product.id,
+        nome: product.nome,
+        sku: product.sku || undefined,
+        quantidade: reviewItems[product.id]?.quantity ?? 1,
+        valorUnitario: reviewItems[product.id]?.unitPrice ?? Number(product.precoBase || 0),
+      })),
+      valorTotal: total,
+      status: "rascunho" as const,
+      formaPagamento: paymentMethod,
+      condPagamento: paymentCondition.trim() || "A combinar",
+      prazoEntrega: deliveryDate ? `Prevista para ${new Date(`${deliveryDate}T12:00:00`).toLocaleDateString("pt-BR")}` : deliveryMode === "retirada" ? "Retirada pelo cliente" : "A combinar",
+      observacoes: [`Modalidade: ${deliveryMode === "entrega" ? "Entrega" : "Retirada"}`, `Frete: ${money(deliveryValue)}`, `Desconto: ${money(discountValue)}`, reviewNotes.trim()].filter(Boolean).join("\n"),
+    };
+    try {
+      if (proposalId) await updateProposta.mutateAsync({ id: proposalId, data });
+      else {
+        const proposal = await createProposta.mutateAsync({ data: { tenantId, ...data } });
+        setProposalId(proposal.id);
+      }
+      await updateDeal.mutateAsync({ id: dealId, data: { etapa: "proposta", valor: total } });
+      setStep(3);
+      toast({ title: "Revisão salva", description: "Itens, valores, pagamento e entrega foram vinculados ao negócio." });
+    } catch (error) {
+      toast({ title: "Não foi possível salvar a revisão", description: error instanceof Error ? error.message : "Revise os dados e tente novamente.", variant: "destructive" });
+    }
   }
 
   function restart() {
     setStep(0);
     setSelectedLeadId(null);
     setSelectedProductIds([]);
+    setReviewItems({});
     setDealId(null);
+    setProposalId(null);
     setLeadSearch("");
     setProductSearch("");
   }
@@ -269,7 +353,40 @@ export default function CentralTrabalho() {
       )}
 
       {step === 2 && selectedLead && (
-        <Card><CardContent className="p-5 sm:p-7"><div className="mb-5"><Badge variant="secondary" className="mb-2">{selectedLead.nome}</Badge><h2 className="text-xl font-semibold">Revisar itens da venda</h2><p className="mt-1 text-sm text-muted-foreground">Confirme os produtos antes de gerar o orçamento.</p></div><div className="divide-y rounded-xl border">{selectedProducts.map((product) => <div key={product.id} className="flex items-center justify-between gap-4 p-4"><div><p className="font-medium">{product.nome}</p><p className="text-xs text-muted-foreground">1 {product.unidade}</p></div><strong>{money(product.precoBase)}</strong></div>)}</div><div className="mt-5 flex items-center justify-between rounded-xl bg-muted/55 p-4"><span className="text-sm text-muted-foreground">Total estimado</span><strong className="text-2xl">{money(total)}</strong></div><div className="mt-5 flex justify-between"><Button variant="outline" onClick={() => setStep(1)}><ArrowLeft className="h-4 w-4" /> Alterar produtos</Button><Button disabled={updateDeal.isPending} onClick={() => advance(3, "proposta")}>Continuar venda <ArrowRight className="h-4 w-4" /></Button></div></CardContent></Card>
+        <Card>
+          <CardContent className="p-5 sm:p-7">
+            <div className="mb-6"><Badge variant="secondary" className="mb-2">{selectedLead.nome}</Badge><h2 className="text-xl font-semibold">Revisão completa do pedido</h2><p className="mt-1 text-sm text-muted-foreground">Ajuste itens, valores, pagamento e entrega antes de gerar a proposta.</p></div>
+
+            <div className="space-y-3">
+              {selectedProducts.map((product) => {
+                const item = reviewItems[product.id] ?? { quantity: 1, unitPrice: Number(product.precoBase || 0) };
+                return <div key={product.id} className="grid gap-4 rounded-2xl border p-4 sm:grid-cols-[1fr_150px_170px_auto] sm:items-end">
+                  <div><Label className="text-xs text-muted-foreground">Item</Label><p className="mt-1 font-semibold">{product.nome}</p><p className="text-xs text-muted-foreground">{product.sku || product.categoriaNome || "Produto"}</p></div>
+                  <div><Label htmlFor={`quantity-${product.id}`}>Quantidade</Label><div className="mt-1 flex items-center rounded-lg border"><Button type="button" variant="ghost" size="icon" onClick={() => updateReviewItem(product.id, "quantity", item.quantity - 1)}><Minus className="h-4 w-4" /></Button><Input id={`quantity-${product.id}`} type="number" min="1" value={item.quantity} onChange={(event) => updateReviewItem(product.id, "quantity", Number(event.target.value))} className="border-0 text-center shadow-none" /><Button type="button" variant="ghost" size="icon" onClick={() => updateReviewItem(product.id, "quantity", item.quantity + 1)}><Plus className="h-4 w-4" /></Button></div></div>
+                  <div><Label htmlFor={`price-${product.id}`}>Valor unitário</Label><Input id={`price-${product.id}`} className="mt-1" type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateReviewItem(product.id, "unitPrice", Number(event.target.value))} /></div>
+                  <div className="text-right"><Label className="text-xs text-muted-foreground">Total do item</Label><p className="mt-2 font-bold">{money(item.quantity * item.unitPrice)}</p></div>
+                </div>;
+              })}
+            </div>
+
+            <div className="mt-6 grid gap-5 rounded-2xl border bg-muted/15 p-5 lg:grid-cols-2">
+              <section className="space-y-4">
+                <h3 className="flex items-center gap-2 font-semibold"><CreditCard className="h-5 w-5 text-primary" /> Condição de pagamento</h3>
+                <div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="payment-method">Forma</Label><select id="payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)} className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="pix">Pix</option><option value="boleto">Boleto</option><option value="cartao_credito">Cartão de crédito</option><option value="cartao_debito">Cartão de débito</option><option value="transferencia">Transferência</option><option value="dinheiro">Dinheiro</option><option value="a_combinar">A combinar</option></select></div><div><Label htmlFor="payment-condition">Condição</Label><Input id="payment-condition" className="mt-1" value={paymentCondition} onChange={(event) => setPaymentCondition(event.target.value)} placeholder="À vista, 30/60/90, 3 parcelas..." /></div></div>
+                <div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="order-discount">Desconto em R$</Label><Input id="order-discount" className="mt-1" type="number" min="0" step="0.01" value={orderDiscount} onChange={(event) => setOrderDiscount(event.target.value)} /></div><div><Label htmlFor="delivery-value">Entrega em R$</Label><Input id="delivery-value" className="mt-1" type="number" min="0" step="0.01" value={deliveryValue} onChange={(event) => setDeliveryValue(event.target.value)} /></div></div>
+              </section>
+
+              <section className="space-y-4">
+                <h3 className="flex items-center gap-2 font-semibold"><Truck className="h-5 w-5 text-primary" /> Entrega</h3>
+                <div className="grid gap-4 sm:grid-cols-2"><div><Label htmlFor="delivery-mode">Modalidade</Label><select id="delivery-mode" value={deliveryMode} onChange={(event) => setDeliveryMode(event.target.value)} className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="entrega">Entrega no endereço</option><option value="retirada">Retirada pelo cliente</option></select></div><div><Label htmlFor="delivery-date">Data prevista {deliveryMode === "entrega" ? "*" : ""}</Label><div className="relative mt-1"><CalendarDays className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="delivery-date" type="date" value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value)} className="pl-9" /></div></div></div>
+                <div><Label htmlFor="review-notes">Observações do pedido</Label><Textarea id="review-notes" className="mt-1" value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} placeholder="Endereço, referência, horário, negociação ou instruções especiais..." /></div>
+              </section>
+            </div>
+
+            <div className="mt-5 grid gap-2 rounded-2xl bg-muted/55 p-4 sm:grid-cols-4"><div><p className="text-xs text-muted-foreground">Subtotal</p><strong>{money(subtotal)}</strong></div><div><p className="text-xs text-muted-foreground">Desconto</p><strong className="text-emerald-700">- {money(discountValue)}</strong></div><div><p className="text-xs text-muted-foreground">Entrega</p><strong>{money(deliveryValue)}</strong></div><div className="sm:text-right"><p className="text-xs text-muted-foreground">Total revisado</p><strong className="text-2xl">{money(total)}</strong></div></div>
+            <div className="mt-5 flex flex-wrap justify-between gap-3"><Button variant="outline" onClick={() => setStep(1)}><ArrowLeft className="h-4 w-4" /> Alterar produtos</Button><Button disabled={updateDeal.isPending || createProposta.isPending || updateProposta.isPending} onClick={saveOrderReview}>{createProposta.isPending || updateProposta.isPending ? "Salvando revisão..." : "Salvar e continuar"} <ArrowRight className="h-4 w-4" /></Button></div>
+          </CardContent>
+        </Card>
       )}
 
       {step === 3 && selectedLead && (
