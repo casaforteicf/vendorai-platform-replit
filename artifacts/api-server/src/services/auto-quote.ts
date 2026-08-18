@@ -22,6 +22,7 @@ import {
   categoriasProdutoTable,
   inventoryItemsTable,
   dealsTable,
+  activitiesTable,
 } from "@workspace/db";
 import type { PropostaItem } from "@workspace/db";
 import { sendOutgoingMessage } from "./omnichannel.js";
@@ -351,8 +352,9 @@ export async function createAutoQuote(params: {
     ? (totalImplantacao + totalMensalidade).toFixed(2)
     : valorTotal.toFixed(2);
 
+  let activeDeal = deal;
   if (!deal) {
-    await db.insert(dealsTable).values({
+    [activeDeal] = await db.insert(dealsTable).values({
       tenantId,
       leadId,
       titulo: `Negócio ${numero}`,
@@ -360,12 +362,23 @@ export async function createAutoQuote(params: {
       valor: dealValor,
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    }).returning();
   } else {
-    await db
+    [activeDeal] = await db
       .update(dealsTable)
       .set({ etapa: "proposta", valor: dealValor, updatedAt: new Date() })
-      .where(eq(dealsTable.id, deal.id));
+      .where(eq(dealsTable.id, deal.id)).returning();
+  }
+
+  if (activeDeal) {
+    await db.update(propostasTable).set({ dealId: activeDeal.id, updatedAt: new Date() })
+      .where(eq(propostasTable.id, proposta.id));
+    await db.insert(activitiesTable).values({
+      tenantId, leadId, dealId: activeDeal.id, tipo: "tarefa",
+      titulo: "Proposta criada pela IA",
+      descricao: `A IA gerou o orçamento ${numero}, vinculou os produtos ao mesmo negócio e avançou o card para Proposta. Valor: R$ ${formatBRL(Number(dealValor))}.`,
+      status: "concluida", concluidaEm: new Date(),
+    });
   }
 
   // Update lead status

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -6,6 +6,7 @@ import {
   useListDeals,
   useListProdutosCatalogo,
   useListTenantLeads,
+  useCreateLead,
   useCreateDeal,
   useUpdateDeal,
 } from "@workspace/api-client-react";
@@ -15,6 +16,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft,
@@ -27,6 +31,9 @@ import {
   PackageCheck,
   Search,
   ShoppingBag,
+  BadgePercent,
+  ExternalLink,
+  Plus,
   Truck,
   UserRound,
 } from "lucide-react";
@@ -43,11 +50,12 @@ export default function CentralTrabalho() {
   const tenantId = user?.tenantId ?? "";
   const request = { headers: { Authorization: `Bearer ${token}` } };
   const enabled = !!tenantId && !!token;
-  const { data: leads = [], isLoading: loadingLeads } = useListTenantLeads(tenantId, { request, query: { enabled } });
+  const { data: leads = [], isLoading: loadingLeads, refetch: refetchLeads } = useListTenantLeads(tenantId, { request, query: { enabled } });
   const { data: products = [], isLoading: loadingProducts } = useListProdutosCatalogo(tenantId, { request, query: { enabled } });
   const { data: inventory = [], isLoading: loadingInventory } = useListInventoryItems(tenantId, { request, query: { enabled } });
   const { data: deals = [] } = useListDeals(tenantId, undefined, { request, query: { enabled } });
   const createDeal = useCreateDeal({ request });
+  const createLead = useCreateLead({ request });
   const updateDeal = useUpdateDeal({ request });
 
   const [step, setStep] = useState(0);
@@ -56,6 +64,13 @@ export default function CentralTrabalho() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [dealId, setDealId] = useState<string | null>(null);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState("0");
+  const [discountReason, setDiscountReason] = useState("");
+  const [discountPending, setDiscountPending] = useState(false);
+  const [newLeadOpen, setNewLeadOpen] = useState(false);
+  const [newLead, setNewLead] = useState({ nome: "", telefone: "", email: "", empresa: "", objetivo: "" });
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
 
   const selectedLead = leads.find((lead) => lead.id === selectedLeadId) ?? null;
   const stockByProduct = useMemo(() => new Map(inventory.map((item) => [item.produtoId, item])), [inventory]);
@@ -78,10 +93,10 @@ export default function CentralTrabalho() {
   const productQuery = selectedProductIds.length ? `&productIds=${encodeURIComponent(selectedProductIds.join(","))}` : "";
   const dealQuery = dealId ? `&dealId=${encodeURIComponent(dealId)}` : "";
 
-  async function selectLead(id: string) {
+  async function selectLead(id: string, forceNewDeal = false) {
     const lead = leads.find((item) => item.id === id);
     if (!lead) return;
-    const existing = deals.find((deal) => deal.leadId === id && !["ganho", "perdido", "entregue"].includes(deal.etapa));
+    const existing = forceNewDeal ? undefined : deals.find((deal) => deal.leadId === id && !["ganho", "perdido", "entregue"].includes(deal.etapa));
     try {
       const activeDeal = existing ?? await createDeal.mutateAsync({ data: {
         tenantId,
@@ -100,14 +115,72 @@ export default function CentralTrabalho() {
     setStep(1);
   }
 
+  useEffect(() => {
+    if (deepLinkHandled || !leads.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const leadId = params.get("leadId");
+    if (!leadId || !leads.some((lead) => lead.id === leadId)) return;
+    setDeepLinkHandled(true);
+    void selectLead(leadId, params.get("newDeal") === "1");
+    window.history.replaceState({}, "", `${window.location.pathname}`);
+  }, [deepLinkHandled, leads]);
+
+  async function submitNewLead() {
+    if (!newLead.nome.trim()) return;
+    try {
+      const created = await createLead.mutateAsync({ data: {
+        tenantId, nome: newLead.nome.trim(), telefone: newLead.telefone.trim() || null,
+        email: newLead.email.trim() || null, empresa: newLead.empresa.trim() || null,
+        objetivo: newLead.objetivo.trim() || null,
+      } });
+      const activeDeal = await createDeal.mutateAsync({ data: {
+        tenantId, leadId: created.id,
+        titulo: created.empresa ? `${created.empresa} — ${created.nome}` : `Atendimento - ${created.nome}`,
+        etapa: "novo",
+      } });
+      await refetchLeads();
+      setSelectedLeadId(created.id);
+      setDealId(activeDeal.id);
+      setSelectedProductIds([]);
+      setProductSearch("");
+      setStep(1);
+      setNewLeadOpen(false);
+      setNewLead({ nome: "", telefone: "", email: "", empresa: "", objetivo: "" });
+      toast({ title: "Lead criado", description: "O atendimento avançou para a seleção de produtos." });
+    } catch (error) {
+      toast({ title: "Não foi possível criar o lead", description: error instanceof Error ? error.message : "Revise os dados e tente novamente.", variant: "destructive" });
+    }
+  }
+
   async function advance(nextStep: number, etapa: DealEtapa) {
     if (!dealId) return;
     try {
       await updateDeal.mutateAsync({ id: dealId, data: { etapa, valor: total || undefined } });
       setStep(nextStep);
       toast({ title: "Pipeline atualizada", description: `O card avançou para ${etapa.replaceAll("_", " ")}.` });
-    } catch {
-      toast({ title: "Não foi possível avançar o card", description: "A etapa da venda não foi alterada.", variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Não foi possível avançar o card", description: error instanceof Error ? error.message : "A etapa da venda não foi alterada.", variant: "destructive" });
+    }
+  }
+
+  async function submitDiscount(requestManagement: boolean) {
+    if (!dealId || !discountReason.trim()) return;
+    setDiscountPending(true);
+    try {
+      const response = await fetch(`/api/deals/${dealId}/commercial-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ discountPercent: Number(discountPercent), reason: discountReason, requestManagement }),
+      });
+      const body = await response.json() as { status?: string; error?: string };
+      if (!response.ok) throw new Error(body.error || "Não foi possível registrar a análise comercial");
+      setDiscountOpen(false);
+      setDiscountReason("");
+      toast({ title: body.status === "applied" ? "Desconto aplicado" : "Enviado para a gerência", description: "A decisão e a justificativa foram registradas na jornada do lead." });
+    } catch (error) {
+      toast({ title: "Análise comercial não registrada", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setDiscountPending(false);
     }
   }
 
@@ -152,7 +225,7 @@ export default function CentralTrabalho() {
       {step === 0 && (
         <Card>
           <CardContent className="p-5 sm:p-7">
-            <div className="mb-5"><h2 className="flex items-center gap-2 text-xl font-semibold"><UserRound className="h-5 w-5 text-primary" /> Quem será atendido?</h2><p className="mt-1 text-sm text-muted-foreground">Busque e selecione o cliente para começar. A próxima etapa abrirá automaticamente.</p></div>
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-xl font-semibold"><UserRound className="h-5 w-5 text-primary" /> Quem será atendido?</h2><p className="mt-1 text-sm text-muted-foreground">Busque e selecione o cliente para começar. A próxima etapa abrirá automaticamente.</p></div><Button onClick={() => setNewLeadOpen(true)}><Plus className="h-4 w-4" /> Novo lead</Button></div>
             <div className="relative mb-4"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input autoFocus value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)} placeholder="Nome, empresa, telefone ou e-mail..." className="h-11 pl-9" /></div>
             <ScrollArea className="h-[min(52vh,480px)]">
               <div className="grid gap-2 pr-3 sm:grid-cols-2">
@@ -200,12 +273,14 @@ export default function CentralTrabalho() {
       )}
 
       {step === 3 && selectedLead && (
-        <Card><CardContent className="p-5 sm:p-7"><div className="mb-6"><Badge variant="secondary" className="mb-2">{selectedLead.nome} · {money(total)}</Badge><h2 className="text-xl font-semibold">Formalizar a venda</h2><p className="mt-1 text-sm text-muted-foreground">Gere o orçamento. Ao ser aceito, o negócio seguirá para fechamento e pagamento.</p></div><div className="grid gap-4 md:grid-cols-2"><div className="rounded-2xl border bg-muted/20 p-5"><ShoppingBag className="mb-4 h-7 w-7 text-primary" /><h3 className="font-semibold">1. Criar orçamento</h3><p className="mb-4 mt-1 text-sm text-muted-foreground">Cliente, itens e o mesmo negócio seguem preenchidos.</p><Button asChild className="w-full"><Link href={`/propostas?${leadQuery}${productQuery}${dealQuery}&new=1`}>Abrir orçamento <ArrowRight className="h-4 w-4" /></Link></Button></div><div className="rounded-2xl border bg-muted/20 p-5"><CheckCircle2 className="mb-4 h-7 w-7 text-primary" /><h3 className="font-semibold">2. Acompanhar negociação</h3><p className="mb-4 mt-1 text-sm text-muted-foreground">Mova o card para negociação ao iniciar as tratativas.</p><Button variant="outline" className="w-full" disabled={updateDeal.isPending} onClick={() => advance(3, "negociacao")}>Iniciar negociação</Button></div></div><div className="mt-5 flex justify-between"><Button variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-4 w-4" /> Voltar</Button><Button disabled={updateDeal.isPending} onClick={() => advance(4, "ganho")}>Venda confirmada <ArrowRight className="h-4 w-4" /></Button></div></CardContent></Card>
+        <Card><CardContent className="p-5 sm:p-7"><div className="mb-6"><Badge variant="secondary" className="mb-2">{selectedLead.nome} · {money(total)}</Badge><h2 className="text-xl font-semibold">Formalizar e acompanhar a venda</h2><p className="mt-1 text-sm text-muted-foreground">Orçamento, negociação, descontos e aprovações permanecem no mesmo card.</p></div><div className="grid gap-4 md:grid-cols-3"><div className="rounded-2xl border bg-muted/20 p-5"><ShoppingBag className="mb-4 h-7 w-7 text-primary" /><h3 className="font-semibold">1. Criar orçamento</h3><p className="mb-4 mt-1 text-sm text-muted-foreground">Cliente, itens e o mesmo negócio seguem preenchidos.</p><Button asChild className="w-full"><Link href={`/propostas?${leadQuery}${productQuery}${dealQuery}&new=1`}>Abrir orçamento <ArrowRight className="h-4 w-4" /></Link></Button></div><div className="rounded-2xl border bg-muted/20 p-5"><CheckCircle2 className="mb-4 h-7 w-7 text-primary" /><h3 className="font-semibold">2. Acompanhar negociação</h3><p className="mb-4 mt-1 text-sm text-muted-foreground">O card avança e toda movimentação entra no histórico do lead.</p><Button variant="outline" className="w-full" disabled={updateDeal.isPending} onClick={() => advance(3, "negociacao")}>Iniciar negociação</Button></div><div className="rounded-2xl border bg-muted/20 p-5"><BadgePercent className="mb-4 h-7 w-7 text-primary" /><h3 className="font-semibold">3. Condição comercial</h3><p className="mb-4 mt-1 text-sm text-muted-foreground">Aplique desconto autorizado ou envie para análise da gerência.</p><Button variant="outline" className="w-full" onClick={() => setDiscountOpen(true)}>Analisar desconto</Button></div></div><div className="mt-5 flex flex-wrap justify-between gap-3"><Button variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-4 w-4" /> Voltar</Button><div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link href={`/leads/${selectedLead.id}`}><ExternalLink className="h-4 w-4" /> Abrir negócio e jornada</Link></Button><Button disabled={updateDeal.isPending} onClick={() => advance(4, "ganho")}>Venda confirmada <ArrowRight className="h-4 w-4" /></Button></div></div></CardContent></Card>
       )}
 
       {step === 4 && selectedLead && (
         <Card><CardContent className="p-5 sm:p-7"><div className="mb-6"><Badge className="mb-2 bg-emerald-600 hover:bg-emerald-600">Venda confirmada</Badge><h2 className="text-xl font-semibold">Concluir atendimento</h2><p className="mt-1 text-sm text-muted-foreground">Organize a entrega e mantenha o cliente informado.</p></div><div className="grid gap-3 sm:grid-cols-3"><Button asChild variant="outline" className="h-24 flex-col gap-2"><Link href={`/entregas?${leadQuery}`}><Truck className="h-5 w-5 text-primary" />Agendar entrega</Link></Button><Button asChild variant="outline" className="h-24 flex-col gap-2"><Link href={`/agenda?${leadQuery}`}><CalendarPlus className="h-5 w-5 text-primary" />Agendar acompanhamento</Link></Button><Button asChild variant="outline" className="h-24 flex-col gap-2"><Link href={`/conversations?${leadQuery}`}><MessageSquareText className="h-5 w-5 text-primary" />Enviar mensagem</Link></Button></div><Button className="mt-6 w-full" onClick={restart}>Finalizar e iniciar outro atendimento</Button></CardContent></Card>
       )}
+      <Dialog open={discountOpen} onOpenChange={setDiscountOpen}><DialogContent><DialogHeader><DialogTitle>Condição comercial</DialogTitle></DialogHeader><div className="space-y-4"><div className="space-y-2"><Label htmlFor="discount-percent">Desconto (%)</Label><Input id="discount-percent" type="number" min="0" max="100" value={discountPercent} onChange={(event) => setDiscountPercent(event.target.value)} /></div><div className="space-y-2"><Label htmlFor="discount-reason">Justificativa</Label><Textarea id="discount-reason" value={discountReason} onChange={(event) => setDiscountReason(event.target.value)} placeholder="Explique a condição negociada, concorrência, volume ou motivo da exceção..." /></div><p className="text-xs text-muted-foreground">Até 10% pode ser aplicado diretamente. Percentuais maiores seguem automaticamente para aprovação gerencial.</p></div><DialogFooter className="gap-2 sm:gap-0"><Button variant="outline" disabled={discountPending || !discountReason.trim()} onClick={() => submitDiscount(true)}>Enviar para gerência</Button><Button disabled={discountPending || !discountReason.trim()} onClick={() => submitDiscount(false)}>Aplicar condição</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Criar novo lead</DialogTitle></DialogHeader><div className="grid gap-4"><div className="space-y-2"><Label htmlFor="new-lead-name">Nome *</Label><Input id="new-lead-name" autoFocus value={newLead.nome} onChange={(event) => setNewLead((current) => ({ ...current, nome: event.target.value }))} placeholder="Nome completo" /></div><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="new-lead-phone">Telefone</Label><Input id="new-lead-phone" inputMode="tel" value={newLead.telefone} onChange={(event) => setNewLead((current) => ({ ...current, telefone: event.target.value }))} placeholder="+55 11 99999-9999" /></div><div className="space-y-2"><Label htmlFor="new-lead-email">E-mail</Label><Input id="new-lead-email" inputMode="email" value={newLead.email} onChange={(event) => setNewLead((current) => ({ ...current, email: event.target.value }))} placeholder="email@empresa.com" /></div></div><div className="space-y-2"><Label htmlFor="new-lead-company">Empresa</Label><Input id="new-lead-company" value={newLead.empresa} onChange={(event) => setNewLead((current) => ({ ...current, empresa: event.target.value }))} placeholder="Nome da empresa" /></div><div className="space-y-2"><Label htmlFor="new-lead-goal">Objetivo</Label><Textarea id="new-lead-goal" value={newLead.objetivo} onChange={(event) => setNewLead((current) => ({ ...current, objetivo: event.target.value }))} placeholder="O que o cliente precisa?" /></div></div><DialogFooter><Button variant="outline" onClick={() => setNewLeadOpen(false)}>Cancelar</Button><Button disabled={!newLead.nome.trim() || createLead.isPending || createDeal.isPending} onClick={submitNewLead}>{createLead.isPending || createDeal.isPending ? "Salvando..." : "Salvar e continuar"}</Button></DialogFooter></DialogContent></Dialog>
     </div>
   );
 }

@@ -51,9 +51,32 @@ import { generateContractPDF } from "../lib/contract-generation.js";
 import { requireRole, buildUserFunctionFilter, type UserFunction } from "../middlewares/auth.js";
 import { captureLeadFeatureSnapshot, backfillResultadoSnapshots } from "../lib/mlFeatureStore.js";
 import { finalizeVehicleReservation } from "../services/vehicle-reservation.js";
+import { z } from "zod";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+const DEAL_STAGE_LABELS: Record<string, string> = {
+  em_aquecimento: "Em aquecimento", novo: "Novo", qualificado: "Qualificado",
+  proposta: "Proposta", negociacao: "Negociação", conferencia_estoque: "Conferência de estoque",
+  ganho: "Ganho", em_execucao: "Em execução", entregue: "Entregue", perdido: "Perdido", parceiro: "Parceiro",
+};
+
+async function recordDealJourney(input: {
+  tenantId: string; leadId: string | null; dealId: string; title: string; description: string; responsavelId?: string | null;
+}) {
+  if (!input.leadId) return;
+  try {
+    await db.insert(activitiesTable).values({
+      tenantId: input.tenantId, leadId: input.leadId, dealId: input.dealId,
+      tipo: "tarefa", titulo: input.title, descricao: input.description,
+      status: "concluida", concluidaEm: new Date(), responsavelId: input.responsavelId ?? null,
+    });
+  } catch {
+    // A auditoria não pode impedir a operação comercial principal. O erro é
+    // observado pelo logger/monitoramento do banco e pode ser recomposto.
+  }
+}
 
 const uploadQuote = multer({
   storage: multer.memoryStorage(),
@@ -72,7 +95,16 @@ router.post("/deals", async (req, res) => {
     return;
   }
 
-  const [deal] = await db.insert(dealsTable).values(parsed.data).returning();
+  const assignedTo = parsed.data.assignedTo ?? (
+    req.user?.platformRole !== "super_admin" && req.user?.sub ? req.user.sub : null
+  );
+  const [deal] = await db.insert(dealsTable).values({ ...parsed.data, assignedTo }).returning();
+  await recordDealJourney({
+    tenantId: deal.tenantId, leadId: deal.leadId, dealId: deal.id,
+    title: "Negócio iniciado",
+    description: `O negócio entrou na etapa ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}. O mesmo fluxo é usado por usuários e agentes de IA.`,
+    responsavelId: assignedTo,
+  });
   res.status(201).json(deal);
 });
 
@@ -143,6 +175,68 @@ router.get("/deals/:id", async (req, res) => {
   res.json({ ...deal, lead });
 });
 
+const commercialReviewSchema = z.object({
+  discountPercent: z.number().min(0).max(100),
+  reason: z.string().trim().min(3).max(1000),
+  requestManagement: z.boolean().default(false),
+});
+
+router.post("/deals/:id/commercial-review", async (req, res) => {
+  const parsed = commercialReviewSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, String(req.params.id)));
+  if (!deal) {
+    res.status(404).json({ error: "Deal not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && deal.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (!deal.leadId) {
+    res.status(422).json({ error: "O negócio precisa estar vinculado a um lead" });
+    return;
+  }
+
+  const originalValue = Number(deal.valor || 0);
+  const discountedValue = Math.max(0, originalValue * (1 - parsed.data.discountPercent / 100));
+  const canApplyDirectly = !parsed.data.requestManagement && parsed.data.discountPercent <= 10;
+
+  if (canApplyDirectly) {
+    const [updated] = await db.update(dealsTable).set({ valor: String(discountedValue.toFixed(2)), updatedAt: new Date() })
+      .where(eq(dealsTable.id, deal.id)).returning();
+    await recordDealJourney({
+      tenantId: deal.tenantId, leadId: deal.leadId, dealId: deal.id,
+      title: `Desconto de ${parsed.data.discountPercent}% aplicado`,
+      description: `Valor anterior: R$ ${originalValue.toFixed(2)}. Novo valor: R$ ${discountedValue.toFixed(2)}. Justificativa: ${parsed.data.reason}`,
+      responsavelId: req.user?.sub,
+    });
+    res.json({ status: "applied", deal: updated });
+    return;
+  }
+
+  const [task] = await db.insert(agentTasksTable).values({
+    tenantId: deal.tenantId, leadId: deal.leadId, agentName: "closer",
+    actionType: "aprovacao_desconto",
+    payload: { dealId: deal.id, discountPercent: parsed.data.discountPercent, reason: parsed.data.reason, originalValue, discountedValue },
+  }).returning();
+  await db.insert(notificationsTable).values({
+    tenantId: deal.tenantId, title: "Análise comercial pendente",
+    message: `O negócio "${deal.titulo}" solicita ${parsed.data.discountPercent}% de desconto. Justificativa: ${parsed.data.reason}`,
+    type: "warning", category: "deal_discount_approval",
+  });
+  await recordDealJourney({
+    tenantId: deal.tenantId, leadId: deal.leadId, dealId: deal.id,
+    title: "Análise comercial solicitada",
+    description: `Desconto solicitado: ${parsed.data.discountPercent}%. Justificativa: ${parsed.data.reason}`,
+    responsavelId: req.user?.sub,
+  });
+  res.status(202).json({ status: "pending_approval", agentTaskId: task.id });
+});
+
 router.patch("/deals/:id", async (req, res) => {
   const parsed = updateDealSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -167,7 +261,7 @@ router.patch("/deals/:id", async (req, res) => {
 
   const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const userFn2 = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "entrega") && existing.assignedTo !== req.user?.sub) {
+  if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "entrega") && existing.assignedTo && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this deal" });
     return;
   }
@@ -175,6 +269,14 @@ router.patch("/deals/:id", async (req, res) => {
   // ── Guardrail: bloquear fechamento direto via PATCH quando valor diverge do
   // catálogo — mesma regra do confirm-closure e proposal-accepted, para que
   // "ganho" não possa ser setado direto sem passar pela aprovação humana.
+  if (existing.vehicleReservationBlocked) {
+    res.status(409).json({
+      error: "O prazo desta negociação de veículo venceu. Registre a justificativa e escolha manter, avançar ou perdido antes de alterar o negócio.",
+      code: "VEHICLE_RESERVATION_JUSTIFICATION_REQUIRED",
+    });
+    return;
+  }
+
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
     const tenantIdForCheck = existing.tenantId ?? (req.user?.tenantId || "");
     const [dealForCheck] = await db
@@ -283,9 +385,18 @@ router.patch("/deals/:id", async (req, res) => {
 
   const [deal] = await db
     .update(dealsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, assignedTo: existing.assignedTo ?? req.user?.sub ?? null, updatedAt: new Date() })
     .where(eq(dealsTable.id, existing.id))
     .returning();
+
+  if (parsed.data.etapa && parsed.data.etapa !== existing.etapa) {
+    await recordDealJourney({
+      tenantId: existing.tenantId, leadId: deal.leadId, dealId: deal.id,
+      title: `Negócio avançou para ${DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa}`,
+      description: `Etapa anterior: ${DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa}.`,
+      responsavelId: req.user?.sub,
+    });
+  }
 
   // Negocios e Central da Farmacia sao pipelines distintas, mas compartilham
   // o mesmo pedido. A confirmacao comercial libera apenas pedidos que nao
@@ -306,14 +417,6 @@ router.patch("/deals/:id", async (req, res) => {
         eq(farmaciaPedidoTable.tenantId, existing.tenantId),
         sql`${farmaciaPedidoTable.status} NOT IN ('entregue', 'cancelado')`,
       ));
-  }
-
-  if (existing.vehicleReservationBlocked) {
-    res.status(409).json({
-      error: "O prazo desta negociação de veículo venceu. Registre a justificativa e escolha manter, avançar ou perdido antes de alterar o negócio.",
-      code: "VEHICLE_RESERVATION_JUSTIFICATION_REQUIRED",
-    });
-    return;
   }
 
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
