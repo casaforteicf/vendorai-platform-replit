@@ -67,44 +67,44 @@
 }
 
 :root {
-  --background: 220 20% 98%;
-  --foreground: 224 71% 4%;
+  --background: 220 14% 97%;
+  --foreground: 220 13% 12%;
   
   --card: 0 0% 100%;
-  --card-foreground: 224 71% 4%;
-  --card-border: 220 13% 91%;
+  --card-foreground: 220 13% 12%;
+  --card-border: 220 13% 89%;
   
   --popover: 0 0% 100%;
   --popover-foreground: 224 71% 4%;
   --popover-border: 220 13% 91%;
   
-  --primary: 224 64% 33%;
+  --primary: 213 94% 42%;
   --primary-foreground: 210 40% 98%;
   
   --secondary: 210 40% 96.1%;
   --secondary-foreground: 222.2 47.4% 11.2%;
   
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
+  --muted: 220 14% 94%;
+  --muted-foreground: 220 8% 42%;
   
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
+  --accent: 214 45% 94%;
+  --accent-foreground: 213 72% 30%;
   
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
 
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 224 64% 33%;
+  --border: 220 13% 88%;
+  --input: 220 13% 84%;
+  --ring: 213 94% 42%;
 
-  --sidebar: 0 0% 100%;
-  --sidebar-foreground: 224 71% 4%;
-  --sidebar-border: 220 13% 91%;
-  --sidebar-primary: 224 64% 33%;
+  --sidebar: 220 20% 99%;
+  --sidebar-foreground: 220 13% 12%;
+  --sidebar-border: 220 13% 89%;
+  --sidebar-primary: 213 94% 42%;
   --sidebar-primary-foreground: 210 40% 98%;
-  --sidebar-accent: 210 40% 96.1%;
-  --sidebar-accent-foreground: 222.2 47.4% 11.2%;
-  --sidebar-ring: 224 64% 33%;
+  --sidebar-accent: 214 45% 94%;
+  --sidebar-accent-foreground: 213 72% 30%;
+  --sidebar-ring: 213 94% 42%;
 
   --chart-1: 224 64% 33%;
   --chart-2: 215 50% 40%;
@@ -112,9 +112,9 @@
   --chart-4: 180 70% 50%;
   --chart-5: 160 60% 45%;
 
-  --radius: 0.5rem;
+  --radius: 0.875rem;
 
-  --app-font-sans: 'Inter', sans-serif;
+  --app-font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
 }
@@ -166,10 +166,79 @@
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    letter-spacing: -0.006em;
   }
   button, a {
     touch-action: manipulation;
   }
+}
+
+@layer components {
+  .vendor-page-canvas {
+    width: 100%;
+    min-height: 100%;
+    padding: 1rem;
+  }
+
+  .vendor-page-canvas > :first-child {
+    width: 100%;
+    max-width: 1440px;
+    margin-inline: auto;
+  }
+
+  .vendor-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .vendor-page-title {
+    color: hsl(var(--foreground));
+    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.035em;
+  }
+
+  .vendor-page-description {
+    margin-top: 0.35rem;
+    max-width: 48rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+}
+
+@media (min-width: 768px) {
+  .vendor-page-canvas { padding: 2rem clamp(1.5rem, 3vw, 3rem) 3rem; }
+}
+
+@media (max-width: 640px) {
+  .vendor-page-header { flex-direction: column; }
+  .vendor-page-header > :last-child { width: 100%; }
+}
+
+.vendor-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+}
+
+.vendor-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+.vendor-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.vendor-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.2);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+.vendor-scrollbar::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--muted-foreground) / 0.35); }
+
+::selection {
+  background: hsl(var(--primary) / 0.18);
+  color: hsl(var(--foreground));
 }
 
 /* Painéis avançados seguem o mesmo tema claro das telas administrativas. */
