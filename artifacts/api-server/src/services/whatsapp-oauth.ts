@@ -4,6 +4,7 @@ import { logger } from "../lib/logger.js";
 
 const WHATSAPP_APP_ID = process.env["WHATSAPP_APP_ID"] ?? process.env["INSTAGRAM_APP_ID"];
 const WHATSAPP_APP_SECRET = process.env["WHATSAPP_APP_SECRET"] ?? process.env["INSTAGRAM_APP_SECRET"];
+const WHATSAPP_EMBEDDED_CONFIG_ID = process.env["WHATSAPP_EMBEDDED_CONFIG_ID"]?.trim();
 
 function getRedirectUri(): string {
   const configured = process.env["WHATSAPP_REDIRECT_URI"]?.trim();
@@ -34,6 +35,10 @@ export function buildWhatsappOAuthUrl(tenantId: string, state: string): string {
     state,
     response_type: "code",
   });
+  if (WHATSAPP_EMBEDDED_CONFIG_ID) {
+    params.set("config_id", WHATSAPP_EMBEDDED_CONFIG_ID);
+    params.set("override_default_response_type", "true");
+  }
   return `${META_OAUTH_BASE}?${params.toString()}`;
 }
 
@@ -46,7 +51,7 @@ interface LongLivedTokenResponse {
   expires_in?: number;
 }
 
-interface WabaAccount {
+export interface WabaAccount {
   id: string;
   name: string;
 }
@@ -56,7 +61,7 @@ interface MetaBusiness {
   name?: string;
 }
 
-interface PhoneNumber {
+export interface PhoneNumber {
   id: string;
   display_phone_number: string;
   verified_name: string;
@@ -143,6 +148,26 @@ export async function fetchPhoneNumbers(wabaId: string, accessToken: string): Pr
   }
   const data = (await res.json()) as { data: PhoneNumber[] };
   return data.data ?? [];
+}
+
+export async function findWhatsappPhoneNumber(
+  wabas: WabaAccount[],
+  accessToken: string,
+): Promise<{ waba: WabaAccount; phone: PhoneNumber } | null> {
+  let successfulLookups = 0;
+  for (const waba of wabas) {
+    try {
+      const phones = await fetchPhoneNumbers(waba.id, accessToken);
+      successfulLookups += 1;
+      if (phones[0]) return { waba, phone: phones[0] };
+    } catch (err) {
+      logger.warn({ err, wabaId: waba.id }, "Nao foi possivel consultar os telefones desta WABA");
+    }
+  }
+  if (wabas.length > 0 && successfulLookups === 0) {
+    throw new Error("Nao foi possivel consultar os numeros das contas WhatsApp autorizadas");
+  }
+  return null;
 }
 
 export async function saveWhatsappConnection(
