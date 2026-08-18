@@ -27,9 +27,9 @@ function getRedirectUri(host?: string): string {
   return `http://localhost:${process.env["PORT"] ?? 3000}${INSTAGRAM_CALLBACK_PATH}`;
 }
 
-const META_OAUTH_BASE = "https://www.facebook.com/v18.0/dialog/oauth";
-const META_TOKEN_BASE = "https://graph.facebook.com/v18.0/oauth/access_token";
-const META_LONG_LIVED_BASE = "https://graph.facebook.com/v18.0/oauth/access_token";
+const META_OAUTH_BASE = "https://www.instagram.com/oauth/authorize";
+const META_TOKEN_BASE = "https://api.instagram.com/oauth/access_token";
+const META_LONG_LIVED_BASE = "https://graph.instagram.com/access_token";
 const META_ACCOUNTS_BASE = "https://graph.facebook.com/v18.0/me/accounts";
 const META_PAGE_BASE = "https://graph.facebook.com/v18.0";
 
@@ -38,9 +38,11 @@ export function buildInstagramOAuthUrl(tenantId: string, state: string, host?: s
   const params = new URLSearchParams({
     client_id: INSTAGRAM_APP_ID ?? "",
     redirect_uri: redirectUri,
-    scope: "instagram_basic,instagram_manage_messages,pages_messaging,pages_read_engagement",
+    scope: "instagram_business_basic,instagram_business_manage_messages",
     state,
     response_type: "code",
+    enable_fb_login: "0",
+    force_authentication: "1",
   });
   return `${META_OAUTH_BASE}?${params.toString()}`;
 }
@@ -72,17 +74,86 @@ interface InstagramAccountInfo {
   name?: string;
 }
 
+export async function fetchDirectInstagramAccountInfo(token: string): Promise<InstagramAccountInfo> {
+  const url = new URL("https://graph.instagram.com/me");
+  url.searchParams.set("fields", "id,username,name");
+  url.searchParams.set("access_token", token);
+  const response = await fetch(url);
+  if (!response.ok) {
+    const body = await response.text();
+    logger.error({ status: response.status, body }, "Falha ao buscar perfil Instagram Business");
+    throw new Error(`Failed to fetch Instagram profile: ${response.status}`);
+  }
+  return response.json() as Promise<InstagramAccountInfo>;
+}
+
+export async function saveDirectInstagramConnection(
+  tenantId: string,
+  account: InstagramAccountInfo,
+  token: LongLivedTokenResponse,
+): Promise<void> {
+  const [owner] = await db.select({ tenantId: instagramConnectionsTable.tenantId })
+    .from(instagramConnectionsTable)
+    .where(and(
+      eq(instagramConnectionsTable.accountId, account.id),
+      ne(instagramConnectionsTable.tenantId, tenantId),
+      isNull(instagramConnectionsTable.disconnectedAt),
+    )).limit(1);
+  if (owner) throw new Error("Esta conta do Instagram ja esta conectada a outro tenant");
+
+  const expiresAt = token.expires_in ? new Date(Date.now() + token.expires_in * 1000) : null;
+  const existing = await getInstagramConnectionByTenantId(tenantId);
+  const values = {
+    accountId: account.id,
+    pageId: account.id,
+    username: account.username,
+    pageAccessToken: token.access_token,
+    tokenExpiresAt: expiresAt,
+    updatedAt: new Date(),
+    disconnectedAt: null,
+  };
+  if (existing) await db.update(instagramConnectionsTable).set(values)
+    .where(eq(instagramConnectionsTable.id, existing.id));
+  else await db.insert(instagramConnectionsTable).values({ tenantId, ...values });
+
+  await db.update(agentConfigsTable).set({
+    instagramPageAccessToken: token.access_token,
+    instagramPageId: account.id,
+    instagramUsername: account.username,
+    updatedAt: new Date(),
+  }).where(eq(agentConfigsTable.tenantId, tenantId));
+
+  await subscribeDirectInstagramWebhooks(account.id, token.access_token);
+}
+
+async function subscribeDirectInstagramWebhooks(accountId: string, token: string): Promise<void> {
+  try {
+    const url = new URL(`https://graph.instagram.com/${accountId}/subscribed_apps`);
+    url.searchParams.set("subscribed_fields", "messages");
+    url.searchParams.set("access_token", token);
+    const response = await fetch(url, { method: "POST" });
+    if (!response.ok) logger.warn({ accountId, status: response.status }, "Falha ao assinar webhook Instagram");
+  } catch (err) {
+    logger.warn({ err, accountId }, "Erro ao assinar webhook Instagram");
+  }
+}
+
 export async function exchangeShortCodeForToken(code: string, host?: string): Promise<LongLivedTokenResponse> {
   const redirectUri = getRedirectUri(host);
   logger.info({ redirectUri }, "Trocando short code por token");
 
-  const url = new URL(META_TOKEN_BASE);
-  url.searchParams.set("client_id", INSTAGRAM_APP_ID ?? "");
-  url.searchParams.set("client_secret", INSTAGRAM_APP_SECRET ?? "");
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("code", code);
-
-  const res = await fetch(url.toString());
+  const body = new URLSearchParams({
+    client_id: INSTAGRAM_APP_ID ?? "",
+    client_secret: INSTAGRAM_APP_SECRET ?? "",
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    code,
+  });
+  const res = await fetch(META_TOKEN_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
   if (!res.ok) {
     const body = await res.text();
     logger.error({ status: res.status, body }, "Falha na troca de code por token");
@@ -97,10 +168,9 @@ export async function exchangeShortCodeForToken(code: string, host?: string): Pr
 
 async function exchangeForLongLivedToken(shortToken: string): Promise<LongLivedTokenResponse> {
   const url = new URL(META_LONG_LIVED_BASE);
-  url.searchParams.set("grant_type", "fb_exchange_token");
-  url.searchParams.set("client_id", INSTAGRAM_APP_ID ?? "");
+  url.searchParams.set("grant_type", "ig_exchange_token");
   url.searchParams.set("client_secret", INSTAGRAM_APP_SECRET ?? "");
-  url.searchParams.set("fb_exchange_token", shortToken);
+  url.searchParams.set("access_token", shortToken);
 
   const res = await fetch(url.toString());
   if (!res.ok) {
@@ -171,11 +241,9 @@ export async function refreshInstagramToken(connectionId: string): Promise<void>
 
   logger.info({ connectionId }, "Renovando token do Instagram");
 
-  const url = new URL(META_LONG_LIVED_BASE);
-  url.searchParams.set("grant_type", "fb_exchange_token");
-  url.searchParams.set("client_id", INSTAGRAM_APP_ID ?? "");
-  url.searchParams.set("client_secret", INSTAGRAM_APP_SECRET ?? "");
-  url.searchParams.set("fb_exchange_token", pageToken);
+  const url = new URL("https://graph.instagram.com/refresh_access_token");
+  url.searchParams.set("grant_type", "ig_refresh_token");
+  url.searchParams.set("access_token", pageToken);
 
   const res = await fetch(url.toString());
   if (!res.ok) {
