@@ -15,7 +15,13 @@ import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
 
 const router: IRouter = Router();
 
-function getAppUrl(): string {
+function getAppUrl(host?: string): string {
+  const normalizedHost = host?.split(":")[0]?.toLowerCase();
+  if (["appvendorai.com", "www.appvendorai.com", "app.appvendorai.com"].includes(normalizedHost ?? "")) {
+    return "https://appvendorai.com";
+  }
+  const configured = process.env["APP_URL"];
+  if (configured) return configured.replace(/\/$/, "");
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}`;
   return "http://localhost:3000";
@@ -31,8 +37,8 @@ router.get("/auth/instagram", authenticate, async (req, res) => {
     }
 
     const state = createOAuthState(tenantId, userId, "instagram");
-    const url = buildInstagramOAuthUrl(tenantId, state);
-    logger.info({ tenantId, userId }, "Retornando URL OAuth Instagram");
+    const url = buildInstagramOAuthUrl(tenantId, state, req.hostname);
+    logger.info({ tenantId, userId, host: req.hostname }, "Retornando URL OAuth Instagram");
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth Instagram");
@@ -42,7 +48,7 @@ router.get("/auth/instagram", authenticate, async (req, res) => {
 
 router.get("/auth/instagram/callback", async (req, res) => {
   const { code, state, error } = req.query as Record<string, string>;
-  const appUrl = getAppUrl();
+  const appUrl = getAppUrl(req.hostname);
 
   if (error || !code || !state) {
     logger.warn({ error, hasCode: !!code, hasState: !!state }, "Callback Instagram: parâmetros inválidos");
@@ -60,7 +66,7 @@ router.get("/auth/instagram/callback", async (req, res) => {
 
   try {
     logger.info({ tenantId }, "Processando callback Instagram");
-    const tokenResponse = await exchangeShortCodeForToken(code);
+    const tokenResponse = await exchangeShortCodeForToken(code, req.hostname);
 
     const pages = await fetchUserPages(tokenResponse.access_token);
     if (pages.length === 0) {
