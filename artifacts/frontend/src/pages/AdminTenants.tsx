@@ -54,6 +54,18 @@ const PROV_LABELS: Record<string, string> = {
   trial:        "Trial",
 };
 
+/**
+ * Compares destructive-action confirmations without being tripped up by
+ * invisible Unicode differences copied from the tenant name (for example,
+ * non-breaking spaces or composed/decomposed accents).
+ */
+function normalizeConfirmation(value: string): string {
+  return value
+    .normalize("NFC")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
 interface ProvisionResult {
   tenant: Tenant;
   user: { id: string; name: string; email: string };
@@ -282,7 +294,10 @@ export default function AdminTenants() {
   }
 
   async function handleDeleteTenant() {
-    if (!deleteTarget || deleteConfirmation.trim() !== deleteTarget.name) return;
+    if (
+      !deleteTarget ||
+      normalizeConfirmation(deleteConfirmation) !== normalizeConfirmation(deleteTarget.name)
+    ) return;
     setDeleting(true);
     try {
       const res = await fetch(`/api/tenants/${deleteTarget.id}`, {
@@ -743,7 +758,15 @@ export default function AdminTenants() {
             <Input value={deleteConfirmation} onChange={(e) => setDeleteConfirmation(e.target.value)} autoComplete="off" />
             <div className="flex justify-end gap-2">
               <Button variant="outline" disabled={deleting} onClick={() => { setDeleteTarget(null); setDeleteConfirmation(""); }}>Cancelar</Button>
-              <Button variant="destructive" disabled={deleting || deleteConfirmation.trim() !== deleteTarget?.name} onClick={() => void handleDeleteTenant()}>
+              <Button
+                variant="destructive"
+                disabled={
+                  deleting ||
+                  !deleteTarget ||
+                  normalizeConfirmation(deleteConfirmation) !== normalizeConfirmation(deleteTarget.name)
+                }
+                onClick={() => void handleDeleteTenant()}
+              >
                 {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
                 Excluir definitivamente
               </Button>
