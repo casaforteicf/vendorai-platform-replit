@@ -7,7 +7,7 @@ import {
   exchangeShortCodeForToken,
   exchangeForLongLivedToken,
   fetchWabaAccounts,
-  fetchPhoneNumbers,
+  findWhatsappPhoneNumber,
   saveWhatsappConnection,
   refreshWhatsappToken,
   disconnectWhatsapp,
@@ -97,20 +97,19 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
       return res.redirect(`${appUrl}/configuracoes?whatsappError=no_waba`);
     }
 
-    const waba = wabas[0];
-    let phones;
+    let selection;
     try {
-      phones = await fetchPhoneNumbers(waba.id, longLived.access_token);
+      selection = await findWhatsappPhoneNumber(wabas, longLived.access_token);
     } catch (err) {
-      logger.error({ err, tenantId, wabaId: waba.id }, "Erro ao localizar numero do WhatsApp");
+      logger.error({ err, tenantId }, "Erro ao localizar numero do WhatsApp");
       return res.redirect(`${appUrl}/configuracoes?whatsappError=phone_lookup`);
     }
-    if (phones.length === 0) {
-      logger.warn({ tenantId, wabaId: waba.id }, "Nenhum número de telefone encontrado");
+    if (!selection) {
+      logger.warn({ tenantId, wabaIds: wabas.map(({ id }) => id) }, "Nenhum numero de telefone encontrado");
       return res.redirect(`${appUrl}/configuracoes?whatsappError=no_phone`);
     }
 
-    const phone = phones[0];
+    const { waba, phone } = selection;
     await saveWhatsappConnection(tenantId, waba.id, phone, longLived.access_token, longLived.expires_in);
 
     logger.info({ tenantId, wabaId: waba.id, phone: phone.display_phone_number }, "WhatsApp conectado com sucesso");
