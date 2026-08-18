@@ -46,6 +46,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -234,6 +235,8 @@ export function CatalogoModal({
   const [formOpen, setFormOpen] = useState(false);
   const [imagemUploading, setImagemUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProdutoCatalogo | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<CsvPreviewRow[]>([]);
   const [csvRaw, setCsvRaw] = useState("");
   const [importPreviewOpen, setImportPreviewOpen] = useState(false);
@@ -425,8 +428,14 @@ export function CatalogoModal({
                   <Upload className="h-4 w-4 mr-1.5" />
                   Importar CSV
                 </Button>
+                  {selectedIds.size > 0 && (
+                <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)}>
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  Excluir ({selectedIds.size})
+                </Button>
+              )}
                 <Button size="sm" onClick={openCreate}>
-                  <Plus className="h-4 w-4 mr-1.5" />
+                <Plus className="h-4 w-4 mr-1.5" />
                   Novo Produto
                 </Button>
               </div>
@@ -448,6 +457,12 @@ export function CatalogoModal({
             <Table>
               <TableHeader>
                 <TableRow>
+                 <TableHead className="w-10">
+                <Checkbox
+                  checked={catalog.length > 0 && selectedIds.size === catalog.length}
+                  onCheckedChange={(v) => setSelectedIds(v ? new Set(catalog.map((p) => p.id)) : new Set())}
+                />
+              </TableHead>
                   <TableHead className="w-10"></TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Categoria</TableHead>
@@ -462,6 +477,25 @@ export function CatalogoModal({
               <TableBody>
                 {catalog.map((p) => (
                   <TableRow key={p.id}>
+                                        <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(p.id)}
+                        onCheckedChange={(v) => {
+                          const next = new Set(selectedIds);
+                          if (v) next.add(p.id); else next.delete(p.id);
+                          setSelectedIds(next);
+                        }}
+                      />
+                    </TableCell>                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(p.id)}
+                        onCheckedChange={(v) => {
+                          const next = new Set(selectedIds);
+                          if (v) next.add(p.id); else next.delete(p.id);
+                          setSelectedIds(next);
+                        }}
+                      />
+                    </TableCell>
                     <TableCell>
                       {p.imagemUrl ? (
                         <img
@@ -969,6 +1003,21 @@ export function CatalogoModal({
             <AlertDialogAction onClick={doDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Excluir
             </AlertDialogAction>
+                  <AlertDialog open={bulkDeleteOpen} onOpenChange={(o) => !o && setBulkDeleteOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir {selectedIds.size} produto(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Os produtos selecionados serão excluídos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                for (const id of Array.from(selectedIds)) {
+                  await deleteMut.mutateAsync({ id });
+                }
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
