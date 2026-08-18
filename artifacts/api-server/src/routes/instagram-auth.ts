@@ -15,9 +15,15 @@ import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
 const router: IRouter = Router();
 
 function getAppUrl(host?: string): string {
+  const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
+  if (configuredFrontend) return configuredFrontend.replace(/\/$/, "");
+
   const normalizedHost = host?.split(":")[0]?.toLowerCase();
   if (["appvendorai.com", "www.appvendorai.com", "app.appvendorai.com"].includes(normalizedHost ?? "")) {
-    return "https://appvendorai.com";
+    return "https://app.appvendorai.com";
+  }
+  if (process.env["NODE_ENV"] === "production") {
+    return "https://app.appvendorai.com";
   }
   const configured = process.env["APP_URL"];
   if (configured) return configured.replace(/\/$/, "");
