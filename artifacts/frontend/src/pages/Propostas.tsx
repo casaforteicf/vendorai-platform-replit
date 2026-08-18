@@ -1013,12 +1013,18 @@ export function CatalogoModal({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                for (const id of Array.from(selectedIds)) {
-                  await deleteMut.mutateAsync({ id });
-                }
-          </AlertDialogFooter>
+                                          <AlertDialogAction
+                  onClick={async () => {
+                    for (const id of Array.from(selectedIds)) {
+                      await deleteMut.mutateAsync({ id });
+                    }
+                    setBulkDeleteOpen(false);
+                  }}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Excluir
+                </AlertDialogAction>
+              </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
