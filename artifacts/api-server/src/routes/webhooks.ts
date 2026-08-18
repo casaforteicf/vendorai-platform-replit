@@ -15,6 +15,8 @@ import {
   erpTitulosTable,
   erpPagamentosTable,
   erpIntegracaoEventosTable,
+  instagramConnectionsTable,
+  whatsappConnectionsTable,
 } from "@workspace/db";
 import { dispatchSkuDelivery } from "../lib/product-delivery.js";
 import { z } from "zod";
@@ -1064,14 +1066,24 @@ router.get("/webhooks/meta/whatsapp", async (req, res) => {
     return;
   }
 
-  const [config] = await db
-    .select({ id: agentConfigsTable.id })
-    .from(agentConfigsTable)
-    .where(eq(agentConfigsTable.metaVerifyToken, token))
-    .limit(1);
+  // A assinatura do app acontece antes da primeira conta de tenant ser
+  // conectada. Por isso, aceita primeiro o token global configurado no
+  // Railway e mantém o token por tenant como compatibilidade.
+  const envToken = process.env["WHATSAPP_VERIFY_TOKEN"];
+  let verified = Boolean(envToken && token === envToken);
 
-  if (!config) {
-    req.log.warn({ token }, "meta-webhook: verify_token not found in any agent config");
+  if (!verified) {
+    const [config] = await db
+      .select({ id: agentConfigsTable.id })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.metaVerifyToken, token))
+      .limit(1);
+    verified = Boolean(config);
+  }
+
+  if (!verified) {
+    // Nunca registre o token recebido: ele funciona como segredo compartilhado.
+    req.log.warn({ mode }, "meta-webhook: verify_token mismatch");
     res.status(403).json({ error: "verify_token mismatch" });
     return;
   }
@@ -1100,17 +1112,24 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
         const phoneNumberId = metadata["phone_number_id"];
         if (!phoneNumberId) continue;
 
-        // Resolve tenant from phoneNumberId
-        const [agentCfg] = await db
-          .select({ tenantId: agentConfigsTable.tenantId, metaAccessToken: agentConfigsTable.metaAccessToken })
-          .from(agentConfigsTable)
-          .where(eq(agentConfigsTable.metaPhoneNumberId, phoneNumberId))
+        // O app Meta e compartilhado, mas cada numero e token pertencem a um tenant.
+        const [whatsappConnection] = await db
+          .select({
+            tenantId: whatsappConnectionsTable.tenantId,
+            metaAccessToken: whatsappConnectionsTable.accessToken,
+          })
+          .from(whatsappConnectionsTable)
+          .where(and(
+            eq(whatsappConnectionsTable.phoneNumberId, phoneNumberId),
+            eq(whatsappConnectionsTable.status, "active"),
+            isNull(whatsappConnectionsTable.disconnectedAt),
+          ))
           .limit(1);
-        if (!agentCfg) {
+        if (!whatsappConnection) {
           req.log.warn({ phoneNumberId }, "meta-webhook: no tenant found for phoneNumberId");
           continue;
         }
-        const { tenantId } = agentCfg;
+        const { tenantId } = whatsappConnection;
 
         const incomingMsgs = (value.messages ?? []) as Array<Record<string, unknown>>;
         const contacts     = (value.contacts ?? []) as Array<Record<string, unknown>>;
@@ -1130,14 +1149,14 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             if (!mensagem) continue;
 
           } else if (msgType === "audio" || msgType === "voice") {
-            if (!agentCfg.metaAccessToken) {
+            if (!whatsappConnection.metaAccessToken) {
               req.log.warn({ phone, msgType }, "meta-webhook: audio received but no access token — skipping");
               continue;
             }
             const audioId = ((msg["audio"] ?? msg["voice"]) as Record<string, string>)?.id;
             if (!audioId) continue;
             try {
-              const buf = await downloadMetaMedia(audioId, agentCfg.metaAccessToken);
+              const buf = await downloadMetaMedia(audioId, whatsappConnection.metaAccessToken);
               mensagem = await transcribeAudioBuffer(buf, tenantId, req.log);
               tipoConteudo = "audio";
               req.log.info({ audioId, chars: mensagem.length }, "meta-webhook: audio transcribed");
@@ -1147,7 +1166,7 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             }
 
           } else if (msgType === "image") {
-            if (!agentCfg.metaAccessToken) {
+            if (!whatsappConnection.metaAccessToken) {
               req.log.warn({ phone }, "meta-webhook: image received but no access token — skipping");
               continue;
             }
@@ -1157,7 +1176,7 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             const mimeType  = (imageData as any).mime_type as string || "image/jpeg";
             if (!imageId) continue;
             try {
-              const buf    = await downloadMetaMedia(imageId, agentCfg.metaAccessToken);
+              const buf    = await downloadMetaMedia(imageId, whatsappConnection.metaAccessToken);
               const dataUrl = `data:${mimeType};base64,${buf.toString("base64")}`;
               mensagem = await interpretImage(dataUrl, tenantId, caption, req.log);
               tipoConteudo = "imagem";
@@ -1377,16 +1396,25 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
           // Resolve tenant by Instagram Page ID
           let tenantId: string | null = null;
           if (pageId) {
-            const [agentCfg] = await db
-              .select({ tenantId: agentConfigsTable.tenantId, commentKeywords: agentConfigsTable.commentKeywords })
-              .from(agentConfigsTable)
-              .where(eq(agentConfigsTable.instagramPageId, pageId))
+            const [instagramConnection] = await db
+              .select({ tenantId: instagramConnectionsTable.tenantId })
+              .from(instagramConnectionsTable)
+              .where(and(
+                eq(instagramConnectionsTable.pageId, pageId),
+                isNull(instagramConnectionsTable.disconnectedAt),
+              ))
               .limit(1);
-            if (agentCfg) {
-              tenantId = agentCfg.tenantId;
+            if (instagramConnection) {
+              tenantId = instagramConnection.tenantId;
+
+              const [agentCfg] = await db
+                .select({ commentKeywords: agentConfigsTable.commentKeywords })
+                .from(agentConfigsTable)
+                .where(eq(agentConfigsTable.tenantId, tenantId))
+                .limit(1);
 
               // Keyword filter — case-insensitive match against any configured keyword
-              const keywords: string[] = Array.isArray(agentCfg.commentKeywords) && agentCfg.commentKeywords.length > 0
+              const keywords: string[] = Array.isArray(agentCfg?.commentKeywords) && agentCfg.commentKeywords.length > 0
                 ? agentCfg.commentKeywords
                 : [];
 
@@ -1571,12 +1599,15 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
           let tenantId: string | null = null;
 
           if (recipient) {
-            const [agentCfg] = await db
-              .select({ tenantId: agentConfigsTable.tenantId })
-              .from(agentConfigsTable)
-              .where(eq(agentConfigsTable.instagramPageId, recipient))
+            const [instagramConnection] = await db
+              .select({ tenantId: instagramConnectionsTable.tenantId })
+              .from(instagramConnectionsTable)
+              .where(and(
+                eq(instagramConnectionsTable.pageId, recipient),
+                isNull(instagramConnectionsTable.disconnectedAt),
+              ))
               .limit(1);
-            if (agentCfg) tenantId = agentCfg.tenantId;
+            if (instagramConnection) tenantId = instagramConnection.tenantId;
           }
 
           if (!tenantId) {
