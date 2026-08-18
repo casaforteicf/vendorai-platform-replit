@@ -352,7 +352,6 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       continue;
     }
         const categoriaNome = categoriaInformada;
-    }
     if (categoriaInformada && categoriaNome && categoriaInformada !== categoriaNome) {
       const current = normalizedCategories.get(categoriaInformada);
       normalizedCategories.set(categoriaInformada, {
