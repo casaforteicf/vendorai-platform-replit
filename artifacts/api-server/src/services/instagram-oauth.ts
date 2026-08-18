@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, instagramConnectionsTable, agentConfigsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
@@ -235,6 +235,19 @@ export async function saveInstagramConnection(
     : null;
 
   logger.info({ tenantId, username: igInfo.username }, "Salvando conexão Instagram");
+
+  const [owner] = await db
+    .select({ tenantId: instagramConnectionsTable.tenantId })
+    .from(instagramConnectionsTable)
+    .where(and(
+      eq(instagramConnectionsTable.pageId, page.id),
+      ne(instagramConnectionsTable.tenantId, tenantId),
+      isNull(instagramConnectionsTable.disconnectedAt),
+    ))
+    .limit(1);
+  if (owner) {
+    throw new Error("Esta pagina do Instagram ja esta conectada a outro tenant");
+  }
 
   const existing = await getInstagramConnectionByTenantId(tenantId);
 

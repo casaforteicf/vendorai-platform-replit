@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, whatsappConnectionsTable, agentConfigsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
@@ -116,6 +116,20 @@ export async function saveWhatsappConnection(
 ): Promise<string> {
   const now = new Date();
   const expiresAt = expiresIn ? new Date(now.getTime() + expiresIn * 1000) : null;
+
+  const [owner] = await db
+    .select({ tenantId: whatsappConnectionsTable.tenantId })
+    .from(whatsappConnectionsTable)
+    .where(and(
+      eq(whatsappConnectionsTable.phoneNumberId, phoneNumber.id),
+      ne(whatsappConnectionsTable.tenantId, tenantId),
+      eq(whatsappConnectionsTable.status, "active"),
+      isNull(whatsappConnectionsTable.disconnectedAt),
+    ))
+    .limit(1);
+  if (owner) {
+    throw new Error("Este numero do WhatsApp ja esta conectado a outro tenant");
+  }
 
   const [existing] = await db
     .select()
