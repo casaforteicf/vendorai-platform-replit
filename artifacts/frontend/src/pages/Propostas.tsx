@@ -996,6 +996,8 @@ export function PropostaModal({
   leadNome,
   leadTelefone,
   leadEmpresa,
+  dealId: activeDealId,
+  initialProductIds = [],
   onSuccess,
 }: {
   open: boolean;
@@ -1006,6 +1008,8 @@ export function PropostaModal({
   leadNome?: string;
   leadTelefone?: string;
   leadEmpresa?: string;
+  dealId?: string;
+  initialProductIds?: string[];
   onSuccess?: () => void;
 }) {
   const { toast } = useToast();
@@ -1074,6 +1078,12 @@ export function PropostaModal({
     query: { queryKey: getListPropostaTemplatesQueryKey(tenantId), enabled: !!tenantId },
   });
   const activeCatalog     = catalog.filter((p) => p.ativo);
+
+  useEffect(() => {
+    if (!open || initialProductIds.length === 0) return;
+    setMode("catalogo");
+    setCartLines(initialProductIds.map((produtoId) => ({ produtoId, quantidade: 1 })));
+  }, [open, initialProductIds.join(",")]);
 
   // totals
   const catTotal = cartLines.reduce((s, l) => {
@@ -1196,7 +1206,7 @@ export function PropostaModal({
       const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas = vals.skipAsaasBilling;
       createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade, precoUnitario: l.precoUnitarioOverride, nome: l.nomeOverride || undefined })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
+        { tenantId, data: { leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade, precoUnitario: l.precoUnitarioOverride, nome: l.nomeOverride || undefined })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -1205,7 +1215,7 @@ export function PropostaModal({
               qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
             }
             const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : catTotal || undefined;
-            createDeal(
+            if (!activeDealId) createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
@@ -1222,7 +1232,7 @@ export function PropostaModal({
       const paymentComp2 = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas2 = vals.skipAsaasBilling;
       createLivreMut.mutate(
-        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
+        { data: { tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -1231,7 +1241,7 @@ export function PropostaModal({
               qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
             }
             const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : freeTotal || undefined;
-            createDeal(
+            if (!activeDealId) createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas2 } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
@@ -1255,7 +1265,7 @@ export function PropostaModal({
       return;
     }
     createFromTemplateMut.mutate(
-      { tenantId, data: { templateSlug: selectedTemplateSlug, leadId } },
+      { tenantId, data: { templateSlug: selectedTemplateSlug, leadId, dealId: activeDealId } },
       {
         onSuccess: (proposta) => {
           toast({ title: "Orçamento criado a partir do template" });
@@ -1263,7 +1273,7 @@ export function PropostaModal({
           if (lockedLeadId) {
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
           }
-          createDeal(
+          if (!activeDealId) createDeal(
             { data: { tenantId, titulo: (proposta as { titulo?: string }).titulo ?? vals.titulo, leadId, etapa: "proposta" } },
             { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
           );
@@ -2456,9 +2466,13 @@ export default function Propostas() {
 
   const urlParams = new URLSearchParams(window.location.search);
   const urlStatus = urlParams.get("status");
+  const urlLeadId = urlParams.get("leadId") ?? undefined;
+  const urlDealId = urlParams.get("dealId") ?? undefined;
+  const urlProductIds = (urlParams.get("productIds") ?? "").split(",").filter(Boolean);
+  const openNewFromUrl = urlParams.get("new") === "1";
   const defaultStatus = urlStatus === "ativa" ? "enviada" : undefined;
 
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(openNewFromUrl);
   const [detailProposta, setDetailProposta] = useState<Proposta | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Proposta | null>(null);
   const [viewProposta, setViewProposta] = useState<Proposta | null>(null);
@@ -2728,6 +2742,10 @@ export default function Propostas() {
         onClose={() => setModalOpen(false)}
         tenantId={tenantId}
         catalog={catalog}
+        leadId={openNewFromUrl ? urlLeadId : undefined}
+        dealId={openNewFromUrl ? urlDealId : undefined}
+        leadNome={openNewFromUrl && urlLeadId ? leadMap[urlLeadId] : undefined}
+        initialProductIds={openNewFromUrl ? urlProductIds : []}
       />
       <PropostaDetailSheet
         proposta={detailProposta}
