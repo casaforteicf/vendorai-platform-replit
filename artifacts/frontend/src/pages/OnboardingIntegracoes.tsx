@@ -152,15 +152,20 @@ export default function OnboardingIntegracoes() {
 
   async function connectWhatsApp() {
     try {
-      const token = getToken();
-      const res = await fetch(`/api/auth/whatsapp`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const data = (await apiFetch("/api/auth/whatsapp")) as { url?: string };
+      if (!data.url) {
+        throw new Error("O servidor não retornou a URL de conexão da Meta.");
+      }
+      window.location.assign(data.url);
+    } catch (error) {
+      toast({
+        title: "Não foi possível conectar o WhatsApp",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Verifique a configuração da Meta e tente novamente.",
+        variant: "destructive",
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { url: string };
-      window.location.href = data.url;
-    } catch {
-      toast({ title: "Erro ao iniciar conexão WhatsApp.", variant: "destructive" });
     }
   }
 

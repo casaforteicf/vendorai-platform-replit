@@ -15,9 +15,17 @@ const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const pendingNonces = new Map<string, number>();
 
 function getOAuthStateSecret(): string {
-  const secret = process.env["OAUTH_STATE_SECRET"] ?? process.env["JWT_SECRET"];
+  const secret = [
+    process.env["OAUTH_STATE_SECRET"],
+    process.env["JWT_SECRET"],
+    process.env["SESSION_SECRET"],
+  ]
+    .map((value) => value?.trim())
+    .find((value): value is string => Boolean(value));
   if (!secret || secret.length < 32) {
-    throw new Error("OAUTH_STATE_SECRET must be configured with at least 32 characters");
+    throw new Error(
+      "OAUTH_STATE_SECRET, JWT_SECRET or SESSION_SECRET must be configured with at least 32 characters",
+    );
   }
   return secret;
 }
