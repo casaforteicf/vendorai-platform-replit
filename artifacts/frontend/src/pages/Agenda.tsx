@@ -799,6 +799,14 @@ export default function AgendaPage() {
     },
   });
 
+  useEffect(() => {
+    const leadId = new URLSearchParams(window.location.search).get("leadId");
+    if (!leadId || !leads.some((lead) => lead.id === leadId)) return;
+    form.setValue("leadId", leadId);
+    setIsCreateOpen(true);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [form, leads]);
+
   async function onSubmit(values: CreateForm) {
     if (values.responsavelId) {
       try {

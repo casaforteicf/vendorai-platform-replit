@@ -26,6 +26,7 @@ const NotFound           = lazy(() => import("@/pages/not-found"));
 const Suspended          = lazy(() => import("@/pages/Suspended"));
 
 const Dashboard          = lazy(() => import("@/pages/dashboard/Dashboard"));
+const CentralTrabalho    = lazy(() => import("@/pages/CentralTrabalho"));
 const ComissoesVendedor  = lazy(() => import("@/pages/ComissoesVendedor"));
 const Leads              = lazy(() => import("@/pages/Leads"));
 const LeadDetail         = lazy(() => import("@/pages/LeadDetail"));
@@ -507,6 +508,9 @@ function AppRoutes() {
         </Route>
         <Route path="/dashboard">
           <ProtectedRoute component={Dashboard} />
+        </Route>
+        <Route path="/trabalho">
+          <ProtectedRoute component={CentralTrabalho} />
         </Route>
         <Route path="/leads">
           <ProtectedRoute component={Leads} />

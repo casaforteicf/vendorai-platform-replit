@@ -595,6 +595,7 @@ export default function Conversations() {
   const queryClient = useQueryClient();
 
   const initialConvId = new URLSearchParams(window.location.search).get("conv");
+  const initialLeadId = new URLSearchParams(window.location.search).get("leadId");
   const [selectedId, setSelectedId] = useState<string | null>(initialConvId);
   const [showMobileChat, setShowMobileChat] = useState(!!initialConvId);
   const [channelFilter, setChannelFilter] = useState<string>("all");
@@ -648,6 +649,15 @@ export default function Conversations() {
   ];
 
   const selectedConv = sorted.find((c) => c.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!initialLeadId || selectedId || conversations.length === 0) return;
+    const leadConversation = conversations.find((conversation) => conversation.leadId === initialLeadId);
+    if (leadConversation) {
+      setSelectedId(leadConversation.id);
+      setShowMobileChat(true);
+    }
+  }, [conversations, initialLeadId, selectedId]);
 
   const handleSelectConv = useCallback(
     (conv: Conversation) => {

@@ -57,7 +57,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
-  const START_PLAN_HREFS = new Set(["/", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao"]);
+  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao"]);
   const isTenantAdmin = isEffectiveAdmin;
   const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin && !isTenantAdmin;
 
@@ -96,7 +96,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     },
   });
   const MODULE_TO_HREFS: Record<string, string[]> = {
-    dashboard:  ["/"],
+    dashboard:  ["/", "/trabalho"],
     leads:      ["/leads", "/deals"],
     prospector: ["/app/prospector"],
     scheduler:  ["/agenda"],
@@ -141,6 +141,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Central de Trabalho", href: "/trabalho", icon: ClipboardCheck, sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Prospector",    href: "/app/prospector", icon: Search,         sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm", fn: ["vendedor", "entrega", "administrador", "outro"] as UserFunction[] },
@@ -219,7 +220,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Core routes plus its explicit allowlist; new routes remain hidden until
   // approved for that vertical.
   const CORE_VERTICAL_HREFS = [
-    "/", "/leads", "/app/prospector", "/deals", "/comissoes",
+    "/", "/trabalho", "/leads", "/app/prospector", "/deals", "/comissoes",
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas",
     "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
