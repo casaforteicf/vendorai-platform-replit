@@ -69,17 +69,42 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
 
   try {
     logger.info({ tenantId }, "Processando callback WhatsApp");
-    const tokenResponse = await exchangeShortCodeForToken(code);
-    const longLived = await exchangeForLongLivedToken(tokenResponse.access_token);
+    let tokenResponse;
+    try {
+      tokenResponse = await exchangeShortCodeForToken(code);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao trocar codigo OAuth do WhatsApp");
+      return res.redirect(`${appUrl}/configuracoes?whatsappError=token_exchange`);
+    }
 
-    const wabas = await fetchWabaAccounts(longLived.access_token);
+    let longLived;
+    try {
+      longLived = await exchangeForLongLivedToken(tokenResponse.access_token);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao obter token duradouro do WhatsApp");
+      return res.redirect(`${appUrl}/configuracoes?whatsappError=token_extension`);
+    }
+
+    let wabas;
+    try {
+      wabas = await fetchWabaAccounts(longLived.access_token);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao localizar conta WhatsApp Business");
+      return res.redirect(`${appUrl}/configuracoes?whatsappError=waba_lookup`);
+    }
     if (wabas.length === 0) {
       logger.warn({ tenantId }, "Nenhuma WABA encontrada para o usuário");
       return res.redirect(`${appUrl}/configuracoes?whatsappError=no_waba`);
     }
 
     const waba = wabas[0];
-    const phones = await fetchPhoneNumbers(waba.id, longLived.access_token);
+    let phones;
+    try {
+      phones = await fetchPhoneNumbers(waba.id, longLived.access_token);
+    } catch (err) {
+      logger.error({ err, tenantId, wabaId: waba.id }, "Erro ao localizar numero do WhatsApp");
+      return res.redirect(`${appUrl}/configuracoes?whatsappError=phone_lookup`);
+    }
     if (phones.length === 0) {
       logger.warn({ tenantId, wabaId: waba.id }, "Nenhum número de telefone encontrado");
       return res.redirect(`${appUrl}/configuracoes?whatsappError=no_phone`);

@@ -51,6 +51,11 @@ interface WabaAccount {
   name: string;
 }
 
+interface MetaBusiness {
+  id: string;
+  name?: string;
+}
+
 interface PhoneNumber {
   id: string;
   display_phone_number: string;
@@ -91,15 +96,41 @@ export async function exchangeForLongLivedToken(shortToken: string): Promise<Lon
 }
 
 export async function fetchWabaAccounts(accessToken: string): Promise<WabaAccount[]> {
-  const url = `${META_WABA_BASE}/me/businesses?access_token=${accessToken}`;
-  const res = await fetch(url);
+  const url = new URL(`${META_WABA_BASE}/me/businesses`);
+  url.searchParams.set("fields", "id,name");
+  url.searchParams.set("access_token", accessToken);
+  const res = await fetch(url.toString());
   if (!res.ok) {
     const body = await res.text();
-    logger.error({ status: res.status, body }, "Falha ao buscar WABA accounts");
-    throw new Error(`WABA fetch failed: ${res.status}`);
+    logger.error({ status: res.status, body }, "Falha ao buscar empresas Meta do usuario");
+    throw new Error(`Meta businesses fetch failed: ${res.status}`);
   }
-  const data = (await res.json()) as { data: WabaAccount[] };
-  return data.data ?? [];
+  const data = (await res.json()) as { data?: MetaBusiness[] };
+  const businesses = data.data ?? [];
+  const wabas = new Map<string, WabaAccount>();
+
+  // /me/businesses devolve portfolios empresariais, nao contas WhatsApp.
+  // Para cada portfolio, buscamos as WABAs proprias e as compartilhadas com ele.
+  for (const business of businesses) {
+    for (const edge of ["owned_whatsapp_business_accounts", "client_whatsapp_business_accounts"] as const) {
+      const edgeUrl = new URL(`${META_WABA_BASE}/${business.id}/${edge}`);
+      edgeUrl.searchParams.set("fields", "id,name");
+      edgeUrl.searchParams.set("access_token", accessToken);
+      const edgeRes = await fetch(edgeUrl.toString());
+      if (!edgeRes.ok) {
+        const body = await edgeRes.text();
+        logger.warn(
+          { businessId: business.id, edge, status: edgeRes.status, body },
+          "Nao foi possivel consultar uma das listas de WABA",
+        );
+        continue;
+      }
+      const edgeData = (await edgeRes.json()) as { data?: WabaAccount[] };
+      for (const waba of edgeData.data ?? []) wabas.set(waba.id, waba);
+    }
+  }
+
+  return [...wabas.values()];
 }
 
 export async function fetchPhoneNumbers(wabaId: string, accessToken: string): Promise<PhoneNumber[]> {

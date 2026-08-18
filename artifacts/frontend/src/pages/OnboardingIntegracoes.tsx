@@ -81,6 +81,26 @@ export default function OnboardingIntegracoes() {
       toast({ title: "Erro ao conectar Google Calendar.", variant: "destructive" });
       window.history.replaceState({}, "", window.location.pathname);
     }
+    if (urlParams.get("whatsappConnected") === "1") {
+      toast({ title: "WhatsApp conectado com sucesso!" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    const whatsappError = urlParams.get("whatsappError");
+    if (whatsappError) {
+      const messages: Record<string, string> = {
+        access_denied: "Permissão negada pela Meta.",
+        invalid_state: "A sessão de conexão expirou. Tente novamente.",
+        no_waba: "Nenhuma conta WhatsApp Business foi encontrada.",
+        no_phone: "Nenhum número foi encontrado na conta WhatsApp Business.",
+        token_exchange: "A Meta não autorizou a troca do código de acesso.",
+        token_extension: "Não foi possível validar o token do WhatsApp.",
+        waba_lookup: "Não foi possível consultar sua conta WhatsApp Business.",
+        phone_lookup: "Não foi possível consultar os números da conta WhatsApp.",
+        exchange_failed: "A conexão falhou na etapa final. Tente novamente.",
+      };
+      toast({ title: messages[whatsappError] ?? "Erro ao conectar WhatsApp.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
 
     (async () => {
       try {
