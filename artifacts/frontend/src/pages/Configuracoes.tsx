@@ -1602,6 +1602,10 @@ export default function Configuracoes() {
         invalid_state: "Sessão inválida. Tente novamente.",
         no_waba: "Nenhuma conta WhatsApp Business encontrada.",
         no_phone: "Nenhum número de telefone encontrado.",
+        token_exchange: "A Meta não autorizou a troca do código de acesso.",
+        token_extension: "Não foi possível validar o token do WhatsApp.",
+        waba_lookup: "Não foi possível consultar sua conta WhatsApp Business.",
+        phone_lookup: "Não foi possível consultar os números da conta WhatsApp.",
         exchange_failed: "Erro ao conectar. Tente novamente.",
       };
       toast({ title: messages[error] ?? "Erro ao conectar WhatsApp.", variant: "destructive" });
