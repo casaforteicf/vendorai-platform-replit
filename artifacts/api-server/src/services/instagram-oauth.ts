@@ -4,13 +4,20 @@ import { logger } from "../lib/logger.js";
 
 const INSTAGRAM_APP_ID = process.env["INSTAGRAM_APP_ID"];
 const INSTAGRAM_APP_SECRET = process.env["INSTAGRAM_APP_SECRET"];
+const INSTAGRAM_CALLBACK_PATH = "/api/auth/instagram/callback";
+const PRODUCTION_HOSTS = new Set(["appvendorai.com", "www.appvendorai.com", "app.appvendorai.com"]);
 
-function getRedirectUri(): string {
+function getRedirectUri(host?: string): string {
+  const normalizedHost = host?.split(":")[0]?.toLowerCase();
+  if (normalizedHost && PRODUCTION_HOSTS.has(normalizedHost)) {
+    return `https://appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
+  }
+
   const configured = process.env["INSTAGRAM_REDIRECT_URI"];
   if (configured) return configured;
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
-  if (domain) return `https://${domain}/api/auth/instagram/callback`;
-  return "http://localhost:3000/api/auth/instagram/callback";
+  if (domain) return `https://${domain}${INSTAGRAM_CALLBACK_PATH}`;
+  return `http://localhost:${process.env["PORT"] ?? 3000}${INSTAGRAM_CALLBACK_PATH}`;
 }
 
 const META_OAUTH_BASE = "https://www.facebook.com/v18.0/dialog/oauth";
@@ -19,8 +26,8 @@ const META_LONG_LIVED_BASE = "https://graph.facebook.com/v18.0/oauth/access_toke
 const META_ACCOUNTS_BASE = "https://graph.facebook.com/v18.0/me/accounts";
 const META_PAGE_BASE = "https://graph.facebook.com/v18.0";
 
-export function buildInstagramOAuthUrl(tenantId: string, state: string): string {
-  const redirectUri = getRedirectUri();
+export function buildInstagramOAuthUrl(tenantId: string, state: string, host?: string): string {
+  const redirectUri = getRedirectUri(host);
   const params = new URLSearchParams({
     client_id: INSTAGRAM_APP_ID ?? "",
     redirect_uri: redirectUri,
@@ -58,8 +65,8 @@ interface InstagramAccountInfo {
   name?: string;
 }
 
-export async function exchangeShortCodeForToken(code: string): Promise<LongLivedTokenResponse> {
-  const redirectUri = getRedirectUri();
+export async function exchangeShortCodeForToken(code: string, host?: string): Promise<LongLivedTokenResponse> {
+  const redirectUri = getRedirectUri(host);
   logger.info({ redirectUri }, "Trocando short code por token");
 
   const url = new URL(META_TOKEN_BASE);
