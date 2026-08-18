@@ -454,6 +454,8 @@ export function CatalogoModal({
                   <TableHead>Preço Base</TableHead>
                   <TableHead>Recorrência</TableHead>
                   <TableHead>Ativo</TableHead>
+                  <TableHead>Fornecedor</TableHead>
+<TableHead>Prazo Entrega</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -504,6 +506,8 @@ export function CatalogoModal({
                         {p.ativo ? "Sim" : "Não"}
                       </Badge>
                     </TableCell>
+                   <TableCell>{p.fornecedor || "—"}</TableCell>
+              <TableCell>{p.prazoEntregaDias != null ? `${p.prazoEntregaDias} dias` : "—"}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
