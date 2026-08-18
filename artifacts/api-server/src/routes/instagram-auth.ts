@@ -3,9 +3,8 @@ import { logger } from "../lib/logger.js";
 import {
   buildInstagramOAuthUrl,
   exchangeShortCodeForToken,
-  fetchUserPages,
-  fetchInstagramAccountInfo,
-  saveInstagramConnection,
+  fetchDirectInstagramAccountInfo,
+  saveDirectInstagramConnection,
   refreshInstagramToken,
   disconnectInstagram,
   getInstagramConnectionByTenantId,
@@ -68,6 +67,12 @@ router.get("/auth/instagram/callback", async (req, res) => {
     logger.info({ tenantId }, "Processando callback Instagram");
     const tokenResponse = await exchangeShortCodeForToken(code, req.hostname);
 
+    const directAccount = await fetchDirectInstagramAccountInfo(tokenResponse.access_token);
+    await saveDirectInstagramConnection(tenantId, directAccount, tokenResponse);
+    logger.info({ tenantId, username: directAccount.username }, "Instagram conectado com sucesso");
+    return res.redirect(`${appUrl}/configuracoes?instagramConnected=1`);
+
+    /* Fluxo legado Facebook Pages removido em favor do Instagram Login.
     const pages = await fetchUserPages(tokenResponse.access_token);
     if (pages.length === 0) {
       logger.warn({ tenantId }, "Nenhuma página encontrada para o usuário");
@@ -85,6 +90,7 @@ router.get("/auth/instagram/callback", async (req, res) => {
 
     logger.info({ tenantId, username: igInfo.username }, "Instagram conectado com sucesso");
     return res.redirect(`${appUrl}/configuracoes?instagramConnected=1`);
+    */
   } catch (err) {
     logger.error({ err, tenantId }, "Erro no callback Instagram");
     return res.redirect(`${appUrl}/configuracoes?instagramError=exchange_failed`);
