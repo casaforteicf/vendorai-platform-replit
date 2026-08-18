@@ -162,6 +162,10 @@ const catFormSchema = z.object({
   categoriaId: z.string().min(1, "Selecione uma categoria"),
   descontoMaximoPercentual: z.coerce.number().min(0).max(100).optional(),
   precoBase: z.coerce.number().min(0, "Preço inválido"),
+  fornecedor: z.string().optional(),
+  prazoEntregaDias: z.coerce.number().int().min(0).optional(),
+  custoFornecedor: z.coerce.number().min(0).optional(),
+  estoqueQuantidade: z.coerce.number().int().min(0).optional(),
   unidade: z.string().min(1, "Obrigatório"),
   descricao: z.string().optional(),
   imagemUrl: z.string().url("URL inválida").optional().or(z.literal("")),
@@ -299,6 +303,10 @@ export function CatalogoModal({
       unidade: vals.unidade,
       descricao: vals.descricao || undefined,
       imagemUrl: vals.imagemUrl || undefined,
+      fornecedor: vals.fornecedor || undefined,
+      prazoEntregaDias: vals.prazoEntregaDias ?? undefined,
+      custoFornecedor: vals.custoFornecedor != null ? vals.custoFornecedor.toFixed(2) : undefined,
+      estoqueQuantidade: vals.estoqueQuantidade ?? undefined,
       ativo: vals.ativo,
       recorrencia: vals.recorrente ? ("mensal" as const) : null,
       prazoContrato: vals.recorrente ? (vals.prazoContrato ?? null) : null,
@@ -585,6 +593,30 @@ export function CatalogoModal({
                   <Input type="number" step="0.01" min="0" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} />
                 </FormControl><FormMessage /></FormItem>
               )} />
+                          <div className="grid grid-cols-2 gap-3">
+              <FormField control={form.control} name="fornecedor" render={({ field }) => (
+                <FormItem><FormLabel>Fornecedor</FormLabel><FormControl>
+                  <Input {...field} value={field.value ?? ""} />
+                </FormControl></FormItem>
+              )} />
+              <FormField control={form.control} name="prazoEntregaDias" render={({ field }) => (
+                <FormItem><FormLabel>Prazo de Entrega (dias)</FormLabel><FormControl>
+                  <Input type="number" min="0" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value))} />
+                </FormControl></FormItem>
+              )} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField control={form.control} name="custoFornecedor" render={({ field }) => (
+                <FormItem><FormLabel>Custo (R$)</FormLabel><FormControl>
+                  <Input type="number" step="0.01" min="0" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} />
+                </FormControl></FormItem>
+              )} />
+              <FormField control={form.control} name="estoqueQuantidade" render={({ field }) => (
+                <FormItem><FormLabel>Estoque</FormLabel><FormControl>
+                  <Input type="number" min="0" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value))} />
+                </FormControl></FormItem>
+              )} />
+            </div>
               <FormField control={form.control} name="descricao" render={({ field }) => (
                 <FormItem><FormLabel>Descrição <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
                   <FormControl><Textarea rows={2} className="resize-none" {...field} value={field.value ?? ""} /></FormControl><FormMessage />
