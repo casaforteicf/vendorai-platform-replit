@@ -577,10 +577,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         href={item.href}
         onClick={onNavigate}
         className={cn(
-          "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
+          "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
           isActive
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
+            : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
         )}
       >
         <item.icon className="h-4 w-4 shrink-0" />
@@ -589,7 +589,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           <span className={cn(
             "text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
             isActive
-              ? "bg-primary-foreground/20 text-primary-foreground"
+              ? "bg-primary/15 text-primary"
               : "bg-red-500 text-white"
           )}>
             {item.badge > 99 ? "99+" : item.badge}
@@ -613,10 +613,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => setConteudoOpen((v) => !v)}
             className={cn(
-              "w-full flex items-center justify-between px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
+              "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
               isConteudo
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
             )}
           >
             <div className="flex items-center gap-3">
@@ -693,10 +693,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => setRelatoriosOpen((v) => !v)}
             className={cn(
-              "w-full flex items-center justify-between px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
+              "w-full flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
               isRelatorio
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
             )}
           >
             <div className="flex items-center gap-3">
@@ -878,16 +878,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-    <div className="flex h-screen bg-muted/20">
+    <div className="flex h-screen bg-background">
       {/* ── Desktop sidebar ────────────────────────────────── */}
-      <div className="hidden md:flex w-64 bg-card border-r flex-col shrink-0">
-        <div className="p-5 border-b">
+      <div className="hidden md:flex w-[272px] bg-sidebar/92 backdrop-blur-2xl border-r border-sidebar-border/70 flex-col shrink-0">
+        <div className="p-5 border-b border-sidebar-border/70">
           <LogoBranding size="lg" />
         </div>
         <div className="px-3 py-2 border-b">
           <StoreSwitcher />
         </div>
-        <div className="flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
+        <div className="vendor-scrollbar flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
           <NavLinks />
         </div>
         <UserFooter />
@@ -900,7 +900,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             className="absolute inset-0 bg-black/50"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute left-0 top-0 h-full w-72 bg-card flex flex-col shadow-2xl">
+          <div className="absolute left-0 top-0 h-full w-[min(88vw,320px)] bg-sidebar/98 backdrop-blur-2xl flex flex-col shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b">
               <LogoBranding size="md" />
               <Button
@@ -926,7 +926,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       {/* ── Main content ────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile top bar */}
-        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b bg-card shrink-0">
+        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border/70 bg-background/90 backdrop-blur-xl shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -967,8 +967,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         )}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          {children}
+        <main className="vendor-scrollbar flex-1 overflow-y-auto">
+          <div className="vendor-page-canvas">{children}</div>
         </main>
       </div>
     </div>
