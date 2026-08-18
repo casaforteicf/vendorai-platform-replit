@@ -104,6 +104,10 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   // usada pelo filtro "selecione seu carro" da categoria Acessórios para
   // Veículos no Praça.ai. Vazio/null para produtos sem aplicação automotiva.
   compatibilidadeVeicular: jsonb("compatibilidade_veicular").$type<ProdutoCompatibilidadeVeicular[]>(),
+    fornecedor: text("fornecedor"),
+  prazoEntregaDias: integer("prazo_entrega_dias"),
+  custoFornecedor: numeric("custo_fornecedor", { precision: 12, scale: 2 }),
+  estoqueQuantidade: integer("estoque_quantidade"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
