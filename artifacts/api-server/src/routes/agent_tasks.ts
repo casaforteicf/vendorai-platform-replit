@@ -7,6 +7,7 @@ import {
   dealsTable,
   usersTable,
   notificationsTable,
+  activitiesTable,
   insertAgentTaskSchema,
   updateAgentTaskSchema,
 } from "@workspace/db";
@@ -80,6 +81,14 @@ const conferenciaEstoquePayloadSchema = z.object({
   itens: z.array(z.record(z.string(), z.unknown())).optional(),
 });
 
+const aprovacaoDescontoPayloadSchema = z.object({
+  dealId: z.string().min(1),
+  discountPercent: z.number().min(0).max(100),
+  reason: z.string().min(3),
+  originalValue: z.number(),
+  discountedValue: z.number().min(0),
+});
+
 // ── Shared action executor ────────────────────────────────────────────────────
 // Runs the action for a task that is already in "executando" status.
 // Updates the task to "concluido" with result, or "erro" with errorMessage.
@@ -93,6 +102,10 @@ export async function executeTaskAction(
 
   if (task.actionType === "conferencia_estoque") {
     return executeConferenciaEstoque(task, log);
+  }
+
+  if (task.actionType === "aprovacao_desconto") {
+    return executeAprovacaoDesconto(task, log);
   }
 
   if (task.actionType !== "enviar_whatsapp") {
@@ -206,6 +219,35 @@ export async function executeTaskAction(
       .returning();
 
     log.error({ taskId: task.id, err }, "agent_task: execution failed");
+    return updated;
+  }
+}
+
+async function executeAprovacaoDesconto(task: AgentTask, log: Logger): Promise<AgentTask> {
+  const parsed = aprovacaoDescontoPayloadSchema.safeParse(task.payload ?? {});
+  if (!parsed.success) {
+    const [updated] = await db.update(agentTasksTable).set({ status: "erro", errorMessage: parsed.error.message, updatedAt: new Date() })
+      .where(eq(agentTasksTable.id, task.id)).returning();
+    return updated;
+  }
+  try {
+    const [deal] = await db.update(dealsTable).set({ valor: String(parsed.data.discountedValue.toFixed(2)), updatedAt: new Date() })
+      .where(and(eq(dealsTable.id, parsed.data.dealId), eq(dealsTable.tenantId, task.tenantId))).returning();
+    if (!deal) throw new Error("Negócio não encontrado para aplicar o desconto");
+    await db.insert(activitiesTable).values({
+      tenantId: task.tenantId, leadId: task.leadId, dealId: deal.id, tipo: "tarefa",
+      titulo: `Desconto de ${parsed.data.discountPercent}% aprovado pela gerência`,
+      descricao: `Valor anterior: R$ ${parsed.data.originalValue.toFixed(2)}. Novo valor: R$ ${parsed.data.discountedValue.toFixed(2)}. Justificativa: ${parsed.data.reason}`,
+      status: "concluida", concluidaEm: new Date(),
+    });
+    const [updated] = await db.update(agentTasksTable).set({ status: "concluido", result: { dealId: deal.id, appliedValue: parsed.data.discountedValue }, executedAt: new Date(), updatedAt: new Date() })
+      .where(eq(agentTasksTable.id, task.id)).returning();
+    return updated;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Erro ao aplicar desconto";
+    const [updated] = await db.update(agentTasksTable).set({ status: "erro", errorMessage, updatedAt: new Date() })
+      .where(eq(agentTasksTable.id, task.id)).returning();
+    log.error({ err, taskId: task.id }, "agent_task: aprovacao_desconto failed");
     return updated;
   }
 }
@@ -536,6 +578,7 @@ router.post(
       isAutonomous ||
       task.actionType === "enviar_whatsapp" ||
       task.actionType === "aprovacao_fechamento" ||
+      task.actionType === "aprovacao_desconto" ||
       task.actionType === "conferencia_estoque";
 
     if (shouldExecuteNow) {
@@ -650,6 +693,18 @@ router.post(
     if (updated.actionType === "conferencia_estoque") {
       const motivo = typeof req.body?.motivo === "string" ? req.body.motivo : undefined;
       await handleConferenciaEstoqueRejected(updated, motivo, req.log);
+    }
+
+    if (updated.actionType === "aprovacao_desconto") {
+      const payload = aprovacaoDescontoPayloadSchema.safeParse(updated.payload ?? {});
+      if (payload.success) {
+        await db.insert(activitiesTable).values({
+          tenantId: updated.tenantId, leadId: updated.leadId, dealId: payload.data.dealId,
+          tipo: "tarefa", titulo: "Desconto rejeitado pela gerência",
+          descricao: typeof req.body?.motivo === "string" ? req.body.motivo : payload.data.reason,
+          status: "concluida", concluidaEm: new Date(),
+        });
+      }
     }
 
     res.json(updated);
