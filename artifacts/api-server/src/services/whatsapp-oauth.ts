@@ -6,8 +6,15 @@ const WHATSAPP_APP_ID = process.env["WHATSAPP_APP_ID"] ?? process.env["INSTAGRAM
 const WHATSAPP_APP_SECRET = process.env["WHATSAPP_APP_SECRET"] ?? process.env["INSTAGRAM_APP_SECRET"];
 
 function getRedirectUri(): string {
-  const configured = process.env["WHATSAPP_REDIRECT_URI"];
+  const configured = process.env["WHATSAPP_REDIRECT_URI"]?.trim();
   if (configured) return configured;
+
+  // Railway ainda pode carregar REPLIT_DOMAINS legado. Em produção, a URL
+  // pública canônica precisa prevalecer para corresponder exatamente ao Meta.
+  if (process.env["NODE_ENV"] === "production") {
+    return "https://appvendorai.com/api/auth/whatsapp/callback";
+  }
+
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}/api/auth/whatsapp/callback`;
   return "http://localhost:3000/api/auth/whatsapp/callback";

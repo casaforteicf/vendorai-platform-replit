@@ -8,13 +8,20 @@ const INSTAGRAM_CALLBACK_PATH = "/api/auth/instagram/callback";
 const PRODUCTION_HOSTS = new Set(["appvendorai.com", "www.appvendorai.com", "app.appvendorai.com"]);
 
 function getRedirectUri(host?: string): string {
+  // A URL cadastrada no provedor deve ser a fonte principal. Em ambientes com
+  // proxy (Vercel -> Railway), o Host recebido pelo backend pode ser o interno.
+  const configured = process.env["INSTAGRAM_REDIRECT_URI"]?.trim();
+  if (configured) return configured;
+
   const normalizedHost = host?.split(":")[0]?.toLowerCase();
   if (normalizedHost && PRODUCTION_HOSTS.has(normalizedHost)) {
     return `https://appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
   }
 
-  const configured = process.env["INSTAGRAM_REDIRECT_URI"];
-  if (configured) return configured;
+  if (process.env["NODE_ENV"] === "production") {
+    return `https://appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
+  }
+
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}${INSTAGRAM_CALLBACK_PATH}`;
   return `http://localhost:${process.env["PORT"] ?? 3000}${INSTAGRAM_CALLBACK_PATH}`;
