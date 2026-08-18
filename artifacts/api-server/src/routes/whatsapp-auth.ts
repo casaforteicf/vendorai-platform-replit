@@ -17,9 +17,17 @@ import {
 const router: IRouter = Router();
 
 function getAppUrl(): string {
-  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
-  if (domain) return `https://${domain}`;
-  return "http://localhost:3000";
+  const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
+  if (configuredFrontend) return configuredFrontend.replace(/\/$/, "");
+
+  // O callback OAuth roda na API (appvendorai.com/Railway), mas a tela de
+  // configurações pertence ao CRM hospedado em app.appvendorai.com.
+  // Nunca use REPLIT_DOMAINS ou o host do request como destino em produção.
+  if (process.env["NODE_ENV"] === "production") {
+    return "https://app.appvendorai.com";
+  }
+
+  return process.env["APP_URL"]?.replace(/\/$/, "") || "http://localhost:3000";
 }
 
 router.get("/auth/whatsapp", authenticate, async (req, res) => {
