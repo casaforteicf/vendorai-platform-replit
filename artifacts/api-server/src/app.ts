@@ -145,24 +145,52 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
   const isApi = req.path.startsWith("/api/");
 
+  // Endereço real digitado pelo visitante, só para mensagens de erro — o
+  // Cloudflare Worker que faz proxy do *.appvendorai.com remove o Host
+  // original e a Railway sobrescreve X-Forwarded-Host com o domínio dela
+  // mesma, então `hostname` (req.hostname) não é confiável para exibição.
+  const displayAddress = subdomainFromHeader ? `${subdomainFromHeader}.${ROOT_DOMAIN}` : hostname;
+
   try {
     let tenant: { id: string; name: string; status: string } | undefined;
+    // Preenchido quando o identificador bate com o slug de um site
+    // específico (gerado na tela de Site Generator) — cada site publicado
+    // tem seu próprio endereço, então nesse caso servimos ESSE site, não
+    // "o último publicado do tenant".
+    let matchedSite: { html: string; published: boolean } | undefined;
 
-    if (subdomainFromHeader) {
-      const [found] = await db
-        .select({ id: tenantsTable.id, name: tenantsTable.name, status: tenantsTable.status })
-        .from(tenantsTable)
-        .where(eq(tenantsTable.subdomainSlug, subdomainFromHeader));
-      tenant = found;
-    } else if (isWildcard) {
-      const subdomainSlug = hostname.slice(0, hostname.length - ROOT_DOMAIN.length - 1);
-      if (!subdomainSlug) return next();
+    const identifier = subdomainFromHeader
+      ?? (isWildcard ? hostname.slice(0, hostname.length - ROOT_DOMAIN.length - 1) : null);
 
-      const [found] = await db
-        .select({ id: tenantsTable.id, name: tenantsTable.name, status: tenantsTable.status })
-        .from(tenantsTable)
-        .where(eq(tenantsTable.subdomainSlug, subdomainSlug));
-      tenant = found;
+    if (identifier === "") {
+      return next();
+    }
+
+    if (identifier) {
+      const [siteMatch] = await db
+        .select({
+          html: generatedSitesTable.html,
+          published: generatedSitesTable.published,
+          tenantId: tenantsTable.id,
+          tenantName: tenantsTable.name,
+          tenantStatus: tenantsTable.status,
+        })
+        .from(generatedSitesTable)
+        .innerJoin(tenantsTable, eq(generatedSitesTable.tenantId, tenantsTable.id))
+        .where(eq(generatedSitesTable.siteSlug, identifier))
+        .orderBy(desc(generatedSitesTable.updatedAt))
+        .limit(1);
+
+      if (siteMatch) {
+        tenant = { id: siteMatch.tenantId, name: siteMatch.tenantName, status: siteMatch.tenantStatus };
+        matchedSite = { html: siteMatch.html, published: siteMatch.published };
+      } else {
+        const [found] = await db
+          .select({ id: tenantsTable.id, name: tenantsTable.name, status: tenantsTable.status })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.subdomainSlug, identifier));
+        tenant = found;
+      }
     } else {
       const [domainRow] = await db
         .select({ tenantId: tenantDomainsTable.tenantId, domainStatus: tenantDomainsTable.status })
@@ -180,7 +208,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 
     if (!tenant) {
       if (isApi) return res.status(404).json({ error: "Tenant não encontrado" });
-      return res.status(404).send(notFoundHtml(hostname));
+      return res.status(404).send(notFoundHtml(displayAddress));
     }
 
     if (tenant.status === "suspended" || tenant.status === "cancelled") {
@@ -191,12 +219,19 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     req.tenantId = tenant.id;
     if (isApi) return next();
 
-    const [site] = await db
-      .select({ html: generatedSitesTable.html })
-      .from(generatedSitesTable)
-      .where(and(eq(generatedSitesTable.tenantId, tenant.id), eq(generatedSitesTable.published, true)))
-      .orderBy(desc(generatedSitesTable.updatedAt))
-      .limit(1);
+    let site: { html: string } | undefined;
+
+    if (matchedSite) {
+      site = matchedSite.published ? { html: matchedSite.html } : undefined;
+    } else {
+      const [latest] = await db
+        .select({ html: generatedSitesTable.html })
+        .from(generatedSitesTable)
+        .where(and(eq(generatedSitesTable.tenantId, tenant.id), eq(generatedSitesTable.published, true)))
+        .orderBy(desc(generatedSitesTable.updatedAt))
+        .limit(1);
+      site = latest;
+    }
 
     if (!site) {
       return res.status(404).send(
@@ -210,7 +245,14 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300");
     res.setHeader("X-Tenant-Id", tenant.id);
-    res.setHeader("Content-Security-Policy", "default-src 'self' https: data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    // Sites gerados por IA usam bastante style="" inline e, às vezes, um
+    // <script> inline pequeno (FAQ, toggles) — sem 'unsafe-inline' em
+    // style-src/script-src o CSP acima bloqueia até conteúdo legítimo, não
+    // só sobra suja de edição.
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https: data:; script-src 'self' 'unsafe-inline' https:; img-src 'self' https: data: blob:; font-src 'self' https: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    );
     return res.send(site.html);
   } catch (err) {
     logger.error({ err, hostname }, "subdomain-middleware: error resolving tenant");
