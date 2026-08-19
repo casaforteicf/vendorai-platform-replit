@@ -182,6 +182,22 @@ const catFormSchema = z.object({
   // (tenants.vendeNoPracaAi); "sim"/"nao" sobrepõe só pra esse produto.
   vendeNoPracaAi: z.enum(["herda", "sim", "nao"]).default("herda"),
   precoPracaAi: z.coerce.number().min(0).optional(),
+tipoCalculo: z
+  .enum([
+    "none",
+    "area_simples",
+    "area_com_acabamento_perimetro",
+    "acabamento_perimetro",
+    "linear",
+    "peca_avulsa",
+  ])
+  .default("none"),
+colecao: z.string().optional(),
+cor: z.string().optional(),
+fechamentoPacote: z.coerce.number().min(0).optional(),
+quantidadePacote: z.coerce.number().int().min(0).optional(),
+precoPacote: z.coerce.number().min(0).optional(),
+larguraPecaM: z.coerce.number().min(0).optional(),
   // Tabela de especificações livre do produto (Complemento Praça.ai —
   // paridade com Mercado Livre: Marca/Modelo/Cor/etc), pares label/value.
   especificacoes: z.array(z.object({ label: z.string(), value: z.string() })).default([]),
@@ -1086,124 +1102,124 @@ function newFreeItem(): FreeItem {
   return { id: Math.random().toString(36).slice(2), nome: "", quantidade: 1, valorUnitario: 0 };
 }
 
-export function PropostaModal({
-  open,
-  onClose,
-  tenantId,
-  catalog,
-  leadId: lockedLeadId,
-  leadNome,
-  leadTelefone,
-  leadEmpresa,
-  dealId: activeDealId,
-  initialProductIds = [],
-  onSuccess,
-}: {
-  open: boolean;
-  onClose: () => void;
-  tenantId: string;
-  catalog: ProdutoCatalogo[];
-  leadId?: string;
-  leadNome?: string;
-  leadTelefone?: string;
-  leadEmpresa?: string;
-  dealId?: string;
-  initialProductIds?: string[];
-  onSuccess?: () => void;
-}) {
-  const { toast } = useToast();
-  const qc = useQueryClient();
-
-  // mode
-  const [mode, setMode] = useState<"catalogo" | "livre" | "template">("catalogo");
-  const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
-
-  // catalog mode
-  const [cartLines, setCartLines] = useState<CartLine[]>([{ produtoId: "", quantidade: 1 }]);
-  const [cartError, setCartError] = useState("");
-  const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
-  // livre mode
-  const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
-  const [freeError, setFreeError] = useState("");
-  const [suggesting, setSuggesting] = useState(false);
-  const [contextoIA, setContextoIA] = useState("");
-  const [showIAPanel, setShowIAPanel] = useState(false);
-
-  const defaultTitle = lockedLeadId
-    ? `Orçamento - ${leadNome || "Cliente"}`
-    : "";
-
-  const form = useForm<PropostaFormValues>({
-    resolver: zodResolver(propostaFormSchema),
-    defaultValues: {
-      leadId: lockedLeadId || "",
-      titulo: defaultTitle,
-      validadeAte: "",
-      observacoes: "",
-      formaPagamento: "",
-      condPagamento: "",
-      prazoEntrega: "",
-      formaPagamentoMensalidade: "",
-      condPagamentoMensalidade: "",
-      recorrente: false,
-      valorMensal: undefined,
-      prazoContratoMeses: undefined,
-      paymentCompositions: [],
-      skipAsaasBilling: false,
-    },
-  });
-
-  const watchRecorrente = form.watch("recorrente");
-  const watchValorMensal = form.watch("valorMensal");
-  const watchPrazoMeses = form.watch("prazoContratoMeses");
-  const totalContrato = (watchValorMensal ?? 0) * (watchPrazoMeses ?? 0);
-
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
-    query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId && !lockedLeadId },
-  });
-  const { data: paymentMethods } = useListPaymentMethods(tenantId, {
-    query: { queryKey: getListPaymentMethodsQueryKey(tenantId), enabled: !!tenantId },
-  });
-  const pmLabels = paymentMethods?.methods?.reduce((acc: Record<string, string>, m) => {
-    if (m.enabled && m.code) acc[m.code] = m.label ?? m.code;
-    return acc;
-  }, {} as Record<string, string>) ?? {};
-
-  const createFromCatMut     = useCreatePropostaFromCatalogo();
-  const createLivreMut       = useCreateProposta();
-  const createFromTemplateMut = useCreatePropostaFromTemplate();
-  const { mutate: createDeal } = useCreateDeal();
-  const { data: propostaTemplates = [] } = useListPropostaTemplates(tenantId, {
-    query: { queryKey: getListPropostaTemplatesQueryKey(tenantId), enabled: !!tenantId },
-  });
-  const activeCatalog     = catalog.filter((p) => p.ativo);
-
-  useEffect(() => {
-    if (!open || initialProductIds.length === 0) return;
-    setMode("catalogo");
-    setCartLines(initialProductIds.map((produtoId) => ({ produtoId, quantidade: 1 })));
-  }, [open, initialProductIds.join(",")]);
-
-  // totals
-  const catTotal = cartLines.reduce((s, l) => {
-    const p = activeCatalog.find((p) => p.id === l.produtoId);
-    if (!p) return s;
-    const pu = l.precoUnitarioOverride !== undefined ? l.precoUnitarioOverride : parseFloat(p.precoBase);
-    return s + l.quantidade * pu;
-  }, 0);
-  const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
-
-  function handleClose() {
-    form.reset({
-      leadId: lockedLeadId || "",
-      titulo: lockedLeadId ? defaultTitle : "",
-      validadeAte: "",
-      observacoes: "",
-      formaPagamento: "",
-      condPagamento: "",
-      prazoEntrega: "",
-      formaPagamentoMensalidade: "",
-      condPagamentoMensalidade: "",
+  export function PropostaModal({
+    open,
+    onClose,
+    tenantId,
+    catalog,
+    leadId: lockedLeadId,
+    leadNome,
+    leadTelefone,
+    leadEmpresa,
+    dealId: activeDealId,
+    initialProductIds = [],
+    onSuccess,
+  }: {
+    open: boolean;
+    onClose: () => void;
+    tenantId: string;
+    catalog: ProdutoCatalogo[];
+    leadId?: string;
+    leadNome?: string;
+    leadTelefone?: string;
+    leadEmpresa?: string;
+    dealId?: string;
+    initialProductIds?: string[];
+    onSuccess?: () => void;
+  }) {
+    const { toast } = useToast();
+    const qc = useQueryClient();
+  
+    // mode
+    const [mode, setMode] = useState<"catalogo" | "livre" | "template">("catalogo");
+    const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
+  
+    // catalog mode
+    const [cartLines, setCartLines] = useState<CartLine[]>([{ produtoId: "", quantidade: 1 }]);
+    const [cartError, setCartError] = useState("");
+    const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
+    // livre mode
+    const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
+    const [freeError, setFreeError] = useState("");
+    const [suggesting, setSuggesting] = useState(false);
+    const [contextoIA, setContextoIA] = useState("");
+    const [showIAPanel, setShowIAPanel] = useState(false);
+  
+    const defaultTitle = lockedLeadId
+      ? `Orçamento - ${leadNome || "Cliente"}`
+      : "";
+  
+    const form = useForm<PropostaFormValues>({
+      resolver: zodResolver(propostaFormSchema),
+      defaultValues: {
+        leadId: lockedLeadId || "",
+        titulo: defaultTitle,
+        validadeAte: "",
+        observacoes: "",
+        formaPagamento: "",
+        condPagamento: "",
+        prazoEntrega: "",
+        formaPagamentoMensalidade: "",
+        condPagamentoMensalidade: "",
+        recorrente: false,
+        valorMensal: undefined,
+        prazoContratoMeses: undefined,
+        paymentCompositions: [],
+        skipAsaasBilling: false,
+      },
+    });
+  
+    const watchRecorrente = form.watch("recorrente");
+    const watchValorMensal = form.watch("valorMensal");
+    const watchPrazoMeses = form.watch("prazoContratoMeses");
+    const totalContrato = (watchValorMensal ?? 0) * (watchPrazoMeses ?? 0);
+  
+    const { data: leads = [] } = useListTenantLeads(tenantId, {
+      query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId && !lockedLeadId },
+    });
+    const { data: paymentMethods } = useListPaymentMethods(tenantId, {
+      query: { queryKey: getListPaymentMethodsQueryKey(tenantId), enabled: !!tenantId },
+    });
+    const pmLabels = paymentMethods?.methods?.reduce((acc: Record<string, string>, m) => {
+      if (m.enabled && m.code) acc[m.code] = m.label ?? m.code;
+      return acc;
+    }, {} as Record<string, string>) ?? {};
+  
+    const createFromCatMut     = useCreatePropostaFromCatalogo();
+    const createLivreMut       = useCreateProposta();
+    const createFromTemplateMut = useCreatePropostaFromTemplate();
+    const { mutate: createDeal } = useCreateDeal();
+    const { data: propostaTemplates = [] } = useListPropostaTemplates(tenantId, {
+      query: { queryKey: getListPropostaTemplatesQueryKey(tenantId), enabled: !!tenantId },
+    });
+    const activeCatalog     = catalog.filter((p) => p.ativo);
+  
+    useEffect(() => {
+      if (!open || initialProductIds.length === 0) return;
+      setMode("catalogo");
+      setCartLines(initialProductIds.map((produtoId) => ({ produtoId, quantidade: 1 })));
+    }, [open, initialProductIds.join(",")]);
+  
+    // totals
+    const catTotal = cartLines.reduce((s, l) => {
+      const p = activeCatalog.find((p) => p.id === l.produtoId);
+      if (!p) return s;
+      const pu = l.precoUnitarioOverride !== undefined ? l.precoUnitarioOverride : parseFloat(p.precoBase);
+      return s + l.quantidade * pu;
+    }, 0);
+    const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+  
+    function handleClose() {
+      form.reset({
+        leadId: lockedLeadId || "",
+        titulo: lockedLeadId ? defaultTitle : "",
+        validadeAte: "",
+        observacoes: "",
+        formaPagamento: "",
+        condPagamento: "",
+        prazoEntrega: "",
+        formaPagamentoMensalidade: "",
+        condPagamentoMensalidade: "",
       recorrente: false,
       valorMensal: undefined,
       prazoContratoMeses: undefined,
