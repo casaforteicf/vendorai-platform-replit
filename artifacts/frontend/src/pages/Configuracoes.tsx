@@ -150,6 +150,7 @@ import {
   Settings2,
   ChevronDown,
   ChevronUp,
+  TrendingUp,
 } from "lucide-react";
 import { SiteGeneratorTab } from "./SiteGenerator";
 import { SdrTemplatesSection } from "@/components/SdrTemplatesSection";
@@ -1643,6 +1644,175 @@ export default function Configuracoes() {
         },
       }
     );
+  }
+
+  // ── Google Ads OAuth connection state ─────────────────────────────────────
+  // As rotas de google-ads-connection ainda não fazem parte do cliente de API
+  // gerado — usa fetch direto (mesmo padrão já usado no Messenger acima),
+  // pra não depender de regenerar o cliente antes de existir uso real.
+  type GoogleAdsConnectionData = {
+    connected: boolean;
+    pendingAccountSelection?: boolean;
+    customerId?: string | null;
+    descriptiveName?: string | null;
+    currencyCode?: string | null;
+    timeZone?: string | null;
+    tokenExpiresAt?: string | null;
+    connectedAt?: string | null;
+  };
+  const [googleAdsConnection, setGoogleAdsConnection] = useState<GoogleAdsConnectionData | null>(null);
+  const [googleAdsLoading, setGoogleAdsLoading] = useState(false);
+  const [googleAdsConnecting, setGoogleAdsConnecting] = useState(false);
+  const [googleAdsDisconnecting, setGoogleAdsDisconnecting] = useState(false);
+  const [googleAdsRefreshing, setGoogleAdsRefreshing] = useState(false);
+  const [googleAdsAccounts, setGoogleAdsAccounts] = useState<Array<{ customerId: string }>>([]);
+  const [googleAdsAccountsLoading, setGoogleAdsAccountsLoading] = useState(false);
+  const [googleAdsSelectedAccount, setGoogleAdsSelectedAccount] = useState<string>("");
+  const [googleAdsSelecting, setGoogleAdsSelecting] = useState(false);
+
+  async function loadGoogleAdsAccounts() {
+    if (!tenantId) return;
+    setGoogleAdsAccountsLoading(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/google-ads-connection/accounts`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGoogleAdsAccounts(data.accounts ?? []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setGoogleAdsAccountsLoading(false);
+    }
+  }
+
+  async function loadGoogleAdsConnection() {
+    if (!tenantId) return;
+    setGoogleAdsLoading(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/google-ads-connection`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = (await res.json()) as GoogleAdsConnectionData;
+        setGoogleAdsConnection(data);
+        if (data.pendingAccountSelection) loadGoogleAdsAccounts();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setGoogleAdsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (tenantId) loadGoogleAdsConnection();
+  }, [tenantId]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("googleAdsConnected");
+    const error = url.searchParams.get("googleAdsError");
+    if (connected === "1") {
+      toast({ title: "Google Ads conectado com sucesso!" });
+      loadGoogleAdsConnection();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (connected === "pending") {
+      toast({ title: "Conta autorizada — escolha qual conta Google Ads usar." });
+      loadGoogleAdsConnection();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (error) {
+      const messages: Record<string, string> = {
+        access_denied: "Permissão negada. Tente novamente.",
+        invalid_state: "Sessão inválida. Tente novamente.",
+        token_exchange: "O Google não autorizou a troca do código de acesso.",
+        no_refresh_token: "O Google não retornou permissão duradoura. Tente reconectar.",
+        no_account: "Nenhuma conta Google Ads acessível foi encontrada.",
+        exchange_failed: "Erro ao conectar. Tente novamente.",
+      };
+      toast({ title: messages[error] ?? "Erro ao conectar Google Ads.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location]);
+
+  async function onConnectGoogleAds() {
+    if (!tenantId) return;
+    setGoogleAdsConnecting(true);
+    try {
+      const res = await fetch("/api/auth/google-ads", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    } catch {
+      toast({ title: "Erro ao iniciar conexão com Google Ads.", variant: "destructive" });
+      setGoogleAdsConnecting(false);
+    }
+  }
+
+  async function onSelectGoogleAdsAccount() {
+    if (!tenantId || !googleAdsSelectedAccount) return;
+    setGoogleAdsSelecting(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/google-ads-connection/select-account`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ customerId: googleAdsSelectedAccount }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Conta Google Ads conectada com sucesso." });
+      await loadGoogleAdsConnection();
+    } catch {
+      toast({ title: "Erro ao selecionar conta Google Ads.", variant: "destructive" });
+    } finally {
+      setGoogleAdsSelecting(false);
+    }
+  }
+
+  async function onDisconnectGoogleAds() {
+    if (!tenantId) return;
+    setGoogleAdsDisconnecting(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/google-ads-connection`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Google Ads desconectado." });
+      setGoogleAdsAccounts([]);
+      setGoogleAdsSelectedAccount("");
+      await loadGoogleAdsConnection();
+    } catch {
+      toast({ title: "Erro ao desconectar Google Ads.", variant: "destructive" });
+    } finally {
+      setGoogleAdsDisconnecting(false);
+    }
+  }
+
+  async function onRefreshGoogleAdsToken() {
+    if (!tenantId) return;
+    setGoogleAdsRefreshing(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/google-ads-connection/refresh`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Token renovado com sucesso." });
+      await loadGoogleAdsConnection();
+    } catch {
+      toast({ title: "Erro ao renovar token.", variant: "destructive" });
+    } finally {
+      setGoogleAdsRefreshing(false);
+    }
   }
 
   function onSaveWebhookUrl() {
@@ -3228,6 +3398,151 @@ Body:
                   >
                     <MessageCircle className="h-4 w-4" />
                     Conectar WhatsApp
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Google Ads — OAuth por tenant (cada lojista com a própria conta) */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-blue-500" />
+                    Google Ads
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Conecte sua própria conta Google Ads para gerenciar campanhas, orçamento e performance
+                    diretamente pelo VendorAI. Nenhuma campanha é publicada sem sua confirmação manual.
+                  </p>
+                </div>
+                {googleAdsConnection?.connected && !googleAdsConnection.pendingAccountSelection && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 className="h-3 w-3" /> Conectado
+                    </span>
+                  </div>
+                )}
+                {googleAdsConnection?.pendingAccountSelection && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-2.5 py-1 rounded-full">
+                      <Clock className="h-3 w-3" /> Escolha a conta
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {googleAdsLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : googleAdsConnection?.pendingAccountSelection ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Encontramos mais de uma conta Google Ads acessível com essa autorização. Escolha qual conta usar
+                    neste tenant:
+                  </p>
+                  {googleAdsAccountsLoading ? (
+                    <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  ) : (
+                    <Select value={googleAdsSelectedAccount} onValueChange={setGoogleAdsSelectedAccount}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a conta Google Ads" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {googleAdsAccounts.map((acc) => (
+                          <SelectItem key={acc.customerId} value={acc.customerId}>
+                            {acc.customerId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onSelectGoogleAdsAccount}
+                      disabled={!googleAdsSelectedAccount || googleAdsSelecting}
+                      className="gap-2"
+                    >
+                      {googleAdsSelecting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                      {googleAdsSelecting ? "Conectando…" : "Confirmar conta"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onDisconnectGoogleAds}
+                      disabled={googleAdsDisconnecting}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : googleAdsConnection?.connected ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Conta:</span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {googleAdsConnection.descriptiveName ?? "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Customer ID:</span>
+                      <code className="text-sm font-mono text-muted-foreground">
+                        {googleAdsConnection.customerId}
+                      </code>
+                    </div>
+                    {googleAdsConnection.currencyCode && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Moeda:</span>
+                        <span className="text-sm text-muted-foreground">{googleAdsConnection.currencyCode}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onConnectGoogleAds}
+                      variant="outline"
+                      disabled={googleAdsConnecting}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Reconectar
+                    </Button>
+                    <Button
+                      onClick={onRefreshGoogleAdsToken}
+                      variant="outline"
+                      disabled={googleAdsRefreshing}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      {googleAdsRefreshing ? "Renovando…" : "Renovar token"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onDisconnectGoogleAds}
+                      disabled={googleAdsDisconnecting}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {googleAdsDisconnecting ? "Desconectando…" : "Desconectar"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Clique no botão abaixo para autorizar a conexão com sua própria conta Google Ads.
+                  </p>
+                  <Button onClick={onConnectGoogleAds} disabled={googleAdsConnecting} className="gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    {googleAdsConnecting ? "Redirecionando…" : "Conectar Google Ads"}
                   </Button>
                 </div>
               )}

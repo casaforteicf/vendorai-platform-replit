@@ -76,6 +76,7 @@ export * from "./instagram_connections";
 export * from "./whatsapp_connections";
 export * from "./whatsapp_contacts";
 export * from "./whatsapp_messages";
+export * from "./google_ads_connections";
 export * from "./tenant_domains";
 export * from "./notifications";
 export * from "./plans";
