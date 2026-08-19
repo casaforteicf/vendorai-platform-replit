@@ -668,6 +668,7 @@ const INLINE_EDIT_SCRIPT = `
 (function(){
   var TAGS=['h1','h2','h3','h4','h5','h6','p','span','a','button','li','td','th','label','strong','em','small','div'];
   var css=document.createElement('style');
+  css.id='__ve_style__';
   css.textContent=
     '[data-ve-editable]:hover{outline:2px dashed #818cf8!important;outline-offset:2px;cursor:text!important;}'+
     '[data-ve-editable]:focus{outline:2px solid #6366f1!important;outline-offset:2px;background:rgba(99,102,241,0.06)!important;border-radius:2px;}'+
@@ -688,7 +689,24 @@ const INLINE_EDIT_SCRIPT = `
     '.__ve_fmtclr{width:26px;height:22px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:4px;cursor:pointer;background:transparent;}';
   document.head.appendChild(css);
 
-  function send(){window.parent.postMessage({type:'ve-html-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');}
+  /* ── send(): clones the live DOM and strips every editor-only artifact
+     (controls, wrappers, attributes, injected style/toolbar) before
+     serializing — so what gets saved/published is always clean HTML,
+     never the WYSIWYG editing state. ── */
+  function send(){
+    var clone=document.documentElement.cloneNode(true);
+    ['#__ve_editor__','#__ve_style__','#__ve_fmt__','.ve-sec-ctrl','.ve-img-overlay','.ve-ph-overlay'].forEach(function(sel){
+      clone.querySelectorAll(sel).forEach(function(el){el.remove();});
+    });
+    clone.querySelectorAll('[data-ve-sec]').forEach(function(el){el.removeAttribute('data-ve-sec');});
+    clone.querySelectorAll('[data-ve-editable]').forEach(function(el){el.removeAttribute('data-ve-editable');el.removeAttribute('contenteditable');});
+    clone.querySelectorAll('span.ve-img-wrap[data-ve-img]').forEach(function(wrap){
+      var img=wrap.querySelector('img');
+      if(img)wrap.replaceWith(img);
+    });
+    clone.querySelectorAll('[data-ve-img]').forEach(function(el){el.removeAttribute('data-ve-img');});
+    window.parent.postMessage({type:'ve-html-edit',html:'<!DOCTYPE html>'+clone.outerHTML},'*');
+  }
 
   /* ── formatting toolbar ── */
   var fmtEl=null,activeEl=null;
@@ -793,6 +811,7 @@ const INLINE_EDIT_SCRIPT = `
     el.style.cursor='pointer';
     if(!el.style.position||el.style.position==='static')el.style.position='relative';
     var ov=document.createElement('div');
+    ov.className='ve-ph-overlay';
     ov.style.cssText='position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;cursor:pointer;border-radius:inherit;z-index:9;';
     var lbl=document.createElement('span');
     lbl.style.cssText='color:#fff;font-size:13px;font-weight:600;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.5);';
@@ -913,8 +932,36 @@ function injectEditScript(html: string): string {
   return html + INLINE_EDIT_SCRIPT;
 }
 
+/**
+ * Removes every trace of the WYSIWYG editor (script, injected style/toolbar,
+ * section controls, image-swap overlays, data-ve-* attributes) from an HTML
+ * string before it's saved or published. Uses a real DOM parse rather than
+ * regex so nested editor markup is fully removed, not just the <script> tag.
+ * Also acts as a safety net for HTML that was saved before this cleanup
+ * existed and still carries leftover editor markup.
+ */
 function stripEditScript(html: string): string {
-  return html.replace(/<script\s+id="__ve_editor__"[\s\S]*?<\/script>/i, '');
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.getElementById("__ve_editor__")?.remove();
+    doc.getElementById("__ve_style__")?.remove();
+    doc.getElementById("__ve_fmt__")?.remove();
+    doc.querySelectorAll(".ve-sec-ctrl, .ve-img-overlay, .ve-ph-overlay").forEach((el) => el.remove());
+    doc.querySelectorAll("[data-ve-sec]").forEach((el) => el.removeAttribute("data-ve-sec"));
+    doc.querySelectorAll("[data-ve-editable]").forEach((el) => {
+      el.removeAttribute("data-ve-editable");
+      el.removeAttribute("contenteditable");
+    });
+    doc.querySelectorAll("span.ve-img-wrap[data-ve-img]").forEach((wrap) => {
+      const img = wrap.querySelector("img");
+      if (img) wrap.replaceWith(img);
+    });
+    doc.querySelectorAll("[data-ve-img]").forEach((el) => el.removeAttribute("data-ve-img"));
+    return "<!DOCTYPE html>" + doc.documentElement.outerHTML;
+  } catch {
+    // Fallback: at least strip the editor <script> tag if DOM parsing fails
+    return html.replace(/<script\s+id="__ve_editor__"[\s\S]*?<\/script>/i, "");
+  }
 }
 
 // ── Section templates for "Add Section" ────────────────────────────────────────
@@ -2222,12 +2269,6 @@ function PersonalizePanel({
             </a>
           )}
         </div>
-      )}
-
-      {isPublished && (
-        <p className="text-xs text-muted-foreground">
-          ℹ️ Para ativar o subdomínio <span className="font-mono font-medium">{siteSlug}.appvendorai.com</span>, configure um CNAME apontando para <span className="font-mono font-medium">appvendorai.com</span>.
-        </p>
       )}
 
       <div className="flex flex-wrap gap-2">

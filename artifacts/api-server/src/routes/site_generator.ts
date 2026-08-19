@@ -60,6 +60,31 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
 publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) => {
   const { tenantSlug } = req.params;
 
+  // 1) Try resolving as a specific generated site's own slug first
+  //    (e.g. "windoor-representacoes-lp") — each generated site now gets
+  //    its own subdomain, so this is the primary lookup, and it lets a
+  //    tenant have several sites live at the same time, each with its
+  //    own working address.
+  const [siteBySlug] = await db
+    .select({ html: generatedSitesTable.html, published: generatedSitesTable.published, name: generatedSitesTable.name })
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.siteSlug, tenantSlug))
+    .limit(1);
+
+  if (siteBySlug) {
+    if (!siteBySlug.published) {
+      res.status(403).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Site não publicado</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;}div{text-align:center;}</style></head><body><div><p style="font-size:3rem">🔒</p><h1 style="color:#1e293b">${siteBySlug.name}</h1><p style="color:#64748b">Este site ainda não foi publicado pelo proprietário.</p></div></body></html>`);
+      return;
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.send(siteBySlug.html);
+    return;
+  }
+
+  // 2) Fallback: legacy tenant-level lookup — most recently published
+  //    site for this tenant, addressed by the tenant's own subdomain
+  //    (kept for sites created before per-site slugs became routable).
   const [tenant] = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
