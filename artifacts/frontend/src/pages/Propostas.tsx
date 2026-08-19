@@ -2,6 +2,11 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  CalculoOrcamentoM2Dialog,
+  type ResultadoCalculoM2,
+  type ResultadoConfirmadoCalculoM2,
+} from "@/components/CalculoOrcamentoM2Dialog";
+ import {
   useListPropostas,
   getListPropostasQueryKey,
   useCreateProposta,
@@ -1116,7 +1121,7 @@ export function PropostaModal({
   // catalog mode
   const [cartLines, setCartLines] = useState<CartLine[]>([{ produtoId: "", quantidade: 1 }]);
   const [cartError, setCartError] = useState("");
-
+  const [calcM2Idx, setCalcM2Idx] = useState<number | null>(null);
   // livre mode
   const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
   const [freeError, setFreeError] = useState("");
@@ -1216,6 +1221,22 @@ export function PropostaModal({
 
   // ── catalog helpers ───────────────────────────────────────────────────────
   function addCatLine()    { setCartLines((p) => [...p, { produtoId: "", quantidade: 1 }]); }
+  async function calcularOrcamentoM2(payload: {
+  produtoId: string;
+  superficies: Record<string, unknown>[];
+  acessorioProdutoId?: string;
+}): Promise<ResultadoCalculoM2> {
+  const res = await fetch(`/api/tenants/${tenantId}/propostas/calcular-orcamento`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? "Não foi possível calcular.");
+  return data;
+}
+ 
   function removeCatLine(i: number) { setCartLines((p) => p.filter((_, j) => j !== i)); }
   function updateCatLine(i: number, patch: Partial<CartLine>) {
     setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -1553,6 +1574,21 @@ export function PropostaModal({
                                   ))}
                                 </SelectContent>
                               </Select>
+                              {(() => {
+  const tipoCalculo = (prod as any)?.tipoCalculo;
+  if (tipoCalculo !== "area_simples" && tipoCalculo !== "area_com_acabamento_perimetro") return null;
+  return (
+    <Button
+      type="button"
+      variant="link"
+      size="sm"
+      className="h-6 px-0 text-xs"
+      onClick={() => setCalcM2Idx(idx)}
+    >
+      Calcular por m²
+    </Button>
+  );
+})()}
                               {line.nomeOverride && (
                                 <Input
                                   className="h-6 text-xs mt-1 px-1 border-0 border-b rounded-none bg-transparent text-primary font-medium focus-visible:ring-0"
@@ -1591,6 +1627,39 @@ export function PropostaModal({
                         );
                       })}
                     </TableBody>
+                    <CalculoOrcamentoM2Dialog
+  open={calcM2Idx !== null}
+  onOpenChange={(v) => { if (!v) setCalcM2Idx(null); }}
+  produto={(() => {
+    if (calcM2Idx === null) return null;
+    const line = cartLines[calcM2Idx];
+    const p = activeCatalog.find((p) => p.id === line.produtoId) as any;
+    return p ? { id: p.id, nome: p.nome, tipoCalculo: p.tipoCalculo } : null;
+  })()}
+  acessoriosDisponiveis={activeCatalog
+    .filter((p: any) => p.tipoCalculo === "acabamento_perimetro")
+    .map((p: any) => ({ id: p.id, nome: p.nome }))}
+  onCalcular={calcularOrcamentoM2}
+  onConfirm={(resultado: ResultadoConfirmadoCalculoM2) => {
+    if (calcM2Idx === null) return;
+    updateCatLine(calcM2Idx, {
+      quantidade: resultado.quantidade,
+      precoUnitarioOverride: resultado.precoUnitario,
+    });
+    if (resultado.acessorio) {
+      const acessorio = resultado.acessorio;
+      setCartLines((prev) => [
+        ...prev,
+        {
+          produtoId: acessorio.produtoId,
+          quantidade: acessorio.quantidade,
+          precoUnitarioOverride: acessorio.precoUnitario,
+          nomeOverride: acessorio.nome,
+        },
+      ]);
+    }
+  }}
+/>
                   </Table>
                 </div>
                 <div className="flex items-center justify-end gap-3 mt-2 pr-2">
