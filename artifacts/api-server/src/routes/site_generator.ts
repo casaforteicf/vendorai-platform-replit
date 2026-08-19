@@ -118,6 +118,7 @@ const TYPE_LABELS: Record<string, string> = {
   landing: "landing page de marketing/vendas",
   ecommerce: "e-commerce com produtos e carrinho",
   institutional: "site institucional (sobre, serviços, contato)",
+  product: "landing page focada em um único produto",
 };
 
 const TONE_LABELS: Record<string, string> = {
@@ -146,6 +147,7 @@ const SITE_TYPE_SUFFIX: Record<string, string> = {
   ecommerce: "-loja",
   landing: "-lp",
   institutional: "",
+  product: "",
 };
 
 async function generateUniqueSiteSlug(name: string, type: string): Promise<string> {
@@ -248,6 +250,35 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
         }).join("\n")}`
       : "";
 
+  // Product-focused landing page: describe the single product in depth —
+  // this page must sell ONLY it, not the business in general.
+  const produtoFocoBlock =
+    type === "product" && products.length === 1
+      ? (() => {
+          const p = products[0] as SiteGeneratorProduct & {
+            colecao?: string;
+            cor?: string;
+            tipoCalculo?: string;
+            fechamentoPacote?: string | number;
+            quantidadePacote?: string | number;
+            precoPacote?: string | number;
+            larguraPecaM?: string | number;
+          };
+          const unidadeArea = p.tipoCalculo === "linear" || p.tipoCalculo === "acabamento_perimetro" ? "m" : "m²";
+          const specs = [
+            p.marca && `Marca: ${p.marca}`,
+            p.sku && `SKU: ${p.sku}`,
+            p.colecao && `Coleção: ${p.colecao}`,
+            p.cor && `Cor: ${p.cor}`,
+            p.larguraPecaM && `Largura da peça: ${p.larguraPecaM} m`,
+            p.fechamentoPacote && `Rendimento por pacote: ${p.fechamentoPacote} ${unidadeArea}`,
+            p.quantidadePacote && `Peças por pacote: ${p.quantidadePacote}`,
+            p.precoPacote && `Preço do pacote: R$ ${p.precoPacote}`,
+          ].filter(Boolean).join(" | ");
+          return `\nPRODUTO EM FOCO — esta página deve vender EXCLUSIVAMENTE este produto, não a empresa como um todo:\nNome: ${p.name}\nPreço: ${p.price}${p.description ? `\nDescrição: ${p.description}` : ""}${specs ? `\nEspecificações reais (use exatamente estes dados, não invente números): ${specs}` : ""}${p.imageUrl ? `\nImagem real do produto (use-a, não invente outra): ${p.imageUrl}` : ""}`;
+        })()
+      : "";
+
   const logoInstruction = logoUrl
     ? `LOGO DO CLIENTE (use EXATAMENTE este HTML nos headers e footers — não substitua por texto nem por inicial): ${logoHtml}`
     : `LOGO: use inicial do nome em círculo colorido (var(--primary)) + nome ao lado`;
@@ -289,6 +320,15 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 7. NÚMEROS & CONQUISTAS — estatísticas do negócio em formato visual (sem inventar nomes de pessoas)
 8. CONTATO — formulário (nome, email, telefone, mensagem) + informações de contato laterais, botão WhatsApp wa.me/${waNumber}
 9. FOOTER${igHandle ? ` — inclua link do Instagram (HTML exato: ${igHtml})` : ""}`,
+
+    product: `ESTRUTURA DA LANDING PAGE DE PRODUTO (nesta ordem exata) — foco 100% no produto em destaque, NÃO na empresa como um todo:
+1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo à esquerda"}, botão CTA no canto (sem menu extenso — é uma página de conversão de um único produto)
+2. HERO DO PRODUTO — nome do produto como H1, benefício principal como subtítulo, preço em destaque, imagem real do produto (use a fornecida no briefing) como elemento visual principal, botão CTA grande "Comprar pelo WhatsApp" (wa.me/${waNumber} com mensagem pré-preenchida citando o nome do produto)
+3. ESPECIFICAÇÕES — tabela ou grid com as especificações reais do produto fornecidas no briefing (coleção, cor, dimensões, rendimento por pacote, etc. — use exatamente os dados informados, nunca invente números)
+4. POR QUE ESCOLHER — 3-4 diferenciais do produto (qualidade, durabilidade, facilidade de instalação, adequação ao setor "${sector || name}")
+5. COMO COMPRAR — passo a passo simples de como adquirir, terminando em CTA de WhatsApp
+6. CTA FINAL — urgência, botão grande wa.me/${waNumber} com mensagem citando o produto
+7. FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, copyright${igHandle ? `, ícone do Instagram (HTML exato: ${igHtml})` : ""}`,
   };
 
   void logoInstruction; // referenced via structureByType strings above
@@ -309,7 +349,7 @@ Tom de voz: ${TONE_LABELS[tone] || tone}
 Cor primária da marca: ${color} (RGB: ${rgb})
 CTA principal: ${ctaText}
 WhatsApp de contato: wa.me/${waNumber}${igHandle ? `\nInstagram: ${igUrl} (handle: @${igHandle})` : ""}
-${productsBlock}${imagesBlock}
+${productsBlock}${produtoFocoBlock}${imagesBlock}
 
 ═══════════════════════════════════════
 SISTEMA DE DESIGN — SIGA À RISCA
@@ -605,6 +645,63 @@ async function runGenerateSite(
       return;
     }
 
+    // For "product" pages: fetch the single selected catalog product,
+    // including its m²-calculation fields, instead of business-wide data.
+    let focusProduct: (SiteGeneratorProduct & Record<string, unknown>) | null = null;
+    if (config.type === "product") {
+      const produtoId = (config as unknown as { produtoId?: string }).produtoId;
+      if (!produtoId) {
+        generationJobs.set(jobId, { status: "error", error: "Selecione um produto do catálogo para gerar a página.", createdAt: Date.now() });
+        return;
+      }
+
+      const [row] = await db
+        .select({
+          nome:             produtosCatalogoTable.nome,
+          precoBase:        produtosCatalogoTable.precoBase,
+          descricao:        produtosCatalogoTable.descricao,
+          imagemUrl:        produtosCatalogoTable.imagemUrl,
+          imagens:          produtosCatalogoTable.imagens,
+          sku:              produtosCatalogoTable.sku,
+          marca:            produtosCatalogoTable.marca,
+          unidade:          produtosCatalogoTable.unidade,
+          colecao:          produtosCatalogoTable.colecao,
+          cor:              produtosCatalogoTable.cor,
+          tipoCalculo:      produtosCatalogoTable.tipoCalculo,
+          fechamentoPacote: produtosCatalogoTable.fechamentoPacote,
+          quantidadePacote: produtosCatalogoTable.quantidadePacote,
+          precoPacote:      produtosCatalogoTable.precoPacote,
+          larguraPecaM:     produtosCatalogoTable.larguraPecaM,
+        })
+        .from(produtosCatalogoTable)
+        .where(and(eq(produtosCatalogoTable.id, produtoId), eq(produtosCatalogoTable.tenantId, tenantId)))
+        .limit(1);
+
+      if (!row) {
+        generationJobs.set(jobId, { status: "error", error: "Produto não encontrado no catálogo.", createdAt: Date.now() });
+        return;
+      }
+
+      const preco = parseFloat(row.precoBase);
+      focusProduct = {
+        name: row.nome,
+        price: `R$ ${preco.toFixed(2).replace(".", ",")}${row.unidade ? `/${row.unidade}` : ""}`,
+        description: row.descricao || undefined,
+        imageUrl: row.imagens?.[0] || row.imagemUrl || undefined,
+        sku: row.sku || undefined,
+        marca: row.marca || undefined,
+        colecao: row.colecao || undefined,
+        cor: row.cor || undefined,
+        tipoCalculo: row.tipoCalculo || undefined,
+        fechamentoPacote: row.fechamentoPacote || undefined,
+        quantidadePacote: row.quantidadePacote || undefined,
+        precoPacote: row.precoPacote || undefined,
+        larguraPecaM: row.larguraPecaM || undefined,
+      };
+
+      log.info({ tenantId, produtoId, produtoNome: row.nome }, "Site generator: single product fetched for product-focused page");
+    }
+
     // For ecommerce: auto-populate products from tenant's catalog + inventory stock
     let catalogProducts: SiteGeneratorProduct[] = [];
     if (config.type === "ecommerce") {
@@ -646,9 +743,11 @@ async function runGenerateSite(
       log.info({ tenantId, catalogCount: catalogProducts.length }, "Site generator: catalog products fetched for ecommerce");
     }
 
-    const allProducts = catalogProducts.length > 0
-      ? [...catalogProducts, ...(config.products ?? [])]
-      : (config.products ?? []);
+    const allProducts = focusProduct
+      ? [focusProduct]
+      : catalogProducts.length > 0
+        ? [...catalogProducts, ...(config.products ?? [])]
+        : (config.products ?? []);
 
     // Normalize all relative URLs → absolute so downloaded HTML files work offline.
     // Object-storage paths are stored as /objects/... and need the /api/storage prefix.
@@ -690,14 +789,18 @@ async function runGenerateSite(
       return;
     }
 
-    const siteSlug = await generateUniqueSiteSlug(enrichedConfig.name, config.type);
+    // Product pages are addressed and named after the product itself, not
+    // the business — that's what makes each product's LP its own distinct,
+    // meaningful site when a tenant has several of them live at once.
+    const siteDisplayName = focusProduct?.name ?? enrichedConfig.name;
+    const siteSlug = await generateUniqueSiteSlug(siteDisplayName, config.type);
 
     const [site] = await db
       .insert(generatedSitesTable)
       .values({
         id: crypto.randomUUID(),
         tenantId,
-        name: enrichedConfig.name,
+        name: siteDisplayName,
         siteType: config.type,
         siteSlug,
         config: enrichedConfig,
