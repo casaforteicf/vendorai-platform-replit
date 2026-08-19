@@ -279,6 +279,14 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   const iImagens       = idx(["imagens", "images", "fotos", "galeria"]);
   const iVideo          = idx(["video_url", "video", "url_video"]);
   const iEspecificacoes = idx(["especificacoes", "atributos", "specs", "ficha_tecnica"]);
+  // Cálculo por m² (teto vinílico / revestimento) — colunas opcionais.
+  const iTipoCalculo      = idx(["tipo_calculo", "tipocalculo", "tipo_de_calculo", "calculo"]);
+  const iColecao          = idx(["colecao", "coleção", "collection"]);
+  const iCor              = idx(["cor", "color"]);
+  const iFechamentoPacote = idx(["fechamento_pacote", "rendimento_pacote", "rendimento", "m2_por_pacote", "m_por_pacote"]);
+  const iQuantidadePacote = idx(["quantidade_pacote", "pecas_por_pacote", "qtd_pacote"]);
+  const iPrecoPacote      = idx(["preco_pacote", "preco_do_pacote", "valor_pacote"]);
+  const iLarguraPecaM     = idx(["largura_peca_m", "largura_peca", "largura_m"]);
 
   if (iNome < 0 || iPreco < 0 || iCategoria < 0) {
     res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome', 'categoria' e 'preco_base'. Encontrado: ${headers.join(", ")}` });
@@ -328,6 +336,32 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     return pairs.length > 0 ? pairs : null;
   }
 
+  const TIPOS_CALCULO_VALIDOS = new Set([
+    "area_simples",
+    "area_com_acabamento_perimetro",
+    "acabamento_perimetro",
+    "linear",
+    "peca_avulsa",
+  ]);
+
+  function parseTipoCalculoCell(raw: string | undefined): string | null {
+    if (!raw?.trim()) return null;
+    const key = raw.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+    return TIPOS_CALCULO_VALIDOS.has(key) ? key : null;
+  }
+
+  function parseDecimalCell(raw: string | undefined): number | null {
+    if (!raw?.trim()) return null;
+    const n = parseFloat(raw.trim().replace(",", "."));
+    return isNaN(n) ? null : n;
+  }
+
+  function parseIntCell(raw: string | undefined): number | null {
+    if (!raw?.trim()) return null;
+    const n = parseInt(raw.trim(), 10);
+    return isNaN(n) ? null : n;
+  }
+
   const errors: { row: number; message: string }[] = [];
   const toInsert: typeof produtosCatalogoTable.$inferInsert[] = [];
   const normalizedCategories = new Map<string, { official: string; rows: number }>();
@@ -375,6 +409,13 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       especificacoes: iEspecificacoes >= 0 ? parseEspecificacoesCell(cols[iEspecificacoes]) : null,
       precoBase: preco.toFixed(2),
       ativo: true,
+      tipoCalculo:      iTipoCalculo      >= 0 ? parseTipoCalculoCell(cols[iTipoCalculo]) : null,
+      colecao:          iColecao          >= 0 ? (cols[iColecao]?.trim() || null) : null,
+      cor:              iCor              >= 0 ? (cols[iCor]?.trim() || null) : null,
+      fechamentoPacote: iFechamentoPacote >= 0 ? parseDecimalCell(cols[iFechamentoPacote])?.toFixed(2) ?? null : null,
+      quantidadePacote: iQuantidadePacote >= 0 ? parseIntCell(cols[iQuantidadePacote]) : null,
+      precoPacote:      iPrecoPacote      >= 0 ? parseDecimalCell(cols[iPrecoPacote])?.toFixed(2) ?? null : null,
+      larguraPecaM:     iLarguraPecaM     >= 0 ? parseDecimalCell(cols[iLarguraPecaM])?.toFixed(2) ?? null : null,
     });
   }
 
