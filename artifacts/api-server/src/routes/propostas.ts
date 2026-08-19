@@ -18,7 +18,7 @@ import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { renderOrcamentoPdf, generateProposalPDF } from "../lib/proposal-engine.js";
-
+import { calcularOrcamentoProdutoArea, ErroCalculoOrcamento, type ProdutoCalculo, type TipoCalculo } from "../lib/calculoOrcamentoM2.js";
 const router: IRouter = Router();
 
 // ── Proposal number generation ────────────────────────────────────────────────
@@ -788,5 +788,112 @@ router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
 
   res.status(201).json({ proposta, template: { slug: template.slug, name: template.name } });
 });
+// — Cálculo de orçamento por m² (teto vinílico, revestimento) ——————————
+const calcularOrcamentoBodySchema = z.object({
+  produtoId: z.string().min(1),
+  superficies: z
+    .array(
+      z.object({
+        nome: z.string().optional(),
+        largura: z.number().positive().optional(),
+        comprimento: z.number().positive().optional(),
+        altura: z.number().positive().optional(),
+        m2Direto: z.number().positive().optional(),
+        perimetroManual: z.number().positive().optional(),
+      })
+    )
+    .min(1, "Informe ao menos uma superfície (ambiente ou parede)."),
+  acessorioProdutoId: z.string().optional(),
+});
 
+function produtoParaCalculo(produto: typeof produtosCatalogoTable.$inferSelect): ProdutoCalculo {
+  return {
+    id: produto.id,
+    nome: produto.nome,
+    tipoCalculo: (produto.tipoCalculo as TipoCalculo | null) ?? null,
+    precoBase: parseFloat(produto.precoBase as unknown as string),
+    fechamentoPacote:
+      produto.fechamentoPacote != null ? parseFloat(produto.fechamentoPacote as unknown as string) : null,
+    precoPacote: produto.precoPacote != null ? parseFloat(produto.precoPacote as unknown as string) : null,
+  };
+}
+
+router.post("/tenants/:tenantId/propostas/calcular-orcamento", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const parsed = calcularOrcamentoBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { produtoId, superficies, acessorioProdutoId } = parsed.data;
+
+  const [produto] = await db
+    .select()
+    .from(produtosCatalogoTable)
+    .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.id, produtoId)));
+
+  if (!produto) {
+    res.status(404).json({ error: `Produto not found: ${produtoId}` });
+    return;
+  }
+
+  if (!produto.ativo) {
+    res.status(422).json({ error: `Produto inativo: ${produto.nome}` });
+    return;
+  }
+
+  const produtoCalculo = produtoParaCalculo(produto);
+
+  let acessorioCalculo: ProdutoCalculo | undefined;
+  let acessorioSugeridoAutomaticamente = false;
+
+  if (produtoCalculo.tipoCalculo === "area_com_acabamento_perimetro") {
+    let acessorio: typeof produto | null = null;
+
+    if (acessorioProdutoId) {
+      const [found] = await db
+        .select()
+        .from(produtosCatalogoTable)
+        .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.id, acessorioProdutoId)));
+      acessorio = found ?? null;
+    } else if (produto.colecao && produto.cor) {
+      const [found] = await db
+        .select()
+        .from(produtosCatalogoTable)
+        .where(
+          and(
+            eq(produtosCatalogoTable.tenantId, tenantId),
+            eq(produtosCatalogoTable.tipoCalculo, "acabamento_perimetro"),
+            eq(produtosCatalogoTable.colecao, produto.colecao),
+            eq(produtosCatalogoTable.cor, produto.cor),
+            eq(produtosCatalogoTable.ativo, true)
+          )
+        );
+      acessorio = found ?? null;
+      acessorioSugeridoAutomaticamente = !!found;
+    }
+
+    if (acessorio) {
+      acessorioCalculo = produtoParaCalculo(acessorio);
+    }
+  }
+
+  try {
+    const resultado = calcularOrcamentoProdutoArea(produtoCalculo, superficies, acessorioCalculo);
+    res.status(200).json({ ...resultado, acessorioSugeridoAutomaticamente });
+  } catch (err) {
+    if (err instanceof ErroCalculoOrcamento) {
+      res.status(422).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+});
 export default router;
