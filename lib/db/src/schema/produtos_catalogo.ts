@@ -107,11 +107,25 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
     fornecedor: text("fornecedor"),
   prazoEntregaDias: integer("prazo_entrega_dias"),
   custoFornecedor: numeric("custo_fornecedor", { precision: 12, scale: 2 }),
+    // Cálculo de orçamento por m² (teto vinílico, revestimento) — Complemento
+  // appvendor.ai. tipoCalculo define como o motor de cálculo trata o
+  // produto: "area_simples" | "area_com_acabamento_perimetro" |
+  // "acabamento_perimetro" | "linear" | "peca_avulsa". colecao é usado
+  // pro match automático de acessório compatível por Coleção+Cor (modelo
+  // híbrido: sugestão automática, vendedor sempre pode trocar).
+  tipoCalculo: text("tipo_calculo"),
+  colecao: text("colecao"),
+  // Fechamento de pacote — fechamentoPacote = quantidadePacote × tamanho
+  // (m² ou m que 1 pacote cobre). precoPacote = preço da embalagem fechada.
+  // larguraPecaM é opcional, só pra produtos tipo lâmina/prancha.
+  fechamentoPacote: numeric("fechamento_pacote", { precision: 12, scale: 3 }),
+  quantidadePacote: integer("quantidade_pacote"),
+  precoPacote: numeric("preco_pacote", { precision: 12, scale: 2 }),
+  larguraPecaM: numeric("largura_peca_m", { precision: 8, scale: 3 }),
   estoqueQuantidade: integer("estoque_quantidade"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
-
 const descontoMaximoPercentualSchema = z
   .union([z.string(), z.number()])
   .transform((v) => String(v))
