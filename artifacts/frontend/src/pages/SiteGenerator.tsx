@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate, Tag } from "lucide-react";
+import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate } from "lucide-react";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -46,7 +46,6 @@ const SITE_TYPES = [
   { id: "landing", icon: "📢", label: "Landing page" },
   { id: "ecommerce", icon: "🛒", label: "E-commerce" },
   { id: "institutional", icon: "🏢", label: "Institucional" },
-  { id: "product", icon: "🏷️", label: "Produto específico" },
 ] as const;
 
 const SUGGESTIONS = [
@@ -58,7 +57,7 @@ const SUGGESTIONS = [
   "Adiciona um WhatsApp flutuante",
 ];
 
-type SiteType = "landing" | "ecommerce" | "institutional" | "product";
+type SiteType = "landing" | "ecommerce" | "institutional";
 type GeneratorStatus = "idle" | "generating" | "ready" | "error";
 
 interface Product { name: string; price: string; }
@@ -76,16 +75,6 @@ interface SiteConfig {
   instagram?: string;
   images?: string[];
   servicos?: string;
-  /** Set when type === "product" — id of the single catalog product this page sells. */
-  produtoId?: string;
-}
-interface CatalogProductOption {
-  id: string;
-  nome: string;
-  precoBase: string;
-  imagemUrl?: string | null;
-  imagens?: string[] | null;
-  ativo?: boolean;
 }
 interface ChatMessage { role: "user" | "assistant"; content: string; }
 interface Testimonial {
@@ -330,29 +319,16 @@ function useSiteGenerator(tenantId: string, token: string | null) {
 
 // ── ConfigForm ─────────────────────────────────────────────────────────────────
 
-function ConfigForm({ tenantId, token, onGenerate }: { tenantId: string; token: string | null; onGenerate: (config: SiteConfig) => void }) {
+function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (config: SiteConfig) => void }) {
   const [siteType, setSiteType] = useState<SiteType>("landing");
   const [color, setColor] = useState("#6366F1");
   const [tone, setTone] = useState("profissional");
   const [products, setProducts] = useState<Product[]>([{ name: "", price: "" }]);
   const [images, setImages] = useState<string[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
-  const [catalogProducts, setCatalogProducts] = useState<CatalogProductOption[]>([]);
-  const [produtoId, setProdutoId] = useState<string>("");
 
   const requestUploadUrl = useRequestUploadUrl();
   const { toast } = useToast();
-
-  // Load the catalog product list only when the "Produto específico" tab is
-  // selected — that's the only mode that needs it.
-  useEffect(() => {
-    if (siteType !== "product" || !tenantId) return;
-    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-    fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows) => setCatalogProducts(Array.isArray(rows) ? rows.filter((p: CatalogProductOption) => p.ativo !== false) : []))
-      .catch(() => setCatalogProducts([]));
-  }, [siteType, tenantId, token]);
 
   const { data: bp } = useGetBusinessProfileByTenant(tenantId, {
     query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId },
@@ -401,7 +377,6 @@ function ConfigForm({ tenantId, token, onGenerate }: { tenantId: string; token: 
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (siteType === "product" && !produtoId) return; // guarded by disabled submit button too
     const fd = new FormData(e.currentTarget);
     onGenerate({
       type: siteType,
@@ -417,7 +392,6 @@ function ConfigForm({ tenantId, token, onGenerate }: { tenantId: string; token: 
       instagram: (fd.get("instagram") as string) || "",
       images: images.filter(Boolean),
       servicos: (fd.get("servicos") as string) || "",
-      produtoId: siteType === "product" ? produtoId : undefined,
     });
   }
 
@@ -643,27 +617,6 @@ function ConfigForm({ tenantId, token, onGenerate }: { tenantId: string; token: 
         </div>
       )}
 
-      {/* ── Produto — só landing de produto específico ── */}
-      {siteType === "product" && (
-        <div className="flex flex-col gap-2">
-          <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Produto do catálogo *</Label>
-          <p className="text-xs text-muted-foreground rounded-md bg-muted/60 border border-dashed px-3 py-2">
-            🏷️ Essa página vai vender só esse produto — nome, preço, fotos e especificações vêm direto do seu Catálogo de Produtos.
-          </p>
-          <Select value={produtoId} onValueChange={setProdutoId}>
-            <SelectTrigger id="sg-produto"><SelectValue placeholder="Selecione um produto..." /></SelectTrigger>
-            <SelectContent>
-              {catalogProducts.length === 0 && (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum produto ativo encontrado no catálogo.</div>
-              )}
-              {catalogProducts.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.nome} — R$ {parseFloat(p.precoBase).toFixed(2).replace(".", ",")}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
       {/* ── Aparência e tom ── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
@@ -698,7 +651,7 @@ function ConfigForm({ tenantId, token, onGenerate }: { tenantId: string; token: 
         </div>
       </div>
 
-      <Button type="submit" size="lg" className="mt-1 w-full font-semibold" disabled={uploadingCount > 0 || (siteType === "product" && !produtoId)}>
+      <Button type="submit" size="lg" className="mt-1 w-full font-semibold" disabled={uploadingCount > 0}>
         {uploadingCount > 0
           ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando fotos…</>
           : "✦ Gerar site com IA"
@@ -2189,14 +2142,12 @@ const SITE_TYPE_LABELS: Record<string, string> = {
   landing:      "Landing Page",
   ecommerce:    "E-commerce",
   institutional: "Institucional",
-  product:      "Produto",
 };
 
 const SITE_TYPE_ICONS: Record<string, React.ReactNode> = {
   landing:      <LayoutTemplate className="h-3.5 w-3.5" />,
   ecommerce:    <ShoppingCart className="h-3.5 w-3.5" />,
   institutional: <Globe className="h-3.5 w-3.5" />,
-  product:      <Tag className="h-3.5 w-3.5" />,
 };
 
 function PersonalizePanel({
@@ -2468,7 +2419,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
         <Card className="mt-2">
           <CardContent className="pt-6">
             <TabsContent value="config" className="mt-0">
-              <ConfigForm tenantId={tenantId} token={token} onGenerate={handleGenerate} />
+              <ConfigForm tenantId={tenantId} onGenerate={handleGenerate} />
             </TabsContent>
 
             <TabsContent value="preview" className="mt-0">
