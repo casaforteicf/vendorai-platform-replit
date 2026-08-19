@@ -278,7 +278,7 @@ export function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
+    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "", tipoCalculo: "none", colecao: "", cor: "", fechamentoPacote: undefined, quantidadePacote: undefined, precoPacote: undefined, larguraPecaM: undefined },
   });
 
   const watchRecorrente = form.watch("recorrente");
@@ -287,7 +287,7 @@ export function CatalogoModal({
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
+    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "", tipoCalculo: "none", colecao: "", cor: "", fechamentoPacote: undefined, quantidadePacote: undefined, precoPacote: undefined, larguraPecaM: undefined });
     setFormOpen(true);
   }
 
@@ -310,6 +310,13 @@ export function CatalogoModal({
       especificacoes: Array.isArray((p as any).especificacoes) ? (p as any).especificacoes : [],
       compatibilidadeVeicular: Array.isArray((p as any).compatibilidadeVeicular) ? (p as any).compatibilidadeVeicular : [],
       dataValidade: (p as any).dataValidade ? String((p as any).dataValidade).slice(0, 10) : "",
+      tipoCalculo: ((p as any).tipoCalculo ?? "none") as CatFormValues["tipoCalculo"],
+      colecao: (p as any).colecao ?? "",
+      cor: (p as any).cor ?? "",
+      fechamentoPacote: (p as any).fechamentoPacote != null ? Number((p as any).fechamentoPacote) : undefined,
+      quantidadePacote: (p as any).quantidadePacote != null ? Number((p as any).quantidadePacote) : undefined,
+      precoPacote: (p as any).precoPacote != null ? Number((p as any).precoPacote) : undefined,
+      larguraPecaM: (p as any).larguraPecaM != null ? Number((p as any).larguraPecaM) : undefined,
     });
     setFormOpen(true);
   }
@@ -341,6 +348,13 @@ export function CatalogoModal({
       especificacoes: vals.especificacoes.filter(e => e.label.trim() && e.value.trim()),
       compatibilidadeVeicular: vals.compatibilidadeVeicular.filter(c => c.marca.trim() && c.modelo.trim() && c.anoInicio),
       dataValidade: vals.dataValidade || null,
+      tipoCalculo: vals.tipoCalculo === "none" ? null : vals.tipoCalculo,
+      colecao: vals.colecao || null,
+      cor: vals.cor || null,
+      fechamentoPacote: vals.fechamentoPacote ?? null,
+      quantidadePacote: vals.quantidadePacote ?? null,
+      precoPacote: vals.precoPacote ?? null,
+      larguraPecaM: vals.larguraPecaM ?? null,
     } as any;
     if (editingProd) {
       updateMut.mutate(
@@ -492,6 +506,7 @@ export function CatalogoModal({
                   <TableHead>Ativo</TableHead>
                   <TableHead>Fornecedor</TableHead>
 <TableHead>Prazo Entrega</TableHead>
+                  <TableHead>Rendimento</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -563,6 +578,13 @@ export function CatalogoModal({
                     </TableCell>
                    <TableCell>{p.fornecedor || "—"}</TableCell>
               <TableCell>{p.prazoEntregaDias != null ? `${p.prazoEntregaDias} dias` : "—"}</TableCell>
+                    <TableCell>
+                      {(p as any).fechamentoPacote != null
+                        ? `${(p as any).fechamentoPacote} ${
+                            (p as any).tipoCalculo === "acabamento_perimetro" || (p as any).tipoCalculo === "linear" ? "m" : "m²"
+                          }/pct`
+                        : "—"}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -810,6 +832,95 @@ export function CatalogoModal({
                     <FormMessage />
                   </FormItem>
                 )} />
+              </div>
+
+              {/* Cálculo por m² — teto vinílico / revestimento de parede */}
+              <div className="rounded-lg border border-border p-3 space-y-3">
+                <p className="text-sm font-medium">Cálculo por m² (teto vinílico / revestimento)</p>
+                <FormField control={form.control} name="tipoCalculo" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo de cálculo</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">Nenhum (produto normal)</SelectItem>
+                        <SelectItem value="area_simples">Área simples (revestimento de parede)</SelectItem>
+                        <SelectItem value="area_com_acabamento_perimetro">Área com acabamento de perímetro (teto vinílico)</SelectItem>
+                        <SelectItem value="acabamento_perimetro">Acabamento de perímetro (acessório do teto)</SelectItem>
+                        <SelectItem value="linear">Linear (metro linear)</SelectItem>
+                        <SelectItem value="peca_avulsa">Peça avulsa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                {form.watch("tipoCalculo") !== "none" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={form.control} name="colecao" render={({ field }) => (
+                        <FormItem><FormLabel>Coleção</FormLabel><FormControl>
+                          <Input {...field} value={field.value ?? ""} placeholder="Ex: Naval" />
+                        </FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="cor" render={({ field }) => (
+                        <FormItem><FormLabel>Cor</FormLabel><FormControl>
+                          <Input {...field} value={field.value ?? ""} placeholder="Ex: Branco" />
+                        </FormControl><FormMessage /></FormItem>
+                      )} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={form.control} name="fechamentoPacote" render={({ field }) => (
+                        <FormItem><FormLabel>Rendimento por pacote</FormLabel><FormControl>
+                          <Input
+                            type="number" step="0.01" min="0"
+                            placeholder="m² ou m por pacote"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                          />
+                        </FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="precoPacote" render={({ field }) => (
+                        <FormItem><FormLabel>Preço do pacote</FormLabel><FormControl>
+                          <Input
+                            type="number" step="0.01" min="0"
+                            placeholder="Em branco = calcula automático"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                          />
+                        </FormControl><FormMessage /></FormItem>
+                      )} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={form.control} name="quantidadePacote" render={({ field }) => (
+                        <FormItem><FormLabel>Peças por pacote <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel><FormControl>
+                          <Input
+                            type="number" step="1" min="0"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))}
+                          />
+                        </FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="larguraPecaM" render={({ field }) => (
+                        <FormItem><FormLabel>Largura da peça (m) <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel><FormControl>
+                          <Input
+                            type="number" step="0.01" min="0"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                          />
+                        </FormControl><FormMessage /></FormItem>
+                      )} />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Tabela de especificações — Marca/Modelo/Cor/etc, pra alimentar
