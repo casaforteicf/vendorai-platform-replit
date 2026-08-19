@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate } from "lucide-react";
+import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate, Tag } from "lucide-react";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +46,7 @@ const SITE_TYPES = [
   { id: "landing", icon: "📢", label: "Landing page" },
   { id: "ecommerce", icon: "🛒", label: "E-commerce" },
   { id: "institutional", icon: "🏢", label: "Institucional" },
+  { id: "product", icon: "🏷️", label: "Produto específico" },
 ] as const;
 
 const SUGGESTIONS = [
@@ -57,7 +58,7 @@ const SUGGESTIONS = [
   "Adiciona um WhatsApp flutuante",
 ];
 
-type SiteType = "landing" | "ecommerce" | "institutional";
+type SiteType = "landing" | "ecommerce" | "institutional" | "product";
 type GeneratorStatus = "idle" | "generating" | "ready" | "error";
 
 interface Product { name: string; price: string; }
@@ -75,6 +76,16 @@ interface SiteConfig {
   instagram?: string;
   images?: string[];
   servicos?: string;
+  /** Set when type === "product" — id of the single catalog product this page sells. */
+  produtoId?: string;
+}
+interface CatalogProductOption {
+  id: string;
+  nome: string;
+  precoBase: string;
+  imagemUrl?: string | null;
+  imagens?: string[] | null;
+  ativo?: boolean;
 }
 interface ChatMessage { role: "user" | "assistant"; content: string; }
 interface Testimonial {
@@ -88,6 +99,14 @@ interface Testimonial {
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
 interface SiteSummary { id: string; name: string; siteType: string; updatedAt: string; }
+interface BulkJobState {
+  key: string;
+  label: string;
+  status: "pending" | "done" | "error";
+  error?: string;
+  siteId?: string;
+  siteSlug?: string;
+}
 
 function useSiteGenerator(tenantId: string, token: string | null) {
   const [status, setStatus] = useState<GeneratorStatus>("idle");
@@ -167,6 +186,39 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     });
   }, [siteId, tenantId, token]);
 
+  // Submits one generate job and polls it to completion — shared by the
+  // single-site flow (generate) and the bulk flow (generateBulk), so both
+  // go through the exact same request/poll/timeout logic.
+  const submitAndPollJob = useCallback(async (config: SiteConfig) => {
+    const startRes = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify(config),
+    });
+    if (!startRes.ok) {
+      const err = await startRes.json().catch(() => ({}));
+      throw new Error(err.error ?? `Erro ${startRes.status}`);
+    }
+    const { jobId } = await startRes.json();
+    if (!jobId) throw new Error("Resposta inválida do servidor");
+
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const pollRes = await fetch(
+        `/api/tenants/${tenantId}/site-generator/jobs/${jobId}`,
+        { headers: authHeaders },
+      );
+      if (!pollRes.ok) continue;
+      const job = await pollRes.json();
+
+      if (job.status === "done") return job.result;
+      if (job.status === "error") throw new Error(job.error ?? "Erro na geração");
+      // status === "pending" → keep polling
+    }
+    throw new Error("Tempo limite excedido. Tente novamente.");
+  }, [tenantId, token]);
+
   const generate = useCallback(async (config: SiteConfig) => {
     setStatus("generating");
     setError(null);
@@ -178,60 +230,60 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setCurrentConfig(config);
 
     try {
-      // Step 1: submit the job (returns immediately — no timeout risk)
-      const startRes = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify(config),
+      const site = await submitAndPollJob(config);
+      setHtml(site.html);
+      setSiteId(site.id);
+      setSiteSlug(site.siteSlug ?? null);
+      setCurrentSiteType(site.siteType ?? config.type);
+      setCurrentConfig(site.config ?? config);
+      setHistory([
+        { role: "user", content: `Gerar site para: ${config.name}` },
+        { role: "assistant", content: site.html },
+      ]);
+      setStatus("ready");
+      setSitesList((prev) => {
+        const filtered = prev.filter((s: SiteSummary) => s.id !== site.id);
+        return [{ id: site.id, name: site.name, siteType: site.siteType, updatedAt: site.updatedAt }, ...filtered];
       });
-      if (!startRes.ok) {
-        const err = await startRes.json().catch(() => ({}));
-        throw new Error(err.error ?? `Erro ${startRes.status}`);
-      }
-      const { jobId } = await startRes.json();
-      if (!jobId) throw new Error("Resposta inválida do servidor");
-
-      // Step 2: poll every 3 s until done or error (up to 5 min)
-      const deadline = Date.now() + 5 * 60 * 1000;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 3000));
-        const pollRes = await fetch(
-          `/api/tenants/${tenantId}/site-generator/jobs/${jobId}`,
-          { headers: authHeaders },
-        );
-        if (!pollRes.ok) continue;
-        const job = await pollRes.json();
-
-        if (job.status === "done") {
-          const site = job.result;
-          setHtml(site.html);
-          setSiteId(site.id);
-          setSiteSlug(site.siteSlug ?? null);
-          setCurrentSiteType(site.siteType ?? config.type);
-          setCurrentConfig(site.config ?? config);
-          setHistory([
-            { role: "user", content: `Gerar site para: ${config.name}` },
-            { role: "assistant", content: site.html },
-          ]);
-          setStatus("ready");
-          setSitesList((prev) => {
-            const filtered = prev.filter((s: SiteSummary) => s.id !== site.id);
-            return [{ id: site.id, name: site.name, siteType: site.siteType, updatedAt: site.updatedAt }, ...filtered];
-          });
-          return;
-        }
-
-        if (job.status === "error") {
-          throw new Error(job.error ?? "Erro na geração");
-        }
-        // status === "pending" → keep polling
-      }
-      throw new Error("Tempo limite excedido. Tente novamente.");
     } catch (err: any) {
       setStatus("error");
       setError(err.message ?? "Erro desconhecido");
     }
-  }, [tenantId, token]);
+  }, [tenantId, token, submitAndPollJob]);
+
+  // Fires N generate jobs concurrently (one per item) and tracks each one's
+  // progress independently — used to generate several product landing pages
+  // (or any other combination of sites) in a single action.
+  const [bulkJobs, setBulkJobs] = useState<BulkJobState[]>([]);
+  const [bulkRunning, setBulkRunning] = useState(false);
+
+  const generateBulk = useCallback(async (items: Array<{ key: string; label: string; config: SiteConfig }>) => {
+    setBulkRunning(true);
+    setBulkJobs(items.map((it) => ({ key: it.key, label: it.label, status: "pending" })));
+
+    await Promise.all(items.map(async (it) => {
+      try {
+        const site = await submitAndPollJob(it.config);
+        setSitesList((prev) => {
+          const filtered = prev.filter((s: SiteSummary) => s.id !== site.id);
+          return [{ id: site.id, name: site.name, siteType: site.siteType, updatedAt: site.updatedAt }, ...filtered];
+        });
+        setBulkJobs((prev) => prev.map((j) => (j.key === it.key
+          ? { ...j, status: "done", siteId: site.id, siteSlug: site.siteSlug ?? undefined }
+          : j)));
+      } catch (err: any) {
+        setBulkJobs((prev) => prev.map((j) => (j.key === it.key
+          ? { ...j, status: "error", error: err.message ?? "Erro desconhecido" }
+          : j)));
+      }
+    }));
+
+    setBulkRunning(false);
+  }, [submitAndPollJob]);
+
+  const clearBulk = useCallback(() => {
+    setBulkJobs([]);
+  }, []);
 
   const refine = useCallback(async (message: string): Promise<string> => {
     if (!siteId) throw new Error("Nenhum site gerado");
@@ -314,21 +366,46 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setCurrentConfig(null);
   }, []);
 
-  return { status, html, siteId, siteSlug, isPublished, error, currentSiteType, currentConfig, sitesList, generate, refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish };
+  return {
+    status, html, siteId, siteSlug, isPublished, error, currentSiteType, currentConfig, sitesList,
+    generate, generateBulk, bulkJobs, bulkRunning, clearBulk,
+    refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish,
+  };
 }
 
 // ── ConfigForm ─────────────────────────────────────────────────────────────────
 
-function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (config: SiteConfig) => void }) {
+function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
+  tenantId: string;
+  token: string | null;
+  onGenerate: (config: SiteConfig) => void;
+  onGenerateBulk: (items: Array<{ key: string; label: string; config: SiteConfig }>) => void;
+}) {
   const [siteType, setSiteType] = useState<SiteType>("landing");
   const [color, setColor] = useState("#6366F1");
   const [tone, setTone] = useState("profissional");
   const [products, setProducts] = useState<Product[]>([{ name: "", price: "" }]);
   const [images, setImages] = useState<string[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProductOption[]>([]);
+  // Vários produtos podem ser marcados: 1 selecionado gera aquela página só
+  // (fluxo de sempre, vai pro Preview); mais de 1 dispara uma LP para cada
+  // produto de uma vez (fluxo em massa).
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
 
   const requestUploadUrl = useRequestUploadUrl();
   const { toast } = useToast();
+
+  // Load the catalog product list only when the "Produto específico" tab is
+  // selected — that's the only mode that needs it.
+  useEffect(() => {
+    if (siteType !== "product" || !tenantId) return;
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setCatalogProducts(Array.isArray(rows) ? rows.filter((p: CatalogProductOption) => p.ativo !== false) : []))
+      .catch(() => setCatalogProducts([]));
+  }, [siteType, tenantId, token]);
 
   const { data: bp } = useGetBusinessProfileByTenant(tenantId, {
     query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId },
@@ -377,8 +454,10 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (siteType === "product" && selectedProductIds.length === 0) return; // guarded by disabled submit button too
     const fd = new FormData(e.currentTarget);
-    onGenerate({
+
+    const baseConfig: Omit<SiteConfig, "produtoId"> = {
       type: siteType,
       name: nomeNegocio || (fd.get("name") as string) || "",
       sector: setor || (fd.get("sector") as string) || "",
@@ -392,6 +471,26 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
       instagram: (fd.get("instagram") as string) || "",
       images: images.filter(Boolean),
       servicos: (fd.get("servicos") as string) || "",
+    };
+
+    if (siteType === "product" && selectedProductIds.length > 1) {
+      // Vários produtos marcados → gera uma LP para cada um, em paralelo.
+      onGenerateBulk(
+        selectedProductIds.map((id) => {
+          const p = catalogProducts.find((cp) => cp.id === id);
+          return {
+            key: id,
+            label: p?.nome ?? id,
+            config: { ...baseConfig, produtoId: id },
+          };
+        }),
+      );
+      return;
+    }
+
+    onGenerate({
+      ...baseConfig,
+      produtoId: siteType === "product" ? selectedProductIds[0] : undefined,
     });
   }
 
@@ -617,6 +716,57 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         </div>
       )}
 
+      {/* ── Produto(s) — landing de produto específico, pode marcar vários ── */}
+      {siteType === "product" && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Produto(s) do catálogo *</Label>
+            {catalogProducts.length > 0 && (
+              <button
+                type="button"
+                className="text-[10px] text-primary underline underline-offset-2 hover:no-underline"
+                onClick={() => setSelectedProductIds((prev) =>
+                  prev.length === catalogProducts.length ? [] : catalogProducts.map((p) => p.id))}
+              >
+                {selectedProductIds.length === catalogProducts.length ? "Limpar seleção" : "Selecionar todos"}
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground rounded-md bg-muted/60 border border-dashed px-3 py-2">
+            🏷️ Marque 1 produto para gerar só a página dele, ou marque vários para gerar uma landing page para cada um de uma vez. Nome, preço, fotos e especificações vêm direto do seu Catálogo de Produtos.
+          </p>
+          <div className="max-h-56 overflow-y-auto rounded-lg border border-border divide-y">
+            {catalogProducts.length === 0 && (
+              <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum produto ativo encontrado no catálogo.</div>
+            )}
+            {catalogProducts.map((p) => {
+              const checked = selectedProductIds.includes(p.id);
+              return (
+                <label
+                  key={p.id}
+                  className={`flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer transition-colors ${checked ? "bg-primary/5" : "hover:bg-muted/50"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => setSelectedProductIds((prev) =>
+                      checked ? prev.filter((id) => id !== p.id) : [...prev, p.id])}
+                    className="h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <span className="flex-1 truncate">{p.nome}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">R$ {parseFloat(p.precoBase).toFixed(2).replace(".", ",")}</span>
+                </label>
+              );
+            })}
+          </div>
+          {selectedProductIds.length > 1 && (
+            <p className="text-[10px] text-primary font-medium">
+              ✦ {selectedProductIds.length} produtos marcados — vai gerar {selectedProductIds.length} landing pages, uma para cada um.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Aparência e tom ── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
@@ -651,10 +801,17 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         </div>
       </div>
 
-      <Button type="submit" size="lg" className="mt-1 w-full font-semibold" disabled={uploadingCount > 0}>
+      <Button
+        type="submit"
+        size="lg"
+        className="mt-1 w-full font-semibold"
+        disabled={uploadingCount > 0 || (siteType === "product" && selectedProductIds.length === 0)}
+      >
         {uploadingCount > 0
           ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando fotos…</>
-          : "✦ Gerar site com IA"
+          : selectedProductIds.length > 1
+            ? `✦ Gerar ${selectedProductIds.length} landing pages com IA`
+            : "✦ Gerar site com IA"
         }
       </Button>
     </form>
@@ -2142,12 +2299,14 @@ const SITE_TYPE_LABELS: Record<string, string> = {
   landing:      "Landing Page",
   ecommerce:    "E-commerce",
   institutional: "Institucional",
+  product:      "Produto",
 };
 
 const SITE_TYPE_ICONS: Record<string, React.ReactNode> = {
   landing:      <LayoutTemplate className="h-3.5 w-3.5" />,
   ecommerce:    <ShoppingCart className="h-3.5 w-3.5" />,
   institutional: <Globe className="h-3.5 w-3.5" />,
+  product:      <Tag className="h-3.5 w-3.5" />,
 };
 
 function PersonalizePanel({
@@ -2294,7 +2453,8 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
   const {
     status, html, siteId, siteSlug, isPublished, error,
     currentSiteType, currentConfig, sitesList,
-    generate, refine, download, reset,
+    generate, generateBulk, bulkJobs, bulkRunning, clearBulk,
+    refine, download, reset,
     loadLatest, loadAll, loadSite, saveHtml, publish,
   } = useSiteGenerator(tenantId, token);
 
@@ -2309,6 +2469,12 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
   async function handleGenerate(config: SiteConfig) {
     setActiveTab("preview");
     await generate(config);
+  }
+
+  async function handleGenerateBulk(items: Array<{ key: string; label: string; config: SiteConfig }>) {
+    // Fica na aba de configuração mostrando o progresso — não faz sentido
+    // pular pro Preview de "um" site quando vários estão sendo gerados.
+    await generateBulk(items);
   }
 
   async function handleGenerateEcommerce() {
@@ -2326,41 +2492,77 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
   const canPreview = status !== "idle";
   const canRefine = status === "ready";
 
-  // Group sites by type for the switcher
-  const sitesByType = sitesList.reduce<Record<string, SiteSummary>>((acc, s) => {
-    // Keep most recent per type
-    if (!acc[s.siteType] || new Date(s.updatedAt) > new Date(acc[s.siteType].updatedAt)) {
-      acc[s.siteType] = s;
-    }
-    return acc;
-  }, {});
-  const switcherTypes = Object.keys(sitesByType);
+  // Cada site publicado tem seu próprio endereço (mesmo vários do tipo
+  // "product") — o switcher lista todos individualmente em vez de colapsar
+  // por tipo, senão só o mais recente de cada tipo aparecia.
+  const sortedSites = [...sitesList].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  );
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Sites switcher — shown when more than one type exists */}
-      {switcherTypes.length > 0 && (
+      {/* Sites switcher — lista cada site gerado individualmente */}
+      {sortedSites.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-muted-foreground font-medium shrink-0">Meus sites:</span>
-          {switcherTypes.map((type) => {
-            const s = sitesByType[type];
+          {sortedSites.map((s) => {
             const isActive = s.id === siteId;
             return (
               <button
-                key={type}
+                key={s.id}
                 onClick={() => handleSwitchSite(s.id)}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
+                title={s.name}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all cursor-pointer max-w-[220px] ${
                   isActive
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-background text-muted-foreground hover:border-primary hover:text-primary"
                 }`}
               >
-                {SITE_TYPE_ICONS[type]}
-                {SITE_TYPE_LABELS[type] ?? type}
-                {isActive && <span className="ml-0.5">✓</span>}
+                {SITE_TYPE_ICONS[s.siteType]}
+                <span className="truncate">{s.name || SITE_TYPE_LABELS[s.siteType] || s.siteType}</span>
+                {isActive && <span className="ml-0.5 shrink-0">✓</span>}
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* Progresso da geração em massa (várias LPs de produto de uma vez) */}
+      {bulkJobs.length > 0 && (
+        <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-foreground">
+              Gerando {bulkJobs.length} landing pages
+              {" "}({bulkJobs.filter((j) => j.status !== "pending").length}/{bulkJobs.length})
+            </span>
+            {!bulkRunning && (
+              <button type="button" onClick={clearBulk} className="text-[10px] text-muted-foreground underline underline-offset-2 hover:no-underline">
+                Fechar
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+            {bulkJobs.map((j) => (
+              <div key={j.key} className="flex items-center gap-2 text-xs">
+                {j.status === "pending" && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
+                {j.status === "done" && <span className="shrink-0 text-green-600">✓</span>}
+                {j.status === "error" && <span className="shrink-0 text-destructive">✕</span>}
+                <span className="flex-1 truncate">{j.label}</span>
+                {j.status === "done" && j.siteId && (
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchSite(j.siteId!)}
+                    className="shrink-0 text-primary underline underline-offset-2 hover:no-underline"
+                  >
+                    Ver site
+                  </button>
+                )}
+                {j.status === "error" && (
+                  <span className="shrink-0 text-destructive" title={j.error}>{j.error}</span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -2419,7 +2621,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
         <Card className="mt-2">
           <CardContent className="pt-6">
             <TabsContent value="config" className="mt-0">
-              <ConfigForm tenantId={tenantId} onGenerate={handleGenerate} />
+              <ConfigForm tenantId={tenantId} token={token} onGenerate={handleGenerate} onGenerateBulk={handleGenerateBulk} />
             </TabsContent>
 
             <TabsContent value="preview" className="mt-0">
