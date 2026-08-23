@@ -14,7 +14,7 @@
  */
 import { db, contentAutopilotConfigTable, contentAutopilotKeywordsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callAnthropic } from "../lib/ai-gateway.js";
 import { logger } from "../lib/logger.js";
 import { keywordsForKeywords, serpOrganicTop, isDataForSeoConfigured } from "../lib/dataforseoClient.js";
 import type { ContentAutopilotBrandTone, ContentAutopilotConfig } from "@workspace/db";
@@ -65,6 +65,29 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+/**
+ * Sites feitos em SPA (React/Vue) têm o HTML inicial quase vazio de texto —
+ * o conteúdo real só existe depois do JS rodar no navegador, que esse fetch
+ * server-side não executa. Achado no teste real (23/08): stripHtml sozinho
+ * dava menos de 100 caracteres pro appvendorai.com (é uma SPA), o suficiente
+ * pra derrubar a análise com "conteúdo insuficiente".
+ * Meta tags (title, description, og:description) sobrevivem em qualquer SPA
+ * bem configurada pra SEO — extrai como sinal adicional, sempre.
+ */
+function extractMetaSignals(html: string): string {
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
+  const description = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1]?.trim();
+  const ogDescription = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1]?.trim();
+  const keywords = html.match(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i)?.[1]?.trim();
+
+  const lines: string[] = [];
+  if (title) lines.push(`Título da página: ${title}`);
+  if (description) lines.push(`Meta description: ${description}`);
+  if (ogDescription && ogDescription !== description) lines.push(`Open Graph description: ${ogDescription}`);
+  if (keywords) lines.push(`Palavras-chave declaradas: ${keywords}`);
+  return lines.join("\n");
+}
+
 async function fetchSiteText(siteUrl: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -72,7 +95,9 @@ async function fetchSiteText(siteUrl: string): Promise<string> {
     const res = await fetch(siteUrl, { signal: controller.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; VendorAI-ContentAutopilot/1.0)" } });
     if (!res.ok) throw new Error(`Site respondeu ${res.status}`);
     const html = await res.text();
-    return stripHtml(html).slice(0, 15_000); // suficiente pra Claude entender tom sem estourar contexto
+    const meta = extractMetaSignals(html);
+    const bodyText = stripHtml(html);
+    return `${meta}\n\n${bodyText}`.trim().slice(0, 15_000); // suficiente pra Claude entender tom sem estourar contexto
   } finally {
     clearTimeout(timeout);
   }
@@ -85,24 +110,27 @@ export async function analyzeSiteTone(tenantId: string, siteUrl: string): Promis
     throw new Error("Não consegui extrair conteúdo suficiente do site pra analisar o tom");
   }
 
-  const msg = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    system:
-      "Você analisa o texto de um site institucional e extrai o tom de marca em JSON puro, sem markdown, sem comentário. " +
-      'Formato exato: {"tom": "descrição curta do tom (ex: direto e consultivo, sem jargão)", "vocabulario": ["termos", "recorrentes", "do", "site"], "publicoAlvo": "quem o site parece querer atingir", "exemplos": ["1-2 frases reais do site que ilustram o tom"]}',
-    messages: [{ role: "user", content: `Texto extraído do site:\n\n${siteText}` }],
-  });
-  const textBlock = msg.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") throw new Error("Resposta da IA sem texto");
+  const result = await callAnthropic(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: `Texto extraído do site:\n\n${siteText}` }],
+    {
+      maxTokens: 1024,
+      system:
+        "Você analisa o texto de um site institucional e extrai o tom de marca em JSON puro, sem markdown, sem comentário. " +
+        'Formato exato: {"tom": "descrição curta do tom (ex: direto e consultivo, sem jargão)", "vocabulario": ["termos", "recorrentes", "do", "site"], "publicoAlvo": "quem o site parece querer atingir", "exemplos": ["1-2 frases reais do site que ilustram o tom"]}',
+      log: logger,
+    },
+  );
 
   let brandTone: ContentAutopilotBrandTone;
   try {
-    brandTone = JSON.parse(textBlock.text.trim());
+    brandTone = JSON.parse(result.content.trim());
   } catch {
     throw new Error("IA não retornou JSON válido pro tom de marca");
   }
 
+  await addSpend(tenantId, result.costUsd);
   await db
     .update(contentAutopilotConfigTable)
     .set({ brandTone, ultimaAnaliseSiteEm: new Date(), updatedAt: new Date() })
