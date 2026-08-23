@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, index, vector } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -106,6 +106,7 @@ export const contentAutopilotArticlesTable = pgTable("content_autopilot_articles
   wpStatus: text("wp_status").$type<ContentAutopilotWpStatus>(),
   status: text("status").$type<ContentAutopilotArticleStatus>().notNull().default("pesquisando"),
   custoGerado: numeric("custo_gerado", { precision: 10, scale: 4 }).notNull().default("0"),
+  embedding: vector("embedding", { dimensions: 1536 }),
   erroDetalhe: text("erro_detalhe"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   publicadoEm: timestamp("publicado_em"),

@@ -11,6 +11,7 @@ import {
 import { z } from "zod/v4";
 import { analyzeSiteTone, discoverKeywords, researchCompetitors, getConfig, OrcamentoExcedidoError } from "../services/contentAutopilot.js";
 import { generateArticle } from "../services/contentAutopilotCriador.js";
+import { optimizeArticle } from "../services/contentAutopilotOtimizador.js";
 import { isDataForSeoConfigured } from "../lib/dataforseoClient.js";
 
 const router: IRouter = Router();
@@ -224,6 +225,43 @@ router.get("/tenants/:tenantId/content-autopilot/articles/:id", async (req, res)
     return;
   }
   res.json({ article });
+});
+
+// ── POST /tenants/:tenantId/content-autopilot/articles/:id/optimize ─────────
+// Aciona o Otimizador: score de SEO (determinístico) + linkagem interna por
+// embedding. Precisa do artigo já ter passado pelo Criador (título/meta/corpo).
+router.post("/tenants/:tenantId/content-autopilot/articles/:id/optimize", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!checkAccess(req, res, tenantId)) return;
+
+  const [article] = await db
+    .select({ keywordId: contentAutopilotArticlesTable.keywordId })
+    .from(contentAutopilotArticlesTable)
+    .where(and(eq(contentAutopilotArticlesTable.id, req.params.id as string), eq(contentAutopilotArticlesTable.tenantId, tenantId)));
+  if (!article) {
+    res.status(404).json({ error: "Artigo não encontrado" });
+    return;
+  }
+  if (!article.keywordId) {
+    res.status(422).json({ error: "Artigo sem keyword associada — não dá pra calcular densidade" });
+    return;
+  }
+  const [keyword] = await db
+    .select({ termo: contentAutopilotKeywordsTable.termo })
+    .from(contentAutopilotKeywordsTable)
+    .where(eq(contentAutopilotKeywordsTable.id, article.keywordId));
+  if (!keyword) {
+    res.status(422).json({ error: "Keyword do artigo não encontrada" });
+    return;
+  }
+
+  try {
+    const result = await optimizeArticle(tenantId, req.params.id as string, keyword.termo);
+    res.json(result);
+  } catch (err) {
+    req.log?.error({ err, tenantId, articleId: req.params.id }, "content-autopilot/optimize: falhou");
+    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao otimizar artigo" });
+  }
 });
 
 export default router;
