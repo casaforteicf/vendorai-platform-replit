@@ -78,6 +78,7 @@ const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
 const VideoAvatarPage    = lazy(() => import("@/pages/video/VideoAvatarPage"));
 const VideoProdutoPage   = lazy(() => import("@/pages/video/VideoProdutoPage"));
 const VideoEdicaoPage    = lazy(() => import("@/pages/video/VideoEdicaoPage"));
+const VideoLegendaPage   = lazy(() => import("@/pages/video/VideoLegendaPage"));
 const VideoClipesPage    = lazy(() => import("@/pages/video/VideoClipesPage"));
 const VideoLotePage      = lazy(() => import("@/pages/video/VideoLotePage"));
 const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
@@ -665,6 +666,9 @@ function AppRoutes() {
         </Route>
         <Route path="/content-studio/video/edicao">
           {() => <ProtectedRoute component={VideoEdicaoPage} />}
+        </Route>
+        <Route path="/content-studio/video/legenda">
+          {() => <ProtectedRoute component={VideoLegendaPage} />}
         </Route>
         <Route path="/content-studio/video/clipes">
           {() => <ProtectedRoute component={VideoClipesPage} />}

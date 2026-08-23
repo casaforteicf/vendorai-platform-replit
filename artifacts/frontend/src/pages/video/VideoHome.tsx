@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { ArrowRight, Mic2, ShoppingBag, Scissors, Clapperboard, LayoutGrid, Sparkles } from "lucide-react";
+import { ArrowRight, Mic2, ShoppingBag, Scissors, Clapperboard, LayoutGrid, Sparkles, Captions } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface VideoCard {
@@ -43,6 +43,16 @@ const CARDS: VideoCard[] = [
     route: "/content-studio/video/edicao",
     badge: "Disponível",
     badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+  },
+  {
+    title: "Legendagem automática",
+    description: "Suba um vídeo gravado e a IA transcreve e queima a legenda, no ritmo de leitura de Reels.",
+    icon: Captions,
+    gradient: "from-cyan-600/30 via-sky-500/20 to-cyan-900/10",
+    iconBg: "bg-cyan-500/20 text-cyan-300",
+    route: "/content-studio/video/legenda",
+    badge: "Disponível",
+    badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
   },
   {
     title: "Clipes automáticos",

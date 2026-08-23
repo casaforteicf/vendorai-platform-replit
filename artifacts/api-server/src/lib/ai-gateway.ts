@@ -814,7 +814,89 @@ export async function transcribeAudio(
   return { text, costUsd, usedByok: key.usedByok };
 }
 
-// ── Replicate — Flux+ControlNet ───────────────────────────────────────────────
+export interface TranscriptionWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Mesma infra de quota/BYOK/log de transcribeAudio, mas pede
+ * verbose_json com timestamp por palavra — usado pra legendar vídeo
+ * automaticamente (queima de legenda sincronizada com a fala via
+ * ffmpeg), onde não basta o texto puro, precisa saber quando cada
+ * palavra é falada.
+ */
+export async function transcribeAudioWithWordTimestamps(
+  tenantId: string,
+  feature: AiFeature,
+  audioBuffer: Buffer,
+  options: {
+    mimeType?: string;
+    language?: string;
+    log?: Logger;
+  } = {},
+): Promise<{ text: string; words: TranscriptionWord[]; costUsd: number; usedByok: boolean }> {
+  const log = options.log;
+  const estimatedMinutes = audioBuffer.length / (1024 * 1024);
+  const estimatedCost = estimatedMinutes * 0.006;
+
+  const quota = await checkQuota(tenantId, estimatedCost, log);
+  if (!quota.ok) {
+    throw new AiGatewayError(quota.reason, quota.httpStatus, quota.details);
+  }
+
+  const key = await resolveAIKey(tenantId, "openai");
+  const openai = new OpenAI({ apiKey: key.apiKey });
+
+  let success = false;
+  let errorMessage: string | undefined;
+  let text = "";
+  let words: TranscriptionWord[] = [];
+
+  try {
+    const transcription = await openai.audio.transcriptions.create({
+      file: new File([audioBuffer as any], "audio.wav", { type: options.mimeType ?? "audio/wav" }),
+      model: "whisper-1",
+      language: options.language ?? "pt",
+      response_format: "verbose_json",
+      timestamp_granularities: ["word"],
+    });
+    const result = transcription as unknown as { text: string; words?: TranscriptionWord[] };
+    text = (result.text ?? "").trim();
+    words = Array.isArray(result.words) ? result.words : [];
+    success = true;
+  } catch (err: any) {
+    errorMessage = err.message ?? "Transcription failed";
+    log?.error({ tenantId, feature, error: errorMessage }, "ai-gateway: word-timestamp transcription failed");
+  }
+
+  const costUsd = estimatedCost;
+  await logUsage({
+    tenantId,
+    provider: "openai",
+    model: "whisper-1",
+    feature,
+    inputTokens: 0,
+    outputTokens: 0,
+    costEstimateUsd: costUsd,
+    usedByok: key.usedByok,
+    success,
+    errorMessage,
+  });
+
+  if (!key.usedByok) {
+    await incrementDailySpend(tenantId, costUsd);
+  }
+
+  if (!success) {
+    throw new AiGatewayError(errorMessage ?? "Transcription failed", 502, { provider: "openai", model: "whisper-1" });
+  }
+
+  return { text, words, costUsd, usedByok: key.usedByok };
+}
+
+
 
 /**
  * Render an architectural image using Flux+ControlNet via Replicate.

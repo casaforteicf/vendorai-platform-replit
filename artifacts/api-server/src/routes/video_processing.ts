@@ -8,6 +8,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { transcribeAudioWithWordTimestamps, type TranscriptionWord } from "../lib/ai-gateway.js";
 
 const execFileAsync = promisify(execFile);
 const router: IRouter = Router();
@@ -307,6 +308,140 @@ router.post("/tenants/:tenantId/content-studio/video/batch", async (req, res) =>
     JOBS.set(jobId, { status: anyError ? "error" : "done", progress: done, total: items.length, results });
   })();
 });
+
+// ── Legendagem automática ─────────────────────────────────────────────────────
+// Transcreve o áudio com timestamp por palavra (Whisper) e queima a
+// legenda no vídeo via ffmpeg (filtro ass, estilo TikTok/Reels: texto
+// branco em negrito, contorno preto, terço inferior). Agrupa palavras em
+// blocos curtos (3-6 palavras ou corte em pausa >0.6s) em vez de
+// legenda-frase-inteira, pra ficar no ritmo de leitura de Reels curto.
+
+function formatAssTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const cs = Math.round((seconds - Math.floor(seconds)) * 100);
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+}
+
+function escapeAssText(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}").replace(/\n/g, "\\N");
+}
+
+const MAX_WORDS_PER_CAPTION = 5;
+const MAX_PAUSE_GAP_SECONDS = 0.6;
+
+function buildCaptionChunks(words: TranscriptionWord[]): { start: number; end: number; text: string }[] {
+  const chunks: { start: number; end: number; text: string }[] = [];
+  let current: TranscriptionWord[] = [];
+
+  const flush = () => {
+    if (current.length === 0) return;
+    chunks.push({
+      start: current[0]!.start,
+      end: current[current.length - 1]!.end,
+      text: current.map((w) => w.word).join(" ").trim(),
+    });
+    current = [];
+  };
+
+  for (const w of words) {
+    const prev = current[current.length - 1];
+    const gap = prev ? w.start - prev.end : 0;
+    if (current.length >= MAX_WORDS_PER_CAPTION || (prev && gap > MAX_PAUSE_GAP_SECONDS)) {
+      flush();
+    }
+    current.push(w);
+  }
+  flush();
+  return chunks;
+}
+
+function buildAssSubtitle(chunks: { start: number; end: number; text: string }[]): string {
+  const header = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Liberation Sans,88,&H00FFFFFF,&H00000000,&H00000000,1,0,1,6,0,2,60,60,220,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+  const lines = chunks
+    .map((c) => `Dialogue: 0,${formatAssTime(c.start)},${formatAssTime(c.end)},Default,,0,0,0,,${escapeAssText(c.text.toUpperCase())}`)
+    .join("\n");
+  return header + lines;
+}
+
+router.post(
+  "/tenants/:tenantId/content-studio/video/caption",
+  upload.single("video"),
+  async (req, res) => {
+    if (!authCheck(req, res)) return;
+    if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
+
+    const tenantId = String(req.params["tenantId"]);
+    const jobId = randomUUID();
+    JOBS.set(jobId, { status: "running" });
+    res.json({ jobId });
+
+    void (async () => {
+      const tmpDir    = tmpdir();
+      const inPath    = join(tmpDir, `cap-in-${jobId}.mp4`);
+      const audioPath = join(tmpDir, `cap-audio-${jobId}.wav`);
+      const assPath   = join(tmpDir, `cap-${jobId}.ass`);
+      const outPath   = join(tmpDir, `cap-out-${jobId}.mp4`);
+      try {
+        await writeFile(inPath, req.file!.buffer);
+
+        // 1) Extrai áudio em WAV mono 16kHz — formato mais leve/confiável pro Whisper.
+        await execFileAsync("ffmpeg", ["-y", "-i", inPath, "-vn", "-ac", "1", "-ar", "16000", audioPath]);
+        const audioBuffer = await readFile(audioPath);
+
+        // 2) Transcreve com timestamp por palavra.
+        const { words } = await transcribeAudioWithWordTimestamps(tenantId, "audio_transcription", audioBuffer, {
+          mimeType: "audio/wav",
+          language: "pt",
+        });
+        if (words.length === 0) {
+          JOBS.set(jobId, { status: "error", error: "Não foi possível identificar fala no vídeo — confirme se o áudio está audível." });
+          return;
+        }
+
+        // 3) Monta legenda estilo Reels (blocos curtos) e grava o .ass.
+        const chunks = buildCaptionChunks(words);
+        await writeFile(assPath, buildAssSubtitle(chunks), "utf8");
+
+        // 4) Queima a legenda no vídeo. Caminho absoluto do .ass precisa
+        // ser escapado pro filtro ass= do ffmpeg (Windows-style escaping
+        // exigido pelo próprio libass mesmo em Linux, por herança do formato).
+        const assFilterPath = assPath.replace(/\\/g, "/").replace(/:/g, "\\\\:");
+        await execFileAsync("ffmpeg", [
+          "-y", "-i", inPath,
+          "-vf", `ass=${assFilterPath}`,
+          "-c:v", "libx264", "-c:a", "copy", "-preset", "fast",
+          outPath,
+        ]);
+
+        const buf = await readFile(outPath);
+        const objPath = await saveToBucket(buf, "video/mp4", `captioned-${jobId}.mp4`);
+        JOBS.set(jobId, { status: "done", videoUrl: `/api/storage${objPath}` });
+      } catch (err) {
+        JOBS.set(jobId, { status: "error", error: err instanceof Error ? err.message : "Erro no processamento" });
+      } finally {
+        await unlink(inPath).catch(() => {});
+        await unlink(audioPath).catch(() => {});
+        await unlink(assPath).catch(() => {});
+        await unlink(outPath).catch(() => {});
+      }
+    })();
+  }
+);
 
 // ── Job status (shared) ───────────────────────────────────────────────────────
 
