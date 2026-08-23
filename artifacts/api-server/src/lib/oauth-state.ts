@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-export type OAuthProvider = "whatsapp" | "instagram";
+export type OAuthProvider = "whatsapp" | "instagram" | "google-ads" | "meta-ads";
 
 export interface OAuthStatePayload {
   tenantId: string;

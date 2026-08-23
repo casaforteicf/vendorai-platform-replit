@@ -1815,6 +1815,172 @@ export default function Configuracoes() {
     }
   }
 
+  // ── Meta Ads OAuth connection state ────────────────────────────────────────
+  // Mesmo padrão do Google Ads acima (fetch direto, rotas ainda fora do
+  // cliente de API gerado) — só troca account por adAccount/adAccountName.
+  type MetaAdsConnectionData = {
+    connected: boolean;
+    pendingAccountSelection?: boolean;
+    adAccountId?: string | null;
+    adAccountName?: string | null;
+    currency?: string | null;
+    tokenExpiresAt?: string | null;
+    connectedAt?: string | null;
+  };
+  const [metaAdsConnection, setMetaAdsConnection] = useState<MetaAdsConnectionData | null>(null);
+  const [metaAdsLoading, setMetaAdsLoading] = useState(false);
+  const [metaAdsConnecting, setMetaAdsConnecting] = useState(false);
+  const [metaAdsDisconnecting, setMetaAdsDisconnecting] = useState(false);
+  const [metaAdsRefreshing, setMetaAdsRefreshing] = useState(false);
+  const [metaAdsAccounts, setMetaAdsAccounts] = useState<Array<{ adAccountId: string; name: string }>>([]);
+  const [metaAdsAccountsLoading, setMetaAdsAccountsLoading] = useState(false);
+  const [metaAdsSelectedAccount, setMetaAdsSelectedAccount] = useState<string>("");
+  const [metaAdsSelecting, setMetaAdsSelecting] = useState(false);
+
+  async function loadMetaAdsAccounts() {
+    if (!tenantId) return;
+    setMetaAdsAccountsLoading(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/meta-ads-connection/accounts`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMetaAdsAccounts(data.accounts ?? []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setMetaAdsAccountsLoading(false);
+    }
+  }
+
+  async function loadMetaAdsConnection() {
+    if (!tenantId) return;
+    setMetaAdsLoading(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/meta-ads-connection`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = (await res.json()) as MetaAdsConnectionData;
+        setMetaAdsConnection(data);
+        if (data.pendingAccountSelection) loadMetaAdsAccounts();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setMetaAdsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (tenantId) loadMetaAdsConnection();
+  }, [tenantId]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("metaAdsConnected");
+    const error = url.searchParams.get("metaAdsError");
+    if (connected === "1") {
+      toast({ title: "Meta Ads conectado com sucesso!" });
+      loadMetaAdsConnection();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (connected === "pending") {
+      toast({ title: "Conta autorizada — escolha qual Ad Account usar." });
+      loadMetaAdsConnection();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (error) {
+      const messages: Record<string, string> = {
+        access_denied: "Permissão negada. Tente novamente.",
+        invalid_state: "Sessão inválida. Tente novamente.",
+        token_exchange: "A Meta não autorizou a troca do código de acesso.",
+        no_account: "Nenhuma Ad Account acessível foi encontrada nessa conta.",
+        exchange_failed: "Erro ao conectar. Tente novamente.",
+      };
+      toast({ title: messages[error] ?? "Erro ao conectar Meta Ads.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location]);
+
+  async function onConnectMetaAds() {
+    if (!tenantId) return;
+    setMetaAdsConnecting(true);
+    try {
+      const res = await fetch("/api/auth/meta-ads", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    } catch {
+      toast({ title: "Erro ao iniciar conexão com Meta Ads.", variant: "destructive" });
+      setMetaAdsConnecting(false);
+    }
+  }
+
+  async function onSelectMetaAdsAccount() {
+    if (!tenantId || !metaAdsSelectedAccount) return;
+    setMetaAdsSelecting(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/meta-ads-connection/select-account`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ adAccountId: metaAdsSelectedAccount }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Ad Account conectada com sucesso." });
+      await loadMetaAdsConnection();
+    } catch {
+      toast({ title: "Erro ao selecionar Ad Account.", variant: "destructive" });
+    } finally {
+      setMetaAdsSelecting(false);
+    }
+  }
+
+  async function onDisconnectMetaAds() {
+    if (!tenantId) return;
+    setMetaAdsDisconnecting(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/meta-ads-connection`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Meta Ads desconectado." });
+      setMetaAdsAccounts([]);
+      setMetaAdsSelectedAccount("");
+      await loadMetaAdsConnection();
+    } catch {
+      toast({ title: "Erro ao desconectar Meta Ads.", variant: "destructive" });
+    } finally {
+      setMetaAdsDisconnecting(false);
+    }
+  }
+
+  async function onRefreshMetaAdsToken() {
+    if (!tenantId) return;
+    setMetaAdsRefreshing(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/meta-ads-connection/refresh`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Token renovado com sucesso." });
+      await loadMetaAdsConnection();
+    } catch {
+      toast({ title: "Erro ao renovar token.", variant: "destructive" });
+    } finally {
+      setMetaAdsRefreshing(false);
+    }
+  }
+
   function onSaveWebhookUrl() {
     updateIntegration.mutate(
       { id: tenantId, data: { webhookEstoqueUrl: webhookUrlInput || null, integrationType: integrationType || null } },
@@ -3543,6 +3709,152 @@ Body:
                   <Button onClick={onConnectGoogleAds} disabled={googleAdsConnecting} className="gap-2">
                     <TrendingUp className="h-4 w-4" />
                     {googleAdsConnecting ? "Redirecionando…" : "Conectar Google Ads"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Meta Ads — OAuth por tenant, mesma estrutura do Google Ads acima */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-blue-600" />
+                    Meta Ads
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Conecte sua conta de anúncios da Meta (Facebook + Instagram) para publicar campanhas de imagem
+                    diretamente pelo VendorAI. Requer o Instagram já conectado (Integrações), pois o anúncio roda
+                    na mesma Página do Facebook vinculada lá. Nenhuma campanha é publicada sem sua confirmação manual.
+                  </p>
+                </div>
+                {metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 className="h-3 w-3" /> Conectado
+                    </span>
+                  </div>
+                )}
+                {metaAdsConnection?.pendingAccountSelection && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-2.5 py-1 rounded-full">
+                      <Clock className="h-3 w-3" /> Escolha a conta
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {metaAdsLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : metaAdsConnection?.pendingAccountSelection ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Encontramos mais de uma Ad Account acessível com essa autorização. Escolha qual conta usar
+                    neste tenant:
+                  </p>
+                  {metaAdsAccountsLoading ? (
+                    <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  ) : (
+                    <Select value={metaAdsSelectedAccount} onValueChange={setMetaAdsSelectedAccount}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a Ad Account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {metaAdsAccounts.map((acc) => (
+                          <SelectItem key={acc.adAccountId} value={acc.adAccountId}>
+                            {acc.name} ({acc.adAccountId})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onSelectMetaAdsAccount}
+                      disabled={!metaAdsSelectedAccount || metaAdsSelecting}
+                      className="gap-2"
+                    >
+                      {metaAdsSelecting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                      {metaAdsSelecting ? "Conectando…" : "Confirmar conta"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onDisconnectMetaAds}
+                      disabled={metaAdsDisconnecting}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : metaAdsConnection?.connected ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Conta:</span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {metaAdsConnection.adAccountName ?? "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Ad Account ID:</span>
+                      <code className="text-sm font-mono text-muted-foreground">
+                        {metaAdsConnection.adAccountId}
+                      </code>
+                    </div>
+                    {metaAdsConnection.currency && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Moeda:</span>
+                        <span className="text-sm text-muted-foreground">{metaAdsConnection.currency}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onConnectMetaAds}
+                      variant="outline"
+                      disabled={metaAdsConnecting}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Reconectar
+                    </Button>
+                    <Button
+                      onClick={onRefreshMetaAdsToken}
+                      variant="outline"
+                      disabled={metaAdsRefreshing}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      {metaAdsRefreshing ? "Renovando…" : "Renovar token"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onDisconnectMetaAds}
+                      disabled={metaAdsDisconnecting}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {metaAdsDisconnecting ? "Desconectando…" : "Desconectar"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Clique no botão abaixo para autorizar a conexão com sua conta de anúncios da Meta.
+                  </p>
+                  <Button onClick={onConnectMetaAds} disabled={metaAdsConnecting} className="gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    {metaAdsConnecting ? "Redirecionando…" : "Conectar Meta Ads"}
                   </Button>
                 </div>
               )}

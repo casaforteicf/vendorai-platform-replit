@@ -70,6 +70,7 @@ interface AdCreative {
   campaignId: string;
   headlines: string[];
   descriptions: string[];
+  imagens: string[];
   status: "rascunho" | "aprovado";
 }
 
@@ -91,6 +92,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const EMPTY_FORM = {
+  plataforma: "google" as "google" | "meta",
   itemTipo: "veiculo" as ItemTipo,
   itemId: "",
   itemLabel: "",
@@ -178,7 +180,7 @@ export default function Ads() {
     mutationFn: async () => {
       const body = {
         tenantId,
-        plataforma: "google",
+        plataforma: form.plataforma,
         tipoAnuncio: form.tipoAnuncio,
         vertical: form.vertical || form.itemTipo,
         itemTipo: form.itemTipo,
@@ -305,9 +307,10 @@ export default function Ads() {
         <CardContent className="pt-4 text-sm space-y-2">
           <p className="font-medium">Como funciona hoje</p>
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Plataforma disponível agora: <strong>Google</strong>. Meta, TikTok e LinkedIn entram depois.</li>
-            <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search/Performance Max).</li>
+            <li>Plataformas disponíveis agora: <strong>Google</strong> (Search/PMax, Shopping) e <strong>Meta</strong> (Facebook + Instagram, anúncio de imagem). TikTok e LinkedIn entram depois.</li>
+            <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search/Performance Max) ou foto gerada por IA (Meta).</li>
             <li>Farmácia (venda livre), mercado e distribuidoras usam o feed do Google Shopping. Medicamento que exige receita nunca entra no feed.</li>
+            <li>Anúncio na Meta precisa do Instagram conectado primeiro (Configurações → Integrações) — o anúncio roda na mesma Página do Facebook vinculada lá.</li>
             <li>Nenhuma campanha publica sozinha — todo criativo passa por aprovação antes.</li>
           </ul>
           {feedInfo?.feedUrl && (
@@ -337,7 +340,8 @@ export default function Ads() {
                     <div>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="capitalize">{c.itemTipo}</Badge>
-                        <Badge variant="outline" className="capitalize">{c.tipoAnuncio === "shopping" ? "Shopping" : "Search/PMax (IA)"}</Badge>
+                        <Badge variant="outline" className="capitalize">{c.plataforma === "meta" ? "Meta" : "Google"}</Badge>
+                        <Badge variant="outline" className="capitalize">{c.tipoAnuncio === "shopping" ? "Shopping" : c.tipoAnuncio === "imagem" ? "Imagem" : "Search/PMax (IA)"}</Badge>
                         <Badge variant="outline" className="capitalize">{c.modo === "unico" ? "Item único" : "Carrossel"}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">Orçamento diário: R$ {c.orcamentoDiario}</p>
@@ -347,7 +351,7 @@ export default function Ads() {
                     <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
                   </div>
 
-                  {c.tipoAnuncio === "rsa_pmax" && (
+                  {(c.tipoAnuncio === "rsa_pmax" || c.tipoAnuncio === "imagem") && (
                     <div className="space-y-2">
                       {!creative ? (
                         <Button size="sm" variant="secondary" disabled={gerarCriativo.isPending}
@@ -357,8 +361,11 @@ export default function Ads() {
                         </Button>
                       ) : (
                         <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                          {c.tipoAnuncio === "imagem" && creative.imagens[0] && (
+                            <img src={creative.imagens[0]} alt="Criativo gerado" className="rounded-md w-full max-w-xs border border-border" />
+                          )}
                           <div>
-                            <p className="text-xs font-medium text-muted-foreground mb-1">Títulos ({creative.headlines.length})</p>
+                            <p className="text-xs font-medium text-muted-foreground mb-1">{c.tipoAnuncio === "imagem" ? "Título + texto principal" : `Títulos (${creative.headlines.length})`}</p>
                             <div className="flex flex-wrap gap-1">
                               {creative.headlines.map((h, i) => <Badge key={i} variant="secondary" className="font-normal">{h}</Badge>)}
                             </div>
@@ -388,11 +395,11 @@ export default function Ads() {
                               {!c.externalCampaignId ? (
                                 <Button size="sm" onClick={() => publicarCampanha.mutate(c.id)} disabled={publicarCampanha.isPending}>
                                   {publicarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Megaphone className="h-4 w-4 mr-1" />}
-                                  Publicar no Google Ads
+                                  Publicar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
                                 </Button>
                               ) : (
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-xs text-muted-foreground">Publicada na conta Google Ads (ID {c.externalCampaignId}).</p>
+                                  <p className="text-xs text-muted-foreground">Publicada na conta {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"} (ID {c.externalCampaignId}).</p>
                                   {c.status === "ativo" ? (
                                     <Button size="sm" variant="outline" onClick={() => alterarStatusCampanha.mutate({ campaignId: c.id, ativar: false })} disabled={alterarStatusCampanha.isPending}>
                                       Pausar
@@ -439,6 +446,24 @@ export default function Ads() {
           <TooltipProvider delayDuration={300}>
           <div className="space-y-4">
             <div>
+              <LabelTip tip="Onde o anúncio vai rodar. Meta cobre Facebook e Instagram juntos.">Plataforma</LabelTip>
+              <Select value={form.plataforma} onValueChange={(v) => setForm((f) => ({
+                ...f,
+                plataforma: v as "google" | "meta",
+                // Cada plataforma só tem 1 formato com publicação real
+                // implementada hoje — troca o padrão junto pra não deixar
+                // uma combinação sem caminho de publicação.
+                tipoAnuncio: v === "meta" ? "imagem" : "rsa_pmax",
+              }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="google">Google (Search/Performance Max, Shopping)</SelectItem>
+                  <SelectItem value="meta">Meta (Facebook + Instagram — anúncio de imagem)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
               <LabelTip tip="Sobre o que é o anúncio: veículo do estoque, imóvel, produto do catálogo, uma landing page gerada, ou livre (sem vínculo com item específico — institucional, campanha de marca).">Tipo de item</LabelTip>
               <Select value={form.itemTipo} onValueChange={(v) => {
                 const itemTipo = v as ItemTipo;
@@ -458,16 +483,23 @@ export default function Ads() {
             </div>
 
             <div>
-              <LabelTip tip="Search/Performance Max: texto gerado por IA, aparece na busca do Google. Google Shopping: foto + preço, feed direto do catálogo. Imagem/Vídeo: usa mídia do Content Studio, pra Display/Reels/Stories.">Tipo de anúncio</LabelTip>
+              <LabelTip tip="Search/Performance Max: texto gerado por IA, aparece na busca do Google. Google Shopping: foto + preço, feed direto do catálogo. Imagem: usa foto gerada por IA, roda no Feed do Facebook/Instagram.">Tipo de anúncio</LabelTip>
               <Select value={form.tipoAnuncio} onValueChange={(v) => setForm((f) => ({ ...f, tipoAnuncio: v as TipoAnuncio }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="rsa_pmax">Search/Performance Max (texto gerado por IA)</SelectItem>
-                  <SelectItem value="shopping">Google Shopping (feed de produto)</SelectItem>
-                  <SelectItem value="imagem">Imagem</SelectItem>
-                  <SelectItem value="video">Vídeo</SelectItem>
+                  {form.plataforma === "google" ? (
+                    <>
+                      <SelectItem value="rsa_pmax">Search/Performance Max (texto gerado por IA)</SelectItem>
+                      <SelectItem value="shopping">Google Shopping (feed de produto)</SelectItem>
+                    </>
+                  ) : (
+                    <SelectItem value="imagem">Imagem (Feed Facebook/Instagram)</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
+              {form.plataforma === "meta" && (
+                <p className="text-xs text-muted-foreground mt-1">Carrossel, Vídeo e Stories/Reels nativos da Meta ainda não têm publicação automática — só Imagem por enquanto.</p>
+              )}
             </div>
 
             {form.itemTipo !== "livre" && (

@@ -9,13 +9,16 @@ import {
   leadsTable,
   dealsTable,
   vehicleAdReservationsTable,
+  businessProfilesTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { gerarCriativoRSA } from "../lib/adContentGenerator.js";
+import { gerarCriativoImagem } from "../lib/adContentGeneratorImagem.js";
 import { gerarShoppingFeedXml, gerarFeedToken, validarFeedToken } from "../lib/adShoppingFeed.js";
 import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
+import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
 
 const router: IRouter = Router();
 
@@ -112,29 +115,51 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, r
     .where(and(eq(adCampaignsTable.id, req.params.id as string), eq(adCampaignsTable.tenantId, tenantId)));
   if (!campanha) return res.status(404).json({ error: "Campanha not found" });
 
-  if (campanha.tipoAnuncio !== "rsa_pmax") {
-    return res.status(400).json({ error: "Geração de criativo por IA só se aplica a campanhas do tipo rsa_pmax — shopping usa o feed de produto direto" });
+  if (campanha.tipoAnuncio !== "rsa_pmax" && campanha.tipoAnuncio !== "imagem") {
+    return res.status(400).json({ error: "Geração de criativo por IA só se aplica a campanhas do tipo rsa_pmax ou imagem — shopping usa o feed de produto direto" });
   }
-  if (!campanha.itemId) {
+  if (campanha.itemTipo !== "landing_page" && campanha.itemTipo !== "livre" && !campanha.itemId) {
     return res.status(400).json({ error: "Campanha sem item_id (modo carrossel por categoria) — geração de criativo por item único não se aplica aqui" });
   }
 
-  const item = await buildResumoItem(campanha.itemTipo, campanha.itemId, tenantId);
+  // buildResumoItem só cobre produto/veiculo/imovel — landing_page/livre
+  // usam um resumo simples (não têm registro estruturado de item pra ler).
+  const item = (campanha.itemTipo === "produto" || campanha.itemTipo === "veiculo" || campanha.itemTipo === "imovel")
+    ? await buildResumoItem(campanha.itemTipo, campanha.itemId as string, tenantId)
+    : { itemTipo: campanha.itemTipo, resumo: `Campanha institucional/landing page, vertical: ${campanha.vertical}`, nomeCurto: campanha.vertical };
   if (!item) return res.status(404).json({ error: "Item de origem da campanha não encontrado" });
 
-  const gerado = await gerarCriativoRSA(item, logger);
-  if (!gerado) {
-    return res.status(502).json({ error: "Falha ao gerar criativo — ver logs do servidor. Tente novamente." });
+  if (campanha.tipoAnuncio === "rsa_pmax") {
+    const gerado = await gerarCriativoRSA(item as any, logger);
+    if (!gerado) return res.status(502).json({ error: "Falha ao gerar criativo — ver logs do servidor. Tente novamente." });
+
+    const [creative] = await db.insert(adCreativesTable).values({
+      campaignId: campanha.id,
+      headlines: gerado.headlines,
+      descriptions: gerado.descriptions,
+      imagens: [],
+    }).returning();
+
+    logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative!.id }, "ads: criativo RSA gerado");
+    return res.status(201).json(creative);
   }
 
+  // tipoAnuncio === "imagem" (Meta Feed Ads e afins)
+  const [profile] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
+  const gerado = await gerarCriativoImagem(item, tenantId, profile ?? {}, logger);
+  if (!gerado) return res.status(502).json({ error: "Falha ao gerar criativo de imagem — ver logs do servidor. Tente novamente." });
+
+  // Reaproveita headlines[0]=headline, headlines[1]=primaryText,
+  // descriptions[0]=description — evita coluna nova só pra isso, já que
+  // adCreativesTable já tem os 3 arrays genéricos certos pro conteúdo.
   const [creative] = await db.insert(adCreativesTable).values({
     campaignId: campanha.id,
-    headlines: gerado.headlines,
-    descriptions: gerado.descriptions,
-    imagens: [],
+    headlines: [gerado.headline, gerado.primaryText],
+    descriptions: gerado.description ? [gerado.description] : [],
+    imagens: [gerado.imageUrl],
   }).returning();
 
-  logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative!.id }, "ads: criativo gerado");
+  logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative!.id }, "ads: criativo de imagem gerado");
   return res.status(201).json(creative);
 });
 
@@ -166,52 +191,86 @@ router.post("/tenants/:tenantId/ads/creatives/:id/aprovar", async (req, res) => 
 // vira estrutura de verdade na plataforma, esperando revisão.
 // ativar/pausar: única ação que de fato liga/desliga veiculação real.
 // Ambas exigem clique explícito do lojista — nada aqui roda sozinho.
+//
+// As 3 rotas abaixo despacham pro serviço certo (Google ou Meta) de
+// acordo com ad_campaigns.plataforma — mesmo contrato de rota pros dois,
+// só troca o motor por baixo.
+async function getCampanhaPlataforma(tenantId: string, campaignId: string): Promise<"google" | "meta" | "tiktok" | "linkedin" | null> {
+  const [row] = await db
+    .select({ plataforma: adCampaignsTable.plataforma })
+    .from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  return row?.plataforma ?? null;
+}
+
 router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) => {
   const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const plataforma = await getCampanhaPlataforma(tenantId, campaignId);
+  if (plataforma !== "google" && plataforma !== "meta") {
+    return res.status(422).json({ error: `Publicação automática ainda não implementada pra plataforma "${plataforma ?? "desconhecida"}".` });
+  }
+
   try {
-    const result = await publishCampaignToGoogleAds(tenantId, req.params.id as string);
-    logger.info({ tenantId, campaignId: req.params.id }, "ads: campanha publicada via rota");
+    const result = plataforma === "google"
+      ? await publishCampaignToGoogleAds(tenantId, campaignId)
+      : await publishCampaignToMetaAds(tenantId, campaignId);
+    logger.info({ tenantId, campaignId, plataforma }, "ads: campanha publicada via rota");
     return res.status(201).json(result);
   } catch (err) {
-    if (err instanceof GoogleAdsPublishError) {
+    if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
       return res.status(422).json({ error: err.message });
     }
-    logger.error({ err, tenantId, campaignId: req.params.id }, "ads: erro inesperado ao publicar campanha");
-    return res.status(500).json({ error: "Erro inesperado ao publicar campanha no Google Ads." });
+    logger.error({ err, tenantId, campaignId, plataforma }, "ads: erro inesperado ao publicar campanha");
+    return res.status(500).json({ error: `Erro inesperado ao publicar campanha no ${plataforma === "google" ? "Google Ads" : "Meta Ads"}.` });
   }
 });
 
 router.post("/tenants/:tenantId/ads/campaigns/:id/ativar", async (req, res) => {
   const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const plataforma = await getCampanhaPlataforma(tenantId, campaignId);
+  if (plataforma !== "google" && plataforma !== "meta") {
+    return res.status(422).json({ error: `Ativação automática ainda não implementada pra plataforma "${plataforma ?? "desconhecida"}".` });
+  }
+
   try {
-    await setGoogleAdsCampaignStatus(tenantId, req.params.id as string, true);
+    if (plataforma === "google") await setGoogleAdsCampaignStatus(tenantId, campaignId, true);
+    else await setMetaAdsCampaignStatus(tenantId, campaignId, true);
     return res.json({ success: true, status: "ativo" });
   } catch (err) {
-    if (err instanceof GoogleAdsPublishError) {
+    if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
       return res.status(422).json({ error: err.message });
     }
-    logger.error({ err, tenantId, campaignId: req.params.id }, "ads: erro inesperado ao ativar campanha");
-    return res.status(500).json({ error: "Erro inesperado ao ativar campanha no Google Ads." });
+    logger.error({ err, tenantId, campaignId, plataforma }, "ads: erro inesperado ao ativar campanha");
+    return res.status(500).json({ error: `Erro inesperado ao ativar campanha no ${plataforma === "google" ? "Google Ads" : "Meta Ads"}.` });
   }
 });
 
 router.post("/tenants/:tenantId/ads/campaigns/:id/pausar", async (req, res) => {
   const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const plataforma = await getCampanhaPlataforma(tenantId, campaignId);
+  if (plataforma !== "google" && plataforma !== "meta") {
+    return res.status(422).json({ error: `Pausa automática ainda não implementada pra plataforma "${plataforma ?? "desconhecida"}".` });
+  }
+
   try {
-    await setGoogleAdsCampaignStatus(tenantId, req.params.id as string, false);
+    if (plataforma === "google") await setGoogleAdsCampaignStatus(tenantId, campaignId, false);
+    else await setMetaAdsCampaignStatus(tenantId, campaignId, false);
     return res.json({ success: true, status: "pausado" });
   } catch (err) {
-    if (err instanceof GoogleAdsPublishError) {
+    if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
       return res.status(422).json({ error: err.message });
     }
-    logger.error({ err, tenantId, campaignId: req.params.id }, "ads: erro inesperado ao pausar campanha");
-    return res.status(500).json({ error: "Erro inesperado ao pausar campanha no Google Ads." });
+    logger.error({ err, tenantId, campaignId, plataforma }, "ads: erro inesperado ao pausar campanha");
+    return res.status(500).json({ error: `Erro inesperado ao pausar campanha no ${plataforma === "google" ? "Google Ads" : "Meta Ads"}.` });
   }
 });
 
