@@ -203,3 +203,4 @@ export * from "./variedades_dia";
 export * from "./vehicle_lookup";
 export * from "./vehicle_ad_reservations";
 export * from "./content_autopilot";
+export * from "./site_blog_posts";

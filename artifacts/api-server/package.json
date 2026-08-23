@@ -17,8 +17,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@google-cloud/storage": "^7.21.0",
-    "@supabase/supabase-js": "^2.48.0",
     "@replit/connectors-sdk": "^0.4.1",
+    "@supabase/supabase-js": "^2.48.0",
     "@types/multer": "^2.1.0",
     "@types/pdf-parse": "^1.1.5",
     "@workspace/api-zod": "workspace:*",
@@ -36,6 +36,7 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "mammoth": "^1.12.0",
+    "marked": "^18.0.10",
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
     "openai": "^6.42.0",

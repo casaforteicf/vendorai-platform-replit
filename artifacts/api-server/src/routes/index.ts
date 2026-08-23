@@ -121,6 +121,7 @@ import mlStatusRouter from "./ml_status";
 import internalScoutSignalRouter from "./internal_scout_signal";
 import leadOportunidadesPrevistasRouter from "./lead_oportunidades_previstas";
 import contentAutopilotRouter from "./content_autopilot";
+import { siteBlogPublicRouter, siteBlogAdminRouter } from "./site_blog";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -137,6 +138,7 @@ router.use(webhooksRouter);
 router.use(siteRouter);
 router.use(publicSiteRouter);
 router.use(publicSiteGeneratorRouter);
+router.use(siteBlogPublicRouter);
 router.use(publicSegmentTemplatesRouter);
 router.use(inventorySyncRouter);
 router.use(intakeRouter);
@@ -256,6 +258,7 @@ router.use(pacotesRouter);
 router.use(mlStatusRouter);
 router.use(leadOportunidadesPrevistasRouter);
 router.use(contentAutopilotRouter);
+router.use(siteBlogAdminRouter);
 
 // Website Hub
 router.use(siteConfigRouter);
