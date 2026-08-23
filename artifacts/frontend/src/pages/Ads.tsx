@@ -10,8 +10,27 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search } from "lucide-react";
+import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle } from "lucide-react";
+
+// Label com ícone de ajuda (?) — explicação em linguagem simples pro lojista,
+// sem jargão de marketing. Texto validado no doc de mudanças (seção 4).
+function LabelTip({ children, tip }: { children: React.ReactNode; tip: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label>{children}</Label>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" className="text-muted-foreground hover:text-foreground" tabIndex={-1}>
+            <HelpCircle className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[280px] text-sm">{tip}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -348,9 +367,10 @@ export default function Ads() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nova campanha</DialogTitle></DialogHeader>
+          <TooltipProvider delayDuration={300}>
           <div className="space-y-4">
             <div>
-              <Label>Tipo de item</Label>
+              <LabelTip tip="Sobre o que é o anúncio: veículo do estoque, imóvel, ou produto do catálogo.">Tipo de item</LabelTip>
               <Select value={form.itemTipo} onValueChange={(v) => setForm((f) => ({ ...f, itemTipo: v as ItemTipo, itemId: "", itemLabel: "" }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -362,7 +382,7 @@ export default function Ads() {
             </div>
 
             <div>
-              <Label>Tipo de anúncio</Label>
+              <LabelTip tip="Search/Performance Max: texto gerado por IA, aparece na busca do Google. Google Shopping: foto + preço, feed direto do catálogo.">Tipo de anúncio</LabelTip>
               <Select value={form.tipoAnuncio} onValueChange={(v) => setForm((f) => ({ ...f, tipoAnuncio: v as TipoAnuncio }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -373,7 +393,7 @@ export default function Ads() {
             </div>
 
             <div>
-              <Label>Modo</Label>
+              <LabelTip tip="Um único item ou vários de uma vez (ex: toda uma categoria do estoque).">Modo</LabelTip>
               <Select value={form.modo} onValueChange={(v) => setForm((f) => ({ ...f, modo: v as Modo }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -385,7 +405,7 @@ export default function Ads() {
 
             {form.modo === "unico" ? (
               <div>
-                <Label>Buscar item</Label>
+                <LabelTip tip="Encontra o item específico que o anúncio vai divulgar.">Buscar item</LabelTip>
                 <div className="relative">
                   <Search className="h-4 w-4 absolute left-2.5 top-2.5 text-muted-foreground" />
                   <Input className="pl-8" placeholder="Digite pra buscar..." value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
@@ -411,32 +431,40 @@ export default function Ads() {
             )}
 
             <div>
-              <Label>Orçamento diário (R$)</Label>
+              <LabelTip tip="Teto de gasto por dia. Pode pausar ou mudar a qualquer momento.">Orçamento diário (R$)</LabelTip>
               <Input type="number" step="0.01" placeholder="50.00" value={form.orcamentoDiario} onChange={(e) => setForm((f) => ({ ...f, orcamentoDiario: e.target.value }))} />
             </div>
 
             {form.itemTipo === "veiculo" && form.modo === "unico" && (
               <div className="rounded-lg border bg-amber-50 p-4 space-y-3">
                 <h3 className="font-semibold">Veículo único</h3>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.pausarAoInteresse} onChange={(e) => setForm((f) => ({ ...f, pausarAoInteresse: e.target.checked }))} /> Pausar o patrocínio quando o lead confirmar interesse</label>
-                <div><Label>Prazo do vendedor para atualizar (horas)</Label><Input type="number" min="1" max="720" value={form.slaNegociacaoHoras} onChange={(e) => setForm((f) => ({ ...f, slaNegociacaoHoras: e.target.value }))} /></div>
+                <div className="flex items-center gap-1.5">
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.pausarAoInteresse} onChange={(e) => setForm((f) => ({ ...f, pausarAoInteresse: e.target.checked }))} /> Pausar o patrocínio quando o lead confirmar interesse</label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="text-muted-foreground hover:text-foreground" tabIndex={-1}><HelpCircle className="h-3.5 w-3.5" /></button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[280px] text-sm">Pausa sozinho assim que alguém demonstra interesse real, evitando gastar anunciando um item já em negociação.</TooltipContent>
+                  </Tooltip>
+                </div>
+                <div><LabelTip tip="Tempo que o vendedor tem pra dar retorno antes do sistema cobrar atualização.">Prazo do vendedor para atualizar (horas)</LabelTip><Input type="number" min="1" max="720" value={form.slaNegociacaoHoras} onChange={(e) => setForm((f) => ({ ...f, slaNegociacaoHoras: e.target.value }))} /></div>
                 <p className="text-xs text-muted-foreground">Ao vencer, o negócio fica bloqueado até o vendedor justificar manter, avançar ou perder.</p>
               </div>
             )}
 
             <div className="border-t pt-4 space-y-4">
-              <div><h3 className="font-semibold">Localização e frequência</h3><p className="text-xs text-muted-foreground">Separe países, estados, cidades, CEPs ou endereços por vírgula.</p></div>
+              <div><h3 className="font-semibold">Localização e frequência</h3><p className="text-xs text-muted-foreground">Separe países, estados, cidades, CEPs ou endereços por vírgula. Em branco usa a localização padrão da empresa.</p></div>
               <Input placeholder="Ex: Curitiba, Paraná, 80000-000" value={form.locais} onChange={(e) => setForm((f) => ({ ...f, locais: e.target.value }))} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><Label>Intenção de local / presença</Label><Select value={form.tipoPresenca} onValueChange={(v) => setForm((f) => ({ ...f, tipoPresenca: v as typeof f.tipoPresenca }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="presenca">Pessoas presentes na região</SelectItem><SelectItem value="interesse">Pessoas interessadas na região</SelectItem><SelectItem value="ambos">Presença ou interesse</SelectItem></SelectContent></Select></div>
-                <div><Label>Raio em torno do endereço (km)</Label><Input type="number" min="1" placeholder="Ex: 30" value={form.raioKm} onChange={(e) => setForm((f) => ({ ...f, raioKm: e.target.value }))} /></div>
+                <div><LabelTip tip="Pra quem está fisicamente na região agora vs. quem só demonstra interesse nela.">Intenção de local / presença</LabelTip><Select value={form.tipoPresenca} onValueChange={(v) => setForm((f) => ({ ...f, tipoPresenca: v as typeof f.tipoPresenca }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="presenca">Pessoas presentes na região</SelectItem><SelectItem value="interesse">Pessoas interessadas na região</SelectItem><SelectItem value="ambos">Presença ou interesse</SelectItem></SelectContent></Select></div>
+                <div><LabelTip tip="Raio em km ao redor do endereço informado.">Raio em torno do endereço (km)</LabelTip><Input type="number" min="1" placeholder="Ex: 30" value={form.raioKm} onChange={(e) => setForm((f) => ({ ...f, raioKm: e.target.value }))} /></div>
               </div>
             </div>
 
             <div className="border-t pt-4 space-y-3">
-              <h3 className="font-semibold">Perfil demográfico</h3>
+              <div><h3 className="font-semibold">Perfil demográfico</h3><p className="text-xs text-muted-foreground">Opcional — pode ficar em branco sem problema.</p></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><Label>Faixas de idade</Label><Input placeholder="18-24, 25-34, 35-44" value={form.idades} onChange={(e) => setForm((f) => ({ ...f, idades: e.target.value }))} /></div>
+                <div><LabelTip tip="Faixas etárias do público, separadas por vírgula.">Faixas de idade</LabelTip><Input placeholder="18-24, 25-34, 35-44" value={form.idades} onChange={(e) => setForm((f) => ({ ...f, idades: e.target.value }))} /></div>
                 <div><Label>Gêneros</Label><Input placeholder="Feminino, Masculino, Desconhecido" value={form.generos} onChange={(e) => setForm((f) => ({ ...f, generos: e.target.value }))} /></div>
                 <div><Label>Status parental</Label><Input placeholder="Com filhos, Sem filhos" value={form.statusParental} onChange={(e) => setForm((f) => ({ ...f, statusParental: e.target.value }))} /></div>
                 <div><Label>Renda familiar</Label><Input placeholder="10% superior, 11-20%, 21-30%" value={form.rendas} onChange={(e) => setForm((f) => ({ ...f, rendas: e.target.value }))} /></div>
@@ -444,9 +472,9 @@ export default function Ads() {
             </div>
 
             <div className="border-t pt-4 space-y-3">
-              <h3 className="font-semibold">Comportamento e intenção de compra</h3>
-              <div><Label>Afinidade</Label><Input placeholder="Ex: Entusiastas de automóveis, Viajantes" value={form.afinidade} onChange={(e) => setForm((f) => ({ ...f, afinidade: e.target.value }))} /></div>
-              <div><Label>No mercado (In-market)</Label><Input placeholder="Ex: Compra de veículos, Imóveis residenciais" value={form.noMercado} onChange={(e) => setForm((f) => ({ ...f, noMercado: e.target.value }))} /></div>
+              <div><h3 className="font-semibold">Comportamento e intenção de compra</h3><p className="text-xs text-muted-foreground">Opcional, mais avançado.</p></div>
+              <div><LabelTip tip="Interesse de longo prazo, estilo de vida (ex: entusiastas de automóveis) — diferente de In-market, que é pesquisa ativa de compra agora.">Afinidade</LabelTip><Input placeholder="Ex: Entusiastas de automóveis, Viajantes" value={form.afinidade} onChange={(e) => setForm((f) => ({ ...f, afinidade: e.target.value }))} /></div>
+              <div><LabelTip tip="Pesquisa ativa de compra agora — diferente de Afinidade, que é interesse de longo prazo.">No mercado (In-market)</LabelTip><Input placeholder="Ex: Compra de veículos, Imóveis residenciais" value={form.noMercado} onChange={(e) => setForm((f) => ({ ...f, noMercado: e.target.value }))} /></div>
               <div><Label>Termos de pesquisa personalizados</Label><Input placeholder="Termos separados por vírgula" value={form.termosPesquisa} onChange={(e) => setForm((f) => ({ ...f, termosPesquisa: e.target.value }))} /></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><Label>Sites visitados</Label><Input placeholder="exemplo.com.br" value={form.sites} onChange={(e) => setForm((f) => ({ ...f, sites: e.target.value }))} /></div><div><Label>Aplicativos utilizados</Label><Input placeholder="Apps separados por vírgula" value={form.aplicativos} onChange={(e) => setForm((f) => ({ ...f, aplicativos: e.target.value }))} /></div></div>
             </div>
@@ -454,9 +482,9 @@ export default function Ads() {
             <div className="border-t pt-4 space-y-3">
               <h3 className="font-semibold">Rastreamento e dados próprios</h3>
               <p className="text-xs text-muted-foreground">Informe nomes ou IDs de listas consentidas. Dados pessoais brutos não são armazenados neste formulário.</p>
-              <div><Label>Remarketing</Label><Input placeholder="Visitantes do site, YouTube, usuários do app" value={form.remarketing} onChange={(e) => setForm((f) => ({ ...f, remarketing: e.target.value }))} /></div>
-              <div><Label>Customer Match</Label><Input placeholder="Nome ou ID da lista de clientes" value={form.customerMatch} onChange={(e) => setForm((f) => ({ ...f, customerMatch: e.target.value }))} /></div>
-              <div><Label>Públicos semelhantes</Label><Input placeholder="Nome ou ID da lista de origem" value={form.semelhantes} onChange={(e) => setForm((f) => ({ ...f, semelhantes: e.target.value }))} /></div>
+              <div><LabelTip tip="Re-impacta quem já visitou o site e não converteu — forma mais eficiente de segmentação.">Remarketing</LabelTip><Input placeholder="Visitantes do site, YouTube, usuários do app" value={form.remarketing} onChange={(e) => setForm((f) => ({ ...f, remarketing: e.target.value }))} /></div>
+              <div><LabelTip tip="Sobe lista de clientes (e-mail/telefone). Nenhum dado pessoal fica salvo neste formulário, só o nome/ID da lista.">Customer Match</LabelTip><Input placeholder="Nome ou ID da lista de clientes" value={form.customerMatch} onChange={(e) => setForm((f) => ({ ...f, customerMatch: e.target.value }))} /></div>
+              <div><LabelTip tip="A partir de uma lista, encontra outras pessoas com perfil parecido.">Públicos semelhantes</LabelTip><Input placeholder="Nome ou ID da lista de origem" value={form.semelhantes} onChange={(e) => setForm((f) => ({ ...f, semelhantes: e.target.value }))} /></div>
             </div>
 
             <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && !form.itemId)}
@@ -464,7 +492,9 @@ export default function Ads() {
               {criarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
               Criar campanha (rascunho)
             </Button>
+            <p className="text-xs text-muted-foreground text-center -mt-2">Nada publica nem cobra ainda — só vai ao ar depois de revisão e confirmação.</p>
           </div>
+          </TooltipProvider>
         </DialogContent>
       </Dialog>
       <Dialog open={!!reservationDecision} onOpenChange={(value) => !value && setReservationDecision(null)}>
