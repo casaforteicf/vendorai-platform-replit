@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import * as XLSX from "xlsx";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -396,41 +397,67 @@ export function CatalogoModal({
     );
   }
 
+  // Processa o texto CSV (já vindo pronto de um .csv, ou convertido de um .xlsx)
+  // e monta o preview. Ponto único, reaproveitado pelos dois formatos.
+  function processCsvText(text: string) {
+    setCsvRaw(text);
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) { toast({ title: "Arquivo vazio ou sem dados", variant: "destructive" }); return; }
+    const headers = parseCsvLinePreview(lines[0]).map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]/g, "_"));
+    const rows: CsvPreviewRow[] = [];
+    for (let i = 1; i < Math.min(lines.length, 6); i++) {
+      const cols = parseCsvLinePreview(lines[i]);
+      const get = (aliases: string[]) => {
+        for (const a of aliases) { const idx = headers.indexOf(a); if (idx >= 0) return cols[idx] ?? ""; }
+        return "";
+      };
+      rows.push({
+        nome: get(["nome", "name", "produto"]),
+        sku: get(["sku", "codigo", "ref"]),
+        categoria: get(["categoria", "category"]),
+        preco_base: get(["preco_base", "precobase", "preco", "price", "valor"]),
+        unidade: get(["unidade", "un", "unit"]) || "un",
+        descricao: get(["descricao", "description"]),
+        imagem_url: get(["imagem_url", "imagem", "image", "foto"]),
+        marca: get(["marca", "brand"]),
+        imagens: get(["imagens", "images", "fotos", "galeria"]),
+        video_url: get(["video_url", "video"]),
+        especificacoes: get(["especificacoes", "especifica_es", "atributos", "specs"]),
+      });
+    }
+    setCsvPreview(rows);
+    setImportPreviewOpen(true);
+  }
+
   function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      setCsvRaw(text);
-      const lines = text.split(/\r?\n/).filter((l) => l.trim());
-      if (lines.length < 2) { toast({ title: "CSV vazio ou sem dados", variant: "destructive" }); return; }
-      const headers = parseCsvLinePreview(lines[0]).map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]/g, "_"));
-      const rows: CsvPreviewRow[] = [];
-      for (let i = 1; i < Math.min(lines.length, 6); i++) {
-        const cols = parseCsvLinePreview(lines[i]);
-        const get = (aliases: string[]) => {
-          for (const a of aliases) { const idx = headers.indexOf(a); if (idx >= 0) return cols[idx] ?? ""; }
-          return "";
-        };
-        rows.push({
-          nome: get(["nome", "name", "produto"]),
-          sku: get(["sku", "codigo", "ref"]),
-          categoria: get(["categoria", "category"]),
-          preco_base: get(["preco_base", "precobase", "preco", "price", "valor"]),
-          unidade: get(["unidade", "un", "unit"]) || "un",
-          descricao: get(["descricao", "description"]),
-          imagem_url: get(["imagem_url", "imagem", "image", "foto"]),
-          marca: get(["marca", "brand"]),
-          imagens: get(["imagens", "images", "fotos", "galeria"]),
-          video_url: get(["video_url", "video"]),
-          especificacoes: get(["especificacoes", "especifica_es", "atributos", "specs"]),
-        });
-      }
-      setCsvPreview(rows);
-      setImportPreviewOpen(true);
-    };
-    reader.readAsText(file, "UTF-8");
+    const isExcel = /\.xlsx?$/i.test(file.name);
+
+    if (isExcel) {
+      // XLSX: cada célula é lida separada de verdade pela lib — sem depender
+      // de aspas/vírgula/encoding como no CSV. Convertemos a 1ª aba pra CSV
+      // (já corretamente quotado pela própria lib) e seguimos o mesmo fluxo.
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: "array" });
+          const firstSheetName = workbook.SheetNames[0];
+          if (!firstSheetName) { toast({ title: "Planilha sem abas", variant: "destructive" }); return; }
+          const sheet = workbook.Sheets[firstSheetName];
+          const csvText = XLSX.utils.sheet_to_csv(sheet);
+          processCsvText(csvText);
+        } catch {
+          toast({ title: "Erro ao ler o arquivo Excel", description: "Confira se o arquivo não está corrompido.", variant: "destructive" });
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => processCsvText(ev.target?.result as string);
+      reader.readAsText(file, "UTF-8");
+    }
     e.target.value = "";
   }
 
@@ -460,7 +487,7 @@ export function CatalogoModal({
               <div className="flex items-center gap-2">
                 <input
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                   id="csv-import-input"
                   className="hidden"
                   onChange={handleCsvFile}
@@ -471,7 +498,7 @@ export function CatalogoModal({
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => document.getElementById("csv-import-input")?.click()}>
                   <Upload className="h-4 w-4 mr-1.5" />
-                  Importar CSV
+                  Importar CSV/Excel
                 </Button>
                   {selectedIds.size > 0 && (
                 <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)}>
@@ -495,7 +522,7 @@ export function CatalogoModal({
             <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
               <Package className="h-10 w-10 opacity-25" />
               <p className="text-sm">Nenhum produto no catálogo ainda</p>
-              <p className="text-xs">Use "Importar CSV" para adicionar vários produtos de uma vez</p>
+              <p className="text-xs">Use "Importar CSV/Excel" para adicionar vários produtos de uma vez</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
