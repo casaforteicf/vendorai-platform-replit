@@ -38,15 +38,23 @@ interface ParsedArticle {
 function parseArticleResponse(raw: string): ParsedArticle {
   const tituloMatch = raw.match(/^TITULO:\s*(.+)$/m);
   const metaMatch = raw.match(/^META:\s*(.+)$/m);
-  const bodyMatch = raw.split(/^---$/m)[1];
 
-  if (!tituloMatch || !metaMatch || !bodyMatch) {
-    throw new Error("Resposta da IA não seguiu o formato esperado (TITULO/META/---/corpo)");
+  // Bug real encontrado no teste (23/08): usar /^---$/m como delimitador
+  // cortava o artigo no primeiro `---` que aparecesse DENTRO do corpo
+  // (linha horizontal de markdown, comum em textos longos) — split() corta
+  // em toda ocorrência, então [1] descartava tudo depois da segunda.
+  // Marcador único (===CORPO===) não colide com nada que a IA escreveria
+  // naturalmente no meio do texto.
+  const marker = "===CORPO===";
+  const markerIndex = raw.indexOf(marker);
+
+  if (!tituloMatch || !metaMatch || markerIndex === -1) {
+    throw new Error("Resposta da IA não seguiu o formato esperado (TITULO/META/===CORPO===)");
   }
   return {
     titulo: tituloMatch[1].trim(),
     metaDescription: metaMatch[1].trim(),
-    conteudoMd: bodyMatch.trim(),
+    conteudoMd: raw.slice(markerIndex + marker.length).trim(),
   };
 }
 
@@ -70,8 +78,8 @@ async function writeArticle(keyword: ContentAutopilotKeyword, brandTone: unknown
       "Responda EXATAMENTE nesse formato, sem markdown extra fora do corpo, sem comentário antes ou depois:\n" +
       "TITULO: <título do artigo, até 60 caracteres, com a keyword principal>\n" +
       "META: <meta description, 150-160 caracteres, com call-to-action sutil>\n" +
-      "---\n" +
-      "<corpo do artigo em markdown — use ## pra subtítulos, mínimo 800 palavras, tom natural, sem clichê de IA (nunca comece com 'No mundo atual' ou similar), parágrafos curtos>",
+      "===CORPO===\n" +
+      "<corpo do artigo em markdown — use ## pra subtítulos (pelo menos 4 seções), mínimo 800 palavras (o corpo precisa ser longo de verdade, não um resumo), tom natural, sem clichê de IA (nunca comece com 'No mundo atual' ou similar), parágrafos curtos. Pode usar --- como linha divisória dentro do corpo se quiser, isso não quebra nada.>",
     messages: [
       {
         role: "user",
