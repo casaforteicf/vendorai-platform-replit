@@ -37,9 +37,10 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-type ItemTipo = "produto" | "veiculo" | "imovel";
-type TipoAnuncio = "shopping" | "rsa_pmax";
+type ItemTipo = "produto" | "veiculo" | "imovel" | "landing_page" | "livre";
+type TipoAnuncio = "shopping" | "rsa_pmax" | "imagem" | "video";
 type Modo = "unico" | "carrossel";
+type DestinoClique = "landing_page" | "whatsapp" | "produto" | "formulario_lead";
 
 interface AdCampaign {
   id: string;
@@ -96,6 +97,7 @@ const EMPTY_FORM = {
   tipoAnuncio: "rsa_pmax" as TipoAnuncio,
   modo: "unico" as Modo,
   categoriaFiltro: "",
+  destinoClique: "produto" as DestinoClique,
   orcamentoDiario: "",
   vertical: "",
   locais: "", tipoPresenca: "presenca" as "presenca" | "interesse" | "ambos", raioKm: "",
@@ -156,11 +158,16 @@ export default function Ads() {
         const data = r.ok ? await r.json() : [];
         return data.map((v: any) => ({ id: v.id, label: `${v.marca} ${v.modelo}${v.versao ? " " + v.versao : ""} — R$ ${v.valor}` }));
       }
+      if (form.itemTipo === "landing_page") {
+        const r = await fetch(`/api/tenants/${tenantId}/site-generator`, { headers: authHeaders() });
+        const data = r.ok ? await r.json() : [];
+        return data.map((s: any) => ({ id: s.id, label: s.name || s.siteType }));
+      }
       const r = await fetch(`/api/tenants/${tenantId}/imoveis/propriedades`, { headers: authHeaders() });
       const data = r.ok ? await r.json() : [];
       return data.map((i: any) => ({ id: i.id, label: `${i.titulo} — R$ ${i.valor}` }));
     },
-    enabled: open && !!tenantId,
+    enabled: open && !!tenantId && form.itemTipo !== "livre",
   });
 
   const itensFiltrados = itemSearch.trim()
@@ -175,9 +182,11 @@ export default function Ads() {
         tipoAnuncio: form.tipoAnuncio,
         vertical: form.vertical || form.itemTipo,
         itemTipo: form.itemTipo,
-        itemId: form.modo === "unico" ? form.itemId : null,
+        itemId: form.modo === "unico" && form.itemTipo !== "livre" ? form.itemId : null,
         categoriaFiltro: form.modo === "carrossel" ? form.categoriaFiltro : null,
         modo: form.modo,
+        destinoClique: form.destinoClique,
+        landingPageId: form.itemTipo === "landing_page" && form.modo === "unico" ? form.itemId : null,
         orcamentoDiario: form.orcamentoDiario,
         segmentacao: {
           localizacao: { locais: lista(form.locais), tipoPresenca: form.tipoPresenca, raioKm: form.raioKm ? Number(form.raioKm) : null },
@@ -372,42 +381,55 @@ export default function Ads() {
           <TooltipProvider delayDuration={300}>
           <div className="space-y-4">
             <div>
-              <LabelTip tip="Sobre o que é o anúncio: veículo do estoque, imóvel, ou produto do catálogo.">Tipo de item</LabelTip>
-              <Select value={form.itemTipo} onValueChange={(v) => setForm((f) => ({ ...f, itemTipo: v as ItemTipo, itemId: "", itemLabel: "" }))}>
+              <LabelTip tip="Sobre o que é o anúncio: veículo do estoque, imóvel, produto do catálogo, uma landing page gerada, ou livre (sem vínculo com item específico — institucional, campanha de marca).">Tipo de item</LabelTip>
+              <Select value={form.itemTipo} onValueChange={(v) => {
+                const itemTipo = v as ItemTipo;
+                // Destino do clique padrão muda de acordo com a origem escolhida.
+                const destinoClique: DestinoClique = itemTipo === "landing_page" ? "landing_page" : itemTipo === "livre" ? "whatsapp" : "produto";
+                setForm((f) => ({ ...f, itemTipo, itemId: "", itemLabel: "", destinoClique }));
+              }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="veiculo">Veículo</SelectItem>
                   <SelectItem value="imovel">Imóvel</SelectItem>
                   <SelectItem value="produto">Produto (catálogo)</SelectItem>
+                  <SelectItem value="landing_page">Landing Page (gerada)</SelectItem>
+                  <SelectItem value="livre">Livre (institucional/marca)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <LabelTip tip="Search/Performance Max: texto gerado por IA, aparece na busca do Google. Google Shopping: foto + preço, feed direto do catálogo.">Tipo de anúncio</LabelTip>
+              <LabelTip tip="Search/Performance Max: texto gerado por IA, aparece na busca do Google. Google Shopping: foto + preço, feed direto do catálogo. Imagem/Vídeo: usa mídia do Content Studio, pra Display/Reels/Stories.">Tipo de anúncio</LabelTip>
               <Select value={form.tipoAnuncio} onValueChange={(v) => setForm((f) => ({ ...f, tipoAnuncio: v as TipoAnuncio }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="rsa_pmax">Search/Performance Max (texto gerado por IA)</SelectItem>
                   <SelectItem value="shopping">Google Shopping (feed de produto)</SelectItem>
+                  <SelectItem value="imagem">Imagem</SelectItem>
+                  <SelectItem value="video">Vídeo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div>
-              <LabelTip tip="Um único item ou vários de uma vez (ex: toda uma categoria do estoque).">Modo</LabelTip>
-              <Select value={form.modo} onValueChange={(v) => setForm((f) => ({ ...f, modo: v as Modo }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unico">Só este item</SelectItem>
-                  <SelectItem value="carrossel">Carrossel (este + sugestões relacionadas)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {form.modo === "unico" ? (
+            {form.itemTipo !== "livre" && (
               <div>
-                <LabelTip tip="Encontra o item específico que o anúncio vai divulgar.">Buscar item</LabelTip>
+                <LabelTip tip="Um único item ou vários de uma vez (ex: toda uma categoria do estoque).">Modo</LabelTip>
+                <Select value={form.modo} onValueChange={(v) => setForm((f) => ({ ...f, modo: v as Modo }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unico">Só este item</SelectItem>
+                    <SelectItem value="carrossel">Carrossel (este + sugestões relacionadas)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {form.itemTipo === "livre" ? (
+              <p className="text-xs text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">Campanha institucional/de marca, sem vínculo com um item específico do estoque ou catálogo.</p>
+            ) : form.modo === "unico" ? (
+              <div>
+                <LabelTip tip={form.itemTipo === "landing_page" ? "Escolhe qual landing page gerada esse anúncio divulga." : "Encontra o item específico que o anúncio vai divulgar."}>Buscar item</LabelTip>
                 <div className="relative">
                   <Search className="h-4 w-4 absolute left-2.5 top-2.5 text-muted-foreground" />
                   <Input className="pl-8" placeholder="Digite pra buscar..." value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
@@ -431,6 +453,19 @@ export default function Ads() {
                 <Input placeholder="Ex: SUV, Farmácia > Higiene" value={form.categoriaFiltro} onChange={(e) => setForm((f) => ({ ...f, categoriaFiltro: e.target.value }))} />
               </div>
             )}
+
+            <div>
+              <LabelTip tip="Pra onde vai quem clica no anúncio.">Destino do clique</LabelTip>
+              <Select value={form.destinoClique} onValueChange={(v) => setForm((f) => ({ ...f, destinoClique: v as DestinoClique }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="produto">Página do produto/estoque</SelectItem>
+                  <SelectItem value="landing_page">Landing Page gerada</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp (clique-pra-conversar)</SelectItem>
+                  <SelectItem value="formulario_lead">Formulário de lead nativo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             <div>
               <LabelTip tip="Teto de gasto por dia. Pode pausar ou mudar a qualquer momento.">Orçamento diário (R$)</LabelTip>
@@ -489,7 +524,7 @@ export default function Ads() {
               <div><LabelTip tip="A partir de uma lista, encontra outras pessoas com perfil parecido.">Públicos semelhantes</LabelTip><Input placeholder="Nome ou ID da lista de origem" value={form.semelhantes} onChange={(e) => setForm((f) => ({ ...f, semelhantes: e.target.value }))} /></div>
             </div>
 
-            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && !form.itemId)}
+            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
               onClick={() => criarCampanha.mutate()}>
               {criarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
               Criar campanha (rascunho)

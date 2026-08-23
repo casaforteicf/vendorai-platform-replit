@@ -3,15 +3,17 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
+import { generatedSitesTable } from "./generated_sites";
 
 // Módulo de anúncios — cross-vertical (produto/veículo/imóvel), começando
 // pelo Google (Search RSA + Performance Max), com plataforma já modelada
 // pra Meta/TikTok/LinkedIn entrarem depois sem precisar de nova migration
 // no núcleo da tabela.
 export const adPlataformaEnum = pgEnum("ad_plataforma", ["google", "meta", "tiktok", "linkedin"]);
-export const adTipoAnuncioEnum = pgEnum("ad_tipo_anuncio", ["shopping", "rsa_pmax"]);
-export const adItemTipoEnum = pgEnum("ad_item_tipo", ["produto", "veiculo", "imovel"]);
+export const adTipoAnuncioEnum = pgEnum("ad_tipo_anuncio", ["shopping", "rsa_pmax", "imagem", "video"]);
+export const adItemTipoEnum = pgEnum("ad_item_tipo", ["produto", "veiculo", "imovel", "landing_page", "livre"]);
 export const adModoEnum = pgEnum("ad_modo", ["unico", "carrossel"]);
+export const adDestinoCliqueEnum = pgEnum("ad_destino_clique", ["landing_page", "whatsapp", "produto", "formulario_lead"]);
 export const adCampanhaStatusEnum = pgEnum("ad_campanha_status", [
   "rascunho", "aguardando_conexao_plataforma", "ativo", "pausado", "encerrado",
 ]);
@@ -34,6 +36,16 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
   // Só no modo carrossel: categoria/segmento pra puxar itens relacionados
   categoriaFiltro: text("categoria_filtro"),
   modo: adModoEnum("modo").notNull().default("unico"),
+  // 4º eixo — pra onde vai quem clica. Nem toda combinação com os outros 3
+  // eixos faz sentido (Shopping só Google; Stories/Reels só Meta) — a
+  // validação de combinação fica na camada de rota/UI, não no schema, pra
+  // não precisar remodelar a cada plataforma/formato novo.
+  destinoClique: adDestinoCliqueEnum("destino_clique").notNull().default("produto"),
+  // Preenchido só quando itemTipo='landing_page'
+  landingPageId: text("landing_page_id").references(() => generatedSitesTable.id, { onDelete: "set null" }),
+  // Preenchido só quando o criativo (imagem/vídeo) veio do Content Studio
+  // já existente (content_generations) em vez de gerado ad-hoc aqui
+  contentGenerationId: text("content_generation_id"),
   orcamentoDiario: numeric("orcamento_diario", { precision: 10, scale: 2 }).notNull(),
   segmentacao: jsonb("segmentacao").$type<{
     localizacao?: { locais: string[]; tipoPresenca: "presenca" | "interesse" | "ambos"; raioKm?: number | null };
