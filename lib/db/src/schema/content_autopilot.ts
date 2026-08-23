@@ -25,6 +25,7 @@ export const contentAutopilotConfigTable = pgTable("content_autopilot_config", {
   idiomas: jsonb("idiomas").$type<string[]>().notNull().default(["pt-BR"]),
   artigosPorDia: integer("artigos_por_dia").notNull().default(1),
   tetoGastoMensal: numeric("teto_gasto_mensal", { precision: 10, scale: 2 }),
+  gastoAcumulado: numeric("gasto_acumulado", { precision: 10, scale: 4 }).notNull().default("0"),
   ativo: boolean("ativo").notNull().default(false),
   ultimaAnaliseSiteEm: timestamp("ultima_analise_site_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -48,6 +49,8 @@ export const contentAutopilotKeywordsTable = pgTable("content_autopilot_keywords
   tipo: text("tipo").$type<ContentAutopilotKeywordTipo>(),
   status: text("status").$type<ContentAutopilotKeywordStatus>().notNull().default("descoberta"),
   fonte: text("fonte").notNull().default("dataforseo"),
+  serpTop10: jsonb("serp_top10").$type<{ position: number | null; title: string; url: string; domain: string; description: string | null }[]>(),
+  serpColetadoEm: timestamp("serp_coletado_em"),
   coletadoEm: timestamp("coletado_em").notNull().defaultNow(),
 }, (table) => [
   index("content_autopilot_keywords_tenant_status_idx").on(table.tenantId, table.status),

@@ -120,6 +120,7 @@ import pacotesRouter from "./pacotes";
 import mlStatusRouter from "./ml_status";
 import internalScoutSignalRouter from "./internal_scout_signal";
 import leadOportunidadesPrevistasRouter from "./lead_oportunidades_previstas";
+import contentAutopilotRouter from "./content_autopilot";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -254,6 +255,7 @@ router.use(changelogRouter);
 router.use(pacotesRouter);
 router.use(mlStatusRouter);
 router.use(leadOportunidadesPrevistasRouter);
+router.use(contentAutopilotRouter);
 
 // Website Hub
 router.use(siteConfigRouter);
