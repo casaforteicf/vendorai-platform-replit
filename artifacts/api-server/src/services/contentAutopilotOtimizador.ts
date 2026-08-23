@@ -16,6 +16,7 @@ import { db, contentAutopilotArticlesTable } from "@workspace/db";
 import { eq, and, ne, sql, inArray } from "drizzle-orm";
 import { generateEmbedding } from "../lib/ai-gateway.js";
 import { logger } from "../lib/logger.js";
+import { addSpend } from "./contentAutopilot.js";
 import type { ContentAutopilotArticle, ContentAutopilotSeoChecklist, ContentAutopilotLink } from "@workspace/db";
 
 function toVectorLiteral(embedding: number[]): string {
@@ -125,15 +126,16 @@ export async function optimizeArticle(tenantId: string, articleId: string, keywo
 
   let linksInternos: ContentAutopilotLink[] = [];
   try {
-    const { embedding } = await generateEmbedding(tenantId, `${article.titulo}\n\n${article.conteudoMd}`, { log: logger });
+    const { embedding, costUsd } = await generateEmbedding(tenantId, `${article.titulo}\n\n${article.conteudoMd}`, { log: logger });
     if (embedding.length > 0) {
       const similares = await findSimilarArticles(tenantId, articleId, embedding, 3);
       linksInternos = similares.map((s) => ({ url: `/blog/${s.slug}`, anchorText: s.titulo }));
 
       await db
         .update(contentAutopilotArticlesTable)
-        .set({ embedding } as any)
+        .set({ embedding, custoGerado: sql`${contentAutopilotArticlesTable.custoGerado} + ${costUsd}` } as any)
         .where(eq(contentAutopilotArticlesTable.id, articleId));
+      await addSpend(tenantId, costUsd);
     }
   } catch (err) {
     // Linkagem interna é um bônus, não trava a otimização se o embedding falhar

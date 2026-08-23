@@ -28,7 +28,7 @@ export class OrcamentoExcedidoError extends Error {
   }
 }
 
-async function checkBudget(config: ContentAutopilotConfig) {
+export async function checkBudget(config: ContentAutopilotConfig) {
   if (config.tetoGastoMensal == null) return; // sem teto configurado, não bloqueia
   const teto = Number(config.tetoGastoMensal);
   const gasto = Number(config.gastoAcumulado);
@@ -37,7 +37,7 @@ async function checkBudget(config: ContentAutopilotConfig) {
   }
 }
 
-async function addSpend(tenantId: string, cost: number) {
+export async function addSpend(tenantId: string, cost: number) {
   if (cost <= 0) return;
   await db
     .update(contentAutopilotConfigTable)

@@ -9,13 +9,19 @@
  * Nunca publica nada sozinho.
  */
 import { db, contentAutopilotArticlesTable, contentAutopilotKeywordsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { eq, and, sql } from "drizzle-orm";
+import { callAnthropic } from "../lib/ai-gateway.js";
 import { logger } from "../lib/logger.js";
 import { callReplicateFlux11Pro } from "../lib/arch-render-pipeline.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { getConfig } from "./contentAutopilot.js";
+import { getConfig, addSpend, checkBudget } from "./contentAutopilot.js";
 import type { ContentAutopilotKeyword } from "@workspace/db";
+
+// Replicate não devolve custo exato por chamada síncrona (cobra por segundo
+// de compute em outros modelos, mas o flux-1.1-pro tem preço fixo publicado
+// por imagem). Constante documentada — não é telemetria real, é o preço de
+// tabela do Replicate em 23/08. Ajustar aqui se o preço mudar.
+const REPLICATE_FLUX_1_1_PRO_COST_USD = 0.04;
 
 function slugify(title: string): string {
   return title
@@ -33,9 +39,10 @@ interface ParsedArticle {
   titulo: string;
   metaDescription: string;
   conteudoMd: string;
+  custoUsd: number;
 }
 
-function parseArticleResponse(raw: string): ParsedArticle {
+function parseArticleResponse(raw: string, custoUsd: number): ParsedArticle {
   const tituloMatch = raw.match(/^TITULO:\s*(.+)$/m);
   const metaMatch = raw.match(/^META:\s*(.+)$/m);
 
@@ -55,11 +62,12 @@ function parseArticleResponse(raw: string): ParsedArticle {
     titulo: tituloMatch[1].trim(),
     metaDescription: metaMatch[1].trim(),
     conteudoMd: raw.slice(markerIndex + marker.length).trim(),
+    custoUsd,
   };
 }
 
-/** Gera o artigo completo (texto) pra uma keyword — não gera imagem nem salva ainda. */
-async function writeArticle(keyword: ContentAutopilotKeyword, brandTone: unknown): Promise<ParsedArticle> {
+/** Gera o artigo completo (texto) pra uma keyword via ai-gateway — custo real registrado em ai_usage_logs. */
+async function writeArticle(tenantId: string, keyword: ContentAutopilotKeyword, brandTone: unknown): Promise<ParsedArticle> {
   const competitorContext =
     keyword.serpTop10 && keyword.serpTop10.length > 0
       ? `Os concorrentes que hoje rankeiam no Google pra essa keyword cobrem estes títulos:\n${keyword
@@ -70,32 +78,28 @@ async function writeArticle(keyword: ContentAutopilotKeyword, brandTone: unknown
 
   const toneContext = brandTone ? `Tom de marca a seguir:\n${JSON.stringify(brandTone)}` : "Sem tom de marca definido — use um tom profissional e direto.";
 
-  const msg = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    system:
-      "Você escreve artigos de blog em português brasileiro, otimizados pra SEO, pra uma empresa de tecnologia B2B. " +
-      "Responda EXATAMENTE nesse formato, sem markdown extra fora do corpo, sem comentário antes ou depois:\n" +
-      "TITULO: <título do artigo, até 60 caracteres, com a keyword principal>\n" +
-      "META: <meta description, 150-160 caracteres, com call-to-action sutil>\n" +
-      "===CORPO===\n" +
-      "<corpo do artigo em markdown — use ## pra subtítulos (pelo menos 4 seções), mínimo 800 palavras (o corpo precisa ser longo de verdade, não um resumo), tom natural, sem clichê de IA (nunca comece com 'No mundo atual' ou similar), parágrafos curtos. Pode usar --- como linha divisória dentro do corpo se quiser, isso não quebra nada.>",
-    messages: [
-      {
-        role: "user",
-        content: `Keyword principal: "${keyword.termo}" (volume de busca mensal: ${keyword.volumeBusca ?? "desconhecido"})\n\n${competitorContext}\n\n${toneContext}`,
-      },
-    ],
-  });
+  const result = await callAnthropic(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: `Keyword principal: "${keyword.termo}" (volume de busca mensal: ${keyword.volumeBusca ?? "desconhecido"})\n\n${competitorContext}\n\n${toneContext}` }],
+    {
+      maxTokens: 4096,
+      system:
+        "Você escreve artigos de blog em português brasileiro, otimizados pra SEO, pra uma empresa de tecnologia B2B. " +
+        "Responda EXATAMENTE nesse formato, sem markdown extra fora do corpo, sem comentário antes ou depois:\n" +
+        "TITULO: <título do artigo, até 60 caracteres, com a keyword principal>\n" +
+        "META: <meta description, 150-160 caracteres, com call-to-action sutil>\n" +
+        "===CORPO===\n" +
+        "<corpo do artigo em markdown — use ## pra subtítulos (pelo menos 4 seções), mínimo 800 palavras (o corpo precisa ser longo de verdade, não um resumo), tom natural, sem clichê de IA (nunca comece com 'No mundo atual' ou similar), parágrafos curtos. Pode usar --- como linha divisória dentro do corpo se quiser, isso não quebra nada.>",
+      log: logger,
+    },
+  );
 
-  const textBlock = msg.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") throw new Error("Resposta da IA sem texto");
-
-  return parseArticleResponse(textBlock.text);
+  return parseArticleResponse(result.content, result.costUsd);
 }
 
-/** Gera uma imagem via Flux e persiste no storage, retornando a URL pública. */
-async function generateImage(prompt: string, altText: string, aspectRatio: "16:9" | "4:5" | "1:1" = "16:9"): Promise<{ url: string; altText: string }> {
+/** Gera uma imagem via Flux e persiste no storage, retornando a URL pública e o custo (preço de tabela). */
+async function generateImage(prompt: string, altText: string, aspectRatio: "16:9" | "4:5" | "1:1" = "16:9"): Promise<{ url: string; altText: string; custoUsd: number }> {
   const outputUrl = await callReplicateFlux11Pro({ prompt, aspectRatio });
 
   const imgRes = await fetch(outputUrl);
@@ -106,7 +110,7 @@ async function generateImage(prompt: string, altText: string, aspectRatio: "16:9
   const objectPath = await storage.savePrivateBuffer(buf, "image/jpeg", `content-autopilot-${crypto.randomUUID()}.jpg`);
   const imageUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
 
-  return { url: imageUrl, altText };
+  return { url: imageUrl, altText, custoUsd: REPLICATE_FLUX_1_1_PRO_COST_USD };
 }
 
 function coverPrompt(keywordTermo: string): string {
@@ -126,10 +130,10 @@ function sectionPrompt(keywordTermo: string, heading: string): string {
 async function insertBodyImages(
   conteudoMd: string,
   keywordTermo: string,
-): Promise<{ conteudoMd: string; imagens: { url: string; altText: string }[] }> {
+): Promise<{ conteudoMd: string; imagens: { url: string; altText: string }[]; custoUsd: number }> {
   const headingRegex = /^##\s+(.+)$/gm;
   const matches = [...conteudoMd.matchAll(headingRegex)];
-  if (matches.length < 3) return { conteudoMd, imagens: [] };
+  if (matches.length < 3) return { conteudoMd, imagens: [], custoUsd: 0 };
 
   // Pula a primeira seção (fica logo depois da capa, ilustrar de novo ali é redundante)
   // e a última (normalmente é conclusão/CTA, sem muito o que ilustrar). Escolhe até
@@ -138,6 +142,7 @@ async function insertBodyImages(
   const chosen = middleIndexes.length <= 2 ? middleIndexes : [middleIndexes[Math.floor(middleIndexes.length * 0.33)], middleIndexes[Math.floor(middleIndexes.length * 0.75)]];
 
   const imagens: { url: string; altText: string }[] = [];
+  let custoUsd = 0;
   // Insere de trás pra frente pra não invalidar os índices das ocorrências anteriores.
   let result = conteudoMd;
   for (const idx of [...chosen].sort((a, b) => b - a)) {
@@ -145,7 +150,8 @@ async function insertBodyImages(
     const heading = match[1].trim();
     try {
       const img = await generateImage(sectionPrompt(keywordTermo, heading), heading, "4:5");
-      imagens.unshift(img);
+      imagens.unshift({ url: img.url, altText: img.altText });
+      custoUsd += img.custoUsd;
       const insertAt = (match.index ?? 0) + match[0].length;
       result = `${result.slice(0, insertAt)}\n\n![${heading}](${img.url})\n${result.slice(insertAt)}`;
     } catch (err) {
@@ -153,7 +159,7 @@ async function insertBodyImages(
     }
   }
 
-  return { conteudoMd: result, imagens };
+  return { conteudoMd: result, imagens, custoUsd };
 }
 
 export interface GenerateArticleResult {
@@ -164,6 +170,7 @@ export interface GenerateArticleResult {
 export async function generateArticle(tenantId: string, keywordId: string): Promise<GenerateArticleResult> {
   const config = await getConfig(tenantId);
   if (!config) throw new Error("Tenant sem configuração do Content Autopilot — crie a config primeiro");
+  await checkBudget(config);
 
   const [keyword] = await db
     .select()
@@ -178,13 +185,15 @@ export async function generateArticle(tenantId: string, keywordId: string): Prom
 
   try {
     logger.info({ tenantId, keywordId, termo: keyword.termo }, "content-autopilot: Criador — escrevendo artigo");
-    const article = await writeArticle(keyword, config.brandTone);
+    const article = await writeArticle(tenantId, keyword, config.brandTone);
 
     logger.info({ tenantId, keywordId }, "content-autopilot: Criador — gerando imagem de capa");
     const capa = await generateImage(coverPrompt(keyword.termo), article.titulo, "16:9");
 
     logger.info({ tenantId, keywordId }, "content-autopilot: Criador — gerando imagens de seção");
-    const { conteudoMd, imagens: imagensSecao } = await insertBodyImages(article.conteudoMd, keyword.termo);
+    const { conteudoMd, imagens: imagensSecao, custoUsd: custoImagensSecao } = await insertBodyImages(article.conteudoMd, keyword.termo);
+
+    const custoTotal = article.custoUsd + capa.custoUsd + custoImagensSecao;
 
     await db
       .update(contentAutopilotArticlesTable)
@@ -193,16 +202,20 @@ export async function generateArticle(tenantId: string, keywordId: string): Prom
         slug: slugify(article.titulo),
         conteudoMd,
         metaDescription: article.metaDescription,
-        imagens: [capa, ...imagensSecao],
+        imagens: [{ url: capa.url, altText: capa.altText }, ...imagensSecao],
         status: "otimizando",
+        custoGerado: sql`${contentAutopilotArticlesTable.custoGerado} + ${custoTotal}`,
       } as any)
       .where(eq(contentAutopilotArticlesTable.id, draft.id));
+
+    await addSpend(tenantId, custoTotal);
 
     await db
       .update(contentAutopilotKeywordsTable)
       .set({ status: "em_uso" })
       .where(eq(contentAutopilotKeywordsTable.id, keywordId));
 
+    logger.info({ tenantId, keywordId, custoTotalUsd: custoTotal }, "content-autopilot: Criador — concluído");
     return { articleId: draft.id };
   } catch (err) {
     await db
