@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -18,14 +19,14 @@ function heygenHeaders(extra: Record<string, string> = {}) {
 const TABS = ["workflow", "trends", "hooks", "script"] as const;
 type Tab = (typeof TABS)[number];
 
-function buildPrompt(tab: Tab, input: string): string {
+function buildPrompt(tab: Tab, input: string, referencePatterns: string): string {
   const prompts: Record<Tab, string> = {
     workflow: `Crie um fluxo de conteúdo para Instagram no nicho "${input}": 5 tópicos em alta, script, visual, legenda e 10 hashtags.`,
     trends:   `Liste 5 ângulos de conteúdo em alta no nicho "${input}" para Reels e vídeos curtos com IA.`,
     hooks:    `Crie 5 ganchos para parar a rolagem no nicho "${input}" nos primeiros 3 segundos. Use os gatilhos: surpresa, medo, ego, urgência e desejo.`,
     script:   `Escreva um script de Reel sobre "${input}" com: GANCHO (0-2s), DESENVOLVIMENTO (3-25s) e CTA (26-30s). Máximo 30 segundos.`,
   };
-  return prompts[tab];
+  return prompts[tab] + referencePatterns;
 }
 
 router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
@@ -41,11 +42,15 @@ router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
 
   const resolvedTab: Tab = TABS.includes(tab as Tab) ? (tab as Tab) : "script";
   try {
+    // Padrões dos criadores de referência (se configurados) — enriquece
+    // especialmente 'trends' e 'hooks', que sem isso são só o modelo
+    // chutando com base no treino, sem nenhum dado real do nicho.
+    const referencePatterns = await buildReferencePatternsPromptBlock(tenantId);
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
       system: "Você é um especialista em marketing digital para Instagram no Brasil. Responda sempre em português.",
-      messages: [{ role: "user", content: buildPrompt(resolvedTab, input.trim()) }],
+      messages: [{ role: "user", content: buildPrompt(resolvedTab, input.trim(), referencePatterns) }],
     });
     const result = message.content
       .filter((b) => b.type === "text")

@@ -43,6 +43,7 @@ import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_
 import invitesRouter, { invitesProtectedRouter } from "./invites";
 import onboardingRouter from "./onboarding";
 import contentRouter from "./content";
+import contentReferenceCreatorsRouter from "./content_reference_creators.js";
 import partnerRouter from "./partner";
 import partnersRouter from "./partners";
 import partnerHubRouter from "./partner_hub";
@@ -276,6 +277,7 @@ router.use(onboardingRouter);
 
 // Content Generation Hub
 router.use(contentRouter);
+router.use(contentReferenceCreatorsRouter);
 router.use(contentStudioRouter);
 router.use(videoProcessingRouter);
 

@@ -25,6 +25,7 @@ import {
   improveVariationText,
 } from "../lib/content-generation.js";
 import { publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
+import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import type { FeedVariation, StoriesVariation } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -176,6 +177,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     postObjective: postObjective ?? undefined,
     voiceTone: voiceTone ?? undefined,
     desiredCta: desiredCta ?? undefined,
+    referencePatterns: await buildReferencePatternsPromptBlock(tenantId),
   };
 
   let result: { result: { variations: unknown[] }; tokensUsed: number };
@@ -269,6 +271,7 @@ router.post("/tenants/:tenantId/content/strategy", async (req, res) => {
       command,
       contentType,
       variations,
+      await buildReferencePatternsPromptBlock(tenantId),
     );
     res.json(strategy);
   } catch (err) {

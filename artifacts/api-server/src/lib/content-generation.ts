@@ -364,6 +364,10 @@ export interface ContentStrategyHints {
   postObjective?: string;
   voiceTone?: string;
   desiredCta?: string;
+  /** Bloco pronto de padrões dos criadores de referência (ver
+   * content-reference-creators.ts) — texto livre já formatado, injetado
+   * como está, sem parsing aqui. */
+  referencePatterns?: string;
 }
 
 const POST_OBJECTIVE_LABELS: Record<string, string> = {
@@ -387,20 +391,26 @@ const CTA_LABELS: Record<string, string> = {
 };
 
 function buildStrategyBlock(s?: ContentStrategyHints): string {
-  if (!s?.customerPain) return "";
+  let block = "";
 
-  const objective = s.postObjective ? (POST_OBJECTIVE_LABELS[s.postObjective] ?? s.postObjective) : null;
-  const tone      = s.voiceTone     ? (VOICE_TONE_LABELS[s.voiceTone]         ?? s.voiceTone)     : null;
-  const cta       = s.desiredCta    ? (CTA_LABELS[s.desiredCta]                ?? s.desiredCta)    : null;
+  if (s?.customerPain) {
+    const objective = s.postObjective ? (POST_OBJECTIVE_LABELS[s.postObjective] ?? s.postObjective) : null;
+    const tone      = s.voiceTone     ? (VOICE_TONE_LABELS[s.voiceTone]         ?? s.voiceTone)     : null;
+    const cta       = s.desiredCta    ? (CTA_LABELS[s.desiredCta]                ?? s.desiredCta)    : null;
 
-  const parts: string[] = [
-    `Crie um post que ataca a dor: "${s.customerPain}".`,
-  ];
-  if (objective) parts.push(`Objetivo: ${objective}.`);
-  if (tone)      parts.push(`Tom de voz: ${tone}.`);
-  if (cta)       parts.push(s.desiredCta === "sem_cta" ? `${cta}.` : `Termine com CTA que ${cta}.`);
+    const parts: string[] = [
+      `Crie um post que ataca a dor: "${s.customerPain}".`,
+    ];
+    if (objective) parts.push(`Objetivo: ${objective}.`);
+    if (tone)      parts.push(`Tom de voz: ${tone}.`);
+    if (cta)       parts.push(s.desiredCta === "sem_cta" ? `${cta}.` : `Termine com CTA que ${cta}.`);
 
-  return `\nINSTRUÇÃO ESTRATÉGICA (siga à risca — tem prioridade sobre qualquer padrão genérico): ${parts.join(" ")}\n`;
+    block += `\nINSTRUÇÃO ESTRATÉGICA (siga à risca — tem prioridade sobre qualquer padrão genérico): ${parts.join(" ")}\n`;
+  }
+
+  if (s?.referencePatterns) block += s.referencePatterns;
+
+  return block;
 }
 
 export async function generateFeedContent(
@@ -608,7 +618,8 @@ export async function generateContentStrategy(
   tenantId: string,
   command: string,
   contentType: string,
-  variationsCount: number
+  variationsCount: number,
+  referencePatterns?: string,
 ): Promise<{ strategy: ContentStrategy; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
@@ -621,7 +632,7 @@ export async function generateContentStrategy(
 Contexto da marca:
 ${context}
 ${hints ? `\n${hints}\n` : ""}
-
+${referencePatterns ?? ""}
 O usuário deu o seguinte comando simples: "${command}"
 
 Com base nesse comando, crie uma estratégia de conteúdo completa para ${variationsCount} variações de ${typeLabel}.

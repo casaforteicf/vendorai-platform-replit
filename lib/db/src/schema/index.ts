@@ -18,6 +18,7 @@ export * from "./campaigns";
 export * from "./produtos_catalogo";
 export * from "./produto_composicoes";
 export * from "./meta_ads_connections";
+export * from "./content_reference_creators";
 export * from "./solicitacoes_compra";
 export * from "./changelog";
 export * from "./brand_programs";

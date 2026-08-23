@@ -135,6 +135,76 @@ export default function ContentStudio() {
 
   const currentScriptTab = SCRIPT_TABS.find((t) => t.id === scriptTab)!;
 
+  // ── Criadores de referência (até 3, inspiração pro Fluxo/Tendências/Ganchos) ─
+  interface ReferenceCreator {
+    id: string;
+    instagramUsername: string;
+    padroesDetectados: { tomDeVoz: string; estiloDeHook: string; cadenciaPostagem: string; observacoes: string; baseadoEmPosts: number } | null;
+    ultimoErro: string | null;
+  }
+  const [refCreators, setRefCreators] = useState<ReferenceCreator[]>([]);
+  const [refCreatorsOpen, setRefCreatorsOpen] = useState(false);
+  const [refCreatorsLoaded, setRefCreatorsLoaded] = useState(false);
+  const [newRefUsername, setNewRefUsername] = useState("");
+  const [refAdding, setRefAdding] = useState(false);
+  const [refUpdatingId, setRefUpdatingId] = useState<string | null>(null);
+
+  async function loadRefCreators() {
+    if (!tenantId) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content-reference-creators`, { headers: authHeader() });
+      if (res.ok) setRefCreators(await res.json());
+    } catch { /* ignore */ }
+    setRefCreatorsLoaded(true);
+  }
+
+  function toggleRefCreators() {
+    setRefCreatorsOpen((v) => !v);
+    if (!refCreatorsLoaded) loadRefCreators();
+  }
+
+  async function addRefCreator() {
+    if (!newRefUsername.trim() || !tenantId) return;
+    setRefAdding(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content-reference-creators`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({ instagramUsername: newRefUsername.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao adicionar");
+      setRefCreators((prev) => [...prev, data]);
+      setNewRefUsername("");
+    } catch (err) {
+      toast({ title: "Erro", description: err instanceof Error ? err.message : "Erro ao adicionar", variant: "destructive" });
+    } finally {
+      setRefAdding(false);
+    }
+  }
+
+  async function removeRefCreator(id: string) {
+    if (!tenantId) return;
+    setRefCreators((prev) => prev.filter((c) => c.id !== id));
+    await fetch(`/api/tenants/${tenantId}/content-reference-creators/${id}`, { method: "DELETE", headers: authHeader() }).catch(() => {});
+  }
+
+  async function refreshRefCreator(id: string) {
+    if (!tenantId) return;
+    setRefUpdatingId(id);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content-reference-creators/${id}/atualizar`, { method: "POST", headers: authHeader() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao atualizar");
+      setRefCreators((prev) => prev.map((c) => (c.id === id ? data : c)));
+    } catch (err) {
+      toast({ title: "Não foi possível analisar essa conta", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+      loadRefCreators(); // recarrega pra pegar o ultimoErro salvo no backend
+    } finally {
+      setRefUpdatingId(null);
+    }
+  }
+
   // ── Script generate ──────────────────────────────────────────────────────
   const generateScript = async () => {
     if (!scriptInput.trim() || !tenantId) return;
@@ -303,6 +373,76 @@ export default function ContentStudio() {
         {/* ══════════════ TAB: Script ══════════════ */}
         {mainTab === "script" && (
           <>
+            {/* Criadores de referência — até 3, alimenta Tendências/Ganchos/Fluxo */}
+            <section className="mb-4 rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
+              <button
+                onClick={toggleRefCreators}
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+              >
+                <span className="text-xs font-semibold text-gray-300 flex items-center gap-2">
+                  <TrendingUp className="h-3.5 w-3.5 text-purple-400" />
+                  Criadores de referência {refCreators.length > 0 && `(${refCreators.length}/3)`}
+                </span>
+                <span className="text-xs text-gray-500">{refCreatorsOpen ? "ocultar" : "configurar"}</span>
+              </button>
+              {refCreatorsOpen && (
+                <div className="px-4 pb-4 space-y-3">
+                  <p className="text-xs text-gray-500">
+                    Aponte até 3 contas públicas do Instagram (Business/Creator) como referência de tom e formato. Nunca copia — só inspira o Fluxo, Tendências e Ganchos acima.
+                  </p>
+                  {refCreators.map((c) => (
+                    <div key={c.id} className="rounded-lg bg-white/5 border border-white/10 p-3 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-[#e8e4f8]">@{c.instagramUsername}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => refreshRefCreator(c.id)}
+                            disabled={refUpdatingId === c.id}
+                            className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                          >
+                            {refUpdatingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                            {c.padroesDetectados ? "Atualizar" : "Analisar"}
+                          </button>
+                          <button onClick={() => removeRefCreator(c.id)} className="text-gray-500 hover:text-red-400">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      {c.padroesDetectados ? (
+                        <p className="text-xs text-gray-400">
+                          Tom: <span className="text-gray-300">{c.padroesDetectados.tomDeVoz}</span> · Hook: <span className="text-gray-300">{c.padroesDetectados.estiloDeHook}</span> · Cadência: <span className="text-gray-300">{c.padroesDetectados.cadenciaPostagem}</span>
+                          <br />{c.padroesDetectados.observacoes}
+                        </p>
+                      ) : c.ultimoErro ? (
+                        <p className="text-xs text-red-400">{c.ultimoErro}</p>
+                      ) : (
+                        <p className="text-xs text-gray-500">Ainda não analisado — clique em "Analisar".</p>
+                      )}
+                    </div>
+                  ))}
+                  {refCreators.length < 3 && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="@usuario"
+                        value={newRefUsername}
+                        onChange={(e) => setNewRefUsername(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") addRefCreator(); }}
+                        className="flex-1 rounded-lg bg-white/5 border border-white/10 text-sm text-[#e8e4f8] placeholder-gray-500 px-3 py-2 focus:outline-none focus:border-purple-500/50"
+                      />
+                      <button
+                        onClick={addRefCreator}
+                        disabled={refAdding || !newRefUsername.trim()}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 disabled:opacity-50"
+                      >
+                        {refAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Adicionar"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
             <section>
               <p className="text-xs text-gray-500 font-semibold mb-3">① TIPO DE CONTEÚDO</p>
               <div className="grid grid-cols-2 gap-2 mb-3">
