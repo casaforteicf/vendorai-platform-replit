@@ -227,6 +227,30 @@ interface CsvPreviewRow {
   especificacoes?: string;
 }
 
+// Parser de linha CSV com suporte a campos entre aspas (mesma lógica do backend,
+// em artifacts/api-server/src/routes/produtos_catalogo.ts:parseCsvLine).
+// Sem isso, um split(",") ingênuo quebra a linha errado sempre que um campo de
+// texto (descrição, especificações) contém vírgula, deslocando todas as colunas
+// seguintes — sintoma relatado: "dado cai em coluna errada".
+function parseCsvLinePreview(line: string): string[] {
+  const fields: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (ch === "," && !inQuotes) {
+      fields.push(cur.trim()); cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  fields.push(cur.trim());
+  return fields;
+}
+
 const CSV_TEMPLATE =
   "nome,sku,categoria,preco_base,unidade,descricao,imagem_url,marca,imagens,video_url,especificacoes\n" +
   "Camiseta Básica,SKU001,Feminino,79.90,un,100% algodão,https://exemplo.com/img1.jpg,Marca X,https://exemplo.com/img2.jpg|https://exemplo.com/img3.jpg,,Cor:Azul;Tamanho:M\n" +
@@ -381,10 +405,10 @@ export function CatalogoModal({
       setCsvRaw(text);
       const lines = text.split(/\r?\n/).filter((l) => l.trim());
       if (lines.length < 2) { toast({ title: "CSV vazio ou sem dados", variant: "destructive" }); return; }
-      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]/g, "_"));
+      const headers = parseCsvLinePreview(lines[0]).map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]/g, "_"));
       const rows: CsvPreviewRow[] = [];
       for (let i = 1; i < Math.min(lines.length, 6); i++) {
-        const cols = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+        const cols = parseCsvLinePreview(lines[i]);
         const get = (aliases: string[]) => {
           for (const a of aliases) { const idx = headers.indexOf(a); if (idx >= 0) return cols[idx] ?? ""; }
           return "";
