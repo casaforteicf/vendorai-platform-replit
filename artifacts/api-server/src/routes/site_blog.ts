@@ -71,6 +71,39 @@ siteBlogPublicRouter.get("/sites/:siteSlug/blog", async (req, res) => {
   );
 });
 
+// ── Variante JSON (pro site institucional React consumir e misturar com posts manuais) ──
+siteBlogPublicRouter.get("/sites/:siteSlug/blog-data", async (req, res) => {
+  const tenantId = await resolveTenantIdBySiteSlug(req.params.siteSlug as string);
+  if (!tenantId) {
+    res.status(404).json({ error: "Site não encontrado" });
+    return;
+  }
+  const posts = await db
+    .select({ slug: siteBlogPostsTable.slug, titulo: siteBlogPostsTable.titulo, metaDescription: siteBlogPostsTable.metaDescription, imagemCapaUrl: siteBlogPostsTable.imagemCapaUrl, publicadoEm: siteBlogPostsTable.publicadoEm })
+    .from(siteBlogPostsTable)
+    .where(and(eq(siteBlogPostsTable.tenantId, tenantId), eq(siteBlogPostsTable.publicado, true)))
+    .orderBy(desc(siteBlogPostsTable.publicadoEm));
+  res.json({ posts });
+});
+
+siteBlogPublicRouter.get("/sites/:siteSlug/blog-data/:postSlug", async (req, res) => {
+  const tenantId = await resolveTenantIdBySiteSlug(req.params.siteSlug as string);
+  if (!tenantId) {
+    res.status(404).json({ error: "Site não encontrado" });
+    return;
+  }
+  const [post] = await db
+    .select()
+    .from(siteBlogPostsTable)
+    .where(and(eq(siteBlogPostsTable.tenantId, tenantId), eq(siteBlogPostsTable.slug, req.params.postSlug as string)));
+  if (!post || !post.publicado) {
+    res.status(404).json({ error: "Post não encontrado" });
+    return;
+  }
+  const conteudoHtml = marked.parse(post.conteudoMd, { async: false }) as string;
+  res.json({ post: { ...post, conteudoHtml } });
+});
+
 siteBlogPublicRouter.get("/sites/:siteSlug/blog/:postSlug", async (req, res) => {
   const tenantId = await resolveTenantIdBySiteSlug(req.params.siteSlug as string);
   if (!tenantId) {

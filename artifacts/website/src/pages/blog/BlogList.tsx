@@ -1,7 +1,16 @@
 import { Link } from "wouter";
 import { blogPosts } from "@/data/blog-posts";
 import { useSeoMeta } from "@/hooks/use-seo-meta";
+import { useQuery } from "@tanstack/react-query";
 import { Calendar, ArrowRight } from "lucide-react";
+
+interface DynamicPost {
+  slug: string;
+  titulo: string;
+  metaDescription: string | null;
+  imagemCapaUrl: string | null;
+  publicadoEm: string | null;
+}
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -17,6 +26,21 @@ export default function BlogList() {
     description:
       "Artigos sobre atendimento, vendas pelo WhatsApp, automação comercial e IA para pequenas e médias empresas brasileiras.",
   });
+
+  // Posts gerados automaticamente pelo Content Autopilot — somam aos
+  // manuais abaixo, não substituem. Se a API falhar, o blog continua
+  // funcionando só com os manuais (isso não pode quebrar a página).
+  const { data } = useQuery<{ posts: DynamicPost[] }>({
+    queryKey: ["site-blog-dynamic-posts"],
+    queryFn: () => fetch("/api/sites/vendorai/blog-data").then((r) => (r.ok ? r.json() : { posts: [] })),
+    retry: false,
+  });
+  const dynamicPosts = data?.posts ?? [];
+
+  const allPosts = [
+    ...blogPosts.map((p) => ({ slug: p.slug, title: p.title, summary: p.summary, publishedAt: p.publishedAt, dynamic: false as const })),
+    ...dynamicPosts.map((p) => ({ slug: p.slug, title: p.titulo, summary: p.metaDescription ?? "", publishedAt: p.publicadoEm ?? new Date().toISOString(), dynamic: true as const })),
+  ].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
   return (
     <section className="py-20 bg-white">
@@ -34,7 +58,7 @@ export default function BlogList() {
         </div>
 
         <div className="space-y-10">
-          {blogPosts.map((post) => (
+          {allPosts.map((post) => (
             <article
               key={post.slug}
               className="group border border-slate-200 rounded-2xl p-8 hover:border-primary/40 hover:shadow-md transition-all duration-200"
