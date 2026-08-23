@@ -41,6 +41,7 @@ const Configuracoes      = lazy(() => import("@/pages/Configuracoes"));
 const KnowledgeBase      = lazy(() => import("@/pages/KnowledgeBase"));
 const SolicitacaoCompra  = lazy(() => import("@/pages/SolicitacaoCompra"));
 const Pacotes            = lazy(() => import("@/pages/Pacotes"));
+const ContentAutopilot   = lazy(() => import("@/pages/ContentAutopilot"));
 const Ads                = lazy(() => import("@/pages/Ads"));
 const RastreioFrete      = lazy(() => import("@/pages/RastreioFrete"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
@@ -565,6 +566,9 @@ function AppRoutes() {
         </Route>
         <Route path="/pacotes">
           {() => <ProtectedRoute component={Pacotes} />}
+        </Route>
+        <Route path="/content-autopilot">
+          {() => <ProtectedRoute component={ContentAutopilot} />}
         </Route>
         <Route path="/ads">
           {() => <ProtectedRoute component={Ads} />}

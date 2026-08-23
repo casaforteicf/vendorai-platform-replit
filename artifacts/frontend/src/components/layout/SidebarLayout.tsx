@@ -112,6 +112,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     clinic:       ["/clinic", "/clinic/agenda", "/clinic/medicos"],
     knowledge_graph: ["/vkg"],
     vendor_brain:    ["/brain"],
+    content_autopilot: ["/content-autopilot"],
     // sdr, content, campaigns, churn: sem tela própria no menu hoje —
     // desligar não esconde nada (não são páginas, são só flags de catálogo)
   };
@@ -151,6 +152,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Content Autopilot", href: "/content-autopilot", icon: Sparkles, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Anúncios",      href: "/ads",           icon: Megaphone,       sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
