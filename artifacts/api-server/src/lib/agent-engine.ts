@@ -959,7 +959,43 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
+  const calcM2Section = buildCalcM2PromptSection(scenario);
+  if (calcM2Section) parts.push(calcM2Section);
   return joinWithCalibration(parts);
+}
+
+// ── Seção de cálculo de orçamento por m² (teto vinílico, revestimento) ─────
+// Compartilhada entre SDR e Closer. Só aparece no prompt quando o tenant
+// TEM produto com tipo_calculo preenchido (produtosM2 injetado em
+// agent-dispatch.ts) — não polui o prompt de quem não vende esse tipo de
+// produto. Regra central: o agente NUNCA calcula sozinho nem inventa
+// número de pacote/valor — só emite o marcador com as medidas já
+// confirmadas; o motor real (mesmo do CPQ) roda no backend e substitui a
+// resposta por uma mensagem com os números exatos antes de chegar ao lead.
+function buildCalcM2PromptSection(scenario?: Record<string, unknown> | null): string {
+  const produtosM2 = (scenario?.["produtosM2"] ?? []) as Array<{
+    id: string; nome: string; tipoCalculo: string | null; colecao: string | null; cor: string | null;
+  }>;
+  if (!produtosM2.length) return "";
+
+  const listaProdutos = produtosM2
+    .map((p) => `- ${p.nome} (produtoId: ${p.id}, tipo: ${p.tipoCalculo}${p.colecao ? `, coleção: ${p.colecao}` : ""}${p.cor ? `, cor: ${p.cor}` : ""})`)
+    .join("\n");
+
+  return (
+    "## CÁLCULO DE ORÇAMENTO POR M² (produtos vendidos por área)\n" +
+    "Estes produtos do catálogo são vendidos por m²/m linear, calculados automaticamente pelo sistema:\n" +
+    listaProdutos +
+    "\n\nQuando o lead pedir orçamento de um desses produtos:\n" +
+    "1. Pergunte quais ambientes/paredes vão receber o produto, e se o cliente tem planta baixa ou só sabe as medidas de cabeça.\n" +
+    "2. Se o cliente mandar imagem/PDF de planta baixa, leia as medidas mas SEMPRE confirme com o cliente antes de calcular (ex: \"Pela planta, entendi que a Sala tem 4×5m, confere?\") — nunca calcule em cima de leitura não confirmada.\n" +
+    "3. Se faltar alguma medida, insista educadamente e aguarde — NUNCA estime uma medida que o cliente não deu.\n" +
+    "4. Pra teto vinílico (tipo area_com_acabamento_perimetro), pergunte a preferência de acabamento só se houver mais de uma opção compatível — a coleção/cor do produto principal já indica o ponto de partida.\n" +
+    "5. Só depois de ter TODAS as medidas confirmadas, responda SOMENTE com o marcador abaixo (nenhum outro texto visível nessa mensagem, nem o valor — você NUNCA calcula o valor sozinho):\n" +
+    '<!--CALC_M2:{"produtoId":"...","superficies":[{"nome":"Sala","largura":4,"comprimento":5}],"acessorioProdutoId":null}-->\n' +
+    "Pra revestimento de parede (tipo area_simples), cada superfície é uma parede individual — use largura+altura (ou m2Direto) por parede, sem acessorioProdutoId.\n" +
+    "O sistema calcula o valor real a partir do marcador e devolve a mensagem final com os números exatos pro lead — você não precisa (e não deve) formatar essa resposta."
+  );
 }
 
 export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
@@ -1113,6 +1149,8 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
+  const calcM2Section = buildCalcM2PromptSection(scenario);
+  if (calcM2Section) parts.push(calcM2Section);
   return joinWithCalibration(parts);
 }
 

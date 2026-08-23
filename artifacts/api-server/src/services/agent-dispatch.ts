@@ -61,6 +61,8 @@ import {
 } from "../lib/agent-engine.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { createQuoteFromCatalogPlan } from "./auto-quote.js";
+import { resolverECalcularOrcamento, ErroResolucaoOrcamento } from "../lib/calculoOrcamentoM2Resolver.js";
+import { ErroCalculoOrcamento } from "../lib/calculoOrcamentoM2.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
@@ -1136,6 +1138,40 @@ export async function processAgentInternal(params: {
       }
     }
 
+    // ── Produtos com cálculo por m² (teto vinílico, revestimento) ────────────
+    // Injeta no cenário só os produtos que têm tipo_calculo preenchido, com
+    // o ID real (o marcador <!--CALC_M2:...--> precisa do produtoId exato
+    // pra rodar o motor de cálculo de verdade — nunca um nome adivinhado).
+    if (resolvedAgentName === "sdr" || resolvedAgentName === "closer") {
+      try {
+        const produtosM2 = await db
+          .select({
+            id: produtosCatalogoTable.id,
+            nome: produtosCatalogoTable.nome,
+            tipoCalculo: produtosCatalogoTable.tipoCalculo,
+            colecao: produtosCatalogoTable.colecao,
+            cor: produtosCatalogoTable.cor,
+          })
+          .from(produtosCatalogoTable)
+          .where(
+            and(
+              eq(produtosCatalogoTable.tenantId, tenantId),
+              eq(produtosCatalogoTable.ativo, true),
+              or(
+                eq(produtosCatalogoTable.tipoCalculo, "area_simples"),
+                eq(produtosCatalogoTable.tipoCalculo, "area_com_acabamento_perimetro"),
+              ),
+            ),
+          )
+          .limit(50);
+        if (produtosM2.length > 0) {
+          enrichedScenario = { ...(enrichedScenario ?? {}), produtosM2 };
+        }
+      } catch (err) {
+        log.warn({ err, tenantId }, "dispatch: falha ao carregar produtos com cálculo por m² (não fatal)");
+      }
+    }
+
     // ── Maturity survey response detection (frio_teste pesquisa) ─────────────
     // When the lead replies after the survey message, detect and persist the
     // maturity level so it's available in the scenario AND in the lead record.
@@ -1273,6 +1309,54 @@ export async function processAgentInternal(params: {
       } else {
         finalResposta = "Deixa eu puxar os valores atualizados para você. Um instante!";
         log.warn({ leadId, tenantId }, "dispatch: generate_quote action but catalogPlans empty");
+      }
+    }
+
+    // 8a2. <!--CALC_M2:{...}--> — SDR/Closer pediu cálculo real de orçamento
+    // por m² (teto vinílico, revestimento). O agente NUNCA calcula o valor
+    // sozinho — só emite o marcador com as medidas já confirmadas com o
+    // cliente; aqui rodamos o motor real (mesmo usado no CPQ) e substituímos
+    // a resposta por uma mensagem determinística com os números exatos,
+    // nunca gerada por IA em cima do resultado (evita qualquer chance de
+    // arredondamento/invenção de valor pelo modelo).
+    if ((resolvedAgentName === "sdr" || resolvedAgentName === "closer")) {
+      const calcM2Match = /<!--CALC_M2:([\s\S]*?)-->/.exec(resposta);
+      if (calcM2Match && calcM2Match[1]) {
+        try {
+          const payload = JSON.parse(calcM2Match[1].trim()) as {
+            produtoId: string;
+            superficies: Array<{ nome?: string; largura?: number; comprimento?: number; altura?: number; m2Direto?: number; perimetroManual?: number }>;
+            acessorioProdutoId?: string | null;
+          };
+
+          const { resultado, produtoNome, acessorioNome } = await resolverECalcularOrcamento(tenantId, {
+            produtoId: payload.produtoId,
+            superficies: payload.superficies,
+            acessorioProdutoId: payload.acessorioProdutoId ?? undefined,
+          });
+
+          const p = resultado.produtoPrincipal;
+          const linhas = [
+            `Com base nas medidas informadas (${p.quantidadeNecessaria} m²), você vai precisar de ${p.numeroPacotes} pacote${p.numeroPacotes === 1 ? "" : "s"} de ${produtoNome} — R$ ${p.valorTotal.toFixed(2)}.`,
+          ];
+          let valorTotalGeral = p.valorTotal;
+          if (resultado.acessorioPerimetro && acessorioNome) {
+            const a = resultado.acessorioPerimetro;
+            linhas.push(`Para o acabamento de perímetro, ${a.numeroPacotes} pacote${a.numeroPacotes === 1 ? "" : "s"} de ${acessorioNome} — R$ ${a.valorTotal.toFixed(2)}.`);
+            valorTotalGeral += a.valorTotal;
+            linhas.push(`Valor total: R$ ${valorTotalGeral.toFixed(2)}.`);
+          }
+          finalResposta = linhas.join(" ");
+          log.info({ leadId, tenantId, agentName: resolvedAgentName, produtoId: payload.produtoId, valorTotalGeral }, "dispatch: cálculo de orçamento m² real executado");
+        } catch (err) {
+          if (err instanceof ErroResolucaoOrcamento || err instanceof ErroCalculoOrcamento) {
+            finalResposta = `Preciso confirmar mais uma informação antes de calcular certinho: ${err.message}`;
+            log.warn({ err, leadId, tenantId }, "dispatch: cálculo m² não pôde ser resolvido — pedindo mais dado ao invés de inventar valor");
+          } else {
+            finalResposta = "Deixa eu confirmar as medidas com você de novo antes de calcular, pode repetir?";
+            log.error({ err, leadId, tenantId }, "dispatch: erro inesperado no cálculo de orçamento m²");
+          }
+        }
       }
     }
 
