@@ -38,7 +38,7 @@ function renderPostPage(post: { titulo: string; metaDescription: string | null; 
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${post.titulo}</title>${meta}
 <meta property="og:title" content="${post.titulo.replace(/"/g, "&quot;")}">${ogImage}
-<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:0 auto;padding:2rem 1.5rem 4rem;line-height:1.7;color:#1e293b}h1{font-size:2rem;line-height:1.2}h2{font-size:1.4rem;margin-top:2.5rem}p{color:#334155}a{color:#6D4FE8}</style>
+<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:0 auto;padding:2rem 1.5rem 4rem;line-height:1.7;color:#1e293b}h1{font-size:2rem;line-height:1.2}h2{font-size:1.4rem;margin-top:2.5rem}p{color:#334155}a{color:#6D4FE8}img{max-width:100%;height:auto;border-radius:12px;margin:1.5rem 0}</style>
 </head><body>${cover}<h1>${post.titulo}</h1>${bodyHtml}</body></html>`;
 }
 
