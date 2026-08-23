@@ -4,11 +4,13 @@ import {
   db,
   contentAutopilotConfigTable,
   contentAutopilotKeywordsTable,
+  contentAutopilotArticlesTable,
   insertContentAutopilotConfigSchema,
   updateContentAutopilotConfigSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { analyzeSiteTone, discoverKeywords, researchCompetitors, getConfig, OrcamentoExcedidoError } from "../services/contentAutopilot.js";
+import { generateArticle } from "../services/contentAutopilotCriador.js";
 import { isDataForSeoConfigured } from "../lib/dataforseoClient.js";
 
 const router: IRouter = Router();
@@ -176,6 +178,52 @@ router.post("/tenants/:tenantId/content-autopilot/keywords/:id/research-competit
     req.log?.error({ err, tenantId, keywordId: req.params.id }, "content-autopilot/research-competitors: falhou");
     res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao pesquisar concorrência" });
   }
+});
+
+// ── POST /tenants/:tenantId/content-autopilot/keywords/:id/generate-article ──
+// Aciona o Criador: escreve o artigo completo + gera imagem de capa. Síncrono
+// (pode levar 20-40s — texto + imagem); grava status "otimizando" ao final.
+router.post("/tenants/:tenantId/content-autopilot/keywords/:id/generate-article", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!checkAccess(req, res, tenantId)) return;
+
+  try {
+    const result = await generateArticle(tenantId, req.params.id as string);
+    res.status(201).json(result);
+  } catch (err) {
+    req.log?.error({ err, tenantId, keywordId: req.params.id }, "content-autopilot/generate-article: falhou");
+    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao gerar artigo" });
+  }
+});
+
+// ── GET /tenants/:tenantId/content-autopilot/articles ────────────────────────
+router.get("/tenants/:tenantId/content-autopilot/articles", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!checkAccess(req, res, tenantId)) return;
+
+  const rows = await db
+    .select()
+    .from(contentAutopilotArticlesTable)
+    .where(eq(contentAutopilotArticlesTable.tenantId, tenantId))
+    .orderBy(desc(contentAutopilotArticlesTable.createdAt));
+  res.json({ articles: rows });
+});
+
+// ── GET /tenants/:tenantId/content-autopilot/articles/:id ────────────────────
+router.get("/tenants/:tenantId/content-autopilot/articles/:id", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!checkAccess(req, res, tenantId)) return;
+
+  const [article] = await db
+    .select()
+    .from(contentAutopilotArticlesTable)
+    .where(and(eq(contentAutopilotArticlesTable.id, req.params.id as string), eq(contentAutopilotArticlesTable.tenantId, tenantId)));
+
+  if (!article) {
+    res.status(404).json({ error: "Artigo não encontrado" });
+    return;
+  }
+  res.json({ article });
 });
 
 export default router;
