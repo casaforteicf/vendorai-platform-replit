@@ -1015,4 +1015,40 @@ router.patch("/tenants/:tenantId/site-generator/:siteId/html", async (req, res) 
   return res.json(updated);
 });
 
+// PATCH /tenants/:tenantId/site-generator/:siteId/name — rename a generated site (switcher "Meus sites")
+router.patch("/tenants/:tenantId/site-generator/:siteId/name", async (req, res) => {
+  const { tenantId, siteId } = req.params;
+  const user = (req as any).user;
+  const isSuperAdmin = user?.platformRole === "super_admin";
+  if (!isSuperAdmin && user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const { name } = req.body as { name: string };
+  if (!name || typeof name !== "string" || !name.trim()) {
+    res.status(400).json({ error: "name é obrigatório" });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: generatedSitesTable.id, tenantId: generatedSitesTable.tenantId })
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.id, siteId));
+
+  if (!existing || existing.tenantId !== tenantId) {
+    res.status(404).json({ error: "Site not found" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(generatedSitesTable)
+    .set({ name: name.trim(), updatedAt: new Date() })
+    .where(eq(generatedSitesTable.id, siteId))
+    .returning({ id: generatedSitesTable.id, name: generatedSitesTable.name });
+
+  req.log.info({ tenantId, siteId }, "Site renamed");
+  return res.json(updated);
+});
+
 export default router;

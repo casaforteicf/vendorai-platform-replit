@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate, Tag } from "lucide-react";
+import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate, Tag, Pencil, Check, X } from "lucide-react";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -366,10 +366,23 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setCurrentConfig(null);
   }, []);
 
+  const renameSite = useCallback(async (id: string, name: string) => {
+    const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}/name`, {
+      method: "PATCH",
+      headers: authHeaders,
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `Erro ${res.status}`);
+    }
+    setSitesList((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
+  }, [tenantId, token]);
+
   return {
     status, html, siteId, siteSlug, isPublished, error, currentSiteType, currentConfig, sitesList,
     generate, generateBulk, bulkJobs, bulkRunning, clearBulk,
-    refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish,
+    refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish, renameSite,
   };
 }
 
@@ -2450,12 +2463,16 @@ function PersonalizePanel({
 
 function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: string | null }) {
   const [activeTab, setActiveTab] = useState("config");
+  const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [renamingSiteId, setRenamingSiteId] = useState<string | null>(null);
+  const { toast } = useToast();
   const {
     status, html, siteId, siteSlug, isPublished, error,
     currentSiteType, currentConfig, sitesList,
     generate, generateBulk, bulkJobs, bulkRunning, clearBulk,
     refine, download, reset,
-    loadLatest, loadAll, loadSite, saveHtml, publish,
+    loadLatest, loadAll, loadSite, saveHtml, publish, renameSite,
   } = useSiteGenerator(tenantId, token);
 
   // Auto-load latest site + list on mount
@@ -2507,21 +2524,67 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
           <span className="text-xs text-muted-foreground font-medium shrink-0">Meus sites:</span>
           {sortedSites.map((s) => {
             const isActive = s.id === siteId;
+            const isEditing = editingSiteId === s.id;
+
+            if (isEditing) {
+              const saveRename = async () => {
+                const trimmed = editingName.trim();
+                if (!trimmed || trimmed === s.name) { setEditingSiteId(null); return; }
+                setRenamingSiteId(s.id);
+                try {
+                  await renameSite(s.id, trimmed);
+                } catch (err) {
+                  toast({ title: "Erro ao renomear", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+                } finally {
+                  setRenamingSiteId(null);
+                  setEditingSiteId(null);
+                }
+              };
+              return (
+                <div key={s.id} className="flex items-center gap-1 rounded-full border border-primary bg-background px-2 py-1">
+                  <Input
+                    autoFocus
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setEditingSiteId(null); }}
+                    className="h-6 w-32 text-xs px-1.5 border-0 shadow-none focus-visible:ring-0"
+                  />
+                  <button onClick={saveRename} disabled={renamingSiteId === s.id} className="text-green-600 hover:text-green-700 shrink-0">
+                    {renamingSiteId === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  </button>
+                  <button onClick={() => setEditingSiteId(null)} className="text-muted-foreground hover:text-foreground shrink-0">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            }
+
             return (
-              <button
+              <div
                 key={s.id}
-                onClick={() => handleSwitchSite(s.id)}
-                title={s.name}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all cursor-pointer max-w-[220px] ${
+                className={`group flex items-center gap-1.5 rounded-full border pl-3 pr-1.5 py-1 text-xs font-medium transition-all max-w-[240px] ${
                   isActive
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-background text-muted-foreground hover:border-primary hover:text-primary"
                 }`}
               >
-                {SITE_TYPE_ICONS[s.siteType]}
-                <span className="truncate">{s.name || SITE_TYPE_LABELS[s.siteType] || s.siteType}</span>
-                {isActive && <span className="ml-0.5 shrink-0">✓</span>}
-              </button>
+                <button
+                  onClick={() => handleSwitchSite(s.id)}
+                  title={s.name}
+                  className="flex items-center gap-1.5 cursor-pointer min-w-0"
+                >
+                  {SITE_TYPE_ICONS[s.siteType]}
+                  <span className="truncate">{s.name || SITE_TYPE_LABELS[s.siteType] || s.siteType}</span>
+                  {isActive && <span className="ml-0.5 shrink-0">✓</span>}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setEditingSiteId(s.id); setEditingName(s.name); }}
+                  title="Renomear"
+                  className={`shrink-0 ${isActive ? "text-primary-foreground/80 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
             );
           })}
         </div>
