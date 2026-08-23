@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Loader2, Search, Check, X, Wand2, ExternalLink, Globe } from "lucide-react";
+import { Sparkles, Loader2, Search, Check, X, Wand2, ExternalLink, Globe, EyeOff } from "lucide-react";
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -32,6 +32,10 @@ interface Keyword {
 interface Article {
   id: string; titulo: string | null; status: string; seoScore: number | null;
   imagens: { url: string; altText: string }[]; createdAt: string;
+}
+interface BlogPost {
+  id: string; slug: string; titulo: string; imagemCapaUrl: string | null;
+  publicado: boolean; publicadoEm: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -69,6 +73,13 @@ export default function ContentAutopilot() {
     enabled: !!tenantId,
   });
   const articles = articlesData?.articles ?? [];
+
+  const { data: blogPostsData } = useQuery<{ posts: BlogPost[] }>({
+    queryKey: ["content-autopilot-blog-posts", tenantId],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/site-blog-posts`, { headers: authHeaders() }).then((r) => r.json()),
+    enabled: !!tenantId,
+  });
+  const blogPosts = blogPostsData?.posts ?? [];
 
   const saveConfigMutation = useMutation({
     mutationFn: (payload: Partial<Config>) =>
@@ -128,7 +139,22 @@ export default function ContentAutopilot() {
     mutationFn: (articleId: string) =>
       fetch(`/api/tenants/${tenantId}/content-autopilot/articles/${articleId}/publish-native`, { method: "POST", headers: authHeaders() })
         .then((r) => { if (!r.ok) throw new Error("Erro ao publicar"); return r.json(); }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] }); toast({ title: "Rascunho publicado no blog" }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
+      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
+      toast({ title: "Rascunho criado — vá na aba Posts do Blog pra colocar no ar" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const togglePublishMutation = useMutation({
+    mutationFn: ({ id, publish }: { id: string; publish: boolean }) =>
+      fetch(`/api/tenants/${tenantId}/content-autopilot/site-blog-posts/${id}/${publish ? "publish" : "unpublish"}`, { method: "PATCH", headers: authHeaders() })
+        .then((r) => { if (!r.ok) throw new Error("Erro ao atualizar publicação"); return r.json(); }),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
+      toast({ title: vars.publish ? "Post publicado — já está no ar!" : "Post despublicado" });
+    },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
@@ -150,6 +176,7 @@ export default function ContentAutopilot() {
           <TabsTrigger value="config">Configuração</TabsTrigger>
           <TabsTrigger value="keywords">Keywords ({keywords.length})</TabsTrigger>
           <TabsTrigger value="articles">Artigos ({articles.length})</TabsTrigger>
+          <TabsTrigger value="posts">Posts do Blog ({blogPosts.length})</TabsTrigger>
         </TabsList>
 
         {/* ── Configuração ─────────────────────────────────────────── */}
@@ -279,6 +306,51 @@ export default function ContentAutopilot() {
                     {a.status === "pronto_revisao" && (
                       <Button size="sm" onClick={() => publishNativeMutation.mutate(a.id)} disabled={publishNativeMutation.isPending}>
                         <Globe className="h-3.5 w-3.5 mr-1.5" /> Publicar rascunho
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        {/* ── Posts do Blog ────────────────────────────────────────── */}
+        <TabsContent value="posts" className="space-y-2 mt-4">
+          <p className="text-xs text-muted-foreground">
+            "Publicar" aqui é a única forma de um post ficar visível de verdade em {config?.siteUrl ? new URL(config.siteUrl).hostname : "seu site"}/api/sites/.../blog — o sistema nunca publica sozinho.
+          </p>
+          {blogPosts.length === 0 ? (
+            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum post ainda. Gere e publique um artigo na aba Artigos primeiro.</div>
+          ) : (
+            blogPosts.map((p) => (
+              <Card key={p.id}>
+                <CardContent className="p-4 flex gap-4 flex-wrap items-center">
+                  {p.imagemCapaUrl && <img src={p.imagemCapaUrl} alt="" className="w-20 h-14 object-cover rounded-md shrink-0" />}
+                  <div className="flex-1 min-w-[200px]">
+                    <p className="text-sm font-medium">{p.titulo}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant={p.publicado ? "default" : "outline"} className="text-xs">
+                        {p.publicado ? "No ar" : "Rascunho (não visível)"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    {p.publicado ? (
+                      <>
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={`/api/sites/vendorai/blog/${p.slug}`} target="_blank" rel="noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Ver
+                          </a>
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => togglePublishMutation.mutate({ id: p.id, publish: false })} disabled={togglePublishMutation.isPending}>
+                          <EyeOff className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    ) : (
+                      <Button size="sm" onClick={() => togglePublishMutation.mutate({ id: p.id, publish: true })} disabled={togglePublishMutation.isPending}>
+                        {togglePublishMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Globe className="h-3.5 w-3.5 mr-1.5" />}
+                        Publicar
                       </Button>
                     )}
                   </div>
