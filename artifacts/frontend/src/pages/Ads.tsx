@@ -147,7 +147,9 @@ export default function Ads() {
       if (form.itemTipo === "produto") {
         const r = await fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: authHeaders() });
         const data = r.ok ? await r.json() : [];
-        return data.map((p: any) => ({ id: p.id, label: `${p.nome} — R$ ${p.precoBase}` }));
+        // Produtos pendentes de revisão (auto-cadastro via IA) e inativos
+        // não devem aparecer pra anunciar — mesma regra de site/feed.
+        return data.filter((p: any) => p.ativo !== false).map((p: any) => ({ id: p.id, label: `${p.nome} — R$ ${p.precoBase}` }));
       }
       if (form.itemTipo === "veiculo") {
         const r = await fetch(`/api/tenants/${tenantId}/veiculos/estoque`, { headers: authHeaders() });

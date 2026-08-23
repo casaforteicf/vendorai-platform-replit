@@ -121,6 +121,7 @@ import {
   Pencil,
   Eye,
   Send,
+  Check,
   CheckCircle2,
   XCircle,
   X,
@@ -282,6 +283,8 @@ export function CatalogoModal({
   const [imagemUploading, setImagemUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProdutoCatalogo | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showOnlyPending, setShowOnlyPending] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<CsvPreviewRow[]>([]);
   const [csvRaw, setCsvRaw] = useState("");
@@ -341,6 +344,29 @@ export function CatalogoModal({
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: getListProdutosCatalogoQueryKey(tenantId) });
+  }
+
+  // Auto-cadastro via IA (sync de estoque do ERP) — produtos criados
+  // automaticamente entram nesse status até o lojista conferir e aprovar.
+  // Sem hook gerado ainda (rota nova); fetch direto, mesmo padrão já usado
+  // pro card do Google Ads em Configuracoes.tsx.
+  const pendentesRevisao = catalog.filter((p) => (p as any).statusRevisao === "pendente_revisao");
+
+  async function aprovarProduto(id: string) {
+    setApprovingId(id);
+    try {
+      const res = await fetch(`/api/produtos-catalogo/${id}/aprovar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Produto aprovado" });
+      invalidate();
+    } catch {
+      toast({ title: "Erro ao aprovar produto", variant: "destructive" });
+    } finally {
+      setApprovingId(null);
+    }
   }
 
   function onSubmit(vals: CatFormValues) {
@@ -526,6 +552,22 @@ export function CatalogoModal({
             </div>
           ) : (
             <div className="overflow-x-auto">
+            {pendentesRevisao.length > 0 && (
+              <button
+                onClick={() => setShowOnlyPending((v) => !v)}
+                className={`w-full mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  showOnlyPending ? "border-amber-400 bg-amber-100" : "border-amber-300 bg-amber-50 hover:bg-amber-100"
+                }`}
+              >
+                <span className="flex items-center gap-2 text-amber-800">
+                  <Sparkles className="h-4 w-4" />
+                  {pendentesRevisao.length} produto{pendentesRevisao.length > 1 ? "s" : ""} criado{pendentesRevisao.length > 1 ? "s" : ""} automaticamente pelo sync de estoque, aguardando revisão
+                </span>
+                <span className="text-xs text-amber-700 underline underline-offset-2">
+                  {showOnlyPending ? "Ver todos" : "Ver pendentes"}
+                </span>
+              </button>
+            )}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -547,18 +589,12 @@ export function CatalogoModal({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {catalog.map((p) => (
-                  <TableRow key={p.id}>
+                {(showOnlyPending ? pendentesRevisao : catalog).map((p) => {
+                  const isPending = (p as any).statusRevisao === "pendente_revisao";
+                  const avisos: string[] = (p as any).avisosRevisao ?? [];
+                  return (
+                  <TableRow key={p.id} className={isPending ? "bg-amber-50/50" : undefined}>
                                         <TableCell>
-                      <Checkbox
-                        checked={selectedIds.has(p.id)}
-                        onCheckedChange={(v) => {
-                          const next = new Set(selectedIds);
-                          if (v) next.add(p.id); else next.delete(p.id);
-                          setSelectedIds(next);
-                        }}
-                      />
-                    </TableCell>                    <TableCell>
                       <Checkbox
                         checked={selectedIds.has(p.id)}
                         onCheckedChange={(v) => {
@@ -583,8 +619,20 @@ export function CatalogoModal({
                       )}
                     </TableCell>
                     <TableCell className="font-medium">
-                      <div>{p.nome}</div>
+                      <div className="flex items-center gap-1.5">
+                        {p.nome}
+                        {isPending && (
+                          <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] px-1.5 py-0">
+                            Pendente
+                          </Badge>
+                        )}
+                      </div>
                       {p.sku && <div className="text-xs text-muted-foreground">SKU: {p.sku}</div>}
+                      {avisos.length > 0 && (
+                        <div className="text-xs text-amber-700 mt-0.5" title={avisos.join(" · ")}>
+                          ⚠ {avisos[0]}{avisos.length > 1 ? ` (+${avisos.length - 1})` : ""}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{p.categoriaNome ?? "—"}</TableCell>
                     <TableCell>
@@ -625,6 +673,12 @@ export function CatalogoModal({
                           <DropdownMenuItem onClick={() => openEdit(p)}>
                             <Pencil className="h-4 w-4 mr-2" /> Editar
                           </DropdownMenuItem>
+                          {isPending && (
+                            <DropdownMenuItem onClick={() => aprovarProduto(p.id)} disabled={approvingId === p.id}>
+                              {approvingId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
+                              Aprovar
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget(p)}>
                             <Trash2 className="h-4 w-4 mr-2" /> Excluir
@@ -633,7 +687,8 @@ export function CatalogoModal({
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
             </div>

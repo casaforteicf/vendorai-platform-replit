@@ -11,7 +11,90 @@ import {
   updateInventoryItemSchema,
   insertInventoryMovementSchema,
 } from "@workspace/db";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { z } from "zod/v4";
+
+// ─── Enriquecimento de produto novo via IA (auto-cadastro do sync de ERP) ──────
+// O ERP manda só o básico (sku, nome, quantidade, preço opcional). A IA
+// preenche o que dá pra inferir só a partir do nome (categoria, descrição,
+// unidade, tags de busca). Campos que ela genuinamente não pode inventar
+// (foto real, spec técnica não implícita no nome) viram aviso em vez de
+// dado inventado. Roda em background (fire-and-forget) — não bloqueia a
+// resposta do sync pro ERP, que pode estar mandando até 500 itens de uma vez.
+async function resolveCategoriaIdPorNome(tenantId: string, nomeCategoria: string): Promise<string | null> {
+  const nome = nomeCategoria.trim();
+  if (!nome) return null;
+  const [existing] = await db
+    .select({ id: categoriasProdutoTable.id })
+    .from(categoriasProdutoTable)
+    .where(and(eq(categoriasProdutoTable.tenantId, tenantId), ilike(categoriasProdutoTable.nome, nome)))
+    .limit(1);
+  if (existing) return existing.id;
+  const [created] = await db
+    .insert(categoriasProdutoTable)
+    .values({ tenantId, nome })
+    .returning({ id: categoriasProdutoTable.id });
+  return created?.id ?? null;
+}
+
+const ENRICHMENT_SYSTEM_PROMPT = `Você enriquece o cadastro de um produto novo que acabou de chegar via
+sincronização automática de um ERP externo, sabendo só o nome (e às vezes
+preço). Responda APENAS com um objeto JSON válido, sem markdown, sem texto
+antes ou depois, no formato exato:
+{
+  "categoria": string ou null,
+  "descricao": string ou null (1 frase curta, objetiva),
+  "unidade": string ou null (ex: "un", "m²", "kg", "cx"),
+  "tags": string[] (3 a 6 termos de busca relevantes, minúsculas),
+  "avisos": string[] (o que NÃO dá pra inferir com segurança pelo nome —
+    ex: "precisa de foto real do produto", "confirmar especificação técnica
+    exata" — só inclua se genuinamente necessário, senão deixe vazio)
+}
+NUNCA invente característica técnica específica (voltagem, medida exata,
+composição) que não esteja implícita no nome — para isso, use "avisos" em
+vez de chutar um valor.`;
+
+async function enriquecerProdutoViaIA(produtoId: string, tenantId: string, nome: string): Promise<void> {
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 500,
+      system: ENRICHMENT_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Nome do produto: ${nome}` }],
+    });
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    const raw = textBlock && textBlock.type === "text" ? textBlock.text.trim() : null;
+    if (!raw) return;
+
+    const cleaned = raw.replace(/^```json\s*|```$/g, "").trim();
+    let parsed: { categoria?: string | null; descricao?: string | null; unidade?: string | null; tags?: string[]; avisos?: string[] };
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      console.error("[inventory] IA retornou JSON inválido no enriquecimento:", raw.slice(0, 200));
+      return;
+    }
+
+    const categoriaId = parsed.categoria ? await resolveCategoriaIdPorNome(tenantId, parsed.categoria) : null;
+
+    await db
+      .update(produtosCatalogoTable)
+      .set({
+        categoriaId: categoriaId ?? undefined,
+        descricao: parsed.descricao || undefined,
+        unidade: parsed.unidade || undefined,
+        tags: Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : undefined,
+        avisosRevisao: Array.isArray(parsed.avisos) && parsed.avisos.length > 0 ? parsed.avisos : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(produtosCatalogoTable.id, produtoId));
+  } catch (err) {
+    console.error("[inventory] erro no enriquecimento via IA:", err);
+    // Best-effort: produto continua em pendente_revisao, sem dados extras.
+    // Lojista revisa manualmente — não trava o fluxo de sync do ERP.
+  }
+}
 
 const router: IRouter = Router();
 
@@ -98,6 +181,7 @@ inventorySyncRouter.post("/tenants/:tenantId/inventory/sync", async (req, res) =
   let upserted = 0;
   let skipped = 0;
   const errors: Array<{ sku: string; error: string }> = [];
+  const results: Array<{ sku: string; status: "updated" | "created_pending_review" | "skipped_no_name" }> = [];
 
   for (const item of items) {
     try {
@@ -118,7 +202,7 @@ inventorySyncRouter.post("/tenants/:tenantId/inventory/sync", async (req, res) =
         .limit(1);
 
       if (existing) {
-        // Update quantity and optionally price
+        // SKU já existente: atualização automática, sem aprovação — sem mudança de comportamento.
         await db
           .update(inventoryItemsTable)
           .set({ quantidadeAtual: String(item.quantidade), updatedAt: new Date() })
@@ -132,42 +216,59 @@ inventorySyncRouter.post("/tenants/:tenantId/inventory/sync", async (req, res) =
         }
 
         upserted++;
-      } else {
-        // Find or create catalogue product by SKU
-        let [produto] = await db
-          .select()
-          .from(produtosCatalogoTable)
-          .where(
-            and(
-              eq(produtosCatalogoTable.tenantId, tenantId),
-              eq(produtosCatalogoTable.sku, item.sku),
-            ),
-          )
-          .limit(1);
+        results.push({ sku: item.sku, status: "updated" });
+        continue;
+      }
 
-        if (!produto) {
-          [produto] = await db
-            .insert(produtosCatalogoTable)
-            .values({
-              tenantId,
-              nome: item.nome ?? item.sku,
-              sku: item.sku,
-              precoBase: item.preco != null ? String(item.preco.toFixed(2)) : "0.00",
-              unidade: "un",
-            })
-            .returning();
+      // SKU não existe ainda no catálogo — nome é obrigatório pra criar,
+      // senão o item é ignorado (não cria produto incompleto).
+      let [produto] = await db
+        .select()
+        .from(produtosCatalogoTable)
+        .where(
+          and(
+            eq(produtosCatalogoTable.tenantId, tenantId),
+            eq(produtosCatalogoTable.sku, item.sku),
+          ),
+        )
+        .limit(1);
+
+      if (!produto) {
+        if (!item.nome) {
+          skipped++;
+          results.push({ sku: item.sku, status: "skipped_no_name" });
+          continue;
         }
 
-        await db.insert(inventoryItemsTable).values({
-          tenantId,
-          produtoId: produto.id,
-          quantidadeAtual: String(item.quantidade),
-          quantidadeMinima: "0",
-          unidade: "un",
-        });
+        [produto] = await db
+          .insert(produtosCatalogoTable)
+          .values({
+            tenantId,
+            nome: item.nome,
+            sku: item.sku,
+            precoBase: item.preco != null ? String(item.preco.toFixed(2)) : "0.00",
+            unidade: "un",
+            // Auto-cadastro: entra pendente de revisão e invisível em
+            // site/feed/anúncio (ativo=false) até o lojista aprovar.
+            // A IA completa o que der pra inferir do nome em background.
+            ativo: false,
+            statusRevisao: "pendente_revisao",
+          })
+          .returning();
 
-        upserted++;
+        void enriquecerProdutoViaIA(produto.id, tenantId, produto.nome);
       }
+
+      await db.insert(inventoryItemsTable).values({
+        tenantId,
+        produtoId: produto.id,
+        quantidadeAtual: String(item.quantidade),
+        quantidadeMinima: "0",
+        unidade: "un",
+      });
+
+      upserted++;
+      results.push({ sku: item.sku, status: "created_pending_review" });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro desconhecido";
       errors.push({ sku: item.sku, error: msg });
@@ -175,7 +276,7 @@ inventorySyncRouter.post("/tenants/:tenantId/inventory/sync", async (req, res) =
     }
   }
 
-  res.json({ upserted, skipped, errors });
+  res.json({ upserted, skipped, errors, results });
 });
 
 // ─── Inventory Items ─────────────────────────────────────────────────────────

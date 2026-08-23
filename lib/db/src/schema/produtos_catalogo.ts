@@ -123,6 +123,13 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   precoPacote: numeric("preco_pacote", { precision: 12, scale: 2 }),
   larguraPecaM: numeric("largura_peca_m", { precision: 8, scale: 3 }),
   estoqueQuantidade: integer("estoque_quantidade"),
+  // Auto-cadastro via IA (sync de estoque do ERP) — produto novo entra
+  // como 'pendente_revisao' (e ativo=false, reaproveitando toda a
+  // exclusão de site/feed/anúncio já existente por produtosCatalogoTable.ativo)
+  // até o lojista conferir/editar e aprovar. avisosRevisao lista o que a
+  // IA não conseguiu inferir com segurança (ex: "precisa de foto").
+  statusRevisao: text("status_revisao").notNull().default("ok"),
+  avisosRevisao: jsonb("avisos_revisao").$type<string[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

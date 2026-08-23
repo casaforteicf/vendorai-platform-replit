@@ -117,6 +117,55 @@ router.get("/tenants/:tenantId/produtos-catalogo", async (req, res) => {
   res.json(await attachCategoriaInfo(products));
 });
 
+// GET /tenants/:tenantId/produtos-catalogo/pendentes-revisao — fila de
+// produtos criados automaticamente pelo sync do ERP, aguardando o lojista
+// conferir/editar e aprovar antes de entrarem ativos no catálogo.
+router.get("/tenants/:tenantId/produtos-catalogo/pendentes-revisao", async (req, res) => {
+  const { tenantId } = req.params;
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+  const products = await db
+    .select()
+    .from(produtosCatalogoTable)
+    .where(
+      and(
+        eq(produtosCatalogoTable.tenantId, tenantId),
+        eq(produtosCatalogoTable.statusRevisao, "pendente_revisao"),
+      ),
+    )
+    .orderBy(produtosCatalogoTable.createdAt);
+  res.json(await attachCategoriaInfo(products));
+});
+
+// POST /produtos-catalogo/:id/aprovar — lojista aprova o produto pendente:
+// vira ativo e sai da fila de revisão. Editar campos continua sendo o
+// PATCH normal (/produtos-catalogo/:id) — este endpoint só muda o status.
+router.post("/produtos-catalogo/:id/aprovar", async (req, res) => {
+  const [existing] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(produtosCatalogoTable)
+    .set({ ativo: true, statusRevisao: "ok", avisosRevisao: null, updatedAt: new Date() })
+    .where(eq(produtosCatalogoTable.id, existing.id))
+    .returning();
+
+  res.json(updated);
+});
+
 router.get("/produtos-catalogo/:id", async (req, res) => {
   const [product] = await db
     .select()
