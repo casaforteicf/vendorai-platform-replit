@@ -822,8 +822,8 @@ router.post("/tenants/:tenantId/propostas/calcular-orcamento", async (req, res) 
   }
 
   try {
-    const { resultado, acessorioSugeridoAutomaticamente } = await resolverECalcularOrcamento(tenantId, parsed.data);
-    res.status(200).json({ ...resultado, acessorioSugeridoAutomaticamente });
+    const { resultado, acessorioSugeridoAutomaticamente, itensComposicao } = await resolverECalcularOrcamento(tenantId, parsed.data);
+    res.status(200).json({ ...resultado, acessorioSugeridoAutomaticamente, itensComposicao });
   } catch (err) {
     if (err instanceof ErroResolucaoOrcamento) {
       const status = err.message.startsWith("Produto not found") ? 404 : 422;

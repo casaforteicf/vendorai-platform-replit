@@ -52,24 +52,40 @@ export interface ResultadoCalculoM2 {
     valorTotal: number;
     detalhamentoSuperficies: { nome?: string; area: number; perimetro?: number }[];
   };
+  /** @deprecated use composicao — mantido só por compatibilidade de leitura. */
   acessorioPerimetro?: {
     produtoId: string;
     quantidadeNecessaria: number;
     numeroPacotes: number;
     valorTotal: number;
   };
+  /** Composição de N itens (generaliza acessorioPerimetro), na mesma ordem de itensComposicao. */
+  composicao?: {
+    produtoId: string;
+    quantidadeNecessaria: number;
+    numeroPacotes: number;
+    valorTotal: number;
+  }[];
+  itensComposicao?: { produtoId: string; nome: string; baseCalculo: "area" | "perimetro" }[];
   acessorioSugeridoAutomaticamente: boolean;
 }
 
 export interface ResultadoConfirmadoCalculoM2 {
   quantidade: number;
   precoUnitario: number;
+  /** @deprecated use itensComposicao — mantido só por compatibilidade. */
   acessorio?: {
     produtoId: string;
     nome: string;
     quantidade: number;
     precoUnitario: number;
   };
+  itensComposicao?: {
+    produtoId: string;
+    nome: string;
+    quantidade: number;
+    precoUnitario: number;
+  }[];
 }
 
 function novaSuperficie(): SuperficieForm {
@@ -161,21 +177,20 @@ export function CalculoOrcamentoM2Dialog({
     const quantidade = pp.numeroPacotes > 0 ? pp.numeroPacotes : pp.quantidadeNecessaria;
     const precoUnitario = quantidade > 0 ? pp.valorTotal / quantidade : 0;
 
-    let acessorio: ResultadoConfirmadoCalculoM2["acessorio"];
-    if (resultado.acessorioPerimetro) {
-      const ap = resultado.acessorioPerimetro;
-      const quantidadeAcessorio = ap.numeroPacotes > 0 ? ap.numeroPacotes : ap.quantidadeNecessaria;
-      const precoUnitAcessorio = quantidadeAcessorio > 0 ? ap.valorTotal / quantidadeAcessorio : 0;
-      const acessorioProduto = acessoriosDisponiveis.find((a) => a.id === ap.produtoId);
-      acessorio = {
-        produtoId: ap.produtoId,
-        nome: acessorioProduto?.nome ?? "Acabamento de perímetro",
-        quantidade: quantidadeAcessorio,
-        precoUnitario: precoUnitAcessorio,
-      };
-    }
+    const itensComposicao: ResultadoConfirmadoCalculoM2["itensComposicao"] = (resultado.composicao ?? []).map((item, i) => {
+      const qtd = item.numeroPacotes > 0 ? item.numeroPacotes : item.quantidadeNecessaria;
+      const precoUnit = qtd > 0 ? item.valorTotal / qtd : 0;
+      const nome = resultado.itensComposicao?.[i]?.nome
+        ?? acessoriosDisponiveis.find((a) => a.id === item.produtoId)?.nome
+        ?? "Item da composição";
+      return { produtoId: item.produtoId, nome, quantidade: qtd, precoUnitario: precoUnit };
+    });
 
-    onConfirm({ quantidade, precoUnitario, acessorio });
+    // Campo legado (1 item só) — preenchido a partir do primeiro item de
+    // composicao, pra quem ainda lê só `acessorio`.
+    const acessorio = itensComposicao[0];
+
+    onConfirm({ quantidade, precoUnitario, acessorio, itensComposicao });
     resetState();
     onOpenChange(false);
   }
@@ -301,14 +316,19 @@ export function CalculoOrcamentoM2Dialog({
                 : "cobrança por m²"}{" "}
               · <strong>R$ {resultado.produtoPrincipal.valorTotal.toFixed(2)}</strong>
             </p>
-            {resultado.acessorioPerimetro && (
-              <p className="text-muted-foreground">
-                Acabamento{resultado.acessorioSugeridoAutomaticamente ? " (sugerido automaticamente)" : ""}:{" "}
-                {resultado.acessorioPerimetro.quantidadeNecessaria} m ·{" "}
-                {resultado.acessorioPerimetro.numeroPacotes} barra(s) · R${" "}
-                {resultado.acessorioPerimetro.valorTotal.toFixed(2)}
-              </p>
-            )}
+            {(resultado.composicao ?? []).map((item, i) => {
+              const info = resultado.itensComposicao?.[i];
+              const unidadeLabel = info?.baseCalculo === "perimetro" ? "m" : "m²";
+              return (
+                <p key={item.produtoId} className="text-muted-foreground">
+                  {info?.nome ?? "Item da composição"}
+                  {i === 0 && resultado.acessorioSugeridoAutomaticamente ? " (sugerido automaticamente)" : ""}:{" "}
+                  {item.quantidadeNecessaria} {unidadeLabel} ·{" "}
+                  {item.numeroPacotes > 0 ? `${item.numeroPacotes} pacote(s)` : "cobrança direta"} · R${" "}
+                  {item.valorTotal.toFixed(2)}
+                </p>
+              );
+            })}
           </div>
         )}
 

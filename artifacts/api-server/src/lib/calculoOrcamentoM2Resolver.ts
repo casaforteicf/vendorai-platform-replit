@@ -4,7 +4,7 @@
 // duplicar a lógica de busca de produto e sugestão automática de
 // acessório por Coleção+Cor.
 import { and, eq } from "drizzle-orm";
-import { db, produtosCatalogoTable } from "@workspace/db";
+import { db, produtosCatalogoTable, produtoComposicoesTable } from "@workspace/db";
 import {
   calcularOrcamentoProdutoArea,
   type ProdutoCalculo,
@@ -25,8 +25,11 @@ export interface EntradaCalculoOrcamento {
 export interface SaidaCalculoOrcamento {
   resultado: ResultadoCalculoOrcamento;
   produtoNome: string;
+  /** @deprecated use itensComposicao — mantido só pra não quebrar quem já lê esse campo. */
   acessorioNome: string | null;
   acessorioSugeridoAutomaticamente: boolean;
+  /** Nome de cada item da composição, na mesma ordem de resultado.composicao. */
+  itensComposicao: { produtoId: string; nome: string; baseCalculo: "area" | "perimetro" }[];
 }
 
 export function produtoParaCalculo(produto: typeof produtosCatalogoTable.$inferSelect): ProdutoCalculo {
@@ -42,8 +45,18 @@ export function produtoParaCalculo(produto: typeof produtosCatalogoTable.$inferS
 }
 
 /**
- * Busca o produto (e, se aplicável, o acessório de perímetro — informado
- * ou sugerido automaticamente por Coleção+Cor) e roda o cálculo real.
+ * Busca o produto e sua composição de cálculo, e roda o motor real.
+ *
+ * Ordem de resolução da composição (do mais explícito pro mais implícito):
+ * 1. produto_composicoes — itens configurados explicitamente pro produto,
+ *    cada um com sua própria base de cálculo (área ou perímetro). Caminho
+ *    recomendado, suporta qualquer número de itens.
+ * 2. Fallback legado: acessorioProdutoId informado na chamada, OU
+ *    auto-match por Coleção+Cor (produto tipo "acabamento_perimetro" com
+ *    mesma Coleção+Cor do produto principal) — só 1 item, sempre por
+ *    perímetro. Mantido pra não quebrar produtos já configurados assim
+ *    antes da tabela de composição existir.
+ *
  * Lança ErroResolucaoOrcamento em erros de resolução (produto não
  * encontrado/inativo); ErroCalculoOrcamento (do motor) propaga direto
  * pra quem chamar tratar.
@@ -62,44 +75,70 @@ export async function resolverECalcularOrcamento(
 
   const produtoCalculo = produtoParaCalculo(produto);
 
-  let acessorioCalculo: ProdutoCalculo | undefined;
+  let composicaoItens: { produto: ProdutoCalculo; baseCalculo: "area" | "perimetro" }[] = [];
+  let itensComposicao: SaidaCalculoOrcamento["itensComposicao"] = [];
   let acessorioSugeridoAutomaticamente = false;
 
-  if (produtoCalculo.tipoCalculo === "area_com_acabamento_perimetro") {
-    let acessorio: typeof produto | null = null;
+  if (produtoCalculo.tipoCalculo === "area_com_acabamento_perimetro" || produtoCalculo.tipoCalculo === "area_simples") {
+    const composicaoRows = await db
+      .select({
+        itemProdutoId: produtoComposicoesTable.itemProdutoId,
+        baseCalculo: produtoComposicoesTable.baseCalculo,
+      })
+      .from(produtoComposicoesTable)
+      .where(and(eq(produtoComposicoesTable.tenantId, tenantId), eq(produtoComposicoesTable.produtoPrincipalId, produto.id)))
+      .orderBy(produtoComposicoesTable.ordem);
 
-    if (entrada.acessorioProdutoId) {
-      const [found] = await db
-        .select()
-        .from(produtosCatalogoTable)
-        .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.id, entrada.acessorioProdutoId)));
-      acessorio = found ?? null;
-    } else if (produto.colecao && produto.cor) {
-      const [found] = await db
-        .select()
-        .from(produtosCatalogoTable)
-        .where(
-          and(
-            eq(produtosCatalogoTable.tenantId, tenantId),
-            eq(produtosCatalogoTable.tipoCalculo, "acabamento_perimetro"),
-            eq(produtosCatalogoTable.colecao, produto.colecao),
-            eq(produtosCatalogoTable.cor, produto.cor),
-            eq(produtosCatalogoTable.ativo, true)
-          )
-        );
-      acessorio = found ?? null;
-      acessorioSugeridoAutomaticamente = !!found;
+    if (composicaoRows.length > 0) {
+      for (const row of composicaoRows) {
+        const [itemProduto] = await db
+          .select()
+          .from(produtosCatalogoTable)
+          .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.id, row.itemProdutoId)));
+        if (!itemProduto || !itemProduto.ativo) continue; // item desativado: pula em silêncio, não trava o orçamento inteiro
+        const baseCalculo = row.baseCalculo === "perimetro" ? "perimetro" : "area";
+        composicaoItens.push({ produto: produtoParaCalculo(itemProduto), baseCalculo });
+        itensComposicao.push({ produtoId: itemProduto.id, nome: itemProduto.nome, baseCalculo });
+      }
+    } else if (produtoCalculo.tipoCalculo === "area_com_acabamento_perimetro") {
+      // Fallback legado — só pra area_com_acabamento_perimetro, só 1 item por perímetro.
+      let acessorio: typeof produto | null = null;
+      if (entrada.acessorioProdutoId) {
+        const [found] = await db
+          .select()
+          .from(produtosCatalogoTable)
+          .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.id, entrada.acessorioProdutoId)));
+        acessorio = found ?? null;
+      } else if (produto.colecao && produto.cor) {
+        const [found] = await db
+          .select()
+          .from(produtosCatalogoTable)
+          .where(
+            and(
+              eq(produtosCatalogoTable.tenantId, tenantId),
+              eq(produtosCatalogoTable.tipoCalculo, "acabamento_perimetro"),
+              eq(produtosCatalogoTable.colecao, produto.colecao),
+              eq(produtosCatalogoTable.cor, produto.cor),
+              eq(produtosCatalogoTable.ativo, true)
+            )
+          );
+        acessorio = found ?? null;
+        acessorioSugeridoAutomaticamente = !!found;
+      }
+      if (acessorio) {
+        composicaoItens.push({ produto: produtoParaCalculo(acessorio), baseCalculo: "perimetro" });
+        itensComposicao.push({ produtoId: acessorio.id, nome: acessorio.nome, baseCalculo: "perimetro" });
+      }
     }
-
-    if (acessorio) acessorioCalculo = produtoParaCalculo(acessorio);
   }
 
-  const resultado = calcularOrcamentoProdutoArea(produtoCalculo, entrada.superficies, acessorioCalculo);
+  const resultado = calcularOrcamentoProdutoArea(produtoCalculo, entrada.superficies, composicaoItens);
 
   return {
     resultado,
     produtoNome: produto.nome,
-    acessorioNome: acessorioCalculo?.nome ?? null,
+    acessorioNome: itensComposicao[0]?.nome ?? null,
     acessorioSugeridoAutomaticamente,
+    itensComposicao,
   };
 }

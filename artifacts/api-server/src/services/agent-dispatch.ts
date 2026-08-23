@@ -1329,7 +1329,7 @@ export async function processAgentInternal(params: {
             acessorioProdutoId?: string | null;
           };
 
-          const { resultado, produtoNome, acessorioNome } = await resolverECalcularOrcamento(tenantId, {
+          const { resultado, produtoNome, itensComposicao } = await resolverECalcularOrcamento(tenantId, {
             produtoId: payload.produtoId,
             superficies: payload.superficies,
             acessorioProdutoId: payload.acessorioProdutoId ?? undefined,
@@ -1340,10 +1340,13 @@ export async function processAgentInternal(params: {
             `Com base nas medidas informadas (${p.quantidadeNecessaria} m²), você vai precisar de ${p.numeroPacotes} pacote${p.numeroPacotes === 1 ? "" : "s"} de ${produtoNome} — R$ ${p.valorTotal.toFixed(2)}.`,
           ];
           let valorTotalGeral = p.valorTotal;
-          if (resultado.acessorioPerimetro && acessorioNome) {
-            const a = resultado.acessorioPerimetro;
-            linhas.push(`Para o acabamento de perímetro, ${a.numeroPacotes} pacote${a.numeroPacotes === 1 ? "" : "s"} de ${acessorioNome} — R$ ${a.valorTotal.toFixed(2)}.`);
-            valorTotalGeral += a.valorTotal;
+          if (resultado.composicao && resultado.composicao.length > 0) {
+            resultado.composicao.forEach((item, i) => {
+              const nomeItem = itensComposicao[i]?.nome ?? "item adicional";
+              const baseLabel = itensComposicao[i]?.baseCalculo === "perimetro" ? "de acabamento de perímetro" : "adicional";
+              linhas.push(`Para o item ${baseLabel}, ${item.numeroPacotes} pacote${item.numeroPacotes === 1 ? "" : "s"} de ${nomeItem} — R$ ${item.valorTotal.toFixed(2)}.`);
+              valorTotalGeral += item.valorTotal;
+            });
             linhas.push(`Valor total: R$ ${valorTotalGeral.toFixed(2)}.`);
           }
           finalResposta = linhas.join(" ");

@@ -10,6 +10,7 @@ import {
   insertProdutoCatalogoSchema,
   updateProdutoCatalogoSchema,
   inventoryItemsTable,
+  produtoComposicoesTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -225,6 +226,79 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
     .returning();
 
   res.json(product);
+});
+
+// ── Composição de N itens pra cálculo de orçamento por área/m² ───────────────
+// Ver produto_composicoes.ts (schema) — generaliza "1 acessório por
+// Coleção+Cor" pra qualquer número de itens, cada um por área ou perímetro.
+const composicaoItemSchema = z.object({
+  itemProdutoId: z.string().min(1),
+  baseCalculo: z.enum(["area", "perimetro"]).default("area"),
+});
+const composicaoBodySchema = z.object({ itens: z.array(composicaoItemSchema).max(20) });
+
+router.get("/produtos-catalogo/:id/composicao", async (req, res) => {
+  const [produto] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+  if (!produto) return res.status(404).json({ error: "Product not found" });
+  if (req.user?.platformRole !== "super_admin" && produto.tenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Access denied to this tenant" });
+  }
+
+  const itens = await db
+    .select({
+      id: produtoComposicoesTable.id,
+      itemProdutoId: produtoComposicoesTable.itemProdutoId,
+      baseCalculo: produtoComposicoesTable.baseCalculo,
+      ordem: produtoComposicoesTable.ordem,
+      nome: produtosCatalogoTable.nome,
+    })
+    .from(produtoComposicoesTable)
+    .innerJoin(produtosCatalogoTable, eq(produtosCatalogoTable.id, produtoComposicoesTable.itemProdutoId))
+    .where(eq(produtoComposicoesTable.produtoPrincipalId, produto.id))
+    .orderBy(produtoComposicoesTable.ordem);
+
+  return res.json(itens);
+});
+
+// Substitui a composição inteira do produto (apaga tudo e recria na ordem
+// enviada) — mais simples e seguro do que tentar diffar item a item numa
+// lista curta (no máximo 20 itens).
+router.put("/produtos-catalogo/:id/composicao", async (req, res) => {
+  const parsed = composicaoBodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [produto] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
+  if (!produto) return res.status(404).json({ error: "Product not found" });
+  if (req.user?.platformRole !== "super_admin" && produto.tenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Access denied to this tenant" });
+  }
+  if (!produto.tenantId) return res.status(422).json({ error: "O produto não está vinculado a uma empresa válida." });
+
+  if (parsed.data.itens.some((i) => i.itemProdutoId === produto.id)) {
+    return res.status(422).json({ error: "Um produto não pode compor a si mesmo." });
+  }
+
+  await db.delete(produtoComposicoesTable).where(eq(produtoComposicoesTable.produtoPrincipalId, produto.id));
+
+  if (parsed.data.itens.length > 0) {
+    await db.insert(produtoComposicoesTable).values(
+      parsed.data.itens.map((item, ordem) => ({
+        tenantId: produto.tenantId as string,
+        produtoPrincipalId: produto.id,
+        itemProdutoId: item.itemProdutoId,
+        baseCalculo: item.baseCalculo,
+        ordem,
+      }))
+    );
+  }
+
+  return res.json({ success: true, count: parsed.data.itens.length });
 });
 
 // ── PATCH /tenants/:tenantId/produtos-catalogo/praca-ai-bulk ─────────────────

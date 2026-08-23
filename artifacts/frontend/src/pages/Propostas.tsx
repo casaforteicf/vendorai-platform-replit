@@ -290,6 +290,10 @@ export function CatalogoModal({
   const [csvRaw, setCsvRaw] = useState("");
   const [importPreviewOpen, setImportPreviewOpen] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; errors: { row: number; message: string }[] } | null>(null);
+  // Composição de N itens pra cálculo por m² — tabela separada
+  // (produto_composicoes), carregada/salva à parte do form principal.
+  const [composicaoItens, setComposicaoItens] = useState<{ itemProdutoId: string; baseCalculo: "area" | "perimetro" }[]>([]);
+  const [composicaoLoading, setComposicaoLoading] = useState(false);
 
   const { data: catalog = [], isLoading } = useListProdutosCatalogo(tenantId, {
     query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
@@ -316,6 +320,7 @@ export function CatalogoModal({
   function openCreate() {
     setEditingProd(null);
     form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
+    setComposicaoItens([]);
     setFormOpen(true);
   }
 
@@ -345,6 +350,20 @@ export function CatalogoModal({
       cor: (p as any).cor ?? "",
     });
     setFormOpen(true);
+
+    // Composição é tabela separada — carrega à parte, não bloqueia a
+    // abertura do modal (form já abre com o resto pronto).
+    setComposicaoItens([]);
+    setComposicaoLoading(true);
+    fetch(`/api/produtos-catalogo/${p.id}/composicao`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((itens: { itemProdutoId: string; baseCalculo: "area" | "perimetro" }[]) => {
+        setComposicaoItens(itens.map((i) => ({ itemProdutoId: i.itemProdutoId, baseCalculo: i.baseCalculo })));
+      })
+      .catch(() => {})
+      .finally(() => setComposicaoLoading(false));
   }
 
   function invalidate() {
@@ -407,7 +426,7 @@ export function CatalogoModal({
       updateMut.mutate(
         { id: editingProd.id, data: body },
         {
-          onSuccess: () => { toast({ title: "Produto atualizado" }); invalidate(); setFormOpen(false); },
+          onSuccess: () => { toast({ title: "Produto atualizado" }); invalidate(); salvarComposicao(editingProd.id); setFormOpen(false); },
           onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
         }
       );
@@ -415,11 +434,25 @@ export function CatalogoModal({
       createMut.mutate(
         { data: { ...body, tenantId } },
         {
-          onSuccess: () => { toast({ title: "Produto criado" }); invalidate(); setFormOpen(false); },
+          onSuccess: (created: any) => { toast({ title: "Produto criado" }); invalidate(); if (created?.id) salvarComposicao(created.id); setFormOpen(false); },
           onError: () => toast({ title: "Erro ao criar produto", variant: "destructive" }),
         }
       );
     }
+  }
+
+  // Salva a composição em separado, depois do produto já existir (precisa
+  // do ID real, seja de um produto novo ou já existente). Falha aqui não
+  // desfaz o produto já salvo — só avisa, o resto do cadastro fica valendo.
+  function salvarComposicao(produtoId: string) {
+    if (composicaoItens.length === 0 && !editingProd) return; // produto novo sem composição: nada a salvar
+    fetch(`/api/produtos-catalogo/${produtoId}/composicao`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      body: JSON.stringify({ itens: composicaoItens.filter((i) => i.itemProdutoId) }),
+    })
+      .then((r) => { if (!r.ok) throw new Error(); })
+      .catch(() => toast({ title: "Produto salvo, mas a composição não pôde ser atualizada", variant: "destructive" }));
   }
 
   function doDelete() {
@@ -833,8 +866,43 @@ export function CatalogoModal({
                     )} />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Produto principal e acessório de acabamento com a mesma Coleção+Cor são sugeridos automaticamente juntos no cálculo.
+                    Coleção+Cor é só um fallback: se não houver nenhum item de composição configurado abaixo, o sistema tenta casar automaticamente com outro produto de mesma Coleção+Cor marcado como acabamento de perímetro.
                   </p>
+
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Composição (itens que entram junto no cálculo)</FormLabel>
+                      {composicaoLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cada item some junto — pela área total ou pelo perímetro total dos ambientes/paredes informados. Ex: teto vinílico = manta (área) + perfil de acabamento (perímetro). Sem limite de itens.
+                    </p>
+                    {composicaoItens.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Select value={item.itemProdutoId} onValueChange={(v) => setComposicaoItens((prev) => prev.map((it, i) => i === idx ? { ...it, itemProdutoId: v } : it))}>
+                          <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Selecione o produto…" /></SelectTrigger>
+                          <SelectContent>
+                            {catalog.filter((p) => p.id !== editingProd?.id).map((p) => (
+                              <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={item.baseCalculo} onValueChange={(v) => setComposicaoItens((prev) => prev.map((it, i) => i === idx ? { ...it, baseCalculo: v as "area" | "perimetro" } : it))}>
+                          <SelectTrigger className="h-8 text-sm w-32"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="area">Por área</SelectItem>
+                            <SelectItem value="perimetro">Por perímetro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setComposicaoItens((prev) => prev.filter((_, i) => i !== idx))}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button type="button" variant="outline" size="sm" onClick={() => setComposicaoItens((prev) => [...prev, { itemProdutoId: "", baseCalculo: "area" }])}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
+                    </Button>
+                  </div>
                 </div>
               )}
                           <div className="grid grid-cols-2 gap-3">
@@ -1847,16 +1915,15 @@ function newFreeItem(): FreeItem {
       quantidade: resultado.quantidade,
       precoUnitarioOverride: resultado.precoUnitario,
     });
-    if (resultado.acessorio) {
-      const acessorio = resultado.acessorio;
+    if (resultado.itensComposicao && resultado.itensComposicao.length > 0) {
       setCartLines((prev) => [
         ...prev,
-        {
-          produtoId: acessorio.produtoId,
-          quantidade: acessorio.quantidade,
-          precoUnitarioOverride: acessorio.precoUnitario,
-          nomeOverride: acessorio.nome,
-        },
+        ...resultado.itensComposicao!.map((item) => ({
+          produtoId: item.produtoId,
+          quantidade: item.quantidade,
+          precoUnitarioOverride: item.precoUnitario,
+          nomeOverride: item.nome,
+        })),
       ]);
     }
   }}

@@ -79,6 +79,15 @@ export interface ResultadoCalculoOrcamento {
   produtoPrincipal: ResultadoCalculoProduto;
   /** presente só quando tipoCalculo = "area_com_acabamento_perimetro" e um acessório foi passado. */
   acessorioPerimetro?: ResultadoCalculoProduto;
+  /**
+   * Composição de N itens (ver produto_composicoes) — generaliza
+   * acessorioPerimetro pra qualquer número de itens, cada um calculado
+   * por área ou por perímetro do ambiente. Quando presente, é a fonte
+   * usada pra formar a resposta; acessorioPerimetro fica como campo
+   * legado, preenchido só quando NÃO há composição (fallback por
+   * Coleção+Cor de 1 item só).
+   */
+  composicao?: ResultadoCalculoProduto[];
 }
 
 export class ErroCalculoOrcamento extends Error {}
@@ -147,12 +156,13 @@ export function calcularFechamentoPacote(
 /**
  * Motor principal. Dado o produto (com tipoCalculo já resolvido do cadastro) e a lista de
  * superfícies informadas pelo vendedor/agente SDR, retorna a quantidade fechada e o valor —
- * do produto principal e, se aplicável, do acessório de acabamento de perímetro escolhido.
+ * do produto principal e, se aplicável, de cada item da composição (acabamento de perímetro,
+ * ou qualquer outro item por área/perímetro).
  */
 export function calcularOrcamentoProdutoArea(
   produto: ProdutoCalculo,
   superficies: SuperficieAmbiente[] | SuperficieParede[],
-  acessorioPerimetro?: ProdutoCalculo
+  composicaoItens?: { produto: ProdutoCalculo; baseCalculo: "area" | "perimetro" }[]
 ): ResultadoCalculoOrcamento {
   const tipo = produto.tipoCalculo ?? "area_simples";
 
@@ -181,15 +191,24 @@ export function calcularOrcamentoProdutoArea(
       },
     };
 
-    if (acessorioPerimetro) {
-      const ac = calcularFechamentoPacote(perimetroTotal, acessorioPerimetro);
-      resultado.acessorioPerimetro = {
-        produtoId: acessorioPerimetro.id,
-        quantidadeNecessaria: round3(perimetroTotal),
-        numeroPacotes: ac.numeroPacotes,
-        valorTotal: ac.valorTotal,
-        detalhamentoSuperficies: [],
-      };
+    if (composicaoItens && composicaoItens.length > 0) {
+      resultado.composicao = composicaoItens.map(({ produto: itemProduto, baseCalculo }) => {
+        const quantidadeBase = baseCalculo === "perimetro" ? perimetroTotal : areaTotal;
+        const item = calcularFechamentoPacote(quantidadeBase, itemProduto);
+        return {
+          produtoId: itemProduto.id,
+          quantidadeNecessaria: round3(quantidadeBase),
+          numeroPacotes: item.numeroPacotes,
+          valorTotal: item.valorTotal,
+          detalhamentoSuperficies: [],
+        };
+      });
+      // Campo legado: primeiro item de composição calculado por perímetro,
+      // se houver, continua populando acessorioPerimetro pra quem ainda lê
+      // esse campo (nenhum call site interno lê mais isso hoje, mas mantém
+      // a resposta da API estável pra qualquer integração externa).
+      const idxPerimetro = composicaoItens.findIndex((c) => c.baseCalculo === "perimetro");
+      if (idxPerimetro >= 0) resultado.acessorioPerimetro = resultado.composicao[idxPerimetro];
     }
     return resultado;
   }
@@ -206,7 +225,7 @@ export function calcularOrcamentoProdutoArea(
       detalhamento.push({ nome: s.nome, area: round3(area) });
     }
     const principal = calcularFechamentoPacote(areaTotal, produto);
-    return {
+    const resultado: ResultadoCalculoOrcamento = {
       produtoPrincipal: {
         produtoId: produto.id,
         quantidadeNecessaria: round3(areaTotal),
@@ -215,6 +234,21 @@ export function calcularOrcamentoProdutoArea(
         detalhamentoSuperficies: detalhamento,
       },
     };
+    if (composicaoItens && composicaoItens.length > 0) {
+      // Paredes não têm noção de perímetro no modelo atual — todo item de
+      // composição de um produto "area_simples" usa a área total.
+      resultado.composicao = composicaoItens.map(({ produto: itemProduto }) => {
+        const item = calcularFechamentoPacote(areaTotal, itemProduto);
+        return {
+          produtoId: itemProduto.id,
+          quantidadeNecessaria: round3(areaTotal),
+          numeroPacotes: item.numeroPacotes,
+          valorTotal: item.valorTotal,
+          detalhamentoSuperficies: [],
+        };
+      });
+    }
+    return resultado;
   }
 
   throw new ErroCalculoOrcamento(
