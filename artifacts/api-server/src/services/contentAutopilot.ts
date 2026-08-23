@@ -140,7 +140,8 @@ export async function discoverKeywords(tenantId: string, seedKeywords: string[])
         tenantId,
         termo: kw.keyword,
         volumeBusca: kw.searchVolume,
-        dificuldade: kw.competition != null ? String(Math.round(kw.competition * 100)) : null,
+        dificuldade:
+          typeof kw.competition === "number" && Number.isFinite(kw.competition) ? String(Math.round(kw.competition * 100)) : null,
         tipo: null,
         status: "descoberta",
         fonte: "dataforseo",
