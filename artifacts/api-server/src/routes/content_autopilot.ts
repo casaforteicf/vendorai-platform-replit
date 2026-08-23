@@ -12,6 +12,7 @@ import { z } from "zod/v4";
 import { analyzeSiteTone, discoverKeywords, researchCompetitors, getConfig, OrcamentoExcedidoError } from "../services/contentAutopilot.js";
 import { generateArticle } from "../services/contentAutopilotCriador.js";
 import { optimizeArticle } from "../services/contentAutopilotOtimizador.js";
+import { processTenant as runContentAutopilotForTenant } from "../services/contentAutopilotJob.js";
 import { isDataForSeoConfigured } from "../lib/dataforseoClient.js";
 
 const router: IRouter = Router();
@@ -261,6 +262,22 @@ router.post("/tenants/:tenantId/content-autopilot/articles/:id/optimize", async 
   } catch (err) {
     req.log?.error({ err, tenantId, articleId: req.params.id }, "content-autopilot/optimize: falhou");
     res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao otimizar artigo" });
+  }
+});
+
+// ── POST /tenants/:tenantId/content-autopilot/run-now ────────────────────────
+// Dispara manualmente a mesma rotina do job diário (05:00 BRT) — útil pra
+// testar sem esperar o cron. Só processa keywords com status "aprovada".
+router.post("/tenants/:tenantId/content-autopilot/run-now", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!checkAccess(req, res, tenantId)) return;
+
+  try {
+    const result = await runContentAutopilotForTenant(tenantId, (req.log as any) ?? console);
+    res.json(result);
+  } catch (err) {
+    req.log?.error({ err, tenantId }, "content-autopilot/run-now: falhou");
+    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao rodar o job" });
   }
 });
 

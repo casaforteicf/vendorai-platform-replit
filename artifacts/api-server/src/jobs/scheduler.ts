@@ -19,6 +19,7 @@ import { runPartnerCommissions } from "./partnerCommission.js";
 import { runPartnerProspectorJob } from "./partnerProspector.js";
 import { processFlowExecutions } from "./contentFlow.js";
 import { runRevenueScoutJob } from "../services/revenueScout.js";
+import { runContentAutopilotJob } from "../services/contentAutopilotJob.js";
 import { runAppointmentReminders } from "./appointmentReminders.js";
 import { pollPendingRenders } from "../services/blenderService.js";
 import { sendOutgoingMessage } from "../services/omnichannel.js";
@@ -1728,6 +1729,14 @@ export function startScheduler(log: Logger): void {
     });
   });
 
+  // Job 12b: Content Autopilot — daily at 05:00 BRT (Criador→Otimizador→
+  // Publicador pra keywords já aprovadas; nunca descobre keyword nova sozinho)
+  cron.schedule("0 5 * * *", () => {
+    runContentAutopilotJob(log).catch((err) => {
+      log.error({ err }, "scheduler/content-autopilot: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
   // Job 13: Appointment reminders — every 30 minutes
   cron.schedule("*/30 * * * *", () => {
     runAppointmentReminders(log).catch((err) => {
@@ -1819,7 +1828,7 @@ export function startScheduler(log: Logger): void {
     });
   }, { timezone: "America/Sao_Paulo" });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, pos-venda-inactivity @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT, feedback-loop @mon-06:00-BRT)");
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, content-autopilot @05:00-BRT, appointment-reminders @*/30min, no-response-closing @09:30, pos-venda-inactivity @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT, feedback-loop @mon-06:00-BRT)");
 }
 
 async function runAutomaticDeliveryDispatch(
