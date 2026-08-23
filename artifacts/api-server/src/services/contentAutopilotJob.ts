@@ -14,7 +14,7 @@
  * publica de verdade sozinho, mesmo rodando todo dia.
  */
 import { db, contentAutopilotConfigTable, contentAutopilotKeywordsTable, contentAutopilotRunsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import type { Logger } from "pino";
 import { generateArticle } from "./contentAutopilotCriador.js";
 import { optimizeArticle } from "./contentAutopilotOtimizador.js";
@@ -36,7 +36,7 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
     .select()
     .from(contentAutopilotKeywordsTable)
     .where(and(eq(contentAutopilotKeywordsTable.tenantId, tenantId), eq(contentAutopilotKeywordsTable.status, "aprovada")))
-    .orderBy(contentAutopilotKeywordsTable.volumeBusca)
+    .orderBy(desc(contentAutopilotKeywordsTable.volumeBusca))
     .limit(config.artigosPorDia);
 
   if (keywords.length === 0) {
