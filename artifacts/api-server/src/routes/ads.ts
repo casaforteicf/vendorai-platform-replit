@@ -15,6 +15,7 @@ import { gerarCriativoRSA } from "../lib/adContentGenerator.js";
 import { gerarShoppingFeedXml, gerarFeedToken, validarFeedToken } from "../lib/adShoppingFeed.js";
 import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
+import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
 
 const router: IRouter = Router();
 
@@ -156,6 +157,62 @@ router.post("/tenants/:tenantId/ads/creatives/:id/aprovar", async (req, res) => 
     .returning();
 
   return res.json(row);
+});
+
+// ─── Publicação real na API do Google Ads ──────────────────────────────────
+//
+// publicar: cria campanha+orçamento+grupo+anúncio na conta real do
+// tenant, TUDO pausado (não gasta nada ainda) — o "rascunho aprovado"
+// vira estrutura de verdade na plataforma, esperando revisão.
+// ativar/pausar: única ação que de fato liga/desliga veiculação real.
+// Ambas exigem clique explícito do lojista — nada aqui roda sozinho.
+router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const result = await publishCampaignToGoogleAds(tenantId, req.params.id as string);
+    logger.info({ tenantId, campaignId: req.params.id }, "ads: campanha publicada via rota");
+    return res.status(201).json(result);
+  } catch (err) {
+    if (err instanceof GoogleAdsPublishError) {
+      return res.status(422).json({ error: err.message });
+    }
+    logger.error({ err, tenantId, campaignId: req.params.id }, "ads: erro inesperado ao publicar campanha");
+    return res.status(500).json({ error: "Erro inesperado ao publicar campanha no Google Ads." });
+  }
+});
+
+router.post("/tenants/:tenantId/ads/campaigns/:id/ativar", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    await setGoogleAdsCampaignStatus(tenantId, req.params.id as string, true);
+    return res.json({ success: true, status: "ativo" });
+  } catch (err) {
+    if (err instanceof GoogleAdsPublishError) {
+      return res.status(422).json({ error: err.message });
+    }
+    logger.error({ err, tenantId, campaignId: req.params.id }, "ads: erro inesperado ao ativar campanha");
+    return res.status(500).json({ error: "Erro inesperado ao ativar campanha no Google Ads." });
+  }
+});
+
+router.post("/tenants/:tenantId/ads/campaigns/:id/pausar", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    await setGoogleAdsCampaignStatus(tenantId, req.params.id as string, false);
+    return res.json({ success: true, status: "pausado" });
+  } catch (err) {
+    if (err instanceof GoogleAdsPublishError) {
+      return res.status(422).json({ error: err.message });
+    }
+    logger.error({ err, tenantId, campaignId: req.params.id }, "ads: erro inesperado ao pausar campanha");
+    return res.status(500).json({ error: "Erro inesperado ao pausar campanha no Google Ads." });
+  }
 });
 
 export default router;

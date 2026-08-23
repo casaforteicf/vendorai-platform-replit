@@ -258,6 +258,39 @@ export default function Ads() {
     },
   });
 
+  // Publicar cria a estrutura real na conta Google Ads do tenant — SEMPRE
+  // pausada em todos os níveis, não liga gasto nenhum. Ativar é a única
+  // ação que de fato liga a veiculação.
+  const publicarCampanha = useMutation({
+    mutationFn: async (campaignId: string) => {
+      const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/publicar`, {
+        method: "POST", headers: authHeaders(),
+      });
+      if (!r.ok) throw new Error((await r.json())?.error ?? "Falha ao publicar");
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: "Campanha publicada no Google Ads", description: "Criada pausada — revise no Google Ads e ative quando quiser começar a gastar." });
+    },
+    onError: (e: any) => toast({ title: "Erro ao publicar", description: e.message, variant: "destructive" }),
+  });
+
+  const alterarStatusCampanha = useMutation({
+    mutationFn: async ({ campaignId, ativar }: { campaignId: string; ativar: boolean }) => {
+      const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/${ativar ? "ativar" : "pausar"}`, {
+        method: "POST", headers: authHeaders(),
+      });
+      if (!r.ok) throw new Error((await r.json())?.error ?? "Falha ao alterar status");
+      return r.json();
+    },
+    onSuccess: (_data, { ativar }) => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: ativar ? "Campanha ativada — gasto real começou" : "Campanha pausada" });
+    },
+    onError: (e: any) => toast({ title: "Erro ao alterar status", description: e.message, variant: "destructive" }),
+  });
+
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -349,6 +382,31 @@ export default function Ads() {
                               Gerar de novo
                             </Button>
                           </div>
+
+                          {creative.status === "aprovado" && (
+                            <div className="border-t pt-2 mt-1">
+                              {!c.externalCampaignId ? (
+                                <Button size="sm" onClick={() => publicarCampanha.mutate(c.id)} disabled={publicarCampanha.isPending}>
+                                  {publicarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Megaphone className="h-4 w-4 mr-1" />}
+                                  Publicar no Google Ads
+                                </Button>
+                              ) : (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-xs text-muted-foreground">Publicada na conta Google Ads (ID {c.externalCampaignId}).</p>
+                                  {c.status === "ativo" ? (
+                                    <Button size="sm" variant="outline" onClick={() => alterarStatusCampanha.mutate({ campaignId: c.id, ativar: false })} disabled={alterarStatusCampanha.isPending}>
+                                      Pausar
+                                    </Button>
+                                  ) : (
+                                    <Button size="sm" onClick={() => alterarStatusCampanha.mutate({ campaignId: c.id, ativar: true })} disabled={alterarStatusCampanha.isPending}>
+                                      {alterarStatusCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+                                      Ativar (liga o gasto real)
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
