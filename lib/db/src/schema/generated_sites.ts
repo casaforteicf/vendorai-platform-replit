@@ -30,6 +30,10 @@ export interface SiteGeneratorConfig {
   whatsapp?: string;
   instagram?: string;
   images?: string[];
+  // URLs de vídeo — link do YouTube/Vimeo (embutido via iframe) ou URL
+  // direta de arquivo .mp4 (embutido via <video>). O site guarda só a
+  // URL, sem upload/hospedagem própria de vídeo.
+  videos?: string[];
   servicos?: string;
 }
 

@@ -180,7 +180,7 @@ function isDark(hex: string): boolean {
 }
 
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
-  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], servicos } = config;
+  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos } = config;
   const waNumber = whatsapp?.replace(/\D/g, "") || "5511999999999";
 
   // Instagram: normaliza handle (remove @ e espaços), monta URL e bloco HTML do ícone
@@ -253,6 +253,21 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
   const hasRealImages = products.some((p) => p.imageUrl);
   const imagesBlock = images.length > 0
     ? `\nFOTOS REAIS DA EMPRESA (${images.length} foto${images.length > 1 ? "s" : ""} — USE-AS no site, não invente imagens externas):\n${images.map((url, i) => `- Foto ${i + 1}: ${url}`).join("\n")}\nUse estas fotos nas seções de hero, galeria, serviços ou sobre. Tag: <img src="URL_AQUI" alt="${name}" loading="lazy" style="width:100%;height:240px;object-fit:cover;border-radius:12px">`
+    : "";
+  // Vídeo — YouTube/Vimeo viram iframe embed (extrai o ID da URL
+  // colada), qualquer outra URL é tratada como arquivo direto (.mp4 etc)
+  // e vira <video>. O modelo escolhe ONDE encaixar (hero, seção
+  // dedicada "veja em ação", depoimento em vídeo) conforme o tipo/tom do
+  // negócio — não força posição fixa.
+  function videoEmbedHtml(url: string): string {
+    const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{6,})/);
+    if (yt) return `<div style="position:relative;padding-top:56.25%;border-radius:var(--radius);overflow:hidden"><iframe src="https://www.youtube.com/embed/${yt[1]}" title="Vídeo" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
+    const vimeo = url.match(/vimeo\.com\/(\d+)/);
+    if (vimeo) return `<div style="position:relative;padding-top:56.25%;border-radius:var(--radius);overflow:hidden"><iframe src="https://player.vimeo.com/video/${vimeo[1]}" title="Vídeo" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>`;
+    return `<video src="${url}" controls preload="metadata" style="width:100%;border-radius:var(--radius);display:block" playsinline></video>`;
+  }
+  const videosBlock = videos.length > 0
+    ? `\nVÍDEOS FORNECIDOS PELO CLIENTE (${videos.length} — USE-OS, é conteúdo real, não decorativo):\n${videos.map((url, i) => `- Vídeo ${i + 1}: ${url} → HTML pronto: ${videoEmbedHtml(url)}`).join("\n")}\nDecida ONDE cada vídeo faz mais sentido (hero como demonstração ao vivo, seção "veja em ação", depoimento em vídeo) — cole o HTML pronto acima exatamente como está, sem reescrever a tag.`
     : "";
   const servicosBlock = servicos
     ? `\nServiços/produtos principais: ${servicos}`
@@ -369,7 +384,7 @@ Tom de voz: ${TONE_LABELS[tone] || tone}
 Cor-âncora escolhida pelo cliente (use como base da paleta, é uma decisão dele — não ignore, mas também não a trate como a única cor do site): ${color} (RGB: ${rgb})
 CTA principal: ${ctaText}
 WhatsApp de contato: wa.me/${waNumber}${igHandle ? `\nInstagram: ${igUrl} (handle: @${igHandle})` : ""}
-${productsBlock}${produtoFocoBlock}${imagesBlock}
+${productsBlock}${produtoFocoBlock}${imagesBlock}${videosBlock}
 
 ═══════════════════════════════════════
 PROCESSO DE DESIGN — FAÇA ISSO NO SEU RACIOCÍNIO ANTES DE ESCREVER O CÓDIGO
@@ -469,6 +484,7 @@ COPY — OBRIGATÓRIO:
 QUALIDADE OBRIGATÓRIA:
 ✓ Visual profissional — equivalente a sites feitos por agências de marketing digital
 ✓ Imagens externas SOMENTE as fornecidas no briefing; demais elementos decorativos: gradientes CSS, SVGs inline, iniciais em círculo
+✓ VÍDEO (quando fornecido no briefing): use o HTML pronto exatamente como está — não decorativo, é conteúdo real do cliente
 ✓ GALERIA DE FOTOS (quando presente): use SEMPRE tags <img> com src reais de imagens Unsplash relacionadas ao setor (ex: https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop), alt descritivo e loading="lazy" — NUNCA use divs com gradiente CSS como placeholder de imagem em galerias
 ✓ 100% responsivo — mobile impecável
 ✓ Smooth scroll, hover states, animações sutis
@@ -801,12 +817,13 @@ async function runGenerateSite(
 
     const absoluteLogoUrl = toAbsolute(logoUrl);
     const absoluteImages = (config.images ?? []).map((url) => toAbsolute(url) ?? url);
+    const absoluteVideos = (config.videos ?? []).map((url) => toAbsolute(url) ?? url);
     const absoluteProducts = allProducts.map((p) => ({
       ...p,
       imageUrl: toAbsolute(p.imageUrl) ?? p.imageUrl,
     }));
 
-    const enrichedConfig = { ...config, name, sector, desc, logoUrl: absoluteLogoUrl, products: absoluteProducts, images: absoluteImages };
+    const enrichedConfig = { ...config, name, sector, desc, logoUrl: absoluteLogoUrl, products: absoluteProducts, images: absoluteImages, videos: absoluteVideos };
     const prompt = buildGeneratePrompt(enrichedConfig);
 
     let result;

@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate, Tag, Pencil, Check, X } from "lucide-react";
+import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate, Tag, Pencil, Check, X, VideoIcon } from "lucide-react";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -40,6 +40,10 @@ const COLORS = [
   { hex: "#EC4899", label: "Rosa" },
   { hex: "#8B5CF6", label: "Roxo" },
   { hex: "#14B8A6", label: "Teal" },
+  { hex: "#F97316", label: "Laranja" },
+  { hex: "#84CC16", label: "Lima" },
+  { hex: "#06B6D4", label: "Ciano" },
+  { hex: "#78716C", label: "Grafite" },
 ];
 
 const SITE_TYPES = [
@@ -75,6 +79,7 @@ interface SiteConfig {
   whatsapp?: string;
   instagram?: string;
   images?: string[];
+  videos?: string[];
   servicos?: string;
   /** Set when type === "product" — id of the single catalog product this page sells. */
   produtoId?: string;
@@ -385,10 +390,23 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setSitesList((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
   }, [tenantId, token]);
 
+  const deleteSite = useCallback(async (id: string) => {
+    const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}`, {
+      method: "DELETE",
+      headers: authHeaders,
+    });
+    // A rota devolve 204 sem corpo — só tenta ler JSON se não for 204/ok.
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `Erro ${res.status}`);
+    }
+    setSitesList((prev) => prev.filter((s) => s.id !== id));
+  }, [tenantId, token]);
+
   return {
     status, html, siteId, siteSlug, isPublished, error, currentSiteType, currentConfig, sitesList,
     generate, generateBulk, bulkJobs, bulkRunning, clearBulk,
-    refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish, renameSite,
+    refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish, renameSite, deleteSite,
   };
 }
 
@@ -405,6 +423,8 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   const [tone, setTone] = useState("profissional");
   const [products, setProducts] = useState<Product[]>([{ name: "", price: "" }]);
   const [images, setImages] = useState<string[]>([]);
+  const [videos, setVideos] = useState<string[]>([]);
+  const [newVideoUrl, setNewVideoUrl] = useState("");
   const [uploadingCount, setUploadingCount] = useState(0);
   const [catalogProducts, setCatalogProducts] = useState<CatalogProductOption[]>([]);
   // Vários produtos podem ser marcados: 1 selecionado gera aquela página só
@@ -489,6 +509,7 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
       whatsapp: telefone || (fd.get("whatsapp") as string) || "",
       instagram: (fd.get("instagram") as string) || "",
       images: images.filter(Boolean),
+      videos: videos.filter(Boolean),
       servicos: (fd.get("servicos") as string) || "",
     };
 
@@ -715,6 +736,56 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
         </label>
       </div>
 
+      {/* ── Vídeos — link do YouTube/Vimeo ou URL direta de arquivo ── */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Vídeos</Label>
+          <span className="text-[10px] text-muted-foreground">Opcional — link do YouTube, Vimeo ou URL de arquivo .mp4</span>
+        </div>
+        {videos.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {videos.map((url, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs">
+                <VideoIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate flex-1 font-mono text-muted-foreground">{url}</span>
+                <button
+                  type="button"
+                  onClick={() => setVideos((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Input
+            placeholder="https://youtube.com/watch?v=... ou URL do vídeo"
+            value={newVideoUrl}
+            onChange={(e) => setNewVideoUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newVideoUrl.trim()) {
+                e.preventDefault();
+                setVideos((prev) => [...prev, newVideoUrl.trim()]);
+                setNewVideoUrl("");
+              }
+            }}
+            className="text-xs"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!newVideoUrl.trim()}
+            onClick={() => { setVideos((prev) => [...prev, newVideoUrl.trim()]); setNewVideoUrl(""); }}
+            className="shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
       {/* ── Produtos — só e-commerce ── */}
       {siteType === "ecommerce" && (
         <div className="flex flex-col gap-2">
@@ -790,7 +861,7 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           <Label>Cor principal</Label>
-          <div className="flex gap-2 flex-wrap py-1">
+          <div className="flex items-center gap-2 flex-wrap py-1">
             {COLORS.map((c) => (
               <button
                 key={c.hex}
@@ -803,6 +874,29 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
                 style={{ background: c.hex }}
               />
             ))}
+            {/* Cor livre — não fica preso às predefinições, aceita
+                exatamente o hex da marca do cliente se ele já tiver um. */}
+            <label
+              title="Escolher outra cor"
+              className={`relative w-7 h-7 rounded-full border-2 cursor-pointer transition-all overflow-hidden ${
+                !COLORS.some((c) => c.hex.toLowerCase() === color.toLowerCase())
+                  ? "border-foreground scale-110"
+                  : "border-dashed border-muted-foreground/40"
+              }`}
+              style={{ background: !COLORS.some((c) => c.hex.toLowerCase() === color.toLowerCase()) ? color : undefined }}
+            >
+              {COLORS.some((c) => c.hex.toLowerCase() === color.toLowerCase()) && (
+                <Plus className="h-3.5 w-3.5 absolute inset-0 m-auto text-muted-foreground" />
+              )}
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                aria-label="Escolher cor personalizada"
+              />
+            </label>
+            <span className="text-[11px] text-muted-foreground font-mono">{color}</span>
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -2478,7 +2572,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
     currentSiteType, currentConfig, sitesList,
     generate, generateBulk, bulkJobs, bulkRunning, clearBulk,
     refine, download, reset,
-    loadLatest, loadAll, loadSite, saveHtml, publish, renameSite,
+    loadLatest, loadAll, loadSite, saveHtml, publish, renameSite, deleteSite,
   } = useSiteGenerator(tenantId, token);
 
   // Auto-load latest site + list on mount
@@ -2510,6 +2604,28 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
     if (id === siteId) return;
     await loadSite(id);
     setActiveTab("preview");
+  }
+
+  const [deletingSiteId, setDeletingSiteId] = useState<string | null>(null);
+
+  async function handleDeleteSite(site: SiteSummary) {
+    if (!window.confirm(`Excluir "${site.name || SITE_TYPE_LABELS[site.siteType] || site.siteType}"? Essa ação não pode ser desfeita — se estiver publicado, o link para de funcionar.`)) return;
+    setDeletingSiteId(site.id);
+    try {
+      await deleteSite(site.id);
+      // Se o site excluído era o que estava aberto, troca pra outro da
+      // lista (ou limpa a tela se não sobrou nenhum).
+      if (site.id === siteId) {
+        const remaining = sitesList.filter((s) => s.id !== site.id);
+        if (remaining.length > 0) await loadSite(remaining[0].id);
+        else reset();
+      }
+      toast({ title: "Site excluído." });
+    } catch (err) {
+      toast({ title: "Erro ao excluir", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setDeletingSiteId(null);
+    }
   }
 
   const canPreview = status !== "idle";
@@ -2589,6 +2705,14 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
                   className={`shrink-0 ${isActive ? "text-primary-foreground/80 hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   <Pencil className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteSite(s); }}
+                  disabled={deletingSiteId === s.id}
+                  title="Excluir"
+                  className={`shrink-0 ${isActive ? "text-primary-foreground/80 hover:text-red-200" : "text-muted-foreground hover:text-destructive"}`}
+                >
+                  {deletingSiteId === s.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                 </button>
               </div>
             );
