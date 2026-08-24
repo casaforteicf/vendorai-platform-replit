@@ -179,37 +179,77 @@ interface ParsedLeadRow {
   empresa: string;
   status: string;
   responsavel: string;
+  // Colunas do CSV que não são nenhum campo padrão — nome da coluna
+  // vira a chave, guardado no metadata do lead em vez de descartado.
+  camposExtras: Record<string, string>;
 }
 
-const CSV_TEMPLATE = "nome,telefone,endereco,email,instagram,empresa,status,responsavel\nJoão Silva,(11) 99999-1111,Rua das Flores 123 São Paulo SP,joao@email.com,@joaosilva,Silva Materiais de Construção,novo,\nMaria Souza,(21) 98888-2222,,maria@empresa.com.br,,,,Ana Paula";
+const CSV_TEMPLATE = "nome,telefone,endereco,email,instagram,empresa,status,responsavel,cargo\nJoão Silva,(11) 99999-1111,Rua das Flores 123 São Paulo SP,joao@email.com,@joaosilva,Silva Materiais de Construção,novo,,Comprador\nMaria Souza,(21) 98888-2222,,maria@empresa.com.br,,,,Ana Paula,Gerente";
+
+const KNOWN_LEAD_COLUMNS = new Set(["nome", "telefone", "endereco", "email", "instagram", "empresa", "status", "responsavel"]);
+
+// Aspas-aware — mesma lógica já usada no import de catálogo (Propostas.tsx).
+// Sem isso, qualquer célula com vírgula dentro (ex: endereço "Rua X, 123")
+// quebra o alinhamento das colunas seguintes.
+function parseCsvLine(line: string): string[] {
+  const fields: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (ch === "," && !inQuotes) {
+      fields.push(cur.trim()); cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  fields.push(cur.trim());
+  return fields;
+}
 
 function parseCsvRows(text: string): ParsedLeadRow[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
 
-  const header = lines[0]!.split(",").map((h) => h.trim().toLowerCase());
+  const rawHeader = parseCsvLine(lines[0]!).map((h) => h.trim().toLowerCase());
   const idx = {
-    nome: header.indexOf("nome"),
-    telefone: header.indexOf("telefone"),
-    endereco: header.indexOf("endereco"),
-    email: header.indexOf("email"),
-    instagram: header.indexOf("instagram"),
-    empresa: header.indexOf("empresa"),
-    status: header.indexOf("status"),
-    responsavel: header.indexOf("responsavel"),
+    nome: rawHeader.indexOf("nome"),
+    telefone: rawHeader.indexOf("telefone"),
+    endereco: rawHeader.indexOf("endereco"),
+    email: rawHeader.indexOf("email"),
+    instagram: rawHeader.indexOf("instagram"),
+    empresa: rawHeader.indexOf("empresa"),
+    status: rawHeader.indexOf("status"),
+    responsavel: rawHeader.indexOf("responsavel"),
   };
+  // Qualquer coluna do CSV que não seja um campo padrão (ex: "cargo",
+  // "origem_lead", "aniversario") — guarda a posição + o nome original
+  // (não normalizado) pra usar como chave no metadata do lead.
+  const extraColumns = lines[0]!
+    .split(",")
+    .map((h, i) => ({ name: h.trim(), key: rawHeader[i] ?? "", index: i }))
+    .filter((c) => c.name && !KNOWN_LEAD_COLUMNS.has(c.key));
 
   return lines.slice(1).map((line) => {
-    const cols = line.split(",");
+    const cols = parseCsvLine(line);
+    const camposExtras: Record<string, string> = {};
+    for (const col of extraColumns) {
+      const value = (cols[col.index] ?? "").trim();
+      if (value) camposExtras[col.name] = value;
+    }
     return {
-      nome: (idx.nome >= 0 ? cols[idx.nome] : cols[0] ?? "").trim(),
-      telefone: (idx.telefone >= 0 ? cols[idx.telefone] : cols[1] ?? "").trim(),
-      endereco: (idx.endereco >= 0 ? cols[idx.endereco] : cols[2] ?? "").trim(),
-      email: (idx.email >= 0 ? cols[idx.email] : cols[3] ?? "").trim(),
-      instagram: (idx.instagram >= 0 ? cols[idx.instagram] : cols[4] ?? "").trim(),
-      empresa: (idx.empresa >= 0 ? cols[idx.empresa] ?? "" : "").trim(),
-      status: (idx.status >= 0 ? cols[idx.status] ?? "" : "").trim(),
-      responsavel: (idx.responsavel >= 0 ? cols[idx.responsavel] ?? "" : "").trim(),
+      nome: (idx.nome >= 0 ? cols[idx.nome] : cols[0] ?? "")?.trim() ?? "",
+      telefone: (idx.telefone >= 0 ? cols[idx.telefone] : cols[1] ?? "")?.trim() ?? "",
+      endereco: (idx.endereco >= 0 ? cols[idx.endereco] : cols[2] ?? "")?.trim() ?? "",
+      email: (idx.email >= 0 ? cols[idx.email] : cols[3] ?? "")?.trim() ?? "",
+      instagram: (idx.instagram >= 0 ? cols[idx.instagram] : cols[4] ?? "")?.trim() ?? "",
+      empresa: (idx.empresa >= 0 ? cols[idx.empresa] ?? "" : "")?.trim() ?? "",
+      status: (idx.status >= 0 ? cols[idx.status] ?? "" : "")?.trim() ?? "",
+      responsavel: (idx.responsavel >= 0 ? cols[idx.responsavel] ?? "" : "")?.trim() ?? "",
+      camposExtras,
     };
   }).filter((r) => r.nome.length > 0);
 }
@@ -512,6 +552,7 @@ export default function Leads() {
                     <p className="font-medium">Formato esperado (colunas em ordem):</p>
                     <p className="font-mono text-xs text-muted-foreground">nome, telefone, endereco, email, instagram, empresa, status, responsavel</p>
                     <p className="text-xs text-muted-foreground">A primeira linha deve ser o cabeçalho. Colunas empresa/status/responsavel são opcionais — responsavel busca pelo nome do vendedor no seu time; se não achar ou ficar em branco, distribui automaticamente. Máximo 500 leads por importação.</p>
+                    <p className="text-xs text-muted-foreground">Pode adicionar qualquer coluna extra (ex: cargo, origem, data de nascimento) — elas são guardadas no cadastro do lead e aparecem na ficha dele.</p>
                   </div>
 
                   {/* Template download */}
@@ -543,6 +584,14 @@ export default function Leads() {
                       <p className="text-sm font-medium text-emerald-700">
                         {parsedRows.length} lead(s) detectado(s) — prévia (primeiros 5):
                       </p>
+                      {(() => {
+                        const extraKeys = Array.from(new Set(parsedRows.flatMap((r) => Object.keys(r.camposExtras))));
+                        return extraKeys.length > 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Colunas extras detectadas (guardadas no cadastro do lead): <span className="font-medium text-foreground">{extraKeys.join(", ")}</span>
+                          </p>
+                        ) : null;
+                      })()}
                       <div className="overflow-x-auto rounded-lg border text-xs">
                         <table className="w-full">
                           <thead className="bg-muted/50">

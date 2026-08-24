@@ -112,6 +112,7 @@ import {
   DollarSign,
   Wand2,
   Send,
+  Tag,
 } from "lucide-react";
 
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -1272,6 +1273,21 @@ export default function LeadDetail() {
                     <dd className="text-foreground">{lead.empresa}</dd>
                   </div>
                 )}
+                {/* Campos extras — importados via CSV com colunas fora do
+                    padrão (nome, telefone, email etc.) e guardados em
+                    metadata. donome/socios já têm exibição própria em
+                    outro lugar da ficha, não repete aqui. */}
+                {Object.entries((lead as any).metadata ?? {})
+                  .filter(([key, value]) => !["donome", "socios"].includes(key) && value != null && String(value).trim() !== "")
+                  .map(([key, value]) => (
+                    <div key={key} className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
+                      <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
+                        <Tag className="h-3.5 w-3.5 shrink-0" />
+                        <span className="text-xs capitalize">{key.replace(/_/g, " ")}</span>
+                      </dt>
+                      <dd className="text-foreground">{String(value)}</dd>
+                    </div>
+                  ))}
                 {lead.urgencia && (
                   <div className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
                     <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">

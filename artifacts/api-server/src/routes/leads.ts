@@ -155,6 +155,11 @@ const importLeadRowSchema = z.object({
   empresa: z.string().optional().nullable(),
   status: z.string().optional().nullable(),
   responsavel: z.string().optional().nullable(),
+  // Colunas do CSV que não batem com nenhum campo padrão acima (ex:
+  // "cargo", "origem_lead", "data_nascimento") — capturadas em vez de
+  // descartadas, guardadas no metadata (jsonb) do lead. Chave = nome da
+  // coluna do CSV, valor = texto da célula.
+  camposExtras: z.record(z.string(), z.string()).optional().nullable(),
 });
 
 const importLeadsBodySchema = z.object({
@@ -253,6 +258,7 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         possivelDuplicata: match.similar ? true : false,
         leadSimilarId: match.similar?.id ?? null,
         assignedTo: importAssignedTo,
+        metadata: row.camposExtras && Object.keys(row.camposExtras).length > 0 ? row.camposExtras : null,
       }).returning();
       if (importedLead) {
         await db.insert(dealsTable).values({ tenantId, leadId: importedLead.id, titulo: importedLead.nome, etapa: "em_aquecimento", assignedTo: importAssignedTo });
