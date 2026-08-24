@@ -1614,8 +1614,21 @@ export default function Configuracoes() {
     }
   }, [location]);
 
-  function onConnectWhatsapp() {
-    window.location.href = "/api/auth/whatsapp";
+  const [whatsappConnecting, setWhatsappConnecting] = useState(false);
+
+  async function onConnectWhatsapp() {
+    setWhatsappConnecting(true);
+    try {
+      const res = await fetch("/api/auth/whatsapp", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    } catch {
+      toast({ title: "Erro ao iniciar conexão com WhatsApp.", variant: "destructive" });
+      setWhatsappConnecting(false);
+    }
   }
   function onDisconnectWhatsappOAuth() {
     disconnectWa.mutate(
@@ -3560,10 +3573,11 @@ Body:
                   </p>
                   <Button
                     onClick={onConnectWhatsapp}
+                    disabled={whatsappConnecting}
                     className="gap-2"
                   >
                     <MessageCircle className="h-4 w-4" />
-                    Conectar WhatsApp
+                    {whatsappConnecting ? "Redirecionando…" : "Conectar WhatsApp"}
                   </Button>
                 </div>
               )}
