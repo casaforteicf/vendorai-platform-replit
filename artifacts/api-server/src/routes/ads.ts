@@ -145,7 +145,26 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, r
   }
 
   // tipoAnuncio === "imagem" (Meta Feed Ads e afins)
+  // Se o usuário escolheu uma foto real do item no formulário
+  // (imagemEscolhidaUrl), usa ela direto — só o texto (headline/corpo)
+  // ainda vem da IA. Sem isso, gera a imagem também via IA como sempre.
   const [profile] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
+
+  if (campanha.imagemEscolhidaUrl) {
+    const gerado = await gerarCriativoImagem(item, tenantId, profile ?? {}, logger, { pularGeracaoDeImagem: true });
+    if (!gerado) return res.status(502).json({ error: "Falha ao gerar o texto do criativo — ver logs do servidor. Tente novamente." });
+
+    const [creative] = await db.insert(adCreativesTable).values({
+      campaignId: campanha.id,
+      headlines: [gerado.headline, gerado.primaryText],
+      descriptions: gerado.description ? [gerado.description] : [],
+      imagens: [campanha.imagemEscolhidaUrl],
+    }).returning();
+
+    logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative!.id }, "ads: criativo de imagem gerado (foto escolhida pelo usuário)");
+    return res.status(201).json(creative);
+  }
+
   const gerado = await gerarCriativoImagem(item, tenantId, profile ?? {}, logger);
   if (!gerado) return res.status(502).json({ error: "Falha ao gerar criativo de imagem — ver logs do servidor. Tente novamente." });
 

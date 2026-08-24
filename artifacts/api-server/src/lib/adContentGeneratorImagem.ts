@@ -52,6 +52,7 @@ export async function gerarCriativoImagem(
   tenantId: string,
   profile: { nomeFantasia?: string | null; vertical?: string | null; missao?: string | null; publicoAlvo?: string | null; diferenciais?: string | null; tomDeVoz?: string | null },
   log: Logger,
+  opts?: { pularGeracaoDeImagem?: boolean },
 ): Promise<CriativoImagemGerado | null> {
   try {
     const response = await anthropic.messages.create({
@@ -74,6 +75,19 @@ export async function gerarCriativoImagem(
     if (typeof parsed.primaryText !== "string" || typeof parsed.headline !== "string" || typeof parsed.imagePrompt !== "string") {
       log.warn({ itemNome: item.nomeCurto, raw: cleaned.slice(0, 300) }, "gerarCriativoImagem: formato inesperado");
       return null;
+    }
+
+    // Usuário escolheu uma foto real do item no formulário — pula a
+    // geração de imagem por IA (mais rápido, sem custo de imagem), só o
+    // texto do anúncio vem da IA. imageUrl fica vazio aqui porque quem
+    // chama já sabe usar a foto escolhida — não usado nesse caminho.
+    if (opts?.pularGeracaoDeImagem) {
+      return {
+        primaryText: truncar(parsed.primaryText.trim(), MAX_PRIMARY_TEXT_CHARS),
+        headline: truncar(parsed.headline.trim(), MAX_HEADLINE_CHARS),
+        description: typeof parsed.description === "string" ? truncar(parsed.description.trim(), MAX_DESCRIPTION_CHARS) : "",
+        imageUrl: "",
+      };
     }
 
     const imageUrls = await generateImagesForContent(

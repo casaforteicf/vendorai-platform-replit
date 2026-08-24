@@ -37,6 +37,75 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+// Seleção múltipla em chips — usada tanto pra campos de opções fechadas
+// (com "options", vira checklist pra clicar) quanto campos livres (sem
+// "options", vira "digite e Enter pra adicionar chip") — nos dois casos
+// troca digitar uma string separada por vírgula por algo clicável/
+// removível, que é o pedido real (selecionar, não digitar tudo à mão).
+function MultiSelectChips({ value, onChange, options, placeholder }: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  options?: string[];
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState("");
+  const [open, setOpen] = useState(false);
+
+  function addValue(v: string) {
+    const trimmed = v.trim();
+    if (!trimmed || value.includes(trimmed)) return;
+    onChange([...value, trimmed]);
+    setDraft("");
+  }
+  function removeValue(v: string) {
+    onChange(value.filter((x) => x !== v));
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((v) => (
+            <Badge key={v} variant="secondary" className="font-normal gap-1 pr-1.5">
+              {v}
+              <button type="button" onClick={() => removeValue(v)} className="text-muted-foreground hover:text-destructive ml-0.5">×</button>
+            </Badge>
+          ))}
+        </div>
+      )}
+      {options ? (
+        // Opções fechadas (idade, gênero etc) — checklist clicável, sem digitação nenhuma.
+        <div className="flex flex-wrap gap-1.5">
+          {options.filter((o) => !value.includes(o)).map((o) => (
+            <button key={o} type="button" onClick={() => addValue(o)}
+              className="text-xs rounded-full border border-dashed border-muted-foreground/40 px-2.5 py-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+              + {o}
+            </button>
+          ))}
+        </div>
+      ) : (
+        // Campo livre (afinidade, sites etc) — digita e Enter vira chip.
+        <div className="relative">
+          <Input
+            placeholder={placeholder ?? "Digite e pressione Enter..."}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addValue(draft); } }}
+          />
+          {open && draft.trim() && (
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addValue(draft)}
+              className="absolute left-0 right-0 top-full mt-1 z-10 text-left text-xs bg-background border rounded-md px-3 py-2 hover:bg-muted">
+              Adicionar "{draft.trim()}"
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type ItemTipo = "produto" | "veiculo" | "imovel" | "landing_page" | "livre";
 type TipoAnuncio = "shopping" | "rsa_pmax" | "imagem" | "video";
 type Modo = "unico" | "carrossel";
@@ -74,7 +143,7 @@ interface AdCreative {
   status: "rascunho" | "aprovado";
 }
 
-interface ItemBusca { id: string; label: string }
+interface ItemBusca { id: string; label: string; imagens?: string[] }
 
 const STATUS_LABEL: Record<string, string> = {
   rascunho: "Rascunho",
@@ -103,11 +172,19 @@ const EMPTY_FORM = {
   orcamentoDiario: "",
   vertical: "",
   locais: "", tipoPresenca: "presenca" as "presenca" | "interesse" | "ambos", raioKm: "",
-  idades: "", generos: "", statusParental: "", rendas: "",
-  afinidade: "", noMercado: "", termosPesquisa: "", sites: "", aplicativos: "",
-  remarketing: "", customerMatch: "", semelhantes: "",
+  idades: [] as string[], generos: [] as string[], statusParental: [] as string[], rendas: [] as string[],
+  afinidade: [] as string[], noMercado: [] as string[], termosPesquisa: [] as string[], sites: [] as string[], aplicativos: [] as string[],
+  remarketing: [] as string[], customerMatch: [] as string[], semelhantes: [] as string[],
   pausarAoInteresse: true, slaNegociacaoHoras: "48",
+  imagemEscolhidaUrl: "" as string, // vazio = gera com IA; preenchido = usa essa foto real do item
 };
+
+// Taxonomia real do Google Ads pra segmentação demográfica — conjunto
+// fechado, por isso vira multi-select clicável em vez de campo livre.
+const OPCOES_IDADE = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+", "Desconhecida"];
+const OPCOES_GENERO = ["Feminino", "Masculino", "Desconhecido"];
+const OPCOES_STATUS_PARENTAL = ["Com filhos", "Sem filhos", "Desconhecido"];
+const OPCOES_RENDA = ["10% superior", "11-20%", "21-30%", "31-40%", "41-50%", "50% inferior", "Desconhecida"];
 
 const lista = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
 
@@ -120,6 +197,7 @@ export default function Ads() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [itemSearch, setItemSearch] = useState("");
+  const [itemListaAberta, setItemListaAberta] = useState(false);
   const [expandedCreative, setExpandedCreative] = useState<Record<string, AdCreative | null>>({});
   const [reservationDecision, setReservationDecision] = useState<VehicleReservation | null>(null);
   const [decision, setDecision] = useState<"manter" | "avancar" | "perdido">("manter");
@@ -153,21 +231,33 @@ export default function Ads() {
         const data = r.ok ? await r.json() : [];
         // Produtos pendentes de revisão (auto-cadastro via IA) e inativos
         // não devem aparecer pra anunciar — mesma regra de site/feed.
-        return data.filter((p: any) => p.ativo !== false).map((p: any) => ({ id: p.id, label: `${p.nome} — R$ ${p.precoBase}` }));
+        return data.filter((p: any) => p.ativo !== false).map((p: any) => ({
+          id: p.id, label: `${p.nome} — R$ ${p.precoBase}`,
+          imagens: [p.imagemUrl, ...(Array.isArray(p.imagens) ? p.imagens : [])].filter(Boolean),
+        }));
       }
       if (form.itemTipo === "veiculo") {
         const r = await fetch(`/api/tenants/${tenantId}/veiculos/estoque`, { headers: authHeaders() });
         const data = r.ok ? await r.json() : [];
-        return data.map((v: any) => ({ id: v.id, label: `${v.marca} ${v.modelo}${v.versao ? " " + v.versao : ""} — R$ ${v.valor}` }));
+        return data.map((v: any) => ({
+          id: v.id, label: `${v.marca} ${v.modelo}${v.versao ? " " + v.versao : ""} — R$ ${v.valor}`,
+          imagens: Array.isArray(v.fotos) ? v.fotos : [],
+        }));
       }
       if (form.itemTipo === "landing_page") {
         const r = await fetch(`/api/tenants/${tenantId}/site-generator`, { headers: authHeaders() });
         const data = r.ok ? await r.json() : [];
-        return data.map((s: any) => ({ id: s.id, label: s.name || s.siteType }));
+        return data.map((s: any) => ({
+          id: s.id, label: s.name || s.siteType,
+          imagens: Array.isArray(s.config?.images) ? s.config.images : [],
+        }));
       }
       const r = await fetch(`/api/tenants/${tenantId}/imoveis/propriedades`, { headers: authHeaders() });
       const data = r.ok ? await r.json() : [];
-      return data.map((i: any) => ({ id: i.id, label: `${i.titulo} — R$ ${i.valor}` }));
+      return data.map((i: any) => ({
+        id: i.id, label: `${i.titulo} — R$ ${i.valor}`,
+        imagens: Array.isArray(i.fotos) ? i.fotos : [],
+      }));
     },
     enabled: open && !!tenantId && form.itemTipo !== "livre",
   });
@@ -192,12 +282,13 @@ export default function Ads() {
         orcamentoDiario: form.orcamentoDiario,
         segmentacao: {
           localizacao: { locais: lista(form.locais), tipoPresenca: form.tipoPresenca, raioKm: form.raioKm ? Number(form.raioKm) : null },
-          demografia: { idades: lista(form.idades), generos: lista(form.generos), statusParental: lista(form.statusParental), rendas: lista(form.rendas) },
-          audiencias: { afinidade: lista(form.afinidade), noMercado: lista(form.noMercado), termosPesquisa: lista(form.termosPesquisa), sites: lista(form.sites), aplicativos: lista(form.aplicativos) },
-          dadosProprios: { remarketing: lista(form.remarketing), customerMatch: lista(form.customerMatch), semelhantes: lista(form.semelhantes) },
+          demografia: { idades: form.idades, generos: form.generos, statusParental: form.statusParental, rendas: form.rendas },
+          audiencias: { afinidade: form.afinidade, noMercado: form.noMercado, termosPesquisa: form.termosPesquisa, sites: form.sites, aplicativos: form.aplicativos },
+          dadosProprios: { remarketing: form.remarketing, customerMatch: form.customerMatch, semelhantes: form.semelhantes },
         },
         pausarAoInteresse: form.itemTipo === "veiculo" && form.modo === "unico" ? form.pausarAoInteresse : false,
         slaNegociacaoHoras: Number(form.slaNegociacaoHoras || 48),
+        imagemEscolhidaUrl: form.tipoAnuncio === "imagem" && form.imagemEscolhidaUrl ? form.imagemEscolhidaUrl : null,
       };
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
@@ -519,21 +610,31 @@ export default function Ads() {
               <p className="text-xs text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">Campanha institucional/de marca, sem vínculo com um item específico do estoque ou catálogo.</p>
             ) : form.modo === "unico" ? (
               <div>
-                <LabelTip tip={form.itemTipo === "landing_page" ? "Escolhe qual landing page gerada esse anúncio divulga." : "Encontra o item específico que o anúncio vai divulgar."}>Buscar item</LabelTip>
+                <LabelTip tip={form.itemTipo === "landing_page" ? "Escolhe qual landing page gerada esse anúncio divulga." : "Encontra o item específico que o anúncio vai divulgar."}>
+                  {form.itemTipo === "landing_page" ? "Landing page a divulgar" : "Buscar item"}
+                </LabelTip>
                 <div className="relative">
                   <Search className="h-4 w-4 absolute left-2.5 top-2.5 text-muted-foreground" />
-                  <Input className="pl-8" placeholder="Digite pra buscar..." value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
+                  <Input
+                    className="pl-8"
+                    placeholder={form.itemTipo === "landing_page" ? "Clique pra ver a lista..." : "Digite pra buscar..."}
+                    value={itemSearch}
+                    onChange={(e) => setItemSearch(e.target.value)}
+                    onFocus={() => setItemListaAberta(true)}
+                    onBlur={() => setTimeout(() => setItemListaAberta(false), 150)}
+                  />
                 </div>
                 {form.itemId && <p className="text-xs text-muted-foreground mt-1">Selecionado: {form.itemLabel}</p>}
-                {itemSearch && (
+                {(itemListaAberta || itemSearch) && (
                   <div className="border rounded-md mt-1 max-h-40 overflow-y-auto">
                     {itensFiltrados.map((it) => (
                       <button key={it.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-                        onClick={() => { setForm((f) => ({ ...f, itemId: it.id, itemLabel: it.label })); setItemSearch(""); }}>
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setForm((f) => ({ ...f, itemId: it.id, itemLabel: it.label, imagemEscolhidaUrl: "" })); setItemSearch(""); setItemListaAberta(false); }}>
                         {it.label}
                       </button>
                     ))}
-                    {itensFiltrados.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">Nada encontrado</p>}
+                    {itensFiltrados.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">{form.itemTipo === "landing_page" ? "Nenhuma landing page gerada ainda" : "Nada encontrado"}</p>}
                   </div>
                 )}
               </div>
@@ -543,6 +644,31 @@ export default function Ads() {
                 <Input placeholder="Ex: SUV, Farmácia > Higiene" value={form.categoriaFiltro} onChange={(e) => setForm((f) => ({ ...f, categoriaFiltro: e.target.value }))} />
               </div>
             )}
+
+            {form.tipoAnuncio === "imagem" && form.itemTipo !== "livre" && form.modo === "unico" && form.itemId && (() => {
+              const itemAtual = itensDisponiveis.find((i) => i.id === form.itemId);
+              const fotosReais = itemAtual?.imagens ?? [];
+              return (
+                <div className="border-t pt-4 space-y-2">
+                  <LabelTip tip="Por padrão a IA gera uma foto nova pro anúncio. Se preferir, escolha uma foto real já cadastrada nesse item — o texto continua sendo gerado por IA do mesmo jeito.">Imagem do anúncio</LabelTip>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setForm((f) => ({ ...f, imagemEscolhidaUrl: "" }))}
+                      className={`flex flex-col items-center justify-center gap-1 h-20 w-20 rounded-lg border-2 text-[10px] text-center px-1 ${!form.imagemEscolhidaUrl ? "border-primary bg-primary/5 text-primary" : "border-dashed border-muted-foreground/40 text-muted-foreground"}`}>
+                      <Sparkles className="h-4 w-4" />
+                      Gerar com IA
+                    </button>
+                    {fotosReais.length === 0 ? (
+                      <p className="text-xs text-muted-foreground self-center">Esse item ainda não tem fotos próprias cadastradas.</p>
+                    ) : fotosReais.map((url) => (
+                      <button key={url} type="button" onClick={() => setForm((f) => ({ ...f, imagemEscolhidaUrl: url }))}
+                        className={`h-20 w-20 rounded-lg border-2 overflow-hidden shrink-0 ${form.imagemEscolhidaUrl === url ? "border-primary" : "border-transparent"}`}>
+                        <img src={url} alt="" className="h-full w-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div>
               <LabelTip tip="Pra onde vai quem clica no anúncio.">Destino do clique</LabelTip>
@@ -589,29 +715,29 @@ export default function Ads() {
             </div>
 
             <div className="border-t pt-4 space-y-3">
-              <div><h3 className="font-semibold">Perfil demográfico</h3><p className="text-xs text-muted-foreground">Opcional — pode ficar em branco sem problema.</p></div>
+              <div><h3 className="font-semibold">Perfil demográfico</h3><p className="text-xs text-muted-foreground">Opcional — pode ficar em branco sem problema. Clique nas opções pra adicionar.</p></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><LabelTip tip="Faixas etárias do público, separadas por vírgula.">Faixas de idade</LabelTip><Input placeholder="18-24, 25-34, 35-44" value={form.idades} onChange={(e) => setForm((f) => ({ ...f, idades: e.target.value }))} /></div>
-                <div><Label>Gêneros</Label><Input placeholder="Feminino, Masculino, Desconhecido" value={form.generos} onChange={(e) => setForm((f) => ({ ...f, generos: e.target.value }))} /></div>
-                <div><Label>Status parental</Label><Input placeholder="Com filhos, Sem filhos" value={form.statusParental} onChange={(e) => setForm((f) => ({ ...f, statusParental: e.target.value }))} /></div>
-                <div><Label>Renda familiar</Label><Input placeholder="10% superior, 11-20%, 21-30%" value={form.rendas} onChange={(e) => setForm((f) => ({ ...f, rendas: e.target.value }))} /></div>
+                <div><LabelTip tip="Faixas etárias do público.">Faixas de idade</LabelTip><MultiSelectChips value={form.idades} onChange={(v) => setForm((f) => ({ ...f, idades: v }))} options={OPCOES_IDADE} /></div>
+                <div><Label>Gêneros</Label><MultiSelectChips value={form.generos} onChange={(v) => setForm((f) => ({ ...f, generos: v }))} options={OPCOES_GENERO} /></div>
+                <div><Label>Status parental</Label><MultiSelectChips value={form.statusParental} onChange={(v) => setForm((f) => ({ ...f, statusParental: v }))} options={OPCOES_STATUS_PARENTAL} /></div>
+                <div><Label>Renda familiar</Label><MultiSelectChips value={form.rendas} onChange={(v) => setForm((f) => ({ ...f, rendas: v }))} options={OPCOES_RENDA} /></div>
               </div>
             </div>
 
             <div className="border-t pt-4 space-y-3">
-              <div><h3 className="font-semibold">Comportamento e intenção de compra</h3><p className="text-xs text-muted-foreground">Opcional, mais avançado.</p></div>
-              <div><LabelTip tip="Interesse de longo prazo, estilo de vida (ex: entusiastas de automóveis) — diferente de In-market, que é pesquisa ativa de compra agora.">Afinidade</LabelTip><Input placeholder="Ex: Entusiastas de automóveis, Viajantes" value={form.afinidade} onChange={(e) => setForm((f) => ({ ...f, afinidade: e.target.value }))} /></div>
-              <div><LabelTip tip="Pesquisa ativa de compra agora — diferente de Afinidade, que é interesse de longo prazo.">No mercado (In-market)</LabelTip><Input placeholder="Ex: Compra de veículos, Imóveis residenciais" value={form.noMercado} onChange={(e) => setForm((f) => ({ ...f, noMercado: e.target.value }))} /></div>
-              <div><Label>Termos de pesquisa personalizados</Label><Input placeholder="Termos separados por vírgula" value={form.termosPesquisa} onChange={(e) => setForm((f) => ({ ...f, termosPesquisa: e.target.value }))} /></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><Label>Sites visitados</Label><Input placeholder="exemplo.com.br" value={form.sites} onChange={(e) => setForm((f) => ({ ...f, sites: e.target.value }))} /></div><div><Label>Aplicativos utilizados</Label><Input placeholder="Apps separados por vírgula" value={form.aplicativos} onChange={(e) => setForm((f) => ({ ...f, aplicativos: e.target.value }))} /></div></div>
+              <div><h3 className="font-semibold">Comportamento e intenção de compra</h3><p className="text-xs text-muted-foreground">Opcional, mais avançado. Digite um termo e pressione Enter pra adicionar.</p></div>
+              <div><LabelTip tip="Interesse de longo prazo, estilo de vida (ex: entusiastas de automóveis) — diferente de In-market, que é pesquisa ativa de compra agora.">Afinidade</LabelTip><MultiSelectChips value={form.afinidade} onChange={(v) => setForm((f) => ({ ...f, afinidade: v }))} placeholder="Ex: Entusiastas de automóveis" /></div>
+              <div><LabelTip tip="Pesquisa ativa de compra agora — diferente de Afinidade, que é interesse de longo prazo.">No mercado (In-market)</LabelTip><MultiSelectChips value={form.noMercado} onChange={(v) => setForm((f) => ({ ...f, noMercado: v }))} placeholder="Ex: Compra de veículos" /></div>
+              <div><Label>Termos de pesquisa personalizados</Label><MultiSelectChips value={form.termosPesquisa} onChange={(v) => setForm((f) => ({ ...f, termosPesquisa: v }))} /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><Label>Sites visitados</Label><MultiSelectChips value={form.sites} onChange={(v) => setForm((f) => ({ ...f, sites: v }))} placeholder="exemplo.com.br" /></div><div><Label>Aplicativos utilizados</Label><MultiSelectChips value={form.aplicativos} onChange={(v) => setForm((f) => ({ ...f, aplicativos: v }))} /></div></div>
             </div>
 
             <div className="border-t pt-4 space-y-3">
               <h3 className="font-semibold">Rastreamento e dados próprios</h3>
               <p className="text-xs text-muted-foreground">Informe nomes ou IDs de listas consentidas. Dados pessoais brutos não são armazenados neste formulário.</p>
-              <div><LabelTip tip="Re-impacta quem já visitou o site e não converteu — forma mais eficiente de segmentação.">Remarketing</LabelTip><Input placeholder="Visitantes do site, YouTube, usuários do app" value={form.remarketing} onChange={(e) => setForm((f) => ({ ...f, remarketing: e.target.value }))} /></div>
-              <div><LabelTip tip="Sobe lista de clientes (e-mail/telefone). Nenhum dado pessoal fica salvo neste formulário, só o nome/ID da lista.">Customer Match</LabelTip><Input placeholder="Nome ou ID da lista de clientes" value={form.customerMatch} onChange={(e) => setForm((f) => ({ ...f, customerMatch: e.target.value }))} /></div>
-              <div><LabelTip tip="A partir de uma lista, encontra outras pessoas com perfil parecido.">Públicos semelhantes</LabelTip><Input placeholder="Nome ou ID da lista de origem" value={form.semelhantes} onChange={(e) => setForm((f) => ({ ...f, semelhantes: e.target.value }))} /></div>
+              <div><LabelTip tip="Re-impacta quem já visitou o site e não converteu — forma mais eficiente de segmentação.">Remarketing</LabelTip><MultiSelectChips value={form.remarketing} onChange={(v) => setForm((f) => ({ ...f, remarketing: v }))} placeholder="Visitantes do site, YouTube..." /></div>
+              <div><LabelTip tip="Sobe lista de clientes (e-mail/telefone). Nenhum dado pessoal fica salvo neste formulário, só o nome/ID da lista.">Customer Match</LabelTip><MultiSelectChips value={form.customerMatch} onChange={(v) => setForm((f) => ({ ...f, customerMatch: v }))} placeholder="Nome ou ID da lista" /></div>
+              <div><LabelTip tip="A partir de uma lista, encontra outras pessoas com perfil parecido.">Públicos semelhantes</LabelTip><MultiSelectChips value={form.semelhantes} onChange={(v) => setForm((f) => ({ ...f, semelhantes: v }))} placeholder="Nome ou ID da lista de origem" /></div>
             </div>
 
             <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}

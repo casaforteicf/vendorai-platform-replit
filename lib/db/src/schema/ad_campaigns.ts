@@ -46,6 +46,11 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
   // Preenchido só quando o criativo (imagem/vídeo) veio do Content Studio
   // já existente (content_generations) em vez de gerado ad-hoc aqui
   contentGenerationId: text("content_generation_id"),
+  // Foto real do próprio item (produto/veículo/imóvel/LP) escolhida pelo
+  // usuário no formulário, em vez de deixar a IA gerar uma do zero — só
+  // vale pra tipoAnuncio='imagem'. Null = gera com IA (comportamento
+  // padrão, sem mudança).
+  imagemEscolhidaUrl: text("imagem_escolhida_url"),
   orcamentoDiario: numeric("orcamento_diario", { precision: 10, scale: 2 }).notNull(),
   segmentacao: jsonb("segmentacao").$type<{
     localizacao?: { locais: string[]; tipoPresenca: "presenca" | "interesse" | "ambos"; raioKm?: number | null };
