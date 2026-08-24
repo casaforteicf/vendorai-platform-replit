@@ -209,7 +209,13 @@ function useSiteGenerator(tenantId: string, token: string | null) {
         `/api/tenants/${tenantId}/site-generator/jobs/${jobId}`,
         { headers: authHeaders },
       );
-      if (!pollRes.ok) continue;
+      if (!pollRes.ok) {
+        const body = await pollRes.json().catch(() => ({}));
+        if (pollRes.status === 404) {
+          throw new Error("A geração foi interrompida no servidor. Tente gerar novamente.");
+        }
+        throw new Error(body.error ?? `Erro ao acompanhar geração (${pollRes.status})`);
+      }
       const job = await pollRes.json();
 
       if (job.status === "done") return job.result;
