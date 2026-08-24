@@ -416,7 +416,9 @@ router.get("/tenants/:tenantId/site-config", async (req, res) => {
     .where(eq(siteConfigTable.tenantId, tenantId));
 
   if (!config) {
-    res.status(404).json({ error: "Site config not found" });
+    // A tenant that has not generated a site yet is a valid initial state.
+    // Returning an empty result prevents clients from retrying a 404 forever.
+    res.json(null);
     return;
   }
   res.json(config);

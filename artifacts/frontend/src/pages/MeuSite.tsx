@@ -581,10 +581,13 @@ export default function MeuSite() {
       const r = await fetch(`${base}/api/tenants/${tenantId}/site-config`, {
         headers: authHeaders(),
       });
-      if (r.ok) {
-        const data: SiteConfig = await r.json();
-        setSiteConfig(data);
+      if (r.status === 404 || r.status === 204) {
+        setSiteConfig(null);
+        return;
       }
+      if (!r.ok) throw new Error(`Erro ao carregar configuração do site (${r.status})`);
+      const data: SiteConfig | null = await r.json();
+      setSiteConfig(data);
     } finally {
       setLoading(false);
     }
