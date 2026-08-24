@@ -226,9 +226,29 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
       body: "'Nunito', sans-serif",
       googleUrl: "https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap",
     },
+    // Opções extras — o modelo escolhe a que melhor caracteriza o
+    // negócio específico, não fica preso ao mapeamento 1-tom-1-par.
+    tecnico: {
+      display: "'Space Grotesk', sans-serif",
+      body: "'IBM Plex Sans', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap",
+    },
+    editorial: {
+      display: "'Fraunces', serif",
+      body: "'Source Sans 3', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:wght@400;500;600&display=swap",
+    },
+    industrial: {
+      display: "'Archivo Black', sans-serif",
+      body: "'Archivo', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700&display=swap",
+    },
+    artesanal: {
+      display: "'Fraunces', serif",
+      body: "'Karla', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Karla:wght@400;500;600;700&display=swap",
+    },
   };
-
-  const fonts = FONT_PAIRS[tone as string] ?? FONT_PAIRS.profissional;
 
   const hasRealImages = products.some((p) => p.imageUrl);
   const imagesBlock = images.length > 0
@@ -335,7 +355,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 
   const structure = structureByType[type] || structureByType.landing;
 
-  return `Você é um web designer e copywriter sênior especializado em sites de alta conversão para o mercado brasileiro. Sua missão é gerar um site HTML autocontido de QUALIDADE PROFISSIONAL — comparável aos melhores sites de agência — para o seguinte negócio.
+  return `Você é um diretor de design (e copywriter) de um estúdio pequeno conhecido por dar a cada cliente uma identidade visual que não poderia ser confundida com a de mais ninguém. Este cliente já rejeitou propostas que pareciam "templates genéricos" — está pagando por um ponto de vista visual distinto. Gere um site HTML autocontido de QUALIDADE PROFISSIONAL — comparável aos melhores sites de agência — pro negócio abaixo.
 
 ═══════════════════════════════════════
 BRIEFING DO CLIENTE
@@ -346,41 +366,62 @@ Setor: ${sector || "a definir pelo contexto"}
 Sobre o negócio: ${desc}${servicosBlock}
 Maior dor do cliente-alvo: ${pain || "ineficiência e falta de resultados"}
 Tom de voz: ${TONE_LABELS[tone] || tone}
-Cor primária da marca: ${color} (RGB: ${rgb})
+Cor-âncora escolhida pelo cliente (use como base da paleta, é uma decisão dele — não ignore, mas também não a trate como a única cor do site): ${color} (RGB: ${rgb})
 CTA principal: ${ctaText}
 WhatsApp de contato: wa.me/${waNumber}${igHandle ? `\nInstagram: ${igUrl} (handle: @${igHandle})` : ""}
 ${productsBlock}${produtoFocoBlock}${imagesBlock}
 
 ═══════════════════════════════════════
-SISTEMA DE DESIGN — SIGA À RISCA
+PROCESSO DE DESIGN — FAÇA ISSO NO SEU RACIOCÍNIO ANTES DE ESCREVER O CÓDIGO
 ═══════════════════════════════════════
 
-VARIÁVEIS CSS (sempre no :root):
-  --primary: ${color};
-  --primary-rgb: ${rgb};
-  --primary-dark: (versão 20% mais escura da cor primária calculada manualmente);
-  --primary-light: (versão 90% mais clara, para backgrounds sutis);
-  --btn-text: ${btnTextColor};
-  --bg: #ffffff;
-  --bg-alt: #f8f9fc;
-  --bg-dark: #0f0f17;
-  --text: #111827;
-  --text-muted: #6b7280;
-  --text-light: #9ca3af;
-  --border: #e5e7eb;
-  --radius: 14px;
-  --radius-sm: 8px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.08);
-  --shadow-lg: 0 20px 60px rgba(0,0,0,0.12);
+Antes de gerar o HTML, monte mentalmente um plano de design compacto específico pra ESTE negócio (não um sistema genérico reaproveitável):
 
-TIPOGRAFIA (Google Fonts já carregadas):
-  <link href="${fonts.googleUrl}" rel="stylesheet">
-  Títulos (h1-h3): font-family: ${fonts.display}; letter-spacing: -0.02em;
-  Corpo: font-family: ${fonts.body};
-  h1: clamp(2.2rem, 5vw, 3.8rem); font-weight: 800; line-height: 1.1;
-  h2: clamp(1.7rem, 3.5vw, 2.6rem); font-weight: 700; line-height: 1.2;
-  h3: 1.25rem; font-weight: 700;
-  p: 1rem; line-height: 1.7; color: var(--text-muted);
+1. PALETA — descreva 4 a 6 cores nomeadas em hex, ancoradas na cor escolhida pelo cliente (${color}) mas expandidas com intenção: uma cor de destaque/acento que conversa com ela, tons de fundo que fazem sentido pro setor "${sector || name}" (nem sempre branco+cinza-claro é a resposta certa — considere se um fundo mais quente, mais escuro ou mais saturado serve melhor a esse negócio específico).
+2. TIPOGRAFIA — escolha DENTRE OS PARES ABAIXO (são os únicos com URL do Google Fonts verificada — não invente outro par) o que melhor caracteriza ESTE negócio, não apenas o "tom" genérico:
+${Object.entries(FONT_PAIRS).map(([key, f]) => `   - "${key}": display ${f.display} + corpo ${f.body}`).join("\n")}
+   Tom sugerido pelo cliente: "${tone}" — mas escolha o par que melhor serve o SETOR e a PERSONALIDADE do negócio, não só o tom em isolado. Justifique mentalmente a escolha antes de seguir.
+3. ASSINATURA — qual é o UM elemento visual memorável desse site, específico pro mundo desse negócio (não genérico)? Pode ser a forma do hero, um padrão decorativo, um jeito particular de mostrar números, etc. Gaste sua ousadia nesse UM lugar; mantenha o resto disciplinado.
+
+CALIBRAGEM — evite os 3 padrões que já viraram "cara de site feito por IA" (a menos que o briefing peça explicitamente um deles):
+(a) fundo creme quase-branco + serifada de alto contraste + acento terracota/laranja-queimado;
+(b) fundo quase-preto + único acento verde-ácido ou vermelho vibrante;
+(c) layout estilo jornal com réguas finas, zero border-radius, colunas densas.
+Se nenhum eixo do briefing empurrar pra um desses, não gaste a liberdade neles — escolha algo grounded no setor "${sector || name}" especificamente.
+
+Não use marcadores numerados (01/02/03) decorativamente — só se o conteúdo for de fato uma sequência real (processo, linha do tempo).
+
+═══════════════════════════════════════
+SISTEMA DE DESIGN — TRADUZA SEU PLANO EM CSS REAL (valores abaixo são o PISO técnico obrigatório, não a paleta em si)
+═══════════════════════════════════════
+
+VARIÁVEIS CSS (sempre no :root — preencha com as cores do SEU plano acima, âncora ${color} incluída):
+  --primary: (cor âncora ou a mais próxima do seu plano);
+  --primary-rgb: ${rgb};
+  --primary-dark: (versão mais escura calculada manualmente);
+  --primary-light: (versão mais clara, pra backgrounds sutis);
+  --accent: (a cor de destaque do seu plano — pode ser diferente de --primary, gera contraste visual real);
+  --btn-text: ${btnTextColor};
+  --bg: (fundo principal do SEU plano — nem sempre #ffffff);
+  --bg-alt: (fundo alternado do SEU plano);
+  --bg-dark: (fundo escuro do SEU plano, pra seções de contraste);
+  --text: (cor de texto principal coerente com o fundo escolhido);
+  --text-muted: (cor de texto secundário);
+  --text-light: (cor de texto terciário);
+  --border: (cor de borda sutil coerente com a paleta);
+  --radius: (raio de borda coerente com a personalidade do plano — pode ser 0 se o plano pedir algo mais reto);
+  --radius-sm: (raio menor, proporcional ao --radius);
+  --shadow: (sombra sutil coerente com o fundo escolhido);
+  --shadow-lg: (sombra mais forte, mesma lógica);
+
+TIPOGRAFIA (Google Fonts do par escolhido no seu plano):
+  <link href="URL_GOOGLE_FONTS_DO_PAR_ESCOLHIDO" rel="stylesheet">
+  Títulos (h1-h3): font-family do par escolhido; letter-spacing intencional (não sempre -0.02em — decida);
+  Corpo: font-family do par escolhido;
+  h1: clamp(2.2rem, 5vw, 3.8rem); peso e line-height coerentes com a personalidade escolhida;
+  h2: clamp(1.7rem, 3.5vw, 2.6rem);
+  h3: 1.25rem;
+  p: 1rem; line-height 1.6-1.8; cor --text-muted;
 
 BOTÕES:
   .btn-primary → background: var(--primary); color: ${btnTextColor}; padding: 14px 28px; border-radius: 100px; font-weight: 700; font-size: 0.95rem; border: none; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.35);
@@ -389,24 +430,24 @@ BOTÕES:
   .btn-outline:hover → border-color: var(--primary); color: var(--primary);
 
 CARDS:
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; transition: all 0.25s;
+  background: var(--bg) do SEU plano (ou uma variação sutil dele); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; transition: all 0.25s;
   :hover → border-color: rgba(var(--primary-rgb), 0.3); box-shadow: var(--shadow); transform: translateY(-3px);
-  Accent top line: border-top: 3px solid var(--primary);
+  Accent top line (opcional, só se fizer sentido no seu plano): border-top: 3px solid var(--primary);
 
 NAV:
-  position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100; background: (var(--bg) do SEU plano, com opacidade ~0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
 
 SEÇÕES:
   padding: 88px 0; (mobile: 56px 0)
   max-width: 1120px; margin: 0 auto; padding-left: 24px; padding-right: 24px;
-  Seções alternadas: bg-alt (#f8f9fc) para criar ritmo visual
-  Seções escuras: bg-dark (#0f0f17) com texto claro
+  Alterne entre var(--bg) e var(--bg-alt) do SEU plano pra criar ritmo visual
+  Seções de contraste usam var(--bg-dark) do SEU plano com texto claro
 
-ANIMAÇÕES (CSS puro, sem bibliotecas externas):
+MOVIMENTO — use com intenção, não em tudo por padrão. Efeito de revelar-ao-rolar espalhado em cada elemento é outro tique de "cara de site feito por IA". Escolha ONDE a animação serve o negócio (ex: um momento orquestrado no load do hero, um hover específico no elemento-assinatura) em vez de aplicar a mesma transição genérica em todo card/seção. Utilitário disponível se decidir usar:
   .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
   .reveal.visible { opacity: 1; transform: translateY(0); }
   JS: IntersectionObserver detecta .reveal e adiciona .visible
-  Delays: .d1{transition-delay:0.1s} .d2{transition-delay:0.2s} .d3{transition-delay:0.3s}
+  Respeite prefers-reduced-motion: desative transições quando o usuário pedir.
 
 GRADE RESPONSIVA:
   Mobile-first. Grids com grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
