@@ -1224,6 +1224,137 @@ paths:
                 items:
                   $ref: "#/components/schemas/Funil"
 
+  /tenants/{tenantId}/pipeline-stages:
+    get:
+      operationId: listPipelineStages
+      tags: [crm]
+      summary: List pipeline stages by tenant (auto-seeds the 11 system stages on first call)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of pipeline stages, ordered
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PipelineStage"
+    post:
+      operationId: createPipelineStage
+      tags: [crm]
+      summary: Create a custom pipeline stage (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePipelineStageBody"
+      responses:
+        "201":
+          description: Created pipeline stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStage"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/pipeline-stages/{id}:
+    patch:
+      operationId: updatePipelineStage
+      tags: [crm]
+      summary: Update a pipeline stage — label/color/order/SLA (admin only; key is never editable)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePipelineStageBody"
+      responses:
+        "200":
+          description: Updated pipeline stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStage"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deletePipelineStage
+      tags: [crm]
+      summary: Delete a custom pipeline stage (admin only; system stages cannot be deleted)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "403":
+          description: Forbidden — admin only, or stage is a system stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /funis/{id}:
     get:
       operationId: getFunil
@@ -12493,7 +12624,12 @@ components:
 
     DealEtapa:
       type: string
-      enum: [em_aquecimento, novo, qualificado, proposta, negociacao, conferencia_estoque, ganho, em_execucao, entregue, perdido, parceiro]
+      # Antes era enum fechado com as 11 etapas do sistema. Agora aceita
+      # qualquer string — tenants podem criar etapas customizadas no
+      # pipeline (tabela pipeline_stages). Os 11 valores do sistema
+      # continuam sendo os únicos com automação amarrada (contrato,
+      # cobrança, reativação etc. no backend).
+      example: "novo"
 
     DealEtapaSaas:
       type: string
@@ -12538,6 +12674,68 @@ components:
           type: string
           format: date-time
       required: [id, tenantId, nome, etapas, createdAt, updatedAt]
+
+    PipelineStage:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        key:
+          type: string
+        label:
+          type: string
+        color:
+          type: string
+          nullable: true
+        bg:
+          type: string
+          nullable: true
+        ordem:
+          type: integer
+        isSystem:
+          type: boolean
+        slaMinutos:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, key, label, ordem, isSystem, createdAt, updatedAt]
+
+    CreatePipelineStageBody:
+      type: object
+      properties:
+        label:
+          type: string
+        color:
+          type: string
+        bg:
+          type: string
+        slaMinutos:
+          type: integer
+          nullable: true
+      required: [label]
+
+    UpdatePipelineStageBody:
+      type: object
+      properties:
+        label:
+          type: string
+        color:
+          type: string
+        bg:
+          type: string
+        ordem:
+          type: integer
+        slaMinutos:
+          type: integer
+          nullable: true
+
 
     CreateFunilBody:
       type: object
@@ -12705,13 +12903,17 @@ components:
           type: string
           nullable: true
           description: UUID do usuário responsável pelo deal
+        etapaAlteradaEm:
+          type: string
+          format: date-time
+          description: Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa.
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
-      required: [id, tenantId, titulo, etapa, createdAt, updatedAt]
+      required: [id, tenantId, titulo, etapa, etapaAlteradaEm, createdAt, updatedAt]
 
     DealUpdateResponse:
       allOf:

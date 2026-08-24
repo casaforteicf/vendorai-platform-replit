@@ -17,9 +17,15 @@ import {
   getListTenantBriefingsQueryKey,
   useListTenantUsers,
   getListTenantUsersQueryKey,
+  useListPipelineStages,
+  getListPipelineStagesQueryKey,
+  useCreatePipelineStage,
+  useUpdatePipelineStage,
+  useDeletePipelineStage,
   LeadBriefing,
   Deal,
   DealEtapa,
+  PipelineStage,
   TipoFechamento,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -418,6 +424,7 @@ function DealCard({
   onClick,
   onAgendar,
   overlay = false,
+  slaOverdue = false,
 }: {
   deal: Deal;
   leadName: string | undefined;
@@ -427,6 +434,8 @@ function DealCard({
   onClick?: () => void;
   onAgendar?: () => void;
   overlay?: boolean;
+  /** Tempo na etapa atual estourou o SLA configurado pelo admin (distinto do prazo geral do negócio — ver isOverdue abaixo). */
+  slaOverdue?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
@@ -435,6 +444,7 @@ function DealCard({
 
   const deadline = deal.dataFechamentoPrevista ? new Date(deal.dataFechamentoPrevista) : null;
   const isOverdue = !overlay && deadline && deadline < new Date() && !TERMINAL_ETAPAS.has(deal.etapa ?? "");
+  const isSlaLate = !overlay && slaOverdue;
 
   return (
     <div
@@ -445,13 +455,23 @@ function DealCard({
       className={`group bg-card border rounded-lg p-3 space-y-2 ${
         overlay
           ? "shadow-2xl rotate-1 cursor-grabbing border-border"
-          : isOverdue
+          : isSlaLate
+            ? "cursor-grab active:cursor-grabbing border-red-400 bg-red-50/50 shadow-[0_0_10px_rgba(239,68,68,0.35)] hover:shadow-[0_0_16px_rgba(239,68,68,0.55)] transition-all"
+            : isOverdue
             ? "cursor-grab active:cursor-grabbing border-yellow-400 bg-yellow-50/40 shadow-[0_0_10px_rgba(234,179,8,0.35)] hover:shadow-[0_0_16px_rgba(234,179,8,0.55)] transition-all"
             : "cursor-grab active:cursor-grabbing border-border hover:border-primary/40 hover:shadow-sm transition-all"
       }`}
       onClick={onClick}
       data-testid={`deal-card-${deal.id}`}
     >
+      {/* Tempo na etapa estourado — SLA configurado pelo admin */}
+      {isSlaLate && (
+        <div className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-red-100 border border-red-300 w-fit">
+          <AlertTriangle className="h-3 w-3 text-red-700" />
+          <span className="text-[10px] font-bold text-red-800 uppercase tracking-wide">Tempo esgotado</span>
+        </div>
+      )}
+
       {/* Atrasado badge */}
       {isOverdue && (
         <div className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-yellow-100 border border-yellow-300 w-fit">
@@ -705,6 +725,7 @@ function KanbanColumn({
   isOver,
   onCardClick,
   onAgendar,
+  stagesByKey,
 }: {
   col: KanbanColumnDef;
   deals: Deal[];
@@ -716,6 +737,7 @@ function KanbanColumn({
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
   onAgendar: (deal: Deal) => void;
+  stagesByKey: Record<string, PipelineStage>;
 }) {
   const { setNodeRef } = useDroppable({ id: col.dropId });
 
@@ -728,6 +750,20 @@ function KanbanColumn({
     const dl = d.dataFechamentoPrevista ? new Date(d.dataFechamentoPrevista) : null;
     return dl && dl < new Date() && !TERMINAL_ETAPAS.has(d.etapa ?? "");
   }).length;
+
+  // Card fica vermelho quando o tempo na etapa estourou o SLA configurado
+  // pelo admin (pipeline_stages.slaMinutos) — distinto do "Atrasado"
+  // amarelo acima, que é sobre a data de fechamento prevista do negócio.
+  function isSlaOverdue(deal: Deal): boolean {
+    const stage = stagesByKey[deal.etapa];
+    if (!stage?.slaMinutos) return false;
+    if (TERMINAL_ETAPAS.has(deal.etapa ?? "")) return false;
+    const changedAt = (deal as Deal & { etapaAlteradaEm?: string }).etapaAlteradaEm;
+    if (!changedAt) return false;
+    const elapsedMin = (Date.now() - new Date(changedAt).getTime()) / 60000;
+    return elapsedMin > stage.slaMinutos;
+  }
+  const slaOverdueCount = deals.filter(isSlaOverdue).length;
 
   return (
     <div className="flex flex-col w-72 shrink-0">
@@ -755,6 +791,12 @@ function KanbanColumn({
             <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-yellow-700 bg-yellow-100 border border-yellow-300 rounded-full px-1.5 py-0.5">
               <AlertTriangle className="h-2.5 w-2.5" />
               {overdueCount}
+            </span>
+          )}
+          {slaOverdueCount > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-red-700 bg-red-100 border border-red-300 rounded-full px-1.5 py-0.5">
+              <AlertTriangle className="h-2.5 w-2.5" />
+              {slaOverdueCount}
             </span>
           )}
         </div>
@@ -789,6 +831,7 @@ function KanbanColumn({
               assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
               onClick={() => onCardClick(deal)}
               onAgendar={() => onAgendar(deal)}
+              slaOverdue={isSlaOverdue(deal)}
             />
           );
         })}
@@ -1985,6 +2028,30 @@ export default function Deals() {
     },
   });
 
+  // Etapas do pipeline vindas do backend (controladas por admin — SLA de
+  // tempo, criação de etapas novas). Sobrepõe label/cor/SLA nas colunas
+  // estáticas (que definem a estrutura/ordem/splits virtuais) e adiciona
+  // etapas customizadas (is_system=false) como colunas extras no fim.
+  const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
+    query: { enabled: !!tenantId, queryKey: getListPipelineStagesQueryKey(tenantId) },
+  });
+  const stagesByKey = useMemo(
+    () => Object.fromEntries(pipelineStages.map((s) => [s.key, s])) as Record<string, PipelineStage>,
+    [pipelineStages],
+  );
+
+  // Card fica vermelho quando o tempo na etapa atual estourou o SLA
+  // configurado (slaMinutos null = sem SLA, nunca fica vermelho).
+  function isSlaOverdue(deal: Deal): boolean {
+    const stage = stagesByKey[deal.etapa];
+    if (!stage?.slaMinutos) return false;
+    if (TERMINAL_ETAPAS.has(deal.etapa ?? "")) return false;
+    const changedAt = (deal as Deal & { etapaAlteradaEm?: string }).etapaAlteradaEm;
+    if (!changedAt) return false;
+    const elapsedMin = (Date.now() - new Date(changedAt).getTime()) / 60000;
+    return elapsedMin > stage.slaMinutos;
+  }
+
   useEffect(() => {
     if (!tenantId) return;
     try {
@@ -1998,15 +2065,60 @@ export default function Deals() {
     if (tenantId) localStorage.setItem(`vendorai:deal-stages:${tenantId}`, JSON.stringify(stageConfig));
   }, [stageConfig, tenantId]);
 
-  const visibleEtapas = useMemo(() => ETAPAS
-    .filter((stage) => !stageConfig[stage.value]?.hidden)
-    .map((stage) => ({ ...stage, label: stageConfig[stage.value]?.label || stage.label })), [stageConfig]);
-  const kanbanColumns = useMemo(() => KANBAN_COLUMNS
-    .filter((column) => !stageConfig[column.onDrop.etapa]?.hidden)
-    .map((column) => {
-      const customLabel = stageConfig[column.onDrop.etapa]?.label;
-      return { ...column, label: customLabel || column.label };
-    }), [stageConfig]);
+  const visibleEtapas = useMemo(() => {
+    const base = ETAPAS
+      .filter((stage) => !stageConfig[stage.value]?.hidden)
+      .map((stage) => {
+        const serverStage = stagesByKey[stage.value];
+        return {
+          value: stage.value,
+          label: stageConfig[stage.value]?.label || serverStage?.label || stage.label,
+          color: serverStage?.color || stage.color,
+          bg: serverStage?.bg || stage.bg,
+        };
+      });
+    // Etapas customizadas também entram no seletor mobile — sem isso só
+    // dariam pra alcançar via drag-and-drop no quadro desktop.
+    const knownKeys = new Set(ETAPAS.map((s) => s.value));
+    const customEtapas = pipelineStages
+      .filter((s) => !s.isSystem && !knownKeys.has(s.key))
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((s) => ({ value: s.key, label: s.label, color: s.color ?? "text-gray-600", bg: s.bg ?? "bg-gray-100" }));
+    return [...base, ...customEtapas];
+  }, [stageConfig, stagesByKey, pipelineStages]);
+
+  const kanbanColumns = useMemo(() => {
+    const baseColumns = KANBAN_COLUMNS
+      .filter((column) => !stageConfig[column.onDrop.etapa]?.hidden)
+      .map((column) => {
+        const serverStage = stagesByKey[column.onDrop.etapa];
+        const customLabel = stageConfig[column.onDrop.etapa]?.label;
+        return {
+          ...column,
+          label: customLabel || serverStage?.label || column.label,
+          color: serverStage?.color || column.color,
+          bg: serverStage?.bg || column.bg,
+        };
+      });
+    // Etapas customizadas (criadas pelo admin) que ainda não têm coluna
+    // estática correspondente — entram como colunas simples no fim do
+    // quadro, sem os splits virtuais/regras especiais das etapas do
+    // sistema. "order" alto garante que só recebem cards avançando.
+    const knownKeys = new Set(KANBAN_COLUMNS.map((c) => c.onDrop.etapa));
+    const customColumns: KanbanColumnDef[] = pipelineStages
+      .filter((s) => !s.isSystem && !knownKeys.has(s.key))
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((s, i) => ({
+        dropId: s.key,
+        label: s.label,
+        color: s.color ?? "text-gray-600",
+        bg: s.bg ?? "bg-gray-100",
+        order: 100 + i,
+        isSpecial: false,
+        onDrop: { etapa: s.key },
+      }));
+    return [...baseColumns, ...customColumns];
+  }, [stageConfig, stagesByKey, pipelineStages]);
 
   useEffect(() => {
     if (kanbanColumns.length > 0 && !kanbanColumns.some((column) => column.dropId === mobileCol)) {
@@ -2081,6 +2193,54 @@ export default function Deals() {
   const updateDeal = useUpdateDeal();
 
   const createDeal = useCreateDeal();
+
+  // Mutations de configuração do pipeline (admin) — SLA/label/cor das
+  // etapas do sistema e criação/edição/exclusão de etapas customizadas.
+  const createStage = useCreatePipelineStage();
+  const updateStage = useUpdatePipelineStage();
+  const deleteStage = useDeletePipelineStage();
+  const [newStageLabel, setNewStageLabel] = useState("");
+  const [newStageSla, setNewStageSla] = useState("");
+  const [creatingStage, setCreatingStage] = useState(false);
+
+  function invalidateStages() {
+    queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
+  }
+
+  function saveStageSla(stageId: string | undefined, minutosStr: string) {
+    if (!stageId) return;
+    const trimmed = minutosStr.trim();
+    const slaMinutos = trimmed === "" ? null : Math.max(1, parseInt(trimmed, 10) || 0);
+    updateStage.mutate(
+      { tenantId, id: stageId, data: { slaMinutos } },
+      { onSuccess: invalidateStages, onError: () => toast({ title: "Erro ao salvar SLA", variant: "destructive" }) },
+    );
+  }
+
+  async function handleCreateStage() {
+    if (!newStageLabel.trim()) return;
+    setCreatingStage(true);
+    const slaMinutos = newStageSla.trim() === "" ? null : Math.max(1, parseInt(newStageSla, 10) || 0);
+    createStage.mutate(
+      { tenantId, data: { label: newStageLabel.trim(), slaMinutos } },
+      {
+        onSuccess: () => { invalidateStages(); setNewStageLabel(""); setNewStageSla(""); },
+        onError: () => toast({ title: "Erro ao criar etapa", variant: "destructive" }),
+        onSettled: () => setCreatingStage(false),
+      },
+    );
+  }
+
+  function handleDeleteStage(stage: PipelineStage) {
+    if (!window.confirm(`Excluir a etapa "${stage.label}"? Negócios nela precisam ser movidos antes.`)) return;
+    deleteStage.mutate(
+      { tenantId, id: stage.id },
+      {
+        onSuccess: invalidateStages,
+        onError: (err: any) => toast({ title: err?.error ?? "Erro ao excluir etapa", variant: "destructive" }),
+      },
+    );
+  }
 
   async function handleCreateQuoteUpload(file: File) {
     setCreateExtracting(true);
@@ -2404,17 +2564,29 @@ export default function Deals() {
           <DialogTrigger asChild><Button variant="outline"><Settings2 className="h-4 w-4 mr-2" /> Etapas</Button></DialogTrigger>
           <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Gerenciar etapas da pipeline</DialogTitle></DialogHeader>
-            <p className="text-sm text-muted-foreground">Edite o nome exibido ou remova etapas vazias. Etapas com negócios não podem ser excluídas.</p>
+            <p className="text-sm text-muted-foreground">Edite o nome exibido, o tempo máximo (SLA) que um negócio pode ficar parado na etapa antes do card ficar vermelho, ou remova etapas vazias. Etapas do sistema (com automação de contrato/cobrança) não podem ser excluídas.</p>
             <div className="space-y-2">
               {ETAPAS.map((stage) => {
                 const count = deals.filter((deal) => deal.etapa === stage.value).length;
                 const hidden = !!stageConfig[stage.value]?.hidden;
+                const serverStage = stagesByKey[stage.value];
                 return <div key={stage.value} className="flex items-center gap-2 rounded-lg border p-2">
                   <Input
                     value={stageConfig[stage.value]?.label ?? stage.label}
                     disabled={hidden}
                     aria-label={`Nome da etapa ${stage.label}`}
+                    className="flex-1"
                     onChange={(event) => setStageConfig((current) => ({ ...current, [stage.value]: { label: event.target.value, hidden: false } }))}
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="SLA (min)"
+                    disabled={hidden}
+                    defaultValue={serverStage?.slaMinutos ?? ""}
+                    aria-label={`SLA em minutos da etapa ${stage.label}`}
+                    className="w-28 shrink-0"
+                    onBlur={(event) => saveStageSla(serverStage?.id, event.target.value)}
                   />
                   <Badge variant="secondary" className="shrink-0">{count}</Badge>
                   {hidden ? <Button size="icon" variant="outline" title="Restaurar etapa" onClick={() => setStageConfig((current) => ({ ...current, [stage.value]: { label: current[stage.value]?.label || stage.label, hidden: false } }))}><RotateCcw className="h-4 w-4" /></Button>
@@ -2423,6 +2595,54 @@ export default function Deals() {
                   }}><Trash2 className="h-4 w-4" /></Button>}
                 </div>;
               })}
+              {/* Etapas customizadas — criadas pelo admin, sem automação amarrada */}
+              {pipelineStages.filter((s) => !s.isSystem).map((stage) => {
+                const count = deals.filter((deal) => deal.etapa === stage.key).length;
+                return <div key={stage.id} className="flex items-center gap-2 rounded-lg border border-dashed p-2">
+                  <Input
+                    defaultValue={stage.label}
+                    aria-label={`Nome da etapa customizada ${stage.label}`}
+                    className="flex-1"
+                    onBlur={(event) => {
+                      const label = event.target.value.trim();
+                      if (label && label !== stage.label) updateStage.mutate({ tenantId, id: stage.id, data: { label } }, { onSuccess: invalidateStages });
+                    }}
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="SLA (min)"
+                    defaultValue={stage.slaMinutos ?? ""}
+                    aria-label={`SLA em minutos da etapa ${stage.label}`}
+                    className="w-28 shrink-0"
+                    onBlur={(event) => saveStageSla(stage.id, event.target.value)}
+                  />
+                  <Badge variant="secondary" className="shrink-0">{count}</Badge>
+                  <Button size="icon" variant="ghost" className="text-destructive" title={count ? "Mova os negócios antes de excluir" : "Excluir etapa"} disabled={count > 0} onClick={() => handleDeleteStage(stage)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>;
+              })}
+              {/* Criar etapa nova — só organizacional, sem automação */}
+              <div className="flex items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-2">
+                <Input
+                  placeholder="Nome da nova etapa"
+                  value={newStageLabel}
+                  onChange={(e) => setNewStageLabel(e.target.value)}
+                  className="flex-1"
+                />
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="SLA (min)"
+                  value={newStageSla}
+                  onChange={(e) => setNewStageSla(e.target.value)}
+                  className="w-28 shrink-0"
+                />
+                <Button size="sm" disabled={!newStageLabel.trim() || creatingStage} onClick={handleCreateStage} className="shrink-0 gap-1">
+                  <Plus className="h-3.5 w-3.5" /> Adicionar
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>}
@@ -2688,8 +2908,19 @@ export default function Deals() {
                 </div>
               );
             }
-            return colDeals.map((deal) => (
-              <div key={deal.id} className="bg-card border border-border rounded-xl p-4 space-y-2">
+            return colDeals.map((deal) => {
+              const slaLate = isSlaOverdue(deal);
+              return (
+              <div key={deal.id} className={[
+                "border rounded-xl p-4 space-y-2",
+                slaLate ? "bg-red-50/50 border-red-400 shadow-[0_0_10px_rgba(239,68,68,0.35)]" : "bg-card border-border",
+              ].join(" ")}>
+                {slaLate && (
+                  <div className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-red-100 border border-red-300 w-fit">
+                    <AlertTriangle className="h-3 w-3 text-red-700" />
+                    <span className="text-[10px] font-bold text-red-800 uppercase tracking-wide">Tempo esgotado</span>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-medium text-sm leading-tight flex-1">{deal.titulo}</p>
                   <span className="text-sm font-semibold font-mono shrink-0">{formatCurrency(deal.valor)}</span>
@@ -2764,7 +2995,8 @@ export default function Deals() {
                   </Button>
                 </div>
               </div>
-            ));
+              );
+            });
           })()}
         </div>
       </div>
@@ -2801,6 +3033,7 @@ export default function Deals() {
                   isOver={overColumn === col.dropId}
                   onCardClick={handleCardClick}
                   onAgendar={(deal) => setAgendarDeal(deal)}
+                  stagesByKey={stagesByKey}
                 />
               ))}
             </div>

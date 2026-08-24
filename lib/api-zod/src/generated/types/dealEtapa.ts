@@ -6,19 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type DealEtapa = typeof DealEtapa[keyof typeof DealEtapa];
-
-
-export const DealEtapa = {
-  em_aquecimento: 'em_aquecimento',
-  novo: 'novo',
-  qualificado: 'qualificado',
-  proposta: 'proposta',
-  negociacao: 'negociacao',
-  conferencia_estoque: 'conferencia_estoque',
-  ganho: 'ganho',
-  em_execucao: 'em_execucao',
-  entregue: 'entregue',
-  perdido: 'perdido',
-  parceiro: 'parceiro',
-} as const;
+export type DealEtapa = string;

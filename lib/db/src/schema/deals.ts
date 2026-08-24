@@ -41,7 +41,13 @@ export const dealsTable = pgTable("deals", {
   leadId: text("lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
   titulo: text("titulo").notNull(),
   valor: numeric("valor", { precision: 12, scale: 2 }),
-  etapa: dealEtapaEnum("etapa").notNull().default("novo"),
+  // Era pgEnum(dealEtapaEnum) — virou texto livre em favor de etapas
+  // customizáveis por tenant (ver pipeline_stages.ts). Os 11 valores do
+  // enum antigo continuam sendo os únicos com automação de verdade
+  // (contrato/cobrança/reativação) amarrada nos ~29 arquivos do
+  // backend que comparam contra essas strings literais — nada nesses
+  // arquivos precisou mudar, o valor da string é idêntico.
+  etapa: text("etapa").notNull().default("novo"),
   funilId: text("funil_id").references(() => funisTable.id, { onDelete: "set null" }),
   probabilidade: integer("probabilidade").default(0),
   dataFechamentoPrevista: timestamp("data_fechamento_prevista"),
@@ -92,6 +98,11 @@ export const dealsTable = pgTable("deals", {
   origemPedidoPracaId: text("origem_pedido_praca_id"),
   vehicleReservationDueAt: timestamp("vehicle_reservation_due_at"),
   vehicleReservationBlocked: boolean("vehicle_reservation_blocked").notNull().default(false),
+  // Quando a etapa mudou pela última vez — mantido por trigger no banco
+  // (set_deal_etapa_alterada_em, migration 108), cobre qualquer UPDATE
+  // de etapa não importa qual dos ~29 pontos do backend fez. Usado pro
+  // SLA de tempo por etapa (card fica vermelho quando estoura).
+  etapaAlteradaEm: timestamp("etapa_alterada_em").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -128,7 +139,7 @@ export const insertDealSchema = createInsertSchema(dealsTable, {
   seats: z.number().int().min(0).optional(),
   probChurn: z.number().int().min(0).max(100).optional(),
   dataRenovacao: z.coerce.date().optional(),
-}).omit({ id: true, createdAt: true, updatedAt: true });
+}).omit({ id: true, createdAt: true, updatedAt: true, etapaAlteradaEm: true });
 
 export const updateDealSchema = createSelectSchema(dealsTable, {
   valor: valorField,
@@ -143,7 +154,7 @@ export const updateDealSchema = createSelectSchema(dealsTable, {
   tipoFechamento: z.enum(["pedido", "contrato", "pedido_e_contrato"]).optional(),
   cobrancaTipo: z.enum(["automatico", "manual"]).optional(),
 })
-  .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
+  .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true, etapaAlteradaEm: true })
   .partial();
 
 export type InsertDeal = z.infer<typeof insertDealSchema>;

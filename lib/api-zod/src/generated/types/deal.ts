@@ -82,6 +82,8 @@ export interface Deal {
   aquecimentoTipo?: string | null;
   /** UUID do usuário responsável pelo deal */
   assignedTo?: string | null;
+  /** Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa. */
+  etapaAlteradaEm: Date;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -17,6 +17,7 @@ export interface CreateUserBody {
   role?: UserRole;
   platformRole?: PlatformRole;
   userFunction?: UserFunction;
+  permissions?: string[] | null;
   telefone?: string;
   active?: boolean;
   limiteEntregasPorTurno?: string | number;

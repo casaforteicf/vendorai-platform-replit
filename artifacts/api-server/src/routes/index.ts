@@ -12,6 +12,7 @@ import businessProfilesRouter from "./business_profiles";
 import agentConfigsRouter from "./agent_configs";
 import funisRouter from "./funis";
 import dealsRouter from "./deals";
+import pipelineStagesRouter from "./pipeline_stages.js";
 import activitiesRouter from "./activities";
 import propostasRouter from "./propostas";
 import messagesRouter from "./messages";
@@ -212,6 +213,7 @@ router.use(agentConfigsRouter);
 // CRM Hub
 router.use(funisRouter);
 router.use(dealsRouter);
+router.use(pipelineStagesRouter);
 router.use(activitiesRouter);
 router.use(propostasRouter);
 router.use(leadProposalsRouter);

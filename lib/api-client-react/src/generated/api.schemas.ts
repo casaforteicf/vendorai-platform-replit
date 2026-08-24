@@ -137,7 +137,7 @@ export interface User {
   role: UserRole;
   platformRole: PlatformRole;
   userFunction?: UserFunction;
-  /** Explicit module allowlist. Null/undefined uses defaults for the user's function. */
+  /** Explicit module allowlist; null uses function defaults. */
   permissions?: string[] | null;
   telefone?: string | null;
   active: boolean;
@@ -1714,22 +1714,7 @@ export interface UpdateActivityBody {
   anexoCategoria?: AnexoCategoria;
 }
 
-export type DealEtapa = typeof DealEtapa[keyof typeof DealEtapa];
-
-
-export const DealEtapa = {
-  em_aquecimento: 'em_aquecimento',
-  novo: 'novo',
-  qualificado: 'qualificado',
-  proposta: 'proposta',
-  negociacao: 'negociacao',
-  conferencia_estoque: 'conferencia_estoque',
-  ganho: 'ganho',
-  em_execucao: 'em_execucao',
-  entregue: 'entregue',
-  perdido: 'perdido',
-  parceiro: 'parceiro',
-} as const;
+export type DealEtapa = string;
 
 /**
  * Etapa no funil SaaS/TI
@@ -1767,6 +1752,35 @@ export interface Funil {
   etapas: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PipelineStage {
+  id: string;
+  tenantId: string;
+  key: string;
+  label: string;
+  color?: string | null;
+  bg?: string | null;
+  ordem: number;
+  isSystem: boolean;
+  slaMinutos?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePipelineStageBody {
+  label: string;
+  color?: string;
+  bg?: string;
+  slaMinutos?: number | null;
+}
+
+export interface UpdatePipelineStageBody {
+  label?: string;
+  color?: string;
+  bg?: string;
+  ordem?: number;
+  slaMinutos?: number | null;
 }
 
 export interface CreateFunilBody {
@@ -1863,6 +1877,8 @@ export interface Deal {
   aquecimentoTipo?: string | null;
   /** UUID do usuário responsável pelo deal */
   assignedTo?: string | null;
+  /** Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa. */
+  etapaAlteradaEm: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -5699,6 +5715,10 @@ export type WhatsappOAuthCallbackParams = {
 code?: string;
 state?: string;
 error?: string;
+};
+
+export type DeletePipelineStage200 = {
+  success?: boolean;
 };
 
 export type ListDealsParams = {

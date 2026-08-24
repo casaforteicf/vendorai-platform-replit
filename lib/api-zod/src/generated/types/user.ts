@@ -17,6 +17,8 @@ export interface User {
   role: UserRole;
   platformRole: PlatformRole;
   userFunction?: UserFunction;
+  /** Explicit module allowlist; null uses function defaults. */
+  permissions?: string[] | null;
   telefone?: string | null;
   active: boolean;
   /** If true, user must change their password on next login. */

@@ -122,7 +122,6 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   quantidadePacote: integer("quantidade_pacote"),
   precoPacote: numeric("preco_pacote", { precision: 12, scale: 2 }),
   larguraPecaM: numeric("largura_peca_m", { precision: 8, scale: 3 }),
-  estoqueQuantidade: integer("estoque_quantidade"),
   // Auto-cadastro via IA (sync de estoque do ERP) — produto novo entra
   // como 'pendente_revisao' (e ativo=false, reaproveitando toda a
   // exclusão de site/feed/anúncio já existente por produtosCatalogoTable.ativo)

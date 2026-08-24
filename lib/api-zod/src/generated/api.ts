@@ -37,6 +37,7 @@ export const GetMeResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
@@ -62,6 +63,7 @@ export const RefreshTokenResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
@@ -92,6 +94,7 @@ export const LoginResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
@@ -123,6 +126,7 @@ export const DemoLoginResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
@@ -325,6 +329,7 @@ export const ListUsersResponseItem = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
@@ -348,6 +353,7 @@ export const CreateUserBody = zod.object({
   "role": zod.enum(['admin', 'member']).optional(),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']).optional(),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish(),
   "telefone": zod.string().optional(),
   "active": zod.boolean().optional(),
   "limiteEntregasPorTurno": zod.union([zod.string(),zod.number()]).optional()
@@ -379,6 +385,7 @@ export const ChangePasswordResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
@@ -405,6 +412,7 @@ export const GetUserResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
@@ -430,6 +438,7 @@ export const UpdateUserBody = zod.object({
   "role": zod.enum(['admin', 'member']).optional(),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']).optional(),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish(),
   "telefone": zod.string().optional(),
   "active": zod.boolean().optional(),
   "limiteEntregasPorTurno": zod.union([zod.string(),zod.number()]).optional()
@@ -443,6 +452,7 @@ export const UpdateUserResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
@@ -1285,6 +1295,88 @@ export const ListFunisResponse = zod.array(ListFunisResponseItem)
 
 
 /**
+ * @summary List pipeline stages by tenant (auto-seeds the 11 system stages on first call)
+ */
+export const ListPipelineStagesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListPipelineStagesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "key": zod.string(),
+  "label": zod.string(),
+  "color": zod.string().nullish(),
+  "bg": zod.string().nullish(),
+  "ordem": zod.number(),
+  "isSystem": zod.boolean(),
+  "slaMinutos": zod.number().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListPipelineStagesResponse = zod.array(ListPipelineStagesResponseItem)
+
+
+/**
+ * @summary Create a custom pipeline stage (admin only)
+ */
+export const CreatePipelineStageParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreatePipelineStageBody = zod.object({
+  "label": zod.string(),
+  "color": zod.string().optional(),
+  "bg": zod.string().optional(),
+  "slaMinutos": zod.number().nullish()
+})
+
+
+/**
+ * @summary Update a pipeline stage — label/color/order/SLA (admin only; key is never editable)
+ */
+export const UpdatePipelineStageParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "id": zod.coerce.string()
+})
+
+export const UpdatePipelineStageBody = zod.object({
+  "label": zod.string().optional(),
+  "color": zod.string().optional(),
+  "bg": zod.string().optional(),
+  "ordem": zod.number().optional(),
+  "slaMinutos": zod.number().nullish()
+})
+
+export const UpdatePipelineStageResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "key": zod.string(),
+  "label": zod.string(),
+  "color": zod.string().nullish(),
+  "bg": zod.string().nullish(),
+  "ordem": zod.number(),
+  "isSystem": zod.boolean(),
+  "slaMinutos": zod.number().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a custom pipeline stage (admin only; system stages cannot be deleted)
+ */
+export const DeletePipelineStageParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "id": zod.coerce.string()
+})
+
+export const DeletePipelineStageResponse = zod.object({
+  "success": zod.boolean().optional()
+})
+
+
+/**
  * @summary Get pipeline by ID
  */
 export const GetFunilParams = zod.object({
@@ -1349,7 +1441,7 @@ export const CreateDealBody = zod.object({
   "leadId": zod.string().optional(),
   "titulo": zod.string(),
   "valor": zod.number().optional(),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
+  "etapa": zod.string().optional(),
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(createDealBodyProbabilidadeMin).max(createDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
@@ -1376,7 +1468,7 @@ export const ListDealsParams = zod.object({
 })
 
 export const ListDealsQueryParams = zod.object({
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
+  "etapa": zod.coerce.string().optional(),
   "funilId": zod.coerce.string().optional(),
   "leadId": zod.coerce.string().optional()
 })
@@ -1395,7 +1487,7 @@ export const ListDealsResponseItem = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
+  "etapa": zod.string(),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(listDealsResponseProbabilidadeMin).max(listDealsResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1426,6 +1518,7 @@ export const ListDealsResponseItem = zod.object({
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
+  "etapaAlteradaEm": zod.coerce.date().describe('Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1470,7 +1563,7 @@ export const GetDealResponse = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
+  "etapa": zod.string(),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(getDealResponseProbabilidadeMin).max(getDealResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1501,6 +1594,7 @@ export const GetDealResponse = zod.object({
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
+  "etapaAlteradaEm": zod.coerce.date().describe('Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1527,7 +1621,7 @@ export const UpdateDealBody = zod.object({
   "leadId": zod.string().optional(),
   "titulo": zod.string().optional(),
   "valor": zod.number().optional(),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
+  "etapa": zod.string().optional(),
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(updateDealBodyProbabilidadeMin).max(updateDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
@@ -1563,7 +1657,7 @@ export const UpdateDealResponse = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
+  "etapa": zod.string(),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(updateDealResponseOneProbabilidadeMin).max(updateDealResponseOneProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1594,6 +1688,7 @@ export const UpdateDealResponse = zod.object({
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
+  "etapaAlteradaEm": zod.coerce.date().describe('Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).and(zod.object({
@@ -5410,6 +5505,7 @@ export const ListTenantUsersResponseItem = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),

@@ -9,6 +9,7 @@ export * from "./business_profiles";
 export * from "./agent_configs";
 export * from "./funis";
 export * from "./deals";
+export * from "./pipeline_stages";
 export * from "./activities";
 export * from "./propostas";
 export * from "./messages";
