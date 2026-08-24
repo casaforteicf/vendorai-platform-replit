@@ -111,7 +111,7 @@ export async function listAccessibleCustomers(accessToken: string): Promise<Acce
   });
   if (!res.ok) {
     const text = await res.text();
-    logger.error({ status: res.status, body: text }, "Falha ao listar contas Google Ads acessíveis");
+    logger.error(`Falha ao listar contas Google Ads acessíveis: status=${res.status} body=${text.slice(0, 500)}`);
     throw new Error(`List accessible customers failed: ${res.status}`);
   }
   const data = (await res.json()) as { resourceNames?: string[] };
