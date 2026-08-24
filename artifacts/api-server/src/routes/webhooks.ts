@@ -30,7 +30,8 @@ import {
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { runAutoQuotePipeline } from "../services/auto-quote.js";
 import { transcribeAudio, transcribeAudioBuffer } from "../services/audio-transcription.js";
-import { interpretImage, interpretPdf } from "../services/media-interpretation.js";
+import { interpretImage, interpretPdf, interpretPdfBuffer } from "../services/media-interpretation.js";
+import { getBase64FromMediaMessage } from "../services/evolution-whatsapp.js";
 
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
@@ -624,13 +625,13 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
 // INCERTEZA REAL, documentada aqui por não ter sido testada com uma
 // conexão de verdade ainda: o mapeamento exato de campos abaixo segue a
 // documentação pública da Evolution API v2 (evento messages.upsert),
-// mas pode variar por detalhe de versão. Mensagens de áudio/imagem/
-// documento são reconhecidas mas ainda não processadas (a Evolution
-// API manda mídia em base64 inline por padrão, formato diferente do
-// Z-API que manda URL — reaproveitar transcribeAudio/interpretImage
-// como estão exigiria uma etapa de upload prévia, não implementada
-// nesta primeira versão). Confirmar o payload real assim que alguém
-// conectar via QR Code e mandar uma mensagem de teste.
+// mas pode variar por detalhe de versão. Áudio/imagem/documento buscam
+// o conteúdo via GET .../chat/getBase64FromMediaMessage/{instance}
+// (endpoint dedicado, não o campo inline do webhook — esse tem bugs
+// reportados na Evolution API dependendo da versão, mesmo com
+// webhook_base64 ativado). Ainda assim não testado com uma conexão de
+// verdade. Confirmar o payload real assim que alguém conectar via QR
+// Code e mandar uma mensagem de teste de cada tipo.
 router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   const { tenantId } = req.params;
   const secret = req.query["secret"];
@@ -699,17 +700,66 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   } else if (msg["extendedTextMessage"] && typeof (msg["extendedTextMessage"] as any).text === "string") {
     mensagem = (msg["extendedTextMessage"] as any).text;
   } else if (msg["audioMessage"]) {
-    req.log.info({ tenantId, remoteJid }, "evolution-webhook: mensagem de áudio recebida — processamento ainda não implementado");
-    res.status(200).json({ ignored: true, reason: "audio_not_yet_supported" });
-    return;
+    const messageId = key.id;
+    if (!messageId) {
+      res.status(200).json({ ignored: true, reason: "audio_no_message_id" });
+      return;
+    }
+    req.log.info({ tenantId, remoteJid }, "evolution-webhook: audio — buscando base64 e transcrevendo");
+    try {
+      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
+      const buffer = Buffer.from(media.base64, "base64");
+      mensagem = await transcribeAudioBuffer(buffer, tenantId, req.log);
+      tipoConteudo = "audio";
+    } catch (err) {
+      req.log.error({ err, tenantId, remoteJid }, "evolution-webhook: falha ao processar áudio");
+      res.status(200).json({ ignored: true, reason: "audio_processing_failed" });
+      return;
+    }
   } else if (msg["imageMessage"]) {
-    req.log.info({ tenantId, remoteJid }, "evolution-webhook: mensagem de imagem recebida — processamento ainda não implementado");
-    res.status(200).json({ ignored: true, reason: "image_not_yet_supported" });
-    return;
+    const messageId = key.id;
+    if (!messageId) {
+      res.status(200).json({ ignored: true, reason: "image_no_message_id" });
+      return;
+    }
+    const caption = (msg["imageMessage"] as { caption?: string })?.caption;
+    req.log.info({ tenantId, remoteJid }, "evolution-webhook: imagem — buscando base64 e interpretando");
+    try {
+      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
+      const dataUrl = `data:${media.mimetype ?? "image/jpeg"};base64,${media.base64}`;
+      mensagem = await interpretImage(dataUrl, tenantId, caption, req.log);
+      tipoConteudo = "imagem";
+    } catch (err) {
+      req.log.error({ err, tenantId, remoteJid }, "evolution-webhook: falha ao processar imagem");
+      res.status(200).json({ ignored: true, reason: "image_processing_failed" });
+      return;
+    }
   } else if (msg["documentMessage"]) {
-    req.log.info({ tenantId, remoteJid }, "evolution-webhook: documento recebido — processamento ainda não implementado");
-    res.status(200).json({ ignored: true, reason: "document_not_yet_supported" });
-    return;
+    const messageId = key.id;
+    const docMsg = msg["documentMessage"] as { mimetype?: string; fileName?: string };
+    const mimeType = docMsg?.mimetype ?? "";
+    const fileName = docMsg?.fileName;
+    const isSupportedDoc = mimeType.includes("pdf") || mimeType.includes("word") ||
+      fileName?.endsWith(".pdf") || fileName?.endsWith(".doc") || fileName?.endsWith(".docx");
+    if (!messageId || !isSupportedDoc) {
+      req.log.info({ tenantId, remoteJid, mimeType, fileName }, "evolution-webhook: documento não suportado ou sem messageId");
+      res.status(200).json({ ignored: true, reason: "unsupported_document_type" });
+      return;
+    }
+    req.log.info({ tenantId, remoteJid, fileName }, "evolution-webhook: documento — buscando base64 e extraindo texto");
+    try {
+      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
+      const buffer = Buffer.from(media.base64, "base64");
+      mensagem = await interpretPdfBuffer(buffer, fileName, req.log);
+      tipoConteudo = "documento";
+    } catch (err) {
+      req.log.error({ err, tenantId, remoteJid }, "evolution-webhook: falha ao processar documento");
+      res.status(200).json({ ignored: true, reason: "document_processing_failed" });
+      return;
+    }
   } else {
     req.log.info({ tenantId, remoteJid, messageKeys: Object.keys(msg) }, "evolution-webhook: descartado — nenhum campo de conteúdo reconhecido");
     res.status(200).json({ ignored: true, reason: "no_recognized_content" });

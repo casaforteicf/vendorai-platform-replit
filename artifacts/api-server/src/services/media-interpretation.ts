@@ -62,14 +62,12 @@ export async function interpretImage(imageUrl: string, tenantId: string, caption
 }
 
 /**
- * Extracts text from a PDF file.
- * Falls back to a note if extraction fails or returns no text.
+ * Extracts text from a PDF file already in memory (buffer). Compartilhado
+ * por interpretPdf() (baixa de uma URL, usado pelo Z-API/Meta) e pelo
+ * webhook da Evolution API, que já recebe o documento em base64 inline
+ * — não precisa baixar de lugar nenhum.
  */
-export async function interpretPdf(documentUrl: string, tenantId: string, fileName?: string, log?: Logger): Promise<string> {
-  log?.info({ documentUrl: documentUrl.slice(0, 60) }, "media: extracting PDF text");
-
-  const buffer = await downloadBuffer(documentUrl);
-
+async function interpretPdfBuffer(buffer: Buffer, fileName?: string, log?: Logger): Promise<string> {
   let text = "";
   try {
     const parsed = await pdfParse(buffer);
@@ -93,3 +91,16 @@ export async function interpretPdf(documentUrl: string, tenantId: string, fileNa
   log?.info({ fileName: name, chars: text.length, truncated }, "media: PDF text extracted");
   return `[PDF recebido: "${name}"]\n${excerpt}`;
 }
+
+/**
+ * Extracts text from a PDF file.
+ * Falls back to a note if extraction fails or returns no text.
+ */
+export async function interpretPdf(documentUrl: string, tenantId: string, fileName?: string, log?: Logger): Promise<string> {
+  log?.info({ documentUrl: documentUrl.slice(0, 60) }, "media: extracting PDF text");
+  const buffer = await downloadBuffer(documentUrl);
+  return interpretPdfBuffer(buffer, fileName, log);
+}
+
+export { interpretPdfBuffer };
+

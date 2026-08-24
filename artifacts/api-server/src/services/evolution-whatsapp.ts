@@ -98,6 +98,34 @@ export async function getConnectionState(tenantId: string): Promise<"open" | "co
   }
 }
 
+export interface EvolutionMediaResult {
+  mediaType: string;
+  fileName: string | null;
+  mimetype: string | null;
+  base64: string;
+}
+
+// Busca o conteúdo real (base64) de uma mensagem de mídia recebida —
+// usado pelo webhook ao processar áudio/imagem/documento. Preferido em
+// vez de configurar webhook_base64:true na criação da instância: o
+// campo inline tem bugs reportados na Evolution API dependendo da
+// versão (base64 ausente mesmo com a opção ativada); esse endpoint
+// dedicado busca sob demanda e é o caminho documentado como mais
+// confiável.
+export async function getBase64FromMediaMessage(tenantId: string, messageId: string): Promise<EvolutionMediaResult> {
+  const instanceName = instanceNameFor(tenantId);
+  const body = await evoFetch(`/chat/getBase64FromMediaMessage/${instanceName}`, {
+    method: "POST",
+    body: JSON.stringify({ message: { key: { id: messageId } } }),
+  });
+  return {
+    mediaType: body?.mediaType ?? "",
+    fileName: body?.fileName ?? null,
+    mimetype: body?.mimetype ?? null,
+    base64: body?.base64 ?? "",
+  };
+}
+
 export async function disconnectInstance(tenantId: string, log?: Logger): Promise<void> {
   const instanceName = instanceNameFor(tenantId);
   try {
