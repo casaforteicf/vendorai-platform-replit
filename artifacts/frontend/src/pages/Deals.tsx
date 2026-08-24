@@ -2207,10 +2207,26 @@ export default function Deals() {
     queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
   }
 
-  function saveStageSla(stageId: string | undefined, minutosStr: string) {
+  // SLA é guardado em minutos no banco (granularidade mais flexível pro
+  // futuro), mas a tela mostra/aceita em DIAS — mais fácil de preencher
+  // pra maioria dos casos de uso de pipeline de vendas. Aceita casas
+  // decimais (ex: 0.5 = 12h).
+  function minutosToDiasDisplay(minutos: number | null | undefined): string {
+    if (minutos == null) return "";
+    const dias = minutos / 1440;
+    return (Math.round(dias * 100) / 100).toString();
+  }
+  function diasStrToMinutos(diasStr: string): number | null {
+    const trimmed = diasStr.trim().replace(",", ".");
+    if (trimmed === "") return null;
+    const dias = parseFloat(trimmed);
+    if (isNaN(dias) || dias <= 0) return null;
+    return Math.max(1, Math.round(dias * 1440));
+  }
+
+  function saveStageSla(stageId: string | undefined, diasStr: string) {
     if (!stageId) return;
-    const trimmed = minutosStr.trim();
-    const slaMinutos = trimmed === "" ? null : Math.max(1, parseInt(trimmed, 10) || 0);
+    const slaMinutos = diasStrToMinutos(diasStr);
     updateStage.mutate(
       { tenantId, id: stageId, data: { slaMinutos } },
       { onSuccess: invalidateStages, onError: () => toast({ title: "Erro ao salvar SLA", variant: "destructive" }) },
@@ -2220,7 +2236,7 @@ export default function Deals() {
   async function handleCreateStage() {
     if (!newStageLabel.trim()) return;
     setCreatingStage(true);
-    const slaMinutos = newStageSla.trim() === "" ? null : Math.max(1, parseInt(newStageSla, 10) || 0);
+    const slaMinutos = diasStrToMinutos(newStageSla);
     createStage.mutate(
       { tenantId, data: { label: newStageLabel.trim(), slaMinutos } },
       {
@@ -2564,7 +2580,7 @@ export default function Deals() {
           <DialogTrigger asChild><Button variant="outline"><Settings2 className="h-4 w-4 mr-2" /> Etapas</Button></DialogTrigger>
           <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Gerenciar etapas da pipeline</DialogTitle></DialogHeader>
-            <p className="text-sm text-muted-foreground">Edite o nome exibido, o tempo máximo (SLA) que um negócio pode ficar parado na etapa antes do card ficar vermelho, ou remova etapas vazias. Etapas do sistema (com automação de contrato/cobrança) não podem ser excluídas.</p>
+            <p className="text-sm text-muted-foreground">Edite o nome exibido, o tempo máximo em dias (SLA) que um negócio pode ficar parado na etapa antes do card ficar vermelho, ou remova etapas vazias. Etapas do sistema (com automação de contrato/cobrança) não podem ser excluídas.</p>
             <div className="space-y-2">
               {ETAPAS.map((stage) => {
                 const count = deals.filter((deal) => deal.etapa === stage.value).length;
@@ -2580,11 +2596,12 @@ export default function Deals() {
                   />
                   <Input
                     type="number"
-                    min={1}
-                    placeholder="SLA (min)"
+                    min={0.1}
+                    step={0.5}
+                    placeholder="SLA (dias)"
                     disabled={hidden}
-                    defaultValue={serverStage?.slaMinutos ?? ""}
-                    aria-label={`SLA em minutos da etapa ${stage.label}`}
+                    defaultValue={minutosToDiasDisplay(serverStage?.slaMinutos)}
+                    aria-label={`SLA em dias da etapa ${stage.label}`}
                     className="w-28 shrink-0"
                     onBlur={(event) => saveStageSla(serverStage?.id, event.target.value)}
                   />
@@ -2610,10 +2627,11 @@ export default function Deals() {
                   />
                   <Input
                     type="number"
-                    min={1}
-                    placeholder="SLA (min)"
-                    defaultValue={stage.slaMinutos ?? ""}
-                    aria-label={`SLA em minutos da etapa ${stage.label}`}
+                    min={0.1}
+                    step={0.5}
+                    placeholder="SLA (dias)"
+                    defaultValue={minutosToDiasDisplay(stage.slaMinutos)}
+                    aria-label={`SLA em dias da etapa ${stage.label}`}
                     className="w-28 shrink-0"
                     onBlur={(event) => saveStageSla(stage.id, event.target.value)}
                   />
@@ -2633,8 +2651,9 @@ export default function Deals() {
                 />
                 <Input
                   type="number"
-                  min={1}
-                  placeholder="SLA (min)"
+                  min={0.1}
+                  step={0.5}
+                  placeholder="SLA (dias)"
                   value={newStageSla}
                   onChange={(e) => setNewStageSla(e.target.value)}
                   className="w-28 shrink-0"
