@@ -23,7 +23,11 @@ function getRedirectUri(): string {
 
 const GOOGLE_OAUTH_BASE = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_BASE = "https://oauth2.googleapis.com/token";
-const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v17";
+// v17 sunset em fev/2026 — trocado pra v25 (atual em ago/2026, sunset
+// previsto ago/2027). A API do Google Ads costuma dar sunset ~1 ano
+// depois do lançamento; revisar esse número periodicamente em
+// developers.google.com/google-ads/api/docs/sunset-dates.
+const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v25";
 const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
 
 export function buildGoogleAdsOAuthUrl(_tenantId: string, state: string): string {

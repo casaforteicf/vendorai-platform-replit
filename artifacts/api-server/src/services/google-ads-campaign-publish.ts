@@ -31,7 +31,8 @@ import {
   refreshGoogleAdsToken,
 } from "./google-ads-oauth.js";
 
-const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v17";
+// Mesma versão de google-ads-oauth.ts — ver comentário lá sobre sunset.
+const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v25";
 const GOOGLE_ADS_DEVELOPER_TOKEN = process.env["GOOGLE_ADS_DEVELOPER_TOKEN"];
 
 // Brasil (geoTargetConstants/2076) + Português (languageConstants/1014) —
