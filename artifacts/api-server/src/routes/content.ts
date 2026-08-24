@@ -26,6 +26,7 @@ import {
 } from "../lib/content-generation.js";
 import { publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
+import { registerPublishedPost, buildOwnPerformancePromptBlock } from "../services/content-performance.js";
 import type { FeedVariation, StoriesVariation } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -172,12 +173,16 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     }
   }
 
+  const [ownPerfBlock, refCreatorsBlock] = await Promise.all([
+    buildOwnPerformancePromptBlock(tenantId),
+    buildReferencePatternsPromptBlock(tenantId),
+  ]);
   const strategy = {
     customerPain: customerPain ?? undefined,
     postObjective: postObjective ?? undefined,
     voiceTone: voiceTone ?? undefined,
     desiredCta: desiredCta ?? undefined,
-    referencePatterns: await buildReferencePatternsPromptBlock(tenantId),
+    referencePatterns: ownPerfBlock + refCreatorsBlock,
   };
 
   let result: { result: { variations: unknown[] }; tokensUsed: number };
@@ -265,13 +270,17 @@ router.post("/tenants/:tenantId/content/strategy", async (req, res) => {
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   try {
+    const [ownPerfBlock, refCreatorsBlock] = await Promise.all([
+      buildOwnPerformancePromptBlock(tenantId),
+      buildReferencePatternsPromptBlock(tenantId),
+    ]);
     const { strategy } = await generateContentStrategy(
       profile ?? {},
       tenantId,
       command,
       contentType,
       variations,
-      await buildReferencePatternsPromptBlock(tenantId),
+      ownPerfBlock + refCreatorsBlock,
     );
     res.json(strategy);
   } catch (err) {
@@ -521,8 +530,27 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
       const v = variation as FeedVariation;
       const caption = body.data.captionOverride ?? `${v.caption}\n\n${v.hashtags.join(" ")}`;
       postId = await publishFeedPost(config.instagramPageId, config.instagramPageAccessToken, caption, imageUrl, req.log);
+      await registerPublishedPost({
+        tenantId,
+        contentGenerationId: gen.id,
+        variationIndex: body.data.variationIndex,
+        instagramMediaId: postId,
+        contentType: "feed",
+        theme: gen.theme,
+        captionOuTexto: caption,
+      }).catch((err) => req.log.error({ err }, "content-performance: falha ao registrar post publicado"));
     } else {
+      const v = variation as StoriesVariation;
       postId = await publishStoriesPost(config.instagramPageId, config.instagramPageAccessToken, imageUrl, req.log);
+      await registerPublishedPost({
+        tenantId,
+        contentGenerationId: gen.id,
+        variationIndex: body.data.variationIndex,
+        instagramMediaId: postId,
+        contentType: "stories",
+        theme: gen.theme,
+        captionOuTexto: v.text,
+      }).catch((err) => req.log.error({ err }, "content-performance: falha ao registrar post publicado"));
     }
     res.json({ success: true, postId });
   } catch (err) {

@@ -205,6 +205,62 @@ export default function ContentStudio() {
     }
   }
 
+  // ── Aprendizados de desempenho — métricas dos posts publicados ──────────────
+  interface PerformanceInsight {
+    aprendizados: { temasQueFuncionam: string[]; temasQueNaoFuncionam: string[]; formatoQueMaisEngaja: string; observacoes: string } | null;
+    baseadoEmPosts: number;
+    atualizadoEm: string | null;
+  }
+  const [perfInsight, setPerfInsight] = useState<PerformanceInsight | null>(null);
+  const [perfOpen, setPerfOpen] = useState(false);
+  const [perfLoaded, setPerfLoaded] = useState(false);
+  const [perfMetricsUpdating, setPerfMetricsUpdating] = useState(false);
+  const [perfInsightsUpdating, setPerfInsightsUpdating] = useState(false);
+
+  async function loadPerfInsight() {
+    if (!tenantId) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: authHeader() });
+      if (res.ok) setPerfInsight(await res.json());
+    } catch { /* ignore */ }
+    setPerfLoaded(true);
+  }
+
+  function togglePerf() {
+    setPerfOpen((v) => !v);
+    if (!perfLoaded) loadPerfInsight();
+  }
+
+  async function updatePerfMetrics() {
+    if (!tenantId) return;
+    setPerfMetricsUpdating(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content-performance/posts/atualizar-metricas`, { method: "POST", headers: authHeader() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao atualizar métricas");
+      toast({ title: `${data.atualizados} post(s) com métricas atualizadas${data.erros ? `, ${data.erros} com erro` : ""}.` });
+    } catch (err) {
+      toast({ title: "Erro ao atualizar métricas", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setPerfMetricsUpdating(false);
+    }
+  }
+
+  async function updatePerfInsights() {
+    if (!tenantId) return;
+    setPerfInsightsUpdating(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content-performance/insights/atualizar`, { method: "POST", headers: authHeader() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao atualizar aprendizados");
+      setPerfInsight(data);
+    } catch (err) {
+      toast({ title: "Ainda não dá pra gerar aprendizados", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setPerfInsightsUpdating(false);
+    }
+  }
+
   // ── Script generate ──────────────────────────────────────────────────────
   const generateScript = async () => {
     if (!scriptInput.trim() || !tenantId) return;
@@ -439,6 +495,56 @@ export default function ContentStudio() {
                       </button>
                     </div>
                   )}
+                </div>
+              )}
+            </section>
+
+            {/* Aprendizados de desempenho — loop com métricas dos posts publicados */}
+            <section className="mb-4 rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
+              <button onClick={togglePerf} className="w-full flex items-center justify-between px-4 py-3 text-left">
+                <span className="text-xs font-semibold text-gray-300 flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                  Aprendizados dos seus posts {perfInsight?.baseadoEmPosts ? `(${perfInsight.baseadoEmPosts} posts)` : ""}
+                </span>
+                <span className="text-xs text-gray-500">{perfOpen ? "ocultar" : "ver"}</span>
+              </button>
+              {perfOpen && (
+                <div className="px-4 pb-4 space-y-3">
+                  <p className="text-xs text-gray-500">
+                    Compara o desempenho dos seus posts publicados no Instagram e alimenta o Fluxo, Tendências, Ganchos e Script acima com o que realmente funciona pra sua audiência.
+                  </p>
+
+                  {perfInsight?.aprendizados ? (
+                    <div className="rounded-lg bg-white/5 border border-white/10 p-3 space-y-1.5 text-xs">
+                      <p className="text-gray-400">Funciona bem: <span className="text-emerald-300">{perfInsight.aprendizados.temasQueFuncionam.join(", ")}</span></p>
+                      {perfInsight.aprendizados.temasQueNaoFuncionam.length > 0 && (
+                        <p className="text-gray-400">Engaja menos: <span className="text-red-300">{perfInsight.aprendizados.temasQueNaoFuncionam.join(", ")}</span></p>
+                      )}
+                      <p className="text-gray-400">Formato campeão: <span className="text-gray-200">{perfInsight.aprendizados.formatoQueMaisEngaja}</span></p>
+                      <p className="text-gray-400">{perfInsight.aprendizados.observacoes}</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500">Ainda sem aprendizados gerados. Publique conteúdo, atualize as métricas (depois de ~24h) e gere os aprendizados.</p>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={updatePerfMetrics}
+                      disabled={perfMetricsUpdating}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 text-gray-300 hover:border-white/20 flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {perfMetricsUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                      Atualizar métricas
+                    </button>
+                    <button
+                      onClick={updatePerfInsights}
+                      disabled={perfInsightsUpdating}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {perfInsightsUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      Atualizar aprendizados
+                    </button>
+                  </div>
                 </div>
               )}
             </section>

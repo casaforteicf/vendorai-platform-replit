@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
+import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -45,12 +46,15 @@ router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
     // Padrões dos criadores de referência (se configurados) — enriquece
     // especialmente 'trends' e 'hooks', que sem isso são só o modelo
     // chutando com base no treino, sem nenhum dado real do nicho.
-    const referencePatterns = await buildReferencePatternsPromptBlock(tenantId);
+    const [referencePatterns, ownPerformance] = await Promise.all([
+      buildReferencePatternsPromptBlock(tenantId),
+      buildOwnPerformancePromptBlock(tenantId),
+    ]);
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
       system: "Você é um especialista em marketing digital para Instagram no Brasil. Responda sempre em português.",
-      messages: [{ role: "user", content: buildPrompt(resolvedTab, input.trim(), referencePatterns) }],
+      messages: [{ role: "user", content: buildPrompt(resolvedTab, input.trim(), ownPerformance + referencePatterns) }],
     });
     const result = message.content
       .filter((b) => b.type === "text")
