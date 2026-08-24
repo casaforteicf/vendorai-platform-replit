@@ -23,6 +23,7 @@ export const messageTipoConteudoEnum = pgEnum("message_tipo_conteudo", [
   "imagem",
   "audio",
   "documento",
+  "video",
 ]);
 
 export const messageEnviadoPorEnum = pgEnum("message_enviado_por", [
@@ -55,6 +56,9 @@ export const messagesTable = pgTable("messages", {
   canal: messageCanalEnum("canal").notNull(),
   conteudo: text("conteudo").notNull(),
   tipoConteudo: messageTipoConteudoEnum("tipo_conteudo").notNull().default("texto"),
+  // URL pública do anexo (imagem/vídeo/documento/áudio) — botão de
+  // anexar do chat interno. Null pra mensagens de texto puro.
+  midiaUrl: text("midia_url"),
   enviadoPor: messageEnviadoPorEnum("enviado_por").notNull(),
   agentName: text("agent_name"),
   status: messageStatusEnum("status").notNull().default("enviado"),

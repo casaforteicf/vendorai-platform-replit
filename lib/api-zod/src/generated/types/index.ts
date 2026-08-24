@@ -122,6 +122,7 @@ export * from './createLeadBodyFilhosItem';
 export * from './createLeadProductBody';
 export * from './createLeadSpouseConsentBody';
 export * from './createMessageBody';
+export * from './createMessageBodyMidia';
 export * from './createPartnerBody';
 export * from './createPartnerResponse';
 export * from './createPartnerResponseUser';

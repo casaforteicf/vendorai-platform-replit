@@ -1445,6 +1445,7 @@ export const MessageTipoConteudo = {
   imagem: 'imagem',
   audio: 'audio',
   documento: 'documento',
+  video: 'video',
 } as const;
 
 export type MessageEnviadoPor = typeof MessageEnviadoPor[keyof typeof MessageEnviadoPor];
@@ -1475,12 +1476,24 @@ export interface Message {
   canal: MessageCanal;
   conteudo: string;
   tipoConteudo: MessageTipoConteudo;
+  /** URL pública do anexo (imagem/vídeo/documento/áudio) — null pra mensagens de texto puro. */
+  midiaUrl?: string | null;
   enviadoPor: MessageEnviadoPor;
   agentName?: string | null;
   status: MessageStatus;
   externalId?: string | null;
   createdAt: string;
 }
+
+/**
+ * Anexo pra upload+envio real (botão de anexar) — distinto de midiaUrl, que é só o campo persistido depois do envio.
+ */
+export type CreateMessageBodyMidia = {
+  url: string;
+  objectPath: string;
+  mimeType: string;
+  fileName: string;
+};
 
 export interface CreateMessageBody {
   tenantId: string;
@@ -1490,6 +1503,9 @@ export interface CreateMessageBody {
   canal: MessageCanal;
   conteudo: string;
   tipoConteudo?: MessageTipoConteudo;
+  midiaUrl?: string;
+  /** Anexo pra upload+envio real (botão de anexar) — distinto de midiaUrl, que é só o campo persistido depois do envio. */
+  midia?: CreateMessageBodyMidia;
   enviadoPor: MessageEnviadoPor;
   agentName?: string;
   status?: MessageStatus;

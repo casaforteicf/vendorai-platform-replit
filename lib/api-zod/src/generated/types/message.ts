@@ -20,6 +20,8 @@ export interface Message {
   canal: MessageCanal;
   conteudo: string;
   tipoConteudo: MessageTipoConteudo;
+  /** URL pública do anexo (imagem/vídeo/documento/áudio) — null pra mensagens de texto puro. */
+  midiaUrl?: string | null;
   enviadoPor: MessageEnviadoPor;
   agentName?: string | null;
   status: MessageStatus;

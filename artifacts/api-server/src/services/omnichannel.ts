@@ -12,7 +12,7 @@ import {
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { sendEvolutionWhatsAppMessage, sendEvolutionDocument } from "./evolution-whatsapp.js";
+import { sendEvolutionWhatsAppMessage, sendEvolutionDocument, sendEvolutionMedia } from "./evolution-whatsapp.js";
 
 export interface AgentAttachment {
   name: string;
@@ -23,12 +23,38 @@ export interface AgentAttachment {
 
 const objectStorage = new ObjectStorageService();
 
+// Busca o buffer de um anexo do nosso object storage — usado pelos
+// provedores que exigem bytes em vez de aceitar a URL diretamente
+// (Meta precisa fazer upload pro Media API dela primeiro; Evolution
+// manda em base64 inline). Z-API e Instagram/Messenger aceitam a URL
+// pública direto, não precisam disso.
+async function fetchMidiaBuffer(objectPath: string): Promise<Buffer> {
+  const file = await objectStorage.getObjectEntityFile(objectPath);
+  const [buffer] = await file.download();
+  return buffer;
+}
+
+function inferTipoConteudo(mimeType: string): "imagem" | "audio" | "documento" | "video" {
+  if (mimeType.startsWith("image/")) return "imagem";
+  if (mimeType.startsWith("audio/")) return "audio";
+  if (mimeType.startsWith("video/")) return "video";
+  return "documento";
+}
+
 export interface SendOutgoingMessageInput {
   tenantId: string;
   leadId: string;
   conteudo: string;
   canal: "whatsapp" | "instagram" | "messenger" | "email" | "chat";
   agentName?: string | null;
+  // Anexo do chat interno (botão de anexar) — quando presente, a
+  // mensagem é enviada como mídia em vez de texto no canal escolhido.
+  midia?: {
+    url: string;       // URL pública absoluta (baseOrigin + /api/storage/...)
+    objectPath: string; // caminho no object storage próprio, pra buscar buffer quando o provedor exige (Meta/Evolution)
+    mimeType: string;
+    fileName: string;
+  };
 }
 
 export interface SendOutgoingMessageResult {
@@ -130,6 +156,45 @@ async function sendInstagramMessage(
   }
 
   log.info({ recipientIgsid }, "omnichannel: instagram message sent");
+}
+
+// Instagram DM e Messenger usam o mesmo formato de anexo por URL da
+// Graph API (a Meta baixa o arquivo da URL informada, não precisa
+// upload prévio) — reutilizado pelos dois abaixo.
+function graphAttachmentType(mimeType: string): "image" | "video" | "audio" | "file" {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "file";
+}
+
+async function sendMetaGraphMedia(
+  pageAccessToken: string,
+  recipientId: string,
+  mediaUrl: string,
+  mimeType: string,
+  log: Logger,
+  logLabel: "instagram" | "messenger",
+): Promise<void> {
+  const url = `https://graph.facebook.com/v19.0/me/messages`;
+  const body = {
+    recipient: { id: recipientId },
+    message: { attachment: { type: graphAttachmentType(mimeType), payload: { url: mediaUrl, is_reusable: false } } },
+    messaging_type: "RESPONSE",
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${pageAccessToken}` },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    log.error({ err, recipientId }, `omnichannel: ${logLabel} media send failed`);
+    throw new Error(`${logLabel} media error: ${JSON.stringify(err)}`);
+  }
+  log.info({ recipientId, mediaUrl }, `omnichannel: ${logLabel} media sent`);
 }
 
 // Messenger usa exatamente o mesmo endpoint da Graph API (/me/messages) —
@@ -240,6 +305,50 @@ async function sendZapiDocument(
     throw new Error(`Z-API document error ${res.status}: ${JSON.stringify(body)}`);
   }
   log.info({ phone: normalized, fileName }, "omnichannel: document sent via z-api");
+}
+
+// Z-API aceita URL pública direta (não precisa baixar+base64) pra
+// imagem/áudio/vídeo — confirmado na doc oficial (developer.z-api.io).
+// Documento usa /send-document/{ext} com base64 (padrão já validado em
+// produção via sendZapiDocument); os outros usam endpoint próprio por
+// tipo com o campo nomeado igual ao tipo (image/audio/video).
+async function sendZapiMediaByUrl(
+  instanceId: string,
+  token: string,
+  clientToken: string,
+  phone: string,
+  mediaUrl: string,
+  mimeType: string,
+  fileName: string,
+  caption: string,
+  log: Logger,
+): Promise<void> {
+  const digits = phone.replace(/\D/g, "").replace(/^0+/, "");
+  const normalized = digits.startsWith("55") ? digits : "55" + digits;
+  const base = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
+
+  let endpoint: string;
+  let field: string;
+  if (mimeType.startsWith("image/")) { endpoint = "send-image"; field = "image"; }
+  else if (mimeType.startsWith("video/")) { endpoint = "send-video"; field = "video"; }
+  else if (mimeType.startsWith("audio/")) { endpoint = "send-audio"; field = "audio"; }
+  else {
+    const ext = (fileName.split(".").pop() || "pdf").toLowerCase();
+    endpoint = `send-document/${ext}`;
+    field = "document";
+  }
+
+  const res = await fetch(`${base}/${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Client-Token": clientToken },
+    body: JSON.stringify({ phone: normalized, [field]: mediaUrl, ...(field === "document" ? { fileName, caption } : { caption }) }),
+  });
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    log.error({ body, phone: normalized, endpoint }, "omnichannel: zapi media send failed");
+    throw new Error(`Z-API ${endpoint} error ${res.status}: ${JSON.stringify(body)}`);
+  }
+  log.info({ phone: normalized, fileName, endpoint }, "omnichannel: media sent via z-api");
 }
 
 /**
@@ -413,12 +522,8 @@ async function sendMetaWhatsAppMedia(
   );
 
   // 3. Determine message type
-  const isImage = attachment.mimeType.startsWith("image/");
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
-
-  const messageBody = isImage
-    ? { messaging_product: "whatsapp", to: normalizedPhone, type: "image", image: { id: mediaId, caption: attachment.name } }
-    : { messaging_product: "whatsapp", to: normalizedPhone, type: "document", document: { id: mediaId, filename: attachment.name } };
+  const messageBody = metaMediaMessageBody(normalizedPhone, mediaId, attachment.mimeType, attachment.name);
 
   const res = await fetch(url, {
     method: "POST",
@@ -432,7 +537,45 @@ async function sendMetaWhatsAppMedia(
     throw new Error(`Meta WhatsApp Media error ${res.status}: ${JSON.stringify(data)}`);
   }
 
-  log.info({ phone, filename: attachment.name, isImage }, "omnichannel: whatsapp media sent");
+  log.info({ phone, filename: attachment.name, mimeType: attachment.mimeType }, "omnichannel: whatsapp media sent");
+}
+
+// Monta o corpo da mensagem de mídia da Cloud API por tipo — imagem,
+// vídeo e áudio usam o campo próprio (sem "filename", a Meta ignora),
+// qualquer outro mimetype vira documento (único tipo que aceita
+// "filename"/nome do arquivo visível pro destinatário).
+function metaMediaMessageBody(to: string, mediaId: string, mimeType: string, fileName: string): Record<string, unknown> {
+  if (mimeType.startsWith("image/")) return { messaging_product: "whatsapp", to, type: "image", image: { id: mediaId, caption: fileName } };
+  if (mimeType.startsWith("video/")) return { messaging_product: "whatsapp", to, type: "video", video: { id: mediaId, caption: fileName } };
+  if (mimeType.startsWith("audio/")) return { messaging_product: "whatsapp", to, type: "audio", audio: { id: mediaId } };
+  return { messaging_product: "whatsapp", to, type: "document", document: { id: mediaId, filename: fileName } };
+}
+
+// Generaliza sendMetaWhatsAppMedia pra qualquer buffer (não só anexo do
+// agente via objectPath) — usado pelo botão de anexar do chat interno.
+async function sendMetaMediaByBuffer(
+  phoneNumberId: string,
+  accessToken: string,
+  phone: string,
+  buffer: Buffer,
+  mimeType: string,
+  fileName: string,
+  log: Logger,
+): Promise<void> {
+  const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
+  const mediaId = await uploadMediaToMeta(phoneNumberId, accessToken, buffer, mimeType, fileName, log);
+  const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(metaMediaMessageBody(normalizedPhone, mediaId, mimeType, fileName)),
+  });
+  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    log.error({ data, phone }, "omnichannel: meta media send failed");
+    throw new Error(`Meta WhatsApp Media error ${res.status}: ${JSON.stringify(data)}`);
+  }
+  log.info({ phone, fileName, mimeType }, "omnichannel: media sent via meta");
 }
 
 /**
@@ -561,7 +704,8 @@ export async function sendOutgoingMessage(
         direcao: "saida",
         enviadoPor: agentName ? "agente_ia" : "humano",
         agentName: agentName ?? null,
-        tipoConteudo: "texto",
+        tipoConteudo: input.midia ? inferTipoConteudo(input.midia.mimeType) : "texto",
+        midiaUrl: input.midia?.url ?? null,
         status: "enviado",
         canal,
       })
@@ -613,18 +757,30 @@ export async function sendOutgoingMessage(
 
     if (hasZapi) {
       // ── Z-API path (no 24h window restriction) ───────────────────────────
-      await sendZapiWhatsAppMessage(
-        config!.zapiInstanceId!,
-        config!.zapiToken!,
-        config!.zapiClientToken!,
-        lead.telefone,
-        conteudo,
-        log,
-        !!agentName
-      );
+      if (input.midia) {
+        await sendZapiMediaByUrl(
+          config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
+          lead.telefone, input.midia.url, input.midia.mimeType, input.midia.fileName, conteudo, log,
+        );
+      } else {
+        await sendZapiWhatsAppMessage(
+          config!.zapiInstanceId!,
+          config!.zapiToken!,
+          config!.zapiClientToken!,
+          lead.telefone,
+          conteudo,
+          log,
+          !!agentName
+        );
+      }
     } else if (hasEvolution) {
       // ── Evolution API path (self-hosted, sem restrição de janela de 24h) ──
-      await sendEvolutionWhatsAppMessage(config!.evolutionInstanceName!, lead.telefone, conteudo, log);
+      if (input.midia) {
+        const buffer = await fetchMidiaBuffer(input.midia.objectPath);
+        await sendEvolutionMedia(config!.evolutionInstanceName!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, conteudo, log);
+      } else {
+        await sendEvolutionWhatsAppMessage(config!.evolutionInstanceName!, lead.telefone, conteudo, log);
+      }
     } else {
       // ── Meta Cloud API path (24h window enforced) ─────────────────────────
       let skipTextSend = false;
@@ -700,14 +856,19 @@ export async function sendOutgoingMessage(
       }
 
       if (!skipTextSend) {
-        await sendMetaWhatsAppMessage(
-          config!.metaPhoneNumberId!,
-          config!.metaAccessToken!,
-          lead.telefone,
-          conteudo,
-          log,
-          !!agentName
-        );
+        if (input.midia) {
+          const buffer = await fetchMidiaBuffer(input.midia.objectPath);
+          await sendMetaMediaByBuffer(config!.metaPhoneNumberId!, config!.metaAccessToken!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, log);
+        } else {
+          await sendMetaWhatsAppMessage(
+            config!.metaPhoneNumberId!,
+            config!.metaAccessToken!,
+            lead.telefone,
+            conteudo,
+            log,
+            !!agentName
+          );
+        }
       }
     }
   }
@@ -731,12 +892,16 @@ export async function sendOutgoingMessage(
       throw new InstagramScopedIdMissingError(leadId);
     }
 
-    await sendInstagramMessage(
-      config.instagramPageAccessToken,
-      lead.instagramScopedId,
-      conteudo,
-      log
-    );
+    if (input.midia) {
+      await sendMetaGraphMedia(config.instagramPageAccessToken, lead.instagramScopedId, input.midia.url, input.midia.mimeType, log, "instagram");
+    } else {
+      await sendInstagramMessage(
+        config.instagramPageAccessToken,
+        lead.instagramScopedId,
+        conteudo,
+        log
+      );
+    }
   }
 
   // ── 3b. Messenger: validate credentials + actually send
@@ -758,12 +923,16 @@ export async function sendOutgoingMessage(
       throw new MessengerScopedIdMissingError(leadId);
     }
 
-    await sendMessengerMessage(
-      config.messengerPageAccessToken,
-      lead.messengerScopedId,
-      conteudo,
-      log
-    );
+    if (input.midia) {
+      await sendMetaGraphMedia(config.messengerPageAccessToken, lead.messengerScopedId, input.midia.url, input.midia.mimeType, log, "messenger");
+    } else {
+      await sendMessengerMessage(
+        config.messengerPageAccessToken,
+        lead.messengerScopedId,
+        conteudo,
+        log
+      );
+    }
   }
 
   // ── 4. Find or create conversation for leadId + canal
@@ -804,7 +973,8 @@ export async function sendOutgoingMessage(
       conteudo,
       enviadoPor,
       agentName: agentName ?? null,
-      tipoConteudo: "texto",
+      tipoConteudo: input.midia ? inferTipoConteudo(input.midia.mimeType) : "texto",
+      midiaUrl: input.midia?.url ?? null,
       status: "enviado",
     })
     .returning();

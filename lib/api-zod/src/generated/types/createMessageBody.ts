@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateMessageBodyMidia } from './createMessageBodyMidia';
 import type { MessageCanal } from './messageCanal';
 import type { MessageDirecao } from './messageDirecao';
 import type { MessageEnviadoPor } from './messageEnviadoPor';
@@ -19,6 +20,9 @@ export interface CreateMessageBody {
   canal: MessageCanal;
   conteudo: string;
   tipoConteudo?: MessageTipoConteudo;
+  midiaUrl?: string;
+  /** Anexo pra upload+envio real (botão de anexar) — distinto de midiaUrl, que é só o campo persistido depois do envio. */
+  midia?: CreateMessageBodyMidia;
   enviadoPor: MessageEnviadoPor;
   agentName?: string;
   status?: MessageStatus;

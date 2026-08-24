@@ -14,4 +14,5 @@ export const MessageTipoConteudo = {
   imagem: 'imagem',
   audio: 'audio',
   documento: 'documento',
+  video: 'video',
 } as const;

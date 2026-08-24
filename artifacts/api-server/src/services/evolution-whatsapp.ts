@@ -151,20 +151,29 @@ export async function sendEvolutionWhatsAppMessage(instanceName: string, phone: 
 }
 
 export async function sendEvolutionDocument(instanceName: string, phone: string, pdfBuffer: Buffer, fileName: string, caption: string, log: Logger): Promise<void> {
+  await sendEvolutionMedia(instanceName, phone, pdfBuffer, "application/pdf", fileName, caption, log);
+}
+
+// Generaliza sendEvolutionDocument pra qualquer tipo de mídia (usado
+// pelo botão de anexar do chat interno — imagem/vídeo/documento/áudio,
+// não só PDF de orçamento). Evolution API aceita mediatype genérico no
+// mesmo endpoint /message/sendMedia.
+export async function sendEvolutionMedia(instanceName: string, phone: string, buffer: Buffer, mimeType: string, fileName: string, caption: string, log: Logger): Promise<void> {
   const digits = phone.replace(/\D/g, "").replace(/^0+/, "");
   const normalized = digits.startsWith("55") ? digits : "55" + digits;
-  const base64 = pdfBuffer.toString("base64");
+  const base64 = buffer.toString("base64");
+  const mediatype = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("video/") ? "video" : mimeType.startsWith("audio/") ? "audio" : "document";
 
   await evoFetch(`/message/sendMedia/${instanceName}`, {
     method: "POST",
     body: JSON.stringify({
       number: normalized,
-      mediatype: "document",
-      mimetype: "application/pdf",
-      media: `data:application/pdf;base64,${base64}`,
+      mediatype,
+      mimetype: mimeType,
+      media: `data:${mimeType};base64,${base64}`,
       fileName,
       caption,
     }),
   });
-  log.info({ phone: normalized, fileName }, "omnichannel: document sent via evolution-api");
+  log.info({ phone: normalized, fileName, mediatype }, "omnichannel: media sent via evolution-api");
 }

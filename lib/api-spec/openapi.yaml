@@ -12151,7 +12151,7 @@ components:
 
     MessageTipoConteudo:
       type: string
-      enum: [texto, imagem, audio, documento]
+      enum: [texto, imagem, audio, documento, video]
 
     MessageEnviadoPor:
       type: string
@@ -12180,6 +12180,10 @@ components:
           type: string
         tipoConteudo:
           $ref: "#/components/schemas/MessageTipoConteudo"
+        midiaUrl:
+          type: string
+          nullable: true
+          description: URL pública do anexo (imagem/vídeo/documento/áudio) — null pra mensagens de texto puro.
         enviadoPor:
           $ref: "#/components/schemas/MessageEnviadoPor"
         agentName:
@@ -12212,6 +12216,21 @@ components:
           type: string
         tipoConteudo:
           $ref: "#/components/schemas/MessageTipoConteudo"
+        midiaUrl:
+          type: string
+        midia:
+          type: object
+          description: Anexo pra upload+envio real (botão de anexar) — distinto de midiaUrl, que é só o campo persistido depois do envio.
+          properties:
+            url:
+              type: string
+            objectPath:
+              type: string
+            mimeType:
+              type: string
+            fileName:
+              type: string
+          required: [url, objectPath, mimeType, fileName]
         enviadoPor:
           $ref: "#/components/schemas/MessageEnviadoPor"
         agentName:

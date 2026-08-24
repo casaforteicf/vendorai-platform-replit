@@ -10,6 +10,7 @@ import {
   useCreateMessage,
   useListTenantLeads,
   getListTenantLeadsQueryKey,
+  useRequestUploadUrl,
   Conversation,
   Lead,
   Message,
@@ -36,6 +37,12 @@ import {
   ChevronLeft,
   UserCheck,
   ArrowRight,
+  Paperclip,
+  VideoIcon,
+  Mic,
+  FileText,
+  Loader2,
+  X,
 } from "lucide-react";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -195,7 +202,30 @@ function MsgBubble({ msg }: { msg: Message }) {
             : "bg-muted text-foreground rounded-tl-sm"
         }`}
       >
-        {msg.conteudo}
+        {msg.midiaUrl && (
+          <div className="mb-1.5">
+            {msg.tipoConteudo === "imagem" ? (
+              <a href={msg.midiaUrl} target="_blank" rel="noopener noreferrer">
+                <img src={msg.midiaUrl} alt="Anexo" className="max-w-full max-h-64 rounded-lg object-cover" />
+              </a>
+            ) : msg.tipoConteudo === "video" ? (
+              <video src={msg.midiaUrl} controls className="max-w-full max-h-64 rounded-lg" />
+            ) : msg.tipoConteudo === "audio" ? (
+              <audio src={msg.midiaUrl} controls className="max-w-full" />
+            ) : (
+              <a
+                href={msg.midiaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs underline-offset-2 hover:underline ${isOutgoing ? "bg-white/15" : "bg-background"}`}
+              >
+                <FileText className="h-4 w-4 shrink-0" />
+                <span className="truncate">Ver documento</span>
+              </a>
+            )}
+          </div>
+        )}
+        {msg.conteudo && (!msg.midiaUrl || msg.conteudo !== "Anexo") && msg.conteudo}
       </div>
 
       {/* Time */}
@@ -281,9 +311,13 @@ function ChatPanel({
   const [inputValue, setInputValue] = useState("");
   const [releasingLock, setReleasingLock] = useState(false);
   const [handoffEvents, setHandoffEvents] = useState<HandoffEvent[]>([]);
+  const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const requestUploadUrl = useRequestUploadUrl();
 
   const isHumanLocked = lead?.activeAgentLock === "human";
 
@@ -364,9 +398,51 @@ function ChatPanel({
     }
   }
 
-  function handleSend() {
+  function handleFilePicked(file: File) {
+    if (pendingAttachment) URL.revokeObjectURL(pendingAttachment.previewUrl);
+    setPendingAttachment({ file, previewUrl: URL.createObjectURL(file) });
+  }
+
+  function clearAttachment() {
+    if (pendingAttachment) URL.revokeObjectURL(pendingAttachment.previewUrl);
+    setPendingAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleSend() {
     const text = inputValue.trim();
-    if (!text || !conv.leadId) return;
+    if ((!text && !pendingAttachment) || !conv.leadId) return;
+
+    let midia: { url: string; objectPath: string; mimeType: string; fileName: string } | undefined;
+    if (pendingAttachment) {
+      setUploadingAttachment(true);
+      try {
+        const file = pendingAttachment.file;
+        const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+          requestUploadUrl.mutate(
+            { data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } },
+            { onSuccess: resolve, onError: reject },
+          );
+        });
+        const uploadRes = await fetch(result.uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+        });
+        if (!uploadRes.ok) throw new Error("Upload falhou");
+        midia = {
+          url: `${window.location.origin}/api/storage/${result.objectPath}`,
+          objectPath: result.objectPath,
+          mimeType: file.type || "application/octet-stream",
+          fileName: file.name,
+        };
+      } catch (err) {
+        toast({ title: "Erro ao enviar anexo", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+        setUploadingAttachment(false);
+        return;
+      }
+      setUploadingAttachment(false);
+    }
 
     createMessage.mutate(
       {
@@ -376,13 +452,15 @@ function ChatPanel({
           leadId: conv.leadId,
           direcao: MessageDirecao.saida,
           canal: (conv.channel as MessageCanal) ?? MessageCanal.chat,
-          conteudo: text,
+          conteudo: text || pendingAttachment?.file.name || "Anexo",
           enviadoPor: MessageEnviadoPor.humano,
+          ...(midia ? { midia } : {}),
         },
       },
       {
         onSuccess: () => {
           setInputValue("");
+          clearAttachment();
           queryClient.invalidateQueries({
             queryKey: getListConversationMessagesQueryKey(tenantId, conv.id),
           });
@@ -561,25 +639,62 @@ function ChatPanel({
             Conversa sem lead associado — envio desativado
           </p>
         ) : (
-          <div className="flex items-center gap-2">
-            <Input
-              data-testid="input-message"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isHumanLocked ? "IA pausada — escreva como atendente..." : "Digite uma mensagem..."}
-              className="flex-1 rounded-full bg-muted border-0 focus-visible:ring-1"
-              disabled={createMessage.isPending}
-            />
-            <Button
-              size="icon"
-              onClick={handleSend}
-              disabled={!inputValue.trim() || createMessage.isPending}
-              data-testid="button-send-message"
-              className="rounded-full h-9 w-9 shrink-0"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+          <div className="flex flex-col gap-2">
+            {pendingAttachment && (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs">
+                {pendingAttachment.file.type.startsWith("image/") ? (
+                  <img src={pendingAttachment.previewUrl} alt="" className="h-10 w-10 object-cover rounded shrink-0" />
+                ) : pendingAttachment.file.type.startsWith("video/") ? (
+                  <VideoIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+                ) : pendingAttachment.file.type.startsWith("audio/") ? (
+                  <Mic className="h-5 w-5 text-muted-foreground shrink-0" />
+                ) : (
+                  <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                )}
+                <span className="truncate flex-1 font-mono">{pendingAttachment.file.name}</span>
+                <button type="button" onClick={clearAttachment} className="shrink-0 text-muted-foreground hover:text-destructive">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFilePicked(f); e.target.value = ""; }}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={createMessage.isPending || uploadingAttachment}
+                title="Anexar arquivo"
+                className="rounded-full h-9 w-9 shrink-0 text-muted-foreground"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              <Input
+                data-testid="input-message"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={isHumanLocked ? "IA pausada — escreva como atendente..." : pendingAttachment ? "Legenda (opcional)..." : "Digite uma mensagem..."}
+                className="flex-1 rounded-full bg-muted border-0 focus-visible:ring-1"
+                disabled={createMessage.isPending}
+              />
+              <Button
+                size="icon"
+                onClick={handleSend}
+                disabled={(!inputValue.trim() && !pendingAttachment) || createMessage.isPending || uploadingAttachment}
+                data-testid="button-send-message"
+                className="rounded-full h-9 w-9 shrink-0"
+              >
+                {uploadingAttachment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
         )}
       </div>

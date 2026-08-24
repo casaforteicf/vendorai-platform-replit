@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, asc } from "drizzle-orm";
+import { z } from "zod/v4";
 import {
   db,
   messagesTable,
@@ -18,12 +19,24 @@ import {
 
 const router: IRouter = Router();
 
+// Anexo do botão de anexar do chat interno — não faz parte da tabela
+// messages em si (midiaUrl na tabela é preenchido pelo omnichannel
+// depois do envio), então valida separado do insertMessageSchema.
+const midiaSchema = z.object({
+  url: z.string().min(1),
+  objectPath: z.string().min(1),
+  mimeType: z.string().min(1),
+  fileName: z.string().min(1),
+});
+
 router.post("/messages", async (req, res): Promise<void> => {
   const parsed = insertMessageSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
     return;
   }
+  const midiaParsed = midiaSchema.safeParse(req.body?.midia);
+  const midia = midiaParsed.success ? midiaParsed.data : undefined;
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
@@ -37,7 +50,7 @@ router.post("/messages", async (req, res): Promise<void> => {
   if (direcao === "saida" && (canal === "whatsapp" || canal === "instagram") && leadId) {
     try {
       const { message } = await sendOutgoingMessage(
-        { tenantId, leadId, conteudo, canal },
+        { tenantId, leadId, conteudo, canal, midia },
         req.log
       );
       res.status(201).json(message);
