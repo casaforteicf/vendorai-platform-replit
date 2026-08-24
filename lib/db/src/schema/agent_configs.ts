@@ -75,6 +75,11 @@ export const agentConfigsTable = pgTable(
     zapiInstanceId: text("zapi_instance_id"),
     zapiToken: text("zapi_token"),
     zapiClientToken: text("zapi_client_token"),
+    // WhatsApp via QR Code (Evolution API self-hosted) — 3ª via de
+    // conexão, ao lado do Z-API e da API oficial da Meta.
+    evolutionInstanceName: text("evolution_instance_name"),
+    evolutionConnected: boolean("evolution_connected").notNull().default(false),
+    evolutionPhone: text("evolution_phone"),
     metaPhoneNumberId: text("meta_phone_number_id"),
     metaWabaId: text("meta_waba_id"),
     metaAccessToken: text("meta_access_token"),

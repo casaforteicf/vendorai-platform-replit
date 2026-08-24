@@ -616,6 +616,206 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   });
 });
 
+// ── POST /tenants/:tenantId/webhooks/evolution ────────────────────────────────
+// Recebe eventos da Evolution API self-hosted (WhatsApp via QR Code) —
+// mesmo padrão do webhook zapi acima (lead/conversa/mensagem/dispatch),
+// adaptado ao formato de payload da Evolution API v2.
+//
+// INCERTEZA REAL, documentada aqui por não ter sido testada com uma
+// conexão de verdade ainda: o mapeamento exato de campos abaixo segue a
+// documentação pública da Evolution API v2 (evento messages.upsert),
+// mas pode variar por detalhe de versão. Mensagens de áudio/imagem/
+// documento são reconhecidas mas ainda não processadas (a Evolution
+// API manda mídia em base64 inline por padrão, formato diferente do
+// Z-API que manda URL — reaproveitar transcribeAudio/interpretImage
+// como estão exigiria uma etapa de upload prévia, não implementada
+// nesta primeira versão). Confirmar o payload real assim que alguém
+// conectar via QR Code e mandar uma mensagem de teste.
+router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
+  const { tenantId } = req.params;
+  const secret = req.query["secret"];
+
+  if (!secret || typeof secret !== "string") {
+    res.status(401).json({ error: "Missing secret query param" });
+    return;
+  }
+
+  const [agentConfig] = await db
+    .select({ webhookSecret: agentConfigsTable.webhookSecret, tenantId: agentConfigsTable.tenantId })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
+
+  if (!agentConfig || agentConfig.webhookSecret !== secret) {
+    res.status(401).json({ error: "Invalid secret" });
+    return;
+  }
+
+  const body = req.body as { event?: string; instance?: string; data?: Record<string, unknown> };
+  const event = body.event ?? "";
+  const data = body.data ?? {};
+
+  // ── connection.update: reflete o estado da conexão (QR escaneado, caiu etc) ──
+  if (event === "connection.update" || event === "CONNECTION_UPDATE") {
+    const state = (data as { state?: string }).state;
+    const phone = (data as { wuid?: string; number?: string }).wuid ?? (data as { number?: string }).number ?? null;
+    const connected = state === "open";
+    await db
+      .update(agentConfigsTable)
+      .set({
+        evolutionConnected: connected,
+        ...(connected && phone ? { evolutionPhone: phone.replace(/@.*$/, "").replace(/\D/g, "") } : {}),
+        ...(!connected ? { evolutionPhone: null } : {}),
+      })
+      .where(eq(agentConfigsTable.tenantId, tenantId));
+    req.log.info({ tenantId, state, connected }, "evolution-webhook: connection.update processado");
+    res.status(200).json({ ok: true });
+    return;
+  }
+
+  // ── messages.upsert: mensagem recebida ────────────────────────────────────
+  if (event !== "messages.upsert" && event !== "MESSAGES_UPSERT") {
+    res.status(200).json({ ignored: true, reason: "unhandled_event", event });
+    return;
+  }
+
+  const key = (data as { key?: { remoteJid?: string; fromMe?: boolean; id?: string } }).key ?? {};
+  if (key.fromMe === true) {
+    res.status(200).json({ ignored: true, reason: "fromMe_true" });
+    return;
+  }
+
+  const remoteJid = key.remoteJid ?? "";
+  if (!remoteJid || remoteJid.includes("@g.us")) {
+    res.status(200).json({ ignored: true, reason: remoteJid ? "group_message" : "no_remote_jid" });
+    return;
+  }
+
+  const msg = (data as { message?: Record<string, unknown> }).message ?? {};
+  let mensagem = "";
+  let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+
+  if (typeof msg["conversation"] === "string") {
+    mensagem = msg["conversation"] as string;
+  } else if (msg["extendedTextMessage"] && typeof (msg["extendedTextMessage"] as any).text === "string") {
+    mensagem = (msg["extendedTextMessage"] as any).text;
+  } else if (msg["audioMessage"]) {
+    req.log.info({ tenantId, remoteJid }, "evolution-webhook: mensagem de áudio recebida — processamento ainda não implementado");
+    res.status(200).json({ ignored: true, reason: "audio_not_yet_supported" });
+    return;
+  } else if (msg["imageMessage"]) {
+    req.log.info({ tenantId, remoteJid }, "evolution-webhook: mensagem de imagem recebida — processamento ainda não implementado");
+    res.status(200).json({ ignored: true, reason: "image_not_yet_supported" });
+    return;
+  } else if (msg["documentMessage"]) {
+    req.log.info({ tenantId, remoteJid }, "evolution-webhook: documento recebido — processamento ainda não implementado");
+    res.status(200).json({ ignored: true, reason: "document_not_yet_supported" });
+    return;
+  } else {
+    req.log.info({ tenantId, remoteJid, messageKeys: Object.keys(msg) }, "evolution-webhook: descartado — nenhum campo de conteúdo reconhecido");
+    res.status(200).json({ ignored: true, reason: "no_recognized_content" });
+    return;
+  }
+
+  if (!mensagem.trim()) {
+    res.status(200).json({ ignored: true, reason: "empty_message" });
+    return;
+  }
+
+  const telefone = remoteJid.replace(/@.*$/, "").replace(/\D/g, "");
+  const nome = (data as { pushName?: string }).pushName ?? telefone;
+
+  req.log.info({ telefone, nome, tipoConteudo }, "evolution-webhook: processing message");
+
+  let lead: typeof leadsTable.$inferSelect;
+  let conversation: typeof conversationsTable.$inferSelect;
+  let message: typeof messagesTable.$inferSelect;
+  try {
+    const normalized = storePhone(telefone);
+    const match = await findLeadByDedup(tenantId, telefone, null, null);
+
+    if (match.found) {
+      lead = match.lead;
+      await db.update(leadsTable).set({ updatedAt: new Date() }).where(eq(leadsTable.id, lead.id));
+    } else {
+      [lead] = await db
+        .insert(leadsTable)
+        .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp" })
+        .returning();
+      await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
+    }
+
+    const [existingConv] = await db
+      .select()
+      .from(conversationsTable)
+      .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, lead.id), eq(conversationsTable.channel, "whatsapp")))
+      .limit(1);
+
+    if (existingConv) {
+      conversation = existingConv;
+    } else {
+      [conversation] = await db
+        .insert(conversationsTable)
+        .values({ tenantId, leadId: lead.id, channel: "whatsapp", status: "open", naoLidas: 0 })
+        .returning();
+    }
+
+    [message] = await db
+      .insert(messagesTable)
+      .values({
+        tenantId,
+        conversationId: conversation.id,
+        leadId: lead.id,
+        direcao: "entrada",
+        canal: "whatsapp",
+        conteudo: mensagem,
+        enviadoPor: "lead",
+        tipoConteudo,
+        status: "entregue",
+      })
+      .returning();
+
+    await db
+      .update(conversationsTable)
+      .set({
+        ultimaMensagemEm: new Date(),
+        lastInboundAt: new Date(),
+        naoLidas: sql`${conversationsTable.naoLidas} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(conversationsTable.id, conversation.id));
+  } catch (persistErr) {
+    req.log.error({ err: persistErr, tenantId, telefone }, "evolution-webhook: falha ao persistir lead/conversa/mensagem");
+    res.status(200).json({ ignored: true, reason: "persist_failed" });
+    return;
+  }
+
+  const _evoApptHandled = await handleAppointmentConfirmation(tenantId, lead.id, mensagem, req.log);
+
+  if (!_evoApptHandled) {
+    let autoQuoteHandled = false;
+    try {
+      const { generated, message: quoteMessage } = await runAutoQuotePipeline({ tenantId, leadId: lead.id, mensagem, log: req.log });
+      if (generated) {
+        await sendOutgoingMessage({ tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" }, req.log);
+        autoQuoteHandled = true;
+      }
+    } catch (autoQuoteErr) {
+      req.log.error({ err: autoQuoteErr, leadId: lead.id }, "evolution-webhook: auto-quote pipeline failed — falling back to agent dispatch");
+    }
+
+    if (!autoQuoteHandled) {
+      dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
+    }
+  }
+
+  res.status(200).json({
+    leadId: lead.id,
+    conversationId: conversation.id,
+    messageId: message.id,
+    agentDispatched: !_evoApptHandled,
+  });
+});
+
 // ── POST /tenants/:tenantId/webhooks/instagram ───────────────────────────────
 // Receives Instagram DM events forwarded by Meta webhook (via n8n or directly).
 // Payload shape mirrors Meta's Messenger/Instagram webhook format.

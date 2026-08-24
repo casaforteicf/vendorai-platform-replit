@@ -45,6 +45,7 @@ import onboardingRouter from "./onboarding";
 import contentRouter from "./content";
 import contentReferenceCreatorsRouter from "./content_reference_creators.js";
 import contentPerformanceRouter from "./content_performance.js";
+import evolutionWhatsappAuthRouter from "./evolution_whatsapp_auth.js";
 import partnerRouter from "./partner";
 import partnersRouter from "./partners";
 import partnerHubRouter from "./partner_hub";
@@ -280,6 +281,7 @@ router.use(onboardingRouter);
 router.use(contentRouter);
 router.use(contentReferenceCreatorsRouter);
 router.use(contentPerformanceRouter);
+router.use(evolutionWhatsappAuthRouter);
 router.use(contentStudioRouter);
 router.use(videoProcessingRouter);
 

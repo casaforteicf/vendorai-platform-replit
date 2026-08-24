@@ -12,6 +12,7 @@ import {
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { sendEvolutionWhatsAppMessage, sendEvolutionDocument } from "./evolution-whatsapp.js";
 
 export interface AgentAttachment {
   name: string;
@@ -259,6 +260,8 @@ export async function sendDirectWhatsAppDocument(
       zapiInstanceId:    agentConfigsTable.zapiInstanceId,
       zapiToken:         agentConfigsTable.zapiToken,
       zapiClientToken:   agentConfigsTable.zapiClientToken,
+      evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
+      evolutionConnected:    agentConfigsTable.evolutionConnected,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
       metaAccessToken:   agentConfigsTable.metaAccessToken,
     })
@@ -267,9 +270,10 @@ export async function sendDirectWhatsAppDocument(
     .limit(1);
 
   const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
+  const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
   const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
 
-  if (!hasZapi && !hasMeta) {
+  if (!hasZapi && !hasEvolution && !hasMeta) {
     log.warn({ tenantId }, "omnichannel: no credentials for document send — skipping PDF");
     return;
   }
@@ -279,6 +283,8 @@ export async function sendDirectWhatsAppDocument(
       config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
       phone, pdfBuffer, fileName, caption, log,
     );
+  } else if (hasEvolution) {
+    await sendEvolutionDocument(config!.evolutionInstanceName!, phone, pdfBuffer, fileName, caption, log);
   } else {
     // Meta: upload to Media API, then send as document message
     const mediaId = await uploadMediaToMeta(
@@ -472,6 +478,8 @@ export async function sendDirectWhatsAppMessage(
       zapiInstanceId: agentConfigsTable.zapiInstanceId,
       zapiToken: agentConfigsTable.zapiToken,
       zapiClientToken: agentConfigsTable.zapiClientToken,
+      evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
+      evolutionConnected: agentConfigsTable.evolutionConnected,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
       metaAccessToken: agentConfigsTable.metaAccessToken,
     })
@@ -480,14 +488,18 @@ export async function sendDirectWhatsAppMessage(
     .limit(1);
 
   const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
+  const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
   const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
 
-  if (!hasZapi && !hasMeta) {
+  if (!hasZapi && !hasEvolution && !hasMeta) {
     throw new WhatsAppNotConnectedError();
   }
 
   if (hasZapi) {
     await sendZapiWhatsAppMessage(config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!, phone, message, log);
+    return undefined;
+  } else if (hasEvolution) {
+    await sendEvolutionWhatsAppMessage(config!.evolutionInstanceName!, phone, message, log);
     return undefined;
   } else {
     return sendMetaWhatsAppMessage(config!.metaPhoneNumberId!, config!.metaAccessToken!, phone, message, log);
@@ -577,6 +589,8 @@ export async function sendOutgoingMessage(
         zapiInstanceId: agentConfigsTable.zapiInstanceId,
         zapiToken: agentConfigsTable.zapiToken,
         zapiClientToken: agentConfigsTable.zapiClientToken,
+        evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
+        evolutionConnected: agentConfigsTable.evolutionConnected,
         metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
         metaAccessToken: agentConfigsTable.metaAccessToken,
         whatsappTemplateId: agentConfigsTable.whatsappTemplateId,
@@ -590,9 +604,10 @@ export async function sendOutgoingMessage(
     }
 
     const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
+    const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
     const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
 
-    if (!hasZapi && !hasMeta) {
+    if (!hasZapi && !hasEvolution && !hasMeta) {
       throw new WhatsAppNotConnectedError();
     }
 
@@ -607,6 +622,9 @@ export async function sendOutgoingMessage(
         log,
         !!agentName
       );
+    } else if (hasEvolution) {
+      // ── Evolution API path (self-hosted, sem restrição de janela de 24h) ──
+      await sendEvolutionWhatsAppMessage(config!.evolutionInstanceName!, lead.telefone, conteudo, log);
     } else {
       // ── Meta Cloud API path (24h window enforced) ─────────────────────────
       let skipTextSend = false;

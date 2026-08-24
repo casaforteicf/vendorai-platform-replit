@@ -4076,6 +4076,9 @@ Body:
               )}
             </div>
 
+            {/* Evolution API — WhatsApp via QR Code (self-hosted, sem custo por cliente) */}
+            <EvolutionWhatsAppCard tenantId={tenantId ?? ""} toast={toast} />
+
             {/* Z-API — WhatsApp não-oficial via Baileys */}
             <div className="rounded-xl border bg-card p-6 space-y-5">
               <div className="flex items-start justify-between gap-4">
@@ -5884,6 +5887,149 @@ function ContractSettingsSection({ tenantId }: { tenantId: string }) {
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Evolution API — WhatsApp via QR Code ──────────────────────────────────────
+// Card separado (não faz parte do componente principal) porque tem seu
+// próprio ciclo de polling do QR Code — evita re-renderizar a tela
+// inteira de Configurações a cada tick.
+function EvolutionWhatsAppCard({ tenantId, toast }: { tenantId: string; toast: (opts: { title: string; description?: string; variant?: "destructive" }) => void }) {
+  const [status, setStatus] = useState<{ connected: boolean; state: string; phone: string | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function authHeaders(): Record<string, string> {
+    return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
+  }
+
+  async function loadStatus() {
+    if (!tenantId) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/evolution-whatsapp/status`, { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setStatus(data);
+        if (data.connected) {
+          setQrCode(null);
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        }
+      }
+    } catch { /* ignore */ }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadStatus();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
+
+  async function onConnect() {
+    if (!tenantId) return;
+    setConnecting(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/evolution-whatsapp/connect`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao conectar");
+      if (data.alreadyConnected) {
+        toast({ title: "WhatsApp já estava conectado." });
+        await loadStatus();
+      } else if (data.qrCodeBase64) {
+        setQrCode(data.qrCodeBase64);
+        // Escaneou o QR? Confere o status a cada 3s até conectar (ou até
+        // 2 minutos — o QR da Evolution API expira e precisa gerar outro).
+        let attempts = 0;
+        pollRef.current = setInterval(async () => {
+          attempts++;
+          await loadStatus();
+          if (attempts >= 40 && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        }, 3000);
+      } else {
+        toast({ title: "Não recebemos o QR Code — tente novamente.", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Erro ao conectar", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function onDisconnect() {
+    if (!tenantId) return;
+    setDisconnecting(true);
+    try {
+      await fetch(`/api/tenants/${tenantId}/evolution-whatsapp/disconnect`, { method: "POST", headers: authHeaders() });
+      setQrCode(null);
+      await loadStatus();
+      toast({ title: "WhatsApp desconectado." });
+    } catch {
+      toast({ title: "Erro ao desconectar", variant: "destructive" });
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-semibold text-base flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-emerald-600" />
+            WhatsApp via QR Code
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Conecte escaneando um QR Code com o WhatsApp do celular — sem custo por cliente, sem depender de aprovação da Meta.
+            Roda em infraestrutura própria (Evolution API), não é a API oficial.
+          </p>
+        </div>
+        {status?.connected && (
+          <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+            <CheckCircle2 className="h-3 w-3" />
+            Conectado
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="h-24 bg-muted rounded-md animate-pulse" />
+      ) : status?.connected ? (
+        <div className="space-y-4">
+          <div className="rounded-lg bg-muted/30 border p-4 flex items-center gap-2">
+            <span className="text-sm font-medium">Número conectado:</span>
+            <span className="text-sm text-muted-foreground">{status.phone ?? "—"}</span>
+          </div>
+          <Button
+            variant="outline"
+            onClick={onDisconnect}
+            disabled={disconnecting}
+            className="gap-2 text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+            {disconnecting ? "Desconectando…" : "Desconectar"}
+          </Button>
+        </div>
+      ) : qrCode ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Abra o WhatsApp no celular → Configurações → Aparelhos conectados → Conectar um aparelho → escaneie o código abaixo.
+          </p>
+          <img src={qrCode} alt="QR Code do WhatsApp" className="w-56 h-56 border rounded-lg mx-auto" />
+          <p className="text-xs text-muted-foreground text-center">Aguardando leitura do QR Code…</p>
+        </div>
+      ) : (
+        <Button onClick={onConnect} disabled={connecting} className="gap-2">
+          <MessageCircle className="h-4 w-4" />
+          {connecting ? "Gerando QR Code…" : "Conectar via QR Code"}
+        </Button>
       )}
     </div>
   );
