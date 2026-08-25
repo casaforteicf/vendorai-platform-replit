@@ -1583,20 +1583,32 @@ export async function processAgentInternal(params: {
       });
     }
 
-    // 11. Post-response: extract and persist qualification answers after Reception, SDR, Closer, and Reactivation turns (async, non-blocking)
+    // 11. Extract and persist qualification answers after Reception, SDR, Closer,
+    // and Reactivation turns. ACHADO REAL (teste do Marcos): isso rodava em
+    // segundo plano sem esperar (fire-and-forget) — se o lead respondesse
+    // rápido, a PRÓXIMA mensagem chegava e chamava loadContext() antes dessa
+    // extração terminar de gravar no banco, então o agente "esquecia" que
+    // orçamento/decisor já tinham sido respondidos e perguntava de novo.
+    // Agora espera terminar (await) antes de retornar — troca ~1-2s de
+    // latência a mais por não repetir pergunta já respondida, que é pior
+    // pra conversão do que a resposta demorar um pouco mais.
     if (["reception", "sdr", "closer", "reactivation"].includes(resolvedAgentName)) {
-      extractAndSaveQualification(
-        tenantId,
-        leadId,
-        ctx,
-        mensagem,
-        finalResposta,
-        log,
-        resolvedAgentName === "sdr" ? spinQualificationForExtraction : null,
-      ).catch((err) => {
+      try {
+        await extractAndSaveQualification(
+          tenantId,
+          leadId,
+          ctx,
+          mensagem,
+          finalResposta,
+          log,
+          resolvedAgentName === "sdr" ? spinQualificationForExtraction : null,
+        );
+      } catch (err) {
         log.warn({ err, leadId, tenantId }, "dispatch: qualification extraction failed");
-      });
+      }
 
+      // SPIN briefing (texto livre pro histórico/CRM) não afeta o que o
+      // agente "sabe" na próxima mensagem — continua em segundo plano.
       extractAndSaveSpinBriefing(
         tenantId,
         leadId,

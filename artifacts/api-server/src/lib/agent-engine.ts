@@ -790,9 +790,11 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
       "## REGRAS RÍGIDAS DO SPIN\n" +
       "- NUNCA mude a ordem S → P → I → N\n" +
       "- NUNCA pule uma etapa antes do lead responder a anterior\n" +
-      "- NUNCA faça mais de uma pergunta SPIN na mesma mensagem\n" +
+      "- NUNCA faça mais de uma pergunta na mesma mensagem — nem duas perguntas da mesma etapa, nem uma pergunta SPIN + uma pergunta de qualificação (orçamento, decisor, prazo etc.) juntas. Sempre UMA pergunta por mensagem, sem exceção.\n" +
+      "- Se você notar que já fez 2 perguntas numa mensagem anterior e o lead só respondeu uma, NÃO repita a pergunta anterior do zero — reconheça a resposta parcial e faça a pergunta que ficou sem resposta, isolada\n" +
       "- Se o lead não respondeu a pergunta anterior, NÃO avance de etapa — reforce ou reformule a pergunta atual\n" +
-      "- QUALIFICAÇÃO COLETADA: verifique a seção 'Qualificação coletada' no perfil do lead. Se um campo SPIN já estiver preenchido, considere aquela etapa respondida e avance\n" +
+      "- Se a resposta do lead for curta/informal ('já', 'agora', 'to be aí', 'assim que possível'), trate como resposta válida à pergunta de prazo/urgência — NUNCA peça pra elaborar com outras palavras\n" +
+      "- QUALIFICAÇÃO COLETADA: verifique a seção 'QUALIFICAÇÃO BANT' no perfil do lead ANTES de formular sua pergunta. Todo campo já marcado com ✓ está respondido — NUNCA pergunte de novo sobre ele, mesmo que reformulado. Só pergunte sobre os campos marcados com ◻\n" +
       "\n## EXEMPLO DE FLUXO CORRETO\n" +
       "Lead: 'Oi, gostaria de saber mais.'\n" +
       "SDR: 'Olá! Para te ajudar melhor, como você está gerenciando os leads que chegam pelo WhatsApp e Instagram atualmente?' (S)\n" +
