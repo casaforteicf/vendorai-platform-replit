@@ -73,7 +73,13 @@ export function parseCsvLine(line: string): string[] {
 }
 
 export function normalizeCsvHeader(h: string): string {
-  return h.toLowerCase().replace(/[^a-z0-9]/g, "_");
+  return h
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 type PricingFields = {
@@ -448,8 +454,8 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     return -1;
   };
   const iNome      = idx(["nome", "name", "produto", "descricao_produto"]);
-  const iPreco     = idx(["preco_base", "precobase", "preco", "price", "valor"]);
-  const iCusto     = idx(["custo", "custo_fornecedor", "cost"]);
+  const iPreco     = idx(["preco_base", "preco_final_r", "preco_final", "precobase", "preco", "price", "valor"]);
+  const iCusto     = idx(["custo", "custo_r", "custo_fornecedor", "cost"]);
   const iMargem    = idx(["margem_percentual", "margem", "markup"]);
   const iFrete     = idx(["frete_percentual", "frete"]);
   const iComissao  = idx(["comissao_percentual", "comissao"]);
@@ -461,7 +467,7 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   const iControlaEstoque = idx(["controla_estoque", "estoque_controlado"]);
   const iSku       = idx(["sku", "codigo", "referencia", "ref"]);
   const iCategoria = idx(["categoria", "category", "grupo", "tipo"]);
-  const iUnidade   = idx(["unidade", "un", "unit"]);
+  const iUnidade   = idx(["unidade", "unidade_vendida", "un", "unit"]);
   const iDesc      = idx(["descricao", "description", "obs", "observacao"]);
   const iImagem    = idx(["imagem_url", "imagem", "image", "image_url", "foto", "url_imagem"]);
   const iMarca         = idx(["marca", "brand"]);
@@ -541,8 +547,10 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
 
   function parseDecimalCell(raw: string | undefined): number | null {
     if (!raw?.trim()) return null;
-    const n = parseFloat(raw.trim().replace(",", "."));
-    return isNaN(n) ? null : n;
+    let value = raw.trim().replace(/R\$/gi, "").replace(/\s|%/g, "");
+    if (value.includes(",")) value = value.replace(/\./g, "").replace(",", ".");
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
   }
 
   function parseIntCell(raw: string | undefined): number | null {
@@ -568,7 +576,7 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
 
     if (!nome) { errors.push({ row: rowNum, message: "Nome vazio" }); continue; }
 
-    const precoInformado = parseFloat(precoRaw);
+    const precoInformado = parseDecimalCell(precoRaw) ?? Number.NaN;
     const preco = custo != null
       ? custo * (1 + (margem + frete + comissao + financeiro) / 100)
       : precoInformado;
