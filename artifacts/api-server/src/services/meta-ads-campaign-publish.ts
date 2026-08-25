@@ -43,6 +43,31 @@ import {
 
 class MetaAdsPublishError extends Error {}
 
+// Extrai a mensagem legível de dentro do JSON de erro da Meta em vez de
+// mostrar o corpo bruto — a Marketing API já devolve error.message (e
+// às vezes error.error_user_msg, pensado especificamente pra mostrar
+// ao usuário final) em vez de códigos crípticos como o Google, então
+// não precisa de tradução código-por-código, só extrair o campo certo.
+function traduzirErroMetaAds(path: string, status: number, rawBody: string): string {
+  try {
+    const parsed = JSON.parse(rawBody) as { error?: { message?: string; error_user_msg?: string; code?: number; error_subcode?: number } };
+    const err = parsed.error;
+    if (err) {
+      // Erro de permissão (App Review de ads_management não aprovado
+      // ainda, ou token sem escopo) — o caso mais provável de acontecer
+      // enquanto o App Review não sai.
+      if (err.code === 200 || err.code === 10 || /permission/i.test(err.message ?? "")) {
+        return "A Meta recusou por falta de permissão — provavelmente o App Review do escopo ads_management ainda não foi aprovado (Meta for Developers → App Review). Sem essa aprovação, só funciona pra contas de admin/tester do app.";
+      }
+      const msg = err.error_user_msg || err.message;
+      if (msg) return `Meta Ads recusou a publicação: ${msg}`;
+    }
+  } catch {
+    // corpo não é JSON válido — segue pro fallback abaixo
+  }
+  return `Meta Ads recusou a publicação (${path}, código ${status}). Detalhe técnico: ${rawBody.slice(0, 300)}`;
+}
+
 async function metaApi<T>(
   path: string,
   accessToken: string,
@@ -57,7 +82,7 @@ async function metaApi<T>(
     if (!res.ok) {
       const text = await res.text();
       logger.error({ status: res.status, body: text, path }, "Falha na chamada GET à Marketing API da Meta");
-      throw new MetaAdsPublishError(`Meta Ads API (${path}) respondeu ${res.status}: ${text.slice(0, 500)}`);
+      throw new MetaAdsPublishError(traduzirErroMetaAds(path, res.status, text));
     }
     return res.json() as Promise<T>;
   }
@@ -71,7 +96,7 @@ async function metaApi<T>(
   if (!res.ok) {
     const text = await res.text();
     logger.error({ status: res.status, body: text, path }, "Falha na chamada POST à Marketing API da Meta");
-    throw new MetaAdsPublishError(`Meta Ads API (${path}) respondeu ${res.status}: ${text.slice(0, 500)}`);
+    throw new MetaAdsPublishError(traduzirErroMetaAds(path, res.status, text));
   }
   return res.json() as Promise<T>;
 }

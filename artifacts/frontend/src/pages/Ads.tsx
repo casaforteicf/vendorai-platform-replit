@@ -32,6 +32,34 @@ function LabelTip({ children, tip }: { children: React.ReactNode; tip: string })
   );
 }
 
+// Seção recolhível — usada nas 3 partes avançadas/opcionais do
+// formulário de campanha, que juntas eram ~15 campos numa rolagem só.
+// Fica fechada por padrão; mostra quantos valores já foram preenchidos
+// mesmo fechada, pra não esconder que algo já foi configurado ali.
+function CollapsibleSection({ title, hint, count, children }: {
+  title: string;
+  hint: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(count > 0);
+  return (
+    <div className="border-t pt-4">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between text-left">
+        <div>
+          <h3 className="font-semibold flex items-center gap-2">
+            {title}
+            {count > 0 && <Badge variant="secondary" className="font-normal">{count} preenchido{count > 1 ? "s" : ""}</Badge>}
+          </h3>
+          <p className="text-xs text-muted-foreground">{hint}</p>
+        </div>
+        <span className="text-xs text-muted-foreground shrink-0 ml-2">{open ? "Ocultar ▲" : "Mostrar ▼"}</span>
+      </button>
+      {open && <div className="space-y-3 mt-3">{children}</div>}
+    </div>
+  );
+}
+
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -295,7 +323,20 @@ export default function Ads() {
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error((await r.json())?.error?.formErrors?.join(", ") ?? "Falha ao criar campanha");
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        // .flatten() do Zod separa erros gerais (formErrors) dos erros por
+        // campo (fieldErrors) — só pegava formErrors antes, então um erro
+        // de validação num campo específico (o caso mais comum) caía
+        // silenciosamente no genérico "Falha ao criar campanha", sem dizer
+        // qual campo nem por quê.
+        const fieldMsgs = data?.error?.fieldErrors
+          ? Object.entries(data.error.fieldErrors).flatMap(([campo, msgs]) => (msgs as string[]).map((m) => `${campo}: ${m}`))
+          : [];
+        const formMsgs = data?.error?.formErrors ?? [];
+        const todasMsgs = [...formMsgs, ...fieldMsgs];
+        throw new Error(todasMsgs.length > 0 ? todasMsgs.join(" · ") : "Falha ao criar campanha");
+      }
       return r.json();
     },
     onSuccess: () => {
@@ -717,31 +758,39 @@ export default function Ads() {
               </div>
             </div>
 
-            <div className="border-t pt-4 space-y-3">
-              <div><h3 className="font-semibold">Perfil demográfico</h3><p className="text-xs text-muted-foreground">Opcional — pode ficar em branco sem problema. Clique nas opções pra adicionar.</p></div>
+            <CollapsibleSection
+              title="Perfil demográfico"
+              hint="Opcional — pode ficar em branco sem problema. Clique nas opções pra adicionar."
+              count={form.idades.length + form.generos.length + form.statusParental.length + form.rendas.length}
+            >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><LabelTip tip="Faixas etárias do público.">Faixas de idade</LabelTip><MultiSelectChips value={form.idades} onChange={(v) => setForm((f) => ({ ...f, idades: v }))} options={OPCOES_IDADE} /></div>
                 <div><Label>Gêneros</Label><MultiSelectChips value={form.generos} onChange={(v) => setForm((f) => ({ ...f, generos: v }))} options={OPCOES_GENERO} /></div>
                 <div><Label>Status parental</Label><MultiSelectChips value={form.statusParental} onChange={(v) => setForm((f) => ({ ...f, statusParental: v }))} options={OPCOES_STATUS_PARENTAL} /></div>
                 <div><Label>Renda familiar</Label><MultiSelectChips value={form.rendas} onChange={(v) => setForm((f) => ({ ...f, rendas: v }))} options={OPCOES_RENDA} /></div>
               </div>
-            </div>
+            </CollapsibleSection>
 
-            <div className="border-t pt-4 space-y-3">
-              <div><h3 className="font-semibold">Comportamento e intenção de compra</h3><p className="text-xs text-muted-foreground">Opcional, mais avançado. Digite um termo e pressione Enter pra adicionar.</p></div>
+            <CollapsibleSection
+              title="Comportamento e intenção de compra"
+              hint="Opcional, mais avançado. Digite um termo e pressione Enter pra adicionar."
+              count={form.afinidade.length + form.noMercado.length + form.termosPesquisa.length + form.sites.length + form.aplicativos.length}
+            >
               <div><LabelTip tip="Interesse de longo prazo, estilo de vida (ex: entusiastas de automóveis) — diferente de In-market, que é pesquisa ativa de compra agora.">Afinidade</LabelTip><MultiSelectChips value={form.afinidade} onChange={(v) => setForm((f) => ({ ...f, afinidade: v }))} placeholder="Ex: Entusiastas de automóveis" /></div>
               <div><LabelTip tip="Pesquisa ativa de compra agora — diferente de Afinidade, que é interesse de longo prazo.">No mercado (In-market)</LabelTip><MultiSelectChips value={form.noMercado} onChange={(v) => setForm((f) => ({ ...f, noMercado: v }))} placeholder="Ex: Compra de veículos" /></div>
               <div><Label>Termos de pesquisa personalizados</Label><MultiSelectChips value={form.termosPesquisa} onChange={(v) => setForm((f) => ({ ...f, termosPesquisa: v }))} /></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><Label>Sites visitados</Label><MultiSelectChips value={form.sites} onChange={(v) => setForm((f) => ({ ...f, sites: v }))} placeholder="exemplo.com.br" /></div><div><Label>Aplicativos utilizados</Label><MultiSelectChips value={form.aplicativos} onChange={(v) => setForm((f) => ({ ...f, aplicativos: v }))} /></div></div>
-            </div>
+            </CollapsibleSection>
 
-            <div className="border-t pt-4 space-y-3">
-              <h3 className="font-semibold">Rastreamento e dados próprios</h3>
-              <p className="text-xs text-muted-foreground">Informe nomes ou IDs de listas consentidas. Dados pessoais brutos não são armazenados neste formulário.</p>
+            <CollapsibleSection
+              title="Rastreamento e dados próprios"
+              hint="Informe nomes ou IDs de listas consentidas. Dados pessoais brutos não são armazenados neste formulário."
+              count={form.remarketing.length + form.customerMatch.length + form.semelhantes.length}
+            >
               <div><LabelTip tip="Re-impacta quem já visitou o site e não converteu — forma mais eficiente de segmentação.">Remarketing</LabelTip><MultiSelectChips value={form.remarketing} onChange={(v) => setForm((f) => ({ ...f, remarketing: v }))} placeholder="Visitantes do site, YouTube..." /></div>
               <div><LabelTip tip="Sobe lista de clientes (e-mail/telefone). Nenhum dado pessoal fica salvo neste formulário, só o nome/ID da lista.">Customer Match</LabelTip><MultiSelectChips value={form.customerMatch} onChange={(v) => setForm((f) => ({ ...f, customerMatch: v }))} placeholder="Nome ou ID da lista" /></div>
               <div><LabelTip tip="A partir de uma lista, encontra outras pessoas com perfil parecido.">Públicos semelhantes</LabelTip><MultiSelectChips value={form.semelhantes} onChange={(v) => setForm((f) => ({ ...f, semelhantes: v }))} placeholder="Nome ou ID da lista de origem" /></div>
-            </div>
+            </CollapsibleSection>
 
             <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
               onClick={() => criarCampanha.mutate()}>

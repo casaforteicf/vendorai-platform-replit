@@ -608,16 +608,24 @@ async function callAI(
 
   log.info({ provider: "openai", model: AI_MODEL }, "Calling OpenAI for site generation");
   const openai = await getOpenAIForTenant(tenantId);
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    max_tokens: 16000,
-    messages: messages as Array<{ role: "user" | "assistant"; content: string }>,
-  });
-  return {
-    content: response.choices[0]?.message?.content ?? "",
-    provider: "openai",
-    model: "gpt-4o-mini",
-  };
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 16000,
+      messages: messages as Array<{ role: "user" | "assistant"; content: string }>,
+    });
+    return {
+      content: response.choices[0]?.message?.content ?? "",
+      provider: "openai",
+      model: "gpt-4o-mini",
+    };
+  } catch (err) {
+    // Anthropic já falhou antes (billing) e o OpenAI também falhou aqui —
+    // sem isso, o erro cru do SDK da OpenAI (ex: "429 Rate limit
+    // reached...") vazava direto pra tela sem nenhuma tradução.
+    log.info({ err, provider: "openai" }, "OpenAI também falhou — nenhum provedor de IA disponível");
+    throw new Error("Nenhum provedor de IA disponível no momento (Anthropic e OpenAI falharam). Tente novamente em alguns minutos — se persistir, pode ser limite de uso da conta.");
+  }
 }
 
 // GET /tenants/:tenantId/site-generator/latest — get most recently updated site
