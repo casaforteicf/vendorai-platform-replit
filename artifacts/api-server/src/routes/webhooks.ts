@@ -35,6 +35,9 @@ import { getBase64FromMediaMessage } from "../services/evolution-whatsapp.js";
 
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+
+const objectStorage = new ObjectStorageService();
 
 const router: IRouter = Router();
 
@@ -687,6 +690,9 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   // sistema só mostrava o que o lead falou, nunca o que foi respondido
   // por fora. Grava como saída/humano — sem disparar IA nem auto-quote,
   // é só registro do que já foi enviado de verdade pelo WhatsApp.
+  // Cobre texto e mídia (foto/áudio/vídeo/documento) — pra mídia, só
+  // baixa e guarda no nosso storage (sem interpretar via IA, isso é
+  // só histórico visual, não precisa a IA entender pra responder nada).
   if (key.fromMe === true) {
     const remoteJidOut = key.remoteJid ?? "";
     if (!remoteJidOut || remoteJidOut.includes("@g.us")) {
@@ -695,16 +701,58 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     }
     const msgOut = (data as { message?: Record<string, unknown> }).message ?? {};
     let conteudoOut = "";
-    if (typeof msgOut["conversation"] === "string") {
-      conteudoOut = msgOut["conversation"] as string;
-    } else if (msgOut["extendedTextMessage"] && typeof (msgOut["extendedTextMessage"] as any).text === "string") {
-      conteudoOut = (msgOut["extendedTextMessage"] as any).text;
-    } else {
-      // Mídia enviada direto pelo WhatsApp (fora do Vendor.ai) — fica
-      // de fora por enquanto, só texto está coberto aqui.
-      res.status(200).json({ ignored: true, reason: "fromMe_non_text_not_supported" });
+    let tipoConteudoOut: "texto" | "imagem" | "audio" | "video" | "documento" = "texto";
+    let midiaUrlOut: string | null = null;
+
+    async function baixarEArmazenarMidia(mimeTypeFallback: string, fileNameFallback: string): Promise<string | null> {
+      const messageIdOut = key.id;
+      if (!messageIdOut) return null;
+      const media = await getBase64FromMediaMessage(tenantId, messageIdOut);
+      if (!media.base64) return null;
+      const buffer = Buffer.from(media.base64, "base64");
+      const objectPath = await objectStorage.savePrivateBuffer(buffer, media.mimetype ?? mimeTypeFallback, fileNameFallback);
+      const baseOrigin = `${req.protocol}://${req.get("host")}`;
+      return `${baseOrigin}/api/storage${objectPath}`;
+    }
+
+    try {
+      if (typeof msgOut["conversation"] === "string") {
+        conteudoOut = msgOut["conversation"] as string;
+      } else if (msgOut["extendedTextMessage"] && typeof (msgOut["extendedTextMessage"] as any).text === "string") {
+        conteudoOut = (msgOut["extendedTextMessage"] as any).text;
+      } else if (msgOut["imageMessage"]) {
+        const caption = (msgOut["imageMessage"] as { caption?: string })?.caption;
+        midiaUrlOut = await baixarEArmazenarMidia("image/jpeg", "foto.jpg");
+        if (!midiaUrlOut) { res.status(200).json({ ignored: true, reason: "fromMe_media_download_failed" }); return; }
+        tipoConteudoOut = "imagem";
+        conteudoOut = caption?.trim() || "Foto";
+      } else if (msgOut["audioMessage"]) {
+        midiaUrlOut = await baixarEArmazenarMidia("audio/ogg", "audio.ogg");
+        if (!midiaUrlOut) { res.status(200).json({ ignored: true, reason: "fromMe_media_download_failed" }); return; }
+        tipoConteudoOut = "audio";
+        conteudoOut = "Áudio";
+      } else if (msgOut["videoMessage"]) {
+        const caption = (msgOut["videoMessage"] as { caption?: string })?.caption;
+        midiaUrlOut = await baixarEArmazenarMidia("video/mp4", "video.mp4");
+        if (!midiaUrlOut) { res.status(200).json({ ignored: true, reason: "fromMe_media_download_failed" }); return; }
+        tipoConteudoOut = "video";
+        conteudoOut = caption?.trim() || "Vídeo";
+      } else if (msgOut["documentMessage"]) {
+        const docMsg = msgOut["documentMessage"] as { fileName?: string; caption?: string };
+        midiaUrlOut = await baixarEArmazenarMidia("application/octet-stream", docMsg?.fileName ?? "documento.bin");
+        if (!midiaUrlOut) { res.status(200).json({ ignored: true, reason: "fromMe_media_download_failed" }); return; }
+        tipoConteudoOut = "documento";
+        conteudoOut = docMsg?.caption?.trim() || docMsg?.fileName || "Documento";
+      } else {
+        res.status(200).json({ ignored: true, reason: "fromMe_no_recognized_content" });
+        return;
+      }
+    } catch (mediaErr) {
+      req.log.error({ err: mediaErr, tenantId }, "evolution-webhook: falha ao baixar mídia fromMe");
+      res.status(200).json({ ignored: true, reason: "fromMe_media_processing_failed" });
       return;
     }
+
     if (!conteudoOut.trim()) {
       res.status(200).json({ ignored: true, reason: "fromMe_empty_message" });
       return;
@@ -742,7 +790,8 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
           canal: "whatsapp",
           conteudo: conteudoOut,
           enviadoPor: "humano",
-          tipoConteudo: "texto",
+          tipoConteudo: tipoConteudoOut,
+          midiaUrl: midiaUrlOut,
           status: "entregue",
         })
         .returning();
@@ -752,7 +801,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
         .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })
         .where(eq(conversationsTable.id, existingConvOut.id));
 
-      req.log.info({ tenantId, leadId: leadOut.id, messageId: messageOut.id }, "evolution-webhook: mensagem enviada direto pelo WhatsApp (fromMe) registrada como saída/humano");
+      req.log.info({ tenantId, leadId: leadOut.id, messageId: messageOut.id, tipoConteudoOut }, "evolution-webhook: mensagem enviada direto pelo WhatsApp (fromMe) registrada como saída/humano");
       res.status(200).json({ leadId: leadOut.id, conversationId: existingConvOut.id, messageId: messageOut.id, fromMe: true });
       return;
     } catch (persistErr) {
