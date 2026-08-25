@@ -36,6 +36,16 @@ SET
 WHERE lower(COALESCE(marca, '')) = 'branno'
    OR descricao ILIKE '%Branno%';
 
+-- Recalcula o valor ao cliente com margem 120% + frete 10% + comissão 5%
+-- + custo financeiro 10%, todos adicionados sobre o custo.
+UPDATE produtos_catalogo
+SET preco_base = round(custo_fornecedor * 2.45, 2)
+WHERE custo_fornecedor IS NOT NULL
+  AND (
+    lower(COALESCE(marca, '')) = 'branno'
+    OR descricao ILIKE '%Branno%'
+  );
+
 -- Extrai o rendimento verdadeiro já registrado na descrição de cada embalagem.
 UPDATE produtos_catalogo
 SET
