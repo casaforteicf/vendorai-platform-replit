@@ -58,21 +58,11 @@ SET
 WHERE rendimento_por_unidade IS NULL
   AND descricao ~* 'rendimento aproximado de [0-9]+,[0-9]+ m²';
 
--- A tabela oficial informa faixa de 2,40–2,50 m² (GL) e 10,00–11,00 m²
+-- A tabela oficial informa faixa de 2,40-2,50 m² (GL) e 10,00-11,00 m²
 -- (BR/BPS) para Finezza. Para orçamento usa-se o limite conservador.
 UPDATE produtos_catalogo
 SET rendimento_por_unidade = CASE
-  WHEN nome ~* ' - GL 5,5 kg
--- Remove a regra comercial da descrição, preservando a informação técnica.
-UPDATE produtos_catalogo
-SET descricao = trim(regexp_replace(
-  descricao,
-  '\\s*Preço final com margem de 120% aplicada sobre o custo-base\\.?',
-  '',
-  'gi'
-))
-WHERE descricao ILIKE '%Preço final com margem de 120% aplicada sobre o custo-base%';
- THEN 2.400
+  WHEN nome ~* ' - GL 5,5 kg' THEN 2.400
   ELSE 10.000
 END,
 unidade_rendimento = 'm²'
@@ -82,17 +72,7 @@ WHERE nome ~* '(Finezza Preziosa|Pietra Finezza)';
 -- 1,20 m² para GL e 5,00 m² para BR/BPS.
 UPDATE produtos_catalogo
 SET rendimento_por_unidade = CASE
-  WHEN nome ~* ' - GL 5,5 kg
--- Remove a regra comercial da descrição, preservando a informação técnica.
-UPDATE produtos_catalogo
-SET descricao = trim(regexp_replace(
-  descricao,
-  '\\s*Preço final com margem de 120% aplicada sobre o custo-base\\.?',
-  '',
-  'gi'
-))
-WHERE descricao ILIKE '%Preço final com margem de 120% aplicada sobre o custo-base%';
- THEN 1.200
+  WHEN nome ~* ' - GL 5,5 kg' THEN 1.200
   ELSE 5.000
 END,
 unidade_rendimento = 'm²'
@@ -115,7 +95,7 @@ WHERE rendimento_por_unidade IS NOT NULL
 UPDATE produtos_catalogo
 SET descricao = trim(regexp_replace(
   descricao,
-  '\\s*Preço final com margem de 120% aplicada sobre o custo-base\\.?',
+  '\s*Preço final com margem de 120% aplicada sobre o custo-base\.?',
   '',
   'gi'
 ))
