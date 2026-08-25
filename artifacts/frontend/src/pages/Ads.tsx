@@ -784,12 +784,15 @@ export default function Ads() {
 
             <CollapsibleSection
               title="Rastreamento e dados próprios"
-              hint="Informe nomes ou IDs de listas consentidas. Dados pessoais brutos não são armazenados neste formulário."
+              hint="100% opcional. Só serve se você já tem listas de público criadas dentro do próprio Google Ads (Ferramentas → Gerenciador de públicos). Nunca mexeu nisso? Pode pular essa seção inteira e deixar em branco — não afeta o resto da campanha."
               count={form.remarketing.length + form.customerMatch.length + form.semelhantes.length}
             >
-              <div><LabelTip tip="Re-impacta quem já visitou o site e não converteu — forma mais eficiente de segmentação.">Remarketing</LabelTip><MultiSelectChips value={form.remarketing} onChange={(v) => setForm((f) => ({ ...f, remarketing: v }))} placeholder="Visitantes do site, YouTube..." /></div>
-              <div><LabelTip tip="Sobe lista de clientes (e-mail/telefone). Nenhum dado pessoal fica salvo neste formulário, só o nome/ID da lista.">Customer Match</LabelTip><MultiSelectChips value={form.customerMatch} onChange={(v) => setForm((f) => ({ ...f, customerMatch: v }))} placeholder="Nome ou ID da lista" /></div>
-              <div><LabelTip tip="A partir de uma lista, encontra outras pessoas com perfil parecido.">Públicos semelhantes</LabelTip><MultiSelectChips value={form.semelhantes} onChange={(v) => setForm((f) => ({ ...f, semelhantes: v }))} placeholder="Nome ou ID da lista de origem" /></div>
+              <a href="https://ads.google.com/aw/audiences" target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline underline-offset-2 block -mt-1">
+                Abrir o Gerenciador de públicos do Google Ads (cria as listas por lá)
+              </a>
+              <div><LabelTip tip="Uma lista de gente que já visitou seu site mas não comprou, criada dentro do próprio Google Ads (não aqui). Se você já tem uma configurada lá, digita o nome dela pra focar o anúncio nessas pessoas.">Remarketing</LabelTip><MultiSelectChips value={form.remarketing} onChange={(v) => setForm((f) => ({ ...f, remarketing: v }))} placeholder="Visitantes do site, YouTube..." /></div>
+              <div><LabelTip tip="Uma lista de e-mails/telefones dos seus clientes, subida diretamente no Google Ads (Ferramentas → Gerenciador de públicos → Segmento personalizado). Aqui você só digita o NOME que deu pra essa lista lá — os dados dos clientes nunca passam por este formulário.">Customer Match</LabelTip><MultiSelectChips value={form.customerMatch} onChange={(v) => setForm((f) => ({ ...f, customerMatch: v }))} placeholder="Nome ou ID da lista" /></div>
+              <div><LabelTip tip="A partir de uma das listas acima (Remarketing ou Customer Match), o Google Ads acha sozinho outras pessoas com perfil parecido. Só funciona se você já tiver uma lista de origem configurada — coloque o nome dela aqui.">Públicos semelhantes</LabelTip><MultiSelectChips value={form.semelhantes} onChange={(v) => setForm((f) => ({ ...f, semelhantes: v }))} placeholder="Nome ou ID da lista de origem" /></div>
             </CollapsibleSection>
 
             <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
