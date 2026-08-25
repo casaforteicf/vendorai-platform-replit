@@ -680,9 +680,86 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   }
 
   const key = (data as { key?: { remoteJid?: string; fromMe?: boolean; id?: string } }).key ?? {};
+
+  // ── fromMe=true: o próprio atendente respondeu direto pelo app do
+  // WhatsApp (não pelo Vendor.ai) — achado real reportado pelo Marcos:
+  // essas mensagens eram descartadas, então a conversa dentro do
+  // sistema só mostrava o que o lead falou, nunca o que foi respondido
+  // por fora. Grava como saída/humano — sem disparar IA nem auto-quote,
+  // é só registro do que já foi enviado de verdade pelo WhatsApp.
   if (key.fromMe === true) {
-    res.status(200).json({ ignored: true, reason: "fromMe_true" });
-    return;
+    const remoteJidOut = key.remoteJid ?? "";
+    if (!remoteJidOut || remoteJidOut.includes("@g.us")) {
+      res.status(200).json({ ignored: true, reason: remoteJidOut ? "group_message" : "no_remote_jid" });
+      return;
+    }
+    const msgOut = (data as { message?: Record<string, unknown> }).message ?? {};
+    let conteudoOut = "";
+    if (typeof msgOut["conversation"] === "string") {
+      conteudoOut = msgOut["conversation"] as string;
+    } else if (msgOut["extendedTextMessage"] && typeof (msgOut["extendedTextMessage"] as any).text === "string") {
+      conteudoOut = (msgOut["extendedTextMessage"] as any).text;
+    } else {
+      // Mídia enviada direto pelo WhatsApp (fora do Vendor.ai) — fica
+      // de fora por enquanto, só texto está coberto aqui.
+      res.status(200).json({ ignored: true, reason: "fromMe_non_text_not_supported" });
+      return;
+    }
+    if (!conteudoOut.trim()) {
+      res.status(200).json({ ignored: true, reason: "fromMe_empty_message" });
+      return;
+    }
+
+    const telefoneOut = remoteJidOut.replace(/@.*$/, "").replace(/\D/g, "");
+    try {
+      const matchOut = await findLeadByDedup(tenantId, telefoneOut, null, null);
+      if (!matchOut.found) {
+        // Sem lead correspondente (número pessoal, nunca mandou mensagem
+        // antes) -- não cria lead nem conversa só pra registrar o que o
+        // atendente mandou; não há onde pendurar isso ainda.
+        res.status(200).json({ ignored: true, reason: "fromMe_no_matching_lead" });
+        return;
+      }
+      const leadOut = matchOut.lead;
+
+      const [existingConvOut] = await db
+        .select()
+        .from(conversationsTable)
+        .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, leadOut.id), eq(conversationsTable.channel, "whatsapp")))
+        .limit(1);
+      if (!existingConvOut) {
+        res.status(200).json({ ignored: true, reason: "fromMe_no_matching_conversation" });
+        return;
+      }
+
+      const [messageOut] = await db
+        .insert(messagesTable)
+        .values({
+          tenantId,
+          conversationId: existingConvOut.id,
+          leadId: leadOut.id,
+          direcao: "saida",
+          canal: "whatsapp",
+          conteudo: conteudoOut,
+          enviadoPor: "humano",
+          tipoConteudo: "texto",
+          status: "entregue",
+        })
+        .returning();
+
+      await db
+        .update(conversationsTable)
+        .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })
+        .where(eq(conversationsTable.id, existingConvOut.id));
+
+      req.log.info({ tenantId, leadId: leadOut.id, messageId: messageOut.id }, "evolution-webhook: mensagem enviada direto pelo WhatsApp (fromMe) registrada como saída/humano");
+      res.status(200).json({ leadId: leadOut.id, conversationId: existingConvOut.id, messageId: messageOut.id, fromMe: true });
+      return;
+    } catch (persistErr) {
+      req.log.error({ err: persistErr, tenantId, telefoneOut }, "evolution-webhook: falha ao persistir mensagem fromMe");
+      res.status(200).json({ ignored: true, reason: "fromMe_persist_failed" });
+      return;
+    }
   }
 
   const remoteJid = key.remoteJid ?? "";
