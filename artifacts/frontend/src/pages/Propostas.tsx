@@ -444,7 +444,6 @@ export function CatalogoModal({
       comissaoPercentual: vals.comissaoPercentual.toFixed(2),
       custoFinanceiroPercentual: vals.custoFinanceiroPercentual.toFixed(2),
       estoqueQuantidade: vals.estoqueQuantidade ?? undefined,
-      controlaEstoque: false,
       rendimentoPorUnidade: vals.rendimentoPorUnidade != null ? vals.rendimentoPorUnidade.toFixed(3) : null,
       unidadeRendimento: vals.unidadeRendimento || null,
       ativo: vals.ativo,
