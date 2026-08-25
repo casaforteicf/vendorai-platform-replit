@@ -465,7 +465,7 @@ router.post(
         };
         promptsApplied.push(agentKey);
       }
-      await db.insert(agentConfigsTable).values({ tenantId, agents });
+      await db.insert(agentConfigsTable).values({ tenantId, agents, setupCompletedAt: new Date(), autonomyEnabledAt: new Date() });
     }
 
     if (template) {
@@ -770,7 +770,9 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
   } else {
     await db
       .insert(agentConfigsTable)
-      .values({ tenantId, metaPhoneNumberId, metaAccessToken, metaWabaId: metaWabaId ?? null });
+      // setupCompletedAt/autonomyEnabledAt na criação -- ver comentário
+      // em agent_configs.ts (rota POST /agent-configs).
+      .values({ tenantId, metaPhoneNumberId, metaAccessToken, metaWabaId: metaWabaId ?? null, setupCompletedAt: now, autonomyEnabledAt: now });
   }
 
   // Save phone to business profile
@@ -868,6 +870,10 @@ router.patch("/onboarding/step/3", authenticate, async (req, res) => {
     await db.insert(agentConfigsTable).values({
       tenantId,
       agents: { [agentKey]: newEntry } as AgentsMap,
+      // setupCompletedAt/autonomyEnabledAt na criação -- ver comentário
+      // em agent_configs.ts (rota POST /agent-configs).
+      setupCompletedAt: now,
+      autonomyEnabledAt: now,
     });
   }
 

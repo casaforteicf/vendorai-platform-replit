@@ -177,6 +177,11 @@ async function deliverPlan(
     .limit(1);
 
   if (onboardingMod) {
+    // setupCompletedAt/autonomyEnabledAt setados na criação -- ver
+    // comentário em agent_configs.ts (rota POST /agent-configs) pro
+    // contexto completo: a tela que deveria fazer isso manualmente
+    // nunca teve botão conectado no frontend.
+    const now = new Date();
     await db
       .insert(agentConfigsTable)
       .values({
@@ -186,6 +191,8 @@ async function deliverPlan(
         monthlyTokenLimit: plan.aiQuotaUsd
           ? Math.round(Number(plan.aiQuotaUsd) * 750_000)
           : 26_250_000,
+        setupCompletedAt: now,
+        autonomyEnabledAt: now,
       })
       .onConflictDoUpdate({
         target: agentConfigsTable.tenantId,

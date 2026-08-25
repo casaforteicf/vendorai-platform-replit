@@ -111,7 +111,9 @@ router.post(
       }
       await db
         .insert(agentConfigsTable)
-        .values({ tenantId, agents });
+        // setupCompletedAt/autonomyEnabledAt na criação -- ver
+        // comentário em agent_configs.ts (rota POST /agent-configs).
+        .values({ tenantId, agents, setupCompletedAt: new Date(), autonomyEnabledAt: new Date() });
       agentConfigUpdated = true;
     }
 

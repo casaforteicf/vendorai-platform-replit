@@ -96,9 +96,15 @@ router.post("/agent-configs", async (req, res) => {
   }
 
   try {
+    const now = new Date();
     const [config] = await db
       .insert(agentConfigsTable)
-      .values(parsed.data)
+      // setupCompletedAt/autonomyEnabledAt setados na criação — achado
+      // real: a tela de "concluir setup" que deveria fazer isso nunca
+      // teve um botão conectado a ela no frontend, então nenhum tenant
+      // real conseguia sair do estado 'agente gera resposta mas nunca
+      // envia' sozinho. Todo tenant novo já nasce com autonomia ativa.
+      .values({ ...parsed.data, setupCompletedAt: now, autonomyEnabledAt: now })
       .returning();
     res.status(201).json(config);
   } catch (err: unknown) {
@@ -438,8 +444,15 @@ router.post("/agent-configs/:id/complete-setup", async (req, res) => {
   }
 
   const setupCompletedAt = new Date();
+  // Antes: autonomyEnabledAt = setupCompletedAt + 5 dias (período
+  // supervisionado, pra revisar respostas antes de virar automático).
+  // Achado real na investigação do windoor: essa tela de revisão NUNCA
+  // foi construída no frontend — os 5 dias só deixavam o agente mudo
+  // (gerando resposta, nunca enviando), sem nenhum jeito de ver ou
+  // aprovar nada nesse meio-tempo. Até essa tela existir de verdade,
+  // esperar não protege ninguém, só quebra a experiência. Autonomia
+  // liberada imediatamente ao completar o setup.
   const autonomyEnabledAt = new Date(setupCompletedAt);
-  autonomyEnabledAt.setDate(autonomyEnabledAt.getDate() + 5);
 
   const [config] = await db
     .update(agentConfigsTable)
