@@ -3225,6 +3225,8 @@ export interface Lead {
   activeAgentLock?: string | null;
   /** Nunca ativar agente -- decisao permanente, diferente do lock temporario. */
   agenteDesativado?: boolean;
+  excluidoEm?: string | null;
+  motivoExclusao?: string | null;
   /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
   instagramScopedId?: string | null;
   /** Data de nascimento do lead (YYYY-MM-DD). */
@@ -3321,6 +3323,8 @@ export interface CreateLeadBody {
   activeAgentLock?: string | null;
   /** Nunca ativar agente -- decisao permanente, diferente do lock temporario. */
   agenteDesativado?: boolean;
+  excluidoEm?: string | null;
+  motivoExclusao?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;
@@ -3354,6 +3358,11 @@ export interface CreateLeadBody {
   birthDay?: number | null;
   lastCampaignSentYear?: number | null;
   specialDateMessagesOptOut?: boolean | null;
+}
+
+export interface DeleteLeadBody {
+  /** Motivo da exclusão — fica registrado no lead, visível na aba "Excluídos". */
+  motivo?: string;
 }
 
 export type UpdateLeadBodyFilhosItem = {
@@ -3391,6 +3400,8 @@ export interface UpdateLeadBody {
   activeAgentLock?: string | null;
   /** Nunca ativar agente -- decisao permanente, diferente do lock temporario. */
   agenteDesativado?: boolean;
+  excluidoEm?: string | null;
+  motivoExclusao?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;
@@ -5887,6 +5898,21 @@ export type ConfigureAnthropicAIKeyBody = {
 export type RemoveAnthropicAIKey200 = {
   success?: boolean;
 };
+
+export type ListTenantLeadsParams = {
+/**
+ * Omitido = só ativos (padrão). 'apenas' = só os excluídos (aba Excluídos). 'incluir' = ativos + excluídos juntos.
+ */
+incluirExcluidos?: ListTenantLeadsIncluirExcluidos;
+};
+
+export type ListTenantLeadsIncluirExcluidos = typeof ListTenantLeadsIncluirExcluidos[keyof typeof ListTenantLeadsIncluirExcluidos];
+
+
+export const ListTenantLeadsIncluirExcluidos = {
+  apenas: 'apenas',
+  incluir: 'incluir',
+} as const;
 
 export type ListTenantDuplicateLeads200Item = {
   lead?: Lead;

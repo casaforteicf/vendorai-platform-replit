@@ -282,11 +282,18 @@ export default function Leads() {
   const [assignDialog, setAssignDialog] = useState<{ open: boolean; leadId: string; currentAssignedTo: string | null }>({ open: false, leadId: "", currentAssignedTo: null });
   const [assignSelectedUser, setAssignSelectedUser] = useState<string>("");
   const updateLead = useUpdateLead();
+
+  // ── Exclusão lógica de lead ──────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<"ativos" | "excluidos">("ativos");
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null });
+  const [deleteMotivo, setDeleteMotivo] = useState("");
+
   const deleteLead = useMutation({
-    mutationFn: async (lead: Lead) => {
+    mutationFn: async ({ lead, motivo }: { lead: Lead; motivo: string }) => {
       const response = await fetch(`/api/leads/${lead.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -297,14 +304,38 @@ export default function Leads() {
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
-      toast({ title: "Lead excluído", description: `${lead.nome} foi removido.` });
+      toast({ title: "Lead excluído", description: `${lead.nome} foi movido pra aba Excluídos.` });
+      setDeleteDialog({ open: false, lead: null });
+      setDeleteMotivo("");
     },
     onError: (error: Error) => toast({ title: "Não foi possível excluir", description: error.message, variant: "destructive" }),
   });
 
   function confirmDeleteLead(lead: Lead) {
-    if (window.confirm(`Excluir definitivamente o lead ${lead.nome}? Esta ação não pode ser desfeita.`)) deleteLead.mutate(lead);
+    setDeleteMotivo("");
+    setDeleteDialog({ open: true, lead });
   }
+
+  const restoreLead = useMutation({
+    mutationFn: async (lead: Lead) => {
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ excluidoEm: null, motivoExclusao: null }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Não foi possível restaurar o lead.");
+      }
+      return lead;
+    },
+    onSuccess: (lead) => {
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
+      toast({ title: "Lead restaurado", description: `${lead.nome} voltou pra lista ativa.` });
+    },
+    onError: (error: Error) => toast({ title: "Não foi possível restaurar", description: error.message, variant: "destructive" }),
+  });
 
   const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
@@ -364,10 +395,17 @@ export default function Leads() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  const { data: leads, isLoading: leadsLoading } = useListTenantLeads(tenantId, {
+  const { data: leads, isLoading: leadsLoading } = useListTenantLeads(tenantId, undefined, {
     query: {
-      enabled: !!tenantId,
+      enabled: !!tenantId && viewMode === "ativos",
       queryKey: getListTenantLeadsQueryKey(tenantId),
+    },
+  });
+
+  const { data: excludedLeads, isLoading: excludedLoading } = useListTenantLeads(tenantId, { incluirExcluidos: "apenas" }, {
+    query: {
+      enabled: !!tenantId && viewMode === "excluidos",
+      queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }),
     },
   });
 
@@ -757,6 +795,65 @@ export default function Leads() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2">
+        <Button
+          variant={viewMode === "ativos" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setViewMode("ativos")}
+        >
+          Ativos
+        </Button>
+        <Button
+          variant={viewMode === "excluidos" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setViewMode("excluidos")}
+          className="gap-1.5"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Excluídos
+          {excludedLeads && excludedLeads.length > 0 && (
+            <Badge variant="secondary" className="ml-0.5">{excludedLeads.length}</Badge>
+          )}
+        </Button>
+      </div>
+
+      {viewMode === "excluidos" ? (
+        <Card>
+          <CardContent className="p-0 divide-y">
+            {excludedLoading ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">Carregando...</div>
+            ) : !excludedLeads || excludedLeads.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">Nenhum lead excluído.</div>
+            ) : (
+              excludedLeads.map((lead) => (
+                <div key={lead.id} className="p-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{lead.nome}</p>
+                    {lead.telefone && <p className="text-xs text-muted-foreground">{lead.telefone}</p>}
+                    <p className="text-sm text-muted-foreground mt-1">
+                      <span className="font-medium text-foreground">Motivo:</span> {lead.motivoExclusao || "Não informado"}
+                    </p>
+                    {lead.excluidoEm && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Excluído em {new Date(lead.excluidoEm).toLocaleDateString("pt-BR")} às {new Date(lead.excluidoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => restoreLead.mutate(lead)}
+                    disabled={restoreLead.isPending}
+                    className="shrink-0"
+                  >
+                    Restaurar
+                  </Button>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      ) : (
       <Card>
         <div className="p-4 border-b flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1 max-w-sm">
@@ -1018,6 +1115,7 @@ export default function Leads() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Assign lead dialog */}
       <Dialog
@@ -1121,6 +1219,48 @@ export default function Leads() {
                 }}
               >
                 Ver lead existente
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Motivo da exclusão */}
+      <Dialog open={deleteDialog.open} onOpenChange={(v) => !v && setDeleteDialog({ open: false, lead: null })}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-4 w-4" />
+              Excluir lead
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <p className="text-sm text-muted-foreground">
+              {deleteDialog.lead?.nome} vai pra aba "Excluídos" — não é apagado de verdade, pode ser restaurado a qualquer momento.
+            </p>
+            <div>
+              <label className="text-sm font-medium">Motivo (opcional)</label>
+              <Input
+                autoFocus
+                placeholder="Ex: número inválido, contato pessoal, duplicado..."
+                value={deleteMotivo}
+                onChange={(e) => setDeleteMotivo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && deleteDialog.lead) deleteLead.mutate({ lead: deleteDialog.lead, motivo: deleteMotivo });
+                }}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setDeleteDialog({ open: false, lead: null })}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteLead.isPending}
+                onClick={() => { if (deleteDialog.lead) deleteLead.mutate({ lead: deleteDialog.lead, motivo: deleteMotivo }); }}
+              >
+                {deleteLead.isPending ? "Excluindo..." : "Excluir"}
               </Button>
             </div>
           </div>

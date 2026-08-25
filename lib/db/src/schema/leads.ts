@@ -30,6 +30,11 @@ export const leadsTable = pgTable("leads", {
   // (não são leads de negócio de verdade) que entraram no WhatsApp do
   // tenant — o agente nunca despacha pra esse lead, nem uma vez.
   agenteDesativado: boolean("agente_desativado").notNull().default(false),
+  // Exclusão lógica — lead nunca sai do banco de verdade. Null =
+  // não excluído. Quando setado, sai das listagens padrão e vira
+  // visível na aba "Excluídos" com o motivo registrado.
+  excluidoEm: timestamp("excluido_em"),
+  motivoExclusao: text("motivo_exclusao"),
   // Pós-venda: quando setado, a próxima mensagem recebida do lead é tratada
   // como resposta à pesquisa de satisfação da entrega (não passa pelo roteamento
   // normal de agentes). Sem FK para evitar import circular com entregas.ts.

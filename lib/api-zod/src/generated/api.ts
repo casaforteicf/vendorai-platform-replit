@@ -5566,6 +5566,8 @@ export const ListLeadsResponseItem = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
@@ -5647,6 +5649,8 @@ export const CreateLeadBody = zod.object({
   "status": zod.string().optional(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "dataNascimento": zod.string().nullish(),
   "estadoCivil": zod.string().nullish(),
   "conjugeNome": zod.string().nullish(),
@@ -5682,10 +5686,14 @@ export const CreateLeadBody = zod.object({
 
 
 /**
- * @summary List leads of a tenant
+ * @summary List leads of a tenant (exclui leads com exclusão lógica por padrão)
  */
 export const ListTenantLeadsParams = zod.object({
   "tenantId": zod.coerce.string()
+})
+
+export const ListTenantLeadsQueryParams = zod.object({
+  "incluirExcluidos": zod.enum(['apenas', 'incluir']).optional().describe('Omitido = só ativos (padrão). \'apenas\' = só os excluídos (aba Excluídos). \'incluir\' = ativos + excluídos juntos.')
 })
 
 export const listTenantLeadsResponseTipoDefault = `cliente`;
@@ -5708,6 +5716,8 @@ export const ListTenantLeadsResponseItem = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
@@ -5796,6 +5806,8 @@ export const GetLeadResponse = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
@@ -5880,6 +5892,8 @@ export const UpdateLeadBody = zod.object({
   "status": zod.string().optional(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "dataNascimento": zod.string().nullish(),
   "estadoCivil": zod.string().nullish(),
   "conjugeNome": zod.string().nullish(),
@@ -5940,6 +5954,8 @@ export const UpdateLeadResponse = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
@@ -6001,10 +6017,95 @@ export const UpdateLeadResponse = zod.object({
 
 
 /**
- * @summary Delete lead
+ * @summary Soft-delete lead (registra motivo, não remove do banco — ver DeleteLeadBody)
  */
 export const DeleteLeadParams = zod.object({
   "id": zod.coerce.string()
+})
+
+export const DeleteLeadBody = zod.object({
+  "motivo": zod.string().optional().describe('Motivo da exclusão — fica registrado no lead, visível na aba \"Excluídos\".')
+})
+
+export const deleteLeadResponseTipoDefault = `cliente`;
+
+export const DeleteLeadResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
+  "endereco": zod.string().nullish().describe('Endereço completo do lead\/cliente, usado na qualificação do contrato.'),
+  "representanteCargo": zod.string().nullish().describe('Cargo do representante legal (para contratos PJ), ex- Sócio-Administrador.'),
+  "representanteNacionalidade": zod.string().nullish().describe('Nacionalidade do representante legal, usada na qualificação do contrato.'),
+  "representanteEstadoCivil": zod.string().nullish().describe('Estado civil do representante legal, usado na qualificação do contrato.'),
+  "representanteProfissao": zod.string().nullish().describe('Profissão do representante legal, usada na qualificação do contrato.'),
+  "representanteRg": zod.string().nullish().describe('RG do representante legal, usado na qualificação do contrato.'),
+  "testemunha2Nome": zod.string().nullish().describe('Nome da segunda testemunha do contrato (a testemunha do lado do cliente).'),
+  "testemunha2Cpf": zod.string().nullish().describe('CPF da segunda testemunha do contrato.'),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
+})).nullish(),
+  "tipo": zod.string().default(deleteLeadResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "iaAtiva": zod.boolean().optional().describe('Quando false, o atendimento automático por IA está pausado para este lead.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
+  "maturidadeIA": zod.number().nullish().describe('Nível de maturidade em IA\/automação declarado (ou inferido) pelo lead: 1=manual sem sistema, 2=sistema sem IA, 3=já usa IA\/automação.'),
+  "dataRespostaPesquisa": zod.coerce.date().nullish().describe('Timestamp de quando o lead respondeu à pesquisa de maturidade.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 
@@ -6037,6 +6138,8 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
@@ -6113,6 +6216,8 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
@@ -6208,6 +6313,8 @@ export const MergeLeadResponse = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
@@ -6300,6 +6407,8 @@ export const DismissDuplicateLeadResponse = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "agenteDesativado": zod.boolean().optional().describe('Nunca ativar agente -- decisao permanente, diferente do lock temporario.'),
+  "excluidoEm": zod.coerce.date().nullish(),
+  "motivoExclusao": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),

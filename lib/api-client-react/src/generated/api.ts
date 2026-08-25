@@ -118,6 +118,7 @@ import type {
   Deal,
   DealUpdateResponse,
   DeleteContentGeneration200,
+  DeleteLeadBody,
   DeleteLeadProduct200,
   DeletePipelineStage200,
   DemoLoginBody,
@@ -186,6 +187,7 @@ import type {
   ListSupermercadoPedidosParams,
   ListSupermercadoProdutosParams,
   ListTenantDuplicateLeads200Item,
+  ListTenantLeadsParams,
   ListVarejoFidelidadeParams,
   ListVarejoPedidosCompraParams,
   ListVarejoProdutosParams,
@@ -15150,20 +15152,29 @@ export const useCreateLead = <TError = ErrorType<ErrorResponse>,
       return useMutation(getCreateLeadMutationOptions(options));
     }
 
-export const getListTenantLeadsUrl = (tenantId: string,) => {
+export const getListTenantLeadsUrl = (tenantId: string,
+    params?: ListTenantLeadsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/tenants/${tenantId}/leads`
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/leads?${stringifiedParams}` : `/api/tenants/${tenantId}/leads`
 }
 
 /**
- * @summary List leads of a tenant
+ * @summary List leads of a tenant (exclui leads com exclusão lógica por padrão)
  */
-export const listTenantLeads = async (tenantId: string, options?: RequestInit): Promise<Lead[]> => {
+export const listTenantLeads = async (tenantId: string,
+    params?: ListTenantLeadsParams, options?: RequestInit): Promise<Lead[]> => {
 
-  return customFetch<Lead[]>(getListTenantLeadsUrl(tenantId),
+  return customFetch<Lead[]>(getListTenantLeadsUrl(tenantId,params),
   {
     ...options,
     method: 'GET'
@@ -15176,23 +15187,25 @@ export const listTenantLeads = async (tenantId: string, options?: RequestInit): 
 
 
 
-export const getListTenantLeadsQueryKey = (tenantId: string,) => {
+export const getListTenantLeadsQueryKey = (tenantId: string,
+    params?: ListTenantLeadsParams,) => {
     return [
-    `/api/tenants/${tenantId}/leads`
+    `/api/tenants/${tenantId}/leads`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListTenantLeadsQueryOptions = <TData = Awaited<ReturnType<typeof listTenantLeads>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantLeads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListTenantLeadsQueryOptions = <TData = Awaited<ReturnType<typeof listTenantLeads>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListTenantLeadsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantLeads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListTenantLeadsQueryKey(tenantId);
+  const queryKey =  queryOptions?.queryKey ?? getListTenantLeadsQueryKey(tenantId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTenantLeads>>> = ({ signal }) => listTenantLeads(tenantId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTenantLeads>>> = ({ signal }) => listTenantLeads(tenantId,params, { signal, ...requestOptions });
 
 
 
@@ -15206,15 +15219,16 @@ export type ListTenantLeadsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List leads of a tenant
+ * @summary List leads of a tenant (exclui leads com exclusão lógica por padrão)
  */
 
 export function useListTenantLeads<TData = Awaited<ReturnType<typeof listTenantLeads>>, TError = ErrorType<unknown>>(
- tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantLeads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ tenantId: string,
+    params?: ListTenantLeadsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantLeads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListTenantLeadsQueryOptions(tenantId,options)
+  const queryOptions = getListTenantLeadsQueryOptions(tenantId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -15385,16 +15399,18 @@ export const getDeleteLeadUrl = (id: string,) => {
 }
 
 /**
- * @summary Delete lead
+ * @summary Soft-delete lead (registra motivo, não remove do banco — ver DeleteLeadBody)
  */
-export const deleteLead = async (id: string, options?: RequestInit): Promise<void> => {
+export const deleteLead = async (id: string,
+    deleteLeadBody?: DeleteLeadBody, options?: RequestInit): Promise<Lead> => {
 
-  return customFetch<void>(getDeleteLeadUrl(id),
+  return customFetch<Lead>(getDeleteLeadUrl(id),
   {
     ...options,
-    method: 'DELETE'
-
-
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      deleteLeadBody,)
   }
 );}
 
@@ -15402,8 +15418,8 @@ export const deleteLead = async (id: string, options?: RequestInit): Promise<voi
 
 
 export const getDeleteLeadMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteLead>>, TError,{id: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLead>>, TError,{id: string;data?: BodyType<DeleteLeadBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLead>>, TError,{id: string;data?: BodyType<DeleteLeadBody>}, TContext> => {
 
 const mutationKey = ['deleteLead'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -15415,10 +15431,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLead>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLead>>, {id: string;data?: BodyType<DeleteLeadBody>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  deleteLead(id,requestOptions)
+          return  deleteLead(id,data,requestOptions)
         }
 
 
@@ -15429,18 +15445,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteLeadMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLead>>>
-
+    export type DeleteLeadMutationBody = BodyType<DeleteLeadBody> | undefined
     export type DeleteLeadMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Delete lead
+ * @summary Soft-delete lead (registra motivo, não remove do banco — ver DeleteLeadBody)
  */
 export const useDeleteLead = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLead>>, TError,{id: string;data?: BodyType<DeleteLeadBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteLead>>,
         TError,
-        {id: string},
+        {id: string;data?: BodyType<DeleteLeadBody>},
         TContext
       > => {
       return useMutation(getDeleteLeadMutationOptions(options));

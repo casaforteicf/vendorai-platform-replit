@@ -5855,13 +5855,20 @@ paths:
     get:
       operationId: listTenantLeads
       tags: [leads]
-      summary: List leads of a tenant
+      summary: List leads of a tenant (exclui leads com exclusão lógica por padrão)
       parameters:
         - name: tenantId
           in: path
           required: true
           schema:
             type: string
+        - name: incluirExcluidos
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [apenas, incluir]
+          description: "Omitido = só ativos (padrão). 'apenas' = só os excluídos (aba Excluídos). 'incluir' = ativos + excluídos juntos."
       responses:
         "200":
           description: List of leads for the tenant
@@ -5934,16 +5941,26 @@ paths:
     delete:
       operationId: deleteLead
       tags: [leads]
-      summary: Delete lead
+      summary: Soft-delete lead (registra motivo, não remove do banco — ver DeleteLeadBody)
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteLeadBody"
       responses:
-        "204":
-          description: Deleted
+        "200":
+          description: Lead marcado como excluído (exclusão lógica)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
         "404":
           description: Not found
           content:
@@ -15427,6 +15444,13 @@ components:
         agenteDesativado:
           type: boolean
           description: Nunca ativar agente -- decisao permanente, diferente do lock temporario.
+        excluidoEm:
+          type: string
+          format: date-time
+          nullable: true
+        motivoExclusao:
+          type: string
+          nullable: true
         instagramScopedId:
           type: string
           nullable: true
@@ -15681,6 +15705,13 @@ components:
         agenteDesativado:
           type: boolean
           description: Nunca ativar agente -- decisao permanente, diferente do lock temporario.
+        excluidoEm:
+          type: string
+          format: date-time
+          nullable: true
+        motivoExclusao:
+          type: string
+          nullable: true
         dataNascimento:
           type: string
           nullable: true
@@ -15787,6 +15818,13 @@ components:
         - tenantId
         - nome
 
+    DeleteLeadBody:
+      type: object
+      properties:
+        motivo:
+          type: string
+          description: Motivo da exclusão — fica registrado no lead, visível na aba "Excluídos".
+
     UpdateLeadBody:
       type: object
       properties:
@@ -15838,6 +15876,13 @@ components:
         agenteDesativado:
           type: boolean
           description: Nunca ativar agente -- decisao permanente, diferente do lock temporario.
+        excluidoEm:
+          type: string
+          format: date-time
+          nullable: true
+        motivoExclusao:
+          type: string
+          nullable: true
         dataNascimento:
           type: string
           nullable: true

@@ -26,6 +26,8 @@ export interface CreateLeadBody {
   activeAgentLock?: string | null;
   /** Nunca ativar agente -- decisao permanente, diferente do lock temporario. */
   agenteDesativado?: boolean;
+  excluidoEm?: Date | null;
+  motivoExclusao?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;

@@ -746,21 +746,21 @@ router.get("/dashboard", authenticate, async (req, res) => {
     leadsSemContatoRaw,
     pipelineRaw,
   ] = await Promise.all([
-    // totalLeads no período (30d)
+    // totalLeads no período (30d) — exclui leads com exclusão lógica
     db.select({ c: count() }).from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), gte(leadsTable.createdAt, thirtyDaysAgo))),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), gte(leadsTable.createdAt, thirtyDaysAgo))),
 
     // leadsNovos (últimos 7d)
     db.select({ c: count() }).from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), gte(leadsTable.createdAt, sevenDaysAgo))),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), gte(leadsTable.createdAt, sevenDaysAgo))),
 
     // leads convertidos (status='cliente') no período
     db.select({ c: count() }).from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.status, "cliente"), gte(leadsTable.createdAt, thirtyDaysAgo))),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), eq(leadsTable.status, "cliente"), gte(leadsTable.createdAt, thirtyDaysAgo))),
 
     // leads por status (estado atual, sem filtro de período)
     db.select({ status: leadsTable.status, c: count() }).from(leadsTable)
-      .where(eq(leadsTable.tenantId, tenantId))
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)))
       .groupBy(leadsTable.status),
 
     // deals ganhos no período para ticket médio

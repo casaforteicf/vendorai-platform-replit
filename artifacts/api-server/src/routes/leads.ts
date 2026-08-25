@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray, desc, ilike } from "drizzle-orm";
+import { and, eq, inArray, desc, ilike, isNull, isNotNull } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -278,6 +278,17 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
     eq(leadsTable.tenantId, tenantId),
     eq(leadsTable.possivelDuplicata, false),
   ];
+  // Padrão: só leads ativos. incluirExcluidos=apenas mostra só os
+  // excluídos (aba "Excluídos"); incluirExcluidos=incluir traz os dois
+  // juntos. Sem o parâmetro, exclusão lógica fica invisível em todo o
+  // resto do app (dashboard, pipeline, campanhas etc.) automaticamente,
+  // já que praticamente tudo usa esse mesmo endpoint.
+  const incluirExcluidos = req.query["incluirExcluidos"];
+  if (incluirExcluidos === "apenas") {
+    conditions.push(isNotNull(leadsTable.excluidoEm));
+  } else if (incluirExcluidos !== "incluir") {
+    conditions.push(isNull(leadsTable.excluidoEm));
+  }
   conditions.push(...buildUserFunctionFilter(req, leadsTable));
 
   const leads = await db
@@ -381,49 +392,21 @@ router.delete("/leads/:id", async (req, res) => {
     return;
   }
 
-  // Algumas verticais preservam registros operacionais com FK RESTRICT.
-  // Remova primeiro os dados dependentes, na mesma transacao, para que a
-  // exclusao do lead seja atomica e nao deixe historico parcial para tras.
-  await db.transaction(async (tx) => {
-    const tenantAndLead = (tenantColumn: any, leadColumn: any) =>
-      and(eq(tenantColumn, existing.tenantId), eq(leadColumn, existing.id));
+  // Exclusão lógica — o lead nunca sai do banco de verdade, só some das
+  // listagens padrão e vira visível na aba "Excluídos" com o motivo.
+  // Sem isso, um clique errado apagava o lead e todo o histórico
+  // ligado a ele (prontuários, agendamentos, test-drives etc.) pra
+  // sempre, sem chance de reverter nem registro de por que foi
+  // excluído. A transação com as ~10 tabelas de FK RESTRICT que
+  // existia aqui não é mais necessária — nada é de fato apagado.
+  const motivo = typeof req.body?.motivo === "string" ? req.body.motivo.trim() || null : null;
+  const [updated] = await db
+    .update(leadsTable)
+    .set({ excluidoEm: new Date(), motivoExclusao: motivo, updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId)))
+    .returning();
 
-    await tx.delete(beautyProntuariosTable).where(
-      tenantAndLead(beautyProntuariosTable.tenantId, beautyProntuariosTable.clienteId),
-    );
-    await tx.delete(beautyAgendamentosTable).where(
-      tenantAndLead(beautyAgendamentosTable.tenantId, beautyAgendamentosTable.clienteId),
-    );
-    await tx.delete(clinicProntuariosTable).where(
-      tenantAndLead(clinicProntuariosTable.tenantId, clinicProntuariosTable.pacienteId),
-    );
-    await tx.delete(clinicConsultasTable).where(
-      tenantAndLead(clinicConsultasTable.tenantId, clinicConsultasTable.pacienteId),
-    );
-    await tx.delete(clientServiceGapsTable).where(
-      tenantAndLead(clientServiceGapsTable.tenantId, clientServiceGapsTable.clienteId),
-    );
-    await tx.delete(scoutOportunidadesTable).where(
-      tenantAndLead(scoutOportunidadesTable.tenantId, scoutOportunidadesTable.clienteId),
-    );
-    await tx.delete(fretesCargasTable).where(
-      tenantAndLead(fretesCargasTable.tenantId, fretesCargasTable.clienteId),
-    );
-    await tx.delete(imoveisVisitasTable).where(
-      tenantAndLead(imoveisVisitasTable.tenantId, imoveisVisitasTable.clienteId),
-    );
-    await tx.delete(servicosOrdensTable).where(
-      tenantAndLead(servicosOrdensTable.tenantId, servicosOrdensTable.clienteId),
-    );
-    await tx.delete(veiculosTestDrivesTable).where(
-      tenantAndLead(veiculosTestDrivesTable.tenantId, veiculosTestDrivesTable.clienteId),
-    );
-    await tx.delete(leadsTable).where(
-      and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId)),
-    );
-  });
-
-  res.status(204).send();
+  res.status(200).json(updated);
 });
 
 // ── GET /tenants/:tenantId/leads/duplicates ─────────────────────────────────
