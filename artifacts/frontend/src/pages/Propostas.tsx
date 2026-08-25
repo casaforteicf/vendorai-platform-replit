@@ -173,6 +173,12 @@ const catFormSchema = z.object({
   fornecedor: z.string().optional(),
   prazoEntregaDias: z.coerce.number().int().min(0).optional(),
   custoFornecedor: z.coerce.number().min(0).optional(),
+  margemPercentual: z.coerce.number().min(0).max(999).default(0),
+  fretePercentual: z.coerce.number().min(0).max(999).default(0),
+  comissaoPercentual: z.coerce.number().min(0).max(999).default(0),
+  custoFinanceiroPercentual: z.coerce.number().min(0).max(999).default(0),
+  rendimentoPorUnidade: z.coerce.number().min(0).optional(),
+  unidadeRendimento: z.string().optional(),
   estoqueQuantidade: z.coerce.number().int().min(0).optional(),
   unidade: z.string().min(1, "Obrigatório"),
   descricao: z.string().optional(),
@@ -227,6 +233,16 @@ interface CsvPreviewRow {
   imagens?: string;
   video_url?: string;
   especificacoes?: string;
+  custo?: string;
+  margem_percentual?: string;
+  frete_percentual?: string;
+  comissao_percentual?: string;
+  custo_financeiro_percentual?: string;
+  rendimento_por_unidade?: string;
+  unidade_rendimento?: string;
+  fornecedor?: string;
+  prazo_entrega_dias?: string;
+  controla_estoque?: string;
 }
 
 // Parser de linha CSV com suporte a campos entre aspas (mesma lógica do backend,
@@ -254,9 +270,9 @@ function parseCsvLinePreview(line: string): string[] {
 }
 
 const CSV_TEMPLATE =
-  "nome,sku,categoria,preco_base,unidade,descricao,imagem_url,marca,imagens,video_url,especificacoes\n" +
-  "Camiseta Básica,SKU001,Feminino,79.90,un,100% algodão,https://exemplo.com/img1.jpg,Marca X,https://exemplo.com/img2.jpg|https://exemplo.com/img3.jpg,,Cor:Azul;Tamanho:M\n" +
-  "Calça Jeans,SKU002,Masculino,199.90,un,Slim fit,,,,,\n";
+  "nome,sku,categoria,custo,margem_percentual,frete_percentual,comissao_percentual,custo_financeiro_percentual,rendimento_por_unidade,unidade_rendimento,fornecedor,prazo_entrega_dias,controla_estoque,preco_base,unidade,descricao,imagem_url,marca,imagens,video_url,especificacoes\n" +
+  "Camiseta Básica,SKU001,Feminino,40.00,80,5,10,3,1.500,m²,Branno,20,não,79.20,un,100% algodão,https://exemplo.com/img1.jpg,Marca X,https://exemplo.com/img2.jpg|https://exemplo.com/img3.jpg,,Cor:Azul;Tamanho:M\n" +
+  "Calça Jeans,SKU002,Masculino,100.00,70,5,10,4,2.500,m²,Branno,20,não,189.00,un,Slim fit,,,,,,\n";
 
 function downloadTemplate() {
   const blob = new Blob([CSV_TEMPLATE], { type: "text/csv;charset=utf-8;" });
@@ -310,16 +326,24 @@ export function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
+    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
   });
 
   const watchRecorrente = form.watch("recorrente");
+  const custoFormacao = form.watch("custoFornecedor");
+  const margemFormacao = form.watch("margemPercentual") ?? 0;
+  const freteFormacao = form.watch("fretePercentual") ?? 0;
+  const comissaoFormacao = form.watch("comissaoPercentual") ?? 0;
+  const financeiroFormacao = form.watch("custoFinanceiroPercentual") ?? 0;
+  const precoFinalCalculado = custoFormacao == null
+    ? form.watch("precoBase")
+    : custoFormacao * (1 + (margemFormacao + freteFormacao + comissaoFormacao + financeiroFormacao) / 100);
   const especFieldArray = useFieldArray({ control: form.control, name: "especificacoes" });
   const compatVeicularFieldArray = useFieldArray({ control: form.control, name: "compatibilidadeVeicular" });
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
+    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
     setComposicaoItens([]);
     setFormOpen(true);
   }
@@ -332,6 +356,16 @@ export function CatalogoModal({
       categoriaId: p.categoriaId ?? "",
       descontoMaximoPercentual: p.descontoMaximoPercentual != null ? parseFloat(p.descontoMaximoPercentual) : undefined,
       precoBase: parseFloat(p.precoBase),
+      custoFornecedor: (p as any).custoFornecedor != null ? parseFloat((p as any).custoFornecedor) : undefined,
+      margemPercentual: (p as any).margemPercentual != null ? parseFloat((p as any).margemPercentual) : 0,
+      fretePercentual: (p as any).fretePercentual != null ? parseFloat((p as any).fretePercentual) : 0,
+      comissaoPercentual: (p as any).comissaoPercentual != null ? parseFloat((p as any).comissaoPercentual) : 0,
+      custoFinanceiroPercentual: (p as any).custoFinanceiroPercentual != null ? parseFloat((p as any).custoFinanceiroPercentual) : 0,
+      fornecedor: (p as any).fornecedor ?? "",
+      prazoEntregaDias: (p as any).prazoEntregaDias ?? undefined,
+      estoqueQuantidade: (p as any).estoqueQuantidade ?? undefined,
+      rendimentoPorUnidade: (p as any).rendimentoPorUnidade != null ? parseFloat((p as any).rendimentoPorUnidade) : undefined,
+      unidadeRendimento: (p as any).unidadeRendimento ?? "m²",
       unidade: p.unidade,
       descricao: p.descricao ?? "",
       imagemUrl: p.imagemUrl ?? "",
@@ -398,14 +432,20 @@ export function CatalogoModal({
       nome: vals.nome,
       categoriaId: vals.categoriaId,
       descontoMaximoPercentual: vals.descontoMaximoPercentual != null ? vals.descontoMaximoPercentual.toFixed(2) : undefined,
-      precoBase: vals.precoBase.toFixed(2),
+      precoBase: precoFinalCalculado.toFixed(2),
       unidade: vals.unidade,
       descricao: vals.descricao || undefined,
       imagemUrl: vals.imagemUrl || undefined,
       fornecedor: vals.fornecedor || undefined,
       prazoEntregaDias: vals.prazoEntregaDias ?? undefined,
       custoFornecedor: vals.custoFornecedor != null ? vals.custoFornecedor.toFixed(2) : undefined,
+      margemPercentual: vals.margemPercentual.toFixed(2),
+      fretePercentual: vals.fretePercentual.toFixed(2),
+      comissaoPercentual: vals.comissaoPercentual.toFixed(2),
+      custoFinanceiroPercentual: vals.custoFinanceiroPercentual.toFixed(2),
       estoqueQuantidade: vals.estoqueQuantidade ?? undefined,
+      rendimentoPorUnidade: vals.rendimentoPorUnidade != null ? vals.rendimentoPorUnidade.toFixed(3) : null,
+      unidadeRendimento: vals.unidadeRendimento || null,
       ativo: vals.ativo,
       recorrencia: vals.recorrente ? ("mensal" as const) : null,
       prazoContrato: vals.recorrente ? (vals.prazoContrato ?? null) : null,
@@ -468,11 +508,21 @@ export function CatalogoModal({
 
   // Processa o texto CSV (já vindo pronto de um .csv, ou convertido de um .xlsx)
   // e monta o preview. Ponto único, reaproveitado pelos dois formatos.
+  function normalizeImportHeader(value: string) {
+    return value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
   function processCsvText(text: string) {
     setCsvRaw(text);
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
     if (lines.length < 2) { toast({ title: "Arquivo vazio ou sem dados", variant: "destructive" }); return; }
-    const headers = parseCsvLinePreview(lines[0]).map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]/g, "_"));
+    const headers = parseCsvLinePreview(lines[0]).map(normalizeImportHeader);
     const rows: CsvPreviewRow[] = [];
     for (let i = 1; i < Math.min(lines.length, 6); i++) {
       const cols = parseCsvLinePreview(lines[i]);
@@ -484,8 +534,8 @@ export function CatalogoModal({
         nome: get(["nome", "name", "produto"]),
         sku: get(["sku", "codigo", "ref"]),
         categoria: get(["categoria", "category"]),
-        preco_base: get(["preco_base", "precobase", "preco", "price", "valor"]),
-        unidade: get(["unidade", "un", "unit"]) || "un",
+        preco_base: get(["preco_base", "preco_final_r", "preco_final", "precobase", "preco", "price", "valor"]),
+        unidade: get(["unidade", "unidade_vendida", "un", "unit"]) || "un",
         descricao: get(["descricao", "description"]),
         imagem_url: get(["imagem_url", "imagem", "image", "foto"]),
         marca: get(["marca", "brand"]),
@@ -796,10 +846,15 @@ export function CatalogoModal({
                   </FormItem>
                 );
               }} />
-              <FormField control={form.control} name="precoBase" render={({ field }) => (
-                <FormItem><FormLabel>Preço Base (R$)</FormLabel><FormControl>
-                  <Input type="number" step="0.01" min="0" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} />
-                </FormControl><FormMessage /></FormItem>
+              <FormField control={form.control} name="precoBase" render={() => (
+                <FormItem>
+                  <FormLabel>Preço final ao cliente (R$)</FormLabel>
+                  <FormControl>
+                    <Input type="number" step="0.01" min="0" value={Number.isFinite(precoFinalCalculado) ? precoFinalCalculado.toFixed(2) : "0.00"} readOnly className="bg-emerald-50 font-semibold" />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">Calculado automaticamente pela composição de custo abaixo.</p>
+                  <FormMessage />
+                </FormItem>
               )} />
 
               <FormField control={form.control} name="tipoCalculo" render={({ field }) => (
@@ -917,17 +972,66 @@ export function CatalogoModal({
                 </FormControl></FormItem>
               )} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField control={form.control} name="custoFornecedor" render={({ field }) => (
-                <FormItem><FormLabel>Custo (R$)</FormLabel><FormControl>
-                  <Input type="number" step="0.01" min="0" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} />
-                </FormControl></FormItem>
-              )} />
-              <FormField control={form.control} name="estoqueQuantidade" render={({ field }) => (
-                <FormItem><FormLabel>Estoque</FormLabel><FormControl>
-                  <Input type="number" min="0" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value))} />
-                </FormControl></FormItem>
-              )} />
+            <div className="rounded-lg border border-border p-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Formação do preço ao cliente</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Todos os percentuais são adicionados sobre o custo do produto.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={form.control} name="custoFornecedor" render={({ field }) => (
+                  <FormItem><FormLabel>Custo (R$)</FormLabel><FormControl>
+                    <Input type="number" step="0.01" min="0" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} />
+                  </FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={form.control} name="estoqueQuantidade" render={({ field }) => (
+                  <FormItem><FormLabel>Estoque</FormLabel><FormControl>
+                    <Input type="number" min="0" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value))} />
+                  </FormControl></FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ["margemPercentual", "Margem (%)"],
+                  ["fretePercentual", "Frete (%)"],
+                  ["comissaoPercentual", "Comissão (%)"],
+                  ["custoFinanceiroPercentual", "Custo financeiro (%)"],
+                ] as const).map(([name, label]) => (
+                  <FormField key={name} control={form.control} name={name} render={({ field }) => (
+                    <FormItem><FormLabel>{label}</FormLabel><FormControl>
+                      <Input type="number" step="0.01" min="0" {...field} value={field.value ?? 0} onChange={(e) => field.onChange(e.target.value === "" ? 0 : parseFloat(e.target.value))} />
+                    </FormControl><FormMessage /></FormItem>
+                  )} />
+                ))}
+              </div>
+              <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 flex items-center justify-between gap-3">
+                <span className="text-sm text-emerald-800">Preço final ao cliente</span>
+                <strong className="text-lg text-emerald-900">{fmtCurrency(precoFinalCalculado)}</strong>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={form.control} name="rendimentoPorUnidade" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Rendimento por unidade vendida</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.001" min="0" placeholder="Ex: 3,00" {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="unidadeRendimento" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unidade do rendimento</FormLabel>
+                    <Select value={field.value || "m²"} onValueChange={field.onChange}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="m²">m²</SelectItem>
+                        <SelectItem value="m">metro linear</SelectItem>
+                        <SelectItem value="un">unidade</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
             </div>
               <FormField control={form.control} name="descricao" render={({ field }) => (
                 <FormItem><FormLabel>Descrição <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>

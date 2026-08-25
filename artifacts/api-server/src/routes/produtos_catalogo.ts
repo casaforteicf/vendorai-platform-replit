@@ -73,7 +73,40 @@ export function parseCsvLine(line: string): string[] {
 }
 
 export function normalizeCsvHeader(h: string): string {
-  return h.toLowerCase().replace(/[^a-z0-9]/g, "_");
+  return h
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+type PricingFields = {
+  precoBase?: string | number | null;
+  custoFornecedor?: string | number | null;
+  margemPercentual?: string | number | null;
+  fretePercentual?: string | number | null;
+  comissaoPercentual?: string | number | null;
+  custoFinanceiroPercentual?: string | number | null;
+};
+
+function withCalculatedPrice(data: PricingFields): PricingFields {
+  const custo = Number(data.custoFornecedor);
+  if (!Number.isFinite(custo) || custo < 0) return data;
+
+  const percentuais = [
+    data.margemPercentual,
+    data.fretePercentual,
+    data.comissaoPercentual,
+    data.custoFinanceiroPercentual,
+  ].map((value) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  });
+
+  const precoFinal = custo * (1 + percentuais.reduce((total, value) => total + value, 0) / 100);
+  return { ...data, precoBase: precoFinal.toFixed(2) };
 }
 
 router.post("/produtos-catalogo", async (req, res) => {
@@ -104,7 +137,7 @@ router.post("/produtos-catalogo", async (req, res) => {
 
   const [product] = await db
     .insert(produtosCatalogoTable)
-    .values(parsed.data as any)
+    .values(withCalculatedPrice(parsed.data) as any)
     .returning();
   res.status(201).json(product);
 });
@@ -190,7 +223,17 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId, categoriaId: produtosCatalogoTable.categoriaId })
+    .select({
+      id: produtosCatalogoTable.id,
+      tenantId: produtosCatalogoTable.tenantId,
+      categoriaId: produtosCatalogoTable.categoriaId,
+      precoBase: produtosCatalogoTable.precoBase,
+      custoFornecedor: produtosCatalogoTable.custoFornecedor,
+      margemPercentual: produtosCatalogoTable.margemPercentual,
+      fretePercentual: produtosCatalogoTable.fretePercentual,
+      comissaoPercentual: produtosCatalogoTable.comissaoPercentual,
+      custoFinanceiroPercentual: produtosCatalogoTable.custoFinanceiroPercentual,
+    })
     .from(produtosCatalogoTable)
     .where(eq(produtosCatalogoTable.id, String(req.params.id)));
 
@@ -221,7 +264,26 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
 
   const [product] = await db
     .update(produtosCatalogoTable)
-    .set({ ...parsed.data, updatedAt: new Date() } as any)
+    .set({
+      ...withCalculatedPrice({
+        precoBase: parsed.data.precoBase ?? existing.precoBase,
+        custoFornecedor: parsed.data.custoFornecedor ?? existing.custoFornecedor,
+        margemPercentual: parsed.data.margemPercentual ?? existing.margemPercentual,
+        fretePercentual: parsed.data.fretePercentual ?? existing.fretePercentual,
+        comissaoPercentual: parsed.data.comissaoPercentual ?? existing.comissaoPercentual,
+        custoFinanceiroPercentual: parsed.data.custoFinanceiroPercentual ?? existing.custoFinanceiroPercentual,
+      }),
+      ...parsed.data,
+      precoBase: withCalculatedPrice({
+        precoBase: parsed.data.precoBase ?? existing.precoBase,
+        custoFornecedor: parsed.data.custoFornecedor ?? existing.custoFornecedor,
+        margemPercentual: parsed.data.margemPercentual ?? existing.margemPercentual,
+        fretePercentual: parsed.data.fretePercentual ?? existing.fretePercentual,
+        comissaoPercentual: parsed.data.comissaoPercentual ?? existing.comissaoPercentual,
+        custoFinanceiroPercentual: parsed.data.custoFinanceiroPercentual ?? existing.custoFinanceiroPercentual,
+      }).precoBase,
+      updatedAt: new Date(),
+    } as any)
     .where(eq(produtosCatalogoTable.id, existing.id))
     .returning();
 
@@ -392,10 +454,20 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     return -1;
   };
   const iNome      = idx(["nome", "name", "produto", "descricao_produto"]);
-  const iPreco     = idx(["preco_base", "precobase", "preco", "price", "valor"]);
+  const iPreco     = idx(["preco_base", "preco_final_r", "preco_final", "precobase", "preco", "price", "valor"]);
+  const iCusto     = idx(["custo", "custo_r", "custo_fornecedor", "cost"]);
+  const iMargem    = idx(["margem_percentual", "margem", "markup"]);
+  const iFrete     = idx(["frete_percentual", "frete"]);
+  const iComissao  = idx(["comissao_percentual", "comissao"]);
+  const iFinanceiro = idx(["custo_financeiro_percentual", "custo_financeiro", "financeiro"]);
+  const iRendimento = idx(["rendimento_por_unidade", "rendimento_m2", "rendimento"]);
+  const iUnidadeRendimento = idx(["unidade_rendimento", "unidade_do_rendimento"]);
+  const iFornecedor = idx(["fornecedor", "supplier"]);
+  const iPrazoEntrega = idx(["prazo_entrega_dias", "prazo_entrega", "lead_time"]);
+  const iControlaEstoque = idx(["controla_estoque", "estoque_controlado"]);
   const iSku       = idx(["sku", "codigo", "referencia", "ref"]);
   const iCategoria = idx(["categoria", "category", "grupo", "tipo"]);
-  const iUnidade   = idx(["unidade", "un", "unit"]);
+  const iUnidade   = idx(["unidade", "unidade_vendida", "un", "unit"]);
   const iDesc      = idx(["descricao", "description", "obs", "observacao"]);
   const iImagem    = idx(["imagem_url", "imagem", "image", "image_url", "foto", "url_imagem"]);
   const iMarca         = idx(["marca", "brand"]);
@@ -411,8 +483,8 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   const iPrecoPacote      = idx(["preco_pacote", "preco_do_pacote", "valor_pacote"]);
   const iLarguraPecaM     = idx(["largura_peca_m", "largura_peca", "largura_m"]);
 
-  if (iNome < 0 || iPreco < 0 || iCategoria < 0) {
-    res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome', 'categoria' e 'preco_base'. Encontrado: ${headers.join(", ")}` });
+  if (iNome < 0 || (iPreco < 0 && iCusto < 0) || iCategoria < 0) {
+    res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome', 'categoria' e 'custo' ou 'preco_base'. Encontrado: ${headers.join(", ")}` });
     return;
   }
 
@@ -475,8 +547,10 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
 
   function parseDecimalCell(raw: string | undefined): number | null {
     if (!raw?.trim()) return null;
-    const n = parseFloat(raw.trim().replace(",", "."));
-    return isNaN(n) ? null : n;
+    let value = raw.trim().replace(/R\$/gi, "").replace(/\s|%/g, "");
+    if (value.includes(",")) value = value.replace(/\./g, "").replace(",", ".");
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
   }
 
   function parseIntCell(raw: string | undefined): number | null {
@@ -493,13 +567,21 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     const rowNum = i + 1;
     const cols = parseCsvLine(lines[i]);
     const nome = cols[iNome]?.trim() ?? "";
-    const precoRaw = cols[iPreco]?.trim().replace(",", ".") ?? "";
+    const precoRaw = iPreco >= 0 ? (cols[iPreco]?.trim().replace(",", ".") ?? "") : "";
+    const custo = iCusto >= 0 ? parseDecimalCell(cols[iCusto]) : null;
+    const margem = iMargem >= 0 ? (parseDecimalCell(cols[iMargem]) ?? 0) : 0;
+    const frete = iFrete >= 0 ? (parseDecimalCell(cols[iFrete]) ?? 0) : 0;
+    const comissao = iComissao >= 0 ? (parseDecimalCell(cols[iComissao]) ?? 0) : 0;
+    const financeiro = iFinanceiro >= 0 ? (parseDecimalCell(cols[iFinanceiro]) ?? 0) : 0;
 
     if (!nome) { errors.push({ row: rowNum, message: "Nome vazio" }); continue; }
 
-    const preco = parseFloat(precoRaw);
-    if (isNaN(preco) || preco < 0) {
-      errors.push({ row: rowNum, message: `Preço inválido: "${precoRaw}"` }); continue;
+    const precoInformado = parseDecimalCell(precoRaw) ?? Number.NaN;
+    const preco = custo != null
+      ? custo * (1 + (margem + frete + comissao + financeiro) / 100)
+      : precoInformado;
+    if (!Number.isFinite(preco) || preco < 0) {
+      errors.push({ row: rowNum, message: "Informe um custo válido ou um preço base válido" }); continue;
     }
 
     const imagemUrl = iImagem >= 0 ? (cols[iImagem]?.trim() || null) : null;
@@ -531,6 +613,19 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       videoUrl:       iVideo          >= 0 ? (cols[iVideo]?.trim() || null) : null,
       especificacoes: iEspecificacoes >= 0 ? parseEspecificacoesCell(cols[iEspecificacoes]) : null,
       precoBase: preco.toFixed(2),
+      custoFornecedor: custo?.toFixed(2) ?? null,
+      margemPercentual: custo != null ? margem.toFixed(2) : null,
+      fretePercentual: custo != null ? frete.toFixed(2) : null,
+      comissaoPercentual: custo != null ? comissao.toFixed(2) : null,
+      custoFinanceiroPercentual: custo != null ? financeiro.toFixed(2) : null,
+      rendimentoPorUnidade: iRendimento >= 0 ? parseDecimalCell(cols[iRendimento])?.toFixed(3) ?? null : null,
+      unidadeRendimento: iUnidadeRendimento >= 0 ? (cols[iUnidadeRendimento]?.trim() || null) : null,
+      fornecedor: iFornecedor >= 0 ? (cols[iFornecedor]?.trim() || null) : null,
+      prazoEntregaDias: iPrazoEntrega >= 0 ? parseIntCell(cols[iPrazoEntrega]) : null,
+      controlaEstoque: iControlaEstoque >= 0
+        ? ["sim", "true", "1"].includes((cols[iControlaEstoque] ?? "").trim().toLowerCase())
+        : false,
+      estoqueQuantidade: null,
       ativo: true,
       tipoCalculo:      iTipoCalculo      >= 0 ? parseTipoCalculoCell(cols[iTipoCalculo]) : null,
       colecao:          iColecao          >= 0 ? (cols[iColecao]?.trim() || null) : null,

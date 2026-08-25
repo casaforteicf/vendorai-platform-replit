@@ -107,6 +107,11 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
     fornecedor: text("fornecedor"),
   prazoEntregaDias: integer("prazo_entrega_dias"),
   custoFornecedor: numeric("custo_fornecedor", { precision: 12, scale: 2 }),
+  margemPercentual: numeric("margem_percentual", { precision: 7, scale: 2 }),
+  fretePercentual: numeric("frete_percentual", { precision: 7, scale: 2 }),
+  custoFinanceiroPercentual: numeric("custo_financeiro_percentual", { precision: 7, scale: 2 }),
+  rendimentoPorUnidade: numeric("rendimento_por_unidade", { precision: 12, scale: 3 }),
+  unidadeRendimento: text("unidade_rendimento"),
     // Cálculo de orçamento por m² (teto vinílico, revestimento) — Complemento
   // appvendor.ai. tipoCalculo define como o motor de cálculo trata o
   // produto: "area_simples" | "area_com_acabamento_perimetro" |
@@ -144,6 +149,11 @@ const comissaoPercentualSchema = z
   .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid percentage"))
   .nullable();
 
+const rendimentoDecimalSchema = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v))
+  .pipe(z.string().regex(/^\d+(\.\d{1,3})?$/, "Invalid yield"));
+
 const precoDecimalSchema = z
   .union([z.string(), z.number()])
   .transform((v) => String(v))
@@ -159,6 +169,10 @@ export const insertProdutoCatalogoSchema = createInsertSchema(
     precoPracaAi: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
     comissaoPercentual: comissaoPercentualSchema.optional(),
+    margemPercentual: comissaoPercentualSchema.optional(),
+    fretePercentual: comissaoPercentualSchema.optional(),
+    custoFinanceiroPercentual: comissaoPercentualSchema.optional(),
+    rendimentoPorUnidade: rendimentoDecimalSchema.nullable().optional(),
   }
 ).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -172,6 +186,10 @@ export const updateProdutoCatalogoSchema = createSelectSchema(
     precoPracaAi: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
     comissaoPercentual: comissaoPercentualSchema.optional(),
+    margemPercentual: comissaoPercentualSchema.optional(),
+    fretePercentual: comissaoPercentualSchema.optional(),
+    custoFinanceiroPercentual: comissaoPercentualSchema.optional(),
+    rendimentoPorUnidade: rendimentoDecimalSchema.nullable().optional(),
   }
 )
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
