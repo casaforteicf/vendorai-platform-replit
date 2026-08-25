@@ -454,6 +454,11 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   const iFrete     = idx(["frete_percentual", "frete"]);
   const iComissao  = idx(["comissao_percentual", "comissao"]);
   const iFinanceiro = idx(["custo_financeiro_percentual", "custo_financeiro", "financeiro"]);
+  const iRendimento = idx(["rendimento_por_unidade", "rendimento_m2", "rendimento"]);
+  const iUnidadeRendimento = idx(["unidade_rendimento", "unidade_do_rendimento"]);
+  const iFornecedor = idx(["fornecedor", "supplier"]);
+  const iPrazoEntrega = idx(["prazo_entrega_dias", "prazo_entrega", "lead_time"]);
+  const iControlaEstoque = idx(["controla_estoque", "estoque_controlado"]);
   const iSku       = idx(["sku", "codigo", "referencia", "ref"]);
   const iCategoria = idx(["categoria", "category", "grupo", "tipo"]);
   const iUnidade   = idx(["unidade", "un", "unit"]);
@@ -605,6 +610,14 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       fretePercentual: custo != null ? frete.toFixed(2) : null,
       comissaoPercentual: custo != null ? comissao.toFixed(2) : null,
       custoFinanceiroPercentual: custo != null ? financeiro.toFixed(2) : null,
+      rendimentoPorUnidade: iRendimento >= 0 ? parseDecimalCell(cols[iRendimento])?.toFixed(3) ?? null : null,
+      unidadeRendimento: iUnidadeRendimento >= 0 ? (cols[iUnidadeRendimento]?.trim() || null) : null,
+      fornecedor: iFornecedor >= 0 ? (cols[iFornecedor]?.trim() || null) : null,
+      prazoEntregaDias: iPrazoEntrega >= 0 ? parseIntCell(cols[iPrazoEntrega]) : null,
+      controlaEstoque: iControlaEstoque >= 0
+        ? ["sim", "true", "1"].includes((cols[iControlaEstoque] ?? "").trim().toLowerCase())
+        : false,
+      estoqueQuantidade: null,
       ativo: true,
       tipoCalculo:      iTipoCalculo      >= 0 ? parseTipoCalculoCell(cols[iTipoCalculo]) : null,
       colecao:          iColecao          >= 0 ? (cols[iColecao]?.trim() || null) : null,
