@@ -449,6 +449,11 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   };
   const iNome      = idx(["nome", "name", "produto", "descricao_produto"]);
   const iPreco     = idx(["preco_base", "precobase", "preco", "price", "valor"]);
+  const iCusto     = idx(["custo", "custo_fornecedor", "cost"]);
+  const iMargem    = idx(["margem_percentual", "margem", "markup"]);
+  const iFrete     = idx(["frete_percentual", "frete"]);
+  const iComissao  = idx(["comissao_percentual", "comissao"]);
+  const iFinanceiro = idx(["custo_financeiro_percentual", "custo_financeiro", "financeiro"]);
   const iSku       = idx(["sku", "codigo", "referencia", "ref"]);
   const iCategoria = idx(["categoria", "category", "grupo", "tipo"]);
   const iUnidade   = idx(["unidade", "un", "unit"]);
@@ -467,8 +472,8 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   const iPrecoPacote      = idx(["preco_pacote", "preco_do_pacote", "valor_pacote"]);
   const iLarguraPecaM     = idx(["largura_peca_m", "largura_peca", "largura_m"]);
 
-  if (iNome < 0 || iPreco < 0 || iCategoria < 0) {
-    res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome', 'categoria' e 'preco_base'. Encontrado: ${headers.join(", ")}` });
+  if (iNome < 0 || (iPreco < 0 && iCusto < 0) || iCategoria < 0) {
+    res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome', 'categoria' e 'custo' ou 'preco_base'. Encontrado: ${headers.join(", ")}` });
     return;
   }
 
@@ -549,13 +554,21 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     const rowNum = i + 1;
     const cols = parseCsvLine(lines[i]);
     const nome = cols[iNome]?.trim() ?? "";
-    const precoRaw = cols[iPreco]?.trim().replace(",", ".") ?? "";
+    const precoRaw = iPreco >= 0 ? (cols[iPreco]?.trim().replace(",", ".") ?? "") : "";
+    const custo = iCusto >= 0 ? parseDecimalCell(cols[iCusto]) : null;
+    const margem = iMargem >= 0 ? (parseDecimalCell(cols[iMargem]) ?? 0) : 0;
+    const frete = iFrete >= 0 ? (parseDecimalCell(cols[iFrete]) ?? 0) : 0;
+    const comissao = iComissao >= 0 ? (parseDecimalCell(cols[iComissao]) ?? 0) : 0;
+    const financeiro = iFinanceiro >= 0 ? (parseDecimalCell(cols[iFinanceiro]) ?? 0) : 0;
 
     if (!nome) { errors.push({ row: rowNum, message: "Nome vazio" }); continue; }
 
-    const preco = parseFloat(precoRaw);
-    if (isNaN(preco) || preco < 0) {
-      errors.push({ row: rowNum, message: `Preço inválido: "${precoRaw}"` }); continue;
+    const precoInformado = parseFloat(precoRaw);
+    const preco = custo != null
+      ? custo * (1 + (margem + frete + comissao + financeiro) / 100)
+      : precoInformado;
+    if (!Number.isFinite(preco) || preco < 0) {
+      errors.push({ row: rowNum, message: "Informe um custo válido ou um preço base válido" }); continue;
     }
 
     const imagemUrl = iImagem >= 0 ? (cols[iImagem]?.trim() || null) : null;
@@ -587,6 +600,11 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       videoUrl:       iVideo          >= 0 ? (cols[iVideo]?.trim() || null) : null,
       especificacoes: iEspecificacoes >= 0 ? parseEspecificacoesCell(cols[iEspecificacoes]) : null,
       precoBase: preco.toFixed(2),
+      custoFornecedor: custo?.toFixed(2) ?? null,
+      margemPercentual: custo != null ? margem.toFixed(2) : null,
+      fretePercentual: custo != null ? frete.toFixed(2) : null,
+      comissaoPercentual: custo != null ? comissao.toFixed(2) : null,
+      custoFinanceiroPercentual: custo != null ? financeiro.toFixed(2) : null,
       ativo: true,
       tipoCalculo:      iTipoCalculo      >= 0 ? parseTipoCalculoCell(cols[iTipoCalculo]) : null,
       colecao:          iColecao          >= 0 ? (cols[iColecao]?.trim() || null) : null,
