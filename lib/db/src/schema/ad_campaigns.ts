@@ -33,6 +33,11 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
   itemTipo: adItemTipoEnum("item_tipo").notNull(),
   // Nulo quando modo='carrossel' com alvo de categoria inteira
   itemId: text("item_id"),
+  // Nome/rótulo do item no momento da criação (ex: nome da LP, do
+  // produto) — snapshot só pra exibição, evita re-buscar o item toda
+  // vez que a lista de campanhas é exibida. Pode ficar desatualizado se
+  // o item for renomeado depois; isso é aceitável aqui, é só um rótulo.
+  itemLabel: text("item_label"),
   // Só no modo carrossel: categoria/segmento pra puxar itens relacionados
   categoriaFiltro: text("categoria_filtro"),
   modo: adModoEnum("modo").notNull().default("unico"),

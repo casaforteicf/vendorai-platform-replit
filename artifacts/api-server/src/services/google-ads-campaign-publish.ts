@@ -220,6 +220,13 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   if (!budgetResourceName) throw new GoogleAdsPublishError("Google Ads não retornou o orçamento criado.");
 
   // 2) Campanha — sempre PAUSED. Ativar é ação separada e explícita.
+  // Estratégia de lances é OBRIGATÓRIA pro Google Ads aceitar criar a
+  // campanha (achado real: faltava esse campo, causava erro 400
+  // "required field was not present" ao publicar). Maximizar Cliques
+  // (targetSpend) é a opção mais segura pra campanha nova — não exige
+  // rastreamento de conversão configurado, só busca o máximo de
+  // cliques dentro do orçamento. Editável depois no próprio Google Ads
+  // se o lojista quiser trocar pra uma estratégia baseada em conversão.
   const campaignRes = await mutate(customerId, accessToken, "campaigns", [
     {
       create: {
@@ -227,6 +234,7 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
         advertisingChannelType: "SEARCH",
         status: "PAUSED",
         campaignBudget: budgetResourceName,
+        targetSpend: {},
         networkSettings: {
           targetGoogleSearch: true,
           targetSearchNetwork: true,

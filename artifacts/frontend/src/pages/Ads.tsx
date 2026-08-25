@@ -118,6 +118,7 @@ interface AdCampaign {
   vertical: string;
   itemTipo: ItemTipo;
   itemId: string | null;
+  itemLabel: string | null;
   categoriaFiltro: string | null;
   modo: Modo;
   orcamentoDiario: string;
@@ -275,6 +276,7 @@ export default function Ads() {
         vertical: form.vertical || form.itemTipo,
         itemTipo: form.itemTipo,
         itemId: form.modo === "unico" && form.itemTipo !== "livre" ? form.itemId : null,
+        itemLabel: form.modo === "unico" && form.itemTipo !== "livre" ? form.itemLabel : null,
         categoriaFiltro: form.modo === "carrossel" ? form.categoriaFiltro : null,
         modo: form.modo,
         destinoClique: form.destinoClique,
@@ -435,6 +437,7 @@ export default function Ads() {
                         <Badge variant="outline" className="capitalize">{c.tipoAnuncio === "shopping" ? "Shopping" : c.tipoAnuncio === "imagem" ? "Imagem" : "Search/PMax (IA)"}</Badge>
                         <Badge variant="outline" className="capitalize">{c.modo === "unico" ? "Item único" : "Carrossel"}</Badge>
                       </div>
+                      {c.itemLabel && <p className="text-sm font-medium mt-1">Divulgando: {c.itemLabel}</p>}
                       <p className="text-sm text-muted-foreground mt-1">Orçamento diário: R$ {c.orcamentoDiario}</p>
                       {c.utmCode && <p className="text-xs text-muted-foreground">Código de atribuição: <code className="bg-muted px-1 rounded">{c.utmCode}</code></p>}
                       {c.itemTipo === "veiculo" && c.modo === "unico" && <p className="text-xs text-muted-foreground">Reserva automática: {c.pausarAoInteresse ? "pausa o patrocínio" : "não pausa"} · SLA {c.slaNegociacaoHoras}h</p>}
