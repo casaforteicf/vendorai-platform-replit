@@ -33,6 +33,7 @@ import {
   leadBriefingsTable,
   leadOportunidadesPrevistasTable,
   relatosTecnicosTable,
+  tenantAgentConfigsTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
@@ -747,21 +748,42 @@ export async function processAgentInternal(params: {
     // 4b. (currentAgent update deferred to step 4c below, after resolvedAgentName is known)
 
     // 5. Check if that agent is enabled
-    // O agente farmacêutico usa a habilitação operacional de atendimento
-    // enquanto ganha configuração própria na base unificada de agentes.
+    // UNIFICAÇÃO DE 2 SISTEMAS (achado real): existiam duas fontes de
+    // verdade desencontradas pra "esse agente está ativo?" —
+    // config.agents[key].enabled (JSON legado nesta mesma tabela,
+    // editado pela tela Configurações → Agentes) e
+    // tenantAgentConfigsTable.ativo (tabela normalizada mais nova,
+    // editada pela tela "Agentes" dedicada — a que o Marcos usa e vê
+    // "Ativo" em quase tudo, mas que o despacho NUNCA checava pra
+    // decidir se responde). Resultado: ligar "Recepção"/"Closer"/etc
+    // nessa tela não tinha nenhum efeito real — sempre caía no
+    // fallback de SDR, silenciosamente.
+    //
+    // Regra da unificação: se o JSON legado tem uma entrada explícita
+    // pra esse agente, ela continua mandando (nenhum tenant que já
+    // funciona pelo JSON é afetado). Só quando o JSON NÃO tem entrada
+    // nenhuma pra esse agente é que a tabela nova decide — cobre
+    // exatamente o caso do windoor (JSON só tem 'sdr', tabela nova tem
+    // os 9 agentes marcados ativo).
     const agentCfg = agentName === "pharmacy"
       ? config.agents?.service
       : config.agents?.[agentName];
-    if (!agentCfg?.enabled) {
+    const agentEnabled = agentCfg
+      ? !!agentCfg.enabled
+      : await isAgentEnabledInNewerTable(tenantId, agentName);
+    if (!agentEnabled) {
       // Fall back to SDR if the chosen agent is disabled
       const sdrCfg = config.agents?.["sdr"];
-      if (!sdrCfg?.enabled) {
+      const sdrEnabled = sdrCfg
+        ? !!sdrCfg.enabled
+        : await isAgentEnabledInNewerTable(tenantId, "sdr");
+      if (!sdrEnabled) {
         log.warn({ tenantId, leadId, agentName }, "dispatch: chosen agent and SDR both disabled — skipping");
         return { status: "skipped", reason: "agent_disabled" };
       }
     }
 
-    const resolvedAgentName: AgentName = (agentCfg?.enabled ? agentName : "sdr");
+    const resolvedAgentName: AgentName = (agentEnabled ? agentName : "sdr");
 
     // 5b. Check plan module authorization
     const planCheck = await checkAgentPlan(tenantId, resolvedAgentName, log, leadId);
@@ -2242,6 +2264,23 @@ async function extractAndSaveContractFields(
  * Starts agent dispatch as a background task (never blocks the caller).
  * Errors are caught and logged; the Promise is never awaited by the caller.
  */
+// Checa se um agente está ativo na tabela nova (tenant_agent_configs) —
+// usado como fallback só quando o JSON legado (agentConfigsTable.agents)
+// não tem entrada nenhuma pra esse agente. Ver comentário na chamada
+// (passo 5 de processAgentInternal) pro contexto completo da unificação.
+async function isAgentEnabledInNewerTable(tenantId: string, agentName: AgentName): Promise<boolean> {
+  // "pharmacy" usa a mesma chave que o JSON legado usava (config.agents.service)
+  // — preserva o comportamento original em vez de trocar pra 'farmacia'.
+  const key = agentName === "pharmacy" ? "suporte" : AGENT_NAME_TO_KEY[agentName];
+  if (!key) return false;
+  const [row] = await db
+    .select({ ativo: tenantAgentConfigsTable.ativo })
+    .from(tenantAgentConfigsTable)
+    .where(and(eq(tenantAgentConfigsTable.tenantId, tenantId), eq(tenantAgentConfigsTable.agentKey, key)))
+    .limit(1);
+  return !!row?.ativo;
+}
+
 export function dispatchAgentBackground(params: {
   tenantId: string;
   leadId:   string;
