@@ -425,7 +425,6 @@ export async function processAgentInternal(params: {
   scenario?: Record<string, unknown> | null;
 }): Promise<DispatchResult> {
   const { tenantId, leadId, mensagem, log, forcedAgent } = params;
-  console.log("[dispatch-bg] processAgentInternal iniciou", tenantId, leadId);
 
   // ── Per-lead mutex: skip if already processing for this lead ────────────────
   // Prevents duplicate responses when the webhook fires concurrently with a
@@ -454,6 +453,15 @@ export async function processAgentInternal(params: {
     if (!ctx) {
       log.warn({ tenantId, leadId }, "dispatch: lead not found — skipping");
       return { status: "skipped", reason: "lead_not_found" };
+    }
+
+    // 2a. "Nunca ativar agente" — decisão permanente marcada manualmente
+    // (contato pessoal, não é lead de negócio de verdade). Checado ANTES
+    // de qualquer outra coisa — nem escalação, nem auto-quote, nada roda
+    // pra esse lead.
+    if (ctx.lead.agenteDesativado) {
+      log.info({ tenantId, leadId }, "dispatch: agent permanently disabled for this lead — skipping");
+      return { status: "skipped", reason: "agent_disabled_permanently" };
     }
 
     // 2b. Human lock — if lead is locked to a human agent, skip AI dispatch entirely
@@ -2230,17 +2238,7 @@ export function dispatchAgentBackground(params: {
   forcedAgent?: AgentName;
   scenario?: Record<string, unknown> | null;
 }): void {
-  // console.log direto (não passa pelo pino/req.log) — diagnóstico
-  // temporário pra confirmar se a chamada em si dispara, independente
-  // de qualquer problema no logger vinculado à requisição HTTP que já
-  // terminou quando esse código roda (fire-and-forget).
-  console.log("[dispatch-bg] chamada disparada", params.tenantId, params.leadId);
-  processAgentInternal(params)
-    .then((result) => {
-      console.log("[dispatch-bg] concluído", params.tenantId, params.leadId, JSON.stringify(result));
-    })
-    .catch((err) => {
-      console.error("[dispatch-bg] ERRO não tratado", params.tenantId, params.leadId, err);
-      params.log.error({ err, ...params }, "dispatch: unhandled error in background task");
-    });
+  processAgentInternal(params).catch((err) => {
+    params.log.error({ err, ...params }, "dispatch: unhandled error in background task");
+  });
 }

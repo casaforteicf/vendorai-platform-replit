@@ -26,6 +26,8 @@ export interface Lead {
   proximaAcao?: string | null;
   status: string;
   activeAgentLock?: string | null;
+  /** Nunca ativar agente -- decisao permanente, diferente do lock temporario. */
+  agenteDesativado?: boolean;
   /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
   instagramScopedId?: string | null;
   /** Data de nascimento do lead (YYYY-MM-DD). */

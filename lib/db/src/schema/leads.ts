@@ -25,6 +25,11 @@ export const leadsTable = pgTable("leads", {
   proximaAcao: text("proxima_acao"),
   status: text("status").notNull().default("novo"),
   activeAgentLock: text("active_agent_lock"),
+  // "Nunca ativar agente" — decisão permanente por lead, diferente do
+  // lock temporário acima. Marcada manualmente pra contatos pessoais
+  // (não são leads de negócio de verdade) que entraram no WhatsApp do
+  // tenant — o agente nunca despacha pra esse lead, nem uma vez.
+  agenteDesativado: boolean("agente_desativado").notNull().default(false),
   // Pós-venda: quando setado, a próxima mensagem recebida do lead é tratada
   // como resposta à pesquisa de satisfação da entrega (não passa pelo roteamento
   // normal de agentes). Sem FK para evitar import circular com entregas.ts.

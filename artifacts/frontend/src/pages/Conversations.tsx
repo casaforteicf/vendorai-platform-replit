@@ -8,6 +8,7 @@ import {
   getListConversationMessagesQueryKey,
   useMarkConversationRead,
   useCreateMessage,
+  useUpdateLead,
   useListTenantLeads,
   getListTenantLeadsQueryKey,
   useRequestUploadUrl,
@@ -43,6 +44,7 @@ import {
   FileText,
   Loader2,
   X,
+  UserX,
 } from "lucide-react";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -320,6 +322,29 @@ function ChatPanel({
   const requestUploadUrl = useRequestUploadUrl();
 
   const isHumanLocked = lead?.activeAgentLock === "human";
+  const isAgentDisabled = !!lead?.agenteDesativado;
+  const updateLead = useUpdateLead();
+  const [togglingAgentDisabled, setTogglingAgentDisabled] = useState(false);
+
+  function handleToggleAgentDisabled() {
+    if (!lead?.id) return;
+    setTogglingAgentDisabled(true);
+    updateLead.mutate(
+      { id: lead.id, data: { agenteDesativado: !isAgentDisabled } },
+      {
+        onSuccess: () => {
+          toast({
+            title: isAgentDisabled ? "Agente reativado pra esse contato" : "Agente nunca vai interagir com esse contato",
+            description: isAgentDisabled ? undefined : "Marcado como não-lead (contato pessoal) — nenhuma mensagem futura será respondida automaticamente.",
+          });
+          queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+          queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(tenantId) });
+        },
+        onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+        onSettled: () => setTogglingAgentDisabled(false),
+      },
+    );
+  }
 
   const { data: messages = [], isLoading } = useListConversationMessages(
     tenantId,
@@ -565,6 +590,19 @@ function ChatPanel({
             >
               <Bot className="h-3.5 w-3.5" />
               {releasingLock ? "Liberando..." : "Devolver para IA"}
+            </Button>
+          )}
+          {lead?.id && (
+            <Button
+              variant="outline"
+              size="sm"
+              className={`h-8 text-xs gap-1.5 ${isAgentDisabled ? "border-red-300 text-red-700 hover:bg-red-50" : "text-muted-foreground"}`}
+              onClick={handleToggleAgentDisabled}
+              disabled={togglingAgentDisabled}
+              title={isAgentDisabled ? "Clique pra deixar o agente responder de novo" : "Marca como não-lead — agente nunca interage com esse contato"}
+            >
+              <UserX className="h-3.5 w-3.5" />
+              {togglingAgentDisabled ? "..." : isAgentDisabled ? "Não é lead" : "Marcar como não-lead"}
             </Button>
           )}
           <div className="flex items-center gap-1.5">

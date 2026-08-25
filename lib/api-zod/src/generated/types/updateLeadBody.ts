@@ -26,6 +26,8 @@ export interface UpdateLeadBody {
   assignedTo?: string | null;
   status?: string;
   activeAgentLock?: string | null;
+  /** Nunca ativar agente -- decisao permanente, diferente do lock temporario. */
+  agenteDesativado?: boolean;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;
