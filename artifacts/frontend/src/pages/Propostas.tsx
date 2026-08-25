@@ -508,11 +508,21 @@ export function CatalogoModal({
 
   // Processa o texto CSV (já vindo pronto de um .csv, ou convertido de um .xlsx)
   // e monta o preview. Ponto único, reaproveitado pelos dois formatos.
+  function normalizeImportHeader(value: string) {
+    return value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
   function processCsvText(text: string) {
     setCsvRaw(text);
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
     if (lines.length < 2) { toast({ title: "Arquivo vazio ou sem dados", variant: "destructive" }); return; }
-    const headers = parseCsvLinePreview(lines[0]).map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]/g, "_"));
+    const headers = parseCsvLinePreview(lines[0]).map(normalizeImportHeader);
     const rows: CsvPreviewRow[] = [];
     for (let i = 1; i < Math.min(lines.length, 6); i++) {
       const cols = parseCsvLinePreview(lines[i]);
@@ -524,8 +534,8 @@ export function CatalogoModal({
         nome: get(["nome", "name", "produto"]),
         sku: get(["sku", "codigo", "ref"]),
         categoria: get(["categoria", "category"]),
-        preco_base: get(["preco_base", "precobase", "preco", "price", "valor"]),
-        unidade: get(["unidade", "un", "unit"]) || "un",
+        preco_base: get(["preco_base", "preco_final_r", "preco_final", "precobase", "preco", "price", "valor"]),
+        unidade: get(["unidade", "unidade_vendida", "un", "unit"]) || "un",
         descricao: get(["descricao", "description"]),
         imagem_url: get(["imagem_url", "imagem", "image", "foto"]),
         marca: get(["marca", "brand"]),
