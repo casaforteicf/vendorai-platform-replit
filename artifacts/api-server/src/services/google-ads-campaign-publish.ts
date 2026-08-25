@@ -45,6 +45,39 @@ const LANGUAGE_PORTUGUES = "languageConstants/1014";
 
 class GoogleAdsPublishError extends Error {}
 
+// Traduz os erros mais comuns da API do Google Ads pra uma frase clara
+// em português — o padrão até aqui era jogar o JSON cru na tela
+// (confuso mesmo pra quem entende de API, pior ainda pro lojista). Cai
+// no texto original truncado só quando não reconhece o código —
+// prefere mostrar algo real (mesmo que feio) a inventar uma explicação
+// pra um erro que não foi checado de verdade.
+function traduzirErroGoogleAds(status: number, rawBody: string): string {
+  let codigos: string[] = [];
+  try {
+    const parsed = JSON.parse(rawBody) as { error?: { details?: Array<{ errors?: Array<{ errorCode?: Record<string, string> }> }> } };
+    codigos = (parsed.error?.details ?? [])
+      .flatMap((d) => d.errors ?? [])
+      .flatMap((e) => Object.values(e.errorCode ?? {}));
+  } catch {
+    // corpo não é JSON válido — segue pro fallback abaixo
+  }
+
+  if (codigos.includes("OPERATION_NOT_PERMITTED_FOR_CONTEXT") || codigos.includes("DEVELOPER_TOKEN_NOT_APPROVED")) {
+    return "O token de desenvolvedor do Google Ads ainda está em nível de teste — só funciona com contas de teste, não com sua conta real. Peça o upgrade pra \"Basic access\" na Central de API (dentro da conta MCC no Google Ads) antes de publicar campanhas de verdade.";
+  }
+  if (codigos.includes("CUSTOMER_NOT_ENABLED")) {
+    return "Sua conta do Google Ads ainda não está totalmente habilitada (pode faltar forma de pagamento ou aprovação do Google). Confira em ads.google.com.";
+  }
+  if (codigos.includes("MISSING_TOS")) {
+    return "Falta aceitar os Termos de Serviço da API do Google Ads — acesse ads.google.com/aw/apicenter e aceite antes de publicar.";
+  }
+  if (codigos.some((c) => c === "REQUIRED")) {
+    return "O Google Ads recusou a campanha por faltar um campo obrigatório na requisição — isso é um bug no VendorAI, não algo que você precisa corrigir. Reportado automaticamente.";
+  }
+
+  return `Google Ads recusou a publicação (código ${status}). Detalhe técnico: ${rawBody.slice(0, 300)}`;
+}
+
 async function mutate(
   customerId: string,
   accessToken: string,
@@ -66,7 +99,7 @@ async function mutate(
   if (!res.ok) {
     const text = await res.text();
     logger.error({ status: res.status, body: text, resource, customerId }, "Falha na mutate da API do Google Ads");
-    throw new GoogleAdsPublishError(`Google Ads API (${resource}) respondeu ${res.status}: ${text.slice(0, 500)}`);
+    throw new GoogleAdsPublishError(traduzirErroGoogleAds(res.status, text));
   }
   return res.json() as Promise<{ results: Array<{ resourceName: string }> }>;
 }
