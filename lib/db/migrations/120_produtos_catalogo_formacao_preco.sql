@@ -1,8 +1,10 @@
--- Formação auditável do preço de venda dos produtos
+-- Formação auditável do preço de venda e rendimento técnico dos produtos
 ALTER TABLE produtos_catalogo
   ADD COLUMN IF NOT EXISTS margem_percentual numeric(7, 2),
   ADD COLUMN IF NOT EXISTS frete_percentual numeric(7, 2),
-  ADD COLUMN IF NOT EXISTS custo_financeiro_percentual numeric(7, 2);
+  ADD COLUMN IF NOT EXISTS custo_financeiro_percentual numeric(7, 2),
+  ADD COLUMN IF NOT EXISTS rendimento_por_unidade numeric(12, 3),
+  ADD COLUMN IF NOT EXISTS unidade_rendimento text;
 
 COMMENT ON COLUMN produtos_catalogo.custo_fornecedor IS 'Custo de aquisição do produto em reais';
 COMMENT ON COLUMN produtos_catalogo.margem_percentual IS 'Margem adicionada sobre o custo, em percentual';
@@ -10,20 +12,43 @@ COMMENT ON COLUMN produtos_catalogo.frete_percentual IS 'Frete adicionado sobre 
 COMMENT ON COLUMN produtos_catalogo.comissao_percentual IS 'Comissão adicionada sobre o custo, em percentual';
 COMMENT ON COLUMN produtos_catalogo.custo_financeiro_percentual IS 'Custo financeiro adicionado sobre o custo, em percentual';
 COMMENT ON COLUMN produtos_catalogo.preco_base IS 'Preço final calculado para o cliente';
+COMMENT ON COLUMN produtos_catalogo.rendimento_por_unidade IS 'Rendimento técnico de uma unidade comercial vendida';
+COMMENT ON COLUMN produtos_catalogo.unidade_rendimento IS 'Unidade de medida do rendimento, por exemplo m²';
 
--- Migração segura dos produtos que já foram importados com margem de 120%.
--- Só deriva o custo quando a própria descrição confirma essa regra.
+-- Recupera o custo apenas dos registros cuja descrição confirma margem de 120%.
 UPDATE produtos_catalogo
 SET
   custo_fornecedor = round(preco_base / 2.20, 2),
-  margem_percentual = 120.00,
-  frete_percentual = 0.00,
-  comissao_percentual = COALESCE(comissao_percentual, 0.00),
-  custo_financeiro_percentual = 0.00
+  margem_percentual = 120.00
 WHERE custo_fornecedor IS NULL
   AND descricao ILIKE '%margem de 120% aplicada sobre o custo-base%';
 
--- Remove texto comercial indevido da descrição técnica sem alterar o restante.
+-- Parâmetros comerciais confirmados para o catálogo Branno.
+UPDATE produtos_catalogo
+SET
+  fornecedor = 'Branno',
+  prazo_entrega_dias = 20,
+  frete_percentual = 10.00,
+  comissao_percentual = 5.00,
+  custo_financeiro_percentual = 10.00,
+  controla_estoque = false,
+  estoque_quantidade = NULL
+WHERE lower(COALESCE(marca, '')) = 'branno'
+   OR descricao ILIKE '%Branno%';
+
+-- Extrai o rendimento verdadeiro já registrado na descrição de cada embalagem.
+UPDATE produtos_catalogo
+SET
+  rendimento_por_unidade = replace(
+    (regexp_match(descricao, 'rendimento aproximado de ([0-9]+,[0-9]+) m²', 'i'))[1],
+    ',',
+    '.'
+  )::numeric,
+  unidade_rendimento = 'm²'
+WHERE rendimento_por_unidade IS NULL
+  AND descricao ~* 'rendimento aproximado de [0-9]+,[0-9]+ m²';
+
+-- Remove a regra comercial da descrição, preservando a informação técnica.
 UPDATE produtos_catalogo
 SET descricao = trim(regexp_replace(
   descricao,
