@@ -808,6 +808,8 @@ router.get("/dashboard", authenticate, async (req, res) => {
     db.select({
       agents:            agentConfigsTable.agents,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      evolutionConnected: agentConfigsTable.evolutionConnected,
+      zapiInstanceId:    agentConfigsTable.zapiInstanceId,
     }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
 
     // conexão WhatsApp ativa
@@ -1041,9 +1043,15 @@ router.get("/dashboard", authenticate, async (req, res) => {
     });
   }
 
+  // Achado real reportado pelo Marcos: o painel mostrava 'WhatsApp não
+  // conectado' mesmo com a Evolution API (QR Code) funcionando de
+  // verdade -- essa checagem só olhava pra Meta e pra uma tabela OAuth
+  // separada, nunca pro campo evolutionConnected nem pra Z-API.
   const hasMeta   = !!(agentConfig?.metaPhoneNumberId);
+  const hasEvolution = !!(agentConfig?.evolutionConnected);
+  const hasZapi   = !!(agentConfig?.zapiInstanceId);
   const hasWaConn = whatsappConnRaw.length > 0 && whatsappConnRaw[0]?.status === "active";
-  if (!hasMeta && !hasWaConn) {
+  if (!hasMeta && !hasEvolution && !hasZapi && !hasWaConn) {
     alertas.push({
       tipo: "whatsapp_desconectado",
       mensagem: "WhatsApp não está conectado. Configure na seção de agentes.",
