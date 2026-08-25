@@ -76,6 +76,33 @@ export function normalizeCsvHeader(h: string): string {
   return h.toLowerCase().replace(/[^a-z0-9]/g, "_");
 }
 
+type PricingFields = {
+  precoBase?: string | number | null;
+  custoFornecedor?: string | number | null;
+  margemPercentual?: string | number | null;
+  fretePercentual?: string | number | null;
+  comissaoPercentual?: string | number | null;
+  custoFinanceiroPercentual?: string | number | null;
+};
+
+function withCalculatedPrice(data: PricingFields): PricingFields {
+  const custo = Number(data.custoFornecedor);
+  if (!Number.isFinite(custo) || custo < 0) return data;
+
+  const percentuais = [
+    data.margemPercentual,
+    data.fretePercentual,
+    data.comissaoPercentual,
+    data.custoFinanceiroPercentual,
+  ].map((value) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  });
+
+  const precoFinal = custo * (1 + percentuais.reduce((total, value) => total + value, 0) / 100);
+  return { ...data, precoBase: precoFinal.toFixed(2) };
+}
+
 router.post("/produtos-catalogo", async (req, res) => {
   const parsed = insertProdutoCatalogoSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -104,7 +131,7 @@ router.post("/produtos-catalogo", async (req, res) => {
 
   const [product] = await db
     .insert(produtosCatalogoTable)
-    .values(parsed.data as any)
+    .values(withCalculatedPrice(parsed.data) as any)
     .returning();
   res.status(201).json(product);
 });
@@ -190,7 +217,17 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId, categoriaId: produtosCatalogoTable.categoriaId })
+    .select({
+      id: produtosCatalogoTable.id,
+      tenantId: produtosCatalogoTable.tenantId,
+      categoriaId: produtosCatalogoTable.categoriaId,
+      precoBase: produtosCatalogoTable.precoBase,
+      custoFornecedor: produtosCatalogoTable.custoFornecedor,
+      margemPercentual: produtosCatalogoTable.margemPercentual,
+      fretePercentual: produtosCatalogoTable.fretePercentual,
+      comissaoPercentual: produtosCatalogoTable.comissaoPercentual,
+      custoFinanceiroPercentual: produtosCatalogoTable.custoFinanceiroPercentual,
+    })
     .from(produtosCatalogoTable)
     .where(eq(produtosCatalogoTable.id, String(req.params.id)));
 
@@ -221,7 +258,26 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
 
   const [product] = await db
     .update(produtosCatalogoTable)
-    .set({ ...parsed.data, updatedAt: new Date() } as any)
+    .set({
+      ...withCalculatedPrice({
+        precoBase: parsed.data.precoBase ?? existing.precoBase,
+        custoFornecedor: parsed.data.custoFornecedor ?? existing.custoFornecedor,
+        margemPercentual: parsed.data.margemPercentual ?? existing.margemPercentual,
+        fretePercentual: parsed.data.fretePercentual ?? existing.fretePercentual,
+        comissaoPercentual: parsed.data.comissaoPercentual ?? existing.comissaoPercentual,
+        custoFinanceiroPercentual: parsed.data.custoFinanceiroPercentual ?? existing.custoFinanceiroPercentual,
+      }),
+      ...parsed.data,
+      precoBase: withCalculatedPrice({
+        precoBase: parsed.data.precoBase ?? existing.precoBase,
+        custoFornecedor: parsed.data.custoFornecedor ?? existing.custoFornecedor,
+        margemPercentual: parsed.data.margemPercentual ?? existing.margemPercentual,
+        fretePercentual: parsed.data.fretePercentual ?? existing.fretePercentual,
+        comissaoPercentual: parsed.data.comissaoPercentual ?? existing.comissaoPercentual,
+        custoFinanceiroPercentual: parsed.data.custoFinanceiroPercentual ?? existing.custoFinanceiroPercentual,
+      }).precoBase,
+      updatedAt: new Date(),
+    } as any)
     .where(eq(produtosCatalogoTable.id, existing.id))
     .returning();
 
