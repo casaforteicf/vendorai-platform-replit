@@ -11,11 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-type Stop={id:string;pedidoId?:string;tipo:"coleta"|"entrega";sequencia:number;status:string;endereco:Record<string,unknown>;contato:Record<string,unknown>;latitude:number;longitude:number;motivoFalhaDescricao?:string};
-type Route={id:string;numero:number;status:string;data_servico:string;paradas:Stop[]};
+type Stop={id:string;pedidoId?:string;tipo:"coleta"|"entrega"|"redespacho_saida"|"redespacho_recebimento";sequencia:number;status:string;endereco:Record<string,unknown>;contato:Record<string,unknown>;latitude:number;longitude:number;motivoFalhaDescricao?:string};
+type Route={id:string;numero:number;status:string;modalidade?:"direta"|"coleta_redespacho"|"ultima_milha";data_servico:string;paradas:Stop[]};
 type RoutesResponse={routes:Route[]};
-type Action="coletado"|"em_rota"|"entregue"|"falha_entrega";
-const actionInfo:Record<Action,{label:string;icon:any}>={coletado:{label:"Confirmar coleta",icon:PackageCheck},em_rota:{label:"Saiu para entrega",icon:Truck},entregue:{label:"Confirmar entrega",icon:CheckCircle2},falha_entrega:{label:"Registrar falha",icon:TriangleAlert}};
+type Action="coletado"|"em_rota"|"transferir_saida"|"receber_redespacho"|"entregue"|"falha_entrega";
+const actionInfo:Record<Action,{label:string;icon:any}>={coletado:{label:"Confirmar coleta",icon:PackageCheck},em_rota:{label:"Em deslocamento",icon:Truck},transferir_saida:{label:"Entregar no redespacho",icon:RefreshCw},receber_redespacho:{label:"Receber custódia",icon:RefreshCw},entregue:{label:"Confirmar entrega",icon:CheckCircle2},falha_entrega:{label:"Registrar falha",icon:TriangleAlert}};
+const stopLabels:Record<Stop["tipo"],string>={coleta:"Coleta no vendedor",redespacho_saida:"Entrega no redespacho",redespacho_recebimento:"Recebimento no redespacho",entrega:"Entrega ao cliente"};
 
 function address(a:Record<string,unknown>={}){return [a.logradouro??a.rua??a.endereco,a.numero,a.bairro,a.cidade,a.uf].filter(Boolean).join(", ");}
 function geolocation():Promise<{latitude:number;longitude:number}>{return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(p=>resolve({latitude:p.coords.latitude,longitude:p.coords.longitude}),()=>reject(new Error("Ative a localização para registrar a movimentação.")),{enableHighAccuracy:true,timeout:15000,maximumAge:0}));}
@@ -28,7 +29,6 @@ export default function AppEntregadorPraca(){
  const [reasonCode,setReasonCode]=useState(""),[reason,setReason]=useState(""),[messageStop,setMessageStop]=useState<Stop|null>(null),[message,setMessage]=useState("");
  const videoRef=useRef<HTMLVideoElement>(null),streamRef=useRef<MediaStream|null>(null);
  const routes=useQuery<RoutesResponse>({queryKey:["courier-routes",tenantId],enabled:!!tenantId,refetchInterval:20000,queryFn:async()=>{const r=await fetch(`/api/tenants/${tenantId}/praca-courier/routes/current`,{headers});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;}});
- const route=routes.data?.routes[0];
 
  useEffect(()=>{if(!camera)return;let cancelled=false,timer:number|undefined;
   (async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});streamRef.current=stream;if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play();}
@@ -39,7 +39,7 @@ export default function AppEntregadorPraca(){
   return()=>{cancelled=true;if(timer)clearTimeout(timer);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;};
  },[camera,toast]);
 
- const accept=useMutation({mutationFn:async()=>{const r=await fetch(`/api/tenants/${tenantId}/praca-courier/routes/${route?.id}/accept`,{method:"POST",headers});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;},onSuccess:()=>{toast({title:"Rota aceita"});qc.invalidateQueries({queryKey:["courier-routes",tenantId]});},onError:(e:Error)=>toast({title:e.message,variant:"destructive"})});
+ const accept=useMutation({mutationFn:async(routeId:string)=>{const r=await fetch(`/api/tenants/${tenantId}/praca-courier/routes/${routeId}/accept`,{method:"POST",headers});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;},onSuccess:()=>{toast({title:"Rota aceita"});qc.invalidateQueries({queryKey:["courier-routes",tenantId]});},onError:(e:Error)=>toast({title:e.message,variant:"destructive"})});
 
  async function uploadEvidence(photo:File,volumeId:string){
   const request=await fetch(`/api/tenants/${tenantId}/praca-delivery/evidence-uploads`,{method:"POST",headers,body:JSON.stringify({volumeId,contentType:photo.type,size:photo.size})});
@@ -47,7 +47,11 @@ export default function AppEntregadorPraca(){
   const uploaded=await fetch(auth.uploadUrl,{method:"PUT",headers:{"Content-Type":photo.type,"x-upsert":"false"},body:photo});
   if(!uploaded.ok)throw new Error("Não foi possível enviar a foto privada.");return auth.objectPath as string;
  }
- const scan=useMutation({mutationFn:async()=>{if(!code.trim())throw new Error("Leia ou digite o QR Code.");const location=await geolocation();const normalized=code.trim().replace(/^APPVENDOR:V1:/,"");let photoPath:string|undefined;
+ const scan=useMutation({mutationFn:async()=>{if(!code.trim())throw new Error("Leia ou digite o QR Code.");const location=await geolocation();const normalized=code.trim().replace(/^APPVENDOR:V1:/,"");
+   if(action==="transferir_saida"||action==="receber_redespacho"){
+    const r=await fetch(`/api/tenants/${tenantId}/praca-relay/scan`,{method:"POST",headers,body:JSON.stringify({qrCode:code.trim(),acao:action,...location})});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;
+   }
+   let photoPath:string|undefined;
    const lookup=await fetch(`/api/tenants/${tenantId}/praca-courier/resolve-volume?qrCode=${encodeURIComponent(normalized)}`,{headers});const resolved=await lookup.json();if(!lookup.ok)throw new Error(resolved.error);
    if(action==="entregue"){if(!file)throw new Error("Fotografe a pessoa ou o documento.");photoPath=await uploadEvidence(file,resolved.volumeId);}
    if(action==="falha_entrega"&&file)photoPath=await uploadEvidence(file,resolved.volumeId);
@@ -60,10 +64,10 @@ export default function AppEntregadorPraca(){
 
  return <div className="min-h-[100dvh] bg-slate-50 pb-24"><div className="max-w-3xl mx-auto p-4 space-y-4">
   <header className="flex items-start justify-between gap-3"><div><h1 className="text-xl font-bold flex gap-2 items-center"><Truck className="text-primary"/>Minha rota Praça.ai</h1><p className="text-sm text-muted-foreground">Coleta, navegação e entrega rastreadas.</p></div><Button size="icon" variant="outline" onClick={()=>routes.refetch()}><RefreshCw className={routes.isFetching?"animate-spin":""}/></Button></header>
-  {routes.isLoading?<Loader2 className="animate-spin mx-auto mt-16"/>:!route?<Card><CardContent className="text-center p-10"><PackageCheck className="mx-auto text-muted-foreground"/><p className="mt-3 font-medium">Nenhuma rota atribuída.</p><p className="text-sm text-muted-foreground">Novas coletas aparecerão aqui automaticamente.</p></CardContent></Card>:<>
-   <Card><CardContent className="p-4 flex justify-between items-center gap-3"><div><p className="text-xs text-muted-foreground">ROTA</p><p className="text-3xl font-black">#{route.numero}</p><p className="text-sm">{new Date(route.data_servico+"T12:00:00").toLocaleDateString("pt-BR")} · {route.paradas.length} paradas</p></div><div className="text-right"><Badge>{route.status}</Badge>{route.status==="planejada"&&<Button className="mt-3 block" onClick={()=>accept.mutate()} disabled={accept.isPending}><Play className="h-4 w-4 mr-2"/>Aceitar rota</Button>}</div></CardContent></Card>
-   <div className="space-y-3">{route.paradas.map(stop=><Card key={stop.id} className={stop.status==="falhou"?"border-red-300":stop.status==="concluida"?"opacity-60":""}><CardHeader className="pb-2"><div className="flex justify-between gap-3"><CardTitle className="text-base">{stop.sequencia}. {stop.tipo==="coleta"?"Coleta":"Entrega "+Math.max(1,stop.sequencia-1)}</CardTitle><Badge variant="outline">{stop.status}</Badge></div></CardHeader><CardContent className="space-y-3"><p className="text-sm flex gap-2"><MapPin className="h-4 w-4 shrink-0 text-primary"/>{address(stop.endereco)||"Endereço não informado"}</p>{stop.motivoFalhaDescricao&&<p className="text-sm text-red-700 bg-red-50 p-2 rounded">{stop.motivoFalhaDescricao}</p>}<div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={()=>window.open(`https://www.google.com/maps/dir/?api=1&destination=${stop.latitude},${stop.longitude}`,"_blank")}><Navigation className="h-4 w-4 mr-2"/>Navegar</Button>{stop.tipo==="entrega"?<Button variant="outline" onClick={()=>setMessageStop(stop)}><MessageCircle className="h-4 w-4 mr-2"/>Mensagem</Button>:<Button variant="outline" onClick={()=>{setAction("coletado");setScanOpen(true);}}><ScanLine className="h-4 w-4 mr-2"/>Escanear</Button>}</div></CardContent></Card>)}</div>
-  </>}
+  {routes.isLoading?<Loader2 className="animate-spin mx-auto mt-16"/>:!routes.data?.routes.length?<Card><CardContent className="text-center p-10"><PackageCheck className="mx-auto text-muted-foreground"/><p className="mt-3 font-medium">Nenhuma rota atribuída.</p><p className="text-sm text-muted-foreground">Novas coletas aparecerão aqui automaticamente.</p></CardContent></Card>:routes.data.routes.map(route=><section key={route.id} className="space-y-3">
+   <Card><CardContent className="p-4 flex justify-between items-center gap-3"><div><p className="text-xs text-muted-foreground">{route.modalidade==="coleta_redespacho"?"COLETA → REDESPACHO":route.modalidade==="ultima_milha"?"REDESPACHO → CLIENTE":"ROTA DIRETA"}</p><p className="text-3xl font-black">#${route.numero}</p><p className="text-sm">{new Date(route.data_servico+"T12:00:00").toLocaleDateString("pt-BR")} · {route.paradas.length} paradas</p></div><div className="text-right"><Badge>{route.status}</Badge>{route.status==="planejada"&&<Button className="mt-3 block" onClick={()=>accept.mutate(route.id)} disabled={accept.isPending}><Play className="h-4 w-4 mr-2"/>Aceitar trecho</Button>}{route.status==="aguardando_transferencia"&&<p className="text-xs text-amber-700 mt-2 max-w-32">Aguardando chegada e leitura do volume no redespacho.</p>}</div></CardContent></Card>
+   <div className="space-y-3">{route.paradas.map(stop=><Card key={stop.id} className={stop.status==="falhou"?"border-red-300":stop.status==="concluida"?"opacity-60":""}><CardHeader className="pb-2"><div className="flex justify-between gap-3"><CardTitle className="text-base">{stop.sequencia}. {stopLabels[stop.tipo]}</CardTitle><Badge variant="outline">{stop.status}</Badge></div></CardHeader><CardContent className="space-y-3"><p className="text-sm flex gap-2"><MapPin className="h-4 w-4 shrink-0 text-primary"/>{address(stop.endereco)||"Endereço não informado"}</p>{stop.motivoFalhaDescricao&&<p className="text-sm text-red-700 bg-red-50 p-2 rounded">{stop.motivoFalhaDescricao}</p>}<div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={()=>window.open(`https://www.google.com/maps/dir/?api=1&destination=${stop.latitude},${stop.longitude}`,"_blank")}><Navigation className="h-4 w-4 mr-2"/>Navegar</Button>{stop.tipo==="entrega"?<Button variant="outline" onClick={()=>setMessageStop(stop)}><MessageCircle className="h-4 w-4 mr-2"/>Mensagem</Button>:<Button variant="outline" disabled={route.status==="aguardando_transferencia"} onClick={()=>{setAction(stop.tipo==="coleta"?"coletado":stop.tipo==="redespacho_saida"?"transferir_saida":"receber_redespacho");setScanOpen(true);}}><ScanLine className="h-4 w-4 mr-2"/>Escanear</Button>}</div></CardContent></Card>)}</div>
+  </section>)}
  </div>
  <Button className="fixed bottom-5 left-1/2 -translate-x-1/2 h-14 px-8 rounded-full shadow-xl" onClick={()=>setScanOpen(true)}><ScanLine className="mr-2"/>Ler movimentação</Button>
  <Dialog open={scanOpen} onOpenChange={v=>{setScanOpen(v);if(!v)setCamera(false);}}><DialogContent className="max-w-md max-h-[92dvh] overflow-y-auto"><DialogHeader><DialogTitle>Ler volume</DialogTitle></DialogHeader><div className="space-y-4">
