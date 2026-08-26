@@ -87,6 +87,10 @@ router.post("/tenants/:tenantId/praca-courier/routes/:routeId/accept", async (re
   if (!result.rowCount) {
     return res.status(409).json({ error: "Rota não encontrada, já aceita ou indisponível." });
   }
+  await vendorPool.query(
+    "UPDATE praca_trechos_logisticos SET status='aceito',updated_at=now() WHERE rota_id=$1 AND status='planejado'",
+    [result.rows[0].id],
+  );
   res.json({ route: result.rows[0] });
 });
 
