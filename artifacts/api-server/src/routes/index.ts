@@ -91,6 +91,7 @@ import pracaOrdersRouter from "./praca_orders";
 import pracaPaymentsRouter, { pracaPaymentsPublicRouter } from "./praca_payments";
 import pracaLogisticsRouter from "./praca_logistics";
 import pracaCourierRouter from "./praca_courier";
+import pracaDeliveryOpsRouter, { pracaDeliveryPublicRouter } from "./praca_delivery_ops";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
@@ -167,6 +168,7 @@ router.use(internalScoutSignalRouter);
 router.use(pracaPerguntasPublicRouter);
 router.use(pracaAvaliacoesPublicRouter);
 router.use(pracaPaymentsPublicRouter);
+router.use(pracaDeliveryPublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
@@ -421,6 +423,7 @@ router.use(pracaOrdersRouter);
 router.use(pracaPaymentsRouter);
 router.use(pracaLogisticsRouter);
 router.use(pracaCourierRouter);
+router.use(pracaDeliveryOpsRouter);
 
 // Rastreamento de clique em materiais de fluxo de nutrição (sem auth)
 router.use(contentTrackingRouter);
