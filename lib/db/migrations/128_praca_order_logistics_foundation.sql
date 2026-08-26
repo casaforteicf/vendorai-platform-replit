@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS praca_pedido_volumes (
 );
 
 CREATE TABLE IF NOT EXISTS praca_pedido_volume_itens (
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
   volume_id text NOT NULL REFERENCES praca_pedido_volumes(id) ON DELETE RESTRICT,
   item_id text NOT NULL REFERENCES praca_pedido_itens(id) ON DELETE RESTRICT,
   quantidade numeric(14,3) NOT NULL CHECK (quantidade > 0),
@@ -116,6 +117,7 @@ ALTER TABLE praca_pedidos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE praca_pedido_itens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE praca_pedido_volumes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE praca_pedido_eventos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE praca_pedido_volume_itens ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY praca_pedidos_tenant ON praca_pedidos FOR ALL
@@ -145,6 +147,14 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE POLICY praca_eventos_insert ON praca_pedido_eventos FOR INSERT
+  WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')
+    OR current_setting('app.platform_role', true) = 'super_admin');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY praca_volume_itens_tenant ON praca_pedido_volume_itens FOR ALL
+  USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')
+    OR current_setting('app.platform_role', true) = 'super_admin')
   WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')
     OR current_setting('app.platform_role', true) = 'super_admin');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
