@@ -20,6 +20,12 @@ function render(template: string, payload: any): string {
 }
 
 export async function processDeliveryNotificationOutbox(log: Logger): Promise<void> {
+  await vendorPool.query(
+    `UPDATE praca_entrega_notificacoes
+        SET status='falhou',erro='Processamento interrompido; nova tentativa liberada.',
+            proxima_tentativa_em=now(),processing_started_at=NULL
+      WHERE status='processando' AND processing_started_at<now()-interval '10 minutes'`,
+  );
   const claimed = await vendorPool.query(
     `WITH candidates AS (
        SELECT id FROM praca_entrega_notificacoes
@@ -29,7 +35,7 @@ export async function processDeliveryNotificationOutbox(log: Logger): Promise<vo
         LIMIT 20 FOR UPDATE SKIP LOCKED
      )
      UPDATE praca_entrega_notificacoes n
-        SET status='processando'
+        SET status='processando',processing_started_at=now()
        FROM candidates c WHERE n.id=c.id
      RETURNING n.*`,
   );
@@ -48,7 +54,7 @@ export async function processDeliveryNotificationOutbox(log: Logger): Promise<vo
       await sendEvolutionWhatsAppMessage(instance, notification.destinatario_whatsapp, text, log);
       await vendorPool.query(
         `UPDATE praca_entrega_notificacoes
-            SET status='enviada',tentativas=tentativas+1,sent_at=now(),erro=NULL
+            SET status='enviada',tentativas=tentativas+1,sent_at=now(),erro=NULL,processing_started_at=NULL
           WHERE id=$1`,
         [notification.id],
       );
@@ -66,7 +72,7 @@ export async function processDeliveryNotificationOutbox(log: Logger): Promise<vo
       const failure = error instanceof Error ? error.message : String(error);
       await vendorPool.query(
         `UPDATE praca_entrega_notificacoes
-            SET status='falhou',tentativas=$2,erro=$3,
+            SET status='falhou',tentativas=$2,erro=$3,processing_started_at=NULL,
                 proxima_tentativa_em=now()+($4::text || ' minutes')::interval
           WHERE id=$1`,
         [notification.id, attempts, failure.slice(0, 1000), retryMinutes],
