@@ -22,7 +22,14 @@ CREATE INDEX IF NOT EXISTS praca_produto_perguntas_product_idx
 
 ALTER TABLE praca_produto_perguntas ENABLE ROW LEVEL SECURITY;
 
-DO $$ BEGIN
+DO $ BEGIN
+  CREATE POLICY praca_produto_perguntas_public_insert
+  ON praca_produto_perguntas FOR INSERT
+  WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $;
+
+DO $ BEGIN
   CREATE POLICY praca_produto_perguntas_tenant_select
   ON praca_produto_perguntas FOR SELECT
   USING (
