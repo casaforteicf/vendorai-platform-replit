@@ -1,0 +1,80 @@
+import { useEffect,useRef,useState } from "react";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { Camera,CheckCircle2,Loader2,MapPin,MessageCircle,Navigation,PackageCheck,Play,RefreshCw,ScanLine,Send,TriangleAlert,Truck,X } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card,CardContent,CardHeader,CardTitle } from "@/components/ui/card";
+import { Dialog,DialogContent,DialogHeader,DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
+type Stop={id:string;pedidoId?:string;tipo:"coleta"|"entrega";sequencia:number;status:string;endereco:Record<string,unknown>;contato:Record<string,unknown>;latitude:number;longitude:number;motivoFalhaDescricao?:string};
+type Route={id:string;numero:number;status:string;data_servico:string;paradas:Stop[]};
+type RoutesResponse={routes:Route[]};
+type Action="coletado"|"em_rota"|"entregue"|"falha_entrega";
+const actionInfo:Record<Action,{label:string;icon:any}>={coletado:{label:"Confirmar coleta",icon:PackageCheck},em_rota:{label:"Saiu para entrega",icon:Truck},entregue:{label:"Confirmar entrega",icon:CheckCircle2},falha_entrega:{label:"Registrar falha",icon:TriangleAlert}};
+
+function address(a:Record<string,unknown>={}){return [a.logradouro??a.rua??a.endereco,a.numero,a.bairro,a.cidade,a.uf].filter(Boolean).join(", ");}
+function geolocation():Promise<{latitude:number;longitude:number}>{return new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(p=>resolve({latitude:p.coords.latitude,longitude:p.coords.longitude}),()=>reject(new Error("Ative a localização para registrar a movimentação.")),{enableHighAccuracy:true,timeout:15000,maximumAge:0}));}
+
+export default function AppEntregadorPraca(){
+ const {user,token}=useAuth(),tenantId=user?.tenantId??"",qc=useQueryClient(),{toast}=useToast();
+ const headers={"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})};
+ const [scanOpen,setScanOpen]=useState(false),[camera,setCamera]=useState(false),[code,setCode]=useState(""),[action,setAction]=useState<Action>("coletado");
+ const [file,setFile]=useState<File|null>(null),[proofType,setProofType]=useState<"pessoa"|"documento">("pessoa"),[receiver,setReceiver]=useState(""),[documentEnd,setDocumentEnd]=useState("");
+ const [reasonCode,setReasonCode]=useState(""),[reason,setReason]=useState(""),[messageStop,setMessageStop]=useState<Stop|null>(null),[message,setMessage]=useState("");
+ const videoRef=useRef<HTMLVideoElement>(null),streamRef=useRef<MediaStream|null>(null);
+ const routes=useQuery<RoutesResponse>({queryKey:["courier-routes",tenantId],enabled:!!tenantId,refetchInterval:20000,queryFn:async()=>{const r=await fetch(`/api/tenants/${tenantId}/praca-courier/routes/current`,{headers});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;}});
+ const route=routes.data?.routes[0];
+
+ useEffect(()=>{if(!camera)return;let cancelled=false,timer:number|undefined;
+  (async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});streamRef.current=stream;if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play();}
+    const Detector=(window as any).BarcodeDetector;if(!Detector){toast({title:"Leitura automática indisponível",description:"Digite o código impresso abaixo do QR."});return;}
+    const detector=new Detector({formats:["qr_code"]});
+    const detect=async()=>{if(cancelled||!videoRef.current)return;try{const found=await detector.detect(videoRef.current);if(found[0]?.rawValue){setCode(found[0].rawValue);setCamera(false);toast({title:"QR Code lido"});return;}}catch{}timer=window.setTimeout(detect,500);};detect();
+  }catch{setCamera(false);toast({title:"Não foi possível abrir a câmera",description:"Confira a permissão do navegador.",variant:"destructive"});}})();
+  return()=>{cancelled=true;if(timer)clearTimeout(timer);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;};
+ },[camera,toast]);
+
+ const accept=useMutation({mutationFn:async()=>{const r=await fetch(`/api/tenants/${tenantId}/praca-courier/routes/${route?.id}/accept`,{method:"POST",headers});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;},onSuccess:()=>{toast({title:"Rota aceita"});qc.invalidateQueries({queryKey:["courier-routes",tenantId]});},onError:(e:Error)=>toast({title:e.message,variant:"destructive"})});
+
+ async function uploadEvidence(photo:File,volumeId:string){
+  const request=await fetch(`/api/tenants/${tenantId}/praca-delivery/evidence-uploads`,{method:"POST",headers,body:JSON.stringify({volumeId,contentType:photo.type,size:photo.size})});
+  const auth=await request.json();if(!request.ok)throw new Error(auth.error);
+  const uploaded=await fetch(auth.uploadUrl,{method:"PUT",headers:{"Content-Type":photo.type,"x-upsert":"false"},body:photo});
+  if(!uploaded.ok)throw new Error("Não foi possível enviar a foto privada.");return auth.objectPath as string;
+ }
+ const scan=useMutation({mutationFn:async()=>{if(!code.trim())throw new Error("Leia ou digite o QR Code.");const location=await geolocation();const normalized=code.trim().replace(/^APPVENDOR:V1:/,"");let photoPath:string|undefined;
+   const lookup=await fetch(`/api/tenants/${tenantId}/praca-courier/resolve-volume?qrCode=${encodeURIComponent(normalized)}`,{headers});const resolved=await lookup.json();if(!lookup.ok)throw new Error(resolved.error);
+   if(action==="entregue"){if(!file)throw new Error("Fotografe a pessoa ou o documento.");photoPath=await uploadEvidence(file,resolved.volumeId);}
+   if(action==="falha_entrega"&&file)photoPath=await uploadEvidence(file,resolved.volumeId);
+   const body:any={qrCode:code.trim(),acao:action,...location};
+   if(action==="entregue")body.prova={tipo:proofType,fotoUrl:photoPath,recebedorNome:receiver||undefined,documentoFinal:documentEnd||undefined};
+   if(action==="falha_entrega"){if(!reasonCode.trim()||!reason.trim())throw new Error("Informe o código e o motivo da falha.");body.motivoCodigo=reasonCode.trim();body.descricao=reason.trim();body.fotoUrl=photoPath;}
+   const r=await fetch(`/api/tenants/${tenantId}/praca-courier/scan`,{method:"POST",headers,body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;
+  },onSuccess:d=>{toast({title:"Movimentação registrada",description:`Volume agora está ${d.status}.`});setScanOpen(false);setCamera(false);setCode("");setFile(null);setReceiver("");setDocumentEnd("");setReasonCode("");setReason("");qc.invalidateQueries({queryKey:["courier-routes",tenantId]});},onError:(e:Error)=>toast({title:e.message,variant:"destructive"})});
+ const send=useMutation({mutationFn:async()=>{if(!messageStop?.pedidoId||!message.trim())throw new Error("Mensagem inválida.");const r=await fetch(`/api/tenants/${tenantId}/praca-delivery/orders/${messageStop.pedidoId}/messages`,{method:"POST",headers,body:JSON.stringify({mensagem:message})});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;},onSuccess:()=>{toast({title:"Mensagem registrada para envio"});setMessageStop(null);setMessage("");},onError:(e:Error)=>toast({title:e.message,variant:"destructive"})});
+
+ return <div className="min-h-[100dvh] bg-slate-50 pb-24"><div className="max-w-3xl mx-auto p-4 space-y-4">
+  <header className="flex items-start justify-between gap-3"><div><h1 className="text-xl font-bold flex gap-2 items-center"><Truck className="text-primary"/>Minha rota Praça.ai</h1><p className="text-sm text-muted-foreground">Coleta, navegação e entrega rastreadas.</p></div><Button size="icon" variant="outline" onClick={()=>routes.refetch()}><RefreshCw className={routes.isFetching?"animate-spin":""}/></Button></header>
+  {routes.isLoading?<Loader2 className="animate-spin mx-auto mt-16"/>:!route?<Card><CardContent className="text-center p-10"><PackageCheck className="mx-auto text-muted-foreground"/><p className="mt-3 font-medium">Nenhuma rota atribuída.</p><p className="text-sm text-muted-foreground">Novas coletas aparecerão aqui automaticamente.</p></CardContent></Card>:<>
+   <Card><CardContent className="p-4 flex justify-between items-center gap-3"><div><p className="text-xs text-muted-foreground">ROTA</p><p className="text-3xl font-black">#{route.numero}</p><p className="text-sm">{new Date(route.data_servico+"T12:00:00").toLocaleDateString("pt-BR")} · {route.paradas.length} paradas</p></div><div className="text-right"><Badge>{route.status}</Badge>{route.status==="planejada"&&<Button className="mt-3 block" onClick={()=>accept.mutate()} disabled={accept.isPending}><Play className="h-4 w-4 mr-2"/>Aceitar rota</Button>}</div></CardContent></Card>
+   <div className="space-y-3">{route.paradas.map(stop=><Card key={stop.id} className={stop.status==="falhou"?"border-red-300":stop.status==="concluida"?"opacity-60":""}><CardHeader className="pb-2"><div className="flex justify-between gap-3"><CardTitle className="text-base">{stop.sequencia}. {stop.tipo==="coleta"?"Coleta":"Entrega "+Math.max(1,stop.sequencia-1)}</CardTitle><Badge variant="outline">{stop.status}</Badge></div></CardHeader><CardContent className="space-y-3"><p className="text-sm flex gap-2"><MapPin className="h-4 w-4 shrink-0 text-primary"/>{address(stop.endereco)||"Endereço não informado"}</p>{stop.motivoFalhaDescricao&&<p className="text-sm text-red-700 bg-red-50 p-2 rounded">{stop.motivoFalhaDescricao}</p>}<div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={()=>window.open(`https://www.google.com/maps/dir/?api=1&destination=${stop.latitude},${stop.longitude}`,"_blank")}><Navigation className="h-4 w-4 mr-2"/>Navegar</Button>{stop.tipo==="entrega"?<Button variant="outline" onClick={()=>setMessageStop(stop)}><MessageCircle className="h-4 w-4 mr-2"/>Mensagem</Button>:<Button variant="outline" onClick={()=>{setAction("coletado");setScanOpen(true);}}><ScanLine className="h-4 w-4 mr-2"/>Escanear</Button>}</div></CardContent></Card>)}</div>
+  </>}
+ </div>
+ <Button className="fixed bottom-5 left-1/2 -translate-x-1/2 h-14 px-8 rounded-full shadow-xl" onClick={()=>setScanOpen(true)}><ScanLine className="mr-2"/>Ler movimentação</Button>
+ <Dialog open={scanOpen} onOpenChange={v=>{setScanOpen(v);if(!v)setCamera(false);}}><DialogContent className="max-w-md max-h-[92dvh] overflow-y-auto"><DialogHeader><DialogTitle>Ler volume</DialogTitle></DialogHeader><div className="space-y-4">
+  <div className="grid grid-cols-2 gap-2">{(Object.keys(actionInfo) as Action[]).map(key=>{const Icon=actionInfo[key].icon;return <Button key={key} variant={action===key?"default":"outline"} onClick={()=>setAction(key)} className="h-auto py-3"><Icon className="h-4 w-4 mr-2"/>{actionInfo[key].label}</Button>;})}</div>
+  {camera?<div className="relative rounded-lg overflow-hidden bg-black aspect-square"><video ref={videoRef} className="w-full h-full object-cover"/><Button size="icon" variant="secondary" className="absolute top-2 right-2" onClick={()=>setCamera(false)}><X/></Button><div className="absolute inset-12 border-2 border-white/80 rounded-lg pointer-events-none"/></div>:<Button variant="outline" className="w-full h-16" onClick={()=>setCamera(true)}><Camera className="mr-2"/>Abrir câmera e ler QR</Button>}
+  <div><Label>Código do QR</Label><Input value={code} onChange={e=>setCode(e.target.value)} placeholder="APPVENDOR:V1:…"/></div>
+  {(action==="entregue"||action==="falha_entrega")&&<div><Label>{action==="entregue"?"Foto obrigatória":"Foto da ocorrência (opcional)"}</Label><Input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>setFile(e.target.files?.[0]??null)}/><p className="text-xs text-muted-foreground mt-1">JPEG, PNG ou WebP, até 10 MB. Armazenamento privado.</p></div>}
+  {action==="entregue"&&<><div><Label>Tipo de prova</Label><div className="grid grid-cols-2 gap-2 mt-1"><Button variant={proofType==="pessoa"?"default":"outline"} onClick={()=>setProofType("pessoa")}>Pessoa</Button><Button variant={proofType==="documento"?"default":"outline"} onClick={()=>setProofType("documento")}>Documento</Button></div></div><div><Label>Nome de quem recebeu</Label><Input value={receiver} onChange={e=>setReceiver(e.target.value)}/></div>{proofType==="documento"&&<div><Label>Últimos 4 dígitos do documento</Label><Input maxLength={4} value={documentEnd} onChange={e=>setDocumentEnd(e.target.value.replace(/\D/g,"").slice(0,4))}/></div>}</>}
+  {action==="falha_entrega"&&<><div><Label>Código do motivo</Label><Input value={reasonCode} onChange={e=>setReasonCode(e.target.value)} placeholder="CLIENTE_AUSENTE"/></div><div><Label>Descrição completa</Label><Textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Explique o que impediu a entrega…"/></div></>}
+  <Button className="w-full h-12" disabled={scan.isPending||!code.trim()} onClick={()=>scan.mutate()}>{scan.isPending?<Loader2 className="animate-spin mr-2"/>:<ScanLine className="mr-2"/>}{actionInfo[action].label}</Button>
+ </div></DialogContent></Dialog>
+ <Dialog open={!!messageStop} onOpenChange={v=>!v&&setMessageStop(null)}><DialogContent><DialogHeader><DialogTitle>Mensagem ao cliente</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">A mensagem será registrada no pedido e enviada pelo WhatsApp cadastrado.</p><Textarea value={message} onChange={e=>setMessage(e.target.value)} maxLength={4000}/><Button disabled={!message.trim()||send.isPending} onClick={()=>send.mutate()}>{send.isPending?<Loader2 className="animate-spin mr-2"/>:<Send className="mr-2"/>}Enviar pelo sistema</Button></DialogContent></Dialog>
+ </div>;
+}
