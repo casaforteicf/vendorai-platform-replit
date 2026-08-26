@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS praca_entrega_notificacoes (
   proxima_tentativa_em timestamptz NOT NULL DEFAULT now(),
   erro text,
   provider_message_id text,
+  processing_started_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   sent_at timestamptz
 );
