@@ -43,25 +43,39 @@ pracaDeliveryPublicRouter.get("/public/praca-delivery/:trackingToken", async (re
   const token = String(req.params.trackingToken);
   if (!/^[a-f0-9]{64}$/.test(token)) return res.status(404).json({ error: "Rastreamento não encontrado." });
   const order = await vendorPool.query(
-    `SELECT p.id,p.status,p.cliente_nome,p.ocorrido_em,p.updated_at,
+    `SELECT p.id,p.status,p.cliente_nome,p.ocorrido_em,p.updated_at,p.modelo_logistico,
+            hub.nome AS ponto_redespacho_nome,
             r.id AS rota_id,r.status AS rota_status,
             s.sequencia,s.status AS parada_status,s.motivo_falha_codigo,s.motivo_falha_descricao
        FROM praca_pedidos p
        LEFT JOIN praca_rota_paradas s ON s.pedido_id=p.id AND s.tipo='entrega'
        LEFT JOIN praca_rotas_entrega r ON r.id=s.rota_id
+       LEFT JOIN praca_pontos_redespacho hub ON hub.id=p.ponto_redespacho_id
       WHERE p.tracking_token=$1
       ORDER BY s.created_at DESC LIMIT 1`,
     [token],
   );
   if (!order.rowCount) return res.status(404).json({ error: "Rastreamento não encontrado." });
-  const interactions = await vendorPool.query(
-    `SELECT remetente_tipo,canal,mensagem,created_at
-       FROM praca_entrega_interacoes
-      WHERE pedido_id=$1 ORDER BY created_at,id LIMIT 200`,
-    [order.rows[0].id],
-  );
+  const [interactions,legs,transfers] = await Promise.all([
+    vendorPool.query(
+      `SELECT remetente_tipo,canal,mensagem,created_at
+         FROM praca_entrega_interacoes
+        WHERE pedido_id=$1 ORDER BY created_at,id LIMIT 200`,
+      [order.rows[0].id],
+    ),
+    vendorPool.query(
+      `SELECT ordem,tipo,origem_tipo,destino_tipo,status,iniciado_em,concluido_em,updated_at
+         FROM praca_trechos_logisticos WHERE pedido_id=$1 ORDER BY ordem`,
+      [order.rows[0].id],
+    ),
+    vendorPool.query(
+      `SELECT status,saida_confirmada_em,entrada_confirmada_em,updated_at
+         FROM praca_transferencias_custodia WHERE pedido_id=$1 ORDER BY created_at`,
+      [order.rows[0].id],
+    ),
+  ]);
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ order: order.rows[0], interactions: interactions.rows });
+  res.json({ order: order.rows[0], interactions: interactions.rows, legs: legs.rows, transfers: transfers.rows });
 });
 
 pracaDeliveryPublicRouter.post("/public/praca-delivery/:trackingToken/messages", async (req, res) => {
@@ -141,7 +155,8 @@ router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
       [tenantId],
     ),
     vendorPool.query(
-      `SELECT p.id,p.status,p.cliente_nome,p.cliente_whatsapp,p.updated_at,
+      `SELECT p.id,p.status,p.cliente_nome,p.cliente_whatsapp,p.updated_at,p.modelo_logistico,p.frete_centavos,
+              hub.nome AS ponto_redespacho_nome,t.status AS transferencia_status,
               r.id AS rota_id,r.numero AS rota_numero,r.status AS rota_status,
               s.sequencia,s.status AS parada_status,s.motivo_falha_codigo,s.motivo_falha_descricao,
               (SELECT count(*)::int FROM praca_entrega_interacoes i WHERE i.pedido_id=p.id) AS mensagens
@@ -152,6 +167,11 @@ router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
             ORDER BY x.created_at DESC LIMIT 1
          ) s ON true
          LEFT JOIN praca_rotas_entrega r ON r.id=s.rota_id
+         LEFT JOIN praca_pontos_redespacho hub ON hub.id=p.ponto_redespacho_id
+         LEFT JOIN LATERAL (
+           SELECT x.status FROM praca_transferencias_custodia x
+            WHERE x.pedido_id=p.id ORDER BY x.created_at DESC LIMIT 1
+         ) t ON true
         WHERE p.tenant_id=$1
           AND p.status IN ('pronto_coleta','coleta_agendada','coletado','em_rota','falha_entrega')
         ORDER BY CASE WHEN p.status='falha_entrega' THEN 0 ELSE 1 END,p.updated_at
