@@ -54,7 +54,7 @@ router.post("/tenants/:tenantId/categorias-produto", async (req, res) => {
     tenantId,
     nome,
     nivel,
-    slug: normalizeCategoryName(nome).replace(/\\s+/g, "-"),
+    slug: normalizeCategoryName(nome).replace(/\s+/g, "-"),
     oficial: nivel === "categoria",
   });
   if (!parsed.success) {
@@ -97,7 +97,7 @@ router.patch("/categorias-produto/:id", async (req, res) => {
     .update(categoriasProdutoTable)
     .set({
       ...parsed.data,
-      ...(parsed.data.nome ? { slug: normalizeCategoryName(parsed.data.nome).replace(/\\s+/g, "-") } : {}),
+      ...(parsed.data.nome ? { slug: normalizeCategoryName(parsed.data.nome).replace(/\s+/g, "-") } : {}),
       updatedAt: new Date(),
     })
     .where(eq(categoriasProdutoTable.id, existing.id))
