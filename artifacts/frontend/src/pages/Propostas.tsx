@@ -221,6 +221,15 @@ larguraPecaM: z.coerce.number().min(0).optional(),
 });
 type CatFormValues = z.infer<typeof catFormSchema>;
 
+function isInternalPricingSpecificationLabel(label: string): boolean {
+  const normalized = label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+  return normalized === "margem" || normalized.startsWith("regra de preco");
+}
+
 interface CsvPreviewRow {
   nome: string;
   sku?: string;
@@ -374,7 +383,12 @@ export function CatalogoModal({
       prazoContrato: p.prazoContrato ?? undefined,
       vendeNoPracaAi: vendeNoPracaAiValue === true ? "sim" : vendeNoPracaAiValue === false ? "nao" : "herda",
       precoPracaAi: (p as any).precoPracaAi != null ? parseFloat((p as any).precoPracaAi) : undefined,
-      especificacoes: Array.isArray((p as any).especificacoes) ? (p as any).especificacoes : [],
+      especificacoes: Array.isArray((p as any).especificacoes)
+        ? (p as any).especificacoes.filter(
+            (spec: { label?: string }) =>
+              !isInternalPricingSpecificationLabel(spec?.label ?? "")
+          )
+        : [],
       compatibilidadeVeicular: Array.isArray((p as any).compatibilidadeVeicular) ? (p as any).compatibilidadeVeicular : [],
       dataValidade: (p as any).dataValidade ? String((p as any).dataValidade).slice(0, 10) : "",
       tipoCalculo: ((p as any).tipoCalculo ?? "none") as CatFormValues["tipoCalculo"],
@@ -453,7 +467,12 @@ export function CatalogoModal({
       // (orval/openapi.yaml), backend já aceita (schema Drizzle da tabela).
       vendeNoPracaAi: vals.vendeNoPracaAi === "sim" ? true : vals.vendeNoPracaAi === "nao" ? false : null,
       precoPracaAi: vals.precoPracaAi != null ? vals.precoPracaAi.toFixed(2) : null,
-      especificacoes: vals.especificacoes.filter(e => e.label.trim() && e.value.trim()),
+      especificacoes: vals.especificacoes.filter(
+        (e) =>
+          e.label.trim() &&
+          e.value.trim() &&
+          !isInternalPricingSpecificationLabel(e.label)
+      ),
       compatibilidadeVeicular: vals.compatibilidadeVeicular.filter(c => c.marca.trim() && c.modelo.trim() && c.anoInicio),
       dataValidade: vals.dataValidade || null,
       tipoCalculo: vals.tipoCalculo === "none" ? null : vals.tipoCalculo,

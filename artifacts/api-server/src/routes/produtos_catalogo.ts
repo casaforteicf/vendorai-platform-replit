@@ -527,7 +527,15 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
         const [label, ...rest] = p.split(":");
         return { label: label?.trim() ?? "", value: rest.join(":").trim() };
       })
-      .filter((p) => p.label && p.value);
+      .filter((p) => {
+        if (!p.label || !p.value) return false;
+        const normalizedLabel = p.label
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .trim()
+          .toLowerCase();
+        return normalizedLabel !== "margem" && !normalizedLabel.startsWith("regra de preco");
+      });
     return pairs.length > 0 ? pairs : null;
   }
 
