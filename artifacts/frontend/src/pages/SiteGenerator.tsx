@@ -113,6 +113,14 @@ interface BulkJobState {
   siteSlug?: string;
 }
 
+function absolutizeStorageUrls(html: string): string {
+  if (!html || typeof window === "undefined") return html;
+  return html.replace(
+    /(["'(])\/api\/storage\//g,
+    `$1${window.location.origin}/api/storage/`,
+  );
+}
+
 function useSiteGenerator(tenantId: string, token: string | null) {
   const [status, setStatus] = useState<GeneratorStatus>("idle");
   const [html, setHtml] = useState("");
@@ -144,7 +152,17 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}`, { headers: authHeaders });
       if (!res.ok) return;
       const site = await res.json();
-      setHtml(site.html ?? "");
+      const originalHtml = site.html ?? "";
+      const repairedHtml = absolutizeStorageUrls(originalHtml);
+      if (repairedHtml !== originalHtml) {
+        const repairRes = await fetch(`/api/tenants/${tenantId}/site-generator/${site.id}/html`, {
+          method: "PATCH",
+          headers: authHeaders,
+          body: JSON.stringify({ html: repairedHtml }),
+        });
+        if (!repairRes.ok) throw new Error("Não foi possível corrigir as URLs das imagens");
+      }
+      setHtml(repairedHtml);
       setSiteId(site.id);
       setSiteSlug(site.siteSlug ?? null);
       setIsPublished(site.published ?? false);
@@ -160,7 +178,17 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const res = await fetch(`/api/tenants/${tenantId}/site-generator/latest`, { headers: authHeaders });
       if (!res.ok) return;
       const site = await res.json();
-      setHtml(site.html ?? "");
+      const originalHtml = site.html ?? "";
+      const repairedHtml = absolutizeStorageUrls(originalHtml);
+      if (repairedHtml !== originalHtml) {
+        const repairRes = await fetch(`/api/tenants/${tenantId}/site-generator/${site.id}/html`, {
+          method: "PATCH",
+          headers: authHeaders,
+          body: JSON.stringify({ html: repairedHtml }),
+        });
+        if (!repairRes.ok) throw new Error("Não foi possível corrigir as URLs das imagens");
+      }
+      setHtml(repairedHtml);
       setSiteId(site.id);
       setSiteSlug(site.siteSlug ?? null);
       setIsPublished(site.published ?? false);
@@ -183,17 +211,18 @@ function useSiteGenerator(tenantId: string, token: string | null) {
 
   const saveHtml = useCallback(async (newHtml: string) => {
     if (!siteId) throw new Error("Nenhum site gerado");
+    const persistedHtml = absolutizeStorageUrls(newHtml);
     const res = await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/html`, {
       method: "PATCH",
       headers: authHeaders,
-      body: JSON.stringify({ html: newHtml }),
+      body: JSON.stringify({ html: persistedHtml }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error ?? `Erro ${res.status}`);
     }
     // Só atualiza o preview depois que a versão foi realmente persistida.
-    setHtml(newHtml);
+    setHtml(persistedHtml);
   }, [siteId, tenantId, token]);
 
   // Submits one generate job and polls it to completion — shared by the
@@ -1342,7 +1371,9 @@ function SitePreview({
         headers: { 'Content-Type': file.type || 'image/png' },
       });
       if (!uploadRes.ok) throw new Error('Upload falhou');
-      const newSrc = `/api/storage/${uploadResult.objectPath}`;
+      // O site publicado usa outro subdomínio. A URL precisa permanecer
+      // apontando para a API principal, não para o host do site gerado.
+      const newSrc = `${window.location.origin}/api/storage/${uploadResult.objectPath}`;
       iframeRef.current?.contentWindow?.postMessage({ type: 've-img-set', mode: pendingImgMode.current, imgIndex: idx, newSrc }, '*');
     } catch {
       toast({ title: 'Erro ao enviar foto. Tente novamente.', variant: 'destructive' });
@@ -1488,7 +1519,7 @@ function SitePreview({
               ref={iframeRef}
               srcDoc={displayHtml}
               title="Preview do site gerado"
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts allow-same-origin allow-modals"
               className="w-full border-none block"
               style={{ height: 520 }}
             />
@@ -1914,7 +1945,7 @@ function PortfolioDialog({ html, onRefine, tenantId }: { html: string; onRefine:
         headers: { "Content-Type": file.type || "image/png" },
       });
       if (!uploadRes.ok) throw new Error("Upload falhou");
-      return `/api/storage/${result.objectPath}`;
+      return `${window.location.origin}/api/storage/${result.objectPath}`;
     } finally {
       setUploading(null);
     }
@@ -2123,7 +2154,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
         headers: { "Content-Type": file.type || "image/png" },
       });
       if (!uploadRes.ok) throw new Error("Upload falhou");
-      return `/api/storage/${result.objectPath}`;
+      return `${window.location.origin}/api/storage/${result.objectPath}`;
     } finally {
       setUploading(null);
     }
