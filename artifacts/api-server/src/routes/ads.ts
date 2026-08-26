@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   adCampaignsTable,
@@ -42,7 +42,30 @@ router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const rows = await db.select().from(adCampaignsTable).where(eq(adCampaignsTable.tenantId, tenantId));
-  return res.json(rows);
+  if (rows.length === 0) return res.json([]);
+  const creatives = await db.select().from(adCreativesTable)
+    .where(inArray(adCreativesTable.campaignId, rows.map((row) => row.id)))
+    .orderBy(desc(adCreativesTable.geradoEm));
+  const latestByCampaign = new Map<string, typeof creatives[number]>();
+  for (const creative of creatives) {
+    if (!latestByCampaign.has(creative.campaignId)) latestByCampaign.set(creative.campaignId, creative);
+  }
+  return res.json(rows.map((row) => ({ ...row, latestCreative: latestByCampaign.get(row.id) ?? null })));
+});
+
+router.delete("/tenants/:tenantId/ads/campaigns/:id", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada" });
+  if (campaign.externalCampaignId) {
+    return res.status(409).json({ error: "Campanha já enviada à plataforma. Pause a campanha; a exclusão só é permitida para rascunhos." });
+  }
+  await db.delete(adCampaignsTable).where(eq(adCampaignsTable.id, campaignId));
+  return res.status(204).send();
 });
 
 router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
@@ -130,7 +153,7 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, r
   if (!item) return res.status(404).json({ error: "Item de origem da campanha não encontrado" });
 
   if (campanha.tipoAnuncio === "rsa_pmax") {
-    const gerado = await gerarCriativoRSA(item as any, logger);
+    const gerado = await gerarCriativoRSA(item as any, logger, tenantId);
     if (!gerado) return res.status(502).json({ error: "Falha ao gerar criativo — ver logs do servidor. Tente novamente." });
 
     const [creative] = await db.insert(adCreativesTable).values({

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle } from "lucide-react";
+import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2 } from "lucide-react";
 
 // Label com ícone de ajuda (?) — explicação em linguagem simples pro lojista,
 // sem jargão de marketing. Texto validado no doc de mudanças (seção 4).
@@ -155,6 +155,7 @@ interface AdCampaign {
   utmCode: string | null;
   pausarAoInteresse: boolean;
   slaNegociacaoHoras: number;
+  latestCreative: AdCreative | null;
 }
 
 interface VehicleReservation {
@@ -427,6 +428,20 @@ export default function Ads() {
     onError: (e: any) => toast({ title: "Erro ao alterar status", description: e.message, variant: "destructive" }),
   });
 
+  const excluirCampanha = useMutation({
+    mutationFn: async (campaignId: string) => {
+      const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}`, {
+        method: "DELETE", headers: authHeaders(),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error ?? "Falha ao excluir campanha");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: "Rascunho excluído" });
+    },
+    onError: (e: any) => toast({ title: "Não foi possível excluir", description: e.message, variant: "destructive" }),
+  });
+
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -439,7 +454,12 @@ export default function Ads() {
 
       <Card className="bg-muted/30">
         <CardContent className="pt-4 text-sm space-y-2">
-          <p className="font-medium">Como funciona hoje</p>
+          <p className="font-medium">Como colocar um anúncio no ar</p>
+          <div className="grid gap-2 sm:grid-cols-5 py-2">
+            {["1. Criar rascunho", "2. Gerar criativo", "3. Aprovar", "4. Publicar pausada", "5. Ativar gasto real"].map((step) => (
+              <div key={step} className="rounded-md border bg-background px-2 py-2 text-center text-xs font-medium">{step}</div>
+            ))}
+          </div>
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
             <li>Plataformas disponíveis agora: <strong>Google</strong> (Search/PMax, Shopping) e <strong>Meta</strong> (Facebook + Instagram, anúncio de imagem). TikTok e LinkedIn entram depois.</li>
             <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search/Performance Max) ou foto gerada por IA (Meta).</li>
@@ -466,7 +486,7 @@ export default function Ads() {
       ) : (
         <div className="space-y-3">
           {campaigns.map((c) => {
-            const creative = expandedCreative[c.id];
+            const creative = expandedCreative[c.id] ?? c.latestCreative;
             return (
               <Card key={c.id}>
                 <CardContent className="pt-4 space-y-3">
@@ -483,7 +503,23 @@ export default function Ads() {
                       {c.utmCode && <p className="text-xs text-muted-foreground">Código de atribuição: <code className="bg-muted px-1 rounded">{c.utmCode}</code></p>}
                       {c.itemTipo === "veiculo" && c.modo === "unico" && <p className="text-xs text-muted-foreground">Reserva automática: {c.pausarAoInteresse ? "pausa o patrocínio" : "não pausa"} · SLA {c.slaNegociacaoHoras}h</p>}
                     </div>
-                    <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
+                      {!c.externalCampaignId && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          title="Excluir rascunho"
+                          disabled={excluirCampanha.isPending}
+                          onClick={() => {
+                            if (window.confirm("Excluir este rascunho e seus criativos? Esta ação não pode ser desfeita.")) excluirCampanha.mutate(c.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   {(c.tipoAnuncio === "rsa_pmax" || c.tipoAnuncio === "imagem") && (
@@ -540,7 +576,11 @@ export default function Ads() {
                                       Pausar
                                     </Button>
                                   ) : (
-                                    <Button size="sm" onClick={() => alterarStatusCampanha.mutate({ campaignId: c.id, ativar: true })} disabled={alterarStatusCampanha.isPending}>
+                                    <Button size="sm" onClick={() => {
+                                      if (window.confirm(`Ativar esta campanha agora? O gasto real de até R$ ${c.orcamentoDiario} por dia começará na plataforma.`)) {
+                                        alterarStatusCampanha.mutate({ campaignId: c.id, ativar: true });
+                                      }
+                                    }} disabled={alterarStatusCampanha.isPending}>
                                       {alterarStatusCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
                                       Ativar (liga o gasto real)
                                     </Button>

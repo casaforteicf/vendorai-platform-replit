@@ -14,6 +14,7 @@
  */
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import type { Logger } from "pino";
+import { getOpenAIForTenant } from "./agent-engine.js";
 
 const MAX_HEADLINE_CHARS = 30;
 const MAX_DESCRIPTION_CHARS = 90;
@@ -57,7 +58,26 @@ function truncar(texto: string, max: number): string {
  * retorna null — quem chama decide se tenta de novo ou avisa o usuário
  * (nunca publica um anúncio vazio/genérico demais sem o usuário saber).
  */
-export async function gerarCriativoRSA(item: ItemAnunciavel, log: Logger): Promise<CriativoGerado | null> {
+function parseCreative(raw: string, item: ItemAnunciavel, log: Logger): CriativoGerado | null {
+  const cleaned = raw.replace(/^```json\s*|```$/g, "").trim();
+  const parsed = JSON.parse(cleaned) as { headlines?: unknown; descriptions?: unknown };
+
+  if (!Array.isArray(parsed.headlines) || !Array.isArray(parsed.descriptions)) {
+    log.warn({ itemNome: item.nomeCurto, raw: cleaned.slice(0, 300) }, "gerarCriativoRSA: formato inesperado");
+    return null;
+  }
+
+  const headlines = parsed.headlines
+    .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+    .map((h) => truncar(h.trim(), MAX_HEADLINE_CHARS));
+  const descriptions = parsed.descriptions
+    .filter((d): d is string => typeof d === "string" && d.trim().length > 0)
+    .map((d) => truncar(d.trim(), MAX_DESCRIPTION_CHARS));
+
+  return headlines.length > 0 && descriptions.length > 0 ? { headlines, descriptions } : null;
+}
+
+export async function gerarCriativoRSA(item: ItemAnunciavel, log: Logger, tenantId: string): Promise<CriativoGerado | null> {
   try {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
@@ -73,29 +93,25 @@ export async function gerarCriativoRSA(item: ItemAnunciavel, log: Logger): Promi
       return null;
     }
 
-    const cleaned = raw.replace(/^```json\s*|```$/g, "").trim();
-    const parsed = JSON.parse(cleaned) as { headlines?: unknown; descriptions?: unknown };
-
-    if (!Array.isArray(parsed.headlines) || !Array.isArray(parsed.descriptions)) {
-      log.warn({ itemNome: item.nomeCurto, raw: cleaned.slice(0, 300) }, "gerarCriativoRSA: formato inesperado");
-      return null;
-    }
-
-    const headlines = parsed.headlines
-      .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
-      .map((h) => truncar(h.trim(), MAX_HEADLINE_CHARS));
-    const descriptions = parsed.descriptions
-      .filter((d): d is string => typeof d === "string" && d.trim().length > 0)
-      .map((d) => truncar(d.trim(), MAX_DESCRIPTION_CHARS));
-
-    if (headlines.length === 0 || descriptions.length === 0) {
-      log.warn({ itemNome: item.nomeCurto }, "gerarCriativoRSA: headlines/descriptions vazios após parse");
-      return null;
-    }
-
-    return { headlines, descriptions };
+    return parseCreative(raw, item, log);
   } catch (err) {
-    log.error({ err, itemNome: item.nomeCurto }, "gerarCriativoRSA: falha ao gerar criativo");
-    return null;
+    log.warn({ err, itemNome: item.nomeCurto }, "gerarCriativoRSA: Anthropic falhou; tentando OpenAI");
+    try {
+      const openai = await getOpenAIForTenant(tenantId);
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        max_tokens: 1200,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `Dados do item:\n${item.resumo}` },
+        ],
+      });
+      const raw = response.choices[0]?.message?.content?.trim();
+      return raw ? parseCreative(raw, item, log) : null;
+    } catch (fallbackErr) {
+      log.error({ err: fallbackErr, itemNome: item.nomeCurto }, "gerarCriativoRSA: fallback OpenAI também falhou");
+      return null;
+    }
   }
 }
