@@ -38,10 +38,25 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/relay-plan",async(req,res)
   if(pickupValue+lastMileValue!==Number(order.frete_centavos)){await client.query("ROLLBACK");return res.status(422).json({error:"A soma dos dois trechos deve ser igual ao frete do pedido."});}
   const hubResult=await client.query("SELECT * FROM praca_pontos_redespacho WHERE id=$1 AND tenant_id=$2 AND ativo=true",[String(req.body?.pontoRedespachoId??""),tenantId]);
   if(!hubResult.rowCount){await client.query("ROLLBACK");return res.status(422).json({error:"Ponto de redespacho ativo é obrigatório."});}const hub=hubResult.rows[0];
+  if(order.modelo_logistico==="redespacho"&&order.ponto_redespacho_id&&order.ponto_redespacho_id!==hub.id){
+   await client.query("ROLLBACK");return res.status(409).json({error:"O ponto difere do split financeiro já criado para o pedido."});
+  }
   const day=await client.query(`SELECT extract(isodow FROM $2::date)::int=ANY(dias_semana) AS valid FROM praca_logistica_config WHERE tenant_id=$1 AND $2::date >= (now() AT TIME ZONE timezone)::date`,[tenantId,serviceDate]);
   if(!day.rows[0]?.valid){await client.query("ROLLBACK");return res.status(422).json({error:"Data fora dos dias de operação."});}
   let pickupCourier=String(req.body?.entregadorColetaId??""),deliveryCourier=String(req.body?.entregadorEntregaId??"");
-  if(req.body?.automatico===true){const available=await client.query(`SELECT u.id FROM users u WHERE u.tenant_id=$1 AND u.active=true AND u.user_function='entrega' AND NOT EXISTS(SELECT 1 FROM praca_rotas_entrega r JOIN praca_ondas_coleta o ON o.id=r.onda_id WHERE r.entregador_id=u.id AND o.data_servico=$2::date AND r.status<>'cancelada') ORDER BY u.last_assigned_at ASC NULLS FIRST,u.id LIMIT 2`,[tenantId,serviceDate]);if(available.rowCount<2){await client.query("ROLLBACK");return res.status(409).json({error:"Redespacho exige dois entregadores ativos distintos."});}pickupCourier=available.rows[0].id;deliveryCourier=available.rows[1].id;}
+  const financialPlan=await client.query(
+   `SELECT a.beneficiary_id,a.amount_centavos,a.basis
+      FROM praca_payment_intents i JOIN praca_payment_allocations a ON a.payment_intent_id=i.id
+     WHERE i.order_id=$1 AND i.tenant_id=$2 AND i.status NOT IN ('failed','cancelled','refunded')
+       AND a.beneficiary_type='courier' ORDER BY a.basis`,[order.id,tenantId]);
+  if(financialPlan.rowCount){
+   const pickup=financialPlan.rows.find((item:any)=>item.basis==='order_freight_coleta_redespacho');
+   const lastMile=financialPlan.rows.find((item:any)=>item.basis==='order_freight_ultima_milha');
+   if(!pickup||!lastMile||Number(pickup.amount_centavos)!==pickupValue||Number(lastMile.amount_centavos)!==lastMileValue){
+    await client.query("ROLLBACK");return res.status(409).json({error:"Entregadores ou valores divergem do split financeiro do pedido."});
+   }
+   pickupCourier=pickup.beneficiary_id;deliveryCourier=lastMile.beneficiary_id;
+  }else if(req.body?.automatico===true){const available=await client.query(`SELECT u.id FROM users u WHERE u.tenant_id=$1 AND u.active=true AND u.user_function='entrega' AND NOT EXISTS(SELECT 1 FROM praca_rotas_entrega r JOIN praca_ondas_coleta o ON o.id=r.onda_id WHERE r.entregador_id=u.id AND o.data_servico=$2::date AND r.status<>'cancelada') ORDER BY u.last_assigned_at ASC NULLS FIRST,u.id LIMIT 2`,[tenantId,serviceDate]);if(available.rowCount<2){await client.query("ROLLBACK");return res.status(409).json({error:"Redespacho exige dois entregadores ativos distintos."});}pickupCourier=available.rows[0].id;deliveryCourier=available.rows[1].id;}
   if(!pickupCourier||!deliveryCourier||pickupCourier===deliveryCourier){await client.query("ROLLBACK");return res.status(422).json({error:"Selecione dois entregadores diferentes ou use distribuição automática."});}
   const couriers=await client.query("SELECT u.id FROM users u WHERE u.tenant_id=$1 AND u.active=true AND u.user_function='entrega' AND u.id=ANY($2::text[]) AND NOT EXISTS(SELECT 1 FROM praca_rotas_entrega r JOIN praca_ondas_coleta o ON o.id=r.onda_id WHERE r.entregador_id=u.id AND o.data_servico=$3::date AND r.status<>'cancelada')",[tenantId,[pickupCourier,deliveryCourier],serviceDate]);
   if(couriers.rowCount!==2){await client.query("ROLLBACK");return res.status(422).json({error:"Entregadores inválidos ou inativos."});}
