@@ -484,7 +484,14 @@ function AppRoutes() {
           <PublicRoute component={ForgotPassword} />
         </Route>
         <Route path="/redefinir-senha">
-          <PublicRoute component={ResetPassword} />
+          {/* Sem PublicRoute de propósito: PublicRoute redireciona pro
+              dashboard sempre que detecta sessão ativa -- pro reset de
+              senha isso é errado, porque o link pode ser aberto no
+              mesmo navegador de uma sessão já logada (ex: você mesmo
+              testando, ou pedindo reset num dispositivo já autenticado
+              noutro). Achado real: Marcos clicou no link de reset,
+              caiu direto no dashboard sem nunca ver o formulário. */}
+          <ResetPassword />
         </Route>
         <Route path="/portal/obra/:token">
           <PublicRoute component={PortalObra} />
