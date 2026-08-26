@@ -601,8 +601,12 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       errors.push({ row: rowNum, message: "Categoria vazia" });
       continue;
     }
-        const categoriaNome = categoriaInformada;
-    if (categoriaInformada && categoriaNome && categoriaInformada !== categoriaNome) {
+    const categoriaNome = findOfficialItemCategory(categoriaInformada);
+    if (!categoriaNome) {
+      errors.push({ row: rowNum, message: `Categoria fora do padrão oficial: "${categoriaInformada}"` });
+      continue;
+    }
+    if (categoriaInformada !== categoriaNome) {
       const current = normalizedCategories.get(categoriaInformada);
       normalizedCategories.set(categoriaInformada, {
         official: categoriaNome,
