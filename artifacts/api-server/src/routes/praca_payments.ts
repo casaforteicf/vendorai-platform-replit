@@ -356,7 +356,7 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
       }
     }
 
-    if (feeCents != null) {
+    if (feeCents != null && netCents != null) {
       await client.query(
         `INSERT INTO praca_payment_allocations
           (tenant_id,payment_intent_id,beneficiary_type,beneficiary_id,amount_centavos,basis,status,settled_at)
@@ -365,6 +365,35 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
          DO UPDATE SET amount_centavos=excluded.amount_centavos,status='settled',
                        settled_at=now(),updated_at=now()`,
         [row.tenant_id,row.id,feeCents],
+      );
+      const directed = await client.query(
+        `SELECT coalesce(sum(amount_centavos),0)::bigint AS total
+           FROM praca_payment_allocations
+          WHERE payment_intent_id=$1 AND beneficiary_type IN ('praca','courier')`,
+        [row.id],
+      );
+      const sellerActual = Math.max(0,netCents-Number(directed.rows[0]?.total ?? 0));
+      await client.query(
+        `UPDATE praca_payment_allocations SET amount_centavos=$1,
+          basis='actual_net_remainder',updated_at=now()
+          WHERE payment_intent_id=$2 AND beneficiary_type='seller'`,
+        [sellerActual,row.id],
+      );
+    }
+
+    if (eventType === "PAYMENT_SPLIT_DONE") {
+      await client.query(
+        `UPDATE praca_payment_allocations SET status='settled',
+          settled_at=coalesce(settled_at,now()),updated_at=now()
+          WHERE payment_intent_id=$1 AND beneficiary_type IN ('praca','courier')`,
+        [row.id],
+      );
+    } else if (eventType === "PAYMENT_SPLIT_CANCELLED" ||
+               eventType === "PAYMENT_SPLIT_DIVERGENCE_BLOCK") {
+      await client.query(
+        `UPDATE praca_payment_allocations SET status='blocked',updated_at=now()
+          WHERE payment_intent_id=$1 AND beneficiary_type IN ('praca','courier')`,
+        [row.id],
       );
     }
 
