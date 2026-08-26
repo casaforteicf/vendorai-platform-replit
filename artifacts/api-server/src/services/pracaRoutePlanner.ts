@@ -157,7 +157,7 @@ export async function planPickupWave(
         GROUP BY p.id
         HAVING bool_and(v.status IN ('etiquetado','pronto_coleta'))
         ORDER BY p.created_at, p.id
-        FOR UPDATE OF p`,
+        `,
       [tenantId, config.corte_em],
     );
 
