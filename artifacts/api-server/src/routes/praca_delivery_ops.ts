@@ -124,7 +124,7 @@ router.get("/tenants/:tenantId/praca-delivery/evidence/:kind/:evidenceId/url", a
 
 router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId) || actor(req).userFunction === "entrega") return res.status(403).json({ error: "Forbidden" });
   const [summary, orders, pendingMessages] = await Promise.all([
     vendorPool.query(
       `SELECT count(*) FILTER (WHERE status IN ('coleta_agendada','coletado','em_rota'))::int AS em_operacao,
