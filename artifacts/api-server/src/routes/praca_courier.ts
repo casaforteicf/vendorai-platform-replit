@@ -139,6 +139,32 @@ body{font-family:Arial,sans-serif;margin:0;color:#111}.label{border:2px solid #1
 <div class="footer">ESCANEAR EM TODA MOVIMENTAÇÃO</div></section></body></html>`);
 });
 
+router.get("/tenants/:tenantId/praca-courier/resolve-volume", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const actorId = userId(req);
+  const actor = (req as any).user;
+  if (!canTenantAccess(req, tenantId) || !actorId || actor?.userFunction !== "entrega") {
+    return res.status(403).json({ error: "Somente o entregador pode consultar o volume." });
+  }
+  const raw = typeof req.query.qrCode === "string" ? req.query.qrCode.trim() : "";
+  const qrCode = raw.startsWith("APPVENDOR:V1:") ? raw.slice(13) : raw;
+  if (!qrCode) return res.status(422).json({ error: "QR Code obrigatório." });
+  const result = await vendorPool.query(
+    `SELECT v.id AS volume_id,v.status,p.id AS pedido_id,r.id AS rota_id
+       FROM praca_pedido_volumes v
+       JOIN praca_pedidos p ON p.id=v.pedido_id
+       JOIN praca_rota_parada_volumes pv ON pv.volume_id=v.id
+       JOIN praca_rota_paradas s ON s.id=pv.parada_id AND s.tipo='entrega'
+       JOIN praca_rotas_entrega r ON r.id=s.rota_id
+      WHERE v.tenant_id=$1 AND v.qr_code=$2 AND r.entregador_id=$3
+      ORDER BY s.created_at DESC LIMIT 1`,
+    [tenantId, qrCode, actorId],
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Volume não pertence à sua rota." });
+  const row = result.rows[0];
+  res.json({ volumeId: row.volume_id, pedidoId: row.pedido_id, rotaId: row.rota_id, status: row.status });
+});
+
 router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
