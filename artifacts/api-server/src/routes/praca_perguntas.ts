@@ -1,61 +1,110 @@
 import { Router, type IRouter } from "express";
+import { vendorPool } from "../lib/vendorDb";
 
 const router: IRouter = Router();
-
-const PRACA_API_BASE_URL = process.env.PRACA_API_BASE_URL || "https://pra-aai-production.up.railway.app/api";
+export const pracaPerguntasPublicRouter: IRouter = Router();
 
 function canAccess(req: Express.Request, tenantId: string) {
   const user = (req as any).user;
   return user?.platformRole === "super_admin" || user?.tenantId === tenantId;
 }
 
-// Proxy server-to-server pro Praça.ai — o lojista opera tudo pelo Vendor.ai,
-// então o frontend nunca fala direto com o domínio do Praça.ai (evita CORS
-// e mantém a autenticação só do lado do Vendor.ai).
+// Entrada pública usada pelo Praça.ai. O tenant é sempre obtido do produto;
+// nunca é aceito do corpo da requisição.
+pracaPerguntasPublicRouter.post(
+  ["/products/:productId/perguntas", "/produtos-catalogo/:productId/perguntas"],
+  async (req, res) => {
+  const productId = String(req.params.productId);
+  const pergunta = typeof req.body?.pergunta === "string" ? req.body.pergunta.trim() : "";
+  const clienteId = typeof req.body?.clienteId === "string" ? req.body.clienteId : null;
+  const clienteNome = typeof req.body?.clienteNome === "string" ? req.body.clienteNome.trim() : null;
+
+  if (pergunta.length < 3 || pergunta.length > 1000) {
+    return res.status(422).json({ error: "A pergunta deve ter entre 3 e 1000 caracteres." });
+  }
+
+  const product = await vendorPool.query(
+    `SELECT id, tenant_id
+       FROM produtos_catalogo
+      WHERE id = $1
+        AND ativo = true
+        AND (vende_no_praca_ai_produto IS NULL OR vende_no_praca_ai_produto = true)
+      LIMIT 1`,
+    [productId],
+  );
+  if (product.rowCount === 0) {
+    return res.status(404).json({ error: "Produto não encontrado ou não publicado." });
+  }
+
+  const tenantId = product.rows[0].tenant_id as string;
+  const inserted = await vendorPool.query(
+    `INSERT INTO praca_produto_perguntas
+       (tenant_id, product_id, cliente_id, cliente_nome, pergunta)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, product_id AS "productId", pergunta, status,
+               created_at AS "createdAt"`,
+    [tenantId, productId, clienteId, clienteNome, pergunta],
+  );
+
+  return res.status(201).json(inserted.rows[0]);
+  },
+);
+
 router.get("/tenants/:tenantId/praca-perguntas-pendentes", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
+  const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  try {
-    const response = await fetch(`${PRACA_API_BASE_URL}/tenants/${tenantId}/perguntas-pendentes`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) {
-      return res.status(502).json({ error: "Praça.ai não respondeu corretamente." });
-    }
-    const perguntas = await response.json();
-    return res.json(perguntas);
-  } catch (err) {
-    console.error("[praca-perguntas] erro ao buscar fila do Praça.ai:", err);
-    return res.status(502).json({ error: "Não foi possível carregar as perguntas do Praça.ai agora." });
-  }
+  const result = await vendorPool.query(
+    `SELECT q.id,
+            q.product_id AS "productId",
+            p.nome AS "productName",
+            p.imagem_url AS "productImageUrl",
+            q.cliente_id AS "clienteId",
+            q.cliente_nome AS "clienteNome",
+            q.pergunta,
+            q.status,
+            q.created_at AS "createdAt"
+       FROM praca_produto_perguntas q
+       JOIN produtos_catalogo p
+         ON p.id = q.product_id
+        AND p.tenant_id = q.tenant_id
+      WHERE q.tenant_id = $1
+        AND q.status = 'pendente'
+      ORDER BY q.created_at ASC`,
+    [tenantId],
+  );
+
+  return res.json(result.rows);
 });
 
 router.post("/tenants/:tenantId/praca-perguntas-pendentes/:perguntaId/responder", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  const perguntaId = req.params.perguntaId as string;
+  const tenantId = String(req.params.tenantId);
+  const perguntaId = String(req.params.perguntaId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const { resposta } = req.body as { resposta?: string };
+  const resposta = typeof req.body?.resposta === "string" ? req.body.resposta.trim() : "";
   if (!resposta) return res.status(422).json({ error: "resposta é obrigatória" });
 
-  try {
-    const response = await fetch(`${PRACA_API_BASE_URL}/perguntas/${perguntaId}/responder`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resposta, vendorId: tenantId }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) {
-      const errBody = await response.json().catch(() => ({}));
-      return res.status(response.status).json(errBody);
-    }
-    const updated = await response.json();
-    return res.json(updated);
-  } catch (err) {
-    console.error("[praca-perguntas] erro ao responder no Praça.ai:", err);
-    return res.status(502).json({ error: "Não foi possível enviar a resposta agora." });
+  const updated = await vendorPool.query(
+    `UPDATE praca_produto_perguntas
+        SET resposta = $1,
+            status = 'respondida',
+            respondida_por = $2,
+            answered_at = now(),
+            updated_at = now()
+      WHERE id = $3
+        AND tenant_id = $4
+        AND status = 'pendente'
+      RETURNING id, product_id AS "productId", pergunta, resposta, status,
+                created_at AS "createdAt", answered_at AS "answeredAt"`,
+    [resposta, (req as any).user?.id ?? null, perguntaId, tenantId],
+  );
+
+  if (updated.rowCount === 0) {
+    return res.status(404).json({ error: "Pergunta pendente não encontrada para este tenant." });
   }
+
+  return res.json(updated.rows[0]);
 });
 
 export default router;

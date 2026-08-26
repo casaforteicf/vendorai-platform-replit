@@ -45,7 +45,7 @@ function PerguntaCard({ pergunta, tenantId }: { pergunta: any; tenantId: string 
           {formatDistanceToNow(parseISO(pergunta.createdAt), { locale: ptBR, addSuffix: true })}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">Produto: {pergunta.productId}</p>
+      <p className="text-xs text-muted-foreground">Produto: {pergunta.productName ?? pergunta.productId}</p>
       <div className="flex gap-2">
         <Textarea
           value={resposta}

@@ -85,7 +85,7 @@ import storiesRouter from "./stories";
 import manifestRouter from "./manifest";
 import variedadesDiaRouter from "./variedades_dia";
 import veiculosRouter from "./veiculos";
-import pracaPerguntasRouter from "./praca_perguntas";
+import pracaPerguntasRouter, { pracaPerguntasPublicRouter } from "./praca_perguntas";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
@@ -159,6 +159,7 @@ router.use(supermercadoPublicRouter);
 router.use(fretesPublicRouter);
 router.use(adsPublicRouter);
 router.use(internalScoutSignalRouter);
+router.use(pracaPerguntasPublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
