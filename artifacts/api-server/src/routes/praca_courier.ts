@@ -157,6 +157,7 @@ router.get("/tenants/:tenantId/praca-courier/resolve-volume", async (req, res) =
        JOIN praca_rota_paradas s ON s.id=pv.parada_id AND s.tipo='entrega'
        JOIN praca_rotas_entrega r ON r.id=s.rota_id
       WHERE v.tenant_id=$1 AND v.qr_code=$2 AND r.entregador_id=$3
+        AND r.status IN ('aceita','coletando','em_rota','parcial')
       ORDER BY s.created_at DESC LIMIT 1`,
     [tenantId, qrCode, actorId],
   );
@@ -197,6 +198,7 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
          JOIN praca_rotas_entrega r ON r.id=delivery.rota_id
          JOIN praca_rota_paradas pickup ON pickup.rota_id=r.id AND pickup.tipo='coleta'
         WHERE v.tenant_id=$1 AND v.qr_code=$2
+          AND r.status IN ('aceita','coletando','em_rota','parcial')
         FOR UPDATE OF v,p,r,delivery,pickup`,
       [tenantId, qrCode],
     );
