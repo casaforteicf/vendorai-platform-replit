@@ -604,7 +604,7 @@ router.post("/auth/forgot-password", async (req, res) => {
   // senha nem existe como rota. APP_URL é a variável correta, já usada
   // em todos os outros fluxos de OAuth (Google/Meta/Instagram/WhatsApp).
   const appUrl = (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
-  const resetUrl = `${appUrl}/app/redefinir-senha?token=${rawToken}`;
+  const resetUrl = `${appUrl}/redefinir-senha?token=${rawToken}`;
 
   await sendPasswordResetEmail(user.email, resetUrl);
 
