@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { vendorPool } from "../lib/vendorDb";
-import { evidencePathBelongsTo } from "../services/pracaEvidenceStorage.js";
+import { evidenceObjectExists, evidencePathBelongsTo } from "../services/pracaEvidenceStorage.js";
 
 const router: IRouter = Router();
 
@@ -183,6 +183,10 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
         await client.query("ROLLBACK");
         return res.status(422).json({ error: "Entrega exige foto privada previamente autorizada e tipo documento ou pessoa." });
       }
+      if (!(await evidenceObjectExists(proof.fotoUrl))) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ error: "A foto ainda não foi enviada ou não foi localizada." });
+      }
       await client.query(
         `INSERT INTO praca_entrega_provas
           (tenant_id,rota_id,parada_id,pedido_id,volume_id,tipo,foto_url,
@@ -204,6 +208,10 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
       if (failurePhoto && !evidencePathBelongsTo(failurePhoto, tenantId, row.pedido_id, row.volume_id)) {
         await client.query("ROLLBACK");
         return res.status(422).json({ error: "A foto da falha não pertence ao upload privado autorizado." });
+      }
+      if (failurePhoto && !(await evidenceObjectExists(failurePhoto))) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ error: "A foto da falha ainda não foi enviada ou não foi localizada." });
       }
       await client.query(
         `INSERT INTO praca_entrega_falhas
