@@ -89,6 +89,15 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   const billingType = typeof req.body?.billingType === "string" ? req.body.billingType : "UNDEFINED";
   const dueDate = typeof req.body?.dueDate === "string" ? req.body.dueDate : "";
   const courierId = typeof req.body?.courierId === "string" ? req.body.courierId.trim() || null : null;
+  const requestedMode = req.body?.modeloLogistico === "redespacho" ? "redespacho" : "direto";
+  const relayPointId = typeof req.body?.pontoRedespachoId === "string" ? req.body.pontoRedespachoId.trim() : "";
+  const requestedCourierSplits = Array.isArray(req.body?.courierSplits)
+    ? req.body.courierSplits.map((item: any) => ({
+        courierId: typeof item?.courierId === "string" ? item.courierId.trim() : "",
+        amountCentavos: Number(item?.amountCentavos),
+        trecho: String(item?.trecho ?? ""),
+      }))
+    : [];
 
   if (!idempotencyKey || idempotencyKey.length > 200) {
     return res.status(422).json({ error: "Idempotency-Key obrigatório." });
@@ -109,7 +118,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
 
   const orderResult = await vendorPool.query(
     `SELECT p.id,p.status,p.subtotal_centavos,p.frete_centavos,p.desconto_centavos,
-            p.total_centavos,p.moeda,t.asaas_api_key,t.comissao_praca_ai_percentual
+            p.total_centavos,p.moeda,p.modelo_logistico,p.ponto_redespacho_id,t.asaas_api_key,t.comissao_praca_ai_percentual
        FROM praca_pedidos p JOIN tenants t ON t.id=p.tenant_id
       WHERE p.tenant_id=$1 AND p.id=$2`,
     [tenantId,orderId],
@@ -138,19 +147,44 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
     return res.status(422).json({ error: "A composição do split não fecha com o total do pedido." });
   }
 
-  let courierWalletId: string | null = null;
-  if (courierAmount > 0) {
-    if (!courierId) return res.status(422).json({ error: "Entregador obrigatório para destinar o frete." });
-    const courier = await vendorPool.query(
-      `SELECT wallet_id FROM praca_payment_recipients
-        WHERE tenant_id=$1 AND provider='asaas' AND owner_type='courier'
-          AND owner_id=$2 AND status='active'`,
-      [tenantId,courierId],
+  const courierSplits = requestedCourierSplits.length
+    ? requestedCourierSplits
+    : courierAmount > 0 && courierId
+      ? [{ courierId, amountCentavos: courierAmount, trecho: "direta" }]
+      : [];
+  const expectedCount = requestedMode === "redespacho" ? 2 : courierAmount > 0 ? 1 : 0;
+  const allowedLegs = requestedMode === "redespacho"
+    ? new Set(["coleta_redespacho","ultima_milha"])
+    : new Set(["direta"]);
+  if (courierSplits.length !== expectedCount ||
+      new Set(courierSplits.map((item) => item.courierId)).size !== courierSplits.length ||
+      courierSplits.some((item) => !item.courierId || !integerCents(item.amountCentavos) || !allowedLegs.has(item.trecho)) ||
+      courierSplits.reduce((sum,item) => sum + item.amountCentavos,0) !== courierAmount) {
+    return res.status(422).json({ error: requestedMode === "redespacho"
+      ? "Redespacho exige dois entregadores distintos e valores dos dois trechos fechando o frete."
+      : "Entrega direta exige um entregador com o valor integral do frete." });
+  }
+  if (requestedMode === "redespacho") {
+    if (!relayPointId) return res.status(422).json({ error: "Ponto de redespacho obrigatório antes da cobrança." });
+    const point = await vendorPool.query(
+      "SELECT 1 FROM praca_pontos_redespacho WHERE id=$1 AND tenant_id=$2 AND ativo=true",
+      [relayPointId,tenantId],
     );
-    courierWalletId = courier.rows[0]?.wallet_id ?? null;
-    if (!courierWalletId) {
-      return res.status(422).json({ error: "Entregador sem carteira Asaas ativa." });
+    if (!point.rowCount) return res.status(422).json({ error: "Ponto de redespacho inválido ou inativo." });
+    if (new Set(courierSplits.map((item) => item.trecho)).size !== 2) {
+      return res.status(422).json({ error: "Informe separadamente coleta ao redespacho e última milha." });
     }
+  }
+  const courierIds = courierSplits.map((item) => item.courierId);
+  const wallets = courierIds.length ? await vendorPool.query(
+    `SELECT owner_id,wallet_id FROM praca_payment_recipients
+      WHERE tenant_id=$1 AND provider='asaas' AND owner_type='courier'
+        AND owner_id=ANY($2::text[]) AND status='active'`,
+    [tenantId,courierIds],
+  ) : { rows: [] as any[] };
+  const walletByCourier = new Map(wallets.rows.map((row:any) => [row.owner_id,row.wallet_id]));
+  if (courierIds.some((id) => !walletByCourier.get(id))) {
+    return res.status(422).json({ error: "Todos os entregadores precisam de carteira Asaas ativa." });
   }
 
   const client = await vendorPool.connect();
@@ -164,13 +198,15 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
        VALUES ($1,$2,'asaas',$3,$4,$5,'created',$6,$7,$8,$9::jsonb)
        RETURNING id`,
       [tenantId,orderId,customerId,idempotencyKey,billingType,order.moeda,gross,dueDate,
-       JSON.stringify({ commissionBps, commissionBaseCentavos: commissionBase, courierId })],
+       JSON.stringify({ commissionBps, commissionBaseCentavos: commissionBase, modeloLogistico: requestedMode,
+         pontoRedespachoId: requestedMode === "redespacho" ? relayPointId : null, courierSplits })],
     );
     intentId = inserted.rows[0].id;
     const allocations = [
       ["seller",tenantId,null,sellerAmount,"remainder_after_marketplace_delivery"],
       ["praca","praca.ai",pracaWalletId,pracaAmount,"commission_on_products"],
-      ...(courierAmount > 0 ? [["courier",courierId!,courierWalletId,courierAmount,"order_freight"]] : []),
+      ...courierSplits.map((item) => ["courier",item.courierId,walletByCourier.get(item.courierId),
+        item.amountCentavos,`order_freight_${item.trecho}`]),
     ];
     for (const allocation of allocations) {
       await client.query(
@@ -182,8 +218,9 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
       );
     }
     await client.query(
-      `UPDATE praca_pedidos SET status='pagamento_pendente',updated_at=now() WHERE id=$1`,
-      [orderId],
+      `UPDATE praca_pedidos SET status='pagamento_pendente',modelo_logistico=$2,
+        ponto_redespacho_id=$3,updated_at=now() WHERE id=$1`,
+      [orderId,requestedMode,requestedMode === "redespacho" ? relayPointId : null],
     );
     await client.query("COMMIT");
   } catch (error: any) {
@@ -196,7 +233,11 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
 
   const split = [
     ...(pracaAmount > 0 ? [{ walletId: pracaWalletId, fixedValue: centsToDecimal(pracaAmount) }] : []),
-    ...(courierAmount > 0 ? [{ walletId: courierWalletId, fixedValue: centsToDecimal(courierAmount) }] : []),
+    ...courierSplits.map((item) => ({
+      walletId: walletByCourier.get(item.courierId),
+      fixedValue: centsToDecimal(item.amountCentavos),
+      description: `Frete ${item.trecho}`,
+    })),
   ];
   const providerRequest = {
     customer: customerId,
@@ -242,7 +283,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
       status:"pending",
       invoiceUrl:payload.invoiceUrl ?? null,
       checkoutUrl:payload.checkoutUrl ?? null,
-      amounts:{ grossCentavos:gross,sellerCentavos:sellerAmount,pracaCentavos:pracaAmount,courierCentavos:courierAmount },
+      amounts:{ grossCentavos:gross,sellerCentavos:sellerAmount,pracaCentavos:pracaAmount,courierCentavos:courierAmount,courierSplits },
     });
   } catch (error: any) {
     await vendorPool.query(
