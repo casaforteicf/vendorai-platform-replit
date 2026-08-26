@@ -62,12 +62,36 @@ router.get("/tenants/:tenantId/praca-courier/routes/current", async (req, res) =
        JOIN praca_ondas_coleta o ON o.id=r.onda_id
        LEFT JOIN praca_rota_paradas p ON p.rota_id=r.id
       WHERE r.tenant_id=$1 AND r.entregador_id=$2
-        AND r.status IN ('planejada','aceita','coletando','em_rota','parcial')
+        AND r.status IN ('planejada','aguardando_transferencia','aceita','coletando','em_rota','parcial')
       GROUP BY r.id,o.data_servico
       ORDER BY o.data_servico,r.numero`,
     [tenantId, actorId],
   );
   res.json({ routes: result.rows });
+});
+
+router.post("/tenants/:tenantId/praca-courier/routes/:routeId/accept", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const actorId = userId(req);
+  const actor = (req as any).user;
+  if (!canTenantAccess(req, tenantId) || !actorId || actor?.userFunction !== "entrega") {
+    return res.status(403).json({ error: "Somente o entregador da rota pode aceitá-la." });
+  }
+  const result = await vendorPool.query(
+    `UPDATE praca_rotas_entrega
+        SET status='aceita',updated_at=now()
+      WHERE id=$1 AND tenant_id=$2 AND entregador_id=$3 AND status='planejada'
+      RETURNING *`,
+    [String(req.params.routeId), tenantId, actorId],
+  );
+  if (!result.rowCount) {
+    return res.status(409).json({ error: "Rota não encontrada, já aceita ou indisponível." });
+  }
+  await vendorPool.query(
+    "UPDATE praca_trechos_logisticos SET status='aceito',updated_at=now() WHERE rota_id=$1 AND status='planejado'",
+    [result.rows[0].id],
+  );
+  res.json({ route: result.rows[0] });
 });
 
 router.get("/tenants/:tenantId/praca-courier/labels/:volumeId", async (req, res) => {
@@ -119,6 +143,38 @@ body{font-family:Arial,sans-serif;margin:0;color:#111}.label{border:2px solid #1
 <div class="footer">ESCANEAR EM TODA MOVIMENTAÇÃO</div></section></body></html>`);
 });
 
+router.get("/tenants/:tenantId/praca-courier/resolve-volume", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const actorId = userId(req);
+  const actor = (req as any).user;
+  if (!canTenantAccess(req, tenantId) || !actorId || actor?.userFunction !== "entrega") {
+    return res.status(403).json({ error: "Somente o entregador pode consultar o volume." });
+  }
+  const raw = typeof req.query.qrCode === "string" ? req.query.qrCode.trim() : "";
+  const qrCode = raw.startsWith("APPVENDOR:V1:") ? raw.slice(13) : raw;
+  if (!qrCode) return res.status(422).json({ error: "QR Code obrigatório." });
+  const result = await vendorPool.query(
+    `SELECT v.id AS volume_id,v.status,p.id AS pedido_id,r.id AS rota_id,r.modalidade
+       FROM praca_pedido_volumes v
+       JOIN praca_pedidos p ON p.id=v.pedido_id
+       JOIN LATERAL (
+         SELECT route.id,route.modalidade
+           FROM praca_rota_parada_volumes pv
+           JOIN praca_rota_paradas stop ON stop.id=pv.parada_id
+           JOIN praca_rotas_entrega route ON route.id=stop.rota_id
+          WHERE pv.volume_id=v.id AND route.entregador_id=$3
+            AND route.status IN ('aceita','coletando','em_rota','parcial')
+          ORDER BY CASE route.modalidade WHEN 'ultima_milha' THEN 0 ELSE 1 END,route.created_at DESC
+          LIMIT 1
+       ) r ON true
+      WHERE v.tenant_id=$1 AND v.qr_code=$2`,
+    [tenantId, qrCode, actorId],
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Volume não pertence à sua rota." });
+  const row = result.rows[0];
+  res.json({ volumeId: row.volume_id, pedidoId: row.pedido_id, rotaId: row.rota_id, status: row.status });
+});
+
 router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -142,17 +198,32 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
     await client.query("BEGIN");
     const found = await client.query(
       `SELECT v.id AS volume_id,v.status AS volume_status,p.id AS pedido_id,p.tracking_token,p.cliente_whatsapp,
-              r.id AS rota_id,r.entregador_id,
-              pickup.id AS coleta_parada_id,delivery.id AS entrega_parada_id
+              r.id AS rota_id,r.entregador_id,r.modalidade,
+              pickup.id AS coleta_parada_id,delivery.id AS entrega_parada_id,relay_out.id AS redespacho_saida_parada_id
          FROM praca_pedido_volumes v
          JOIN praca_pedidos p ON p.id=v.pedido_id
-         JOIN praca_rota_parada_volumes pvd ON pvd.volume_id=v.id
-         JOIN praca_rota_paradas delivery ON delivery.id=pvd.parada_id AND delivery.tipo='entrega'
-         JOIN praca_rotas_entrega r ON r.id=delivery.rota_id
-         JOIN praca_rota_paradas pickup ON pickup.rota_id=r.id AND pickup.tipo='coleta'
+         JOIN LATERAL (
+           SELECT route.*
+             FROM praca_rota_parada_volumes pv
+             JOIN praca_rota_paradas stop ON stop.id=pv.parada_id
+             JOIN praca_rotas_entrega route ON route.id=stop.rota_id
+            WHERE pv.volume_id=v.id AND route.entregador_id=$3
+              AND route.status IN ('aceita','coletando','em_rota','parcial')
+            ORDER BY CASE route.modalidade WHEN 'ultima_milha' THEN 0 ELSE 1 END,route.created_at DESC
+            LIMIT 1
+         ) r ON true
+         LEFT JOIN LATERAL (
+           SELECT id FROM praca_rota_paradas WHERE rota_id=r.id AND tipo='coleta' ORDER BY sequencia LIMIT 1
+         ) pickup ON true
+         LEFT JOIN LATERAL (
+           SELECT id FROM praca_rota_paradas WHERE rota_id=r.id AND tipo='entrega' ORDER BY sequencia DESC LIMIT 1
+         ) delivery ON true
+         LEFT JOIN LATERAL (
+           SELECT id FROM praca_rota_paradas WHERE rota_id=r.id AND tipo='redespacho_saida' ORDER BY sequencia DESC LIMIT 1
+         ) relay_out ON true
         WHERE v.tenant_id=$1 AND v.qr_code=$2
-        FOR UPDATE OF v,p,r,delivery,pickup`,
-      [tenantId, qrCode],
+        FOR UPDATE OF v,p`,
+      [tenantId, qrCode, actorId],
     );
     if (!found.rowCount) {
       await client.query("ROLLBACK");
@@ -175,7 +246,15 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
       return res.status(409).json({ error: `Movimento ${action} não permitido após ${row.volume_status}.` });
     }
 
-    const stopId = action === "coletado" ? row.coleta_parada_id : row.entrega_parada_id;
+    const stopId = action === "coletado"
+      ? row.coleta_parada_id
+      : action === "em_rota"
+        ? (row.redespacho_saida_parada_id ?? row.entrega_parada_id)
+        : row.entrega_parada_id;
+    if (!stopId) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Esta ação não pertence ao trecho logístico atual do entregador." });
+    }
     if (action === "entregue") {
       const proof = req.body?.prova;
       if (!proof || !["documento","pessoa"].includes(proof.tipo) || typeof proof.fotoUrl !== "string" ||
@@ -257,6 +336,7 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
     if (action === "coletado") {
       await client.query("UPDATE praca_rotas_entrega SET status='coletando',updated_at=now() WHERE id=$1 AND status IN ('planejada','aceita')", [row.rota_id]);
     } else if (action === "em_rota") {
+      await client.query("UPDATE praca_trechos_logisticos SET status='em_execucao',iniciado_em=coalesce(iniciado_em,now()),updated_at=now() WHERE rota_id=$1 AND status IN ('planejado','aceito')", [row.rota_id]);
       await client.query("UPDATE praca_rotas_entrega SET status='em_rota',iniciada_em=coalesce(iniciada_em,now()),updated_at=now() WHERE id=$1", [row.rota_id]);
       await client.query("UPDATE praca_pedidos SET status='em_rota',updated_at=now() WHERE id=$1", [row.pedido_id]);
     } else if (action === "falha_entrega") {
@@ -270,18 +350,19 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
           WHERE s.id=$1 AND NOT EXISTS (
             SELECT 1 FROM praca_rota_parada_volumes pv
             JOIN praca_pedido_volumes v ON v.id=pv.volume_id
-            WHERE pv.parada_id=s.id AND v.status<>'coletado')`,
+            WHERE pv.parada_id=s.id AND v.status NOT IN ('coletado','em_rota','entregue'))`,
         [stopId],
       );
       await client.query(
         `UPDATE praca_pedidos p SET status='coletado',updated_at=now()
           WHERE p.id=$1 AND NOT EXISTS (
-            SELECT 1 FROM praca_pedido_volumes v WHERE v.pedido_id=p.id AND v.status<>'coletado')`,
+            SELECT 1 FROM praca_pedido_volumes v WHERE v.pedido_id=p.id AND v.status NOT IN ('coletado','em_rota','entregue'))`,
         [row.pedido_id],
       );
     }
 
     if (action === "entregue") {
+      await client.query("UPDATE praca_trechos_logisticos SET status='concluido',concluido_em=now(),updated_at=now() WHERE rota_id=$1", [row.rota_id]);
       await client.query(
         `UPDATE praca_rota_paradas s SET status='concluida',ocorreu_em=now(),updated_at=now()
           WHERE s.id=$1 AND NOT EXISTS (

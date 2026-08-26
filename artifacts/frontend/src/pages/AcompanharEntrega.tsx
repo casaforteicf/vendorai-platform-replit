@@ -1,16 +1,18 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, MapPin, MessageCircle, Package, Send, Truck } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle2, Clock3, Loader2, MapPin, MessageCircle, Package, Send, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 
 type Interaction = { remetente_tipo:string; canal:string; mensagem:string; created_at:string };
+type Leg = { ordem:number;tipo:string;origem_tipo:string;destino_tipo:string;status:string;iniciado_em?:string;concluido_em?:string;updated_at:string };
+type Transfer = { status:string;saida_confirmada_em?:string;entrada_confirmada_em?:string;updated_at:string };
 type Tracking = {
-  order:{ id:string;status:string;cliente_nome:string;updated_at:string;rota_status?:string;sequencia?:number;parada_status?:string;motivo_falha_descricao?:string };
-  interactions:Interaction[];
+  order:{ id:string;status:string;cliente_nome:string;updated_at:string;modelo_logistico?:"direto"|"redespacho";ponto_redespacho_nome?:string;rota_status?:string;sequencia?:number;parada_status?:string;motivo_falha_descricao?:string };
+  interactions:Interaction[];legs:Leg[];transfers:Transfer[];
 };
 
 const labels:Record<string,string> = {
@@ -36,7 +38,8 @@ export default function AcompanharEntrega() {
   if(query.isLoading)return <div className="min-h-screen grid place-items-center"><Loader2 className="animate-spin"/></div>;
   if(query.error||!query.data)return <div className="min-h-screen grid place-items-center p-6"><Card><CardContent className="p-8 text-center"><AlertTriangle className="mx-auto text-amber-600"/><p className="mt-3">Não foi possível abrir este rastreamento.</p></CardContent></Card></div>;
 
-  const {order,interactions}=query.data;
+  const {order,interactions,legs=[],transfers=[]}=query.data;
+  const transfer=transfers[transfers.length-1];
   const current=Math.max(0,steps.indexOf(order.status));
   const failed=order.status==="falha_entrega";
   return <main className="min-h-screen bg-slate-50 p-4 md:p-8">
@@ -49,6 +52,17 @@ export default function AcompanharEntrega() {
           <p className="text-xs text-muted-foreground mt-5">Atualizado em {new Date(order.updated_at).toLocaleString("pt-BR")}. Esta página atualiza automaticamente.</p>
         </CardContent>
       </Card>
+      {order.modelo_logistico==="redespacho"&&<Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><ArrowRightLeft className="h-5 w-5"/>Coleta com redespacho</CardTitle></CardHeader><CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">A entrega é feita por dois entregadores. A troca de custódia é confirmada pelo QR Code no ponto {order.ponto_redespacho_nome||"de redespacho"}.</p>
+        <div className="space-y-2">{[
+          {label:"Coleta no vendedor",done:!!legs[0]&&["em_execucao","aguardando_transferencia","concluido"].includes(legs[0].status)},
+          {label:"Entregue no ponto de redespacho",done:!!transfer?.saida_confirmada_em},
+          {label:"Recebido pelo entregador da última milha",done:!!transfer?.entrada_confirmada_em},
+          {label:"Em direção ao cliente",done:!!legs[1]&&["aceito","em_execucao","concluido"].includes(legs[1].status)},
+          {label:"Entrega concluída",done:order.status==="entregue"},
+        ].map((item,index)=><div key={item.label} className="flex items-center gap-3"><div className={`h-7 w-7 rounded-full grid place-items-center text-xs font-bold ${item.done?"bg-emerald-600 text-white":"bg-slate-200 text-slate-500"}`}>{item.done?<CheckCircle2 className="h-4 w-4"/>:index+1}</div><span className={item.done?"font-medium":"text-muted-foreground"}>{item.label}</span></div>)}</div>
+        {transfer?.status==="aguardando_recebimento"&&<p className="rounded-lg bg-amber-50 text-amber-800 p-3 text-sm">O volume chegou ao redespacho e aguarda a leitura de recebimento pelo próximo entregador.</p>}
+      </CardContent></Card>}
       <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><MessageCircle className="h-5 w-5"/>Falar sobre a entrega</CardTitle></CardHeader><CardContent className="space-y-4">
         <div className="max-h-72 overflow-y-auto space-y-2">{interactions.map((item,index)=><div key={index} className={`rounded-lg p-3 text-sm ${item.remetente_tipo==="cliente"?"ml-8 bg-primary text-primary-foreground":"mr-8 bg-slate-100"}`}><p>{item.mensagem}</p><p className="text-[10px] opacity-70 mt-1">{new Date(item.created_at).toLocaleString("pt-BR")}</p></div>)}{!interactions.length&&<p className="text-sm text-muted-foreground text-center py-5">Nenhuma mensagem ainda.</p>}</div>
         <form onSubmit={submit} className="space-y-2"><Textarea value={text} onChange={e=>setText(e.target.value)} maxLength={4000} placeholder="Escreva sua mensagem para a equipe de entrega…"/><Button className="w-full" disabled={send.isPending||!text.trim()}>{send.isPending?<Loader2 className="animate-spin h-4 w-4 mr-2"/>:<Send className="h-4 w-4 mr-2"/>}Enviar mensagem</Button>{send.error&&<p className="text-sm text-red-600">{(send.error as Error).message}</p>}</form>
