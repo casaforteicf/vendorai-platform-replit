@@ -149,6 +149,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Minhas Entregas", href: "/entregas",    icon: Truck,           sellerHidden: false, section: "crm", fn: ["entrega", "administrador"] as UserFunction[] },
+    { name: "Monitor Praça.ai", href: "/logistica-praca", icon: Navigation, sellerHidden: false, section: "crm", fn: ["suporte", "administrador"] as UserFunction[] },
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
