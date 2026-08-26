@@ -86,6 +86,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -945,7 +946,7 @@ export function CatalogoModal({
 
                   <div className="border-t pt-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <FormLabel>Composição (itens que entram junto no cálculo)</FormLabel>
+                      <Label>Composição (itens que entram junto no cálculo)</Label>
                       {composicaoLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                     </div>
                     <p className="text-xs text-muted-foreground">
