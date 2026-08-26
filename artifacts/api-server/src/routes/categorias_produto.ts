@@ -108,7 +108,7 @@ router.patch("/categorias-produto/:id", async (req, res) => {
 
 router.delete("/categorias-produto/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: categoriasProdutoTable.id, tenantId: categoriasProdutoTable.tenantId })
+    .select({ id: categoriasProdutoTable.id, tenantId: categoriasProdutoTable.tenantId, oficial: categoriasProdutoTable.oficial })
     .from(categoriasProdutoTable)
     .where(eq(categoriasProdutoTable.id, String(req.params.id)));
 
@@ -119,6 +119,11 @@ router.delete("/categorias-produto/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (existing.oficial) {
+    res.status(422).json({ error: "Categorias oficiais não podem ser excluídas." });
     return;
   }
 
