@@ -175,8 +175,6 @@ export default function AdminTenantDetail() {
   const [comissaoInput, setComissaoInput] = useState("");
   const [savingComissao, setSavingComissao] = useState(false);
   const [savingVendeNoPracaAi, setSavingVendeNoPracaAi] = useState(false);
-  const [creatingResendDomain, setCreatingResendDomain] = useState(false);
-  const [resendDomainResult, setResendDomainResult] = useState<{ id?: string; records?: Array<{ record: string; name: string; type: string; value: string; priority?: number }>; error?: string } | null>(null);
   const [editingPlan, setEditingPlan] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<"monthly" | "annual">("monthly");
@@ -447,31 +445,6 @@ export default function AdminTenantDetail() {
     }
   }
 
-  // TEMPORÁRIO -- setup do domínio appvendorai.com no Resend (pendência
-  // real: e-mail de redefinir senha não chegava, causa era domínio não
-  // verificado). Remover essa função e a seção na tela depois de usada.
-  async function handleCreateResendDomain() {
-    setCreatingResendDomain(true);
-    setResendDomainResult(null);
-    try {
-      const r = await fetch(`/api/admin/resend-setup/create-domain`, {
-        method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: "appvendorai.com" }),
-      });
-      const data = await r.json();
-      if (!r.ok) {
-        setResendDomainResult({ error: data?.error ? `${data.error}: ${JSON.stringify(data.detail ?? "")}` : "Erro desconhecido" });
-        return;
-      }
-      setResendDomainResult(data);
-    } catch (err) {
-      setResendDomainResult({ error: err instanceof Error ? err.message : "Erro de rede" });
-    } finally {
-      setCreatingResendDomain(false);
-    }
-  }
-
   async function handleResend() {
     setResending(true);
     try {
@@ -523,46 +496,6 @@ export default function AdminTenantDetail() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-
-      {/* ── TEMPORÁRIO: setup do domínio Resend (remover depois de usar) ── */}
-      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
-        <p className="text-sm font-medium text-amber-900">Setup temporário — domínio de e-mail (Resend)</p>
-        <Button size="sm" onClick={handleCreateResendDomain} disabled={creatingResendDomain}>
-          {creatingResendDomain && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Criar domínio appvendorai.com no Resend
-        </Button>
-        {resendDomainResult?.error && (
-          <p className="text-sm text-destructive break-all">{resendDomainResult.error}</p>
-        )}
-        {resendDomainResult?.records && (
-          <div className="text-xs space-y-2">
-            <p className="font-medium">ID do domínio: {resendDomainResult.id}</p>
-            <p>Registros DNS a adicionar no Cloudflare:</p>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="text-left border-b">
-                    <th className="pr-3 pb-1">Tipo</th>
-                    <th className="pr-3 pb-1">Nome</th>
-                    <th className="pr-3 pb-1">Valor</th>
-                    <th className="pb-1">Prioridade</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resendDomainResult.records.map((rec, i) => (
-                    <tr key={i} className="border-b border-amber-200">
-                      <td className="pr-3 py-1">{rec.type}</td>
-                      <td className="pr-3 py-1 break-all">{rec.name}</td>
-                      <td className="pr-3 py-1 break-all">{rec.value}</td>
-                      <td className="py-1">{rec.priority ?? "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex items-start gap-3 flex-wrap">
