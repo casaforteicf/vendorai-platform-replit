@@ -74,8 +74,7 @@ CREATE TABLE IF NOT EXISTS praca_rota_parada_volumes (
   tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
   parada_id text NOT NULL REFERENCES praca_rota_paradas(id) ON DELETE RESTRICT,
   volume_id text NOT NULL REFERENCES praca_pedido_volumes(id) ON DELETE RESTRICT,
-  PRIMARY KEY (parada_id, volume_id),
-  UNIQUE (volume_id)
+  PRIMARY KEY (parada_id, volume_id)
 );
 
 CREATE TABLE IF NOT EXISTS praca_logistica_pendencias (
