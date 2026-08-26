@@ -148,4 +148,27 @@ router.get("/tenants/:tenantId/praca-logistics/waves/:waveId", async (req, res) 
   res.json({ wave: wave.rows[0], routes: routes.rows, pending: pending.rows });
 });
 
+
+router.patch("/tenants/:tenantId/praca-logistics/pending/:pendingId", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const pendingId = String(req.params.pendingId);
+  const resolved = req.body?.resolvida === true;
+  if (!resolved) {
+    return res.status(422).json({ error: "Confirme a resolução com resolvida=true após corrigir o dado de origem." });
+  }
+  const result = await vendorPool.query(
+    `UPDATE praca_logistica_pendencias
+        SET resolvida=true, resolvida_em=now()
+      WHERE id=$1 AND tenant_id=$2 AND resolvida=false
+      RETURNING *`,
+    [pendingId, tenantId],
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Pendência aberta não encontrada." });
+  res.json({
+    pending: result.rows[0],
+    nextStep: "O pedido corrigido e ainda em pronto_coleta entrará na próxima onda elegível.",
+  });
+});
+
 export default router;
