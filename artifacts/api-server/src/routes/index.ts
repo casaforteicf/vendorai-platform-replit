@@ -87,6 +87,7 @@ import variedadesDiaRouter from "./variedades_dia";
 import veiculosRouter from "./veiculos";
 import pracaPerguntasRouter, { pracaPerguntasPublicRouter } from "./praca_perguntas";
 import pracaAvaliacoesRouter, { pracaAvaliacoesPublicRouter } from "./praca_avaliacoes";
+import pracaOrdersRouter from "./praca_orders";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
@@ -412,6 +413,7 @@ router.use(sellerCommissionsRouter);
 // Módulos de navegação por tenant
 router.use(tenantNavModulesRouter);
 router.use(vendasPracaRouter);
+router.use(pracaOrdersRouter);
 
 // Rastreamento de clique em materiais de fluxo de nutrição (sem auth)
 router.use(contentTrackingRouter);
