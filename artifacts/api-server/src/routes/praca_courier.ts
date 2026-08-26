@@ -70,6 +70,26 @@ router.get("/tenants/:tenantId/praca-courier/routes/current", async (req, res) =
   res.json({ routes: result.rows });
 });
 
+router.post("/tenants/:tenantId/praca-courier/routes/:routeId/accept", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const actorId = userId(req);
+  const actor = (req as any).user;
+  if (!canTenantAccess(req, tenantId) || !actorId || actor?.userFunction !== "entrega") {
+    return res.status(403).json({ error: "Somente o entregador da rota pode aceitá-la." });
+  }
+  const result = await vendorPool.query(
+    `UPDATE praca_rotas_entrega
+        SET status='aceita',updated_at=now()
+      WHERE id=$1 AND tenant_id=$2 AND entregador_id=$3 AND status='planejada'
+      RETURNING *`,
+    [String(req.params.routeId), tenantId, actorId],
+  );
+  if (!result.rowCount) {
+    return res.status(409).json({ error: "Rota não encontrada, já aceita ou indisponível." });
+  }
+  res.json({ route: result.rows[0] });
+});
+
 router.get("/tenants/:tenantId/praca-courier/labels/:volumeId", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canTenantAccess(req, tenantId)) return res.status(403).send("Forbidden");
