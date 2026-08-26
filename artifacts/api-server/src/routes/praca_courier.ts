@@ -332,6 +332,7 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
     if (action === "coletado") {
       await client.query("UPDATE praca_rotas_entrega SET status='coletando',updated_at=now() WHERE id=$1 AND status IN ('planejada','aceita')", [row.rota_id]);
     } else if (action === "em_rota") {
+      await client.query("UPDATE praca_trechos_logisticos SET status='em_execucao',iniciado_em=coalesce(iniciado_em,now()),updated_at=now() WHERE rota_id=$1 AND status IN ('planejado','aceito')", [row.rota_id]);
       await client.query("UPDATE praca_rotas_entrega SET status='em_rota',iniciada_em=coalesce(iniciada_em,now()),updated_at=now() WHERE id=$1", [row.rota_id]);
       await client.query("UPDATE praca_pedidos SET status='em_rota',updated_at=now() WHERE id=$1", [row.pedido_id]);
     } else if (action === "falha_entrega") {
@@ -357,6 +358,7 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
     }
 
     if (action === "entregue") {
+      await client.query("UPDATE praca_trechos_logisticos SET status='concluido',concluido_em=now(),updated_at=now() WHERE rota_id=$1", [row.rota_id]);
       await client.query(
         `UPDATE praca_rota_paradas s SET status='concluida',ocorreu_em=now(),updated_at=now()
           WHERE s.id=$1 AND NOT EXISTS (
