@@ -108,7 +108,7 @@ export async function ensureOfficialItemCategories(tenantId: string): Promise<vo
       missing.map((nome, ordem) => ({
         tenantId,
         nome,
-        slug: normalizeCategoryName(nome).replace(/\\s+/g, "-"),
+        slug: normalizeCategoryName(nome).replace(/\s+/g, "-"),
         nivel: "categoria" as const,
         oficial: true,
         ordem,
