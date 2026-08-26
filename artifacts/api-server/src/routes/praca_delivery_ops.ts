@@ -236,10 +236,15 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/reattempt", async
       return res.status(409).json({ error: "Pedido não possui falha elegível para reentrega." });
     }
     const configDay = await client.query(
-      `SELECT 1 FROM praca_logistica_config
-        WHERE tenant_id=$1 AND ativo=true
-          AND extract(isodow FROM $2::date)::int=ANY(dias_semana)
-          AND $2::date >= (now() AT TIME ZONE timezone)::date`,
+      `SELECT 1 FROM praca_logistica_config c
+        WHERE c.tenant_id=$1 AND c.ativo=true
+          AND extract(isodow FROM $2::date)::int=ANY(c.dias_semana)
+          AND $2::date >= (now() AT TIME ZONE c.timezone)::date
+          AND NOT EXISTS (
+            SELECT 1 FROM praca_ondas_coleta o
+             WHERE o.tenant_id=c.tenant_id AND o.data_servico=$2::date
+               AND o.status<>'planejando'
+          )`,
       [tenantId, serviceDate],
     );
     if (!configDay.rowCount) {
