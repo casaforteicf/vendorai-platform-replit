@@ -105,7 +105,15 @@ export async function ensureOfficialItemCategories(tenantId: string): Promise<vo
 
   if (missing.length > 0) {
     await db.insert(categoriasProdutoTable).values(
-      missing.map((nome) => ({ tenantId, nome, descontoMaximoPercentual: "0" })),
+      missing.map((nome, ordem) => ({
+        tenantId,
+        nome,
+        slug: normalizeCategoryName(nome).replace(/\\s+/g, "-"),
+        nivel: "categoria" as const,
+        oficial: true,
+        ordem,
+        descontoMaximoPercentual: "0",
+      })),
     );
   }
 }
