@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { vendorPool } from "../lib/vendorDb";
+import { evidenceObjectExists, evidencePathBelongsTo } from "../services/pracaEvidenceStorage.js";
 
 const router: IRouter = Router();
 
@@ -140,7 +141,7 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
   try {
     await client.query("BEGIN");
     const found = await client.query(
-      `SELECT v.id AS volume_id,v.status AS volume_status,p.id AS pedido_id,
+      `SELECT v.id AS volume_id,v.status AS volume_status,p.id AS pedido_id,p.tracking_token,p.cliente_whatsapp,
               r.id AS rota_id,r.entregador_id,
               pickup.id AS coleta_parada_id,delivery.id AS entrega_parada_id
          FROM praca_pedido_volumes v
@@ -177,9 +178,14 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
     const stopId = action === "coletado" ? row.coleta_parada_id : row.entrega_parada_id;
     if (action === "entregue") {
       const proof = req.body?.prova;
-      if (!proof || !["documento","pessoa"].includes(proof.tipo) || typeof proof.fotoUrl !== "string" || !proof.fotoUrl.trim()) {
+      if (!proof || !["documento","pessoa"].includes(proof.tipo) || typeof proof.fotoUrl !== "string" ||
+          !evidencePathBelongsTo(proof.fotoUrl, tenantId, row.pedido_id, row.volume_id)) {
         await client.query("ROLLBACK");
-        return res.status(422).json({ error: "Entrega exige foto e tipo de prova: documento ou pessoa." });
+        return res.status(422).json({ error: "Entrega exige foto privada previamente autorizada e tipo documento ou pessoa." });
+      }
+      if (!(await evidenceObjectExists(proof.fotoUrl))) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ error: "A foto ainda não foi enviada ou não foi localizada." });
       }
       await client.query(
         `INSERT INTO praca_entrega_provas
@@ -198,14 +204,38 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
         await client.query("ROLLBACK");
         return res.status(422).json({ error: "Falha exige código e descrição do motivo." });
       }
+      const failurePhoto = req.body?.fotoUrl;
+      if (failurePhoto && !evidencePathBelongsTo(failurePhoto, tenantId, row.pedido_id, row.volume_id)) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ error: "A foto da falha não pertence ao upload privado autorizado." });
+      }
+      if (failurePhoto && !(await evidenceObjectExists(failurePhoto))) {
+        await client.query("ROLLBACK");
+        return res.status(422).json({ error: "A foto da falha ainda não foi enviada ou não foi localizada." });
+      }
       await client.query(
         `INSERT INTO praca_entrega_falhas
           (tenant_id,rota_id,parada_id,pedido_id,volume_id,motivo_codigo,descricao,
            foto_url,latitude,longitude,entregador_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [tenantId,row.rota_id,stopId,row.pedido_id,row.volume_id,reasonCode,description,
-         req.body?.fotoUrl ?? null,location.latitude,location.longitude,actorId],
+         failurePhoto ?? null,location.latitude,location.longitude,actorId],
       );
+      const interaction = await client.query(
+        `INSERT INTO praca_entrega_interacoes
+          (tenant_id,pedido_id,rota_id,remetente_tipo,remetente_id,canal,mensagem,metadata)
+         VALUES ($1,$2,$3,'sistema',NULL,'vendorai',$4,$5) RETURNING id`,
+        [tenantId,row.pedido_id,row.rota_id,`Entrega não concluída: ${description}`,{ motivoCodigo: reasonCode }],
+      );
+      if (row.cliente_whatsapp) {
+        await client.query(
+          `INSERT INTO praca_entrega_notificacoes
+            (tenant_id,pedido_id,interacao_id,destinatario_whatsapp,template,payload)
+           VALUES ($1,$2,$3,$4,'falha_entrega',$5)`,
+          [tenantId,row.pedido_id,interaction.rows[0].id,row.cliente_whatsapp,
+           { motivo: description, trackingToken: row.tracking_token }],
+        );
+      }
       await client.query(
         `UPDATE praca_rota_paradas SET status='falhou',motivo_falha_codigo=$2,
           motivo_falha_descricao=$3,ocorreu_em=now(),updated_at=now() WHERE id=$1`,

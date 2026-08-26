@@ -71,6 +71,7 @@ import { runRecemAbertas } from "./recemAbertasJob.js";
 import { runMicroEventsRescan } from "./microEventsRescan.js";
 import { runWeeklyFeedbackLoop } from "./feedbackLoop.js";
 import { processDuePickupWaves } from "../services/pracaRoutePlanner.js";
+import { processDeliveryNotificationOutbox } from "../services/pracaDeliveryNotifications.js";
 import { markOverdueVehicleReservations } from "../services/vehicle-reservation.js";
 import {
   prospectorConfigTable,
@@ -1821,6 +1822,13 @@ export function startScheduler(log: Logger): void {
   cron.schedule("* * * * *", () => {
     processDuePickupWaves(log).catch((err) => {
       log.error({ err }, "scheduler/praca-pickup-waves: unhandled error");
+    });
+  });
+
+  // Outbox logístico: envio e retentativa de notificações WhatsApp.
+  cron.schedule("* * * * *", () => {
+    processDeliveryNotificationOutbox(log).catch((err) => {
+      log.error({ err }, "scheduler/praca-delivery-notifications: unhandled error");
     });
   });
 

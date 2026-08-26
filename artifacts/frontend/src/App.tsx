@@ -44,6 +44,8 @@ const Pacotes            = lazy(() => import("@/pages/Pacotes"));
 const ContentAutopilot   = lazy(() => import("@/pages/ContentAutopilot"));
 const Ads                = lazy(() => import("@/pages/Ads"));
 const RastreioFrete      = lazy(() => import("@/pages/RastreioFrete"));
+const AcompanharEntrega  = lazy(() => import("@/pages/AcompanharEntrega"));
+const MonitorLogisticaPraca = lazy(() => import("@/pages/MonitorLogisticaPraca"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
 const Campanhas          = lazy(() => import("@/pages/Campanhas"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
@@ -502,6 +504,9 @@ function AppRoutes() {
         <Route path="/rastreio/:id">
           {() => <RastreioFrete />}
         </Route>
+        <Route path="/acompanhar-entrega/:token">
+          {() => <AcompanharEntrega />}
+        </Route>
         <Route path="/onboarding">
           <OnboardingRoute />
         </Route>
@@ -553,6 +558,9 @@ function AppRoutes() {
         </Route>
         <Route path="/entregas">
           <ProtectedRoute component={MinhasEntregas} />
+        </Route>
+        <Route path="/logistica-praca">
+          <ProtectedRoute component={MonitorLogisticaPraca} />
         </Route>
         <Route path="/configuracoes">
           <ProtectedRoute component={Configuracoes} />

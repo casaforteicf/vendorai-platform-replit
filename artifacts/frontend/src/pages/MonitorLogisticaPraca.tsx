@@ -1,0 +1,29 @@
+import { useState } from "react";
+import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle,CheckCircle2,Loader2,MessageCircle,PackageCheck,RefreshCw,RotateCcw,Truck } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card,CardContent,CardHeader,CardTitle } from "@/components/ui/card";
+import { Dialog,DialogContent,DialogHeader,DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+type Order={id:string;status:string;cliente_nome:string;cliente_whatsapp?:string;rota_numero?:number;sequencia?:number;motivo_falha_codigo?:string;motivo_falha_descricao?:string;mensagens:number};
+type Data={summary:{em_operacao:number;falhas:number;entregues:number;notificacoesPendentes:number};orders:Order[]};
+const labels:Record<string,string>={pronto_coleta:"Pronto para coleta",coleta_agendada:"Coleta agendada",coletado:"Coletado",em_rota:"Em rota",falha_entrega:"Falha"};
+export default function MonitorLogisticaPraca(){
+ const {user,token}=useAuth(),tenantId=user?.tenantId??"",qc=useQueryClient(),{toast}=useToast();
+ const headers={"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})};
+ const [selected,setSelected]=useState<Order|null>(null),[date,setDate]=useState(""),[reason,setReason]=useState("");
+ const q=useQuery<Data>({queryKey:["delivery-monitor",tenantId],enabled:!!tenantId,refetchInterval:30000,queryFn:async()=>{const r=await fetch(`/api/tenants/${tenantId}/praca-delivery/monitor`,{headers});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;}});
+ const retry=useMutation({mutationFn:async()=>{const r=await fetch(`/api/tenants/${tenantId}/praca-delivery/orders/${selected?.id}/reattempt`,{method:"POST",headers,body:JSON.stringify({dataServico:date,motivo:reason})});const d=await r.json();if(!r.ok)throw new Error(d.error);return d;},onSuccess:()=>{toast({title:"Reentrega solicitada"});setSelected(null);setDate("");setReason("");qc.invalidateQueries({queryKey:["delivery-monitor",tenantId]});},onError:(e:Error)=>toast({title:e.message,variant:"destructive"})});
+ const s=q.data?.summary,cards=[["Em operação",s?.em_operacao??0,Truck,"bg-blue-50 text-blue-700"],["Falhas abertas",s?.falhas??0,AlertTriangle,"bg-red-50 text-red-700"],["Entregues",s?.entregues??0,CheckCircle2,"bg-emerald-50 text-emerald-700"],["Notificações pendentes",s?.notificacoesPendentes??0,MessageCircle,"bg-amber-50 text-amber-700"]] as const;
+ return <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+  <header className="flex justify-between gap-3 flex-wrap"><div><h1 className="text-2xl font-bold flex items-center gap-2"><PackageCheck className="text-primary"/>Monitor logístico Praça.ai</h1><p className="text-sm text-muted-foreground">Coletas, rotas, falhas e comunicação em uma única tela.</p></div><Button variant="outline" onClick={()=>q.refetch()}><RefreshCw className={`h-4 w-4 mr-2 ${q.isFetching?"animate-spin":""}`}/>Atualizar</Button></header>
+  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">{cards.map(([label,value,Icon,tone])=><Card key={label}><CardContent className="p-4 flex gap-3 items-center"><div className={`h-10 w-10 rounded-lg grid place-items-center ${tone}`}><Icon className="h-5 w-5"/></div><div><p className="text-2xl font-bold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div></CardContent></Card>)}</div>
+  <Card><CardHeader><CardTitle className="text-base">Pedidos em acompanhamento</CardTitle></CardHeader><CardContent>{q.isLoading?<Loader2 className="animate-spin mx-auto"/>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left border-b text-muted-foreground"><th className="py-2">Cliente</th><th>Status</th><th>Rota</th><th>Ocorrência</th><th>Mensagens</th><th/></tr></thead><tbody>{q.data?.orders.map(o=><tr key={o.id} className={o.status==="falha_entrega"?"border-b bg-red-50/50":"border-b"}><td className="py-3"><b>{o.cliente_nome}</b><p className="text-xs text-muted-foreground">{o.id.slice(0,8)} · {o.cliente_whatsapp||"Sem WhatsApp"}</p></td><td><Badge className={o.status==="falha_entrega"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}>{labels[o.status]??o.status}</Badge></td><td>{o.rota_numero?"#"+o.rota_numero+" · entrega "+Math.max(1,(o.sequencia??2)-1):"Aguardando"}</td><td><p>{o.motivo_falha_descricao||"Sem ocorrência"}</p><small>{o.motivo_falha_codigo}</small></td><td><Badge variant="outline">{o.mensagens}</Badge></td><td>{o.status==="falha_entrega"&&<Button size="sm" onClick={()=>setSelected(o)}><RotateCcw className="h-4 w-4 mr-1"/>Reentregar</Button>}</td></tr>)}</tbody></table>{!q.data?.orders.length&&<p className="text-center text-muted-foreground py-10">Nenhum pedido em operação.</p>}</div>}</CardContent></Card>
+  <Dialog open={!!selected} onOpenChange={v=>!v&&setSelected(null)}><DialogContent><DialogHeader><DialogTitle>Solicitar nova tentativa</DialogTitle></DialogHeader><div className="space-y-4"><p>Pedido de <b>{selected?.cliente_nome}</b>. A falha anterior permanecerá no histórico.</p><div><Label>Data</Label><Input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div><div><Label>Motivo e orientação</Label><Textarea value={reason} onChange={e=>setReason(e.target.value)}/></div><Button className="w-full" disabled={!date||!reason.trim()||retry.isPending} onClick={()=>retry.mutate()}>{retry.isPending?<Loader2 className="h-4 w-4 mr-2 animate-spin"/>:<RotateCcw className="h-4 w-4 mr-2"/>}Confirmar reentrega</Button></div></DialogContent></Dialog>
+ </div>;
+}

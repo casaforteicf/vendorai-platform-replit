@@ -152,13 +152,23 @@ export async function planPickupWave(
           AND v.status IN ('etiquetado','pronto_coleta')
           AND NOT EXISTS (
             SELECT 1 FROM praca_rota_paradas rp
-             WHERE rp.pedido_id=p.id AND rp.tipo='entrega'
+             WHERE rp.pedido_id=p.id AND rp.tipo='entrega' AND rp.status<>'ignorada'
+          )
+          AND (
+            NOT EXISTS (
+              SELECT 1 FROM praca_reentregas rr
+               WHERE rr.pedido_id=p.id AND rr.status='solicitada'
+            )
+            OR EXISTS (
+              SELECT 1 FROM praca_reentregas rr
+               WHERE rr.pedido_id=p.id AND rr.status='solicitada' AND rr.data_servico=$3::date
+            )
           )
         GROUP BY p.id
         HAVING bool_and(v.status IN ('etiquetado','pronto_coleta'))
         ORDER BY p.created_at, p.id
         `,
-      [tenantId, config.corte_em],
+      [tenantId, config.corte_em, serviceDate],
     );
 
     const valid: Candidate[] = [];
@@ -250,6 +260,11 @@ export async function planPickupWave(
             [tenantId, pickupStop.rows[0].id, volume.id],
           );
         }
+        await client.query(
+          `UPDATE praca_reentregas SET status='incluida_em_onda',updated_at=now()
+            WHERE pedido_id=$1 AND status='solicitada' AND data_servico=$2::date`,
+          [order.id, serviceDate],
+        );
         await client.query(
           "UPDATE praca_pedidos SET status='coleta_agendada', updated_at=now() WHERE id=$1",
           [order.id],
