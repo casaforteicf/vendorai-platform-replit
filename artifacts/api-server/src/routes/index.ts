@@ -88,6 +88,7 @@ import veiculosRouter from "./veiculos";
 import pracaPerguntasRouter, { pracaPerguntasPublicRouter } from "./praca_perguntas";
 import pracaAvaliacoesRouter, { pracaAvaliacoesPublicRouter } from "./praca_avaliacoes";
 import pracaOrdersRouter from "./praca_orders";
+import pracaPaymentsRouter, { pracaPaymentsPublicRouter } from "./praca_payments";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
@@ -163,6 +164,7 @@ router.use(adsPublicRouter);
 router.use(internalScoutSignalRouter);
 router.use(pracaPerguntasPublicRouter);
 router.use(pracaAvaliacoesPublicRouter);
+router.use(pracaPaymentsPublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
@@ -414,6 +416,7 @@ router.use(sellerCommissionsRouter);
 router.use(tenantNavModulesRouter);
 router.use(vendasPracaRouter);
 router.use(pracaOrdersRouter);
+router.use(pracaPaymentsRouter);
 
 // Rastreamento de clique em materiais de fluxo de nutrição (sem auth)
 router.use(contentTrackingRouter);
