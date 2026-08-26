@@ -78,6 +78,18 @@ export async function createEvidenceReadUrl(objectPath: string): Promise<string>
   return data.signedUrl;
 }
 
+export async function evidenceObjectExists(objectPath: string): Promise<boolean> {
+  const storage = client();
+  await ensurePrivateBucket(storage);
+  const separator = objectPath.lastIndexOf("/");
+  if (separator < 1) return false;
+  const dir = objectPath.slice(0, separator);
+  const base = objectPath.slice(separator + 1);
+  const { data, error } = await storage.storage.from(BUCKET).list(dir, { search: base, limit: 10 });
+  if (error) throw new Error(`Falha ao validar prova privada: ${error.message}`);
+  return !!data?.some((item) => item.name === base);
+}
+
 export function evidencePathBelongsTo(
   objectPath: string,
   tenantId: string,
