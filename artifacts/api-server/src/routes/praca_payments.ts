@@ -298,6 +298,8 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
   }
 
   const status = EVENT_STATUS[eventType];
+  const splitEvent = ["PAYMENT_SPLIT_DONE","PAYMENT_SPLIT_CANCELLED","PAYMENT_SPLIT_DIVERGENCE_BLOCK","PAYMENT_SPLIT_DIVERGENCE_BLOCK_FINISHED"].includes(eventType);
+  const recognizedEvent = Boolean(status) || splitEvent;
   const intent = await vendorPool.query(
     `SELECT id,tenant_id,order_id,gross_centavos FROM praca_payment_intents
       WHERE provider='asaas' AND provider_payment_id=$1`,
@@ -402,10 +404,10 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
         (tenant_id,payment_intent_id,provider,provider_event_id,event_type,payload,
          processing_status,processed_at)
        VALUES ($1,$2,'asaas',$3,$4,$5::jsonb,$6,now())`,
-      [row.tenant_id,row.id,eventId,eventType,JSON.stringify(req.body),status ? "processed" : "ignored"],
+      [row.tenant_id,row.id,eventId,eventType,JSON.stringify(req.body),recognizedEvent ? "processed" : "ignored"],
     );
     await client.query("COMMIT");
-    return res.json({ received: true, processed: Boolean(status) });
+    return res.json({ received: true, processed: recognizedEvent });
   } catch (error: any) {
     await client.query("ROLLBACK");
     if (error?.code === "23505") return res.json({ received: true, duplicate: true });
