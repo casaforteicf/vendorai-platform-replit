@@ -5,28 +5,35 @@ import { db, categoriasProdutoTable } from "@workspace/db";
 export const ITEM_CATEGORIES = [
   "Acessórios para Veículos",
   "Agro",
+  "Alimentos e Bebidas",
+  "Pet Shop",
   "Antiguidades e Coleções",
   "Arte, Papelaria e Armarinho",
   "Bebês",
   "Beleza e Cuidado Pessoal",
   "Brinquedos e Hobbies",
   "Calçados, Roupas e Bolsas",
+  "Câmeras e Acessórios",
+  "Carros, Motos e Outros",
   "Casa, Móveis e Decoração",
   "Celulares e Telefones",
   "Construção",
   "Eletrodomésticos",
-  "Eletrônicos, Câmeras e Áudio",
+  "Eletrônicos, Áudio e Vídeo",
   "Esportes e Fitness",
   "Ferramentas",
   "Festas e Lembrancinhas",
   "Games",
+  "Imóveis",
   "Indústria e Comércio",
   "Informática",
+  "Ingressos",
   "Instrumentos Musicais",
   "Joias e Relógios",
   "Livros, Revistas e Comics",
-  "Pet Shop",
+  "Música, Filmes e Seriados",
   "Saúde",
+  "Serviços",
 ] as const;
 
 export function normalizeCategoryName(value: string): string {
@@ -52,9 +59,15 @@ export const ITEM_CATEGORY_ALIASES: Readonly<Record<string, (typeof ITEM_CATEGOR
   casa: "Casa, Móveis e Decoração", moveis: "Casa, Móveis e Decoração", decoracao: "Casa, Móveis e Decoração",
   celulares: "Celulares e Telefones", smartphones: "Celulares e Telefones", telefonia: "Celulares e Telefones",
   "materiais de construcao": "Construção", "construcao civil": "Construção",
-  cameras: "Eletrônicos, Câmeras e Áudio", fotografia: "Eletrônicos, Câmeras e Áudio",
+  cameras: "Câmeras e Acessórios", fotografia: "Câmeras e Acessórios",
+  alimentos: "Alimentos e Bebidas", bebidas: "Alimentos e Bebidas", mercearia: "Alimentos e Bebidas",
+  carros: "Carros, Motos e Outros", motos: "Carros, Motos e Outros", veiculos: "Carros, Motos e Outros",
+  imoveis: "Imóveis", imobiliaria: "Imóveis",
+  ingressos: "Ingressos", eventos: "Ingressos",
+  filmes: "Música, Filmes e Seriados", seriados: "Música, Filmes e Seriados",
+  servicos: "Serviços",
   eletros: "Eletrodomésticos", "linha branca": "Eletrodomésticos",
-  eletronicos: "Eletrônicos, Câmeras e Áudio", "audio e video": "Eletrônicos, Câmeras e Áudio", "tv e audio": "Eletrônicos, Câmeras e Áudio",
+  eletronicos: "Eletrônicos, Áudio e Vídeo", "audio e video": "Eletrônicos, Áudio e Vídeo", "tv e audio": "Eletrônicos, Áudio e Vídeo",
   esportes: "Esportes e Fitness", fitness: "Esportes e Fitness", academia: "Esportes e Fitness",
   ferragens: "Ferramentas", festas: "Festas e Lembrancinhas", lembrancinhas: "Festas e Lembrancinhas",
   jogos: "Games", videogames: "Games",
@@ -78,7 +91,7 @@ export function findOfficialItemCategory(value: string): string | null {
 }
 
 /**
- * Garante que todo parceiro veja as 25 categorias no cadastro de produtos.
+ * Garante que todo parceiro veja as 31 categorias no cadastro de produtos.
  * Categorias antigas são preservadas para não invalidar produtos existentes.
  */
 export async function ensureOfficialItemCategories(tenantId: string): Promise<void> {
