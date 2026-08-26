@@ -86,6 +86,7 @@ import manifestRouter from "./manifest";
 import variedadesDiaRouter from "./variedades_dia";
 import veiculosRouter from "./veiculos";
 import pracaPerguntasRouter, { pracaPerguntasPublicRouter } from "./praca_perguntas";
+import pracaAvaliacoesRouter, { pracaAvaliacoesPublicRouter } from "./praca_avaliacoes";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
@@ -160,6 +161,7 @@ router.use(fretesPublicRouter);
 router.use(adsPublicRouter);
 router.use(internalScoutSignalRouter);
 router.use(pracaPerguntasPublicRouter);
+router.use(pracaAvaliacoesPublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
@@ -319,6 +321,7 @@ router.use(storiesRouter);
 router.use(variedadesDiaRouter);
 router.use(veiculosRouter);
 router.use(pracaPerguntasRouter);
+router.use(pracaAvaliacoesRouter);
 router.use(restauranteRouter);
 
 // Site Generator Hub
