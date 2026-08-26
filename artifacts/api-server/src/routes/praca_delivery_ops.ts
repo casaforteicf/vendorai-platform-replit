@@ -148,15 +148,23 @@ router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
   if (!canAccess(req, tenantId) || actor(req).userFunction === "entrega") return res.status(403).json({ error: "Forbidden" });
   const [summary, orders, pendingMessages] = await Promise.all([
     vendorPool.query(
-      `SELECT count(*) FILTER (WHERE status IN ('coleta_agendada','coletado','em_rota'))::int AS em_operacao,
-              count(*) FILTER (WHERE status='falha_entrega')::int AS falhas,
-              count(*) FILTER (WHERE status='entregue')::int AS entregues
-         FROM praca_pedidos WHERE tenant_id=$1`,
+      `SELECT count(*) FILTER (WHERE p.status IN ('coleta_agendada','coletado','em_rota'))::int AS em_operacao,
+              count(*) FILTER (WHERE p.status='falha_entrega')::int AS falhas,
+              count(*) FILTER (WHERE p.status='entregue')::int AS entregues,
+              (SELECT count(*)::int FROM praca_payment_intents i
+                WHERE i.tenant_id=$1 AND i.status IN ('failed','overdue','chargeback')) AS alertas_financeiros,
+              (SELECT count(*)::int FROM praca_payment_allocations a
+                JOIN praca_payment_intents i ON i.id=a.payment_intent_id
+               WHERE i.tenant_id=$1 AND i.status='received'
+                 AND a.status<>'settled') AS repasses_pendentes
+         FROM praca_pedidos p WHERE p.tenant_id=$1`,
       [tenantId],
     ),
     vendorPool.query(
       `SELECT p.id,p.status,p.cliente_nome,p.cliente_whatsapp,p.updated_at,p.modelo_logistico,p.frete_centavos,
               hub.nome AS ponto_redespacho_nome,t.status AS transferencia_status,
+              pi.status AS pagamento_status,pi.provider_fee_centavos,pi.net_centavos,
+              coalesce(pa.repasses_pendentes,0)::int AS repasses_pendentes,
               r.id AS rota_id,r.numero AS rota_numero,r.status AS rota_status,
               s.sequencia,s.status AS parada_status,s.motivo_falha_codigo,s.motivo_falha_descricao,
               (SELECT count(*)::int FROM praca_entrega_interacoes i WHERE i.pedido_id=p.id) AS mensagens
@@ -169,11 +177,21 @@ router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
          LEFT JOIN praca_rotas_entrega r ON r.id=s.rota_id
          LEFT JOIN praca_pontos_redespacho hub ON hub.id=p.ponto_redespacho_id
          LEFT JOIN LATERAL (
+           SELECT i.id,i.status,i.provider_fee_centavos,i.net_centavos
+             FROM praca_payment_intents i WHERE i.order_id=p.id
+            ORDER BY i.created_at DESC LIMIT 1
+         ) pi ON true
+         LEFT JOIN LATERAL (
+           SELECT count(*)::int AS repasses_pendentes
+             FROM praca_payment_allocations a
+            WHERE a.payment_intent_id=pi.id AND a.status<>'settled'
+         ) pa ON true
+         LEFT JOIN LATERAL (
            SELECT x.status FROM praca_transferencias_custodia x
             WHERE x.pedido_id=p.id ORDER BY x.created_at DESC LIMIT 1
          ) t ON true
         WHERE p.tenant_id=$1
-          AND p.status IN ('pronto_coleta','coleta_agendada','coletado','em_rota','falha_entrega')
+          AND p.status IN ('recebido','pagamento_pendente','pronto_coleta','coleta_agendada','coletado','em_rota','falha_entrega')
         ORDER BY CASE WHEN p.status='falha_entrega' THEN 0 ELSE 1 END,p.updated_at
         LIMIT 200`,
       [tenantId],
