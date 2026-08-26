@@ -52,6 +52,7 @@ export async function sendPasswordResetEmail(
 
   if (error) {
     logger.warn({ error, to }, "Failed to send password reset email via Resend");
+    console.error("[password-reset-email] Resend error:", JSON.stringify(error));
     return false;
   }
 
