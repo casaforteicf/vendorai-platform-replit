@@ -11,7 +11,9 @@ function canAccess(req: Express.Request, tenantId: string) {
 
 // Entrada pública usada pelo Praça.ai. O tenant é sempre obtido do produto;
 // nunca é aceito do corpo da requisição.
-pracaPerguntasPublicRouter.post("/products/:productId/perguntas", async (req, res) => {
+pracaPerguntasPublicRouter.post(
+  ["/products/:productId/perguntas", "/produtos-catalogo/:productId/perguntas"],
+  async (req, res) => {
   const productId = String(req.params.productId);
   const pergunta = typeof req.body?.pergunta === "string" ? req.body.pergunta.trim() : "";
   const clienteId = typeof req.body?.clienteId === "string" ? req.body.clienteId : null;
@@ -45,7 +47,8 @@ pracaPerguntasPublicRouter.post("/products/:productId/perguntas", async (req, re
   );
 
   return res.status(201).json(inserted.rows[0]);
-});
+  },
+);
 
 router.get("/tenants/:tenantId/praca-perguntas-pendentes", async (req, res) => {
   const tenantId = String(req.params.tenantId);
