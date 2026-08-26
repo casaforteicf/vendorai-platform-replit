@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import rateLimit from "express-rate-limit";
 import { vendorPool } from "../lib/vendorDb";
 import {
   createEvidenceReadUrl,
@@ -8,6 +9,12 @@ import {
 
 const router: IRouter = Router();
 export const pracaDeliveryPublicRouter: IRouter = Router();
+pracaDeliveryPublicRouter.use(rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 
 function actor(req: Express.Request) {
   const user = (req as any).user;
