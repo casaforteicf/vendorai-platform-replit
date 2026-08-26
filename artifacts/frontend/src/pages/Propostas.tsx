@@ -184,6 +184,10 @@ const catFormSchema = z.object({
   unidade: z.string().min(1, "Obrigatório"),
   descricao: z.string().optional(),
   imagemUrl: z.string().url("URL inválida").optional().or(z.literal("")),
+  // Galeria de fotos adicionais (além da capa em imagemUrl) e vídeo do
+  // produto — pedido real: cadastro só aceitava 1 foto, sem vídeo.
+  imagens: z.array(z.string()).default([]),
+  videoUrl: z.string().url("URL inválida").optional().or(z.literal("")),
   ativo: z.boolean().default(true),
   recorrente: z.boolean().default(false),
   prazoContrato: z.coerce.number().int().min(1).optional(),
@@ -307,6 +311,9 @@ export function CatalogoModal({
   const [editingProd, setEditingProd] = useState<ProdutoCatalogo | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [imagemUploading, setImagemUploading] = useState(false);
+  const [galeriaUploading, setGaleriaUploading] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [gerandoImagemIa, setGerandoImagemIa] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProdutoCatalogo | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showOnlyPending, setShowOnlyPending] = useState(false);
@@ -336,7 +343,7 @@ export function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
+    defaultValues: { nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" },
   });
 
   const watchRecorrente = form.watch("recorrente");
@@ -353,7 +360,7 @@ export function CatalogoModal({
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
+    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
     setComposicaoItens([]);
     setFormOpen(true);
   }
@@ -379,6 +386,8 @@ export function CatalogoModal({
       unidade: p.unidade,
       descricao: p.descricao ?? "",
       imagemUrl: p.imagemUrl ?? "",
+      imagens: Array.isArray((p as any).imagens) ? (p as any).imagens : [],
+      videoUrl: (p as any).videoUrl ?? "",
       ativo: p.ativo,
       recorrente: p.recorrencia === "mensal",
       prazoContrato: p.prazoContrato ?? undefined,
@@ -451,6 +460,8 @@ export function CatalogoModal({
       unidade: vals.unidade,
       descricao: vals.descricao || undefined,
       imagemUrl: vals.imagemUrl || undefined,
+      imagens: vals.imagens && vals.imagens.length > 0 ? vals.imagens : undefined,
+      videoUrl: vals.videoUrl || undefined,
       fornecedor: vals.fornecedor || undefined,
       prazoEntregaDias: vals.prazoEntregaDias ?? undefined,
       custoFornecedor: vals.custoFornecedor != null ? vals.custoFornecedor.toFixed(2) : undefined,
@@ -1109,6 +1120,156 @@ export function CatalogoModal({
                       onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                     />
                   )}
+                </FormItem>
+              )} />
+
+              {/* Galeria de fotos adicionais + gerar com IA */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Mais fotos <span className="text-muted-foreground text-xs">(opcional — além da capa acima)</span></Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-xs gap-1.5"
+                    disabled={gerandoImagemIa || !form.watch("nome")}
+                    title={!form.watch("nome") ? "Preencha o nome do produto primeiro" : undefined}
+                    onClick={async () => {
+                      setGerandoImagemIa(true);
+                      try {
+                        const categoriaNome = categorias.find((c) => c.id === form.getValues("categoriaId"))?.nome;
+                        const r = await fetch(`/api/tenants/${tenantId}/produtos-catalogo/gerar-imagem-ia`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+                          body: JSON.stringify({
+                            nome: form.getValues("nome"),
+                            descricao: form.getValues("descricao") || undefined,
+                            categoriaNome,
+                          }),
+                        });
+                        const data = await r.json();
+                        if (!r.ok) throw new Error(data?.error ?? "Falha ao gerar imagem");
+                        const atuais = form.getValues("imagens") ?? [];
+                        form.setValue("imagens", [...atuais, data.imagemUrl]);
+                        toast({ title: "Imagem gerada com IA" });
+                      } catch (err) {
+                        toast({ title: "Erro ao gerar imagem", description: String(err), variant: "destructive" });
+                      } finally {
+                        setGerandoImagemIa(false);
+                      }
+                    }}
+                  >
+                    {gerandoImagemIa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    Gerar com IA
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(form.watch("imagens") ?? []).map((url, idx) => (
+                    <div key={idx} className="relative">
+                      <img
+                        src={url.startsWith("/objects/") ? `/api/storage${url}` : url}
+                        alt={`foto ${idx + 1}`}
+                        className="h-16 w-16 rounded object-cover border border-border"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                      <button
+                        type="button"
+                        className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center text-[10px] leading-none"
+                        onClick={() => {
+                          const atuais = form.getValues("imagens") ?? [];
+                          form.setValue("imagens", atuais.filter((_, i) => i !== idx));
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    id="prod-galeria-upload"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      if (files.length === 0) return;
+                      setGaleriaUploading(true);
+                      try {
+                        const novasUrls: string[] = [];
+                        for (const file of files) {
+                          const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+                            requestUploadUrl.mutate(
+                              { data: { name: file.name, size: file.size, contentType: file.type } },
+                              { onSuccess: resolve, onError: reject },
+                            );
+                          });
+                          const res = await fetch(result.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+                          if (!res.ok) throw new Error("Upload falhou");
+                          novasUrls.push(result.objectPath);
+                        }
+                        const atuais = form.getValues("imagens") ?? [];
+                        form.setValue("imagens", [...atuais, ...novasUrls]);
+                        toast({ title: novasUrls.length > 1 ? "Fotos enviadas" : "Foto enviada" });
+                      } catch (err) {
+                        toast({ title: "Erro no upload", description: String(err), variant: "destructive" });
+                      } finally {
+                        setGaleriaUploading(false);
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                  <label htmlFor="prod-galeria-upload">
+                    <span className="cursor-pointer h-16 w-16 rounded border border-dashed border-border flex items-center justify-center text-muted-foreground hover:bg-accent">
+                      {galeriaUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-5 w-5" />}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Vídeo do produto */}
+              <FormField control={form.control} name="videoUrl" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Vídeo do Produto <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                  <div className="flex items-center gap-2">
+                    <FormControl><Input placeholder="https://… ou envie um arquivo" {...field} value={field.value ?? ""} /></FormControl>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      id="prod-video-upload"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setVideoUploading(true);
+                        try {
+                          const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+                            requestUploadUrl.mutate(
+                              { data: { name: file.name, size: file.size, contentType: file.type } },
+                              { onSuccess: resolve, onError: reject },
+                            );
+                          });
+                          const res = await fetch(result.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+                          if (!res.ok) throw new Error("Upload falhou");
+                          field.onChange(result.objectPath);
+                          toast({ title: "Vídeo enviado" });
+                        } catch (err) {
+                          toast({ title: "Erro no upload", description: String(err), variant: "destructive" });
+                        } finally {
+                          setVideoUploading(false);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                    <label htmlFor="prod-video-upload">
+                      <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={videoUploading} asChild>
+                        <span className="cursor-pointer flex items-center gap-1.5 text-xs">
+                          {videoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                          Enviar
+                        </span>
+                      </Button>
+                    </label>
+                  </div>
+                  <FormMessage />
                 </FormItem>
               )} />
 

@@ -3,6 +3,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { findOfficialItemCategory } from "../lib/itemCategories";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { generateImage } from "../lib/ai-gateway.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   db,
   produtosCatalogoTable,
@@ -14,6 +16,7 @@ import {
 } from "@workspace/db";
 
 const router: IRouter = Router();
+const objectStorage = new ObjectStorageService();
 
 async function categoriaPertenceAoTenant(categoriaId: string, tenantId: string): Promise<boolean> {
   const [categoria] = await db
@@ -664,6 +667,59 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
 const promocaoBodySchema = z.object({
   precoPromocional: z.union([z.string(), z.number()]).transform((v) => String(v)),
   ativaAte: z.string().datetime().or(z.string().min(1)), // aceita ISO ou data simples
+});
+
+// ── Gera uma imagem do produto via IA (DALL-E/gpt-image-1 pelo gateway já
+// existente) -- prompt montado a partir de nome/descrição/categoria do
+// produto. Baixa o resultado (URL temporária da OpenAI) e salva no nosso
+// próprio storage, pra não depender de um link que expira.
+const gerarImagemIaSchema = z.object({
+  nome: z.string().min(1),
+  descricao: z.string().optional(),
+  categoriaNome: z.string().optional(),
+});
+
+router.post("/tenants/:tenantId/produtos-catalogo/gerar-imagem-ia", async (req, res) => {
+  const parsed = gerarImagemIaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+  const tenantId = String(req.params["tenantId"]);
+  const { nome, descricao, categoriaNome } = parsed.data;
+
+  const promptParts = [
+    `Fotografia de produto profissional, fundo neutro claro, iluminação de estúdio, foco nítido: ${nome}.`,
+  ];
+  if (categoriaNome) promptParts.push(`Categoria: ${categoriaNome}.`);
+  if (descricao) promptParts.push(descricao.slice(0, 300));
+  promptParts.push("Sem texto, sem marca d'água, sem logotipo.");
+  const prompt = promptParts.join(" ");
+
+  try {
+    const { urls } = await generateImage(tenantId, "image_generator", prompt, {
+      model: "gpt-image-1",
+      size: "1024x1024",
+      n: 1,
+      log: req.log,
+    });
+    const openaiUrl = urls[0];
+    if (!openaiUrl) {
+      res.status(502).json({ error: "IA não retornou nenhuma imagem" });
+      return;
+    }
+    // Baixa e salva no nosso storage -- a URL da OpenAI expira.
+    const imgRes = await fetch(openaiUrl);
+    const buffer = Buffer.from(await imgRes.arrayBuffer());
+    const contentType = imgRes.headers.get("content-type") ?? "image/png";
+    const objectPath = await objectStorage.savePrivateBuffer(buffer, contentType, `produto-ia-${Date.now()}.png`);
+    const baseOrigin = `${req.protocol}://${req.get("host")}`;
+    res.json({ imagemUrl: `${baseOrigin}/api/storage${objectPath}` });
+  } catch (err) {
+    req.log.error({ err, tenantId }, "produtos-catalogo: falha ao gerar imagem via IA");
+    const message = err instanceof Error ? err.message : "Falha ao gerar imagem";
+    res.status(502).json({ error: message });
+  }
 });
 
 router.post("/produtos-catalogo/:id/promocao", async (req, res) => {
