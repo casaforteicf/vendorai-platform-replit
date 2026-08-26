@@ -182,13 +182,18 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   }, [siteId, tenantId, token]);
 
   const saveHtml = useCallback(async (newHtml: string) => {
-    if (!siteId) return;
-    setHtml(newHtml);
-    await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/html`, {
+    if (!siteId) throw new Error("Nenhum site gerado");
+    const res = await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/html`, {
       method: "PATCH",
       headers: authHeaders,
       body: JSON.stringify({ html: newHtml }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `Erro ${res.status}`);
+    }
+    // Só atualiza o preview depois que a versão foi realmente persistida.
+    setHtml(newHtml);
   }, [siteId, tenantId, token]);
 
   // Submits one generate job and polls it to completion — shared by the
@@ -944,8 +949,9 @@ const INLINE_EDIT_SCRIPT = `
     '[data-ve-editable]:focus{outline:2px solid #6366f1!important;outline-offset:2px;background:rgba(99,102,241,0.06)!important;border-radius:2px;}'+
     '[data-ve-img]:hover .ve-img-overlay{opacity:1!important;}'+
     '.ve-img-wrap{position:relative;display:inline-block;width:100%;}'+
-    '.ve-img-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;cursor:pointer;border-radius:inherit;z-index:9;}'+
-    '.ve-img-overlay-label{color:#fff;font-size:13px;font-weight:600;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.5);}'+
+    '.ve-img-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;gap:8px;opacity:0;transition:opacity .18s;border-radius:inherit;z-index:9;}'+
+    '.ve-img-overlay button{color:#fff;font:600 13px system-ui;border:1px solid rgba(255,255,255,.65);background:rgba(15,23,42,.72);padding:7px 10px;border-radius:7px;cursor:pointer;text-shadow:0 1px 4px rgba(0,0,0,.5);}'+
+    '.ve-img-overlay button:hover{background:#4f46e5}.ve-img-overlay button.ve-img-delete:hover{background:#dc2626;}'+
     '.ve-sec-ctrl{position:absolute;top:6px;right:8px;display:none;gap:4px;z-index:100;}'+
     '[data-ve-sec]:hover>.ve-sec-ctrl{display:flex!important;}'+
     '[data-ve-sec]{position:relative;}'+
@@ -963,7 +969,7 @@ const INLINE_EDIT_SCRIPT = `
      (controls, wrappers, attributes, injected style/toolbar) before
      serializing — so what gets saved/published is always clean HTML,
      never the WYSIWYG editing state. ── */
-  function send(){
+  function send(editKind){
     var clone=document.documentElement.cloneNode(true);
     ['#__ve_editor__','#__ve_style__','#__ve_fmt__','.ve-sec-ctrl','.ve-img-overlay','.ve-ph-overlay'].forEach(function(sel){
       clone.querySelectorAll(sel).forEach(function(el){el.remove();});
@@ -975,7 +981,7 @@ const INLINE_EDIT_SCRIPT = `
       if(img)wrap.replaceWith(img);
     });
     clone.querySelectorAll('[data-ve-img]').forEach(function(el){el.removeAttribute('data-ve-img');});
-    window.parent.postMessage({type:'ve-html-edit',html:'<!DOCTYPE html>'+clone.outerHTML},'*');
+    window.parent.postMessage({type:'ve-html-edit',editKind:editKind||'manual',html:'<!DOCTYPE html>'+clone.outerHTML},'*');
   }
 
   /* ── formatting toolbar ── */
@@ -1058,9 +1064,11 @@ const INLINE_EDIT_SCRIPT = `
     }
     if(!par.querySelector('.ve-img-overlay')){
       var ov=document.createElement('div');ov.className='ve-img-overlay';
-      var lbl=document.createElement('span');lbl.className='ve-img-overlay-label';lbl.textContent='🖼 Trocar foto';
-      ov.appendChild(lbl);par.appendChild(ov);
-      ov.addEventListener('click',function(e){e.stopPropagation();window.parent.postMessage({type:'ve-img-pick',mode:'img',imgIndex:index},'*');});
+      var swap=document.createElement('button');swap.type='button';swap.textContent='🖼 Trocar';
+      swap.addEventListener('click',function(e){e.stopPropagation();window.parent.postMessage({type:'ve-img-pick',mode:'img',imgIndex:index},'*');});
+      var del=document.createElement('button');del.type='button';del.className='ve-img-delete';del.textContent='✕ Excluir';
+      del.addEventListener('click',function(e){e.stopPropagation();if(confirm('Excluir esta imagem do site?')){par.remove();send('image');}});
+      ov.appendChild(swap);ov.appendChild(del);par.appendChild(ov);
     }
   }
 
@@ -1149,10 +1157,10 @@ const INLINE_EDIT_SCRIPT = `
           newImg.style.cssText='width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;';
           ph.innerHTML='';ph.appendChild(newImg);
           setupImg(newImg,imgs.length);
-          send();
+          send('image');
         }
       } else {
-        var img=imgs[e.data.imgIndex];if(img){img.src=e.data.newSrc;send();}
+        var img=imgs[e.data.imgIndex];if(img){img.src=e.data.newSrc;send('image');}
       }
     }
     if(e.data.type==='ve-inject-section'){
@@ -1283,7 +1291,26 @@ function SitePreview({
     async function handler(e: MessageEvent) {
       if (!e.data?.type) return;
       if (e.data.type === 've-html-edit') {
-        setPendingHtml(stripEditScript(e.data.html as string));
+        const editedHtml = stripEditScript(e.data.html as string);
+        if (e.data.editKind === 'image' && onSave) {
+          setSaving(true);
+          try {
+            await onSave(editedHtml);
+            setPendingHtml(null);
+            toast({ description: '✓ Imagem atualizada no site' });
+          } catch (error) {
+            setPendingHtml(editedHtml);
+            toast({
+              title: 'Não foi possível salvar a imagem',
+              description: error instanceof Error ? error.message : 'Tente novamente.',
+              variant: 'destructive',
+            });
+          } finally {
+            setSaving(false);
+          }
+        } else {
+          setPendingHtml(editedHtml);
+        }
       } else if (e.data.type === 've-img-pick') {
         pendingImgIndex.current = e.data.imgIndex as number;
         pendingImgMode.current = (e.data.mode as string) === 'placeholder' ? 'placeholder' : 'img';
@@ -1294,7 +1321,7 @@ function SitePreview({
     }
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, []);
+  }, [onSave, toast]);
 
   // Reset pending when html prop changes (new generation)
   useEffect(() => { setPendingHtml(null); setSections([]); }, [html]);
@@ -1454,7 +1481,7 @@ function SitePreview({
           <>
             <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/50">
               <span className="text-[10px] text-muted-foreground">
-                ✏️ Textos: clique para editar (B/I/U + tamanho + cor) · 🖼️ Fotos: passe o mouse · Seções: hover → ↑↓✕
+                ✏️ Textos: clique para editar (B/I/U + tamanho + cor) · 🖼️ Fotos: passe o mouse para trocar ou excluir · Seções: hover → ↑↓✕
               </span>
             </div>
             <iframe
@@ -1515,10 +1542,11 @@ function RefinementChat({
     try {
       await onRefine(msg);
       setMessages((m) => [...m, { role: "assistant", content: "Site atualizado! Veja o preview." }]);
-    } catch {
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Tente novamente.";
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: "Não consegui aplicar o ajuste. Tente novamente." },
+        { role: "assistant", content: `Não consegui aplicar o ajuste: ${detail}` },
       ]);
     } finally {
       setLoading(false);

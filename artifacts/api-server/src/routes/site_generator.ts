@@ -555,6 +555,11 @@ function isValidHtml(html: string): boolean {
   return html.length >= 500 && (/<html/i.test(html) || /<!DOCTYPE/i.test(html));
 }
 
+function htmlChanged(before: string, after: string): boolean {
+  const normalize = (value: string) => value.replace(/\r\n/g, "\n").trim();
+  return normalize(before) !== normalize(after);
+}
+
 // Unified AI caller with provider logging
 type AiMessage = { role: "user" | "assistant"; content: string };
 
@@ -956,12 +961,34 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
 
   req.log.info({ provider: result.provider, model: result.model, tenantId, siteId }, "Site refined successfully");
 
-  const rawText = result.content;
-  const html = extractHtml(rawText);
+  let rawText = result.content;
+  let html = extractHtml(rawText);
+
+  // Alguns modelos ocasionalmente devolvem o HTML sem aplicar o pedido. Não
+  // confirme sucesso ao usuário nesse caso: faça uma segunda tentativa explícita.
+  if (isValidHtml(html) && !htmlChanged(existing.html ?? "", html)) {
+    req.log.info({ tenantId, siteId }, "Site refinement returned unchanged HTML; retrying");
+    try {
+      result = await callAI([
+        { role: "user", content: `${refinePrompt}\n\nATENÇÃO: a tentativa anterior devolveu o site sem nenhuma alteração. O HTML final PRECISA incorporar o pedido do cliente de forma verificável.` },
+      ], tenantId, req.log);
+      rawText = result.content;
+      html = extractHtml(rawText);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
+      res.status(502).json({ error: `Erro no refinamento: ${msg}` });
+      return;
+    }
+  }
 
   if (!isValidHtml(html)) {
     req.log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider }, "Site refinement returned invalid HTML");
     res.status(502).json({ error: "Resposta da IA inválida" });
+    return;
+  }
+
+  if (!htmlChanged(existing.html ?? "", html)) {
+    res.status(422).json({ error: "A IA não aplicou nenhuma mudança. Reformule o pedido com mais detalhes." });
     return;
   }
 
