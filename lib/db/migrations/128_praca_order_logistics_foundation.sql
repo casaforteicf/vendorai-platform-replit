@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS praca_pedidos (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, idempotency_key),
-  UNIQUE NULLS NOT DISTINCT (tenant_id, id_externo)
+  UNIQUE (tenant_id, id_externo)
 );
 
 CREATE TABLE IF NOT EXISTS praca_pedido_itens (
