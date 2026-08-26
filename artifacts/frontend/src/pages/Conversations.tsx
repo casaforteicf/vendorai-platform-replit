@@ -19,7 +19,7 @@ import {
   MessageEnviadoPor,
   MessageCanal,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -747,6 +747,20 @@ export default function Conversations() {
   const tenantId = user?.tenantId ?? "";
   const queryClient = useQueryClient();
 
+  const { data: pracaPending = { count: 0 } } = useQuery<{ count: number }>({
+    queryKey: ["praca-perguntas-count", tenantId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch(`/api/tenants/${tenantId}/praca-perguntas-pendentes/count`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Falha ao contar perguntas pendentes");
+      return response.json();
+    },
+    enabled: !!tenantId,
+    refetchInterval: 15000,
+  });
+
   const initialConvId = new URLSearchParams(window.location.search).get("conv");
   const initialLeadId = new URLSearchParams(window.location.search).get("leadId");
   const [selectedId, setSelectedId] = useState<string | null>(initialConvId);
@@ -866,7 +880,14 @@ export default function Conversations() {
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Perguntas Praça.ai
+          <span className="flex items-center gap-2">
+            Perguntas Praça.ai
+            {pracaPending.count > 0 && (
+              <Badge className="h-5 min-w-5 justify-center rounded-full px-1.5 text-[11px]">
+                {pracaPending.count}
+              </Badge>
+            )}
+          </span>
         </button>
       </div>
 
