@@ -26,7 +26,9 @@ export default function ResetPassword() {
           // Save JWT directly to localStorage, then hard-navigate to dashboard
           // Hard navigation avoids React state race conditions (useGetMe vs setToken)
           localStorage.setItem(TOKEN_KEY, d.token);
-          window.location.href = window.location.origin + "/app/dashboard";
+          // Achado real: usava /app/dashboard (prefixo que não existe
+          // como rota) -- rota real é só /dashboard, sem prefixo.
+          window.location.href = window.location.origin + "/dashboard";
         } else {
           // Fallback: show success and redirect to login
           setDone(true);

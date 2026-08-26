@@ -320,7 +320,9 @@ export default function AdminTenants() {
 
   function buildWhatsAppText() {
     if (!result) return "";
-    const loginUrl = window.location.origin + "/app/";
+    // Achado real: usava /app/ (prefixo que não existe como rota) --
+    // rota raiz (/) já mostra login ou redireciona pro dashboard.
+    const loginUrl = window.location.origin + "/";
     return `Olá ${result.user.name}! Seu acesso ao Vendor.ai está pronto.\n🔗 ${loginUrl}\n📧 Login: ${result.user.email}\n🔑 Senha: ${result.tempPassword}\nTroque a senha no primeiro acesso!`;
   }
 
