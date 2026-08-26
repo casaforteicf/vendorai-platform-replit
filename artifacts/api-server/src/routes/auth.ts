@@ -598,8 +598,12 @@ router.post("/auth/forgot-password", async (req, res) => {
     expiresAt,
   });
 
-  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
-  const appUrl = domain ? `https://${domain}` : `http://localhost:3000`;
+  // Achado real: usava REPLIT_DOMAINS (variável antiga, de antes da
+  // migração pra Railway/Vercel) -- gerava link apontando pro domínio
+  // do BACKEND (Railway), não pro site (Vercel), onde /app/redefinir-
+  // senha nem existe como rota. APP_URL é a variável correta, já usada
+  // em todos os outros fluxos de OAuth (Google/Meta/Instagram/WhatsApp).
+  const appUrl = (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
   const resetUrl = `${appUrl}/app/redefinir-senha?token=${rawToken}`;
 
   await sendPasswordResetEmail(user.email, resetUrl);

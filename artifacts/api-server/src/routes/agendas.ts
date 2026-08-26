@@ -270,12 +270,9 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   // Prefer the actual request host so the user lands back on the same domain
   // they started from (appvendorai.com in prod, spock.replit.dev in dev).
   const reqHost = req.get("host") ?? "";
-  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   const appUrl = reqHost
     ? `https://${reqHost}`
-    : domain
-      ? `https://${domain}`
-      : `http://localhost:3000`;
+    : (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
 
   if (error || !code || !state) {
     res.redirect(`${appUrl}/configuracoes?googleError=access_denied`);

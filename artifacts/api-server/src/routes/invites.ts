@@ -40,10 +40,10 @@ const acceptInviteSchema = z.object({
 });
 
 export function buildInviteUrl(req: import("express").Request, token: string): string {
-  const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
-  const baseUrl = domain
-    ? `https://${domain}`
-    : `${req.get("x-forwarded-proto") ?? req.protocol}://${req.get("host")}`;
+  // Mesmo achado do reset de senha: REPLIT_DOMAINS aponta pro backend
+  // (Railway), não pro site (Vercel) -- convite de equipe caía na
+  // mesma tela de erro "Cannot GET". APP_URL é a variável correta.
+  const baseUrl = (process.env["APP_URL"] ?? `${req.get("x-forwarded-proto") ?? req.protocol}://${req.get("host")}`).replace(/\/$/, "");
   return `${baseUrl}/invite/${token}`;
 }
 

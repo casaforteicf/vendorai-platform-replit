@@ -106,9 +106,12 @@ function canAccessTenant(req: Request, tid: string) {
 }
 
 function getPortalBaseUrl(req: Request): string {
-  const domains = process.env.REPLIT_DOMAINS;
-  if (domains) {
-    return `https://${domains.split(",")[0].trim()}`;
+  // Mesmo achado do reset de senha: REPLIT_DOMAINS aponta pro backend
+  // (Railway), não pro site (Vercel) -- link de portal do cliente
+  // caía na mesma tela de erro. APP_URL é a variável correta.
+  const appUrl = process.env["APP_URL"];
+  if (appUrl) {
+    return appUrl.replace(/\/$/, "");
   }
   const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost";
   const proto = req.headers["x-forwarded-proto"] || "https";
