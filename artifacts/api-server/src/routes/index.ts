@@ -90,6 +90,7 @@ import pracaAvaliacoesRouter, { pracaAvaliacoesPublicRouter } from "./praca_aval
 import pracaOrdersRouter from "./praca_orders";
 import pracaPaymentsRouter, { pracaPaymentsPublicRouter } from "./praca_payments";
 import pracaLogisticsRouter from "./praca_logistics";
+import pracaCourierRouter from "./praca_courier";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
@@ -419,6 +420,7 @@ router.use(vendasPracaRouter);
 router.use(pracaOrdersRouter);
 router.use(pracaPaymentsRouter);
 router.use(pracaLogisticsRouter);
+router.use(pracaCourierRouter);
 
 // Rastreamento de clique em materiais de fluxo de nutrição (sem auth)
 router.use(contentTrackingRouter);
