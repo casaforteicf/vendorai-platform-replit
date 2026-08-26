@@ -55,11 +55,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
-CREATE UNIQUE INDEX IF NOT EXISTS categorias_produto_raiz_slug_uidx
+CREATE INDEX IF NOT EXISTS categorias_produto_raiz_slug_idx
   ON categorias_produto (tenant_id, slug)
   WHERE parent_id IS NULL AND ativo = true;
 
-CREATE UNIQUE INDEX IF NOT EXISTS categorias_produto_filho_slug_uidx
+CREATE INDEX IF NOT EXISTS categorias_produto_filho_slug_idx
   ON categorias_produto (tenant_id, parent_id, slug)
   WHERE parent_id IS NOT NULL AND ativo = true;
 
@@ -78,6 +78,17 @@ DECLARE
     'sublinha','utilidade','familia'
   ];
 BEGIN
+  IF EXISTS (
+    SELECT 1 FROM categorias_produto c
+    WHERE c.tenant_id = NEW.tenant_id
+      AND c.parent_id IS NOT DISTINCT FROM NEW.parent_id
+      AND c.slug = NEW.slug
+      AND c.ativo = true
+      AND c.id <> NEW.id
+  ) THEN
+    RAISE EXCEPTION 'Já existe uma categoria ativa com este nome no mesmo nível';
+  END IF;
+
   IF NEW.nivel = 'categoria' THEN
     IF NEW.parent_id IS NOT NULL THEN
       RAISE EXCEPTION 'Categoria principal não pode possuir categoria pai';
