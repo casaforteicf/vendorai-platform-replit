@@ -174,6 +174,7 @@ export default function AdminTenantDetail() {
   const [editingComissao, setEditingComissao] = useState(false);
   const [comissaoInput, setComissaoInput] = useState("");
   const [savingComissao, setSavingComissao] = useState(false);
+  const [savingVendeNoPracaAi, setSavingVendeNoPracaAi] = useState(false);
   const [editingPlan, setEditingPlan] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<"monthly" | "annual">("monthly");
@@ -424,6 +425,26 @@ export default function AdminTenantDetail() {
     }
   }
 
+  async function handleToggleVendeNoPracaAi(novoValor: boolean) {
+    setSavingVendeNoPracaAi(true);
+    try {
+      const r = await fetch(`/api/tenants/${id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ vendeNoPracaAi: novoValor }),
+      });
+      const data = await r.json() as { error?: string };
+      if (!r.ok) {
+        toast({ title: data.error ?? "Erro ao atualizar Praça.ai", variant: "destructive" });
+        return;
+      }
+      void qc.invalidateQueries({ queryKey: ["admin-tenant-detail", id] });
+      toast({ title: novoValor ? "Loja ativada no Praça.ai" : "Loja desativada do Praça.ai" });
+    } finally {
+      setSavingVendeNoPracaAi(false);
+    }
+  }
+
   async function handleResend() {
     setResending(true);
     try {
@@ -629,6 +650,22 @@ export default function AdminTenantDetail() {
                 </div>
               )}
             </div>
+            <Separator />
+            <InfoRow
+              label="Vende no Praça.ai"
+              value={
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={!!tenant.vendeNoPracaAi}
+                    disabled={savingVendeNoPracaAi}
+                    onCheckedChange={handleToggleVendeNoPracaAi}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {tenant.vendeNoPracaAi ? "Ativo — produtos marcados aparecem na vitrine pública" : "Inativo"}
+                  </span>
+                </div>
+              }
+            />
             {tenant.vendeNoPracaAi && (
               <>
                 <Separator />
