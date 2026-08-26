@@ -46,7 +46,7 @@ import type {
   PropostaTemplate,
   CategoriaProduto,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -138,6 +138,7 @@ import {
   MapPin,
   User,
   MessageCircle,
+  Star,
   Clock,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -296,6 +297,101 @@ function downloadTemplate() {
   URL.revokeObjectURL(url);
 }
 
+
+type ProductInteractions = {
+  questions: Array<{ id: string; pergunta: string; resposta: string | null; status: string; createdAt: string }>;
+  reviews: Array<{
+    id: string; nota: number; comentario: string | null; fotos: string[];
+    compraVerificada: boolean; clienteNome: string | null; status: string;
+    respostaLoja: string | null; createdAt: string;
+  }>;
+};
+
+function ProductInteractionsDialog({
+  product,
+  tenantId,
+  onClose,
+}: {
+  product: ProdutoCatalogo | null;
+  tenantId: string;
+  onClose: () => void;
+}) {
+  const { data, isLoading, error } = useQuery<ProductInteractions>({
+    queryKey: ["product-interactions", tenantId, product?.id],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/tenants/${tenantId}/products/${product!.id}/interactions`,
+        { headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` } },
+      );
+      if (!response.ok) throw new Error("Não foi possível carregar as interações.");
+      return response.json();
+    },
+    enabled: !!product && !!tenantId,
+  });
+
+  const publishedReviews = data?.reviews.filter((review) => review.status === "publicada") ?? [];
+  const average = publishedReviews.length
+    ? publishedReviews.reduce((total, review) => total + review.nota, 0) / publishedReviews.length
+    : 0;
+
+  return (
+    <Dialog open={!!product} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Interações — {product?.nome}</DialogTitle>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin" /></div>
+        ) : error ? (
+          <p className="py-8 text-center text-sm text-destructive">Não foi possível carregar as interações.</p>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Nota média</p><p className="mt-1 text-2xl font-bold">{average.toFixed(1)} / 10</p></CardContent></Card>
+              <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Avaliações</p><p className="mt-1 text-2xl font-bold">{data?.reviews.length ?? 0}</p></CardContent></Card>
+              <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Perguntas</p><p className="mt-1 text-2xl font-bold">{data?.questions.length ?? 0}</p></CardContent></Card>
+            </div>
+
+            <section className="space-y-3">
+              <h3 className="flex items-center gap-2 font-semibold"><MessageCircle className="h-4 w-4" /> Perguntas</h3>
+              {data?.questions.length ? data.questions.map((question) => (
+                <Card key={question.id}><CardContent className="space-y-2 pt-5">
+                  <p className="text-sm font-medium">{question.pergunta}</p>
+                  {question.resposta
+                    ? <p className="rounded-md bg-muted p-3 text-sm"><strong>Resposta:</strong> {question.resposta}</p>
+                    : <Badge variant="outline">Aguardando resposta</Badge>}
+                  <p className="text-xs text-muted-foreground">{fmtDate(question.createdAt)}</p>
+                </CardContent></Card>
+              )) : <p className="text-sm text-muted-foreground">Nenhuma pergunta para este produto.</p>}
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="flex items-center gap-2 font-semibold"><Star className="h-4 w-4" /> Avaliações</h3>
+              {data?.reviews.length ? data.reviews.map((review) => (
+                <Card key={review.id}><CardContent className="space-y-3 pt-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold">{review.nota} / 10</span>
+                    {review.compraVerificada && <Badge className="bg-emerald-600">Compra verificada</Badge>}
+                    <Badge variant="outline">{review.status}</Badge>
+                  </div>
+                  {review.comentario && <p className="text-sm">{review.comentario}</p>}
+                  {review.fotos?.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto">
+                      {review.fotos.map((foto) => <img key={foto} src={foto} alt="Foto enviada pelo cliente" className="h-24 w-24 rounded-md border object-cover" />)}
+                    </div>
+                  )}
+                  {review.respostaLoja && <p className="rounded-md bg-muted p-3 text-sm"><strong>Resposta da loja:</strong> {review.respostaLoja}</p>}
+                  <p className="text-xs text-muted-foreground">{review.clienteNome || "Cliente"} · {fmtDate(review.createdAt)}</p>
+                </CardContent></Card>
+              )) : <p className="text-sm text-muted-foreground">Nenhuma avaliação para este produto.</p>}
+            </section>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function CatalogoModal({
   open,
   onClose,
@@ -309,6 +405,7 @@ export function CatalogoModal({
   const qc = useQueryClient();
   const requestUploadUrl = useRequestUploadUrl();
   const [editingProd, setEditingProd] = useState<ProdutoCatalogo | null>(null);
+  const [interactionsProd, setInteractionsProd] = useState<ProdutoCatalogo | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [imagemUploading, setImagemUploading] = useState(false);
   const [galeriaUploading, setGaleriaUploading] = useState(false);
@@ -797,6 +894,9 @@ export function CatalogoModal({
                           <DropdownMenuItem onClick={() => openEdit(p)}>
                             <Pencil className="h-4 w-4 mr-2" /> Editar
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setInteractionsProd(p)}>
+                            <MessageCircle className="h-4 w-4 mr-2" /> Perguntas e avaliações
+                          </DropdownMenuItem>
                           {isPending && (
                             <DropdownMenuItem onClick={() => aprovarProduto(p.id)} disabled={approvingId === p.id}>
                               {approvingId === p.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
@@ -819,6 +919,12 @@ export function CatalogoModal({
           )}
         </DialogContent>
       </Dialog>
+
+      <ProductInteractionsDialog
+        product={interactionsProd}
+        tenantId={tenantId}
+        onClose={() => setInteractionsProd(null)}
+      />
 
       {/* Product form dialog */}
       <Dialog open={formOpen} onOpenChange={(o) => !o && setFormOpen(false)}>
