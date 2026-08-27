@@ -191,7 +191,7 @@ router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
             WHERE x.pedido_id=p.id ORDER BY x.created_at DESC LIMIT 1
          ) t ON true
         WHERE p.tenant_id=$1
-          AND p.status IN ('recebido','pagamento_pendente','pronto_coleta','coleta_agendada','coletado','em_rota','falha_entrega')
+          AND p.status IN ('recebido','pagamento_pendente','pago','em_separacao','pronto_coleta','coleta_agendada','coletado','em_rota','falha_entrega','entregue','devolucao_solicitada','devolvido')
         ORDER BY CASE WHEN p.status='falha_entrega' THEN 0 ELSE 1 END,p.updated_at
         LIMIT 200`,
       [tenantId],
