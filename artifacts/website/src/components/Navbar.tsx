@@ -1,6 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Menu, X } from "lucide-react";
+import { ArrowRight, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 export default function Navbar() {
@@ -8,81 +7,75 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const links = [
-    { href: "/funcionalidades", label: "Funcionalidades" },
-    { href: "/precos", label: "Preços" },
-    { href: "/blog", label: "Blog" },
-    { href: "/sobre", label: "Sobre nós" },
-    { href: "/contato", label: "Contato" },
+    { href: "/funcionalidades", label: "Como funciona" },
+    { href: "/precos", label: "Oferta" },
+    { href: "/blog", label: "Conteúdo" },
+    { href: "/sobre", label: "Sobre" },
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="border-b border-border/40">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Link href="/" className="font-bold text-xl tracking-tight text-primary flex items-center gap-2" data-testid="link-home">
-              <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg">
-                V
-              </div>
-              VendorAI
-            </Link>
-          </div>
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#070b14]/88 text-white backdrop-blur-xl">
+      <div className="container mx-auto flex h-[72px] items-center justify-between px-4">
+        <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-[-0.02em]" data-testid="link-home">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500 text-base font-bold shadow-[0_8px_30px_rgba(37,99,235,0.28)]">V</div>
+          <span className="text-lg">VendorAI</span>
+        </Link>
 
-          <nav className="hidden md:flex items-center gap-6">
+        <nav className="hidden items-center gap-7 md:flex">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`text-sm font-medium transition-colors ${
+                location === link.href ? "text-white" : "text-slate-400 hover:text-white"
+              }`}
+              data-testid={`link-nav-${link.href.replace("/", "")}`}
+            >
+              {link.label}
+            </Link>
+          ))}
+          <Link href="/demo" className="group ml-2 inline-flex h-11 items-center rounded-xl bg-white px-5 text-sm font-semibold text-slate-950 transition hover:bg-blue-50" data-testid="btn-demo">
+            Testar 5 dias grátis
+            <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+          </Link>
+        </nav>
+
+        <button
+          className="rounded-lg border border-white/10 bg-white/[0.04] p-2 text-white md:hidden"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          data-testid="btn-mobile-menu"
+          aria-label="Abrir menu"
+        >
+          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="absolute left-0 top-[72px] w-full border-b border-white/10 bg-[#070b14]/98 p-4 shadow-2xl backdrop-blur-xl md:hidden">
+          <nav className="flex flex-col gap-2">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  location === link.href ? "text-primary" : "text-muted-foreground"
+                className={`rounded-xl px-4 py-3 text-base font-medium ${
+                  location === link.href ? "bg-white/[0.08] text-white" : "text-slate-300"
                 }`}
-                data-testid={`link-nav-${link.href.replace("/", "")}`}
+                onClick={() => setMobileMenuOpen(false)}
               >
                 {link.label}
               </Link>
             ))}
-            <div className="ml-4 flex items-center gap-4">
-              <Button asChild data-testid="btn-demo">
-                <a href="/demo">Experimentar grátis</a>
-              </Button>
-            </div>
+            <Link
+              href="/demo"
+              className="mt-2 inline-flex h-12 items-center justify-center rounded-xl bg-blue-500 px-5 font-semibold text-white"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Testar 5 dias grátis
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
           </nav>
-
-          <button
-            className="md:hidden p-2 text-foreground"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            data-testid="btn-mobile-menu"
-          >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
         </div>
-
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-border bg-background p-4 absolute w-full left-0 top-16 shadow-lg z-50">
-            <nav className="flex flex-col gap-4">
-              {links.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`text-base font-medium p-2 rounded-md ${
-                    location === link.href ? "bg-primary/10 text-primary" : "text-foreground"
-                  }`}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {link.label}
-                </Link>
-              ))}
-              <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border">
-                <Button className="w-full" asChild>
-                  <Link href="/demo" onClick={() => setMobileMenuOpen(false)}>
-                    Experimentar grátis
-                  </Link>
-                </Button>
-              </div>
-            </nav>
-          </div>
-        )}
-      </div>
+      )}
     </header>
   );
 }
