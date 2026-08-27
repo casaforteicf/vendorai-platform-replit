@@ -21,8 +21,8 @@ type WaveRoute={id:string;numero:number;status:string;entregador_id:string;total
 type WavePending={id:string;pedido_id?:string;codigo:string;descricao:string;resolvida:boolean;created_at:string};
 type WaveDetail={wave:Wave&{motivo_bloqueio?:string};routes:WaveRoute[];pending:WavePending[]};
 type LogisticsConfig={timezone:string;horario_corte:string;horario_despacho:string;dias_semana:number[];endereco_coleta:Record<string,unknown>;max_paradas_por_rota:number;ativo:boolean};
-type PaymentCourier={id:string;name:string;email:string;telefone?:string;walletId:string};
-type PaymentOptions={couriers:PaymentCourier[];courierRecipients:Array<PaymentCourier&{walletId?:string}>;relayPoints:Array<{id:string;nome:string}>};
+type PaymentCourier={id:string;name:string;email:string;telefone?:string;walletId?:string};
+type PaymentOptions={couriers:PaymentCourier[];courierRecipients:PaymentCourier[];relayPoints:Array<{id:string;nome:string}>};
 const labels:Record<string,string>={recebido:"Aguardando cobrança",pagamento_pendente:"Pagamento pendente",pronto_coleta:"Pronto para coleta",coleta_agendada:"Coleta agendada",coletado:"Coletado",em_rota:"Em rota",falha_entrega:"Falha"};
 const financialRisk=(o:Order)=>["failed","overdue","chargeback"].includes(o.pagamento_status||"")||((o.pagamento_status==="received")&&o.repasses_pendentes>0);
 const money=(cents:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format((Number(cents)||0)/100);
