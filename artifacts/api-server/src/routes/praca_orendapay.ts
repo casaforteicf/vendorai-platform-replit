@@ -57,7 +57,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents/orendapay"
   const validationPolicy=await vendorPool.query(`SELECT enabled FROM vendor_shield_validation_policies WHERE tenant_id=$1`,[tenantId]);
   if(!validationPolicy.rowCount||validationPolicy.rows[0].enabled!==false){
     const validation=await vendorPool.query(`SELECT id,status FROM vendor_shield_purchase_validations WHERE tenant_id=$1 AND order_id=$2 ORDER BY created_at DESC LIMIT 1`,[tenantId,orderId]);
-    if(!validation.rowCount||validation.rows[0].status!=="completed"){
+    if(!validation.rowCount||validation.rows[0].status!=="approved"){
       return res.status(409).json({error:"PURCHASE_VALIDATION_REQUIRED",message:"Conclua a Validação Inteligente de Compra antes de cobrar.",startEndpoint:`/tenants/${tenantId}/praca-orders/${orderId}/purchase-validation/start`,validation:validation.rows[0]||null});
     }
   }
