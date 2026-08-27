@@ -25,17 +25,17 @@ router.get("/tenants/:tenantId/praca-exceptions/config",async(req,res)=>{
 router.put("/tenants/:tenantId/praca-exceptions/config",async(req,res)=>{
   const tenantId=String(req.params.tenantId),user=actor(req);
   if(!canAccess(req,tenantId)||user.userFunction==="entrega")return res.status(403).json({error:"Forbidden"});
-  const fields=["pedidoParadoMinutos","rotaParadaMinutos","estornoPendenteMinutos","devolucaoAtrasadaHoras","notificacaoFalhaMinutos"] as const;
+  const fields=["pedidoParadoMinutos","rotaParadaMinutos","estornoPendenteMinutos","devolucaoAtrasadaHoras","notificacaoFalhaMinutos","escalonamentoMinutos"] as const;
   const values=fields.map(k=>Number(req.body?.[k]));
   if(values.some(v=>!Number.isInteger(v)||v<1))return res.status(422).json({error:"Todos os limites de SLA devem ser números inteiros positivos."});
   const result=await vendorPool.query(
     `INSERT INTO praca_exception_config
-      (tenant_id,pedido_parado_minutos,rota_parada_minutos,estorno_pendente_minutos,devolucao_atrasada_horas,notificacao_falha_minutos,ativo)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+      (tenant_id,pedido_parado_minutos,rota_parada_minutos,estorno_pendente_minutos,devolucao_atrasada_horas,notificacao_falha_minutos,escalonamento_minutos,ativo)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (tenant_id) DO UPDATE SET pedido_parado_minutos=excluded.pedido_parado_minutos,
        rota_parada_minutos=excluded.rota_parada_minutos,estorno_pendente_minutos=excluded.estorno_pendente_minutos,
        devolucao_atrasada_horas=excluded.devolucao_atrasada_horas,notificacao_falha_minutos=excluded.notificacao_falha_minutos,
-       ativo=excluded.ativo,updated_at=now() RETURNING *`,
+       escalonamento_minutos=excluded.escalonamento_minutos,ativo=excluded.ativo,updated_at=now() RETURNING *`,
     [tenantId,...values,req.body?.ativo!==false],
   );
   res.json({config:result.rows[0]});
@@ -60,7 +60,10 @@ router.get("/tenants/:tenantId/praca-exceptions",async(req,res)=>{
   const [items,summary]=await Promise.all([
     vendorPool.query(
       `SELECT i.*,p.cliente_nome,u.name AS assigned_to_name,
-              extract(epoch FROM (coalesce(i.due_at,now())-now()))::bigint AS seconds_to_due
+              extract(epoch FROM (coalesce(i.due_at,now())-now()))::bigint AS seconds_to_due,
+              (SELECT count(*)::int FROM praca_exception_alerts a WHERE a.incident_id=i.id) AS alert_recipients,
+              (SELECT count(*)::int FROM praca_exception_alerts a WHERE a.incident_id=i.id AND a.acknowledged_at IS NOT NULL) AS alert_acknowledged,
+              (SELECT max(a.sent_at) FROM praca_exception_alerts a WHERE a.incident_id=i.id) AS last_alert_at
          FROM praca_exception_incidents i
          LEFT JOIN praca_pedidos p ON p.id=i.pedido_id
          LEFT JOIN users u ON u.id=i.assigned_to
@@ -125,6 +128,12 @@ router.patch("/tenants/:tenantId/praca-exceptions/:incidentId",async(req,res)=>{
       "INSERT INTO praca_exception_events (tenant_id,incident_id,event_type,actor_id,previous_status,new_status,note,metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)",
       [tenantId,incidentId,eventType,user.id,previous.status,next,note||null,JSON.stringify({assignedTo:effectiveAssignedTo??previous.assigned_to})],
     );
+    if(["reconhecido","resolvido","ignorado"].includes(next)){
+      await client.query(
+        "UPDATE praca_exception_alerts SET acknowledged_at=coalesce(acknowledged_at,now()),acknowledged_by=coalesce(acknowledged_by,$1) WHERE incident_id=$2 AND user_id=$1",
+        [user.id,incidentId],
+      );
+    }
     await client.query("COMMIT");res.json({incident:updated.rows[0]});
   }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 });
