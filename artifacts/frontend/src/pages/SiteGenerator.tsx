@@ -254,7 +254,8 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       return jobId as string;
     };
 
-    const deadline = Date.now() + 5 * 60 * 1000;
+    // A full commercial page may require a second AI pass for quality repair.
+    const deadline = Date.now() + 12 * 60 * 1000;
     let jobId = await startJob();
     let restarts = 0;
     let transientFailures = 0;

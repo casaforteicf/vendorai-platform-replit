@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, or } from "drizzle-orm";
-import { db, generatedSitesTable, businessProfilesTable, tenantsTable, produtosCatalogoTable, inventoryItemsTable } from "@workspace/db";
+import { db, generatedSitesTable, siteGenerationJobsTable, businessProfilesTable, tenantsTable, produtosCatalogoTable, inventoryItemsTable } from "@workspace/db";
 import type { SiteGeneratorConfig, SiteGeneratorProduct } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
@@ -14,21 +14,26 @@ const anthropic = useAnthropic ? new Anthropic({ apiKey: anthropicApiKey }) : nu
 const AI_PROVIDER = useAnthropic ? "anthropic" : "openai";
 const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
 
-// ─── In-memory job store for async generation ─────────────────────────────────
+// The database is the source of truth. This set only prevents the same API
+// process from resuming one pending job more than once concurrently.
 type GenerationJob =
   | { status: "pending"; createdAt: number }
   | { status: "done"; result: Record<string, unknown>; createdAt: number }
   | { status: "error"; error: string; createdAt: number };
 
-const generationJobs = new Map<string, GenerationJob>();
+const activeGenerationJobs = new Set<string>();
 
-// Clean up jobs older than 30 minutes every 5 minutes
-setInterval(() => {
-  const cutoff = Date.now() - 30 * 60 * 1000;
-  for (const [id, job] of generationJobs) {
-    if (job.createdAt < cutoff) generationJobs.delete(id);
-  }
-}, 5 * 60 * 1000);
+async function persistGenerationJob(jobId: string, job: GenerationJob) {
+  await db
+    .update(siteGenerationJobsTable)
+    .set({
+      status: job.status,
+      result: job.status === "done" ? job.result : null,
+      error: job.status === "error" ? job.error : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(siteGenerationJobsTable.id, jobId));
+}
 
 // ─── Public router (no auth) — serves generated HTML sites ───────────────────
 export const publicSiteGeneratorRouter: IRouter = Router();
@@ -691,7 +696,7 @@ async function runGenerateSite(
     const logoUrl = config.logoUrl || bp?.logoUrl || undefined;
 
     if (!name || !desc) {
-      generationJobs.set(jobId, { status: "error", error: "name e desc são obrigatórios. Preencha no cadastro da empresa (Configurações) ou no formulário.", createdAt: Date.now() });
+      await persistGenerationJob(jobId, { status: "error", error: "name e desc são obrigatórios. Preencha no cadastro da empresa (Configurações) ou no formulário.", createdAt: Date.now() });
       return;
     }
 
@@ -701,7 +706,7 @@ async function runGenerateSite(
     if (config.type === "product") {
       const produtoId = (config as unknown as { produtoId?: string }).produtoId;
       if (!produtoId) {
-        generationJobs.set(jobId, { status: "error", error: "Selecione um produto do catálogo para gerar a página.", createdAt: Date.now() });
+        await persistGenerationJob(jobId, { status: "error", error: "Selecione um produto do catálogo para gerar a página.", createdAt: Date.now() });
         return;
       }
 
@@ -728,7 +733,7 @@ async function runGenerateSite(
         .limit(1);
 
       if (!row) {
-        generationJobs.set(jobId, { status: "error", error: "Produto não encontrado no catálogo.", createdAt: Date.now() });
+        await persistGenerationJob(jobId, { status: "error", error: "Produto não encontrado no catálogo.", createdAt: Date.now() });
         return;
       }
 
@@ -825,7 +830,7 @@ async function runGenerateSite(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
       log.error({ error: msg, provider: AI_PROVIDER }, "Site generation failed");
-      generationJobs.set(jobId, { status: "error", error: `Erro na geração: ${msg}`, createdAt: Date.now() });
+      await persistGenerationJob(jobId, { status: "error", error: `Erro na geração: ${msg}`, createdAt: Date.now() });
       return;
     }
 
@@ -836,7 +841,7 @@ async function runGenerateSite(
 
     if (!isValidHtml(html)) {
       log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider }, "Site generation returned invalid HTML");
-      generationJobs.set(jobId, { status: "error", error: "Resposta da IA inválida ou muito curta", createdAt: Date.now() });
+      await persistGenerationJob(jobId, { status: "error", error: "Resposta da IA inválida ou muito curta", createdAt: Date.now() });
       return;
     }
 
@@ -854,7 +859,7 @@ async function runGenerateSite(
     }
     if (!prepared.validation.valid) {
       log.error({ tenantId, issues: prepared.validation.issues }, "Site remained invalid after repair and fallbacks");
-      generationJobs.set(jobId, { status: "error", error: "O site gerado não passou na validação de qualidade. Tente novamente.", createdAt: Date.now() });
+      await persistGenerationJob(jobId, { status: "error", error: "O site gerado não passou na validação de qualidade. Tente novamente.", createdAt: Date.now() });
       return;
     }
     html = prepared.html;
@@ -878,14 +883,16 @@ async function runGenerateSite(
       })
       .returning();
 
-    generationJobs.set(jobId, {
+    await persistGenerationJob(jobId, {
       status: "done",
       result: { ...site, _provider: result.provider, _model: result.model } as Record<string, unknown>,
       createdAt: Date.now(),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Erro interno";
-    generationJobs.set(jobId, { status: "error", error: msg, createdAt: Date.now() });
+    await persistGenerationJob(jobId, { status: "error", error: msg, createdAt: Date.now() });
+  } finally {
+    activeGenerationJobs.delete(jobId);
   }
 }
 
@@ -900,9 +907,15 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
   }
 
   const jobId = crypto.randomUUID();
-  generationJobs.set(jobId, { status: "pending", createdAt: Date.now() });
-
   const baseOrigin = `${req.protocol}://${req.get("host")}`;
+  await db.insert(siteGenerationJobsTable).values({
+    id: jobId,
+    tenantId,
+    status: "pending",
+    config,
+    baseOrigin,
+  });
+  activeGenerationJobs.add(jobId);
   // Fire-and-forget — does not block the HTTP response
   void runGenerateSite(jobId, tenantId, config, baseOrigin, req.log);
 
@@ -910,13 +923,26 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
 });
 
 // GET /tenants/:tenantId/site-generator/jobs/:jobId — poll generation status
-router.get("/tenants/:tenantId/site-generator/jobs/:jobId", (req, res) => {
-  const job = generationJobs.get(req.params.jobId);
+router.get("/tenants/:tenantId/site-generator/jobs/:jobId", async (req, res) => {
+  const [job] = await db
+    .select()
+    .from(siteGenerationJobsTable)
+    .where(
+      and(
+        eq(siteGenerationJobsTable.id, req.params.jobId),
+        eq(siteGenerationJobsTable.tenantId, req.params.tenantId),
+      ),
+    )
+    .limit(1);
   if (!job) {
     res.status(404).json({ error: "Job não encontrado ou expirado" });
     return;
   }
-  return res.json(job);
+  if (job.status === "pending" && !activeGenerationJobs.has(job.id)) {
+    activeGenerationJobs.add(job.id);
+    void runGenerateSite(job.id, job.tenantId, job.config, job.baseOrigin, req.log);
+  }
+  return res.json({ status: job.status, result: job.result, error: job.error });
 });
 
 // POST /tenants/:tenantId/site-generator/:siteId/refine — refine via chat
