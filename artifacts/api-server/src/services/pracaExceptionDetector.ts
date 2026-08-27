@@ -1,5 +1,6 @@
 import { vendorPool } from "../lib/vendorDb.js";
 import type { Logger } from "pino";
+import { dispatchPracaExceptionAlerts } from "./pracaExceptionEscalation.js";
 
 type Candidate={
   incident_type:string;entity_type:string;entity_id:string;pedido_id:string|null;
@@ -139,5 +140,6 @@ export async function runPracaExceptionScan(log?:Logger,tenantIdFilter?:string):
       }
     }catch(error){log?.error({error,tenantId:cfg.tenant_id},"praca-exceptions: scan failed");}
   }
+  await dispatchPracaExceptionAlerts(tenantIdFilter,log);
   return{tenants:configs.rowCount??configs.rows.length,detected,resolved};
 }
