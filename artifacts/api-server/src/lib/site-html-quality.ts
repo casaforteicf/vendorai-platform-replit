@@ -265,9 +265,21 @@ export function prepareSiteHtml(html: string): {
   repaired: boolean;
 } {
   const initial = validateSiteHtml(html);
-  if (initial.issues.some((issue) => !issue.repairable))
+  // An incomplete document cannot be made trustworthy by CSS fallbacks.
+  // Dangerous markup, on the other hand, is removed by sanitizeSiteHtml.
+  if (initial.issues.some((issue) => issue.code === "incomplete-html"))
     return { html, validation: initial, repaired: false };
   const repairedHtml = applySiteSafetyDefaults(html);
-  const validation = validateSiteHtml(repairedHtml);
+  const afterFallbacks = validateSiteHtml(repairedHtml);
+  const blockingIssues = afterFallbacks.issues.filter(
+    (issue) => !issue.repairable,
+  );
+  // Repairable findings describe patterns in the model's original CSS. They
+  // can remain textually present after the safety stylesheet/runtime guard has
+  // neutralised them, so they must not cause a false rejection here.
+  const validation: SiteQualityResult = {
+    valid: blockingIssues.length === 0,
+    issues: blockingIssues,
+  };
   return { html: repairedHtml, validation, repaired: repairedHtml !== html };
 }
