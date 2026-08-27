@@ -231,8 +231,10 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error ?? `Erro ${res.status}`);
     }
-    // Só atualiza o preview depois que a versão foi realmente persistida.
-    setHtml(persistedHtml);
+    const saved = (await res.json()) as { html?: string };
+    // O servidor é a fonte de verdade: preview e download recebem exatamente
+    // o mesmo documento já validado e persistido, inclusive os fallbacks CSS.
+    setHtml(saved.html ?? persistedHtml);
   }, [siteId, tenantId, token]);
 
   // Submits one generate job and polls it to completion — shared by the
@@ -365,46 +367,13 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   const download = useCallback(async (filename = "site") => {
     if (!html) return;
 
-    // Collect all unique src/href URLs that reference images
-    const srcRe = /\b(src|href)=["']([^"']+\.(png|jpg|jpeg|gif|webp|svg|ico))["']/gi;
-    const urlSet = new Set<string>();
-    for (const m of html.matchAll(srcRe)) { urlSet.add(m[2]!); }
-
-    // Also pick up CSS url(...) background images
-    const cssRe = /url\(["']?([^"')]+\.(png|jpg|jpeg|gif|webp|svg|ico))["']?\)/gi;
-    for (const m of html.matchAll(cssRe)) { urlSet.add(m[1]!); }
-
-    // Convert each to base64 data URL (skip if already data: or fails to fetch)
-    const replacements = new Map<string, string>();
-    await Promise.all(Array.from(urlSet).map(async (url) => {
-      if (url.startsWith('data:')) return;
-      try {
-        const absolute = url.startsWith('http') ? url : url.startsWith('/') ? url : `/${url}`;
-        const res = await fetch(absolute, { credentials: 'include' });
-        if (!res.ok) return;
-        const blob = await res.blob();
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-        replacements.set(url, dataUrl);
-      } catch { /* skip */ }
-    }));
-
-    // Apply replacements (longest-first to avoid partial-URL collisions)
-    let inlined = html;
-    const sorted = Array.from(replacements.entries()).sort((a, b) => b[0].length - a[0].length);
-    for (const [orig, dataUrl] of sorted) {
-      const escaped = orig.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      inlined = inlined.replace(new RegExp(escaped, 'g'), dataUrl);
-    }
-
-    const blobOut = new Blob([inlined], { type: 'text/html' });
-    const a = document.createElement('a');
+    // Não reconstrua nem reescreva o HTML aqui. URLs de mídia já chegam
+    // absolutas do servidor; baixar a mesma string garante paridade total
+    // entre o srcDoc do preview, o documento persistido e o arquivo entregue.
+    const blobOut = new Blob([html], { type: "text/html;charset=utf-8" });
+    const a = document.createElement("a");
     a.href = URL.createObjectURL(blobOut);
-    a.download = filename.toLowerCase().replace(/\s+/g, '-') + '.html';
+    a.download = filename.toLowerCase().replace(/\s+/g, "-") + ".html";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
