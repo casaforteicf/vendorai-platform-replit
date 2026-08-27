@@ -7,6 +7,7 @@ import { ArrowRight, CheckCircle2, Sparkles, Clock, Users, Zap } from "lucide-re
 import { Link } from "wouter";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com").replace(/\/$/, "");
 
 export default function Demo() {
   const { toast } = useToast();
@@ -47,17 +48,19 @@ export default function Demo() {
         return;
       }
 
-      localStorage.setItem("vendorai_token", data.token);
-      if (data.tenant?.demoExpiresAt) {
-        localStorage.setItem("vendorai_demo_expires_at", data.tenant.demoExpiresAt);
-      }
       toast({
         title: "Seu teste foi criado!",
         description: "Redirecionando para o VendorAI...",
       });
+
+      const handoff = new URLSearchParams({ vendorai_token: data.token });
+      if (data.tenant?.demoExpiresAt) {
+        handoff.set("demo_expires_at", data.tenant.demoExpiresAt);
+      }
+
       setTimeout(() => {
-        window.location.href = `/app`;
-      }, 1500);
+        window.location.href = `${CRM_BASE}/dashboard#${handoff.toString()}`;
+      }, 900);
     } catch (err) {
       toast({ title: "Erro de conexão", description: "Tente novamente.", variant: "destructive" });
     } finally {
