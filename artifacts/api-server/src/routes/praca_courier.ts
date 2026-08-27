@@ -53,6 +53,19 @@ router.get("/tenants/:tenantId/praca-courier/returns/current", async (req,res)=>
   res.json({returns:result.rows});
 });
 
+router.get("/tenants/:tenantId/praca-courier/return-labels/:returnId",async(req,res)=>{
+  const tenantId=String(req.params.tenantId);
+  if(!canTenantAccess(req,tenantId))return res.status(403).send("Forbidden");
+  const result=await vendorPool.query("SELECT d.*,p.cliente_nome FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id WHERE d.id=$1 AND d.tenant_id=$2",[String(req.params.returnId),tenantId]);
+  if(!result.rowCount)return res.status(404).send("Etiqueta não encontrada.");
+  const row=result.rows[0],actor=(req as any).user,actorId=userId(req);
+  if(actor?.userFunction==="entrega"&&![row.entregador_coleta_id,row.entregador_destino_id].includes(actorId))return res.status(403).send("Devolução pertence a outro entregador.");
+  const payload="APPVENDOR:RETURN:"+row.qr_code;
+  const qrImage="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data="+encodeURIComponent(payload);
+  res.setHeader("Content-Type","text/html; charset=utf-8");res.setHeader("Cache-Control","private, no-store");
+  res.send("<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>Etiqueta de devolução</title><style>@page{size:100mm 150mm;margin:4mm}body{font-family:Arial;margin:0}.label{border:2px solid #111;padding:6mm;width:88mm;min-height:138mm}.top{border-bottom:2px solid #111;padding-bottom:3mm}.brand{font-size:22px;font-weight:800}.qr{text-align:center;margin:5mm}.qr img{width:52mm;height:52mm}.block{border-top:1px solid #555;padding-top:3mm;margin-top:3mm;font-size:13px}.block strong{display:block;font-size:10px}.code{font:10px monospace;word-break:break-all}.print{margin:12px}@media print{.print{display:none}}</style></head><body><button class='print' onclick='window.print()'>Imprimir etiqueta</button><section class='label'><div class='top'><div class='brand'>DEVOLUÇÃO PRAÇA.AI</div><div>Vendor.ai Logística Reversa</div></div><div class='qr'><img src='"+qrImage+"' alt='QR Code'><div class='code'>"+escapeHtml(payload)+"</div></div><div class='block'><strong>PEDIDO</strong>"+escapeHtml(row.pedido_id)+"</div><div class='block'><strong>CLIENTE / ORIGEM</strong>"+escapeHtml(row.cliente_nome)+" · "+escapeHtml(addressLine(row.endereco_coleta))+"</div><div class='block'><strong>DESTINO</strong>"+escapeHtml(addressLine(row.endereco_destino))+"</div><div class='block'><strong>MODELO</strong>"+escapeHtml(row.modelo_logistico)+"</div><div class='block'><strong>MOTIVO</strong>"+escapeHtml(row.motivo_descricao)+"</div><p><b>ESCANEAR EM TODA MOVIMENTAÇÃO</b></p></section></body></html>");
+});
+
 router.get("/tenants/:tenantId/praca-courier/routes/current", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
