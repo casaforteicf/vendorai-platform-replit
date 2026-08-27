@@ -65,7 +65,7 @@ router.get("/tenants/:tenantId/praca-executive-dashboard",async(req,res)=>{
     vendorPool.query(`SELECT count(*)::int AS total,
       count(*) FILTER (WHERE status='recebida_vendedor')::int AS concluidas,
       count(*) FILTER (WHERE status='divergencia')::int AS divergencias
-      FROM praca_devolucoes WHERE tenant_id=$1 AND created_at>=$2 AND created_at<$3`,params),
+      FROM praca_devolucoes WHERE tenant_id=$1 AND solicitada_em>=$2 AND solicitada_em<$3`,params),
   ]);
   const o=orders.rows[0],deliveryBase=Number(o.entregues)+Number(o.falhas_entrega);
   res.json({
