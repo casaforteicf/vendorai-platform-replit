@@ -81,7 +81,7 @@ export default function RouteSeo() {
     const isPartner = normalized === "/parceiros";
     const isGeneratedLp = /^\/lp\/[^/]+$/.test(normalized);
     const meta = STATIC_META[normalized];
-    const shouldIndex = meta?.index ?? isBlogPost || isKnownVertical || isPartner;
+    const shouldIndex = meta?.index ?? (isBlogPost || isKnownVertical || isPartner);
 
     if (meta) {
       document.title = meta.title;
