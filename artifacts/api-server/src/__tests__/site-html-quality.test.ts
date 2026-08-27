@@ -91,4 +91,17 @@ describe("site HTML preparation", () => {
     expect(prepared.validation.valid).toBe(true);
     expect(prepared.html).toBe(first);
   });
+
+  it("repairs the downloaded-site regression using the effective ancestor background", () => {
+    const source = completeHtml(
+      `<section class="dores"><article class="card"><h3>Falta de Confiabilidade</h3><p>Materiais de baixa qualidade prejudicam a durabilidade.</p><button>Saber Mais</button></article></section>`,
+      `.dores{background:#292929;color:#fff}.dores .card{height:520px;background:#fff;color:#fff}`,
+    );
+    const prepared = prepareSiteHtml(source);
+
+    expect(prepared.html).toContain("effectiveBg=el");
+    expect(prepared.html).toContain("data-vai-contrast-repaired");
+    expect(prepared.html).toContain("button,.btn");
+    expect(prepared.validation.valid).toBe(true);
+  });
 });
