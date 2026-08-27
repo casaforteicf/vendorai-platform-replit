@@ -456,7 +456,7 @@ function ChatPanel({
         });
         if (!uploadRes.ok) throw new Error("Upload falhou");
         midia = {
-          url: `${window.location.origin}/api/storage/${result.objectPath}`,
+          url: `${window.location.origin}/api/storage${result.objectPath}`,
           objectPath: result.objectPath,
           mimeType: file.type || "application/octet-stream",
           fileName: file.name,

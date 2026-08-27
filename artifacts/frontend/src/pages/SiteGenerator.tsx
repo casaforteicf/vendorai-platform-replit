@@ -505,7 +505,7 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
         headers: { "Content-Type": file.type || "image/jpeg" },
       });
       if (!putRes.ok) throw new Error("Upload falhou");
-      setImages((prev) => [...prev, `${window.location.origin}/api/storage/${result.objectPath}`]);
+      setImages((prev) => [...prev, `${window.location.origin}/api/storage${result.objectPath}`]);
     } catch {
       toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
     } finally {
@@ -1373,7 +1373,7 @@ function SitePreview({
       if (!uploadRes.ok) throw new Error('Upload falhou');
       // O site publicado usa outro subdomínio. A URL precisa permanecer
       // apontando para a API principal, não para o host do site gerado.
-      const newSrc = `${window.location.origin}/api/storage/${uploadResult.objectPath}`;
+      const newSrc = `${window.location.origin}/api/storage${uploadResult.objectPath}`;
       iframeRef.current?.contentWindow?.postMessage({ type: 've-img-set', mode: pendingImgMode.current, imgIndex: idx, newSrc }, '*');
     } catch {
       toast({ title: 'Erro ao enviar foto. Tente novamente.', variant: 'destructive' });
@@ -1945,7 +1945,7 @@ function PortfolioDialog({ html, onRefine, tenantId }: { html: string; onRefine:
         headers: { "Content-Type": file.type || "image/png" },
       });
       if (!uploadRes.ok) throw new Error("Upload falhou");
-      return `${window.location.origin}/api/storage/${result.objectPath}`;
+      return `${window.location.origin}/api/storage${result.objectPath}`;
     } finally {
       setUploading(null);
     }
@@ -2154,7 +2154,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
         headers: { "Content-Type": file.type || "image/png" },
       });
       if (!uploadRes.ok) throw new Error("Upload falhou");
-      return `${window.location.origin}/api/storage/${result.objectPath}`;
+      return `${window.location.origin}/api/storage${result.objectPath}`;
     } finally {
       setUploading(null);
     }
