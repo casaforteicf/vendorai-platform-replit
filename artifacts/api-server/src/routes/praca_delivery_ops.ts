@@ -417,6 +417,8 @@ router.post("/tenants/:tenantId/praca-returns/:returnId/events", async (req,res)
   const user=actor(req);
   if(!canAccess(req,tenantId)||!user.id)return res.status(403).json({error:"Forbidden"});
   const action=String(req.body?.acao||"");
+  const rawQr=message(req.body?.qrCode),qrCode=rawQr.startsWith("APPVENDOR:RETURN:")?rawQr.slice(17):rawQr;
+  if(!qrCode)return res.status(422).json({error:"QR Code da devolução é obrigatório."});
   const lat=req.body?.latitude==null?null:Number(req.body.latitude),lng=req.body?.longitude==null?null:Number(req.body.longitude);
   if((lat!=null&&(!Number.isFinite(lat)||lat< -90||lat>90))||(lng!=null&&(!Number.isFinite(lng)||lng< -180||lng>180)))return res.status(422).json({error:"Coordenadas inválidas."});
   const client=await vendorPool.connect();
@@ -425,6 +427,7 @@ router.post("/tenants/:tenantId/praca-returns/:returnId/events", async (req,res)
     const found=await client.query("SELECT d.*,p.cliente_whatsapp FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id WHERE d.id=$1 AND d.tenant_id=$2 FOR UPDATE OF d",[returnId,tenantId]);
     if(!found.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Devolução não encontrada."});}
     const row=found.rows[0],isCourier=user.userFunction==="entrega";
+    if(qrCode!==row.qr_code){await client.query("ROLLBACK");return res.status(422).json({error:"QR Code não pertence a esta devolução."});}
     const transitions:any={
       direto:{coletar_cliente:["agendada","em_rota_vendedor"],receber_vendedor:["em_rota_vendedor","recebida_vendedor"]},
       redespacho:{coletar_cliente:["agendada","em_rota_redespacho"],receber_redespacho:["em_rota_redespacho","recebida_redespacho"],sair_redespacho:["recebida_redespacho","em_rota_vendedor"],receber_vendedor:["em_rota_vendedor","recebida_vendedor"]},
