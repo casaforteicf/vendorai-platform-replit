@@ -110,7 +110,8 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const idempotencyKey = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
-  const customerId = typeof req.body?.asaasCustomerId === "string" ? req.body.asaasCustomerId.trim() : "";
+  let customerId = typeof req.body?.asaasCustomerId === "string" ? req.body.asaasCustomerId.trim() : "";
+  const payerDocument = typeof req.body?.clienteDocumento === "string" ? req.body.clienteDocumento.replace(/\D/g, "") : "";
   const billingType = typeof req.body?.billingType === "string" ? req.body.billingType : "UNDEFINED";
   const dueDate = typeof req.body?.dueDate === "string" ? req.body.dueDate : "";
   const courierId = typeof req.body?.courierId === "string" ? req.body.courierId.trim() || null : null;
@@ -127,8 +128,8 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   if (!idempotencyKey || idempotencyKey.length > 200) {
     return res.status(422).json({ error: "Idempotency-Key obrigatório." });
   }
-  if (!customerId || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-    return res.status(422).json({ error: "Cliente Asaas e vencimento são obrigatórios." });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    return res.status(422).json({ error: "Vencimento obrigatório." });
   }
   if (!["PIX","CREDIT_CARD","BOLETO","UNDEFINED"].includes(billingType)) {
     return res.status(422).json({ error: "Forma de pagamento inválida." });
@@ -143,7 +144,9 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
 
   const orderResult = await vendorPool.query(
     `SELECT p.id,p.status,p.subtotal_centavos,p.frete_centavos,p.desconto_centavos,
-            p.total_centavos,p.moeda,p.modelo_logistico,p.ponto_redespacho_id,t.asaas_api_key,t.comissao_praca_ai_percentual
+            p.total_centavos,p.moeda,p.modelo_logistico,p.ponto_redespacho_id,
+            p.cliente_nome,p.cliente_documento,p.cliente_email,p.cliente_whatsapp,p.asaas_customer_id,
+            t.asaas_api_key,t.comissao_praca_ai_percentual
        FROM praca_pedidos p JOIN tenants t ON t.id=p.tenant_id
       WHERE p.tenant_id=$1 AND p.id=$2`,
     [tenantId,orderId],
@@ -159,6 +162,53 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   const apiBase = String(process.env["ASAAS_API_BASE_URL"] || "https://api.asaas.com/v3").replace(/\/$/, "");
   if (!apiKey) return res.status(422).json({ error: "Chave Asaas do tenant não configurada." });
   if (!pracaWalletId) return res.status(503).json({ error: "Carteira Asaas da Praça.ai não configurada." });
+
+  customerId = customerId || String(order.asaas_customer_id || "");
+  if (!customerId) {
+    const document = payerDocument || String(order.cliente_documento || "").replace(/\D/g, "");
+    if (![11,14].includes(document.length)) {
+      return res.status(422).json({ error: "CPF ou CNPJ válido é obrigatório para cadastrar o pagador no Asaas." });
+    }
+    try {
+      const lookupResponse = await fetch(`${apiBase}/customers?cpfCnpj=${encodeURIComponent(document)}&limit=10`, {
+        headers: { access_token: apiKey, "User-Agent": "Vendor.ai" },
+      });
+      const lookupPayload: any = await lookupResponse.json().catch(() => ({}));
+      if (!lookupResponse.ok) {
+        return res.status(502).json({ error: "Não foi possível consultar o cliente no Asaas.", details: lookupPayload?.errors ?? null });
+      }
+      const existingCustomer = Array.isArray(lookupPayload?.data)
+        ? lookupPayload.data.find((item: any) => String(item?.cpfCnpj || "").replace(/\D/g, "") === document)
+        : null;
+      if (existingCustomer?.id) {
+        customerId = existingCustomer.id;
+      } else {
+        const createResponse = await fetch(`${apiBase}/customers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", access_token: apiKey, "User-Agent": "Vendor.ai" },
+          body: JSON.stringify({
+            name: order.cliente_nome,
+            cpfCnpj: document,
+            email: order.cliente_email || undefined,
+            mobilePhone: order.cliente_whatsapp || undefined,
+            externalReference: order.id,
+          }),
+        });
+        const createdCustomer: any = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok || !createdCustomer?.id) {
+          return res.status(502).json({ error: "Não foi possível cadastrar o cliente no Asaas.", details: createdCustomer?.errors ?? null });
+        }
+        customerId = createdCustomer.id;
+      }
+      await vendorPool.query(
+        `UPDATE praca_pedidos SET asaas_customer_id=$1,cliente_documento=coalesce(cliente_documento,$2),updated_at=now()
+          WHERE id=$3 AND tenant_id=$4`,
+        [customerId,document,orderId,tenantId],
+      );
+    } catch {
+      return res.status(502).json({ error: "Falha de comunicação ao localizar ou cadastrar o cliente no Asaas." });
+    }
+  }
 
   const gross = Number(order.total_centavos);
   const freight = Number(order.frete_centavos);
