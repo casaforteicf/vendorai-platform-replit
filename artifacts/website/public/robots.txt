@@ -1,2 +1,30 @@
 User-agent: *
 Allow: /
+
+# APIs and authenticated / operational areas are not search content.
+Disallow: /api/
+Disallow: /login
+Disallow: /auth/
+Disallow: /onboarding
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /crm/
+Disallow: /tenants/
+Disallow: /leads/
+Disallow: /conversas/
+Disallow: /agents/
+Disallow: /settings/
+Disallow: /config/
+Disallow: /vendor-shield/
+Disallow: /partner/
+Disallow: /arch/
+Disallow: /beauty/
+Disallow: /clinic/
+Disallow: /scout/
+Disallow: /financeiro/
+
+# Conversion / generated pages are intentionally kept out of the crawl surface.
+Disallow: /cadastro-praca
+Disallow: /lp/
+
+Sitemap: https://appvendorai.com/sitemap.xml
