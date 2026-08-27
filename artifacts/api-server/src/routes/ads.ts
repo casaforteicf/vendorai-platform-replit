@@ -10,7 +10,9 @@ import {
   dealsTable,
   vehicleAdReservationsTable,
   businessProfilesTable,
+  generatedSitesTable,
 } from "@workspace/db";
+import type { AdCampaign } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { gerarCriativoRSA } from "../lib/adContentGenerator.js";
 import { gerarCriativoImagem } from "../lib/adContentGeneratorImagem.js";
@@ -37,6 +39,48 @@ function canAccess(req: Express.Request, tenantId: string) {
  * cada tipo tem campos bem diferentes, então normaliza aqui pra um texto
  * livre estruturado em vez de tentar unificar os 3 schemas.
  */
+
+/**
+ * Resumo pra campanhas sem item estruturado (itemTipo 'livre' ou
+ * 'landing_page') — antes era só "Campanha institucional/landing page,
+ * vertical: X", o que não dá contexto nenhum pra IA e gera título/descrição
+ * genéricos demais ("Aumente sua Visibilidade", "Desenvolvemos campanhas
+ * únicas"). Agora puxa o perfil real do negócio e, quando a campanha aponta
+ * pra uma landing page específica, os dados daquela página também — mesmo
+ * padrão já usado no gerador de copy de campanhas e no gerador de sites.
+ */
+async function buildResumoLivreOuLandingPage(campanha: AdCampaign, tenantId: string): Promise<string> {
+  const [perfil] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
+
+  const partes: string[] = [];
+  const nomeNegocio = perfil?.nomeFantasia || perfil?.razaoSocial;
+  if (nomeNegocio) partes.push(`Empresa: ${nomeNegocio}`);
+  if (perfil?.vertical) partes.push(`Setor: ${perfil.vertical}`);
+  if (perfil?.diferenciais) partes.push(`Diferenciais: ${perfil.diferenciais}`);
+  if (perfil?.publicoAlvo) partes.push(`Público-alvo: ${perfil.publicoAlvo}`);
+  if (perfil?.produtos && perfil.produtos.length > 0) {
+    partes.push(`Produtos/serviços: ${perfil.produtos.map((p) => p.nome).join(", ")}`);
+  }
+
+  if (campanha.itemTipo === "landing_page" && campanha.landingPageId) {
+    const [site] = await db.select({ config: generatedSitesTable.config })
+      .from(generatedSitesTable)
+      .where(eq(generatedSitesTable.id, campanha.landingPageId));
+    if (site?.config) {
+      const { name, desc, pain, servicos } = site.config;
+      partes.push(`Foco específico desta campanha: ${name}`);
+      if (desc) partes.push(`O que oferece: ${desc}`);
+      if (pain) partes.push(`Dor do cliente que resolve: ${pain}`);
+      if (servicos) partes.push(`Serviços/produtos em destaque: ${servicos}`);
+    }
+  }
+
+  if (campanha.itemLabel) partes.push(`Rótulo interno da campanha: ${campanha.itemLabel}`);
+
+  return partes.length > 0
+    ? partes.join("\n")
+    : `Campanha institucional/landing page, vertical: ${campanha.vertical}`;
+}
 
 router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const tenantId = req.params.tenantId as string;
@@ -146,10 +190,11 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, r
   }
 
   // buildResumoItem só cobre produto/veiculo/imovel — landing_page/livre
-  // usam um resumo simples (não têm registro estruturado de item pra ler).
+  // não têm registro estruturado de item pra ler, então montam o resumo a
+  // partir do perfil do negócio (+ dados da LP, quando houver uma ligada).
   const item = (campanha.itemTipo === "produto" || campanha.itemTipo === "veiculo" || campanha.itemTipo === "imovel")
     ? await buildResumoItem(campanha.itemTipo, campanha.itemId as string, tenantId)
-    : { itemTipo: campanha.itemTipo, resumo: `Campanha institucional/landing page, vertical: ${campanha.vertical}`, nomeCurto: campanha.vertical };
+    : { itemTipo: campanha.itemTipo, resumo: await buildResumoLivreOuLandingPage(campanha, tenantId), nomeCurto: campanha.itemLabel || campanha.vertical };
   if (!item) return res.status(404).json({ error: "Item de origem da campanha não encontrado" });
 
   if (campanha.tipoAnuncio === "rsa_pmax") {
