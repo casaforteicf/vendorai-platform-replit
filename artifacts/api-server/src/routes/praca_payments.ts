@@ -79,6 +79,31 @@ router.get("/tenants/:tenantId/payment-recipients", async (req, res) => {
   return res.json(result.rows);
 });
 
+router.get("/tenants/:tenantId/praca-payment-options", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const [courierRecipients, relayPoints] = await Promise.all([
+    vendorPool.query(
+      `SELECT u.id,u.name,u.email,u.telefone,r.wallet_id AS "walletId"
+         FROM users u
+         LEFT JOIN praca_payment_recipients r
+           ON r.tenant_id=u.tenant_id AND r.owner_type='courier'
+          AND r.owner_id=u.id AND r.provider='asaas' AND r.status='active'
+        WHERE u.tenant_id=$1 AND u.active=true AND u.user_function='entrega'
+        ORDER BY u.name,u.id`,
+      [tenantId],
+    ),
+    vendorPool.query(
+      `SELECT id,nome,endereco,latitude,longitude
+         FROM praca_pontos_redespacho
+        WHERE tenant_id=$1 AND ativo=true ORDER BY nome,id`,
+      [tenantId],
+    ),
+  ]);
+  const couriers = courierRecipients.rows.filter((item: any) => Boolean(item.walletId));
+  res.json({ couriers, courierRecipients: courierRecipients.rows, relayPoints: relayPoints.rows });
+});
+
 router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const orderId = String(req.params.orderId);
