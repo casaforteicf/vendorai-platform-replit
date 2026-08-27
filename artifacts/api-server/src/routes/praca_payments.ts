@@ -399,7 +399,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-actions", async (r
 
   const pendingStatuses = new Set(["created","pending","overdue"]);
   const paidStatuses = new Set(["confirmed","received"]);
-  const preCollectionStatuses = new Set(["pago","em_separacao","pronto_coleta","coleta_agendada"]);
+  const preCollectionStatuses = new Set(["pago","em_separacao","pronto_coleta","coleta_agendada","devolvido"]);
   if (actionType === "cancel_charge" && !pendingStatuses.has(row.payment_status)) {
     return res.status(409).json({ error: paidStatuses.has(row.payment_status) ? "O pagamento já foi confirmado. Use estorno integral." : "A cobrança não pode ser excluída neste status." });
   }
@@ -407,7 +407,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-actions", async (r
     return res.status(409).json({ error: "Somente pagamentos confirmados ou recebidos podem ser estornados." });
   }
   if (actionType === "full_refund" && !preCollectionStatuses.has(row.order_status)) {
-    return res.status(409).json({ error: "Produto já entrou no fluxo físico. Abra a devolução antes do estorno." });
+    return res.status(409).json({ error: "Produto entrou no fluxo físico e ainda não teve a devolução recebida pelo vendedor." });
   }
 
   const apiKey = String(row.asaas_api_key || "").trim();
