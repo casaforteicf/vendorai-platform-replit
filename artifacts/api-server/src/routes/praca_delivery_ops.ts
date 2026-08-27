@@ -334,6 +334,16 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/reattempt", async
 });
 
 
+router.post("/tenants/:tenantId/praca-returns/:returnId/evidence-uploads",async(req,res)=>{
+  const tenantId=String(req.params.tenantId),user=actor(req);
+  if(!canAccess(req,tenantId)||!user.id||user.userFunction==="entrega")return res.status(403).json({error:"Somente a operação pode registrar o recebimento."});
+  const found=await vendorPool.query("SELECT d.pedido_id,v.id AS volume_id FROM praca_devolucoes d JOIN LATERAL (SELECT id FROM praca_pedido_volumes WHERE pedido_id=d.pedido_id ORDER BY numero LIMIT 1) v ON true WHERE d.id=$1 AND d.tenant_id=$2",[String(req.params.returnId),tenantId]);
+  if(!found.rowCount)return res.status(404).json({error:"Devolução ou volume não encontrado."});
+  const contentType=String(req.body?.contentType||""),size=Number(req.body?.size);
+  const upload=await createEvidenceUpload(tenantId,found.rows[0].pedido_id,found.rows[0].volume_id,contentType,size);
+  res.status(201).json(upload);
+});
+
 router.get("/tenants/:tenantId/praca-returns", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId) || actor(req).userFunction === "entrega") return res.status(403).json({ error: "Forbidden" });
