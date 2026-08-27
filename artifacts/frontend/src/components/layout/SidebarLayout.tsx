@@ -150,6 +150,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Operação Praça.ai", href: "/entregas-praca", icon: Truck, sellerHidden: false, section: "crm", fn: ["entrega"] as UserFunction[] },
     { name: "Gestão de Entregas", href: "/entregas", icon: Truck, sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
+    { name: "Executivo Praça.ai", href: "/praca-executivo", icon: BarChart3, sellerHidden: false, section: "crm", fn: ["financeiro", "suporte", "administrador"] as UserFunction[] },
     { name: "Monitor Praça.ai", href: "/logistica-praca", icon: Navigation, sellerHidden: false, section: "crm", fn: ["suporte", "administrador"] as UserFunction[] },
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
