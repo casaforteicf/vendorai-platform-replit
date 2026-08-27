@@ -14,8 +14,8 @@ import type { NumericFilter, SegmentoFiltro } from "@workspace/db";
 import type { SQL } from "drizzle-orm";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { callReplicateFlux11Pro } from "../lib/arch-render-pipeline.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
+import { callReplicateFlux11Pro, callReplicateFluxKontext } from "../lib/arch-render-pipeline.js";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
 
@@ -104,6 +104,59 @@ router.post("/tenants/:tenantId/campaigns/generate-image", async (req, res) => {
   const imageUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
 
   res.json({ imageUrl, objectPath });
+});
+
+// ── AI image enhancement (edita foto enviada pelo lojista, sem gerar do zero) ─
+const enhanceImageSchema = z.object({
+  objectPath: z.string().min(1).max(500),
+  instrucao: z.string().max(500).optional(),
+});
+
+router.post("/tenants/:tenantId/campaigns/enhance-image", async (req, res) => {
+  const { tenantId } = req.params;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const parsed = enhanceImageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { objectPath, instrucao } = parsed.data;
+
+  const storage = new ObjectStorageService();
+  let sourceBuffer: Buffer;
+  let sourceContentType: string;
+  try {
+    const file = await storage.getObjectEntityFile(objectPath);
+    const [buf] = await file.download();
+    const [meta] = await file.getMetadata();
+    sourceBuffer = buf;
+    sourceContentType = meta.contentType || "image/jpeg";
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: "Imagem enviada não encontrada" });
+      return;
+    }
+    throw err;
+  }
+
+  const imageDataUrl = `data:${sourceContentType};base64,${sourceBuffer.toString("base64")}`;
+  const prompt = instrucao?.trim()
+    ? `Melhore esta foto para uso em uma campanha de marketing: ${instrucao.trim()}. Preserve o produto/pessoa e o enquadramento original, só melhore luz, nitidez e apelo visual.`
+    : "Melhore a qualidade desta foto para uso em uma campanha de marketing: mais nítida, bem iluminada, cores vibrantes. Preserve o produto/pessoa e o enquadramento original.";
+
+  const outputBase64 = await callReplicateFluxKontext({ imageDataUrl, prompt });
+  const buf = Buffer.from(outputBase64, "base64");
+
+  const outObjectPath = await storage.savePrivateBuffer(buf, "image/png", `campaign-img-enhanced-${crypto.randomUUID()}.png`);
+  const imageUrl = `/api/storage/objects${outObjectPath.replace(/^\/objects/, "")}`;
+
+  res.json({ imageUrl, objectPath: outObjectPath });
 });
 
 // ── AI copy generation for campaigns (retenção/conversão) ─────────────────────
