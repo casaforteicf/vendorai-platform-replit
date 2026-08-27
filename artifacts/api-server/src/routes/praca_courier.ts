@@ -43,6 +43,16 @@ function addressLine(value: unknown): string {
   ].filter((part) => part != null && String(part).trim()).join(", ");
 }
 
+router.get("/tenants/:tenantId/praca-courier/returns/current", async (req,res)=>{
+  const tenantId=String(req.params.tenantId),actorId=userId(req),actor=(req as any).user;
+  if(!canTenantAccess(req,tenantId)||!actorId||actor?.userFunction!=="entrega")return res.status(403).json({error:"Somente entregadores podem consultar devoluções."});
+  const result=await vendorPool.query(
+    "SELECT d.id,d.pedido_id,d.modelo_logistico,d.status,d.data_servico,d.endereco_coleta,d.endereco_destino,d.sequencia_coleta,d.sequencia_destino,d.motivo_descricao,hub.nome AS ponto_redespacho_nome,p.cliente_nome,p.cliente_whatsapp,CASE WHEN d.entregador_coleta_id=$2 THEN 'coleta' ELSE 'destino' END AS responsabilidade FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id LEFT JOIN praca_pontos_redespacho hub ON hub.id=d.ponto_redespacho_id WHERE d.tenant_id=$1 AND (d.entregador_coleta_id=$2 OR d.entregador_destino_id=$2) AND d.status NOT IN ('recebida_vendedor','cancelada','divergencia') ORDER BY d.data_servico,d.sequencia_coleta",
+    [tenantId,actorId],
+  );
+  res.json({returns:result.rows});
+});
+
 router.get("/tenants/:tenantId/praca-courier/routes/current", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
