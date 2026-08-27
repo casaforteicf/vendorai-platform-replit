@@ -90,10 +90,10 @@ export async function runPracaExceptionScan(log?:Logger,tenantIdFilter?:string):
           UNION ALL
          SELECT 'notificacao_falhou','notificacao',n.id,n.pedido_id,'media','Notificação ao cliente falhou',
                 'Uma atualização operacional não foi entregue ao WhatsApp do cliente.',
-                jsonb_build_object('template',n.template,'status',n.status),n.updated_at+make_interval(mins=>$6)
+                jsonb_build_object('template',n.template,'status',n.status),n.created_at+make_interval(mins=>$6)
            FROM praca_entrega_notificacoes n
           WHERE n.tenant_id=$1 AND n.status='falhou'
-            AND n.updated_at<now()-make_interval(mins=>$6)`,
+            AND n.created_at<now()-make_interval(mins=>$6)`,
         [cfg.tenant_id,cfg.pedido_parado_minutos,cfg.rota_parada_minutos,cfg.devolucao_atrasada_horas,cfg.estorno_pendente_minutos,cfg.notificacao_falha_minutos],
       );
       const activeKeys=new Set<string>();
