@@ -1,6 +1,7 @@
 import { Router,type IRouter } from "express";
 import { vendorPool } from "../lib/vendorDb.js";
 import vendorShieldRouter from "./vendor_shield";
+import vendorShieldPurchaseValidationRouter from "./vendor_shield_purchase_validation";
 
 const router:IRouter=Router();
 function canAccess(req:Express.Request,tenantId:string){
@@ -80,5 +81,6 @@ router.get("/tenants/:tenantId/praca-executive-dashboard",async(req,res)=>{
 
 // Vendor Shield is part of the executive control plane and inherits the same protected router.
 router.use(vendorShieldRouter);
+router.use(vendorShieldPurchaseValidationRouter);
 
 export default router;
