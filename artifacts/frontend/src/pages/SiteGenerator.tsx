@@ -531,7 +531,8 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
 
   // ── Lote por nicho/produto/serviço — várias LPs de uma vez, cada uma com
   // seu próprio título/descrição/fotos, reaproveitando o resto do formulário
-  // (fotos gerais, logo, whatsapp, cor, tom) como base compartilhada. ──────
+  // (fotos gerais, logo, whatsapp, cor, tom) como base compartilhada.
+  // Disponível para os tipos "landing" e "institutional" (ver JSX abaixo). ──
   const [bulkTopics, setBulkTopics] = useState<BulkTopic[]>([]);
 
   function addBulkTopic() {
