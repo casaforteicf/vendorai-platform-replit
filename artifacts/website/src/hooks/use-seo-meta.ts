@@ -5,26 +5,25 @@ interface SeoMeta {
   description?: string;
 }
 
+function setMeta(selector: string, attributes: Record<string, string>) {
+  let element = document.head.querySelector<HTMLMetaElement>(selector);
+  if (!element) {
+    element = document.createElement("meta");
+    document.head.appendChild(element);
+  }
+  Object.entries(attributes).forEach(([name, value]) => element!.setAttribute(name, value));
+}
+
 export function useSeoMeta({ title, description }: SeoMeta) {
   useEffect(() => {
-    const prev = document.title;
     document.title = title;
-
-    let descEl = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    const prevDesc = descEl?.getAttribute("content") ?? "";
+    setMeta('meta[property="og:title"]', { property: "og:title", content: title });
+    setMeta('meta[name="twitter:title"]', { name: "twitter:title", content: title });
 
     if (description) {
-      if (!descEl) {
-        descEl = document.createElement("meta");
-        descEl.setAttribute("name", "description");
-        document.head.appendChild(descEl);
-      }
-      descEl.setAttribute("content", description);
+      setMeta('meta[name="description"]', { name: "description", content: description });
+      setMeta('meta[property="og:description"]', { property: "og:description", content: description });
+      setMeta('meta[name="twitter:description"]', { name: "twitter:description", content: description });
     }
-
-    return () => {
-      document.title = prev;
-      if (descEl && prevDesc) descEl.setAttribute("content", prevDesc);
-    };
   }, [title, description]);
 }
