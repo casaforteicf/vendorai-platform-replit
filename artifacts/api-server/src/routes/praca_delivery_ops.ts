@@ -333,4 +333,124 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/reattempt", async
   }
 });
 
+
+router.get("/tenants/:tenantId/praca-returns", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId) || actor(req).userFunction === "entrega") return res.status(403).json({ error: "Forbidden" });
+  const result = await vendorPool.query(
+    "SELECT d.*,p.cliente_nome,p.cliente_whatsapp,p.total_centavos,hub.nome AS ponto_redespacho_nome,c1.name AS entregador_coleta_nome,c2.name AS entregador_destino_nome,(SELECT count(*)::int FROM praca_devolucao_eventos e WHERE e.devolucao_id=d.id) AS total_eventos FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id LEFT JOIN praca_pontos_redespacho hub ON hub.id=d.ponto_redespacho_id LEFT JOIN users c1 ON c1.id=d.entregador_coleta_id LEFT JOIN users c2 ON c2.id=d.entregador_destino_id WHERE d.tenant_id=$1 ORDER BY CASE WHEN d.status IN ('recebida_vendedor','cancelada') THEN 1 ELSE 0 END,d.data_servico,d.solicitada_em",
+    [tenantId],
+  );
+  res.json({ returns: result.rows });
+});
+
+router.get("/tenants/:tenantId/praca-returns/:returnId", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const item = await vendorPool.query("SELECT d.*,p.cliente_nome,p.cliente_whatsapp,p.total_centavos FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id WHERE d.id=$1 AND d.tenant_id=$2",[String(req.params.returnId),tenantId]);
+  if (!item.rowCount) return res.status(404).json({ error: "Devolução não encontrada." });
+  const events = await vendorPool.query("SELECT * FROM praca_devolucao_eventos WHERE devolucao_id=$1 ORDER BY ocorrido_em,id",[item.rows[0].id]);
+  res.json({ return:item.rows[0],events:events.rows });
+});
+
+router.post("/tenants/:tenantId/praca-orders/:orderId/returns", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const orderId = String(req.params.orderId);
+  const user = actor(req);
+  if (!canAccess(req, tenantId) || !user.id || user.userFunction === "entrega") return res.status(403).json({ error: "Somente a operação pode abrir devoluções." });
+  const key = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
+  const reasonCode = message(req.body?.motivoCodigo);
+  const reason = message(req.body?.motivoDescricao);
+  const mode = req.body?.modeloLogistico === "redespacho" ? "redespacho" : "direto";
+  const serviceDate = req.body?.dataServico;
+  const firstCourier = message(req.body?.entregadorColetaId);
+  const secondCourier = mode === "redespacho" ? message(req.body?.entregadorDestinoId) : firstCourier;
+  const relayPointId = mode === "redespacho" ? message(req.body?.pontoRedespachoId) : "";
+  const pickupSequence = Number(req.body?.sequenciaColeta || 1);
+  const destinationSequence = Number(req.body?.sequenciaDestino || 2);
+  if (!key || key.length>200 || !reasonCode || reason.length<5 || !validDate(serviceDate) || !firstCourier || !Number.isInteger(pickupSequence) || !Number.isInteger(destinationSequence) || pickupSequence<1 || destinationSequence<1) {
+    return res.status(422).json({ error: "Idempotência, motivo, data, entregador e sequências são obrigatórios." });
+  }
+  if (mode==="redespacho" && (!relayPointId || !secondCourier || firstCourier===secondCourier)) {
+    return res.status(422).json({ error: "Redespacho exige ponto e dois entregadores diferentes." });
+  }
+
+  const client=await vendorPool.connect();
+  try {
+    await client.query("BEGIN");
+    const replay=await client.query("SELECT * FROM praca_devolucoes WHERE tenant_id=$1 AND idempotency_key=$2",[tenantId,key]);
+    if(replay.rowCount){await client.query("COMMIT");return res.json({ return:replay.rows[0],idempotentReplay:true });}
+    const order=await client.query(
+      "SELECT p.*,c.endereco_coleta AS endereco_vendedor,pi.status AS pagamento_status FROM praca_pedidos p JOIN praca_logistica_config c ON c.tenant_id=p.tenant_id AND c.ativo=true LEFT JOIN praca_payment_intents pi ON pi.order_id=p.id WHERE p.id=$1 AND p.tenant_id=$2 FOR UPDATE OF p",
+      [orderId,tenantId],
+    );
+    if(!order.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Pedido ou configuração logística não encontrado."});}
+    const row=order.rows[0];
+    if(!["entregue","falha_entrega"].includes(row.status)){await client.query("ROLLBACK");return res.status(409).json({error:"Devolução permitida somente após entrega ou falha definitiva."});}
+    if(!["confirmed","received"].includes(row.pagamento_status)){await client.query("ROLLBACK");return res.status(409).json({error:"O pedido não possui pagamento elegível para devolução."});}
+    const courierIds=[firstCourier,...(mode==="redespacho"?[secondCourier]:[])];
+    const couriers=await client.query("SELECT id FROM users WHERE tenant_id=$1 AND active=true AND user_function='entrega' AND id=ANY($2::text[])",[tenantId,courierIds]);
+    if(couriers.rowCount!==courierIds.length){await client.query("ROLLBACK");return res.status(422).json({error:"Um dos entregadores não está ativo neste tenant."});}
+    if(mode==="redespacho"){
+      const point=await client.query("SELECT 1 FROM praca_pontos_redespacho WHERE id=$1 AND tenant_id=$2 AND ativo=true",[relayPointId,tenantId]);
+      if(!point.rowCount){await client.query("ROLLBACK");return res.status(422).json({error:"Ponto de redespacho inválido ou inativo."});}
+    }
+    const created=await client.query(
+      "INSERT INTO praca_devolucoes (tenant_id,pedido_id,idempotency_key,motivo_codigo,motivo_descricao,modelo_logistico,status,data_servico,endereco_coleta,endereco_destino,ponto_redespacho_id,entregador_coleta_id,entregador_destino_id,sequencia_coleta,sequencia_destino,solicitada_por,agendada_em) VALUES ($1,$2,$3,$4,$5,$6,'agendada',$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14,$15,now()) RETURNING *",
+      [tenantId,orderId,key,reasonCode,reason,mode,serviceDate,JSON.stringify(row.endereco_entrega),JSON.stringify(row.endereco_vendedor),relayPointId||null,firstCourier,secondCourier,pickupSequence,destinationSequence,user.id],
+    );
+    await client.query("UPDATE praca_pedidos SET status='devolucao_solicitada',updated_at=now() WHERE id=$1",[orderId]);
+    await client.query("INSERT INTO praca_devolucao_eventos (tenant_id,devolucao_id,pedido_id,tipo,status_anterior,status_novo,ator_tipo,ator_id,motivo,metadata) VALUES ($1,$2,$3,'devolucao_agendada',$4,'agendada','tenant',$5,$6,$7::jsonb)",[tenantId,created.rows[0].id,orderId,row.status,user.id,reason,JSON.stringify({modeloLogistico:mode,dataServico:serviceDate,sequenciaColeta:pickupSequence,sequenciaDestino:destinationSequence})]);
+    await client.query("INSERT INTO praca_pedido_eventos (tenant_id,pedido_id,tipo,status_anterior,status_novo,ator_tipo,ator_id,motivo_codigo,descricao,metadata) VALUES ($1,$2,'devolucao_agendada',$3,'devolucao_solicitada','tenant',$4,$5,$6,$7::jsonb)",[tenantId,orderId,row.status,user.id,reasonCode,reason,JSON.stringify({devolucaoId:created.rows[0].id,qrCode:created.rows[0].qr_code})]);
+    if(row.cliente_whatsapp) await client.query("INSERT INTO praca_entrega_notificacoes (tenant_id,pedido_id,destinatario_whatsapp,template,payload) VALUES ($1,$2,$3,'devolucao_agendada',$4::jsonb)",[tenantId,orderId,row.cliente_whatsapp,JSON.stringify({dataServico:serviceDate,motivo:reason})]);
+    await client.query("COMMIT");
+    res.status(201).json({return:created.rows[0]});
+  } catch(error:any) {
+    await client.query("ROLLBACK");
+    if(error?.code==="23505") return res.status(409).json({error:"Este pedido já possui uma devolução."});
+    throw error;
+  } finally { client.release(); }
+});
+
+router.post("/tenants/:tenantId/praca-returns/:returnId/events", async (req,res)=>{
+  const tenantId=String(req.params.tenantId),returnId=String(req.params.returnId);
+  const user=actor(req);
+  if(!canAccess(req,tenantId)||!user.id)return res.status(403).json({error:"Forbidden"});
+  const action=String(req.body?.acao||"");
+  const lat=req.body?.latitude==null?null:Number(req.body.latitude),lng=req.body?.longitude==null?null:Number(req.body.longitude);
+  if((lat!=null&&(!Number.isFinite(lat)||lat< -90||lat>90))||(lng!=null&&(!Number.isFinite(lng)||lng< -180||lng>180)))return res.status(422).json({error:"Coordenadas inválidas."});
+  const client=await vendorPool.connect();
+  try{
+    await client.query("BEGIN");
+    const found=await client.query("SELECT d.*,p.cliente_whatsapp FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id WHERE d.id=$1 AND d.tenant_id=$2 FOR UPDATE OF d",[returnId,tenantId]);
+    if(!found.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Devolução não encontrada."});}
+    const row=found.rows[0],isCourier=user.userFunction==="entrega";
+    const transitions:any={
+      direto:{coletar_cliente:["agendada","em_rota_vendedor"],receber_vendedor:["em_rota_vendedor","recebida_vendedor"]},
+      redespacho:{coletar_cliente:["agendada","em_rota_redespacho"],receber_redespacho:["em_rota_redespacho","recebida_redespacho"],sair_redespacho:["recebida_redespacho","em_rota_vendedor"],receber_vendedor:["em_rota_vendedor","recebida_vendedor"]},
+    };
+    const transition=transitions[row.modelo_logistico]?.[action];
+    if(!transition||row.status!==transition[0]){await client.query("ROLLBACK");return res.status(409).json({error:"Movimento incompatível com a etapa atual da devolução."});}
+    if(isCourier){
+      const allowedCourier=action==="coletar_cliente"?row.entregador_coleta_id:row.entregador_destino_id;
+      if(action==="receber_vendedor"||allowedCourier!==user.id){await client.query("ROLLBACK");return res.status(403).json({error:"A etapa pertence a outro responsável."});}
+      if(lat==null||lng==null){await client.query("ROLLBACK");return res.status(422).json({error:"Entregador deve registrar localização real."});}
+    } else if(action!=="receber_vendedor"){
+      await client.query("ROLLBACK");return res.status(403).json({error:"Esta etapa deve ser registrada pelo entregador responsável."});
+    }
+    const evidence=req.body?.evidencia&&typeof req.body.evidencia==="object"?req.body.evidencia:{};
+    if(action==="receber_vendedor"&&(!message(req.body?.condicaoRecebimento)||!Object.keys(evidence).length)){
+      await client.query("ROLLBACK");return res.status(422).json({error:"Recebimento exige condição do produto e evidência."});
+    }
+    const next=transition[1];
+    await client.query("UPDATE praca_devolucoes SET status=$1,coletada_em=CASE WHEN $2='coletar_cliente' THEN now() ELSE coletada_em END,recebida_em=CASE WHEN $1='recebida_vendedor' THEN now() ELSE recebida_em END,recebida_por=CASE WHEN $1='recebida_vendedor' THEN $3 ELSE recebida_por END,condicao_recebimento=CASE WHEN $1='recebida_vendedor' THEN $4 ELSE condicao_recebimento END,evidencia_recebimento=CASE WHEN $1='recebida_vendedor' THEN $5::jsonb ELSE evidencia_recebimento END,updated_at=now() WHERE id=$6",[next,action,user.id,message(req.body?.condicaoRecebimento)||null,JSON.stringify(evidence),returnId]);
+    await client.query("INSERT INTO praca_devolucao_eventos (tenant_id,devolucao_id,pedido_id,tipo,status_anterior,status_novo,ator_tipo,ator_id,latitude,longitude,motivo,evidencia,metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb)",[tenantId,returnId,row.pedido_id,action,row.status,next,isCourier?"entregador":"tenant",user.id,lat,lng,message(req.body?.motivo)||null,JSON.stringify(evidence),JSON.stringify({qrCode:row.qr_code})]);
+    await client.query("INSERT INTO praca_pedido_eventos (tenant_id,pedido_id,tipo,status_anterior,status_novo,ator_tipo,ator_id,latitude,longitude,descricao,evidencia,metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb)",[tenantId,row.pedido_id,"devolucao_"+action,row.status,next,isCourier?"entregador":"tenant",user.id,lat,lng,message(req.body?.motivo)||null,JSON.stringify(evidence),JSON.stringify({devolucaoId:returnId})]);
+    if(next==="recebida_vendedor") await client.query("UPDATE praca_pedidos SET status='devolvido',updated_at=now() WHERE id=$1",[row.pedido_id]);
+    if(row.cliente_whatsapp) await client.query("INSERT INTO praca_entrega_notificacoes (tenant_id,pedido_id,destinatario_whatsapp,template,payload) VALUES ($1,$2,$3,'devolucao_atualizada',$4::jsonb)",[tenantId,row.pedido_id,row.cliente_whatsapp,JSON.stringify({status:next})]);
+    await client.query("COMMIT");
+    res.json({ok:true,returnId,status:next,refundEligible:next==="recebida_vendedor"});
+  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
+});
+
 export default router;
