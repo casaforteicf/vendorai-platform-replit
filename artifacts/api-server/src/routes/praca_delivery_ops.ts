@@ -161,7 +161,7 @@ router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
       [tenantId],
     ),
     vendorPool.query(
-      `SELECT p.id,p.status,p.cliente_nome,p.cliente_whatsapp,p.updated_at,p.modelo_logistico,p.frete_centavos,
+      `SELECT p.id,p.status,p.cliente_nome,p.cliente_documento,p.cliente_email,p.cliente_whatsapp,p.updated_at,p.modelo_logistico,p.frete_centavos,
               hub.nome AS ponto_redespacho_nome,t.status AS transferencia_status,
               pi.status AS pagamento_status,pi.provider_fee_centavos,pi.net_centavos,
               coalesce(pa.repasses_pendentes,0)::int AS repasses_pendentes,

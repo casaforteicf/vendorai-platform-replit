@@ -54,12 +54,13 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
   const idempotencyKey = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
   const itens = Array.isArray(req.body?.itens) ? req.body.itens : [];
   const clienteNome = typeof req.body?.clienteNome === "string" ? req.body.clienteNome.trim() : "";
+  const clienteDocumento = typeof req.body?.clienteDocumento === "string" ? req.body.clienteDocumento.replace(/\D/g, "") : "";
   const endereco = req.body?.enderecoEntrega;
 
   if (!idempotencyKey || idempotencyKey.length > 200) {
     return res.status(422).json({ error: "Idempotency-Key obrigatório, com até 200 caracteres." });
   }
-  if (!clienteNome || !endereco || typeof endereco !== "object" || Array.isArray(endereco)) {
+  if (!clienteNome || (clienteDocumento && ![11,14].includes(clienteDocumento.length)) || !endereco || typeof endereco !== "object" || Array.isArray(endereco)) {
     return res.status(422).json({ error: "Cliente e endereço de entrega são obrigatórios." });
   }
   if (itens.length === 0 || itens.length > 500) {
@@ -119,8 +120,8 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
       `INSERT INTO praca_pedidos
         (tenant_id,id_externo,idempotency_key,canal,status,moeda,
          subtotal_centavos,frete_centavos,desconto_centavos,total_centavos,
-         cliente_id,cliente_nome,cliente_email,cliente_whatsapp,endereco_entrega,observacoes)
-       VALUES ($1,$2,$3,$4,'recebido',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
+         cliente_id,cliente_nome,cliente_documento,cliente_email,cliente_whatsapp,endereco_entrega,observacoes)
+       VALUES ($1,$2,$3,$4,'recebido',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16)
        RETURNING id,status,total_centavos AS "totalCentavos",created_at AS "createdAt"`,
       [
         tenantId,
@@ -131,6 +132,7 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
         subtotal, frete, desconto, total,
         typeof req.body?.clienteId === "string" ? req.body.clienteId : null,
         clienteNome,
+        clienteDocumento || null,
         typeof req.body?.clienteEmail === "string" ? req.body.clienteEmail.trim() || null : null,
         typeof req.body?.clienteWhatsapp === "string" ? req.body.clienteWhatsapp.trim() || null : null,
         JSON.stringify(endereco),
