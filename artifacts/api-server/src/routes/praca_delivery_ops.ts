@@ -75,7 +75,16 @@ pracaDeliveryPublicRouter.get("/public/praca-delivery/:trackingToken", async (re
     ),
   ]);
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ order: order.rows[0], interactions: interactions.rows, legs: legs.rows, transfers: transfers.rows });
+  const reverse = await vendorPool.query(
+    "SELECT id,modelo_logistico,status,data_servico,motivo_descricao,solicitada_em,coletada_em,recebida_em,updated_at FROM praca_devolucoes WHERE pedido_id=$1 ORDER BY solicitada_em DESC LIMIT 1",
+    [order.rows[0].id],
+  );
+  const reverseEvents = reverse.rowCount ? await vendorPool.query(
+    "SELECT tipo,status_anterior,status_novo,motivo,ocorrido_em FROM praca_devolucao_eventos WHERE devolucao_id=$1 ORDER BY ocorrido_em,id",
+    [reverse.rows[0].id],
+  ) : { rows: [] };
+  res.json({ order: order.rows[0], interactions: interactions.rows, legs: legs.rows, transfers: transfers.rows,
+    reverse: reverse.rows[0] ?? null, reverseEvents: reverseEvents.rows });
 });
 
 pracaDeliveryPublicRouter.post("/public/praca-delivery/:trackingToken/messages", async (req, res) => {
