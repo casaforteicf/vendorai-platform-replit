@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { vendorPool } from "../lib/vendorDb";
+import { applyPracaPromotion,pracaCustomerKey } from "../services/pracaPartnerAttribution.js";
 
 const router: IRouter = Router();
 
@@ -84,11 +85,11 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
     (sum, item) => sum + Math.round(item.quantidade * item.valorUnitarioCentavos), 0,
   );
   const frete = Number(req.body?.freteCentavos ?? 0);
-  const desconto = Number(req.body?.descontoCentavos ?? 0);
+  let desconto = Number(req.body?.descontoCentavos ?? 0);
   if (!integerMoney(frete) || !integerMoney(desconto) || desconto > subtotal + frete) {
     return res.status(422).json({ error: "Frete ou desconto inválido." });
   }
-  const total = subtotal + frete - desconto;
+  let total = subtotal + frete - desconto;
 
   const client = await vendorPool.connect();
   try {
@@ -140,6 +141,22 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
       ],
     );
     const pedido = inserted.rows[0];
+    const customerKey=pracaCustomerKey({
+      clienteId:req.body?.clienteId,document:clienteDocumento,email:req.body?.clienteEmail,whatsapp:req.body?.clienteWhatsapp,
+    });
+    const benefit=await applyPracaPromotion(client,{
+      tenantId,couponCode:typeof req.body?.couponCode==="string"?req.body.couponCode:"",
+      customerKey,subtotalCentavos:subtotal,otherDiscountCentavos:desconto,orderId:pedido.id,actorId:actor(req).id,
+    });
+    if(benefit.code){
+      desconto=benefit.discountCentavos;total=subtotal+frete-desconto;
+    }
+    if(benefit.code||benefit.referral){
+      await client.query(
+        "UPDATE praca_pedidos SET desconto_centavos=$1,total_centavos=$2,coupon_code=$3,influencer_partner_id=$4,updated_at=now() WHERE id=$5",
+        [desconto,total,benefit.code,benefit.referral?.influencer_partner_id??null,pedido.id],
+      );
+    }
 
     for (const item of normalized) {
       const product = productMap.get(item.produtoId);
@@ -169,6 +186,7 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
     if (error?.code === "23505") {
       return res.status(409).json({ error: "Pedido externo ou chave de idempotência já cadastrada." });
     }
+    if(Number.isInteger(error?.statusCode))return res.status(error.statusCode).json({error:error.message});
     throw error;
   } finally {
     client.release();
