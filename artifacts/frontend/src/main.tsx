@@ -8,6 +8,21 @@ import { setupApiClient } from "./lib/api";
 
 setupApiClient();
 
+// Handoff de sessão vindo do site institucional após cadastro de demo.
+// O site (appvendorai.com) e o CRM (app.appvendorai.com) têm storages separados,
+// então o JWT é transportado no fragmento da URL (não vai para o servidor nem
+// para Referer), salvo no storage do CRM e removido imediatamente da barra.
+const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+const handoffToken = hashParams.get("vendorai_token");
+const handoffDemoExpiresAt = hashParams.get("demo_expires_at");
+if (handoffToken) {
+  localStorage.setItem("vendorai_token", handoffToken);
+  if (handoffDemoExpiresAt) {
+    localStorage.setItem("vendorai_demo_expires_at", handoffDemoExpiresAt);
+  }
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+}
+
 // Roteamento por hostname:
 //   appvendorai.com / www          -> site institucional cuida disso agora (não chega aqui)
 //   app.appvendorai.com            -> CRM, login genérico
