@@ -50,6 +50,7 @@ const DashboardExecutivoPraca = lazy(() => import("@/pages/DashboardExecutivoPra
 const AppEntregadorPraca = lazy(() => import("@/pages/AppEntregadorPraca"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
 const Campanhas          = lazy(() => import("@/pages/Campanhas"));
+const CampanhasHub       = lazy(() => import("@/pages/CampanhasHub"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
 const CatalogoProdutos   = lazy(() => import("@/pages/CatalogoProdutos"));
 const PropostaPrint      = lazy(() => import("@/pages/PropostaPrint"));
@@ -602,6 +603,9 @@ function AppRoutes() {
         </Route>
         <Route path="/propostas/:id">
           {() => <ProtectedRoute component={PropostaPrint} />}
+        </Route>
+        <Route path="/campanhas-nova">
+          <ProtectedRoute component={CampanhasHub} />
         </Route>
         <Route path="/campanhas">
           <ProtectedRoute component={Campanhas} />

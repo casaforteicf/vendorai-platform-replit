@@ -156,7 +156,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Content Autopilot", href: "/content-autopilot", icon: Sparkles, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
-    { name: "Anúncios",      href: "/ads",           icon: Megaphone,       sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Campanhas",     href: "/campanhas-nova", icon: Megaphone,      sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Base de Conhecimento", href: "/base-conhecimento", icon: BookOpen, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -226,7 +226,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // approved for that vertical.
   const CORE_VERTICAL_HREFS = [
     "/", "/trabalho", "/leads", "/app/prospector", "/deals", "/comissoes",
-    "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas",
+    "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas", "/campanhas-nova",
     "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
     "/praca-perguntas", "/erp", "/ads",
