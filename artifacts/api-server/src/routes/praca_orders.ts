@@ -54,7 +54,7 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
   const idempotencyKey = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
   const itens = Array.isArray(req.body?.itens) ? req.body.itens : [];
   const clienteNome = typeof req.body?.clienteNome === "string" ? req.body.clienteNome.trim() : "";
-  const clienteDocumento = typeof req.body?.clienteDocumento === "string" ? req.body.clienteDocumento.replace(/\\D/g, "") : "";
+  const clienteDocumento = typeof req.body?.clienteDocumento === "string" ? req.body.clienteDocumento.replace(/\D/g, "") : "";
   const endereco = req.body?.enderecoEntrega;
 
   if (!idempotencyKey || idempotencyKey.length > 200) {
