@@ -30,6 +30,10 @@ export interface SiteGeneratorConfig {
   whatsapp?: string;
   instagram?: string;
   images?: string[];
+  // Título/H1 sugerido pelo lojista para esta página específica (usado no
+  // fluxo de gerar várias LPs de uma vez, uma por nicho/produto/serviço) —
+  // quando ausente, a IA escreve o headline como sempre fez.
+  headline?: string;
   // URLs de vídeo — link do YouTube/Vimeo (embutido via iframe) ou URL
   // direta de arquivo .mp4 (embutido via <video>). O site guarda só a
   // URL, sem upload/hospedagem própria de vídeo.

@@ -180,7 +180,7 @@ function isDark(hex: string): boolean {
 }
 
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
-  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos } = config;
+  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos, headline } = config;
   const waNumber = whatsapp?.replace(/\D/g, "") || "5511999999999";
 
   // Instagram: normaliza handle (remove @ e espaços), monta URL e bloco HTML do ícone
@@ -321,7 +321,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
   const structureByType: Record<string, string> = {
     landing: `ESTRUTURA DA LANDING PAGE (nesta ordem exata):
 1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo à esquerda (inicial do nome em círculo colorido + nome)"}, nav âncoras à direita, botão CTA no canto, hamburger mobile
-2. HERO — título impactante (H1, problema que o cliente já sente), subtítulo com a promessa, 2 botões (primário + secundário outline)${images.length > 0 ? `, imagem real da empresa como elemento visual (use a Foto 1 do briefing)` : ", elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)"}
+2. HERO — título impactante (H1${headline ? `: use exatamente ou uma variação muito próxima de "${headline}"` : ", problema que o cliente já sente"}), subtítulo com a promessa, 2 botões (primário + secundário outline)${images.length > 0 ? `, imagem real da empresa como elemento visual (use a Foto 1 do briefing)` : ", elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)"}
 3. DORES — seção escura/contrastante com 3-4 cards de dores reais do mercado (ícones SVG inline simples, título curto + descrição)
 4. SOLUÇÃO — como o negócio resolve cada dor, 3 pilares com ícone SVG + título + parágrafo
 5. BENEFÍCIOS / DIFERENCIAIS — grid 2x3 ou 3x2 de cards com número destacado ou ícone grande
@@ -347,7 +347,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 
     institutional: `ESTRUTURA DO SITE INSTITUCIONAL (nesta ordem exata):
 1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav âncoras, botão CTA, hamburger mobile
-2. HERO — headline sobre a empresa, subtítulo com proposta de valor, 2 botões${images.length > 0 ? `, imagem real da empresa (use a Foto 1 do briefing)` : ", elemento visual"}
+2. HERO — headline sobre a empresa${headline ? ` (H1: use exatamente ou uma variação muito próxima de "${headline}")` : ""}, subtítulo com proposta de valor, 2 botões${images.length > 0 ? `, imagem real da empresa (use a Foto 1 do briefing)` : ", elemento visual"}
 3. SOBRE — história/missão em 2 colunas (texto + estatísticas em destaque: anos, clientes, projetos)${images.length > 1 ? " + galeria das fotos reais fornecidas" : ""}
 4. SERVIÇOS — grid de 4-6 serviços com ícone SVG, título, descrição curta (baseados nos serviços informados no briefing)
 5. PROCESSO — timeline ou steps numerados explicando como funciona

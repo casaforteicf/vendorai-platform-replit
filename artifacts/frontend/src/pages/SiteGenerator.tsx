@@ -83,6 +83,16 @@ interface SiteConfig {
   servicos?: string;
   /** Set when type === "product" — id of the single catalog product this page sells. */
   produtoId?: string;
+  /** Título/H1 sugerido para esta página — usado no lote por nicho/produto/serviço. */
+  headline?: string;
+}
+interface BulkTopic {
+  id: string;
+  nome: string;
+  titulo: string;
+  descricao: string;
+  images: string[];
+  uploadingCount: number;
 }
 interface CatalogProductOption {
   id: string;
@@ -519,6 +529,54 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
     }
   }
 
+  // ── Lote por nicho/produto/serviço — várias LPs de uma vez, cada uma com
+  // seu próprio título/descrição/fotos, reaproveitando o resto do formulário
+  // (fotos gerais, logo, whatsapp, cor, tom) como base compartilhada. ──────
+  const [bulkTopics, setBulkTopics] = useState<BulkTopic[]>([]);
+
+  function addBulkTopic() {
+    setBulkTopics((prev) => [...prev, { id: crypto.randomUUID(), nome: "", titulo: "", descricao: "", images: [], uploadingCount: 0 }]);
+  }
+  function removeBulkTopic(id: string) {
+    setBulkTopics((prev) => prev.filter((t) => t.id !== id));
+  }
+  function updateBulkTopic(id: string, field: "nome" | "titulo" | "descricao", value: string) {
+    setBulkTopics((prev) => prev.map((t) => (t.id === id ? { ...t, [field]: value } : t)));
+  }
+  function removeBulkTopicImage(id: string, idx: number) {
+    setBulkTopics((prev) => prev.map((t) => (t.id === id ? { ...t, images: t.images.filter((_, i) => i !== idx) } : t)));
+  }
+
+  async function uploadOneTopicImage(topicId: string, file: File): Promise<void> {
+    setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, uploadingCount: t.uploadingCount + 1 } : t)));
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const putRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "image/jpeg" },
+      });
+      if (!putRes.ok) throw new Error("Upload falhou");
+      const url = `${window.location.origin}/api/storage${result.objectPath}`;
+      setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, images: [...t.images, url] } : t)));
+    } catch {
+      toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
+    } finally {
+      setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, uploadingCount: Math.max(0, t.uploadingCount - 1) } : t)));
+    }
+  }
+
+  async function handleTopicImagesUpload(topicId: string, files: File[]) {
+    for (const file of files) {
+      await uploadOneTopicImage(topicId, file);
+    }
+  }
+
   function addProduct() { setProducts((p) => [...p, { name: "", price: "" }]); }
   function removeProduct(i: number) { setProducts((p) => p.filter((_, idx) => idx !== i)); }
   function updateProduct(i: number, field: keyof Product, value: string) {
@@ -547,6 +605,33 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
       servicos: (fd.get("servicos") as string) || "",
     };
 
+    const activeBulkTopics = bulkTopics.filter((t) => t.nome.trim());
+    if ((siteType === "landing" || siteType === "institutional") && activeBulkTopics.length > 0) {
+      // Lote por nicho/produto/serviço → gera uma LP por item, reaproveitando
+      // as fotos/logo/whatsapp/cor/tom compartilhados como base.
+      onGenerateBulk(
+        activeBulkTopics.map((t) => {
+          const nome = t.nome.trim();
+          const descricao = t.descricao.trim();
+          return {
+            key: t.id,
+            label: nome,
+            config: {
+              ...baseConfig,
+              name: [nomeNegocio, nome].filter(Boolean).join(" — ") || nome,
+              headline: t.titulo.trim() || undefined,
+              pain: descricao || baseConfig.pain,
+              servicos: [nome, descricao].filter(Boolean).join(": ") || baseConfig.servicos,
+              // Fotos específicas deste item primeiro — viram a "Foto 1" no
+              // prompt (hero da página), seguidas das fotos gerais do negócio.
+              images: [...t.images, ...(baseConfig.images ?? [])].filter(Boolean),
+            },
+          };
+        }),
+      );
+      return;
+    }
+
     if (siteType === "product" && selectedProductIds.length > 1) {
       // Vários produtos marcados → gera uma LP para cada um, em paralelo.
       onGenerateBulk(
@@ -571,6 +656,8 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   const missingName = !nomeNegocio;
   const missingSetor = !setor;
   const missingDesc = !descNegocio;
+  const hasBulkTopics = (siteType === "landing" || siteType === "institutional") && bulkTopics.some((t) => t.nome.trim());
+  const bulkTopicsUploading = bulkTopics.some((t) => t.uploadingCount > 0);
 
   const profileItems = [
     nomeNegocio && { label: "Nome", value: nomeNegocio },
@@ -673,10 +760,14 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
           <Input
             id="sg-pain"
             name="pain"
-            required
+            required={!hasBulkTopics}
             placeholder="Ex: não consigo encontrar flores frescas de qualidade na cidade"
           />
-          <p className="text-[10px] text-muted-foreground">Usado para criar um headline que ressoa com o problema real do cliente</p>
+          <p className="text-[10px] text-muted-foreground">
+            {hasBulkTopics
+              ? "Usado como padrão para páginas do lote abaixo sem descrição própria"
+              : "Usado para criar um headline que ressoa com o problema real do cliente"}
+          </p>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -891,6 +982,96 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
         </div>
       )}
 
+      {/* ── Lote por nicho/produto/serviço — várias LPs de uma vez ── */}
+      {(siteType === "landing" || siteType === "institutional") && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Gerar várias páginas de uma vez</Label>
+            <span className="text-[10px] text-muted-foreground">Opcional</span>
+          </div>
+          <p className="text-xs text-muted-foreground rounded-md bg-muted/60 border border-dashed px-3 py-2">
+            🎯 Adicione um item para cada nicho, produto ou serviço que merece a própria página (ex: "Esquadrias PVC", "ACM e Fachadas", "Brises Soleil"). As fotos, logo, WhatsApp, cor e tom acima são reaproveitados em todas — cada página sai focada só no assunto que você descrever aqui.
+          </p>
+
+          {bulkTopics.map((t, i) => (
+            <div key={t.id} className="rounded-lg border border-border p-3 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground shrink-0">#{i + 1}</span>
+                <Input
+                  placeholder="Nome do nicho/produto/serviço *"
+                  value={t.nome}
+                  onChange={(e) => updateBulkTopic(t.id, "nome", e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => removeBulkTopic(t.id)}
+                  className="shrink-0 text-destructive hover:border-destructive hover:text-destructive"
+                >
+                  ✕
+                </Button>
+              </div>
+              <Input
+                placeholder="Título da página (opcional — se vazio, a IA escreve um)"
+                value={t.titulo}
+                onChange={(e) => updateBulkTopic(t.id, "titulo", e.target.value)}
+              />
+              <Textarea
+                rows={2}
+                placeholder="Descrição curta: dor do cliente ou diferencial (opcional)"
+                value={t.descricao}
+                onChange={(e) => updateBulkTopic(t.id, "descricao", e.target.value)}
+              />
+              {t.images.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {t.images.map((url, idx) => (
+                    <div key={idx} className="relative group">
+                      <img src={url} alt={`Foto ${idx + 1} de ${t.nome || "página"}`} className="h-16 w-16 object-cover rounded-md border border-border" />
+                      <button
+                        type="button"
+                        onClick={() => removeBulkTopicImage(t.id, idx)}
+                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className={`cursor-pointer ${t.uploadingCount > 0 ? "pointer-events-none opacity-60" : ""}`}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="sr-only"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    handleTopicImagesUpload(t.id, files);
+                    e.target.value = "";
+                  }}
+                />
+                <div className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                  {t.uploadingCount > 0
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />Enviando…</>
+                    : <><Upload className="h-3.5 w-3.5 shrink-0" />+ Foto específica desta página (opcional)</>
+                  }
+                </div>
+              </label>
+            </div>
+          ))}
+
+          <Button type="button" variant="ghost" className="self-start text-primary" onClick={addBulkTopic}>+ Adicionar página</Button>
+
+          {hasBulkTopics && (
+            <p className="text-[10px] text-primary font-medium">
+              ✦ {bulkTopics.filter((t) => t.nome.trim()).length} página{bulkTopics.filter((t) => t.nome.trim()).length > 1 ? "s" : ""} configurada{bulkTopics.filter((t) => t.nome.trim()).length > 1 ? "s" : ""} — vai gerar {bulkTopics.filter((t) => t.nome.trim()).length} landing page{bulkTopics.filter((t) => t.nome.trim()).length > 1 ? "s" : ""}, uma para cada uma.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Aparência e tom ── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
@@ -952,13 +1133,15 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
         type="submit"
         size="lg"
         className="mt-1 w-full font-semibold"
-        disabled={uploadingCount > 0 || (siteType === "product" && selectedProductIds.length === 0)}
+        disabled={uploadingCount > 0 || bulkTopicsUploading || (siteType === "product" && selectedProductIds.length === 0)}
       >
-        {uploadingCount > 0
+        {uploadingCount > 0 || bulkTopicsUploading
           ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando fotos…</>
-          : selectedProductIds.length > 1
-            ? `✦ Gerar ${selectedProductIds.length} landing pages com IA`
-            : "✦ Gerar site com IA"
+          : hasBulkTopics
+            ? `✦ Gerar ${bulkTopics.filter((t) => t.nome.trim()).length} landing pages com IA`
+            : selectedProductIds.length > 1
+              ? `✦ Gerar ${selectedProductIds.length} landing pages com IA`
+              : "✦ Gerar site com IA"
         }
       </Button>
     </form>
