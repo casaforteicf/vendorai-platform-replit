@@ -370,6 +370,98 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   }
 });
 
+
+router.post("/tenants/:tenantId/praca-orders/:orderId/payment-actions", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const orderId = String(req.params.orderId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const actionType = String(req.body?.actionType || "");
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const idempotencyKey = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
+  if (!["cancel_charge","full_refund"].includes(actionType)) return res.status(422).json({ error: "Ação financeira inválida." });
+  if (reason.length < 5 || reason.length > 500 || !idempotencyKey || idempotencyKey.length > 200) {
+    return res.status(422).json({ error: "Motivo (5 a 500 caracteres) e Idempotency-Key são obrigatórios." });
+  }
+
+  const existing = await vendorPool.query(
+    "SELECT id,action_type AS \"actionType\",status,error_message AS \"errorMessage\",requested_at AS \"requestedAt\",completed_at AS \"completedAt\" FROM praca_payment_actions WHERE tenant_id=$1 AND idempotency_key=$2",
+    [tenantId,idempotencyKey],
+  );
+  if (existing.rowCount) return res.json({ ...existing.rows[0], idempotentReplay: true });
+
+  const result = await vendorPool.query(
+    "SELECT p.status AS order_status,t.asaas_api_key,pi.id AS payment_intent_id,pi.status AS payment_status,pi.provider_payment_id,pi.gross_centavos FROM praca_pedidos p JOIN tenants t ON t.id=p.tenant_id JOIN praca_payment_intents pi ON pi.tenant_id=p.tenant_id AND pi.order_id=p.id WHERE p.tenant_id=$1 AND p.id=$2",
+    [tenantId,orderId],
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Pedido ou pagamento não encontrado." });
+  const row = result.rows[0];
+  if (!row.provider_payment_id) return res.status(409).json({ error: "Cobrança sem identificador do Asaas." });
+
+  const pendingStatuses = new Set(["created","pending","overdue"]);
+  const paidStatuses = new Set(["confirmed","received"]);
+  const preCollectionStatuses = new Set(["pago","em_separacao","pronto_coleta","coleta_agendada"]);
+  if (actionType === "cancel_charge" && !pendingStatuses.has(row.payment_status)) {
+    return res.status(409).json({ error: paidStatuses.has(row.payment_status) ? "O pagamento já foi confirmado. Use estorno integral." : "A cobrança não pode ser excluída neste status." });
+  }
+  if (actionType === "full_refund" && !paidStatuses.has(row.payment_status)) {
+    return res.status(409).json({ error: "Somente pagamentos confirmados ou recebidos podem ser estornados." });
+  }
+  if (actionType === "full_refund" && !preCollectionStatuses.has(row.order_status)) {
+    return res.status(409).json({ error: "Produto já entrou no fluxo físico. Abra a devolução antes do estorno." });
+  }
+
+  const apiKey = String(row.asaas_api_key || "").trim();
+  const apiBase = String(process.env["ASAAS_API_BASE_URL"] || "https://api.asaas.com/v3").replace(/\/$/, "");
+  if (!apiKey) return res.status(422).json({ error: "Chave Asaas do tenant não configurada." });
+  const requestedBy = String((req as any).user?.id || (req as any).user?.sub || "") || null;
+  let actionId: string;
+  try {
+    const inserted = await vendorPool.query(
+      "INSERT INTO praca_payment_actions (tenant_id,order_id,payment_intent_id,action_type,status,reason,idempotency_key,requested_by,request_snapshot) VALUES ($1,$2,$3,$4,'processing',$5,$6,$7,$8::jsonb) RETURNING id",
+      [tenantId,orderId,row.payment_intent_id,actionType,reason,idempotencyKey,requestedBy,JSON.stringify({ paymentStatus:row.payment_status,orderStatus:row.order_status,providerPaymentId:row.provider_payment_id,grossCentavos:Number(row.gross_centavos) })],
+    );
+    actionId = inserted.rows[0].id;
+  } catch (error: any) {
+    if (error?.code === "23505") {
+      const replay = await vendorPool.query("SELECT id,action_type AS \"actionType\",status,error_message AS \"errorMessage\",requested_at AS \"requestedAt\",completed_at AS \"completedAt\" FROM praca_payment_actions WHERE tenant_id=$1 AND idempotency_key=$2",[tenantId,idempotencyKey]);
+      return res.json({ ...replay.rows[0], idempotentReplay:true });
+    }
+    throw error;
+  }
+
+  try {
+    const providerResponse = await fetch(
+      actionType === "cancel_charge" ? apiBase + "/payments/" + encodeURIComponent(row.provider_payment_id) : apiBase + "/payments/" + encodeURIComponent(row.provider_payment_id) + "/refund",
+      { method:actionType === "cancel_charge" ? "DELETE" : "POST", headers:{ "Content-Type":"application/json",access_token:apiKey,"User-Agent":"Vendor.ai" }, ...(actionType === "full_refund" ? { body:JSON.stringify({ description:reason }) } : {}) },
+    );
+    const payload: any = await providerResponse.json().catch(() => ({}));
+    if (!providerResponse.ok) {
+      await vendorPool.query("UPDATE praca_payment_actions SET status='failed',provider_snapshot=$1::jsonb,error_message=$2,updated_at=now() WHERE id=$3",[JSON.stringify(payload),JSON.stringify(payload?.errors ?? payload).slice(0,2000),actionId]);
+      return res.status(502).json({ error:actionType === "cancel_charge" ? "Asaas recusou a exclusão da cobrança." : "Asaas recusou o estorno.",details:payload?.errors ?? null,actionId });
+    }
+
+    const client = await vendorPool.connect();
+    try {
+      await client.query("BEGIN");
+      const paymentStatus = actionType === "cancel_charge" ? "cancelled" : "refunded";
+      await client.query("UPDATE praca_payment_intents SET status=$1,refunded_at=CASE WHEN $1='refunded' THEN coalesce(refunded_at,now()) ELSE refunded_at END,provider_snapshot=$2::jsonb,updated_at=now() WHERE id=$3",[paymentStatus,JSON.stringify(payload),row.payment_intent_id]);
+      await client.query("UPDATE praca_payment_allocations SET status='reversed',updated_at=now() WHERE payment_intent_id=$1 AND status IN ('planned','scheduled','settled','blocked')",[row.payment_intent_id]);
+      await client.query("UPDATE praca_pedidos SET status='cancelado',updated_at=now() WHERE id=$1 AND tenant_id=$2",[orderId,tenantId]);
+      await client.query("UPDATE praca_payment_actions SET status='provider_accepted',provider_snapshot=$1::jsonb,provider_accepted_at=now(),updated_at=now() WHERE id=$2",[JSON.stringify(payload),actionId]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    return res.json({ id:actionId,actionType,status:"provider_accepted",paymentStatus:actionType === "cancel_charge" ? "cancelled" : "refunded",orderStatus:"cancelado" });
+  } catch (error: any) {
+    await vendorPool.query("UPDATE praca_payment_actions SET status='failed',error_message=$1,updated_at=now() WHERE id=$2",[String(error?.message ?? error).slice(0,2000),actionId]);
+    return res.status(502).json({ error:"Falha de comunicação com o Asaas.",actionId });
+  }
+});
+
 router.get("/tenants/:tenantId/praca-orders/:orderId/payment", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const orderId = String(req.params.orderId);
@@ -392,7 +484,11 @@ router.get("/tenants/:tenantId/praca-orders/:orderId/payment", async (req, res) 
        ORDER BY beneficiary_type`,
     [tenantId,intent.rows[0].id],
   );
-  return res.json({ ...intent.rows[0], allocations: allocations.rows });
+  const actions = await vendorPool.query(
+    "SELECT id,action_type AS \"actionType\",status,reason,requested_by AS \"requestedBy\",error_message AS \"errorMessage\",requested_at AS \"requestedAt\",provider_accepted_at AS \"providerAcceptedAt\",completed_at AS \"completedAt\" FROM praca_payment_actions WHERE tenant_id=$1 AND payment_intent_id=$2 ORDER BY requested_at DESC",
+    [tenantId,intent.rows[0].id],
+  );
+  return res.json({ ...intent.rows[0], allocations: allocations.rows, actions: actions.rows });
 });
 
 pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
@@ -468,9 +564,15 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
       } else if (["refunded","chargeback","cancelled"].includes(status)) {
         await client.query(
           `UPDATE praca_payment_allocations SET status='reversed',updated_at=now()
-            WHERE payment_intent_id=$1 AND status IN ('planned','scheduled','settled')`,
+            WHERE payment_intent_id=$1 AND status IN ('planned','scheduled','settled','blocked')`,
           [row.id],
         );
+        if (status === "refunded" || status === "cancelled") {
+          await client.query(
+            "UPDATE praca_payment_actions SET status='completed',completed_at=coalesce(completed_at,now()),updated_at=now() WHERE payment_intent_id=$1 AND status='provider_accepted' AND action_type=$2",
+            [row.id,status === "refunded" ? "full_refund" : "cancel_charge"],
+          );
+        }
       }
     }
 
