@@ -97,6 +97,7 @@ router.patch("/tenants/:tenantId/praca-exceptions/:incidentId",async(req,res)=>{
   if(!canAccess(req,tenantId)||!user.id||user.userFunction==="entrega")return res.status(403).json({error:"Forbidden"});
   const requestedStatus=typeof req.body?.status==="string"?req.body.status:null;
   const assignedTo=typeof req.body?.assignedTo==="string"?req.body.assignedTo.trim()||null:undefined;
+  const effectiveAssignedTo=assignedTo===undefined&&requestedStatus==="reconhecido"?user.id:assignedTo;
   const note=typeof req.body?.note==="string"?req.body.note.trim():"";
   if(requestedStatus&&!["aberto","reconhecido","resolvido","ignorado"].includes(requestedStatus))return res.status(422).json({error:"Status inválido."});
   if((requestedStatus==="resolvido"||requestedStatus==="ignorado")&&note.length<5)return res.status(422).json({error:"Explique a resolução ou o motivo para ignorar."});
@@ -105,8 +106,8 @@ router.patch("/tenants/:tenantId/praca-exceptions/:incidentId",async(req,res)=>{
     await client.query("BEGIN");
     const current=await client.query("SELECT * FROM praca_exception_incidents WHERE id=$1 AND tenant_id=$2 FOR UPDATE",[incidentId,tenantId]);
     if(!current.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Incidente não encontrado."});}
-    if(assignedTo){
-      const valid=await client.query("SELECT 1 FROM users WHERE id=$1 AND tenant_id=$2 AND active=true",[assignedTo,tenantId]);
+    if(effectiveAssignedTo){
+      const valid=await client.query("SELECT 1 FROM users WHERE id=$1 AND tenant_id=$2 AND active=true",[effectiveAssignedTo,tenantId]);
       if(!valid.rowCount){await client.query("ROLLBACK");return res.status(422).json({error:"Responsável inválido ou inativo."});}
     }
     const previous=current.rows[0],next=requestedStatus??previous.status;
@@ -117,12 +118,12 @@ router.patch("/tenants/:tenantId/praca-exceptions/:incidentId",async(req,res)=>{
         resolved_at=CASE WHEN $1 IN ('resolvido','ignorado') THEN now() ELSE NULL END,
         resolution=CASE WHEN $1 IN ('resolvido','ignorado') THEN $3 ELSE resolution END,updated_at=now()
        WHERE id=$4 RETURNING *`,
-      [next,assignedTo===undefined?null:assignedTo,note||null,incidentId],
+      [next,effectiveAssignedTo===undefined?null:effectiveAssignedTo,note||null,incidentId],
     );
-    const eventType=next!==previous.status?(next==="reconhecido"?"reconhecido":next==="resolvido"?"resolvido":next==="ignorado"?"ignorado":"reaberto"):assignedTo!==undefined?"atribuido":"comentario";
+    const eventType=next!==previous.status?(next==="reconhecido"?"reconhecido":next==="resolvido"?"resolvido":next==="ignorado"?"ignorado":"reaberto"):effectiveAssignedTo!==undefined?"atribuido":"comentario";
     await client.query(
       "INSERT INTO praca_exception_events (tenant_id,incident_id,event_type,actor_id,previous_status,new_status,note,metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)",
-      [tenantId,incidentId,eventType,user.id,previous.status,next,note||null,JSON.stringify({assignedTo:assignedTo??previous.assigned_to})],
+      [tenantId,incidentId,eventType,user.id,previous.status,next,note||null,JSON.stringify({assignedTo:effectiveAssignedTo??previous.assigned_to})],
     );
     await client.query("COMMIT");res.json({incident:updated.rows[0]});
   }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
