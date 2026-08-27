@@ -4,6 +4,7 @@ import { db, generatedSitesTable, businessProfilesTable, tenantsTable, produtosC
 import type { SiteGeneratorConfig, SiteGeneratorProduct } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { SITE_GENERATOR_SYSTEM_PROMPT, extractHtmlDocument, prepareSiteHtml, validateSiteHtml } from "../lib/site-html-quality.js";
 
 // Prefer Anthropic when available; fallback to OpenAI
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -485,7 +486,7 @@ QUALIDADE OBRIGATÓRIA:
 ✓ Visual profissional — equivalente a sites feitos por agências de marketing digital
 ✓ Imagens externas SOMENTE as fornecidas no briefing; demais elementos decorativos: gradientes CSS, SVGs inline, iniciais em círculo
 ✓ VÍDEO (quando fornecido no briefing): use o HTML pronto exatamente como está — não decorativo, é conteúdo real do cliente
-✓ GALERIA DE FOTOS (quando presente): use SEMPRE tags <img> com src reais de imagens Unsplash relacionadas ao setor (ex: https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop), alt descritivo e loading="lazy" — NUNCA use divs com gradiente CSS como placeholder de imagem em galerias
+✓ GALERIA DE FOTOS (quando presente): use SOMENTE as URLs reais fornecidas no briefing, com tags <img>, alt descritivo, loading="lazy", aspect-ratio e object-fit — nunca invente URLs; sem fotos fornecidas, use SVG/CSS decorativo sem fingir que é uma galeria real
 ✓ 100% responsivo — mobile impecável
 ✓ Smooth scroll, hover states, animações sutis
 ✓ Formulário de contato com validação JS básica (campos obrigatórios)
@@ -516,31 +517,7 @@ Comece diretamente com <!DOCTYPE html>`;
 }
 
 function extractHtml(text: string): string {
-  // Remove markdown fences anywhere in the text
-  let cleaned = text
-    .replace(/```html\s*/gi, "")
-    .replace(/```\s*/g, "")
-    .trim();
-
-  // Find the first HTML tag or DOCTYPE and discard everything before it
-  const doctypeMatch = cleaned.match(/<!DOCTYPE/i);
-  const htmlTagMatch = cleaned.match(/<html/i);
-  const firstIndex = Math.min(
-    doctypeMatch?.index ?? Infinity,
-    htmlTagMatch?.index ?? Infinity
-  );
-  if (firstIndex !== Infinity && firstIndex > 0) {
-    cleaned = cleaned.slice(firstIndex);
-  }
-
-  // Truncate after the LAST closing </html> tag (not the first)
-  // This handles cases where </html> appears inside <script> tags
-  const lastClosingHtml = [...cleaned.matchAll(/<\/html\s*>/gi)].pop();
-  if (lastClosingHtml && lastClosingHtml.index !== undefined) {
-    cleaned = cleaned.slice(0, lastClosingHtml.index + lastClosingHtml[0].length);
-  }
-
-  return cleaned.trim();
+  return extractHtmlDocument(text);
 }
 
 /** Safe wrapper that logs for debugging */
@@ -552,7 +529,7 @@ function extractHtmlSafe(text: string, log: { info: (obj: object, msg: string) =
 }
 
 function isValidHtml(html: string): boolean {
-  return html.length >= 500 && (/<html/i.test(html) || /<!DOCTYPE/i.test(html));
+  return html.length >= 500 && !validateSiteHtml(html).issues.some((issue) => !issue.repairable);
 }
 
 function htmlChanged(before: string, after: string): boolean {
@@ -566,19 +543,19 @@ type AiMessage = { role: "user" | "assistant"; content: string };
 async function callAI(
   messages: AiMessage[],
   tenantId: string,
-  log: { info: (obj: object, msg: string) => void }
+  log: { info: (obj: object, msg: string) => void },
+  systemPrompt = SITE_GENERATOR_SYSTEM_PROMPT,
 ): Promise<{ content: string; provider: string; model: string }> {
   if (useAnthropic && anthropic) {
     try {
       log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for site generation");
-      const system = messages.find((m) => m.role === "assistant")?.content;
       const userMessages = messages.filter((m) => m.role === "user");
       const stream = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 64000,
         stream: true,
         messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
-        ...(system ? { system } : {}),
+        system: systemPrompt,
       });
       const chunks: string[] = [];
       let stopReason: string | null = null;
@@ -617,7 +594,10 @@ async function callAI(
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       max_tokens: 16000,
-      messages: messages as Array<{ role: "user" | "assistant"; content: string }>,
+      messages: [
+        { role: "system" as const, content: systemPrompt },
+        ...messages.map((message) => ({ role: message.role, content: message.content })),
+      ],
     });
     return {
       content: response.choices[0]?.message?.content ?? "",
@@ -852,13 +832,32 @@ async function runGenerateSite(
     log.info({ provider: result.provider, model: result.model, tenantId }, "Site generated successfully");
 
     const rawText = result.content;
-    const html = extractHtmlSafe(rawText, log);
+    let html = extractHtmlSafe(rawText, log);
 
     if (!isValidHtml(html)) {
       log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider }, "Site generation returned invalid HTML");
       generationJobs.set(jobId, { status: "error", error: "Resposta da IA inválida ou muito curta", createdAt: Date.now() });
       return;
     }
+
+    let prepared = prepareSiteHtml(html);
+    if (!prepared.validation.valid) {
+      const issueSummary = prepared.validation.issues.map((issue) => `${issue.code}: ${issue.message}`).join("\n");
+      log.info({ tenantId, issues: prepared.validation.issues }, "Site quality validation failed; requesting automatic repair");
+      try {
+        const repair = await callAI([{ role: "user", content: `Repare integralmente o HTML abaixo. Corrija todos os problemas listados, preserve o conteúdo e as funcionalidades e retorne somente o documento HTML completo.\n\nPROBLEMAS DETECTADOS:\n${issueSummary}\n\nHTML:\n${html}` }], tenantId, log);
+        const repairedByAi = extractHtmlSafe(repair.content, log);
+        if (isValidHtml(repairedByAi)) prepared = prepareSiteHtml(repairedByAi);
+      } catch (repairError) {
+        log.info({ repairError, tenantId }, "AI repair failed; retaining deterministic safe fallback");
+      }
+    }
+    if (!prepared.validation.valid) {
+      log.error({ tenantId, issues: prepared.validation.issues }, "Site remained invalid after repair and fallbacks");
+      generationJobs.set(jobId, { status: "error", error: "O site gerado não passou na validação de qualidade. Tente novamente.", createdAt: Date.now() });
+      return;
+    }
+    html = prepared.html;
 
     // Product pages are addressed and named after the product itself, not
     // the business — that's what makes each product's LP its own distinct,
@@ -987,6 +986,25 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
     return;
   }
 
+  let prepared = prepareSiteHtml(html);
+  if (!prepared.validation.valid) {
+    const issues = prepared.validation.issues.map((issue) => `${issue.code}: ${issue.message}`).join("\n");
+    try {
+      result = await callAI([{ role: "user", content: `${refinePrompt}\n\nA versão produzida falhou nestes critérios de qualidade:\n${issues}\nCorrija-os também e retorne o HTML completo.` }], tenantId, req.log);
+      html = extractHtml(result.content);
+      prepared = prepareSiteHtml(html);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Falha ao reparar HTML";
+      res.status(502).json({ error: `Erro no reparo automático: ${msg}` });
+      return;
+    }
+  }
+  if (!prepared.validation.valid) {
+    res.status(422).json({ error: "A alteração não passou na validação visual e de segurança." });
+    return;
+  }
+  html = prepared.html;
+
   if (!htmlChanged(existing.html ?? "", html)) {
     res.status(422).json({ error: "A IA não aplicou nenhuma mudança. Reformule o pedido com mais detalhes." });
     return;
@@ -1099,13 +1117,19 @@ router.patch("/tenants/:tenantId/site-generator/:siteId/html", async (req, res) 
     return;
   }
 
+  const prepared = prepareSiteHtml(extractHtml(html));
+  if (!prepared.validation.valid) {
+    res.status(422).json({ error: "O HTML editado não passou na validação.", issues: prepared.validation.issues });
+    return;
+  }
+
   const [updated] = await db
     .update(generatedSitesTable)
-    .set({ html, updatedAt: new Date() })
+    .set({ html: prepared.html, updatedAt: new Date() })
     .where(eq(generatedSitesTable.id, siteId))
     .returning({ id: generatedSitesTable.id });
 
-  return res.json(updated);
+  return res.json({ ...updated, html: prepared.html });
 });
 
 // PATCH /tenants/:tenantId/site-generator/:siteId/name — rename a generated site (switcher "Meus sites")
