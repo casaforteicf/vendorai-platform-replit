@@ -14,7 +14,7 @@ export async function dispatchPracaExceptionAlerts(
   log?:Logger,
 ):Promise<{incidents:number;alerts:number;notifications:number}>{
   const incidents=await vendorPool.query(
-    `SELECT i.* FROM praca_exception_incidents i
+    `SELECT i.*,c.escalonamento_minutos FROM praca_exception_incidents i
       JOIN praca_exception_config c ON c.tenant_id=i.tenant_id AND c.ativo=true
      WHERE i.status IN ('aberto','reconhecido')
        AND ($1::text IS NULL OR i.tenant_id=$1)
@@ -26,7 +26,10 @@ export async function dispatchPracaExceptionAlerts(
     try{
       const levels:AlertLevel[]=["inicial"];
       if(incident.due_at&&new Date(incident.due_at).getTime()<=Date.now())levels.push("fora_sla");
-      if(incident.severity==="critica")levels.push("critico");
+      const escalatedAt=incident.due_at
+        ?new Date(incident.due_at).getTime()+Number(incident.escalonamento_minutos)*60_000
+        :Number.POSITIVE_INFINITY;
+      if(incident.severity==="critica"||escalatedAt<=Date.now())levels.push("critico");
       const functions=recipientFunctions(incident.incident_type);
       const recipients=await vendorPool.query(
         `SELECT id FROM users
