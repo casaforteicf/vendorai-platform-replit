@@ -72,6 +72,7 @@ import { runMicroEventsRescan } from "./microEventsRescan.js";
 import { runWeeklyFeedbackLoop } from "./feedbackLoop.js";
 import { processDuePickupWaves } from "../services/pracaRoutePlanner.js";
 import { processDeliveryNotificationOutbox } from "../services/pracaDeliveryNotifications.js";
+import { runPracaExceptionScan } from "../services/pracaExceptionDetector.js";
 import { markOverdueVehicleReservations } from "../services/vehicle-reservation.js";
 import {
   prospectorConfigTable,
@@ -1829,6 +1830,13 @@ export function startScheduler(log: Logger): void {
   cron.schedule("* * * * *", () => {
     processDeliveryNotificationOutbox(log).catch((err) => {
       log.error({ err }, "scheduler/praca-delivery-notifications: unhandled error");
+    });
+  });
+
+  // Central executiva Praça.ai — detecta e encerra exceções a cada 5 minutos.
+  cron.schedule("*/5 * * * *", () => {
+    runPracaExceptionScan(log).catch((err) => {
+      log.error({ err }, "scheduler/praca-exceptions: unhandled error");
     });
   });
 
