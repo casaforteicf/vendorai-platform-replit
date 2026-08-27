@@ -104,4 +104,18 @@ describe("site HTML preparation", () => {
     expect(prepared.html).toContain("button,.btn");
     expect(prepared.validation.valid).toBe(true);
   });
+
+  it("does not reject repairable CSS after deterministic fallbacks are installed", () => {
+    const source = completeHtml(
+      `<main><section><p style="color:#fff;background:#fff">Texto inicialmente invisível</p><div style="height:900px"></div><button>Solicitar orçamento</button></section></main>`,
+      "body{width:1200px}",
+    );
+    expect(validateSiteHtml(source).valid).toBe(false);
+
+    const prepared = prepareSiteHtml(source);
+    expect(prepared.repaired).toBe(true);
+    expect(prepared.validation).toEqual({ valid: true, issues: [] });
+    expect(prepared.html).toContain("__vai_quality_base__");
+    expect(prepared.html).toContain("__vai_quality_guard__");
+  });
 });
