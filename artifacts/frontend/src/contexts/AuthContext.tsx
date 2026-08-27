@@ -82,6 +82,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const passwordRedirectedUserRef = useRef<string | null>(null);
 
+  // Some feature screens still use native fetch() instead of the generated API
+  // client. Ensure all same-origin /api requests inherit the current session token
+  // unless the caller already provided an Authorization header. Signed/external
+  // upload URLs are intentionally left untouched.
+  useEffect(() => {
+    const originalFetch = window.fetch.bind(window);
+
+    const authenticatedFetch: typeof window.fetch = async (input, init = {}) => {
+      try {
+        const requestUrl =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        const url = new URL(requestUrl, window.location.origin);
+
+        if (url.origin === window.location.origin && url.pathname.startsWith("/api/")) {
+          const headers = new Headers(input instanceof Request ? input.headers : undefined);
+          new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+
+          if (!headers.has("Authorization")) {
+            const currentToken = localStorage.getItem(TOKEN_KEY);
+            if (currentToken) {
+              headers.set("Authorization", `Bearer ${currentToken}`);
+            }
+          }
+
+          return originalFetch(input, { ...init, headers });
+        }
+      } catch {
+        // Preserve the original request behavior if URL/header normalization fails.
+      }
+
+      return originalFetch(input, init);
+    };
+
+    window.fetch = authenticatedFetch;
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
+
   const { data: meData, isLoading, isError } = useGetMe({
     query: {
       enabled: !!token,
