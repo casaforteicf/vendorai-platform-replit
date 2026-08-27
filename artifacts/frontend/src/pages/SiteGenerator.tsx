@@ -241,32 +241,51 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   // single-site flow (generate) and the bulk flow (generateBulk), so both
   // go through the exact same request/poll/timeout logic.
   const submitAndPollJob = useCallback(async (config: SiteConfig) => {
-    const startRes = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify(config),
-    });
-    if (!startRes.ok) {
-      const err = await startRes.json().catch(() => ({}));
-      throw new Error(err.error ?? `Erro ${startRes.status}`);
-    }
-    const { jobId } = await startRes.json();
-    if (!jobId) throw new Error("Resposta inválida do servidor");
+    const startJob = async (): Promise<string> => {
+      const startRes = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
+        method: "POST", headers: authHeaders, body: JSON.stringify(config),
+      });
+      if (!startRes.ok) {
+        const err = await startRes.json().catch(() => ({}));
+        throw new Error(err.error ?? `Erro ${startRes.status}`);
+      }
+      const { jobId } = await startRes.json();
+      if (!jobId) throw new Error("Resposta inválida do servidor");
+      return jobId as string;
+    };
 
     const deadline = Date.now() + 5 * 60 * 1000;
+    let jobId = await startJob();
+    let restarts = 0;
+    let transientFailures = 0;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3000));
-      const pollRes = await fetch(
-        `/api/tenants/${tenantId}/site-generator/jobs/${jobId}`,
-        { headers: authHeaders },
-      );
+      let pollRes: Response;
+      try {
+        pollRes = await fetch(`/api/tenants/${tenantId}/site-generator/jobs/${jobId}`, { headers: authHeaders });
+      } catch {
+        transientFailures += 1;
+        if (transientFailures <= 10) continue;
+        throw new Error("O servidor está temporariamente indisponível. Tente novamente em instantes.");
+      }
       if (!pollRes.ok) {
         const body = await pollRes.json().catch(() => ({}));
+        if ([429, 502, 503, 504].includes(pollRes.status)) {
+          transientFailures += 1;
+          if (transientFailures <= 10) continue;
+        }
         if (pollRes.status === 404) {
-          throw new Error("A geração foi interrompida no servidor. Tente gerar novamente.");
+          if (restarts === 0) {
+            restarts += 1;
+            transientFailures = 0;
+            jobId = await startJob();
+            continue;
+          }
+          throw new Error("A geração foi interrompida duas vezes no servidor. Tente novamente.");
         }
         throw new Error(body.error ?? `Erro ao acompanhar geração (${pollRes.status})`);
       }
+      transientFailures = 0;
       const job = await pollRes.json();
 
       if (job.status === "done") return job.result;
