@@ -1493,10 +1493,19 @@ export default function Configuracoes() {
         access_denied: "Permissão negada. Tente novamente.",
         invalid_state: "Sessão inválida. Tente novamente.",
         no_pages: "Nenhuma página encontrada. Verifique se sua conta tem uma página com Instagram Business.",
-        exchange_failed: "Erro ao conectar. Tente novamente.",
+        token_exchange: "A Meta recusou a troca do código de acesso. Verifique o App Secret e a URL de callback do Instagram.",
+        profile_lookup: "O token foi criado, mas a Meta não liberou a leitura da conta profissional.",
+        account_in_use: "Esta conta do Instagram já está conectada a outro tenant.",
+        persist_failed: "A conta foi autorizada, mas não foi possível salvar a conexão.",
+        exchange_failed: "A conexão retornou incompleta. Tente novamente.",
       };
-      toast({ title: messages[error] ?? "Erro ao conectar Instagram.", variant: "destructive" });
-      window.history.replaceState({}, "", window.location.pathname);
+      setActiveTab("integracoes");
+      toast({
+        title: "Não foi possível conectar o Instagram",
+        description: messages[error] ?? "Erro ao conectar Instagram.",
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", `${window.location.pathname}?tab=integracoes`);
     }
   }, [location]);
 
@@ -1506,11 +1515,18 @@ export default function Configuracoes() {
       const res = await fetch("/api/auth/instagram", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { url: string };
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
       window.location.href = data.url;
     } catch (err) {
-      toast({ title: "Erro ao iniciar conexão com Instagram.", variant: "destructive" });
+      setActiveTab("integracoes");
+      toast({
+        title: "Erro ao iniciar conexão com Instagram.",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+        variant: "destructive",
+      });
     }
   }
   function onDisconnectInstagramOAuth() {
@@ -3310,7 +3326,7 @@ export default function Configuracoes() {
               </div>
             </div>
           ) : (
-          <div className="space-y-6">
+          <div className="flex flex-col gap-6">
 
             {/* Google Calendar — OAuth */}
             <div className="rounded-xl border bg-card p-6 space-y-5">
@@ -3597,12 +3613,13 @@ Body:
                   className="gap-2"
                 >
                   {(metaAdsConnecting || whatsappConnecting) && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {igConnection.data?.connected &&
-                   metaAdsConnection?.connected &&
-                   !metaAdsConnection.pendingAccountSelection &&
-                   waConnection.data?.connected
-                    ? "Gerenciar conexão Meta"
-                    : "Conectar Meta"}
+                  {!igConnection.data?.connected
+                    ? "Conectar Instagram — etapa 1"
+                    : !metaAdsConnection?.connected || metaAdsConnection.pendingAccountSelection
+                      ? "Conectar Meta Ads — etapa 2"
+                      : !waConnection.data?.connected
+                        ? "Conectar WhatsApp — etapa 3"
+                        : "Gerenciar conexão Meta"}
                 </Button>
                 <p className="text-xs text-muted-foreground">
                   O VendorAI continua automaticamente pelo próximo serviço que ainda estiver pendente.

@@ -2,23 +2,29 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, instagramConnectionsTable, agentConfigsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-const INSTAGRAM_APP_ID = process.env["INSTAGRAM_APP_ID"];
-const INSTAGRAM_APP_SECRET = process.env["INSTAGRAM_APP_SECRET"];
+const INSTAGRAM_APP_ID = process.env["INSTAGRAM_APP_ID"]?.trim();
+const INSTAGRAM_APP_SECRET = process.env["INSTAGRAM_APP_SECRET"]?.trim();
+
+function assertInstagramAppConfigured(): void {
+  if (!INSTAGRAM_APP_ID || !/^\d+$/.test(INSTAGRAM_APP_ID) || !INSTAGRAM_APP_SECRET) {
+    throw new Error("Instagram não configurado: verifique INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET.");
+  }
+}
 const INSTAGRAM_CALLBACK_PATH = "/api/auth/instagram/callback";
 const PRODUCTION_HOSTS = new Set(["appvendorai.com", "www.appvendorai.com", "app.appvendorai.com"]);
 
 function getRedirectUri(host?: string): string {
   // A URL cadastrada no provedor deve ser a fonte principal. Em ambientes com
   // proxy (Vercel -> Railway), o Host recebido pelo backend pode ser o interno.
+  if (process.env["NODE_ENV"] === "production") {
+    return `https://app.appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
+  }
+
   const configured = process.env["INSTAGRAM_REDIRECT_URI"]?.trim();
   if (configured) return configured;
 
   const normalizedHost = host?.split(":")[0]?.toLowerCase();
   if (normalizedHost && PRODUCTION_HOSTS.has(normalizedHost)) {
-    return `https://app.appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
-  }
-
-  if (process.env["NODE_ENV"] === "production") {
     return `https://app.appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
   }
 
@@ -29,11 +35,13 @@ function getRedirectUri(host?: string): string {
 
 const META_OAUTH_BASE = "https://www.instagram.com/oauth/authorize";
 const META_TOKEN_BASE = "https://api.instagram.com/oauth/access_token";
-const META_LONG_LIVED_BASE = "https://graph.instagram.com/access_token";
+const META_GRAPH_VERSION = "v26.0";
+const META_LONG_LIVED_BASE = `https://graph.instagram.com/${META_GRAPH_VERSION}/access_token`;
 const META_ACCOUNTS_BASE = "https://graph.facebook.com/v18.0/me/accounts";
 const META_PAGE_BASE = "https://graph.facebook.com/v18.0";
 
 export function buildInstagramOAuthUrl(tenantId: string, state: string, host?: string): string {
+  assertInstagramAppConfigured();
   const redirectUri = getRedirectUri(host);
   const params = new URLSearchParams({
     client_id: INSTAGRAM_APP_ID ?? "",
@@ -75,7 +83,7 @@ interface InstagramAccountInfo {
 }
 
 export async function fetchDirectInstagramAccountInfo(token: string): Promise<InstagramAccountInfo> {
-  const url = new URL("https://graph.instagram.com/me");
+  const url = new URL(`https://graph.instagram.com/${META_GRAPH_VERSION}/me`);
   url.searchParams.set("fields", "id,username,name");
   url.searchParams.set("access_token", token);
   const response = await fetch(url);
