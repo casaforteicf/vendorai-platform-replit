@@ -49,6 +49,11 @@ export default function RelatorioGanhosMes() {
   const totalGanho = ganhosMes.reduce((s, d) => s + parseFloat(String(d.valor ?? "0")), 0);
   const qtdDeals = ganhosMes.length;
   const ticketMedio = qtdDeals > 0 ? totalGanho / qtdDeals : 0;
+  const dealsMovimentadosMes = deals.filter((d) => {
+    const updated = d.updatedAt ? new Date(d.updatedAt) : null;
+    return updated && updated >= primeiroDia && updated <= ultimoDia;
+  });
+  const taxaGanho = dealsMovimentadosMes.length > 0 ? (qtdDeals / dealsMovimentadosMes.length) * 100 : 0;
 
   // Semanas do mes
   const semanas: Record<string, number> = {};
@@ -130,14 +135,14 @@ export default function RelatorioGanhosMes() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Meta</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Taxa de ganho</CardTitle>
             <div className="p-1.5 rounded-md bg-amber-500/10">
               <Target className="h-4 w-4 text-amber-500" />
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{qtdDeals > 0 ? "100%" : "—"}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">meta atingida</p>
+            <p className="text-2xl font-bold">{dealsMovimentadosMes.length > 0 ? `${taxaGanho.toFixed(1)}%` : "—"}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">ganhos ÷ negócios movimentados no mês</p>
           </CardContent>
         </Card>
       </div>
