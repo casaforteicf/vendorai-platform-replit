@@ -471,7 +471,8 @@ MOVIMENTO — use com intenção, não em tudo por padrão. Efeito de revelar-ao
   Respeite prefers-reduced-motion: desative transições quando o usuário pedir.
 
 GRADE RESPONSIVA:
-  Mobile-first. Grids com grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  Mobile-first. Em 360px, nenhum bloco pode exigir mais de 100% da viewport. Use minmax(0, 1fr), min-width: 0 e grids que colapsem para uma coluna abaixo de 48rem; só use minmax(280px, 1fr) em contêineres que tenham espaço real. Nunca use width fixa acima de 100%, 100vw, translate horizontal ou overflow-x para esconder um erro.
+  Cada seção deve ter uma única função e densidade equilibrada: no máximo 3-4 cards por linha, conteúdo real em cada card, padding vertical entre 48px e 96px e no máximo uma seção hero com altura limitada. Não crie estatísticas, depoimentos, equipes, FAQs ou seções extras apenas para preencher espaço.
   Hamburger menu: toggle classe .open no nav mobile
 
 ÍCONES: Use SVG inline simples (viewBox, stroke ou fill) — não use bibliotecas externas.
@@ -497,6 +498,13 @@ QUALIDADE OBRIGATÓRIA:
 ✓ Formulário de contato com validação JS básica (campos obrigatórios)
 ✓ WhatsApp CTA abre wa.me/${waNumber}${igHandle ? `\n✓ Instagram no footer: link clicável para ${igUrl} com ícone SVG inline e @${igHandle}` : ""}
 ✓ Acessibilidade: alt em imagens, aria-labels, foco visível
+
+REVISÃO FINAL OBRIGATÓRIA ANTES DE RESPONDER:
+✓ Verifique cada combinação de texto e fundo, inclusive cards, links, botões, placeholders e seções escuras; texto normal precisa de contraste mínimo 4.5:1.
+✓ Verifique que nenhum elemento visível depende de cor herdada sem contraste, opacity 0, visibility hidden, display none ou font-size 0.
+✓ Verifique que toda imagem tem URL fornecida e dimensões estáveis; não use placeholder remoto, URL inventada ou imagem sem tratamento de erro.
+✓ Verifique que o HTML fecha corretamente e que o mesmo documento funciona no preview e como arquivo baixado, sem scripts/estilos que dependam do editor.
+✓ Verifique visualmente as larguras 360px, 768px e 1440px: sem overflow horizontal, cartões gigantes, áreas vazias desproporcionais, links/botões nativos ou títulos que estouram a tela.
 
 RETORNE APENAS o código HTML completo, sem explicações, sem markdown, sem blocos de código.
 Comece diretamente com <!DOCTYPE html>`;
