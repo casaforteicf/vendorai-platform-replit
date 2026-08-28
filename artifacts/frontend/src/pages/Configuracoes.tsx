@@ -1515,11 +1515,18 @@ export default function Configuracoes() {
       const res = await fetch("/api/auth/instagram", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { url: string };
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
       window.location.href = data.url;
     } catch (err) {
-      toast({ title: "Erro ao iniciar conexão com Instagram.", variant: "destructive" });
+      setActiveTab("integracoes");
+      toast({
+        title: "Erro ao iniciar conexão com Instagram.",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+        variant: "destructive",
+      });
     }
   }
   function onDisconnectInstagramOAuth() {
