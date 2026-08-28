@@ -40,7 +40,12 @@ router.get("/auth/meta-ads", authenticate, async (req, res) => {
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth Meta Ads");
-    return res.status(500).json({ error: "Internal error" });
+    const isNotConfigured = err instanceof Error && err.message.startsWith("Meta Ads não configurado:");
+    return res.status(isNotConfigured ? 503 : 500).json({
+      error: isNotConfigured
+        ? "Meta Ads ainda não está configurado no servidor. Verifique META_ADS_APP_ID e META_ADS_APP_SECRET no Railway."
+        : "Não foi possível iniciar a conexão com Meta Ads.",
+    });
   }
 });
 
