@@ -25,7 +25,7 @@ import {
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image, ImageIcon,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
-  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw,
+  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import JSZip from "jszip";
@@ -871,6 +871,7 @@ function VariationCard({
   const [localVideoUrl, setLocalVideoUrl] = useState<string | undefined>(undefined);
   const uploadTriggerRef = useRef<(() => void) | null>(null);
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const effectiveVariation =
     type === "reels"
@@ -1002,6 +1003,48 @@ function VariationCard({
     }
     return undefined;
   })();
+
+
+
+  function sendToSponsoredAds() {
+    if (!contentId) return;
+
+    let headlines: string[] = [];
+    let descriptions: string[] = [];
+    let imagens: string[] = [];
+
+    if (type === "feed") {
+      const v = displayVariation as FeedVariation;
+      headlines = [(theme || v.caption || "Conteúdo patrocinado").slice(0, 80)];
+      descriptions = [`${v.caption}${v.hashtags.length ? `
+
+${v.hashtags.join(" ")}` : ""}`];
+      imagens = v.imageUrls?.length ? v.imageUrls : v.imageUrl ? [v.imageUrl] : [];
+    } else if (type === "stories") {
+      const v = displayVariation as StoriesVariation;
+      headlines = [(theme || v.text || "Story patrocinado").slice(0, 80)];
+      descriptions = [`${v.text}${v.cta ? `
+
+CTA: ${v.cta}` : ""}`];
+      imagens = v.imageUrls?.length ? v.imageUrls : v.imageUrl ? [v.imageUrl] : [];
+    } else {
+      const v = displayVariation as ReelsVariation;
+      headlines = [(v.title || theme || "Reel patrocinado").slice(0, 80)];
+      descriptions = [
+        [...v.scenes.map((scene) => scene.fala).filter(Boolean), v.cta].filter(Boolean).join(" ").slice(0, 4000),
+      ];
+    }
+
+    sessionStorage.setItem("vendorai_ads_content_draft_v1", JSON.stringify({
+      contentGenerationId: contentId,
+      variationIndex: index,
+      theme: theme || "Conteúdo do Marketing",
+      sourceType: type,
+      suggestedPlatform: imagens.length > 0 ? "meta" : "google",
+      creativeDraft: { headlines, descriptions, imagens },
+    }));
+    setLocation("/ads?from=content");
+  }
 
   function startEdit() {
     if (type === "feed") {
@@ -1172,6 +1215,18 @@ function VariationCard({
                   : <Archive className="h-3 w-3" />}
               {saveMutation.isPending ? "Salvando..." : savedToLibrary ? "Salvo!" : "Salvar na Biblioteca"}
             </Button>
+            {contentId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs gap-1 h-7"
+                onClick={sendToSponsoredAds}
+                title="Leva este conteúdo para Anúncios Patrocinados como criativo de uma nova campanha"
+              >
+                <Megaphone className="h-3 w-3" />
+                Ir para Anúncios Patrocinados
+              </Button>
+            )}
             {improvedVariation && (
               <Button
                 variant="ghost"

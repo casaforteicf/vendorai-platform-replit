@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Calendar,
   Instagram,
+  Megaphone,
   CreditCard,
   FileSignature,
   ExternalLink,
@@ -42,16 +43,20 @@ type IntegStatus = {
   whatsapp: { connected: boolean; phone: string | null };
   googleCalendar: { connected: boolean; agendaId: string | null };
   instagram: { connected: boolean; username: string | null };
+  googleAds: { connected: boolean; pendingAccountSelection: boolean; customerId: string | null; descriptiveName: string | null };
   asaas: { connected: boolean };
   zapsign: { connected: boolean };
 };
 
-type StepKey = "whatsapp" | "googleCalendar" | "instagram" | "asaas" | "zapsign";
+type StepKey = "whatsapp" | "googleCalendar" | "instagram" | "googleAds" | "asaas" | "zapsign";
+
+type GoogleAdsAccount = { customerId: string; descriptiveName?: string | null };
 
 const STEPS: { key: StepKey; label: string; shortLabel: string }[] = [
   { key: "whatsapp",      label: "WhatsApp",        shortLabel: "WhatsApp" },
   { key: "googleCalendar",label: "Google Calendar", shortLabel: "Calendar" },
   { key: "instagram",     label: "Instagram",       shortLabel: "Instagram" },
+  { key: "googleAds",     label: "Google Ads",      shortLabel: "Ads" },
   { key: "asaas",         label: "Asaas",           shortLabel: "Asaas" },
   { key: "zapsign",       label: "ZapSign",         shortLabel: "ZapSign" },
 ];
@@ -68,6 +73,8 @@ export default function OnboardingIntegracoes() {
 
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
+  const [googleAdsAccounts, setGoogleAdsAccounts] = useState<GoogleAdsAccount[]>([]);
+  const [selectedGoogleAdsAccount, setSelectedGoogleAdsAccount] = useState("");
 
   useEffect(() => {
     if (!user?.tenantId) return;
@@ -79,6 +86,15 @@ export default function OnboardingIntegracoes() {
     }
     if (urlParams.get("googleError")) {
       toast({ title: "Erro ao conectar Google Calendar.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    const googleAdsConnected = urlParams.get("googleAdsConnected");
+    const googleAdsError = urlParams.get("googleAdsError");
+    if (googleAdsConnected) {
+      toast({ title: googleAdsConnected === "pending" ? "Google Ads conectado — escolha a conta" : "Google Ads conectado!" });
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (googleAdsError) {
+      toast({ title: "Erro ao conectar Google Ads.", description: googleAdsError, variant: "destructive" });
       window.history.replaceState({}, "", window.location.pathname);
     }
     if (urlParams.get("whatsappConnected") === "1") {
@@ -108,8 +124,9 @@ export default function OnboardingIntegracoes() {
         if (data.concluido) { setLocation("/dashboard"); return; }
         setStatus(data);
         setStep(data.step ?? 0);
+        if (data.googleAds?.pendingAccountSelection) void loadGoogleAdsAccounts();
       } catch {
-        setStatus({ step: 0, concluido: false, whatsapp: { connected: false, phone: null }, googleCalendar: { connected: false, agendaId: null }, instagram: { connected: false, username: null }, asaas: { connected: false }, zapsign: { connected: false } });
+        setStatus({ step: 0, concluido: false, whatsapp: { connected: false, phone: null }, googleCalendar: { connected: false, agendaId: null }, instagram: { connected: false, username: null }, googleAds: { connected: false, pendingAccountSelection: false, customerId: null, descriptiveName: null }, asaas: { connected: false }, zapsign: { connected: false } });
       } finally {
         setLoading(false);
       }
@@ -184,6 +201,52 @@ export default function OnboardingIntegracoes() {
       window.location.href = data.url;
     } catch {
       toast({ title: "Erro ao iniciar conexão Instagram.", variant: "destructive" });
+    }
+  }
+
+  async function connectGoogleAds() {
+    try {
+      const data = await apiFetch("/api/auth/google-ads?returnTo=/onboarding/integracoes") as { url: string };
+      window.location.href = data.url;
+    } catch {
+      toast({ title: "Erro ao iniciar conexão Google Ads.", variant: "destructive" });
+    }
+  }
+
+  async function loadGoogleAdsAccounts() {
+    if (!user?.tenantId) return;
+    try {
+      const data = await apiFetch(`/api/tenants/${user.tenantId}/google-ads-connection/accounts`) as { accounts?: GoogleAdsAccount[] };
+      const accounts = data.accounts ?? [];
+      setGoogleAdsAccounts(accounts);
+      if (accounts.length === 1 && accounts[0]) setSelectedGoogleAdsAccount(accounts[0].customerId);
+    } catch {
+      setGoogleAdsAccounts([]);
+    }
+  }
+
+  async function selectGoogleAdsAccount() {
+    if (!user?.tenantId || !selectedGoogleAdsAccount) return;
+    setSubmitting(true);
+    try {
+      const data = await apiFetch(`/api/tenants/${user.tenantId}/google-ads-connection/select-account`, {
+        method: "POST",
+        body: JSON.stringify({ customerId: selectedGoogleAdsAccount }),
+      }) as { customerId?: string; descriptiveName?: string };
+      setStatus((current) => current ? {
+        ...current,
+        googleAds: {
+          connected: true,
+          pendingAccountSelection: false,
+          customerId: data.customerId ?? selectedGoogleAdsAccount,
+          descriptiveName: data.descriptiveName ?? null,
+        },
+      } : current);
+      toast({ title: "Conta Google Ads selecionada!" });
+    } catch {
+      toast({ title: "Erro ao selecionar conta Google Ads.", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -339,8 +402,73 @@ export default function OnboardingIntegracoes() {
             />
           )}
 
-          {/* STEP 3 — Asaas */}
+          {/* STEP 3 — Google Ads */}
           {step === 3 && (
+            <div className="space-y-6">
+              <div className="flex flex-col items-center text-center gap-3">
+                <div className="flex items-center justify-center h-16 w-16 rounded-full bg-blue-50">
+                  <Megaphone className="h-8 w-8 text-blue-600" />
+                </div>
+                <h2 className="text-xl font-bold">Conecte seu Google Ads</h2>
+                <p className="text-muted-foreground text-sm max-w-sm">
+                  Vincule a conta que receberá as campanhas patrocinadas criadas no Vendor.ai
+                </p>
+              </div>
+
+              {status?.googleAds?.connected && !status.googleAds.pendingAccountSelection && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  {status.googleAds.descriptiveName || status.googleAds.customerId
+                    ? `Google Ads — ${status.googleAds.descriptiveName || status.googleAds.customerId}`
+                    : "Google Ads conectado"}
+                </div>
+              )}
+
+              {status?.googleAds?.pendingAccountSelection && (
+                <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm text-amber-800">Sua conta Google foi autorizada. Escolha qual conta do Google Ads será usada pelo Vendor.ai.</p>
+                  {googleAdsAccounts.length === 0 ? (
+                    <Button variant="outline" className="w-full" onClick={loadGoogleAdsAccounts}>Carregar contas disponíveis</Button>
+                  ) : (
+                    <>
+                      <Select value={selectedGoogleAdsAccount} onValueChange={setSelectedGoogleAdsAccount}>
+                        <SelectTrigger><SelectValue placeholder="Selecione uma conta" /></SelectTrigger>
+                        <SelectContent>
+                          {googleAdsAccounts.map((account) => (
+                            <SelectItem key={account.customerId} value={account.customerId}>
+                              {account.descriptiveName ? `${account.descriptiveName} — ${account.customerId}` : account.customerId}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button className="w-full" onClick={selectGoogleAdsAccount} disabled={!selectedGoogleAdsAccount || submitting}>
+                        {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                        Usar esta conta
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <Button variant="outline" className="flex-1 gap-2" onClick={skip} disabled={submitting}>
+                  <SkipForward className="h-4 w-4" /> Pular
+                </Button>
+                {status?.googleAds?.connected && !status.googleAds.pendingAccountSelection ? (
+                  <Button className="flex-1 gap-2" onClick={advance} disabled={submitting}>
+                    Continuar <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : status?.googleAds?.pendingAccountSelection ? null : (
+                  <Button className="flex-1 gap-2" onClick={connectGoogleAds} disabled={submitting}>
+                    Conectar Google Ads <ChevronRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4 — Asaas */}
+          {step === 4 && (
             <div className="space-y-6">
               <div className="flex flex-col items-center text-center gap-3">
                 <div className="flex items-center justify-center h-16 w-16 rounded-full bg-blue-50">
@@ -393,8 +521,8 @@ export default function OnboardingIntegracoes() {
             </div>
           )}
 
-          {/* STEP 4 — ZapSign */}
-          {step === 4 && (
+          {/* STEP 5 — ZapSign */}
+          {step === 5 && (
             <div className="space-y-6">
               <div className="flex flex-col items-center text-center gap-3">
                 <div className="flex items-center justify-center h-16 w-16 rounded-full bg-violet-50">
@@ -473,6 +601,7 @@ export default function OnboardingIntegracoes() {
                   const conn = s.key === "whatsapp" ? status.whatsapp.connected
                     : s.key === "googleCalendar" ? status.googleCalendar.connected
                     : s.key === "instagram" ? status.instagram.connected
+                    : s.key === "googleAds" ? status.googleAds.connected && !status.googleAds.pendingAccountSelection
                     : s.key === "asaas" ? status.asaas.connected
                     : status.zapsign.connected;
                   return (
@@ -485,7 +614,7 @@ export default function OnboardingIntegracoes() {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                As integrações puladas podem ser configuradas depois em <strong>Configurações → Integrações</strong>
+                As integrações puladas podem ser retomadas depois pelo fluxo de integrações do perfil
               </p>
 
               <Button size="lg" className="w-full gap-2" onClick={complete} disabled={submitting}>
