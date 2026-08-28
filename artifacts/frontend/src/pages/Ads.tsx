@@ -389,7 +389,10 @@ export default function Ads() {
     },
     onSuccess: (campaign: AdCampaign) => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
-      const shouldAutoGenerate = autoGenerateAfterCreate && campaign.tipoAnuncio === "imagem" && !(campaign as any).latestCreative;
+      const shouldAutoGenerate =
+        autoGenerateAfterCreate &&
+        (campaign.tipoAnuncio === "imagem" || campaign.tipoAnuncio === "rsa_pmax") &&
+        !(campaign as any).latestCreative;
       toast({
         title: sourceDraft ? "Campanha de patrocínio criada" : "Campanha criada",
         description: sourceDraft
@@ -505,17 +508,14 @@ export default function Ads() {
           <Megaphone className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold">Anúncios</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => {
-            setSourceDraft(null);
-            setAutoGenerateAfterCreate(true);
-            setForm({ ...EMPTY_FORM, plataforma: "meta", tipoAnuncio: "imagem", itemTipo: "livre", destinoClique: "whatsapp", itemLabel: "" });
-            setOpen(true);
-          }}>
-            <Sparkles className="h-4 w-4 mr-1" /> Gerar anúncio com IA
-          </Button>
-          <Button onClick={() => { setAutoGenerateAfterCreate(false); setSourceDraft(null); setForm({ ...EMPTY_FORM }); setOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nova campanha</Button>
-        </div>
+        <Button onClick={() => {
+          setAutoGenerateAfterCreate(true);
+          setSourceDraft(null);
+          setForm({ ...EMPTY_FORM });
+          setOpen(true);
+        }}>
+          <Plus className="h-4 w-4 mr-1" /> Criar campanha
+        </Button>
       </div>
 
       <Card className="bg-muted/30">
@@ -527,8 +527,8 @@ export default function Ads() {
             ))}
           </div>
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>Plataformas disponíveis agora: <strong>Google</strong> (Search/PMax, Shopping) e <strong>Meta</strong> (Facebook + Instagram, anúncio de imagem). TikTok e LinkedIn entram depois.</li>
-            <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search/Performance Max) ou foto gerada por IA (Meta).</li>
+            <li>Plataformas disponíveis agora: <strong>Google</strong> (Search, Shopping) e <strong>Meta</strong> (Facebook + Instagram, anúncio de imagem). TikTok e LinkedIn entram depois.</li>
+            <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search) ou foto gerada por IA (Meta).</li>
             <li>Farmácia (venda livre), mercado e distribuidoras usam o feed do Google Shopping. Medicamento que exige receita nunca entra no feed.</li>
             <li>Anúncio na Meta exige Meta Ads conectado. Para veicular no Instagram, a conta profissional precisa estar vinculada à Página do Facebook acessível pela mesma conexão Meta.</li>
             <li>Nenhuma campanha publica sozinha — todo criativo passa por aprovação antes.</li>
@@ -548,7 +548,7 @@ export default function Ads() {
       {isLoading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
       ) : campaigns.length === 0 ? (
-        <Card><CardContent className="pt-6 text-center text-muted-foreground">Nenhuma campanha ainda. Clique em "Nova campanha" pra começar.</CardContent></Card>
+        <Card><CardContent className="pt-6 text-center text-muted-foreground">Nenhuma campanha ainda. Clique em "Criar campanha" para começar.</CardContent></Card>
       ) : (
         <div className="space-y-3">
           {campaigns.map((c) => {
@@ -561,7 +561,7 @@ export default function Ads() {
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="capitalize">{c.itemTipo}</Badge>
                         <Badge variant="outline" className="capitalize">{c.plataforma === "meta" ? "Meta" : "Google"}</Badge>
-                        <Badge variant="outline" className="capitalize">{c.tipoAnuncio === "shopping" ? "Shopping" : c.tipoAnuncio === "imagem" ? "Imagem" : "Search/PMax (IA)"}</Badge>
+                        <Badge variant="outline" className="capitalize">{c.tipoAnuncio === "shopping" ? "Shopping" : c.tipoAnuncio === "imagem" ? "Imagem" : "Search (IA)"}</Badge>
                         <Badge variant="outline" className="capitalize">{c.modo === "unico" ? "Item único" : "Carrossel"}</Badge>
                         {c.segmentacao?.origemInstagram && <Badge className="bg-pink-100 text-pink-800">Publicação do Instagram</Badge>}
                       </div>
@@ -705,7 +705,7 @@ export default function Ads() {
               }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="google">Google (Search/Performance Max, Shopping)</SelectItem>
+                  <SelectItem value="google">Google (Search, Shopping)</SelectItem>
                   <SelectItem value="meta">Meta (Facebook + Instagram — anúncio de imagem)</SelectItem>
                 </SelectContent>
               </Select>
@@ -732,26 +732,32 @@ export default function Ads() {
             </div>
 
             <div>
-              <LabelTip tip="Search/Performance Max: texto gerado por IA, aparece na busca do Google. Google Shopping: foto + preço, feed direto do catálogo. Imagem: usa foto gerada por IA, roda no Feed do Facebook/Instagram.">Tipo de anúncio</LabelTip>
+              <LabelTip tip="Search: texto gerado por IA, aparece na busca do Google. Google Shopping: foto + preço, feed direto do catálogo. Imagem: usa foto gerada por IA, roda no Feed do Facebook/Instagram.">Tipo de anúncio</LabelTip>
               <Select value={form.tipoAnuncio} onValueChange={(v) => setForm((f) => ({ ...f, tipoAnuncio: v as TipoAnuncio }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {form.plataforma === "google" ? (
                     <>
-                      <SelectItem value="rsa_pmax">Search/Performance Max (texto gerado por IA)</SelectItem>
+                      <SelectItem value="rsa_pmax">Google Search (texto gerado por IA)</SelectItem>
                       <SelectItem value="shopping">Google Shopping (feed de produto)</SelectItem>
+                      <SelectItem value="pmax_future" disabled>Performance Max completa — em implantação</SelectItem>
                     </>
                   ) : (
-                    <SelectItem value="imagem">Imagem (Feed Facebook/Instagram)</SelectItem>
+                    <>
+                      <SelectItem value="imagem">Imagem (Feed Facebook/Instagram)</SelectItem>
+                      <SelectItem value="meta_carousel_future" disabled>Carrossel Meta — em implantação</SelectItem>
+                      <SelectItem value="meta_stories_future" disabled>Stories nativo — em implantação</SelectItem>
+                      <SelectItem value="meta_reels_future" disabled>Reels / vídeo novo — em implantação</SelectItem>
+                    </>
                   )}
                 </SelectContent>
               </Select>
               {form.plataforma === "meta" && (
-                <p className="text-xs text-muted-foreground mt-1">Carrossel, Vídeo e Stories/Reels nativos da Meta ainda não têm publicação automática — só Imagem por enquanto.</p>
+                <p className="text-xs text-muted-foreground mt-1">Imagem é o formato publicável agora. Carrossel, Stories e Reels/vídeo estão visíveis como próximos formatos, mas bloqueados até a integração real ficar pronta.</p>
               )}
             </div>
 
-            {form.itemTipo !== "livre" && (
+            {form.itemTipo !== "livre" && form.plataforma === "google" && (
               <div>
                 <LabelTip tip="Um único item ou vários de uma vez (ex: toda uma categoria do estoque).">Modo</LabelTip>
                 <Select value={form.modo} onValueChange={(v) => setForm((f) => ({ ...f, modo: v as Modo }))}>
@@ -812,12 +818,12 @@ export default function Ads() {
               const fotosReais = itemAtual?.imagens ?? [];
               return (
                 <div className="border-t pt-4 space-y-2">
-                  <LabelTip tip="Por padrão a IA gera uma foto nova pro anúncio. Se preferir, escolha uma foto real já cadastrada nesse item — o texto continua sendo gerado por IA do mesmo jeito.">Imagem do anúncio</LabelTip>
+                  <LabelTip tip="Escolha entre a IA criar uma nova imagem publicitária ou preservar uma foto real do item. Nos dois casos, a IA também melhora títulos, texto principal e descrição.">Imagem e texto do anúncio</LabelTip>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => setForm((f) => ({ ...f, imagemEscolhidaUrl: "" }))}
                       className={`flex flex-col items-center justify-center gap-1 h-20 w-20 rounded-lg border-2 text-[10px] text-center px-1 ${!form.imagemEscolhidaUrl ? "border-primary bg-primary/5 text-primary" : "border-dashed border-muted-foreground/40 text-muted-foreground"}`}>
                       <Sparkles className="h-4 w-4" />
-                      Gerar com IA
+                      Criar nova com IA
                     </button>
                     {fotosReais.length === 0 ? (
                       <p className="text-xs text-muted-foreground self-center">Esse item ainda não tem fotos próprias cadastradas.</p>
@@ -912,6 +918,35 @@ export default function Ads() {
               <div><LabelTip tip="Uma lista de e-mails/telefones dos seus clientes, subida diretamente no Google Ads (Ferramentas → Gerenciador de públicos → Segmento personalizado). Aqui você só digita o NOME que deu pra essa lista lá — os dados dos clientes nunca passam por este formulário.">Customer Match</LabelTip><MultiSelectChips value={form.customerMatch} onChange={(v) => setForm((f) => ({ ...f, customerMatch: v }))} placeholder="Nome ou ID da lista" /></div>
               <div><LabelTip tip="A partir de uma das listas acima (Remarketing ou Customer Match), o Google Ads acha sozinho outras pessoas com perfil parecido. Só funciona se você já tiver uma lista de origem configurada — coloque o nome dela aqui.">Públicos semelhantes</LabelTip><MultiSelectChips value={form.semelhantes} onChange={(v) => setForm((f) => ({ ...f, semelhantes: v }))} placeholder="Nome ou ID da lista de origem" /></div>
             </CollapsibleSection>
+
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <input
+                  id="ads-auto-creative"
+                  type="checkbox"
+                  className="mt-1"
+                  checked={autoGenerateAfterCreate}
+                  onChange={(e) => setAutoGenerateAfterCreate(e.target.checked)}
+                />
+                <label htmlFor="ads-auto-creative" className="text-sm">
+                  <span className="font-medium">Gerar o criativo automaticamente com IA</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {form.plataforma === "meta"
+                      ? form.imagemEscolhidaUrl
+                        ? "Preserva a foto real escolhida e usa IA para melhorar título, texto principal e descrição."
+                        : "Usa IA para criar uma nova imagem publicitária e melhorar título, texto principal e descrição."
+                      : form.tipoAnuncio === "shopping"
+                        ? "O Shopping usa automaticamente foto, título e preço do catálogo."
+                        : "Gera títulos e descrições para o anúncio do Google Search."}
+                  </span>
+                </label>
+              </div>
+              {form.plataforma === "meta" && form.itemTipo === "livre" && (
+                <p className="text-xs text-muted-foreground">
+                  Para usar uma publicação pronta, abra Marketing → Gerador, escolha o conteúdo e clique em “Patrocinar este conteúdo”.
+                </p>
+              )}
+            </div>
 
             <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
               onClick={() => criarCampanha.mutate()}>
