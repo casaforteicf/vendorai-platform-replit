@@ -16,7 +16,7 @@ import {
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger.js";
 
-const GRAPH_BASE = "https://graph.facebook.com/v21.0";
+const GRAPH_BASE = "https://graph.instagram.com/v26.0";
 // Insights do Instagram só estabiliza depois de um tempo publicado —
 // buscar antes disso retorna número parcial/enganoso.
 const MIN_AGE_BEFORE_METRICS_HOURS = 24;
