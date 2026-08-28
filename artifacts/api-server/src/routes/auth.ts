@@ -252,7 +252,7 @@ router.post("/auth/praca-signup", async (req, res) => {
         isDemo: false,
         planId: startPlan?.id ?? null,
         provisioningMethod: "self_service",
-        vendeNoPracaAi: true,
+        vendeNoPracaAi: false,
         codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
       })
       .returning();
@@ -322,7 +322,7 @@ router.post("/auth/praca-signup", async (req, res) => {
     res.status(201).json({
       token,
       user,
-      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, comissaoPracaAiPercentual: tenant.comissaoPracaAiPercentual },
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, vendeNoPracaAi: tenant.vendeNoPracaAi, comissaoPracaAiPercentual: tenant.comissaoPracaAiPercentual },
       appUrl: `/app?tenant=${tenant.slug}`,
     });
   } catch (err: unknown) {

@@ -655,7 +655,7 @@ export default function AdminTenantDetail() {
             </div>
             <Separator />
             <InfoRow
-              label="Vende no Praça.ai"
+              label="Liberação Praça.ai"
               value={
                 <div className="flex items-center gap-2">
                   <Switch
@@ -664,7 +664,7 @@ export default function AdminTenantDetail() {
                     onCheckedChange={handleToggleVendeNoPracaAi}
                   />
                   <span className="text-xs text-muted-foreground">
-                    {tenant.vendeNoPracaAi ? "Ativo — produtos marcados aparecem na vitrine pública" : "Inativo"}
+                    {tenant.vendeNoPracaAi ? "Liberado pelo SuperAdmin — produtos marcados aparecem na vitrine pública" : "Aguardando liberação do SuperAdmin"}
                   </span>
                 </div>
               }
