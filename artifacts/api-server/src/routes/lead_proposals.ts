@@ -15,6 +15,8 @@ import {
   tenantsTable,
 } from "@workspace/db";
 import { buildProposalPrompt, callProposalAI, renderProposalHtml, generateTheme, AI_PROVIDER, generateProposalPDF, learnFromProposalEdit, type ProposalStyleMemory } from "../lib/proposal-engine.js";
+import pdfParse from "pdf-parse";
+import mammoth from "mammoth";
 
 const router: IRouter = Router();
 
@@ -106,11 +108,9 @@ async function fetchTemplateGuidance(templateUrl: string | null | undefined): Pr
 
     if (ct.includes("pdf") || lowerUrl.endsWith(".pdf")) {
       const buffer = Buffer.from(await res.arrayBuffer());
-      const pdfParse = (await import("pdf-parse")).default;
       text = (await pdfParse(buffer)).text ?? "";
     } else if (ct.includes("word") || ct.includes("officedocument") || lowerUrl.endsWith(".doc") || lowerUrl.endsWith(".docx")) {
       const buffer = Buffer.from(await res.arrayBuffer());
-      const mammoth = await import("mammoth");
       text = (await mammoth.extractRawText({ buffer })).value ?? "";
     } else {
       text = await res.text();
