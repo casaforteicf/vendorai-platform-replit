@@ -1,0 +1,46 @@
+name: Apply Meta Ads Production Fix
+
+on:
+  push:
+    branches:
+      - fix-meta-ads-publicacao-real
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    if: ${{ !contains(github.event.head_commit.message, '[meta-ads-fix-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-meta-ads-publicacao-real
+          fetch-depth: 0
+      - run: python scripts/fix-meta-ads-publicacao-real.py
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript targeted Meta Ads files
+        run: |
+          set +e
+          NODE_OPTIONS=--max-old-space-size=8192 pnpm --filter @workspace/api-server exec tsc --noEmit --pretty false > /tmp/tsc.log 2>&1
+          status=$?
+          set -e
+          echo "tsc exit: $status"
+          matches=$(grep -E "(meta-ads-oauth\.ts|meta-ads-campaign-publish\.ts|instagram-oauth\.ts)" /tmp/tsc.log || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
+            exit 1
+          fi
+          echo "No TypeScript errors reported in changed Meta/Instagram files."
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/api-server/src/services/meta-ads-oauth.ts artifacts/api-server/src/services/meta-ads-campaign-publish.ts artifacts/api-server/src/services/instagram-oauth.ts
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "fix: alinhar Meta Ads com identidades reais [meta-ads-fix-applied]"
+          git push origin fix-meta-ads-publicacao-real
