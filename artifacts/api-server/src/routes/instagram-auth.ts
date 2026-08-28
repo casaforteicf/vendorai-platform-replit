@@ -81,7 +81,10 @@ router.get("/auth/instagram/callback", async (req, res) => {
       tokenResponse = await exchangeShortCodeForToken(code, req.hostname);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao trocar código OAuth do Instagram");
-      return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=token_exchange`);
+      const longLivedFailed = err instanceof Error && err.message.startsWith("Instagram long-lived");
+      return res.redirect(
+        `${appUrl}/configuracoes?tab=integracoes&instagramError=${longLivedFailed ? "long_token_exchange" : "short_token_exchange"}`,
+      );
     }
 
     let directAccount;
