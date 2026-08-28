@@ -1,0 +1,35 @@
+name: Validate Ads Instagram AI
+
+on:
+  push:
+    branches:
+      - feat-ads-patrocinio-instagram-ai
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat-ads-patrocinio-instagram-ai
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript targeted changed backend files
+        run: |
+          set +e
+          NODE_OPTIONS=--max-old-space-size=8192 pnpm --filter @workspace/api-server exec tsc --noEmit --pretty false > /tmp/tsc.log 2>&1
+          status=$?
+          set -e
+          echo "tsc exit: $status"
+          matches=$(grep -E "(routes/ads\.ts|meta-ads-campaign-publish\.ts|schema/ad_campaigns\.ts)" /tmp/tsc.log || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
+            exit 1
+          fi
+          echo "No TypeScript errors reported in changed backend files."
