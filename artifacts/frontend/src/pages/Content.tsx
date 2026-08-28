@@ -1040,7 +1040,8 @@ CTA: ${v.cta}` : ""}`];
       variationIndex: index,
       theme: theme || "Conteúdo do Marketing",
       sourceType: type,
-      suggestedPlatform: imagens.length > 0 ? "meta" : "google",
+      suggestedPlatform: "meta",
+      sourceVariationIndex: index,
       creativeDraft: { headlines, descriptions, imagens },
     }));
     setLocation("/ads?from=content");
@@ -1215,16 +1216,16 @@ CTA: ${v.cta}` : ""}`];
                   : <Archive className="h-3 w-3" />}
               {saveMutation.isPending ? "Salvando..." : savedToLibrary ? "Salvo!" : "Salvar na Biblioteca"}
             </Button>
-            {contentId && (
+            {contentId && type !== "reels" && (
               <Button
                 variant="outline"
                 size="sm"
                 className="text-xs gap-1 h-7"
                 onClick={sendToSponsoredAds}
-                title="Leva este conteúdo para Anúncios Patrocinados como criativo de uma nova campanha"
+                title="Se esta variação já foi publicada no Instagram, impulsiona a publicação existente; se ainda não foi, cria um anúncio Meta usando este conteúdo."
               >
                 <Megaphone className="h-3 w-3" />
-                Ir para Anúncios Patrocinados
+                Patrocinar este conteúdo
               </Button>
             )}
             {improvedVariation && (
