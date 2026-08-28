@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { eq } from "drizzle-orm";
 import { db, partnersTable, usersTable } from "@workspace/db";
@@ -18,7 +18,14 @@ function googleConfig() {
 }
 
 function appUrl() {
-  return (process.env.APP_URL?.trim() || "https://appvendorai.com").replace(/\/$/, "");
+  const configuredFrontend = process.env.FRONTEND_APP_URL?.trim();
+  if (configuredFrontend) return configuredFrontend.replace(/\/$/, "");
+
+  if (process.env.NODE_ENV === "production") {
+    return "https://app.appvendorai.com";
+  }
+
+  return (process.env.APP_URL?.trim() || "http://localhost:3000").replace(/\/$/, "");
 }
 
 function stateSecret() {
@@ -59,7 +66,7 @@ function isValidState(encoded: string): boolean {
   }
 }
 
-function redirectWithError(res: Parameters<IRouter["get"]>[1] extends never ? never : any, code: string) {
+function redirectWithError(res: Response, code: string) {
   res.redirect(`${appUrl()}/auth/success?google_error=${encodeURIComponent(code)}`);
 }
 
