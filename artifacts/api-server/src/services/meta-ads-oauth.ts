@@ -28,18 +28,18 @@ function getRedirectUri(): string {
   const configured = process.env["META_ADS_REDIRECT_URI"]?.trim();
   if (configured) return configured;
   if (process.env["NODE_ENV"] === "production") {
-    return "https://appvendorai.com/api/auth/meta-ads/callback";
+    return "https://app.appvendorai.com/api/auth/meta-ads/callback";
   }
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}/api/auth/meta-ads/callback`;
   return "http://localhost:3000/api/auth/meta-ads/callback";
 }
 
-const META_GRAPH_VERSION = "v21.0";
-const META_OAUTH_BASE = "https://www.facebook.com/v21.0/dialog/oauth";
+const META_GRAPH_VERSION = "v26.0";
+const META_OAUTH_BASE = "https://www.facebook.com/v26.0/dialog/oauth";
 const META_TOKEN_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`;
 export const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
-const META_ADS_SCOPE = "ads_management,ads_read,business_management";
+const META_ADS_SCOPE = "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_basic";
 
 export function buildMetaAdsOAuthUrl(state: string): string {
   const params = new URLSearchParams({
@@ -101,6 +101,55 @@ export interface AccessibleAdAccount {
 
 interface AdAccountsApiResponse {
   data: Array<{ id: string; name: string; currency: string; business?: { id: string } }>;
+}
+
+export interface AccessibleInstagramIdentity {
+  pageId: string;
+  pageName: string;
+  pageAccessToken: string;
+  instagramUserId: string;
+  instagramUsername: string | null;
+}
+
+interface PagesApiResponse {
+  data: Array<{
+    id: string;
+    name: string;
+    access_token?: string;
+    instagram_business_account?: { id: string; username?: string };
+  }>;
+}
+
+export function normalizeMetaAdAccountId(adAccountId: string): string {
+  const normalized = adAccountId.trim();
+  if (!normalized) throw new Error("Ad account ID ausente");
+  return normalized.startsWith("act_") ? normalized : `act_${normalized}`;
+}
+
+export async function listAccessibleInstagramIdentities(accessToken: string): Promise<AccessibleInstagramIdentity[]> {
+  const url = new URL(`${META_GRAPH_BASE}/me/accounts`);
+  url.searchParams.set("fields", "id,name,access_token,instagram_business_account{id,username}");
+  url.searchParams.set("access_token", accessToken);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const text = await res.text();
+    logger.error({ status: res.status, body: text }, "Falha ao listar Páginas/Instagram acessíveis pela conexão Meta Ads");
+    throw new Error(`Failed to list Meta Pages/Instagram identities: ${res.status}`);
+  }
+
+  const payload = (await res.json()) as PagesApiResponse;
+  return payload.data.flatMap((page) => {
+    const ig = page.instagram_business_account;
+    if (!ig?.id || !page.access_token) return [];
+    return [{
+      pageId: page.id,
+      pageName: page.name,
+      pageAccessToken: page.access_token,
+      instagramUserId: ig.id,
+      instagramUsername: ig.username ?? null,
+    }];
+  });
 }
 
 export async function listAccessibleAdAccounts(accessToken: string): Promise<AccessibleAdAccount[]> {
