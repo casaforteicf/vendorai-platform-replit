@@ -11,6 +11,7 @@ import {
   SkipForward,
   Loader2,
   MessageCircle,
+  QrCode,
   Calendar,
   Instagram,
   Megaphone,
@@ -75,6 +76,8 @@ export default function OnboardingIntegracoes() {
   const [zapsignKey, setZapsignKey] = useState("");
   const [googleAdsAccounts, setGoogleAdsAccounts] = useState<GoogleAdsAccount[]>([]);
   const [selectedGoogleAdsAccount, setSelectedGoogleAdsAccount] = useState("");
+  const [whatsappQrCode, setWhatsappQrCode] = useState<string | null>(null);
+  const [whatsappQrConnecting, setWhatsappQrConnecting] = useState(false);
 
   useEffect(() => {
     if (!user?.tenantId) return;
@@ -133,6 +136,31 @@ export default function OnboardingIntegracoes() {
     })();
   }, [user?.tenantId]);
 
+  useEffect(() => {
+    if (!user?.tenantId || step !== 0 || !whatsappQrCode) return;
+    let active = true;
+
+    const checkEvolution = async () => {
+      try {
+        const evo = await apiFetch(`/api/tenants/${user.tenantId}/evolution-whatsapp/status`) as { connected: boolean; phone: string | null };
+        if (active && evo.connected) {
+          setStatus((current) => current ? { ...current, whatsapp: { connected: true, phone: evo.phone } } : current);
+          setWhatsappQrCode(null);
+          toast({ title: "WhatsApp conectado via QR Code!" });
+        }
+      } catch {
+        // mantém o QR aberto; uma falha transitória não interrompe o onboarding
+      }
+    };
+
+    void checkEvolution();
+    const timer = window.setInterval(() => void checkEvolution(), 2500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [user?.tenantId, step, whatsappQrCode]);
+
   async function saveStep(newStep: number) {
     setStep(newStep);
     try {
@@ -183,6 +211,36 @@ export default function OnboardingIntegracoes() {
             : "Verifique a configuração da Meta e tente novamente.",
         variant: "destructive",
       });
+    }
+  }
+
+  async function connectWhatsAppQr() {
+    if (!user?.tenantId) return;
+    setWhatsappQrConnecting(true);
+    try {
+      const data = await apiFetch(`/api/tenants/${user.tenantId}/evolution-whatsapp/connect`, { method: "POST" }) as {
+        qrCodeBase64: string | null;
+        alreadyConnected: boolean;
+      };
+
+      if (data.alreadyConnected) {
+        const evo = await apiFetch(`/api/tenants/${user.tenantId}/evolution-whatsapp/status`) as { connected: boolean; phone: string | null };
+        setStatus((current) => current ? { ...current, whatsapp: { connected: evo.connected, phone: evo.phone } } : current);
+        setWhatsappQrCode(null);
+        if (evo.connected) toast({ title: "WhatsApp já está conectado via QR Code." });
+        return;
+      }
+
+      if (!data.qrCodeBase64) throw new Error("A Evolution API não retornou um QR Code.");
+      setWhatsappQrCode(data.qrCodeBase64);
+    } catch (error) {
+      toast({
+        title: "Não foi possível gerar o QR Code",
+        description: error instanceof Error ? error.message : "Verifique a integração Evolution API.",
+        variant: "destructive",
+      });
+    } finally {
+      setWhatsappQrConnecting(false);
     }
   }
 
@@ -299,6 +357,9 @@ export default function OnboardingIntegracoes() {
   }
 
   const isDone = step >= STEPS.length;
+  const whatsappQrSrc = whatsappQrCode
+    ? (whatsappQrCode.startsWith("data:") ? whatsappQrCode : `data:image/png;base64,${whatsappQrCode}`)
+    : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -356,18 +417,64 @@ export default function OnboardingIntegracoes() {
 
           {/* STEP 0 — WhatsApp */}
           {step === 0 && (
-            <StepCard
-              icon={<MessageCircle className="h-8 w-8 text-green-500" />}
-              title="Conecte seu WhatsApp"
-              subtitle="Receba e responda mensagens dos seus clientes direto na plataforma"
-              connected={status?.whatsapp?.connected}
-              connectedLabel={status?.whatsapp?.phone ? `WhatsApp — ${status.whatsapp.phone}` : "WhatsApp conectado"}
-              onSkip={skip}
-              onConnect={connectWhatsApp}
-              connectLabel="Conectar via Meta"
-              advancing={submitting}
-              onAdvance={advance}
-            />
+            <div className="space-y-6">
+              <div className="flex flex-col items-center text-center gap-3">
+                <div className="flex items-center justify-center h-16 w-16 rounded-full bg-green-50">
+                  <MessageCircle className="h-8 w-8 text-green-600" />
+                </div>
+                <h2 className="text-xl font-bold">Conecte seu WhatsApp</h2>
+                <p className="text-muted-foreground text-sm max-w-sm">
+                  Escolha a conexão oficial via Meta ou conecte rapidamente escaneando um QR Code.
+                </p>
+              </div>
+
+              {status?.whatsapp?.connected ? (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  {status.whatsapp.phone ? `WhatsApp — ${status.whatsapp.phone}` : "WhatsApp conectado"}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Button onClick={connectWhatsApp} className="gap-2" disabled={whatsappQrConnecting}>
+                      <MessageCircle className="h-4 w-4" />
+                      Meta oficial
+                    </Button>
+                    <Button variant="outline" onClick={connectWhatsAppQr} className="gap-2" disabled={whatsappQrConnecting}>
+                      {whatsappQrConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                      {whatsappQrCode ? "Gerar novo QR" : "Conectar por QR Code"}
+                    </Button>
+                  </div>
+
+                  {whatsappQrSrc && (
+                    <div className="rounded-xl border bg-card p-5 space-y-4 text-center">
+                      <div>
+                        <p className="font-medium text-sm">Escaneie com o WhatsApp</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho.
+                        </p>
+                      </div>
+                      <img src={whatsappQrSrc} alt="QR Code para conectar WhatsApp" className="w-56 h-56 mx-auto rounded-lg border bg-white p-2" />
+                      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Aguardando leitura do QR Code…
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <Button variant="outline" className="flex-1 gap-2" onClick={skip} disabled={submitting}>
+                  <SkipForward className="h-4 w-4" /> Pular
+                </Button>
+                {status?.whatsapp?.connected && (
+                  <Button className="flex-1 gap-2" onClick={advance} disabled={submitting}>
+                    Continuar <ChevronRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
           )}
 
           {/* STEP 1 — Google Calendar */}

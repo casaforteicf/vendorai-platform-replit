@@ -1117,6 +1117,11 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     .from(whatsappConnectionsTable)
     .where(and(eq(whatsappConnectionsTable.tenantId, tenantId)));
 
+  const [evolutionConn] = await db
+    .select({ connected: agentConfigsTable.evolutionConnected, phone: agentConfigsTable.evolutionPhone })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
+
   const [igConn] = await db
     .select({ username: instagramConnectionsTable.username })
     .from(instagramConnectionsTable)
@@ -1137,8 +1142,8 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     step: tenant?.step ?? 0,
     concluido: tenant?.concluido ?? false,
     whatsapp: {
-      connected: waConn?.status === "active",
-      phone: waConn?.displayPhoneNumber ?? null,
+      connected: waConn?.status === "active" || evolutionConn?.connected === true,
+      phone: waConn?.displayPhoneNumber ?? evolutionConn?.phone ?? null,
     },
     googleCalendar: {
       connected: !!(gcAgenda?.googleCalendarId),
