@@ -38,7 +38,7 @@ export function buildInstagramOAuthUrl(tenantId: string, state: string, host?: s
   const params = new URLSearchParams({
     client_id: INSTAGRAM_APP_ID ?? "",
     redirect_uri: redirectUri,
-    scope: "instagram_business_basic,instagram_business_manage_messages",
+    scope: "instagram_business_basic,instagram_business_manage_messages,instagram_business_content_publish",
     state,
     response_type: "code",
     enable_fb_login: "0",
@@ -116,12 +116,23 @@ export async function saveDirectInstagramConnection(
     .where(eq(instagramConnectionsTable.id, existing.id));
   else await db.insert(instagramConnectionsTable).values({ tenantId, ...values });
 
-  await db.update(agentConfigsTable).set({
-    instagramPageAccessToken: token.access_token,
-    instagramPageId: account.id,
-    instagramUsername: account.username,
-    updatedAt: new Date(),
-  }).where(eq(agentConfigsTable.tenantId, tenantId));
+  await db
+    .insert(agentConfigsTable)
+    .values({
+      tenantId,
+      instagramPageAccessToken: token.access_token,
+      instagramPageId: account.id,
+      instagramUsername: account.username,
+    })
+    .onConflictDoUpdate({
+      target: agentConfigsTable.tenantId,
+      set: {
+        instagramPageAccessToken: token.access_token,
+        instagramPageId: account.id,
+        instagramUsername: account.username,
+        updatedAt: new Date(),
+      },
+    });
 
   await subscribeDirectInstagramWebhooks(account.id, token.access_token);
 }
