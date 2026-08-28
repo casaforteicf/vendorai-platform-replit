@@ -18,6 +18,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Ajustar matcher do Content
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply-original-spec-phase2.py')
+          s = p.read_text()
+          old = 's = replace_once(s, insert_after, promote_fn, "content send to ads function")'
+          new = '''if insert_after in s:
+              s = s.replace(insert_after, promote_fn, 1)
+          elif "  function startEdit() {" in s:
+              function_only = promote_fn[len(insert_after):]
+              s = s.replace("  function startEdit() {", function_only + "\\n  function startEdit() {", 1)
+          else:
+              raise RuntimeError("Trecho não encontrado: content send to ads function")'''
+          if old not in s:
+              raise SystemExit('matcher original não encontrado no aplicador')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Apply phase 2 corrections
         run: python3 scripts/apply-original-spec-phase2.py
 
