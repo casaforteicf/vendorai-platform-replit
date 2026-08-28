@@ -71,6 +71,7 @@ async function loadProposalContext(leadId: string, tenantId: string) {
       email: businessProfilesTable.email,
       instagramUrl: businessProfilesTable.instagramUrl,
       proposalTemplateUrl: businessProfilesTable.proposalTemplateUrl,
+      discoveryData: businessProfilesTable.discoveryData,
       logoUrl: businessProfilesTable.logoUrl,
     })
     .from(businessProfilesTable)
@@ -83,10 +84,12 @@ async function loadProposalContext(leadId: string, tenantId: string) {
     tenantName, tenantPhone: bp?.telefone, tenantLogoUrl: bp?.logoUrl ?? null,
     tenantEmail: bp?.email ?? null, tenantInstagram: bp?.instagramUrl ?? null,
     proposalTemplateUrl: bp?.proposalTemplateUrl ?? null,
+    discoveryData: bp?.discoveryData ?? null,
   };
 }
 
-/** Fetch template content from object storage for AI guidance (HTML/text only, max 3000 chars) */
+/** Fetch uploaded proposal model content for AI guidance (max 6000 chars).
+ * Supports text/HTML, PDF and DOCX/DOC using dependencies already present in the API. */
 async function fetchTemplateGuidance(templateUrl: string | null | undefined): Promise<string | null> {
   if (!templateUrl) return null;
   try {
@@ -95,13 +98,29 @@ async function fetchTemplateGuidance(templateUrl: string | null | undefined): Pr
     const url = templateUrl.startsWith("/objects/")
       ? `http://localhost:${port}${base}/api/storage${templateUrl}`
       : templateUrl;
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
-    const ct = res.headers.get("content-type") ?? "";
-    if (!ct.includes("text") && !ct.includes("html")) return null;
-    const text = await res.text();
-    // strip HTML tags for cleaner AI context
-    return text.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 3000);
+    const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+    const lowerUrl = url.toLowerCase();
+    let text = "";
+
+    if (ct.includes("pdf") || lowerUrl.endsWith(".pdf")) {
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const pdfParse = (await import("pdf-parse")).default;
+      text = (await pdfParse(buffer)).text ?? "";
+    } else if (ct.includes("word") || ct.includes("officedocument") || lowerUrl.endsWith(".doc") || lowerUrl.endsWith(".docx")) {
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const mammoth = await import("mammoth");
+      text = (await mammoth.extractRawText({ buffer })).value ?? "";
+    } else {
+      text = await res.text();
+      if (ct.includes("html") || lowerUrl.endsWith(".html") || lowerUrl.endsWith(".htm")) {
+        text = text.replace(/<[^>]+>/g, " ");
+      }
+    }
+
+    const normalized = text.replace(/\s{2,}/g, " ").trim();
+    return normalized ? normalized.slice(0, 6000) : null;
   } catch {
     return null;
   }
@@ -307,7 +326,15 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     tenantPhone: ctx.tenantPhone,
     refinementNotes: req.body?.refinementNotes ? String(req.body.refinementNotes) : null,
     styleMemory,
-    templateGuidance: await fetchTemplateGuidance(ctx.proposalTemplateUrl),
+    templateGuidance: await fetchTemplateGuidance((() => {
+      const dd = (ctx.discoveryData ?? {}) as Record<string, unknown>;
+      const raw = Array.isArray(dd["proposalTemplates"]) ? dd["proposalTemplates"] as Array<Record<string, unknown>> : [];
+      const requestedId = typeof req.body?.proposalTemplateId === "string" ? req.body.proposalTemplateId : null;
+      const requested = requestedId ? raw.find((item) => item["id"] === requestedId) : null;
+      const defaultModel = raw.find((item) => item["isDefault"] === true);
+      const selected = requested ?? defaultModel;
+      return typeof selected?.["url"] === "string" ? selected["url"] as string : ctx.proposalTemplateUrl;
+    })()),
   });
 
   let result;

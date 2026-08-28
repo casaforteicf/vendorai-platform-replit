@@ -2915,6 +2915,7 @@ export default function Configuracoes() {
               profileId={profileQuery.data.id}
               templateUrl={profileQuery.data.proposalTemplateUrl ?? null}
               templateName={profileQuery.data.proposalTemplateName ?? null}
+              discoveryData={(profileQuery.data.discoveryData as Record<string, unknown>) ?? null}
               onUpdate={() => queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) })}
             />
           )}
@@ -5384,113 +5385,201 @@ const CONTRACT_VARIABLES = [
 ];
 
 // ── Proposal Template Section ──────────────────────────────────────────────────
+type ProposalLineTemplate = {
+  id: string;
+  name: string;
+  productLine: string;
+  url: string;
+  fileName: string;
+  contentType?: string;
+  isDefault?: boolean;
+  uploadedAt: string;
+};
+
 function ProposalTemplateSection({
-  profileId, templateUrl, templateName, onUpdate,
-}: { profileId: string; templateUrl: string | null; templateName: string | null; onUpdate: () => void }) {
+  profileId, templateUrl, templateName, discoveryData, onUpdate,
+}: {
+  profileId: string;
+  templateUrl: string | null;
+  templateName: string | null;
+  discoveryData: Record<string, unknown> | null;
+  onUpdate: () => void;
+}) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [modelName, setModelName] = useState("");
+  const [productLine, setProductLine] = useState("");
   const requestUploadUrl = useRequestUploadUrl();
   const updateProfile = useUpdateBusinessProfile();
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
-        requestUploadUrl.mutate(
-          { data: { name: file.name, size: file.size, contentType: file.type } },
-          { onSuccess: resolve, onError: reject },
-        );
-      });
-      const uploadRes = await fetch(result.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      if (!uploadRes.ok) throw new Error("Upload falhou");
-      updateProfile.mutate(
-        { id: profileId, data: { proposalTemplateUrl: result.objectPath, proposalTemplateName: file.name } },
-        {
-          onSuccess: () => { onUpdate(); toast({ title: "Modelo de proposta importado com sucesso." }); },
-          onError: () => toast({ title: "Erro ao salvar modelo.", variant: "destructive" }),
-        },
-      );
-    } catch {
-      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+  const rawTemplates = discoveryData?.proposalTemplates;
+  const templates: ProposalLineTemplate[] = Array.isArray(rawTemplates)
+    ? rawTemplates.filter((item): item is ProposalLineTemplate => !!item && typeof item === "object" && typeof (item as any).id === "string" && typeof (item as any).url === "string")
+    : [];
+
+  function previewUrl(url: string) {
+    return url.startsWith("/objects/") ? `/api/storage${url}` : url;
   }
 
-  function handleRemove() {
+  function saveTemplates(next: ProposalLineTemplate[], extra: Record<string, unknown> = {}) {
+    const nextDiscovery = { ...(discoveryData ?? {}), proposalTemplates: next };
     updateProfile.mutate(
-      { id: profileId, data: { proposalTemplateUrl: null as unknown as string, proposalTemplateName: null as unknown as string } },
+      { id: profileId, data: { discoveryData: nextDiscovery as any, ...extra } as any },
       {
-        onSuccess: () => { onUpdate(); toast({ title: "Modelo de proposta removido." }); },
-        onError: () => toast({ title: "Erro ao remover.", variant: "destructive" }),
+        onSuccess: () => { onUpdate(); },
+        onError: () => toast({ title: "Erro ao salvar modelos de proposta.", variant: "destructive" }),
       },
     );
   }
 
-  const previewUrl = templateUrl
-    ? (templateUrl.startsWith("/objects/") ? `/api/storage${templateUrl}` : templateUrl)
-    : null;
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!modelName.trim() || !productLine.trim()) {
+      toast({ title: "Informe o nome do modelo e a linha de produto antes do upload.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+      if (!uploadRes.ok) throw new Error("Upload falhou");
+
+      const first = templates.length === 0;
+      const item: ProposalLineTemplate = {
+        id: crypto.randomUUID(),
+        name: modelName.trim(),
+        productLine: productLine.trim(),
+        url: result.objectPath,
+        fileName: file.name,
+        contentType: file.type || undefined,
+        isDefault: first,
+        uploadedAt: new Date().toISOString(),
+      };
+      const next = [...templates, item];
+      saveTemplates(next, first ? { proposalTemplateUrl: item.url, proposalTemplateName: item.name } : {});
+      setModelName("");
+      setProductLine("");
+      toast({ title: "Modelo adicionado", description: `Linha: ${item.productLine}` });
+    } catch (err) {
+      toast({ title: "Erro no upload do modelo.", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function setDefault(id: string) {
+    const selected = templates.find((item) => item.id === id);
+    if (!selected) return;
+    const next = templates.map((item) => ({ ...item, isDefault: item.id === id }));
+    saveTemplates(next, { proposalTemplateUrl: selected.url, proposalTemplateName: selected.name });
+    toast({ title: "Modelo padrão atualizado." });
+  }
+
+  function removeTemplate(id: string) {
+    const removed = templates.find((item) => item.id === id);
+    const remaining = templates.filter((item) => item.id !== id);
+    let next = remaining;
+    const extra: Record<string, unknown> = {};
+    if (removed?.isDefault) {
+      if (remaining.length > 0) {
+        next = remaining.map((item, index) => ({ ...item, isDefault: index === 0 }));
+        extra.proposalTemplateUrl = next[0].url;
+        extra.proposalTemplateName = next[0].name;
+      } else {
+        extra.proposalTemplateUrl = null;
+        extra.proposalTemplateName = null;
+      }
+    }
+    saveTemplates(next, extra);
+    toast({ title: "Modelo removido." });
+  }
+
+  const legacyOnly = templates.length === 0 && templateUrl;
 
   return (
-    <div className="rounded-xl border bg-card p-6 space-y-4">
-      <input ref={fileInputRef} type="file" className="hidden" accept=".html,.htm,.txt,.pdf,.doc,.docx" onChange={handleFile} />
+    <div className="rounded-xl border bg-card p-6 space-y-5">
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept=".html,.htm,.txt,.md,.pdf,.doc,.docx"
+        onChange={handleFile}
+      />
       <div>
         <h2 className="font-semibold text-base flex items-center gap-2">
           <FileText className="h-4 w-4 text-primary" />
-          Modelo de Proposta
+          Modelos de Proposta por Linha de Produto
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Importe o modelo de proposta padrão da empresa. A IA usará a estrutura e o tom do documento como referência ao gerar novas propostas. Formatos aceitos: HTML, TXT, PDF, DOC.
+          Cadastre vários modelos e associe cada um a uma linha. HTML, TXT, PDF e DOCX são lidos como referência pela IA; o modelo padrão continua sendo usado quando nenhum modelo específico é escolhido.
         </p>
       </div>
 
-      {templateUrl ? (
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 flex items-start gap-3">
-          <FileText className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-blue-800">Modelo ativo</p>
-            <p className="text-xs text-blue-600 truncate">{templateName || "modelo-proposta"}</p>
+      {legacyOnly && (
+        <div className="rounded-lg border bg-muted/30 p-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Modelo legado atual</p>
+            <p className="text-xs text-muted-foreground truncate">{templateName || "modelo-proposta"}</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {previewUrl && (
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
-                <a href={previewUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Ver
-                </a>
-              </Button>
-            )}
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => fileInputRef.current?.click()} disabled={uploading || updateProfile.isPending}>
-              <Upload className="h-3.5 w-3.5" />
-              Trocar
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs text-destructive hover:bg-red-50" onClick={handleRemove} disabled={updateProfile.isPending}>
-              <X className="h-3.5 w-3.5" />
-              Remover
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-lg border-2 border-dashed border-border p-6 text-center space-y-3">
-          <div className="flex justify-center">
-            <div className="rounded-full bg-muted p-3">
-              <Upload className="h-5 w-5 text-muted-foreground" />
-            </div>
-          </div>
-          <div>
-            <p className="text-sm font-medium">Nenhum modelo importado</p>
-            <p className="text-xs text-muted-foreground">A IA usará o estilo padrão até você enviar o seu modelo.</p>
-          </div>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-            {uploading ? "Enviando..." : "Importar modelo"}
+          <Button variant="outline" size="sm" asChild>
+            <a href={previewUrl(templateUrl!)} target="_blank" rel="noopener noreferrer">Visualizar</a>
           </Button>
         </div>
       )}
+
+      {templates.length > 0 && (
+        <div className="space-y-2">
+          {templates.map((item) => (
+            <div key={item.id} className="rounded-lg border p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium">{item.name}</p>
+                  <Badge variant="secondary">{item.productLine}</Badge>
+                  {item.isDefault && <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Padrão</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground truncate mt-1">{item.fileName}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="outline" size="sm" asChild><a href={previewUrl(item.url)} target="_blank" rel="noopener noreferrer">Ver</a></Button>
+                {!item.isDefault && <Button variant="outline" size="sm" onClick={() => setDefault(item.id)}>Tornar padrão</Button>}
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeTemplate(item.id)}><Trash2 className="h-4 w-4" /></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] items-end border-t pt-4">
+        <div className="space-y-1.5">
+          <Label>Nome do modelo</Label>
+          <Input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="Ex: Orçamento Pisos" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Linha de produto</Label>
+          <Input value={productLine} onChange={(e) => setProductLine(e.target.value)} placeholder="Ex: Pisos drenantes" />
+        </div>
+        <Button
+          type="button"
+          className="gap-2"
+          disabled={uploading || !modelName.trim() || !productLine.trim()}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {uploading ? "Enviando..." : "Adicionar modelo"}
+        </Button>
+      </div>
     </div>
   );
 }
