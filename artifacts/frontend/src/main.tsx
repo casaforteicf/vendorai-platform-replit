@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import SubdomainSite from "./SubdomainSite";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { PlanningLauncher } from "./components/PlanningLauncher";
 import "./index.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
@@ -38,7 +39,14 @@ const tenantSlugForSite = isAppHost ? null : (tenantSiteMatch?.[1] ?? null);
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    {tenantSlugForSite ? <SubdomainSite slug={tenantSlugForSite} /> : <App />}
+    {tenantSlugForSite ? (
+      <SubdomainSite slug={tenantSlugForSite} />
+    ) : (
+      <>
+        <App />
+        <PlanningLauncher />
+      </>
+    )}
   </ErrorBoundary>,
 );
 
