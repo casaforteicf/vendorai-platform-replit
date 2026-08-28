@@ -1,0 +1,32 @@
+name: Apply clean Demo
+
+on:
+  push:
+    branches:
+      - fix-demo-sem-dados-ficticios
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[demo-clean-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-demo-sem-dados-ficticios
+          fetch-depth: 0
+      - name: Apply patch
+        run: python scripts/apply-demo-clean.py
+      - name: Commit product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/api-server/src/routes/auth.ts artifacts/api-server/src/routes/tenants.ts
+          if git diff --cached --quiet; then
+            echo "No product changes"
+            exit 0
+          fi
+          git commit -m "fix: iniciar Demo sem dados fictícios [demo-clean-applied]"
+          git push origin HEAD:fix-demo-sem-dados-ficticios
