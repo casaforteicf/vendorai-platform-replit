@@ -1,0 +1,50 @@
+name: Apply Google Ads Production Fix
+
+on:
+  push:
+    branches:
+      - fix-google-ads-production
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    if: ${{ !contains(github.event.head_commit.message, '[google-ads-fix-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-google-ads-production
+          fetch-depth: 0
+      - run: python scripts/fix-google-ads-production.py
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript targeted Google Ads files
+        run: |
+          set +e
+          NODE_OPTIONS=--max-old-space-size=8192 pnpm --filter @workspace/api-server exec tsc --noEmit --pretty false > /tmp/api-tsc.log 2>&1
+          api_status=$?
+          NODE_OPTIONS=--max-old-space-size=8192 pnpm --filter @workspace/frontend exec tsc --noEmit --pretty false > /tmp/front-tsc.log 2>&1
+          front_status=$?
+          set -e
+          echo "api tsc exit: $api_status; frontend tsc exit: $front_status"
+          api_matches=$(grep -E "(google-ads-oauth\.ts|google-ads-auth\.ts)" /tmp/api-tsc.log || true)
+          front_matches=$(grep -E "(pages/Configuracoes\.tsx|pages/Ads\.tsx)" /tmp/front-tsc.log || true)
+          if [ -n "$api_matches$front_matches" ]; then
+            echo "$api_matches"
+            echo "$front_matches"
+            exit 1
+          fi
+          echo "No TypeScript errors reported in changed Google Ads files."
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .env.example artifacts/api-server/src/services/google-ads-oauth.ts artifacts/api-server/src/routes/google-ads-auth.ts artifacts/frontend/src/pages/Configuracoes.tsx artifacts/frontend/src/pages/Ads.tsx
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "fix: homologar fluxo Google Ads para produção [google-ads-fix-applied]"
+          git push origin fix-google-ads-production
