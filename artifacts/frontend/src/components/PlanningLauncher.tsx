@@ -8,10 +8,34 @@ const items = [
     icon: "📋",
   },
   {
+    href: "/leads/import-config",
+    title: "Importar leads",
+    description: "CSV com mapeamento, prévia e deduplicação real",
+    icon: "📥",
+  },
+  {
+    href: "/conversations",
+    title: "Conversas",
+    description: "Inbox real com canais, anexos e handoff IA/humano",
+    icon: "💬",
+  },
+  {
     href: "/marketing",
     title: "Marketing",
     description: "Campanhas, Content Autopilot e Content Studio",
     icon: "📢",
+  },
+  {
+    href: "/contacts-nonleads",
+    title: "Contatos não-leads",
+    description: "Fornecedores, parceiros, família e colaboradores",
+    icon: "👥",
+  },
+  {
+    href: "/erp/captura",
+    title: "Captura ERP",
+    description: "Foto ou PDF, revisão humana e lançamento real",
+    icon: "📷",
   },
   {
     href: "/faq",
@@ -50,15 +74,15 @@ export function PlanningLauncher() {
   return (
     <div className="fixed bottom-5 right-5 z-[90] flex flex-col items-end gap-2">
       {open && (
-        <div className="w-[320px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border bg-background shadow-2xl">
+        <div className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border bg-background shadow-2xl">
           <div className="border-b px-4 py-3">
             <div className="text-sm font-semibold">Novos módulos</div>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              Melhorias do planejamento já disponíveis no VendorAI.
+              Melhorias do planejamento conectadas aos dados reais do VendorAI.
             </div>
           </div>
 
-          <div className="p-2">
+          <div className="max-h-[min(70vh,520px)] overflow-y-auto p-2">
             {items.map((item) => (
               <a
                 key={item.href}
