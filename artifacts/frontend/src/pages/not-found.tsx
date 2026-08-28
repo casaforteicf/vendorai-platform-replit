@@ -13,6 +13,7 @@ const Marketing = lazy(() => import("@/pages/marketing"));
 const MarketingCampanhas = lazy(() => import("@/pages/marketing/campanhas"));
 const GeradorConteudo = lazy(() => import("@/pages/marketing/gerador-conteudo"));
 const NonLeadContacts = lazy(() => import("@/pages/contacts-nonleads"));
+const ERPCapture = lazy(() => import("@/pages/erp"));
 const FAQ = lazy(() => import("@/pages/faq"));
 
 function Spinner() {
@@ -57,6 +58,7 @@ function ProtectedExtensionFallback() {
   if (pathname.endsWith("/marketing/conteudo")) return <ProtectedExtension component={GeradorConteudo} />;
   if (pathname.endsWith("/marketing")) return <ProtectedExtension component={Marketing} />;
   if (pathname.endsWith("/contacts-nonleads")) return <ProtectedExtension component={NonLeadContacts} />;
+  if (pathname.endsWith("/erp/captura")) return <ProtectedExtension component={ERPCapture} />;
   if (pathname.endsWith("/faq")) return <ProtectedExtension component={FAQ} />;
   return null;
 }
@@ -72,6 +74,7 @@ export default function NotFound() {
     "/marketing/campanhas",
     "/marketing/conteudo",
     "/contacts-nonleads",
+    "/erp/captura",
     "/faq",
   ].some((route) => pathname.endsWith(route));
 
