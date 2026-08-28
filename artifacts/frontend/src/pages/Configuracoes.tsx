@@ -1938,11 +1938,17 @@ export default function Configuracoes() {
       const res = await fetch("/api/auth/meta-ads", {
         headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
       });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { url: string };
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? "Não foi possível iniciar a conexão.");
+      }
       window.location.href = data.url;
-    } catch {
-      toast({ title: "Erro ao iniciar conexão com Meta Ads.", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: "Erro ao iniciar conexão com Meta Ads.",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+        variant: "destructive",
+      });
       setMetaAdsConnecting(false);
     }
   }
