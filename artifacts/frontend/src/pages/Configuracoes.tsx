@@ -1494,6 +1494,8 @@ export default function Configuracoes() {
         invalid_state: "Sessão inválida. Tente novamente.",
         no_pages: "Nenhuma página encontrada. Verifique se sua conta tem uma página com Instagram Business.",
         token_exchange: "A Meta recusou a troca do código de acesso. Verifique o App Secret e a URL de callback do Instagram.",
+        short_token_exchange: "A Meta recusou o código inicial. Verifique INSTAGRAM_APP_SECRET e a URL de callback cadastrada.",
+        long_token_exchange: "O código inicial foi aceito, mas falhou ao gerar o token de longa duração.",
         profile_lookup: "O token foi criado, mas a Meta não liberou a leitura da conta profissional.",
         account_in_use: "Esta conta do Instagram já está conectada a outro tenant.",
         persist_failed: "A conta foi autorizada, mas não foi possível salvar a conexão.",
