@@ -1643,6 +1643,25 @@ export default function Configuracoes() {
       setWhatsappConnecting(false);
     }
   }
+  function onConnectMetaBusiness() {
+    if (!igConnection.data?.connected) {
+      void onConnectInstagram();
+      return;
+    }
+    if (!metaAdsConnection?.connected || metaAdsConnection.pendingAccountSelection) {
+      void onConnectMetaAds();
+      return;
+    }
+    if (!waConnection.data?.connected) {
+      void onConnectWhatsapp();
+      return;
+    }
+    toast({
+      title: "Meta Business conectado",
+      description: "Instagram, Página do Facebook, Meta Ads e WhatsApp oficial estão disponíveis.",
+    });
+  }
+
   function onDisconnectWhatsappOAuth() {
     disconnectWa.mutate(
       { tenantId: tenantId ?? "" },
@@ -3516,6 +3535,70 @@ Body:
                 Para WhatsApp, priorize a integração oficial via Meta ou a conexão rápida por QR Code.
                 Configurações manuais e provedores alternativos continuam disponíveis em Opções avançadas.
               </p>
+            </div>
+
+            {/* Hub Meta Business — fluxo principal unificado; cards individuais abaixo preservam detalhes e manutenção */}
+            <div className="rounded-xl border-2 border-blue-200 dark:border-blue-900 bg-gradient-to-br from-blue-50/70 to-card dark:from-blue-950/20 p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-lg flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                    Meta Business
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Uma entrada para conectar e acompanhar Facebook, Instagram, anúncios e WhatsApp oficial.
+                    A Meta pode solicitar confirmações adicionais conforme cada produto.
+                  </p>
+                </div>
+                {igConnection.data?.connected &&
+                 metaAdsConnection?.connected &&
+                 !metaAdsConnection.pendingAccountSelection &&
+                 waConnection.data?.connected ? (
+                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400">
+                    <CheckCircle2 className="h-3 w-3 mr-1" /> Completo
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">Configuração em andamento</Badge>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { label: "Instagram profissional", connected: Boolean(igConnection.data?.connected) },
+                  { label: "Facebook / Página", connected: Boolean(igConnection.data?.connected && igConnection.data.pageId) },
+                  { label: "Meta Ads", connected: Boolean(metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection) },
+                  { label: "WhatsApp oficial", connected: Boolean(waConnection.data?.connected) },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between rounded-lg border bg-background/80 px-3 py-2.5">
+                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className={cn(
+                      "text-xs font-medium",
+                      item.connected ? "text-green-600 dark:text-green-400" : "text-muted-foreground",
+                    )}>
+                      {item.connected ? "Conectado" : "Pendente"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  onClick={onConnectMetaBusiness}
+                  disabled={metaAdsConnecting || whatsappConnecting}
+                  className="gap-2"
+                >
+                  {(metaAdsConnecting || whatsappConnecting) && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {igConnection.data?.connected &&
+                   metaAdsConnection?.connected &&
+                   !metaAdsConnection.pendingAccountSelection &&
+                   waConnection.data?.connected
+                    ? "Gerenciar conexão Meta"
+                    : "Conectar Meta"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  O VendorAI continua automaticamente pelo próximo serviço que ainda estiver pendente.
+                </p>
+              </div>
             </div>
 
             {/* WhatsApp — OAuth via Meta */}
