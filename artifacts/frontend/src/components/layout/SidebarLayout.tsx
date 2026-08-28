@@ -664,6 +664,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 <Megaphone className="h-3.5 w-3.5" /> Campanhas
               </Link>
               <Link
+                href="/ads"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/ads"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Target className="h-3.5 w-3.5" /> Anúncios Patrocinados
+              </Link>
+              <Link
                 href="/variedades-dia"
                 onClick={onNavigate}
                 className={cn(
