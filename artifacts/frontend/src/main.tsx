@@ -38,16 +38,9 @@ const tenantSlugForSite = isAppHost ? null : (tenantSiteMatch?.[1] ?? null);
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    {tenantSlugForSite ? (
-      <SubdomainSite slug={tenantSlugForSite} />
-    ) : (
-      <App />
-    )}
+    {tenantSlugForSite ? <SubdomainSite slug={tenantSlugForSite} /> : <App />}
   </ErrorBoundary>,
 );
-
-// O antigo PlanningLauncher permanece no código como fallback histórico,
-// mas não é mais renderizado: os módulos funcionais agora ficam na sidebar real.
 
 // PWA — só registra pro CRM em si (não pro site público do lojista) e só em
 // produção, pra não gerar cache confuso durante o desenvolvimento local.
