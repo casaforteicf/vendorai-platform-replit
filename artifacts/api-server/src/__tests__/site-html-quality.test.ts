@@ -51,6 +51,17 @@ describe("validateSiteHtml", () => {
       ]),
     );
   });
+
+  it("detects global invisible styles, oversized spacing, and unstable images", () => {
+    const html = completeHtml(
+      `<main><section class="hero"><h1>Casa Forte</h1><img src="https://example.com/foto.jpg"><p>Projeto completo.</p></section></main>`,
+      `body{color:#fff;background:#fff}section{padding:160px 0}.hero{min-height:900px}a{visibility:hidden}`,
+    );
+    const codes = validateSiteHtml(html).issues.map((issue) => issue.code);
+    expect(codes).toEqual(
+      expect.arrayContaining(["invisible-text", "oversized-empty-element", "broken-image"]),
+    );
+  });
 });
 
 describe("extractHtmlDocument", () => {
@@ -74,6 +85,13 @@ describe("site HTML preparation", () => {
     expect(sanitized).not.toContain("javascript:");
     expect(sanitized).not.toContain("bad.test");
     expect(sanitized).toContain("window.menuReady=true");
+  });
+
+  it("removes invalid image placeholders instead of shipping broken media", () => {
+    const html = completeHtml(`<main><img src="#"><img src="javascript:bad()"></main>`);
+    const sanitized = sanitizeSiteHtml(html);
+    expect(sanitized).not.toContain('src="#"');
+    expect(sanitized).not.toContain("javascript:bad");
   });
 
   it("injects safe defaults once and returns the exact final document", () => {
@@ -103,6 +121,16 @@ describe("site HTML preparation", () => {
     expect(prepared.html).toContain("data-vai-contrast-repaired");
     expect(prepared.html).toContain("button,.btn");
     expect(prepared.validation.valid).toBe(true);
+  });
+
+  it("does not let helper classes such as hero-grid inherit hero sizing", () => {
+    const source = completeHtml(
+      `<section class="hero"><div class="hero-grid"><h1>Casa Forte</h1><p>Precisão em cada projeto.</p></div></section>`,
+    );
+    const prepared = prepareSiteHtml(source);
+    expect(prepared.html).toContain('.hero,[id="hero"],[class~="hero"]');
+    expect(prepared.html).not.toContain('[class~="hero"]{grid-template-columns');
+    expect(prepared.html).not.toContain('[class*="hero"]{min-height');
   });
 
   it("does not reject repairable CSS after deterministic fallbacks are installed", () => {

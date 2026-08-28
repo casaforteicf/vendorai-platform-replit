@@ -1447,7 +1447,7 @@ function stripEditScript(html: string): string {
 // ── Section templates for "Add Section" ────────────────────────────────────────
 
 const SECTION_TEMPLATES: Array<{ id: string; label: string; icon: string; prompt: string }> = [
-  { id: 'gallery', label: 'Galeria de Fotos', icon: '🖼️', prompt: 'Adicione uma seção de galeria de fotos ao site. Use um grid responsivo de 3 colunas com tags <img> reais (use src de imagens Unsplash relacionadas ao setor, ex: https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop), alt descritivo e loading="lazy". Não use gradiente CSS como placeholder de imagem — use sempre <img> com URLs reais.' },
+  { id: 'gallery', label: 'Galeria de Fotos', icon: '🖼️', prompt: 'Adicione uma seção de galeria de fotos usando somente imagens reais já fornecidas no briefing ou no HTML atual. Se não houver URL real disponível, não crie a galeria. Use grid responsivo, alt descritivo, loading="lazy", width/height ou aspect-ratio e object-fit.' },
   { id: 'team', label: 'Nossa Equipe', icon: '👥', prompt: 'Adicione uma seção "Nossa Equipe" com 3 cards de membros (foto placeholder circular, nome, cargo e breve bio). Use o mesmo estilo visual do site.' },
   { id: 'services', label: 'Serviços', icon: '⚙️', prompt: 'Adicione uma seção de Serviços com 4 cards (ícone SVG, título, descrição breve). Use o mesmo estilo visual e cores do site.' },
   { id: 'contact', label: 'Formulário de Contato', icon: '📬', prompt: 'Adicione uma seção de Contato com formulário (Nome, E-mail, Mensagem, botão Enviar) e informações de contato ao lado (telefone, email, endereço). Use o mesmo estilo visual do site.' },
