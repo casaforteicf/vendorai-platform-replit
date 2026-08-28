@@ -50,7 +50,7 @@ export function DemoBanner() {
         }`}
         asChild
       >
-        <a href="/contato" target="_blank" rel="noopener noreferrer">
+        <a href="/demo/contact-sales">
           Falar com vendas
           <ArrowRight className="w-3 h-3 ml-1" />
         </a>

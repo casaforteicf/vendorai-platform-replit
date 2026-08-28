@@ -18,6 +18,8 @@ const Login              = lazy(() => import("@/pages/Login"));
 const Register           = lazy(() => import("@/pages/Register"));
 const ForgotPassword     = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword      = lazy(() => import("@/pages/ResetPassword"));
+const GoogleAuthSuccess  = lazy(() => import("@/pages/GoogleAuthSuccess"));
+const ContactSales       = lazy(() => import("@/pages/demo/contact-sales"));
 const PortalObra         = lazy(() => import("@/pages/PortalObra"));
 const PublicProposta     = lazy(() => import("@/pages/PublicProposta"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
@@ -29,6 +31,8 @@ const Dashboard          = lazy(() => import("@/pages/dashboard/Dashboard"));
 const CentralTrabalho    = lazy(() => import("@/pages/CentralTrabalho"));
 const ComissoesVendedor  = lazy(() => import("@/pages/ComissoesVendedor"));
 const Leads              = lazy(() => import("@/pages/Leads"));
+const ImportConfig       = lazy(() => import("@/pages/leads/import-config"));
+const NonLeadContacts    = lazy(() => import("@/pages/contacts-nonleads"));
 const LeadDetail         = lazy(() => import("@/pages/LeadDetail"));
 const Prospector         = lazy(() => import("@/pages/Prospector"));
 const FlowBuilder        = lazy(() => import("@/pages/prospector/FlowBuilder"));
@@ -76,6 +80,7 @@ const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
 const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
 const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
+const ErpCapture         = lazy(() => import("@/pages/erp"));
 const Onboarding                = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes     = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
@@ -88,6 +93,7 @@ const VideoLegendaPage   = lazy(() => import("@/pages/video/VideoLegendaPage"));
 const VideoClipesPage    = lazy(() => import("@/pages/video/VideoClipesPage"));
 const VideoLotePage      = lazy(() => import("@/pages/video/VideoLotePage"));
 const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
+const FAQ                 = lazy(() => import("@/pages/faq"));
 const Questionario       = lazy(() => import("@/pages/Questionario"));
 const Analytics          = lazy(() => import("@/pages/Analytics"));
 const AgentConfig        = lazy(() => import("@/pages/agents/AgentConfig"));
@@ -486,6 +492,12 @@ function AppRoutes() {
         <Route path="/register">
           <RegisterRoute />
         </Route>
+        <Route path="/auth/success">
+          {() => <GoogleAuthSuccess />}
+        </Route>
+        <Route path="/demo/contact-sales">
+          {() => <ContactSales />}
+        </Route>
         <Route path="/esqueci-senha">
           <PublicRoute component={ForgotPassword} />
         </Route>
@@ -529,6 +541,12 @@ function AppRoutes() {
         </Route>
         <Route path="/trabalho">
           <ProtectedRoute component={CentralTrabalho} />
+        </Route>
+        <Route path="/leads/import-config">
+          <ProtectedRoute component={ImportConfig} />
+        </Route>
+        <Route path="/contacts-nonleads">
+          <ProtectedRoute component={NonLeadContacts} />
         </Route>
         <Route path="/leads">
           <ProtectedRoute component={Leads} />
@@ -616,6 +634,9 @@ function AppRoutes() {
         </Route>
         <Route path="/estoque">
           {() => <ProtectedRoute component={Estoque} />}
+        </Route>
+        <Route path="/erp/captura">
+          {() => <ProtectedRoute component={ErpCapture} />}
         </Route>
         <Route path="/erp">
           {() => <ProtectedRoute component={GestaoErp} />}
@@ -707,8 +728,11 @@ function AppRoutes() {
         <Route path="/content-studio/video/lote">
           {() => <ProtectedRoute component={VideoLotePage} />}
         </Route>
+        <Route path="/faq">
+          {() => <ProtectedRoute component={FAQ} />}
+        </Route>
         <Route path="/guia-implantacao">
-          {() => <ProtectedRoute component={GuiaImplantacao} />}
+          <RedirectPage to="/faq" />
         </Route>
         <Route path="/agents/config">
           {() => <ProtectedRoute component={AgentConfig} />}

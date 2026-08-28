@@ -766,9 +766,9 @@ function KanbanColumn({
   const slaOverdueCount = deals.filter(isSlaOverdue).length;
 
   return (
-    <div className="flex flex-col w-72 shrink-0">
+    <div className="flex flex-col w-72 shrink-0 h-full min-h-0">
       {/* Column header */}
-      <div className="flex items-center justify-between mb-3 px-1">
+      <div className="sticky top-0 z-10 flex items-center justify-between mb-2 px-1 py-1 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex items-center gap-2">
           <span
             className={`inline-block h-2 w-2 rounded-full border ${col.color.replace("text-", "border-")}`}
@@ -810,7 +810,7 @@ function KanbanColumn({
       {/* Drop zone */}
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-[400px] rounded-lg p-2 space-y-2 transition-colors ${
+        className={`flex-1 min-h-0 overflow-y-auto rounded-lg p-2 space-y-2 transition-colors ${
           isOver
             ? "bg-primary/5 border-2 border-dashed border-primary/30"
             : "bg-muted/30 border-2 border-transparent"
@@ -3038,7 +3038,7 @@ export default function Deals() {
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
+            <div className="flex gap-4 overflow-x-auto overflow-y-hidden pb-2 flex-1 min-h-0">
               {kanbanColumns.map((col) => (
                 <KanbanColumn
                   key={col.dropId}
