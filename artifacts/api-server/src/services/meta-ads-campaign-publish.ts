@@ -314,14 +314,14 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   if (!creative) {
     throw new MetaAdsPublishError("Nenhum criativo aprovado pra essa campanha — gere e aprove o criativo antes de publicar.");
   }
-  if (!creative.imagens[0]) {
+  const origemInstagram = campanha.segmentacao?.origemInstagram;
+  if (!origemInstagram && !creative.imagens[0]) {
     throw new MetaAdsPublishError("Criativo aprovado está sem imagem.");
   }
   const headline = creative.headlines[0] ?? campanha.vertical;
   const primaryText = creative.headlines[1] ?? headline;
   const description = creative.descriptions[0] ?? "";
 
-  const origemInstagram = campanha.segmentacao?.origemInstagram;
   const finalUrl = origemInstagram ? null : await resolveFinalUrl(tenantId, campanha);
   const { accessToken, adAccountId } = await getValidAccessToken(tenantId);
   const adAccountPath = normalizeMetaAdAccountId(adAccountId);
