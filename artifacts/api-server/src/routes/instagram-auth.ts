@@ -57,7 +57,7 @@ router.get("/auth/instagram/callback", async (req, res) => {
 
   if (error || !code || !state) {
     logger.warn({ error, hasCode: !!code, hasState: !!state }, "Callback Instagram: parâmetros inválidos");
-    return res.redirect(`${appUrl}/configuracoes?instagramError=access_denied`);
+    return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=access_denied`);
   }
 
   let tenantId: string;
@@ -66,17 +66,38 @@ router.get("/auth/instagram/callback", async (req, res) => {
     tenantId = decoded.tenantId;
   } catch (err) {
     logger.warn({ err }, "Callback Instagram: state inválido, expirado ou reutilizado");
-    return res.redirect(`${appUrl}/configuracoes?instagramError=invalid_state`);
+    return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=invalid_state`);
   }
 
   try {
     logger.info({ tenantId }, "Processando callback Instagram");
-    const tokenResponse = await exchangeShortCodeForToken(code, req.hostname);
+    let tokenResponse;
+    try {
+      tokenResponse = await exchangeShortCodeForToken(code, req.hostname);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao trocar código OAuth do Instagram");
+      return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=token_exchange`);
+    }
 
-    const directAccount = await fetchDirectInstagramAccountInfo(tokenResponse.access_token);
-    await saveDirectInstagramConnection(tenantId, directAccount, tokenResponse);
+    let directAccount;
+    try {
+      directAccount = await fetchDirectInstagramAccountInfo(tokenResponse.access_token);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao consultar conta profissional do Instagram");
+      return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=profile_lookup`);
+    }
+
+    try {
+      await saveDirectInstagramConnection(tenantId, directAccount, tokenResponse);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao salvar conexão do Instagram");
+      const accountInUse = err instanceof Error && err.message.includes("outro tenant");
+      return res.redirect(
+        `${appUrl}/configuracoes?tab=integracoes&instagramError=${accountInUse ? "account_in_use" : "persist_failed"}`,
+      );
+    }
     logger.info({ tenantId, username: directAccount.username }, "Instagram conectado com sucesso");
-    return res.redirect(`${appUrl}/configuracoes?instagramConnected=1`);
+    return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramConnected=1`);
 
     /* Fluxo legado Facebook Pages removido em favor do Instagram Login.
     const pages = await fetchUserPages(tokenResponse.access_token);
