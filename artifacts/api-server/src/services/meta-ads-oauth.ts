@@ -30,7 +30,7 @@ const META_ADS_APP_SECRET = hasValidDedicatedMetaApp
   ? process.env["META_ADS_APP_SECRET"]?.trim()
   : process.env["INSTAGRAM_APP_SECRET"]?.trim();
 
-function assertMetaAdsAppConfigured(): asserts META_ADS_APP_ID is string {
+function assertMetaAdsAppConfigured(): void {
   if (!META_ADS_APP_ID || !/^\\d+$/.test(META_ADS_APP_ID) || !META_ADS_APP_SECRET) {
     throw new Error(
       "Meta Ads não configurado: informe META_ADS_APP_ID/META_ADS_APP_SECRET válidos ou mantenha INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET válidos como fallback.",
