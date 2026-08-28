@@ -1095,6 +1095,7 @@ export default function Configuracoes() {
 
   // ── Integrações — bloqueio por senha ────────────────────────────────────
   const [integracoesUnlocked, setIntegracoesUnlocked] = useState(false);
+  const [showAdvancedIntegrations, setShowAdvancedIntegrations] = useState(false);
   const [integracoesPasswordInput, setIntegracoesPasswordInput] = useState("");
   const [integracoesUnlocking, setIntegracoesUnlocking] = useState(false);
   const [integracoesUnlockError, setIntegracoesUnlockError] = useState("");
@@ -3204,7 +3205,7 @@ export default function Configuracoes() {
           <CalendarSettingsTab tenantId={tenantId} />
         </TabsContent>
 
-        {/* ── Tab: Integrações ERP ────────────────────────────────────────── */}
+        {/* ── Tab: Integrações ────────────────────────────────────────────── */}
         <TabsContent value="integracoes">
           {/* ── Lock screen ─────────────────────────────────────────────── */}
           {!integracoesUnlocked ? (
@@ -3485,6 +3486,14 @@ Body:
                   </pre>
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-1">
+              <p className="text-sm font-semibold">Conexões recomendadas</p>
+              <p className="text-sm text-muted-foreground">
+                Para WhatsApp, priorize a integração oficial via Meta ou a conexão rápida por QR Code.
+                Configurações manuais e provedores alternativos continuam disponíveis em Opções avançadas.
+              </p>
             </div>
 
             {/* WhatsApp — OAuth via Meta */}
@@ -3875,7 +3884,7 @@ Body:
             </div>
 
             {/* Meta WhatsApp Cloud API — Legacy Manual */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showAdvancedIntegrations && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -4079,8 +4088,27 @@ Body:
             {/* Evolution API — WhatsApp via QR Code (self-hosted, sem custo por cliente) */}
             <EvolutionWhatsAppCard tenantId={tenantId ?? ""} toast={toast} />
 
+            <div className="rounded-xl border border-dashed bg-muted/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Opções avançadas de WhatsApp</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Configuração manual da Meta e Z-API ficam preservadas para cenários específicos e compatibilidade.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0"
+                onClick={() => setShowAdvancedIntegrations((current) => !current)}
+              >
+                {showAdvancedIntegrations ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {showAdvancedIntegrations ? "Ocultar avançado" : "Mostrar avançado"}
+              </Button>
+            </div>
+
             {/* Z-API — WhatsApp não-oficial via Baileys */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showAdvancedIntegrations && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
