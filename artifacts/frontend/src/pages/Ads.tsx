@@ -818,12 +818,12 @@ export default function Ads() {
               const fotosReais = itemAtual?.imagens ?? [];
               return (
                 <div className="border-t pt-4 space-y-2">
-                  <LabelTip tip="Por padrão a IA gera uma foto nova pro anúncio. Se preferir, escolha uma foto real já cadastrada nesse item — o texto continua sendo gerado por IA do mesmo jeito.">Imagem do anúncio</LabelTip>
+                  <LabelTip tip="Escolha entre a IA criar uma nova imagem publicitária ou preservar uma foto real do item. Nos dois casos, a IA também melhora títulos, texto principal e descrição.">Imagem e texto do anúncio</LabelTip>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => setForm((f) => ({ ...f, imagemEscolhidaUrl: "" }))}
                       className={`flex flex-col items-center justify-center gap-1 h-20 w-20 rounded-lg border-2 text-[10px] text-center px-1 ${!form.imagemEscolhidaUrl ? "border-primary bg-primary/5 text-primary" : "border-dashed border-muted-foreground/40 text-muted-foreground"}`}>
                       <Sparkles className="h-4 w-4" />
-                      Gerar com IA
+                      Criar nova com IA
                     </button>
                     {fotosReais.length === 0 ? (
                       <p className="text-xs text-muted-foreground self-center">Esse item ainda não tem fotos próprias cadastradas.</p>
@@ -932,7 +932,9 @@ export default function Ads() {
                   <span className="font-medium">Gerar o criativo automaticamente com IA</span>
                   <span className="block text-xs text-muted-foreground">
                     {form.plataforma === "meta"
-                      ? "Gera texto e imagem. Se você escolheu uma foto real do item, mantém essa foto e gera o texto."
+                      ? form.imagemEscolhidaUrl
+                        ? "Preserva a foto real escolhida e usa IA para melhorar título, texto principal e descrição."
+                        : "Usa IA para criar uma nova imagem publicitária e melhorar título, texto principal e descrição."
                       : form.tipoAnuncio === "shopping"
                         ? "O Shopping usa automaticamente foto, título e preço do catálogo."
                         : "Gera títulos e descrições para o anúncio do Google Search."}
