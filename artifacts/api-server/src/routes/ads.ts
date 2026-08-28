@@ -182,7 +182,11 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   let importedCreative = null;
   if (row && creativeDraft?.success) {
     const draft = creativeDraft.data;
-    if (draft.headlines.length || draft.descriptions.length || draft.imagens.length) {
+    const hasExistingInstagramPost = Boolean((segmentacao as any)?.origemInstagram?.mediaId);
+    const canImportDraft =
+      (draft.headlines.length || draft.descriptions.length || draft.imagens.length) &&
+      (row.tipoAnuncio !== "imagem" || draft.imagens.length > 0 || hasExistingInstagramPost);
+    if (canImportDraft) {
       [importedCreative] = await db.insert(adCreativesTable).values({
         campaignId: row.id,
         headlines: draft.headlines,

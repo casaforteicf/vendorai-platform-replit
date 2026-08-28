@@ -256,7 +256,9 @@ export default function Ads() {
       const draft = JSON.parse(raw) as ImportedContentDraft;
       if (!draft.contentGenerationId || !draft.creativeDraft) return;
       setSourceDraft(draft);
-      setAutoGenerateAfterCreate(false);
+      setAutoGenerateAfterCreate(
+        draft.suggestedPlatform === "meta" && draft.creativeDraft.imagens.length === 0,
+      );
       setForm({
         ...EMPTY_FORM,
         plataforma: draft.suggestedPlatform,
@@ -528,7 +530,7 @@ export default function Ads() {
             <li>Plataformas disponíveis agora: <strong>Google</strong> (Search/PMax, Shopping) e <strong>Meta</strong> (Facebook + Instagram, anúncio de imagem). TikTok e LinkedIn entram depois.</li>
             <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search/Performance Max) ou foto gerada por IA (Meta).</li>
             <li>Farmácia (venda livre), mercado e distribuidoras usam o feed do Google Shopping. Medicamento que exige receita nunca entra no feed.</li>
-            <li>Anúncio na Meta precisa do Instagram conectado primeiro (Configurações → Integrações) — o anúncio roda na mesma Página do Facebook vinculada lá.</li>
+            <li>Anúncio na Meta exige Meta Ads conectado. Para veicular no Instagram, a conta profissional precisa estar vinculada à Página do Facebook acessível pela mesma conexão Meta.</li>
             <li>Nenhuma campanha publica sozinha — todo criativo passa por aprovação antes.</li>
           </ul>
           {feedInfo?.feedUrl && (
