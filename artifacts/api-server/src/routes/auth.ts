@@ -140,8 +140,9 @@ router.post("/auth/demo-signup", async (req, res) => {
       });
     }
 
-    const { seedDemoData } = await import("./tenants.js");
-    await seedDemoData(tenant.id);
+    // A Demo deve nascer limpa para o usuário conhecer o produto com os próprios
+    // dados. A fixture seedDemoData continua disponível internamente, mas não é
+    // executada automaticamente no cadastro de trial.
 
     const [user] = await db
       .insert(usersTable)

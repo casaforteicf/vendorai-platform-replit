@@ -559,7 +559,7 @@ router.delete("/tenants/:id", requireRole("super_admin"), async (req, res) => {
 });
 
 // ── POST /admin/tenants/demo ────────────────────────────────────────────
-// Cria um tenant de demonstração com expiração de 5 dias e popula com dados fake
+// Cria um tenant de demonstração com expiração de 5 dias, sem dados fictícios
 
 router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) => {
   const { nomeEmpresa, emailContato } = req.body;
@@ -586,8 +586,8 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
 
   await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
 
-  // Popular com dados fake
-  await seedDemoData(tenant.id);
+  // Não popula produtos, leads, conversas ou negócios fictícios. A experiência
+  // Demo começa vazia e o usuário inclui seus próprios dados durante o uso.
 
   res.status(201).json({
     tenant,
@@ -596,7 +596,8 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
   });
 });
 
-// ── Seed de dados fake para demo ──────────────────────────────────────────
+// ── Fixture interna opcional para ambientes de teste/desenvolvimento ──────
+// Não chamar automaticamente em fluxos reais de criação de Demo.
 
 export async function seedDemoData(tenantId: string) {
   const now = new Date();
