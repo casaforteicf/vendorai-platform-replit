@@ -1,0 +1,32 @@
+name: Apply implementation agent
+
+on:
+  push:
+    branches:
+      - feat-agente-implantacao
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[implantacao-agent-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat-agente-implantacao
+          fetch-depth: 0
+      - name: Apply patch
+        run: python scripts/apply-agente-implantacao.py
+      - name: Commit product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/api-server/src/routes/onboarding.ts artifacts/api-server/src/routes/tenants.ts artifacts/frontend/src/pages/Dashboard.tsx
+          if git diff --cached --quiet; then
+            echo "No product changes"
+            exit 0
+          fi
+          git commit -m "feat: adicionar Agente de Implantação contextual [implantacao-agent-applied]"
+          git push origin HEAD:feat-agente-implantacao
