@@ -156,6 +156,7 @@ interface AdCampaign {
   pausarAoInteresse: boolean;
   slaNegociacaoHoras: number;
   latestCreative: AdCreative | null;
+  segmentacao?: { origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string } };
 }
 
 interface VehicleReservation {
@@ -181,6 +182,7 @@ interface ImportedContentDraft {
   theme: string;
   sourceType: string;
   suggestedPlatform: "google" | "meta";
+  sourceVariationIndex?: number;
   creativeDraft: { headlines: string[]; descriptions: string[]; imagens: string[] };
 }
 
@@ -243,6 +245,7 @@ export default function Ads() {
   const [decision, setDecision] = useState<"manter" | "avancar" | "perdido">("manter");
   const [justification, setJustification] = useState("");
   const [sourceDraft, setSourceDraft] = useState<ImportedContentDraft | null>(null);
+  const [autoGenerateAfterCreate, setAutoGenerateAfterCreate] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -253,6 +256,7 @@ export default function Ads() {
       const draft = JSON.parse(raw) as ImportedContentDraft;
       if (!draft.contentGenerationId || !draft.creativeDraft) return;
       setSourceDraft(draft);
+      setAutoGenerateAfterCreate(false);
       setForm({
         ...EMPTY_FORM,
         plataforma: draft.suggestedPlatform,
@@ -360,6 +364,7 @@ export default function Ads() {
         slaNegociacaoHoras: Number(form.slaNegociacaoHoras || 48),
         imagemEscolhidaUrl: form.tipoAnuncio === "imagem" && form.imagemEscolhidaUrl ? form.imagemEscolhidaUrl : null,
         creativeDraft: sourceDraft?.creativeDraft ?? null,
+        sourceVariationIndex: sourceDraft?.sourceVariationIndex ?? sourceDraft?.variationIndex ?? null,
       };
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
@@ -380,15 +385,20 @@ export default function Ads() {
       }
       return r.json();
     },
-    onSuccess: () => {
+    onSuccess: (campaign: AdCampaign) => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      const shouldAutoGenerate = autoGenerateAfterCreate && campaign.tipoAnuncio === "imagem" && !(campaign as any).latestCreative;
       toast({
-        title: "Campanha criada",
-        description: sourceDraft ? "O conteúdo do Marketing foi anexado como criativo. Revise e aprove antes de publicar." : "Agora gere o criativo antes de aprovar.",
+        title: sourceDraft ? "Campanha de patrocínio criada" : "Campanha criada",
+        description: sourceDraft
+          ? (campaign.segmentacao?.origemInstagram ? "A publicação existente do Instagram foi vinculada. Revise e aprove antes de publicar." : "O conteúdo do Marketing foi anexado como novo criativo Meta. Revise e aprove antes de publicar.")
+          : shouldAutoGenerate ? "Rascunho criado. A IA está gerando texto e imagem do anúncio." : "Agora gere o criativo antes de aprovar.",
       });
       setOpen(false);
       setForm({ ...EMPTY_FORM });
       setSourceDraft(null);
+      setAutoGenerateAfterCreate(false);
+      if (shouldAutoGenerate) gerarCriativo.mutate(campaign.id);
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -452,7 +462,7 @@ export default function Ads() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
-      toast({ title: "Campanha publicada no Google Ads", description: "Criada pausada — revise no Google Ads e ative quando quiser começar a gastar." });
+      toast({ title: "Campanha publicada", description: "Criada pausada na plataforma — revise e ative somente quando quiser começar a gastar." });
     },
     onError: (e: any) => toast({ title: "Erro ao publicar", description: e.message, variant: "destructive" }),
   });
@@ -493,7 +503,17 @@ export default function Ads() {
           <Megaphone className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold">Anúncios</h1>
         </div>
-        <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-1" /> Nova campanha</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => {
+            setSourceDraft(null);
+            setAutoGenerateAfterCreate(true);
+            setForm({ ...EMPTY_FORM, plataforma: "meta", tipoAnuncio: "imagem", itemTipo: "livre", destinoClique: "whatsapp", itemLabel: "" });
+            setOpen(true);
+          }}>
+            <Sparkles className="h-4 w-4 mr-1" /> Gerar anúncio com IA
+          </Button>
+          <Button onClick={() => { setAutoGenerateAfterCreate(false); setSourceDraft(null); setForm({ ...EMPTY_FORM }); setOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nova campanha</Button>
+        </div>
       </div>
 
       <Card className="bg-muted/30">
@@ -541,6 +561,7 @@ export default function Ads() {
                         <Badge variant="outline" className="capitalize">{c.plataforma === "meta" ? "Meta" : "Google"}</Badge>
                         <Badge variant="outline" className="capitalize">{c.tipoAnuncio === "shopping" ? "Shopping" : c.tipoAnuncio === "imagem" ? "Imagem" : "Search/PMax (IA)"}</Badge>
                         <Badge variant="outline" className="capitalize">{c.modo === "unico" ? "Item único" : "Carrossel"}</Badge>
+                        {c.segmentacao?.origemInstagram && <Badge className="bg-pink-100 text-pink-800">Publicação do Instagram</Badge>}
                       </div>
                       {c.itemLabel && <p className="text-sm font-medium mt-1">Divulgando: {c.itemLabel}</p>}
                       <p className="text-sm text-muted-foreground mt-1">Orçamento diário: R$ {c.orcamentoDiario}</p>
@@ -742,7 +763,11 @@ export default function Ads() {
             )}
 
             {form.itemTipo === "livre" ? (
-              <p className="text-xs text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">Campanha institucional/de marca, sem vínculo com um item específico do estoque ou catálogo.</p>
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                <LabelTip tip="Explique em uma frase o produto, serviço, oferta ou mensagem que a IA deve transformar em anúncio.">O que você quer anunciar?</LabelTip>
+                <Input placeholder="Ex: orçamento gratuito de esquadrias de PVC para casas de alto padrão" value={form.itemLabel} onChange={(e) => setForm((f) => ({ ...f, itemLabel: e.target.value }))} />
+                <p className="text-xs text-muted-foreground">A IA combina esta orientação com o perfil real do negócio para gerar texto e imagem.</p>
+              </div>
             ) : form.modo === "unico" ? (
               <div>
                 <LabelTip tip={form.itemTipo === "landing_page" ? "Escolhe qual landing page gerada esse anúncio divulga." : "Encontra o item específico que o anúncio vai divulgar."}>

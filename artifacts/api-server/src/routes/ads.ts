@@ -13,6 +13,7 @@ import {
   businessProfilesTable,
   generatedSitesTable,
   contentGenerationsTable,
+  contentPublishedPostsTable,
 } from "@workspace/db";
 import type { AdCampaign } from "@workspace/db";
 import { logger } from "../lib/logger.js";
@@ -155,11 +156,29 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
     if (!sourceContent) return res.status(422).json({ error: "Conteúdo de origem não encontrado neste tenant" });
   }
 
+  let segmentacao = parsed.data.segmentacao ?? {};
+  const sourceVariationIndex = Number(req.body?.sourceVariationIndex);
+  if (parsed.data.contentGenerationId && Number.isInteger(sourceVariationIndex) && sourceVariationIndex >= 0) {
+    const [publishedPost] = await db
+      .select({ instagramMediaId: contentPublishedPostsTable.instagramMediaId })
+      .from(contentPublishedPostsTable)
+      .where(and(
+        eq(contentPublishedPostsTable.tenantId, tenantId),
+        eq(contentPublishedPostsTable.contentGenerationId, parsed.data.contentGenerationId),
+        eq(contentPublishedPostsTable.variationIndex, sourceVariationIndex),
+      ))
+      .orderBy(desc(contentPublishedPostsTable.publishedAt))
+      .limit(1);
+    if (publishedPost?.instagramMediaId) {
+      segmentacao = { ...segmentacao, origemInstagram: { mediaId: publishedPost.instagramMediaId, variationIndex: sourceVariationIndex, contentGenerationId: parsed.data.contentGenerationId } };
+    }
+  }
+
   // Código curto e único pra usar como utm_campaign em qualquer link de
   // divulgação dessa campanha (ver adAttribution.ts).
   const utmCode = `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
-  const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, utmCode }).returning();
+  const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, segmentacao, utmCode }).returning();
   let importedCreative = null;
   if (row && creativeDraft?.success) {
     const draft = creativeDraft.data;
