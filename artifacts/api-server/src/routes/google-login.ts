@@ -10,7 +10,7 @@ function googleConfig() {
   return {
     clientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() ?? "",
-    callbackUrl: process.env.GOOGLE_CALLBACK_URL?.trim() ?? "",
+    callbackUrl: process.env.GOOGLE_CALLBACK_URL?.trim() || (process.env.NODE_ENV === "production" ? "https://app.appvendorai.com/api/auth/google/callback" : ""),
   };
 }
 
@@ -71,7 +71,7 @@ router.get("/auth/google", (req: Request, res) => {
   const { clientId, clientSecret, callbackUrl } = googleConfig();
 
   if (!clientId || !clientSecret || !callbackUrl || !stateSecret()) {
-    req.log?.error("google-login: GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/JWT_SECRET ausentes");
+    req.log?.error("google-login: GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/JWT_SECRET ou callback OAuth ausentes");
     redirectWithError(res, "not_configured");
     return;
   }
