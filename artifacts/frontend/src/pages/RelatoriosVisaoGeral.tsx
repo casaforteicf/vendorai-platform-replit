@@ -8,6 +8,8 @@ import {
   getListDealsQueryKey,
   useListTenantLeads,
   getListTenantLeadsQueryKey,
+  useListPropostas,
+  getListPropostasQueryKey,
 } from "@workspace/api-client-react";
 import {
   BarChart3,
@@ -144,9 +146,13 @@ export default function RelatoriosVisaoGeral() {
   const { data: rawDeals = [], isLoading: loadingDeals } = useListDeals(tenantId, undefined, {
     query: { enabled: !!tenantId, queryKey: getListDealsQueryKey(tenantId) },
   });
+  const { data: rawPropostas = [], isLoading: loadingPropostas } = useListPropostas(tenantId, undefined, {
+    query: { enabled: !!tenantId, queryKey: getListPropostasQueryKey(tenantId) },
+  });
 
   const leads = rawLeads as any[];
   const deals = rawDeals as any[];
+  const propostas = rawPropostas as any[];
 
   const metrics = useMemo(() => {
     const activeLeads = leads.filter((lead) => !lead.excluidoEm);
@@ -179,6 +185,44 @@ export default function RelatoriosVisaoGeral() {
 
     const competitors = countValues(activeLeads.flatMap(extractCompetitors), 10);
 
+    // Ranking de produtos: somente propostas aceitas e itens ligados de forma
+    // explícita ao Catálogo por produtoId. Itens livres não são inferidos.
+    const acceptedProposals = propostas.filter((proposta) => proposta.status === "aceita");
+    const productMap = new Map<string, { produtoId: string; name: string; quantity: number; revenue: number; proposals: Set<string> }>();
+    let totalAcceptedItemLines = 0;
+    let linkedAcceptedItemLines = 0;
+    for (const proposta of acceptedProposals) {
+      const itens = Array.isArray(proposta.itens) ? proposta.itens : [];
+      for (const item of itens) {
+        totalAcceptedItemLines++;
+        if (!item?.produtoId) continue;
+        linkedAcceptedItemLines++;
+        const quantity = Number(item.quantidade ?? 0);
+        const unit = Number(item.valorUnitario ?? 0);
+        const current = productMap.get(item.produtoId) ?? {
+          produtoId: item.produtoId,
+          name: normalizeText(item.nome) ?? "Produto sem nome",
+          quantity: 0,
+          revenue: 0,
+          proposals: new Set<string>(),
+        };
+        current.quantity += Number.isFinite(quantity) ? quantity : 0;
+        current.revenue += Number.isFinite(quantity * unit) ? quantity * unit : 0;
+        if (proposta.id) current.proposals.add(String(proposta.id));
+        productMap.set(item.produtoId, current);
+      }
+    }
+    const productRanking = Array.from(productMap.values()).map((item) => ({
+      produtoId: item.produtoId,
+      name: item.name,
+      quantity: item.quantity,
+      revenue: item.revenue,
+      proposals: item.proposals.size,
+    }));
+    const bestProducts = [...productRanking].sort((a, b) => b.revenue - a.revenue || b.quantity - a.quantity).slice(0, 5);
+    const worstProducts = [...productRanking].sort((a, b) => a.revenue - b.revenue || a.quantity - b.quantity).slice(0, 5);
+    const productCoverage = totalAcceptedItemLines ? (linkedAcceptedItemLines / totalAcceptedItemLines) * 100 : 0;
+
     const profiledLeads = activeLeads.filter((lead) =>
       !!lead.genero || !!lead.dataNascimento || !!lead.representanteProfissao || !!extractLocality(lead)
     ).length;
@@ -207,13 +251,19 @@ export default function RelatoriosVisaoGeral() {
       lossReasons,
       churned,
       competitors,
+      acceptedProposals,
+      bestProducts,
+      worstProducts,
+      linkedAcceptedItemLines,
+      totalAcceptedItemLines,
+      productCoverage,
       profileCoverage,
       marketingCoverage,
       financialCoverage,
     };
-  }, [leads, deals]);
+  }, [leads, deals, propostas]);
 
-  const loading = loadingLeads || loadingDeals;
+  const loading = loadingLeads || loadingDeals || loadingPropostas;
 
   return (
     <div className="space-y-6">
@@ -284,7 +334,40 @@ export default function RelatoriosVisaoGeral() {
                 <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Perdidos</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{metrics.lostDeals.length}</div></CardContent></Card>
                 <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Receita dos ganhos</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{money(metrics.revenue)}</div></CardContent></Card>
               </div>
-              <Card className="border-dashed"><CardHeader><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Melhor e pior produto</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Não calculado por aproximação. A tabela de negócios usada neste relatório não possui vínculo confiável e universal com itens vendidos. O VendorAI só deve classificar produtos quando houver atribuição real por item/pedido/proposta.</p></CardContent></Card>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Propostas aceitas</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{metrics.acceptedProposals.length}</div></CardContent></Card>
+                <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Itens ligados ao Catálogo</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{metrics.linkedAcceptedItemLines}</div><p className="text-xs text-muted-foreground mt-1">de {metrics.totalAcceptedItemLines} linhas aceitas</p></CardContent></Card>
+                <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Cobertura do ranking</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{metrics.totalAcceptedItemLines ? percent(metrics.productCoverage) : "—"}</div><p className="text-xs text-muted-foreground mt-1">somente produtoId real</p></CardContent></Card>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4 text-emerald-600" /> Melhores produtos vendidos</CardTitle></CardHeader>
+                  <CardContent>
+                    {metrics.bestProducts.length === 0 ? <p className="text-sm text-muted-foreground">Ainda não há itens de Catálogo em propostas aceitas.</p> : (
+                      <div className="space-y-3">{metrics.bestProducts.map((product, index) => (
+                        <div key={product.produtoId} className="flex items-center justify-between gap-3 border-b pb-2 last:border-0">
+                          <div className="min-w-0"><p className="text-sm font-medium truncate">{index + 1}. {product.name}</p><p className="text-xs text-muted-foreground">{product.quantity.toLocaleString("pt-BR")} un. · {product.proposals} proposta(s)</p></div>
+                          <strong className="text-sm tabular-nums shrink-0">{money(product.revenue)}</strong>
+                        </div>
+                      ))}</div>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader><CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" /> Menor desempenho entre vendidos</CardTitle></CardHeader>
+                  <CardContent>
+                    {metrics.worstProducts.length === 0 ? <p className="text-sm text-muted-foreground">Ainda não há itens de Catálogo em propostas aceitas.</p> : (
+                      <div className="space-y-3">{metrics.worstProducts.map((product) => (
+                        <div key={product.produtoId} className="flex items-center justify-between gap-3 border-b pb-2 last:border-0">
+                          <div className="min-w-0"><p className="text-sm font-medium truncate">{product.name}</p><p className="text-xs text-muted-foreground">{product.quantity.toLocaleString("pt-BR")} un. · {product.proposals} proposta(s)</p></div>
+                          <strong className="text-sm tabular-nums shrink-0">{money(product.revenue)}</strong>
+                        </div>
+                      ))}</div>
+                    )}
+                    <p className="text-[11px] text-muted-foreground mt-4">Ranking por receita de itens vinculados em propostas aceitas. Itens livres e sem produtoId são excluídos.</p>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             <TabsContent value="marketing" className="space-y-4">
