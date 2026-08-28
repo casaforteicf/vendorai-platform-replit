@@ -17,7 +17,7 @@ import {
   MapPin,
   Megaphone,
   AlertTriangle,
-  BriefcaseBusiness,
+  Briefcase,
   Database,
   TrendingUp,
   UserRound,
@@ -179,10 +179,10 @@ export default function RelatoriosVisaoGeral() {
 
     const competitors = countValues(activeLeads.flatMap(extractCompetitors), 10);
 
-    const profileFields = activeLeads.reduce((sum, lead) => {
-      return sum + Number(!!lead.genero || !!lead.dataNascimento || !!lead.tipoPessoa || !!lead.representanteProfissao || !!extractLocality(lead));
-    }, 0);
-    const profileCoverage = activeLeads.length ? (profileFields / activeLeads.length) * 100 : 0;
+    const profiledLeads = activeLeads.filter((lead) =>
+      !!lead.genero || !!lead.dataNascimento || !!lead.representanteProfissao || !!extractLocality(lead)
+    ).length;
+    const profileCoverage = activeLeads.length ? (profiledLeads / activeLeads.length) * 100 : 0;
     const marketingCoverage = activeLeads.length ? (activeLeads.filter((lead) => !!lead.source || !!lead.adCampaignId).length / activeLeads.length) * 100 : 0;
     const financialCoverage = activeLeads.length ? (activeLeads.filter((lead) => !!lead.orcamento || !!lead.dadosPj?.faturamentoEstimado || Number(lead.limiteCredito ?? 0) > 0).length / activeLeads.length) * 100 : 0;
 
@@ -243,7 +243,7 @@ export default function RelatoriosVisaoGeral() {
           <Card className="border-dashed">
             <CardHeader className="pb-3"><CardTitle className="text-sm flex items-center gap-2"><Database className="h-4 w-4" /> Cobertura dos dados</CardTitle></CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-3">
-              <div><div className="flex justify-between text-sm"><span>Perfil/demografia</span><strong>{percent(Math.min(100, metrics.profileCoverage))}</strong></div><p className="text-xs text-muted-foreground mt-1">gênero, idade, tipo, profissão ou localidade informados</p></div>
+              <div><div className="flex justify-between text-sm"><span>Perfil/demografia</span><strong>{percent(metrics.profileCoverage)}</strong></div><p className="text-xs text-muted-foreground mt-1">gênero, idade, tipo, profissão ou localidade informados</p></div>
               <div><div className="flex justify-between text-sm"><span>Financeiro informado</span><strong>{percent(metrics.financialCoverage)}</strong></div><p className="text-xs text-muted-foreground mt-1">orçamento, faturamento PJ ou limite de crédito</p></div>
               <div><div className="flex justify-between text-sm"><span>Atribuição de marketing</span><strong>{percent(metrics.marketingCoverage)}</strong></div><p className="text-xs text-muted-foreground mt-1">origem e/ou campanha registrada</p></div>
             </CardContent>
@@ -263,7 +263,7 @@ export default function RelatoriosVisaoGeral() {
                 <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><UserRound className="h-4 w-4" /> Gênero informado</CardTitle></CardHeader><CardContent><DataList items={metrics.gender} empty="Nenhum gênero estruturado foi informado nos leads." /></CardContent></Card>
                 <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Faixa etária</CardTitle></CardHeader><CardContent><DataList items={metrics.age} empty="Nenhuma data de nascimento válida foi informada." /></CardContent></Card>
                 <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4" /> Pessoa física / jurídica</CardTitle></CardHeader><CardContent><DataList items={metrics.personType} empty="Nenhum tipo de pessoa estruturado disponível." /></CardContent></Card>
-                <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><BriefcaseBusiness className="h-4 w-4" /> Profissão / ocupação</CardTitle></CardHeader><CardContent><DataList items={metrics.professions} empty="Nenhuma profissão estruturada foi registrada." /></CardContent></Card>
+                <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><Briefcase className="h-4 w-4" /> Profissão / ocupação</CardTitle></CardHeader><CardContent><DataList items={metrics.professions} empty="Nenhuma profissão estruturada foi registrada." /></CardContent></Card>
                 <Card><CardHeader><CardTitle className="text-base flex items-center gap-2"><MapPin className="h-4 w-4" /> Localidade estruturada</CardTitle></CardHeader><CardContent><DataList items={metrics.localities} empty="Não há cidade/município estruturado em metadata ou discoveryData. Endereços livres não são inferidos." /></CardContent></Card>
                 <Card><CardHeader><CardTitle className="text-base">Concorrentes mencionados</CardTitle></CardHeader><CardContent><DataList items={metrics.competitors} empty="Nenhum concorrente foi registrado de forma estruturada nos leads." /></CardContent></Card>
               </div>

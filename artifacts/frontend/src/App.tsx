@@ -97,6 +97,7 @@ const FAQ                 = lazy(() => import("@/pages/faq"));
 const Questionario       = lazy(() => import("@/pages/Questionario"));
 const Analytics          = lazy(() => import("@/pages/Analytics"));
 const AgentConfig        = lazy(() => import("@/pages/agents/AgentConfig"));
+const RelatoriosVisaoGeral = lazy(() => import("@/pages/RelatoriosVisaoGeral"));
 const RelatorioGanhosMes = lazy(() => import("@/pages/RelatorioGanhosMes"));
 const RelatorioTipoCliente = lazy(() => import("@/pages/RelatorioTipoCliente"));
 const RelatorioDores     = lazy(() => import("@/pages/RelatorioDores"));
@@ -739,6 +740,9 @@ function AppRoutes() {
         </Route>
         <Route path="/analytics">
           {() => <ProtectedRoute component={Analytics} />}
+        </Route>
+        <Route path="/relatorios">
+          {() => <ProtectedRoute component={RelatoriosVisaoGeral} />}
         </Route>
         <Route path="/relatorios/ganhos-mes">
           {() => <ProtectedRoute component={RelatorioGanhosMes} />}

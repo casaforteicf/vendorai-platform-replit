@@ -713,6 +713,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           {relatoriosOpen && (
             <div className="ml-6 mt-1 space-y-1">
               <Link
+                href="/relatorios"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/relatorios"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <BarChart3 className="h-3.5 w-3.5" /> Visão Geral
+              </Link>
+              <Link
                 href="/relatorios/ganhos-mes"
                 onClick={onNavigate}
                 className={cn(
