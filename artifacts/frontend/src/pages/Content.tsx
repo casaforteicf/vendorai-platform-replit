@@ -1216,7 +1216,7 @@ CTA: ${v.cta}` : ""}`];
                   : <Archive className="h-3 w-3" />}
               {saveMutation.isPending ? "Salvando..." : savedToLibrary ? "Salvo!" : "Salvar na Biblioteca"}
             </Button>
-            {contentId && type !== "reels" && (
+            {contentId && (
               <Button
                 variant="outline"
                 size="sm"
