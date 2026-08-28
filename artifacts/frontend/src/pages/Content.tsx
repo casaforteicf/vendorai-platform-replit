@@ -266,7 +266,7 @@ function FeedCard({
   onUploadClick?: () => void;
 }) {
   const displayCaption = editing ? editedCaption : v.caption;
-  const displayHashtagsStr = editing ? editedHashtags : v.hashtags.join(" ");
+  const displayHashtagsStr = editing ? editedHashtags : (v.hashtags ?? []).join(" ");
   const fullText = `${displayCaption}\n\n${displayHashtagsStr}`;
   const images = v.imageUrls ?? (v.imageUrl ? [v.imageUrl] : []);
 
@@ -455,7 +455,7 @@ function ReelsCard({ v }: { v: ReelsVariation }) {
   const scriptText = [
     `🎬 ${v.title}`,
     "",
-    ...v.scenes.map((s, i) => `Cena ${i + 1} (${s.duracao})\nVisual: ${s.visual}\nFala: ${s.fala}`),
+    ...(v.scenes ?? []).map((s, i) => `Cena ${i + 1} (${s.duracao})\nVisual: ${s.visual}\nFala: ${s.fala}`),
     "",
     `🎵 Trilha sugerida: ${v.audioSuggestion}`,
     `📢 CTA: ${v.cta}`,
@@ -475,7 +475,7 @@ function ReelsCard({ v }: { v: ReelsVariation }) {
         />
       )}
       <div className="space-y-2">
-        {v.scenes.map((scene, i) => (
+        {(v.scenes ?? []).map((scene, i) => (
           <div key={i} className="border rounded-md p-3 bg-muted/30 text-sm space-y-1">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-xs font-mono">Cena {i + 1}</Badge>
@@ -999,7 +999,7 @@ function VariationCard({
     if (!hasEdits) return undefined;
     if (type === "feed") {
       const v = displayVariation as FeedVariation;
-      return `${v.caption}\n\n${v.hashtags.join(" ")}`;
+      return `${v.caption}\n\n${(v.hashtags ?? []).join(" ")}`;
     }
     return undefined;
   })();
@@ -1016,9 +1016,9 @@ function VariationCard({
     if (type === "feed") {
       const v = displayVariation as FeedVariation;
       headlines = [(theme || v.caption || "Conteúdo patrocinado").slice(0, 80)];
-      descriptions = [`${v.caption}${v.hashtags.length ? `
+      descriptions = [`${v.caption}${(v.hashtags?.length ?? 0) ? `
 
-${v.hashtags.join(" ")}` : ""}`];
+${(v.hashtags ?? []).join(" ")}` : ""}`];
       imagens = v.imageUrls?.length ? v.imageUrls : v.imageUrl ? [v.imageUrl] : [];
     } else if (type === "stories") {
       const v = displayVariation as StoriesVariation;
@@ -1031,7 +1031,7 @@ CTA: ${v.cta}` : ""}`];
       const v = displayVariation as ReelsVariation;
       headlines = [(v.title || theme || "Reel patrocinado").slice(0, 80)];
       descriptions = [
-        [...v.scenes.map((scene) => scene.fala).filter(Boolean), v.cta].filter(Boolean).join(" ").slice(0, 4000),
+        [...(v.scenes ?? []).map((scene) => scene.fala).filter(Boolean), v.cta].filter(Boolean).join(" ").slice(0, 4000),
       ];
     }
 
@@ -1051,7 +1051,7 @@ CTA: ${v.cta}` : ""}`];
     if (type === "feed") {
       const v = displayVariation as FeedVariation;
       setEditCaption(v.caption);
-      setEditHashtags(v.hashtags.join(" "));
+      setEditHashtags((v.hashtags ?? []).join(" "));
     } else if (type === "stories") {
       const v = displayVariation as StoriesVariation;
       setEditText(v.text);
