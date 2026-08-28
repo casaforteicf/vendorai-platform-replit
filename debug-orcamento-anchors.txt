@@ -1,11 +1,8 @@
-config_start=True
-config_end=True
-config_call=True
-backend_select=True
-backend_return=True
-guidance_start=True
-guidance_end=True
-prompt_line=True
-lead_profile=True
-lead_body=True
-lead_header=True
+start=243587
+// ── Contract Template Section=[240319]
+const CONTRACT_VARIABLES = [=[240402]
+function ContractTemplateSection=[248809]
+function ContractSettingsSection=[257777]
+function ProposalTemplateSection=[243670]
+// ── Main Page=[]
+after_start=xt className="h-4 w-4 text-primary" />\n          Modelo de Contrato\n        </h2>\n        <p className="text-sm text-muted-foreground mt-0.5">\n          Faça upload de um arquivo HTML com as variáveis do sistema. O modelo será usado ao gerar contratos automaticamente via ZapSign.\n        </p>\n      </div>\n\n      {templateQuery.isLoading ? (\n        <div className="h-16 w-full animate-pulse bg-muted rounded" />\n      ) : templateQuery.data?.hasTemplate ? (\n        <div className="rounded-lg bg-violet-50 border border-violet-200 p-4 flex items-start gap-3">\n          <FileText className="h-5 w-5 text-violet-600 mt-0.5 shrink-0" />\n          <div className="flex-1 min-w-0">\n            <p className="text-sm font-medium text-violet-800">Modelo ativo</p>\n            <p className="text-xs text-violet-600 truncate">{templateQuery.data.templateName}</p>\n          </div>\n          <div className="flex items-center gap-2 shrink-0">\n            <Button\n              variant="outline"\n              size="sm"\n              className="gap-1.5 text-xs"\n              onClick={() => fileInputRef.current?.click()}\n              disabled={uploading}\n            >\n              <Upload className="h-3.5 w-3.5" />\n              Trocar\n            </Button>\n            <Button\n              variant="outline"\n              size="sm"\n              className="gap-1.5 text-xs text-destructive hover:bg-red-50"\n              onClick={() => deleteMutation.mutate()}\n              disabled={deleteMutation.isPending}\n            >\n              <X className="h-3.5 w-3.5" />\n              Remover\n            </Button>\n          </div>\n        </div>\n      ) : (\n        <div className="rounded-lg border-2 border-dashed border-border p-6 text-center space-y-3">\n          <div className="flex justify-center">\n            <div className="rounded-full bg-muted p-3">\n              <Upload className="h-5 w-5 text-muted-foreground" />\n            </div>\n          </div>\n          <div>\n            <p className="text-sm font-medium">Nenhum modelo carregado</p>\n            <p className="text-xs text-muted-foreground">O sistema usará o modelo padrão até você enviar o seu.</p>\n          </div>\n          <div className="flex items-center justify-center gap-2 flex-wrap">\n            <Button\n              variant="outline"\n              size="sm"\n              className="gap-1.5"\n              onClick={() => fileInputRef.current?.click()}\n              disabled={uploading}\n            >\n              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}\n              {uploading ? "Enviando..." : "Enviar modelo HTML"}\n            </Button>\n            <Button\n              variant="ghost"\n              size="sm"\n              className="gap-1.5 text-muted-foreground"\n              onClick={downloadDefaultTemplate}\n            >\n              <Download className="h-3.5 w-3.5" />\n    
