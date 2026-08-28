@@ -57,7 +57,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
-  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao"]);
+  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao", "/faq"]);
   const isTenantAdmin = isEffectiveAdmin;
   const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin && !isTenantAdmin;
 
@@ -97,15 +97,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   });
   const MODULE_TO_HREFS: Record<string, string[]> = {
     dashboard:  ["/", "/trabalho"],
-    leads:      ["/leads", "/deals"],
+    leads:      ["/leads", "/leads/import-config", "/contacts-nonleads", "/deals", "/pipeline"],
     prospector: ["/app/prospector"],
     scheduler:  ["/agenda"],
     revenue:    ["/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline", "/scout/seguros/renovacoes"],
     analytics:  ["/analytics"],
     arch:       ["/arch", "/arch/projetos", "/arch/render", "/arch/catalogo", "/arch/marketplace"],
     obras:      ["/obras", "/insumos", "/composicoes"],
-    financeiro: ["/erp"],
-    settings:   ["/configuracoes"],
+    financeiro: ["/erp", "/erp/captura"],
+    settings:   ["/configuracoes", "/faq"],
+    campaigns:  ["/campanhas-nova", "/marketing", "/marketing/campanhas", "/marketing/conteudo"],
     varejo:       ["/varejo/produtos", "/varejo/colecoes", "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade", "/varejo/combos"],
     supermercado: ["/supermercado", "/supermercado/produtos", "/supermercado/pedidos", "/supermercado/campanhas", "/supermercado/config"],
     beauty:       ["/beauty", "/beauty/agenda", "/beauty/servicos", "/beauty/profissionais"],
@@ -113,7 +114,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     knowledge_graph: ["/vkg"],
     vendor_brain:    ["/brain"],
     content_autopilot: ["/content-autopilot"],
-    // sdr, content, campaigns, churn: sem tela própria no menu hoje —
+    // sdr, content, churn: sem tela própria no menu hoje —
     // desligar não esconde nada (não são páginas, são só flags de catálogo)
   };
   const disabledHrefs = new Set(
@@ -134,6 +135,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isSalao   = effectiveVertical === "Salão de Beleza" || effectiveVertical === "Barbearia" || effectiveVertical === "Pet Shop (Varejo)";
   const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
   const isClinica = effectiveVertical === "Clínica";
+  const isServicos = effectiveVertical === "Serviços";
+  const isImoveis = effectiveVertical === "Imóveis";
+  const isFretes = effectiveVertical === "Fretes";
+  const isVeiculos = effectiveVertical === "Veículos";
   const normalizedVertical = (effectiveVertical ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -144,9 +149,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Central de Trabalho", href: "/trabalho", icon: ClipboardCheck, sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
+    { name: "Importar Leads", href: "/leads/import-config", icon: FileText, sellerHidden: false, section: "crm", fn: ["vendedor", "administrador", "outro"] as UserFunction[] },
     { name: "Prospector",    href: "/app/prospector", icon: Search,         sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
-    { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm", fn: ["vendedor", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Pipeline / Negócios", href: "/deals", icon: KanbanSquare, sellerHidden: false, section: "crm", fn: ["vendedor", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
+    { name: "Contatos não-leads", href: "/contacts-nonleads", icon: Users, sellerHidden: true, section: "crm", fn: ["suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Operação Praça.ai", href: "/entregas-praca", icon: Truck, sellerHidden: false, section: "crm", fn: ["entrega"] as UserFunction[] },
     { name: "Gestão de Entregas", href: "/entregas", icon: Truck, sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -157,14 +164,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Content Autopilot", href: "/content-autopilot", icon: Sparkles, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
+    { name: "Marketing",     href: "/marketing",      icon: Megaphone,      sellerHidden: true, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Campanhas",     href: "/campanhas-nova", icon: Megaphone,      sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Captura ERP",   href: "/erp/captura",   icon: Camera,          sellerHidden: true, section: "crm", fn: ["financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Base de Conhecimento", href: "/base-conhecimento", icon: BookOpen, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "FAQ / Ajuda",   href: "/faq",           icon: HelpCircle,      sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     // "Stories" agora é um item dentro do dropdown "Conteúdo" (renomeado
     // "Stories Praça.ai"), não mais um item de topo — ver bloco do
     // dropdown mais abaixo.
@@ -226,11 +236,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Core routes plus its explicit allowlist; new routes remain hidden until
   // approved for that vertical.
   const CORE_VERTICAL_HREFS = [
-    "/", "/trabalho", "/leads", "/app/prospector", "/deals", "/comissoes",
-    "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas", "/campanhas-nova",
-    "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes",
+    "/", "/trabalho", "/leads", "/leads/import-config", "/contacts-nonleads", "/app/prospector", "/deals", "/comissoes",
+    "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas", "/campanhas-nova", "/marketing",
+    "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes", "/faq",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
-    "/praca-perguntas", "/erp", "/ads",
+    "/praca-perguntas", "/erp", "/erp/captura", "/ads",
   ];
 
   const verticalHrefAllowlists: Record<string, Set<string>> = {
@@ -488,7 +498,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     if (activeVerticalAllowlist && !activeVerticalAllowlist.has(item.href)) return false;
     if (disabledHrefs.has(item.href)) return false;
     if (isSeller && item.sellerHidden) return false;
-    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "farmacia", "inteligencia", "hub"];
+    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "farmacia", "servicos", "imoveis", "fretes", "veiculos", "inteligencia", "hub"];
     if (!knownSections.includes(item.section)) return false;
     if (item.section === "construcao" && !isConstrucao) return false;
     if (item.section === "varejo" && !isVarejo) return false;
@@ -496,6 +506,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     if (item.section === "salao" && !isSalao) return false;
     if (item.section === "clinica" && !isClinica) return false;
     if (item.section === "farmacia" && !isFarmacia) return false;
+    if (item.section === "servicos" && !isServicos) return false;
+    if (item.section === "imoveis" && !isImoveis) return false;
+    if (item.section === "fretes" && !isFretes) return false;
+    if (item.section === "veiculos" && !isVeiculos) return false;
     const isAdmin = isSuperAdmin || isTenantAdmin;
     if (isAdmin) return true;
     return userFunction ? item.fn.includes(userFunction) : true;
@@ -532,6 +546,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const salaoNav       = navigation.filter((i) => i.section === "salao");
   const clinicaNav     = navigation.filter((i) => i.section === "clinica");
   const farmaciaNav    = navigation.filter((i) => i.section === "farmacia");
+  const servicosNav    = navigation.filter((i) => i.section === "servicos");
+  const imoveisNav     = navigation.filter((i) => i.section === "imoveis");
+  const fretesNav      = navigation.filter((i) => i.section === "fretes");
+  const veiculosNav    = navigation.filter((i) => i.section === "veiculos");
   const inteligenciaNav= navigation.filter((i) => i.section === "inteligencia");
   const hubNav         = navigation.filter((i) => i.section === "hub");
 
@@ -821,6 +839,46 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               Farmácia
             </p>
             {farmaciaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {servicosNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <Wrench className="h-3 w-3" />
+              Serviços
+            </p>
+            {servicosNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {imoveisNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <Home className="h-3 w-3" />
+              Imóveis
+            </p>
+            {imoveisNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {fretesNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <Truck className="h-3 w-3" />
+              Fretes
+            </p>
+            {fretesNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {veiculosNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <Car className="h-3 w-3" />
+              Veículos
+            </p>
+            {veiculosNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
           </div>
         )}
 
