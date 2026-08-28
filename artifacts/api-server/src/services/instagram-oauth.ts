@@ -36,7 +36,9 @@ function getRedirectUri(host?: string): string {
 const META_OAUTH_BASE = "https://www.instagram.com/oauth/authorize";
 const META_TOKEN_BASE = "https://api.instagram.com/oauth/access_token";
 const META_GRAPH_VERSION = "v26.0";
-const META_LONG_LIVED_BASE = `https://graph.instagram.com/${META_GRAPH_VERSION}/access_token`;
+// A troca de token do Instagram usa o endpoint próprio /access_token,
+// sem prefixo de versão. A versão v26 continua nas chamadas de dados.
+const META_LONG_LIVED_BASE = "https://graph.instagram.com/access_token";
 const META_ACCOUNTS_BASE = "https://graph.facebook.com/v18.0/me/accounts";
 const META_PAGE_BASE = "https://graph.facebook.com/v18.0";
 
@@ -176,7 +178,7 @@ export async function exchangeShortCodeForToken(code: string, host?: string): Pr
   if (!res.ok) {
     const body = await res.text();
     logger.error({ status: res.status, body }, "Falha na troca de code por token");
-    throw new Error(`Meta token exchange failed: ${res.status} ${body}`);
+    throw new Error(`Instagram short token exchange failed: ${res.status} ${body}`);
   }
 
   const short = (await res.json()) as TokenExchangeResponse;
@@ -195,7 +197,7 @@ async function exchangeForLongLivedToken(shortToken: string): Promise<LongLivedT
   if (!res.ok) {
     const body = await res.text();
     logger.error({ status: res.status, body }, "Falha ao converter para long-lived token");
-    throw new Error(`Long-lived token exchange failed: ${res.status} ${body}`);
+    throw new Error(`Instagram long-lived token exchange failed: ${res.status} ${body}`);
   }
 
   const data = (await res.json()) as LongLivedTokenResponse;
