@@ -1,0 +1,59 @@
+name: Apply real product reports
+
+on:
+  push:
+    branches: [feat-relatorios-produtos-reais]
+    paths:
+      - '.github/workflows/apply-relatorios-produtos.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat-relatorios-produtos-reais
+      - name: Add product ranking from accepted proposals
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('artifacts/frontend/src/pages/RelatoriosVisaoGeral.tsx')
+          s=p.read_text()
+
+          old='''  useListTenantLeads,\n  getListTenantLeadsQueryKey,\n} from "@workspace/api-client-react";'''
+          new='''  useListTenantLeads,\n  getListTenantLeadsQueryKey,\n  useListPropostas,\n  getListPropostasQueryKey,\n} from "@workspace/api-client-react";'''
+          assert old in s
+          s=s.replace(old,new,1)
+
+          old='''  const { data: rawDeals = [], isLoading: loadingDeals } = useListDeals(tenantId, undefined, {\n    query: { enabled: !!tenantId, queryKey: getListDealsQueryKey(tenantId) },\n  });\n\n  const leads = rawLeads as any[];\n  const deals = rawDeals as any[];\n'''
+          new='''  const { data: rawDeals = [], isLoading: loadingDeals } = useListDeals(tenantId, undefined, {\n    query: { enabled: !!tenantId, queryKey: getListDealsQueryKey(tenantId) },\n  });\n  const { data: rawPropostas = [], isLoading: loadingPropostas } = useListPropostas(tenantId, undefined, {\n    query: { enabled: !!tenantId, queryKey: getListPropostasQueryKey(tenantId) },\n  });\n\n  const leads = rawLeads as any[];\n  const deals = rawDeals as any[];\n  const propostas = rawPropostas as any[];\n'''
+          assert old in s
+          s=s.replace(old,new,1)
+
+          marker='''    const competitors = countValues(activeLeads.flatMap(extractCompetitors), 10);\n\n'''
+          product_calc='''    const competitors = countValues(activeLeads.flatMap(extractCompetitors), 10);\n\n    // Ranking de produtos: somente propostas aceitas e itens ligados de forma\n    // explícita ao Catálogo por produtoId. Itens livres não são inferidos.\n    const acceptedProposals = propostas.filter((proposta) => proposta.status === "aceita");\n    const productMap = new Map<string, { produtoId: string; name: string; quantity: number; revenue: number; proposals: Set<string> }>();\n    let totalAcceptedItemLines = 0;\n    let linkedAcceptedItemLines = 0;\n    for (const proposta of acceptedProposals) {\n      const itens = Array.isArray(proposta.itens) ? proposta.itens : [];\n      for (const item of itens) {\n        totalAcceptedItemLines++;\n        if (!item?.produtoId) continue;\n        linkedAcceptedItemLines++;\n        const quantity = Number(item.quantidade ?? 0);\n        const unit = Number(item.valorUnitario ?? 0);\n        const current = productMap.get(item.produtoId) ?? {\n          produtoId: item.produtoId,\n          name: normalizeText(item.nome) ?? "Produto sem nome",\n          quantity: 0,\n          revenue: 0,\n          proposals: new Set<string>(),\n        };\n        current.quantity += Number.isFinite(quantity) ? quantity : 0;\n        current.revenue += Number.isFinite(quantity * unit) ? quantity * unit : 0;\n        if (proposta.id) current.proposals.add(String(proposta.id));\n        productMap.set(item.produtoId, current);\n      }\n    }\n    const productRanking = Array.from(productMap.values()).map((item) => ({\n      produtoId: item.produtoId,\n      name: item.name,\n      quantity: item.quantity,\n      revenue: item.revenue,\n      proposals: item.proposals.size,\n    }));\n    const bestProducts = [...productRanking].sort((a, b) => b.revenue - a.revenue || b.quantity - a.quantity).slice(0, 5);\n    const worstProducts = [...productRanking].sort((a, b) => a.revenue - b.revenue || a.quantity - b.quantity).slice(0, 5);\n    const productCoverage = totalAcceptedItemLines ? (linkedAcceptedItemLines / totalAcceptedItemLines) * 100 : 0;\n\n'''
+          assert marker in s
+          s=s.replace(marker,product_calc,1)
+
+          old='''      competitors,\n      profileCoverage,\n      marketingCoverage,\n      financialCoverage,\n    };\n  }, [leads, deals]);\n\n  const loading = loadingLeads || loadingDeals;\n'''
+          new='''      competitors,\n      acceptedProposals,\n      bestProducts,\n      worstProducts,\n      linkedAcceptedItemLines,\n      totalAcceptedItemLines,\n      productCoverage,\n      profileCoverage,\n      marketingCoverage,\n      financialCoverage,\n    };\n  }, [leads, deals, propostas]);\n\n  const loading = loadingLeads || loadingDeals || loadingPropostas;\n'''
+          assert old in s
+          s=s.replace(old,new,1)
+
+          old='''              <Card className="border-dashed"><CardHeader><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Melhor e pior produto</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">Não calculado por aproximação. A tabela de negócios usada neste relatório não possui vínculo confiável e universal com itens vendidos. O VendorAI só deve classificar produtos quando houver atribuição real por item/pedido/proposta.</p></CardContent></Card>\n'''
+          new='''              <div className="grid gap-4 md:grid-cols-3">\n                <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Propostas aceitas</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{metrics.acceptedProposals.length}</div></CardContent></Card>\n                <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Itens ligados ao Catálogo</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{metrics.linkedAcceptedItemLines}</div><p className="text-xs text-muted-foreground mt-1">de {metrics.totalAcceptedItemLines} linhas aceitas</p></CardContent></Card>\n                <Card><CardHeader><CardTitle className="text-sm text-muted-foreground">Cobertura do ranking</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">{metrics.totalAcceptedItemLines ? percent(metrics.productCoverage) : "—"}</div><p className="text-xs text-muted-foreground mt-1">somente produtoId real</p></CardContent></Card>\n              </div>\n              <div className="grid gap-4 lg:grid-cols-2">\n                <Card>\n                  <CardHeader><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4 text-emerald-600" /> Melhores produtos vendidos</CardTitle></CardHeader>\n                  <CardContent>\n                    {metrics.bestProducts.length === 0 ? <p className="text-sm text-muted-foreground">Ainda não há itens de Catálogo em propostas aceitas.</p> : (\n                      <div className="space-y-3">{metrics.bestProducts.map((product, index) => (\n                        <div key={product.produtoId} className="flex items-center justify-between gap-3 border-b pb-2 last:border-0">\n                          <div className="min-w-0"><p className="text-sm font-medium truncate">{index + 1}. {product.name}</p><p className="text-xs text-muted-foreground">{product.quantity.toLocaleString("pt-BR")} un. · {product.proposals} proposta(s)</p></div>\n                          <strong className="text-sm tabular-nums shrink-0">{money(product.revenue)}</strong>\n                        </div>\n                      ))}</div>\n                    )}\n                  </CardContent>\n                </Card>\n                <Card>\n                  <CardHeader><CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" /> Menor desempenho entre vendidos</CardTitle></CardHeader>\n                  <CardContent>\n                    {metrics.worstProducts.length === 0 ? <p className="text-sm text-muted-foreground">Ainda não há itens de Catálogo em propostas aceitas.</p> : (\n                      <div className="space-y-3">{metrics.worstProducts.map((product) => (\n                        <div key={product.produtoId} className="flex items-center justify-between gap-3 border-b pb-2 last:border-0">\n                          <div className="min-w-0"><p className="text-sm font-medium truncate">{product.name}</p><p className="text-xs text-muted-foreground">{product.quantity.toLocaleString("pt-BR")} un. · {product.proposals} proposta(s)</p></div>\n                          <strong className="text-sm tabular-nums shrink-0">{money(product.revenue)}</strong>\n                        </div>\n                      ))}</div>\n                    )}\n                    <p className="text-[11px] text-muted-foreground mt-4">Ranking por receita de itens vinculados em propostas aceitas. Itens livres e sem produtoId são excluídos.</p>\n                  </CardContent>\n                </Card>\n              </div>\n'''
+          assert old in s
+          s=s.replace(old,new,1)
+
+          p.write_text(s)
+          PY
+      - name: Commit product change
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/frontend/src/pages/RelatoriosVisaoGeral.tsx
+          git commit -m 'feat: ranking real de produtos vendidos nos relatórios'
+          git push origin HEAD:feat-relatorios-produtos-reais
