@@ -222,17 +222,29 @@ const AGENT_LABELS: Record<AgentKey, { label: string; description: string }> = {
 const AGENT_KEYS: AgentKey[] = ["sdr", "closer", "followup", "reactivation", "scheduler", "service", "onboarding", "relacionamento"];
 
 const VERTICAIS = [
-  { value: "Farmácia",       label: "Farmácia" },
-  { value: "tecnologia",     label: "Tecnologia" },
-  { value: "saude",          label: "Saúde" },
-  { value: "educacao",       label: "Educação" },
-  { value: "financeiro",     label: "Financeiro" },
-  { value: "varejo",         label: "Varejo" },
-  { value: "imobiliario",    label: "Imobiliário" },
-  { value: "servicos",       label: "Serviços" },
-  { value: "industria",      label: "Indústria" },
-  { value: "outro",          label: "Outro" },
-];
+  "Farmácia",
+  "Tecnologia",
+  "Saúde",
+  "Educação",
+  "Financeiro",
+  "Varejo",
+  "Imobiliário",
+  "Serviços",
+  "Indústria",
+  "Construção & Reforma",
+  "Material de Construção — Varejo",
+  "Distribuidora de Materiais de Construção",
+  "Distribuidora de Peças",
+  "Distribuidora de Alimentos",
+  "Máquinas e Insumos",
+  "Loja de Piscina",
+  "Automotivo",
+  "Supermercado",
+  "Restaurante",
+  "Salão de Beleza",
+  "Clínica",
+  "Pet Shop (Varejo)",
+] as const;
 
 // ─── Autonomy Status ──────────────────────────────────────────────────────────
 
@@ -2490,20 +2502,23 @@ export default function Configuracoes() {
                       name="vertical"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Vertical / Segmento</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || "__none__"}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecionar segmento..." />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="__none__">Não informado</SelectItem>
-                              {VERTICAIS.map((v) => (
-                                <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FormLabel>Vertical / segmento</FormLabel>
+                          <FormControl>
+                            <Input
+                              list="vendorai-vertical-options"
+                              placeholder="Selecione uma sugestão ou digite sua vertical"
+                              {...field}
+                              value={field.value ?? ""}
+                            />
+                          </FormControl>
+                          <datalist id="vendorai-vertical-options">
+                            {VERTICAIS.map((vertical) => (
+                              <option key={vertical} value={vertical} />
+                            ))}
+                          </datalist>
+                          <p className="text-xs text-muted-foreground">
+                            Você pode usar uma das sugestões ou cadastrar livremente um novo segmento. Verticais sem layout especializado usam o CRM padrão.
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}

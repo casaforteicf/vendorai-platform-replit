@@ -53,12 +53,13 @@ export default function ContentAutopilot() {
   const [siteUrl, setSiteUrl] = useState("");
   const [seedInput, setSeedInput] = useState("");
 
-  const { data, isLoading } = useQuery<{ config: Config | null }>({
+  const { data, isLoading } = useQuery<{ config: Config | null; dataForSeoConfigured: boolean }>({
     queryKey: ["content-autopilot-config", tenantId],
     queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { headers: authHeaders() }).then((r) => r.json()),
     enabled: !!tenantId,
   });
   const config = data?.config;
+  const dataForSeoConfigured = data?.dataForSeoConfigured ?? false;
 
   const { data: keywordsData } = useQuery<{ keywords: Keyword[] }>({
     queryKey: ["content-autopilot-keywords", tenantId],
@@ -95,6 +96,26 @@ export default function ContentAutopilot() {
         .then((r) => { if (!r.ok) throw new Error("Erro ao analisar site"); return r.json(); }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] }); toast({ title: "Tom de marca extraído!" }); },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const runNowMutation = useMutation({
+    mutationFn: () =>
+      fetch(`/api/tenants/${tenantId}/content-autopilot/run-now`, { method: "POST", headers: authHeaders() })
+        .then(async (r) => {
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error((body as { error?: string }).error ?? "Erro ao executar o Autopilot");
+          return body as { artigosGerados: number; erros: string[] };
+        }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
+      qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] });
+      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
+      toast({
+        title: `Autopilot executado: ${res.artigosGerados} artigo${res.artigosGerados === 1 ? "" : "s"} gerado${res.artigosGerados === 1 ? "" : "s"}`,
+        description: res.erros?.length ? `${res.erros.length} item(ns) com erro — consulte os logs.` : undefined,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Erro ao executar Autopilot", description: e.message, variant: "destructive" }),
   });
 
   const researchMutation = useMutation({
@@ -194,6 +215,27 @@ export default function ContentAutopilot() {
                 />
               </div>
 
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+                <div className="flex items-center gap-2 text-xs">
+                  <Badge variant={dataForSeoConfigured ? "outline" : "destructive"}>
+                    DataForSEO {dataForSeoConfigured ? "conectado" : "não configurado"}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    {config?.ativo ? "Automação diária ativa" : "Automação diária pausada"}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runNowMutation.mutate()}
+                  disabled={!config?.ativo || runNowMutation.isPending}
+                >
+                  {runNowMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                  Executar agora
+                </Button>
+              </div>
+
               <div className="space-y-1.5">
                 <Label>URL do site</Label>
                 <div className="flex gap-2">
@@ -235,12 +277,17 @@ export default function ContentAutopilot() {
                 <Input placeholder="Termos separados por vírgula" value={seedInput} onChange={(e) => setSeedInput(e.target.value)} />
                 <Button
                   onClick={() => researchMutation.mutate(seedInput.split(",").map((s) => s.trim()).filter(Boolean))}
-                  disabled={!seedInput.trim() || researchMutation.isPending}
+                  disabled={!seedInput.trim() || researchMutation.isPending || !dataForSeoConfigured}
                 >
                   {researchMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
                   Pesquisar
                 </Button>
               </div>
+              {!dataForSeoConfigured && (
+                <p className="text-xs text-amber-600">
+                  Pesquisa de keywords indisponível até as credenciais DataForSEO serem configuradas pela plataforma.
+                </p>
+              )}
             </CardContent>
           </Card>
 
