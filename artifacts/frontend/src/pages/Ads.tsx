@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -175,6 +175,15 @@ interface AdCreative {
 
 interface ItemBusca { id: string; label: string; imagens?: string[] }
 
+interface ImportedContentDraft {
+  contentGenerationId: string;
+  variationIndex: number;
+  theme: string;
+  sourceType: string;
+  suggestedPlatform: "google" | "meta";
+  creativeDraft: { headlines: string[]; descriptions: string[]; imagens: string[] };
+}
+
 const STATUS_LABEL: Record<string, string> = {
   rascunho: "Rascunho",
   aguardando_conexao_plataforma: "Aguardando conexão",
@@ -207,6 +216,7 @@ const EMPTY_FORM = {
   remarketing: [] as string[], customerMatch: [] as string[], semelhantes: [] as string[],
   pausarAoInteresse: true, slaNegociacaoHoras: "48",
   imagemEscolhidaUrl: "" as string, // vazio = gera com IA; preenchido = usa essa foto real do item
+  contentGenerationId: "" as string,
 };
 
 // Taxonomia real do Google Ads pra segmentação demográfica — conjunto
@@ -232,6 +242,34 @@ export default function Ads() {
   const [reservationDecision, setReservationDecision] = useState<VehicleReservation | null>(null);
   const [decision, setDecision] = useState<"manter" | "avancar" | "perdido">("manter");
   const [justification, setJustification] = useState("");
+  const [sourceDraft, setSourceDraft] = useState<ImportedContentDraft | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("from") !== "content") return;
+    try {
+      const raw = sessionStorage.getItem("vendorai_ads_content_draft_v1");
+      if (!raw) return;
+      const draft = JSON.parse(raw) as ImportedContentDraft;
+      if (!draft.contentGenerationId || !draft.creativeDraft) return;
+      setSourceDraft(draft);
+      setForm({
+        ...EMPTY_FORM,
+        plataforma: draft.suggestedPlatform,
+        tipoAnuncio: draft.suggestedPlatform === "meta" ? "imagem" : "rsa_pmax",
+        itemTipo: "livre",
+        itemLabel: draft.theme || "Conteúdo do Marketing",
+        destinoClique: "whatsapp",
+        imagemEscolhidaUrl: draft.creativeDraft.imagens[0] ?? "",
+        contentGenerationId: draft.contentGenerationId,
+      });
+      setOpen(true);
+      sessionStorage.removeItem("vendorai_ads_content_draft_v1");
+      toast({ title: "Conteúdo carregado", description: "A variação escolhida já está anexada como criativo deste rascunho." });
+    } catch {
+      sessionStorage.removeItem("vendorai_ads_content_draft_v1");
+    }
+  }, []); // Executa só ao entrar em Anúncios vindo do gerador.
 
   const { data: campaigns = [], isLoading } = useQuery<AdCampaign[]>({
     queryKey: ["ad-campaigns", tenantId],
@@ -305,7 +343,8 @@ export default function Ads() {
         vertical: form.vertical || form.itemTipo,
         itemTipo: form.itemTipo,
         itemId: form.modo === "unico" && form.itemTipo !== "livre" ? form.itemId : null,
-        itemLabel: form.modo === "unico" && form.itemTipo !== "livre" ? form.itemLabel : null,
+        itemLabel: form.itemLabel || null,
+        contentGenerationId: form.contentGenerationId || null,
         categoriaFiltro: form.modo === "carrossel" ? form.categoriaFiltro : null,
         modo: form.modo,
         destinoClique: form.destinoClique,
@@ -320,6 +359,7 @@ export default function Ads() {
         pausarAoInteresse: form.itemTipo === "veiculo" && form.modo === "unico" ? form.pausarAoInteresse : false,
         slaNegociacaoHoras: Number(form.slaNegociacaoHoras || 48),
         imagemEscolhidaUrl: form.tipoAnuncio === "imagem" && form.imagemEscolhidaUrl ? form.imagemEscolhidaUrl : null,
+        creativeDraft: sourceDraft?.creativeDraft ?? null,
       };
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
@@ -342,9 +382,13 @@ export default function Ads() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
-      toast({ title: "Campanha criada", description: "Agora gere o criativo antes de aprovar." });
+      toast({
+        title: "Campanha criada",
+        description: sourceDraft ? "O conteúdo do Marketing foi anexado como criativo. Revise e aprove antes de publicar." : "Agora gere o criativo antes de aprovar.",
+      });
       setOpen(false);
       setForm({ ...EMPTY_FORM });
+      setSourceDraft(null);
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -620,6 +664,12 @@ export default function Ads() {
           <DialogHeader><DialogTitle>Nova campanha</DialogTitle></DialogHeader>
           <TooltipProvider delayDuration={300}>
           <div className="space-y-4">
+            {sourceDraft && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                <div className="flex items-center gap-2 font-medium"><Sparkles className="h-4 w-4 text-primary" />Conteúdo do Marketing carregado</div>
+                <p className="text-xs text-muted-foreground mt-1">{sourceDraft.theme} · variação {sourceDraft.variationIndex + 1}. O texto e a mídia escolhidos serão salvos como o primeiro criativo da campanha.</p>
+              </div>
+            )}
             <div>
               <LabelTip tip="Onde o anúncio vai rodar. Meta cobre Facebook e Instagram juntos.">Plataforma</LabelTip>
               <Select value={form.plataforma} onValueChange={(v) => setForm((f) => ({
@@ -644,7 +694,8 @@ export default function Ads() {
                 const itemTipo = v as ItemTipo;
                 // Destino do clique padrão muda de acordo com a origem escolhida.
                 const destinoClique: DestinoClique = itemTipo === "landing_page" ? "landing_page" : itemTipo === "livre" ? "whatsapp" : "produto";
-                setForm((f) => ({ ...f, itemTipo, itemId: "", itemLabel: "", destinoClique }));
+                setSourceDraft(null);
+                setForm((f) => ({ ...f, itemTipo, itemId: "", itemLabel: "", destinoClique, contentGenerationId: "" }));
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod/v4";
 import {
   db,
   adCampaignsTable,
@@ -11,6 +12,7 @@ import {
   vehicleAdReservationsTable,
   businessProfilesTable,
   generatedSitesTable,
+  contentGenerationsTable,
 } from "@workspace/db";
 import type { AdCampaign } from "@workspace/db";
 import { logger } from "../lib/logger.js";
@@ -23,6 +25,12 @@ import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, GoogleAdsPublis
 import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
 
 const router: IRouter = Router();
+
+const importedCreativeSchema = z.object({
+  headlines: z.array(z.string().min(1).max(500)).max(15).default([]),
+  descriptions: z.array(z.string().min(1).max(5000)).max(4).default([]),
+  imagens: z.array(z.string().min(1).max(4000)).max(10).default([]),
+});
 
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
@@ -53,6 +61,20 @@ async function buildResumoLivreOuLandingPage(campanha: AdCampaign, tenantId: str
   const [perfil] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
 
   const partes: string[] = [];
+
+  if (campanha.contentGenerationId) {
+    const [sourceContent] = await db
+      .select({ theme: contentGenerationsTable.theme, type: contentGenerationsTable.type, result: contentGenerationsTable.result })
+      .from(contentGenerationsTable)
+      .where(and(eq(contentGenerationsTable.id, campanha.contentGenerationId), eq(contentGenerationsTable.tenantId, tenantId)));
+    if (sourceContent) {
+      partes.push(`Conteúdo de origem do Marketing: ${sourceContent.theme}`);
+      partes.push(`Formato original: ${sourceContent.type}`);
+      const firstVariation = sourceContent.result?.variations?.[0];
+      if (firstVariation) partes.push(`Variação de referência: ${JSON.stringify(firstVariation).slice(0, 5000)}`);
+    }
+  }
+
   const nomeNegocio = perfil?.nomeFantasia || perfil?.razaoSocial;
   if (nomeNegocio) partes.push(`Empresa: ${nomeNegocio}`);
   if (perfil?.vertical) partes.push(`Setor: ${perfil.vertical}`);
@@ -119,12 +141,38 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const parsed = insertAdCampaignSchema.safeParse({ ...req.body, tenantId });
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const creativeDraft = req.body?.creativeDraft
+    ? importedCreativeSchema.safeParse(req.body.creativeDraft)
+    : null;
+  if (creativeDraft && !creativeDraft.success) {
+    return res.status(400).json({ error: creativeDraft.error.flatten() });
+  }
+
+  if (parsed.data.contentGenerationId) {
+    const [sourceContent] = await db.select({ id: contentGenerationsTable.id })
+      .from(contentGenerationsTable)
+      .where(and(eq(contentGenerationsTable.id, parsed.data.contentGenerationId), eq(contentGenerationsTable.tenantId, tenantId)));
+    if (!sourceContent) return res.status(422).json({ error: "Conteúdo de origem não encontrado neste tenant" });
+  }
+
   // Código curto e único pra usar como utm_campaign em qualquer link de
   // divulgação dessa campanha (ver adAttribution.ts).
   const utmCode = `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
   const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, utmCode }).returning();
-  return res.status(201).json(row);
+  let importedCreative = null;
+  if (row && creativeDraft?.success) {
+    const draft = creativeDraft.data;
+    if (draft.headlines.length || draft.descriptions.length || draft.imagens.length) {
+      [importedCreative] = await db.insert(adCreativesTable).values({
+        campaignId: row.id,
+        headlines: draft.headlines,
+        descriptions: draft.descriptions,
+        imagens: draft.imagens,
+      }).returning();
+    }
+  }
+  return res.status(201).json({ ...row, latestCreative: importedCreative });
 });
 
 // Chamado pelo canal que confirmou o interesse (WhatsApp, formulário ou ação

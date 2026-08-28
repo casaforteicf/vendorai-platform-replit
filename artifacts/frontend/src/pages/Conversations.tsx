@@ -45,6 +45,7 @@ import {
   Loader2,
   X,
   UserX,
+  Search,
 } from "lucide-react";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -624,7 +625,7 @@ function ChatPanel({
       )}
 
       {/* Messages area */}
-      <ScrollArea className="flex-1 px-6 py-4">
+      <ScrollArea className="flex-1 px-4 md:px-8 py-4 bg-muted/25">
         {isLoading ? (
           <div className="flex flex-col gap-3">
             {[...Array(5)].map((_, i) => (
@@ -640,7 +641,7 @@ function ChatPanel({
             <p className="text-sm">Nenhuma mensagem ainda</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 max-w-4xl mx-auto">
             {(() => {
               let lastDate: string | null = null;
               return timelineItems.map((item) => {
@@ -671,7 +672,7 @@ function ChatPanel({
       </ScrollArea>
 
       {/* Input */}
-      <div className="px-4 py-3 border-t border-border shrink-0 bg-background">
+      <div className="px-4 py-3 border-t border-border shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
         {!conv.leadId ? (
           <p className="text-xs text-muted-foreground text-center py-1">
             Conversa sem lead associado — envio desativado
@@ -766,6 +767,7 @@ export default function Conversations() {
   const [selectedId, setSelectedId] = useState<string | null>(initialConvId);
   const [showMobileChat, setShowMobileChat] = useState(!!initialConvId);
   const [channelFilter, setChannelFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [activeView, setActiveView] = useState<"whatsapp" | "praca">("whatsapp");
 
   const { data: conversations = [], isLoading: convsLoading } =
@@ -796,7 +798,15 @@ export default function Conversations() {
       const tb = b.ultimaMensagemEm ? new Date(b.ultimaMensagemEm).getTime() : 0;
       return tb - ta;
     })
-    .filter((c) => channelFilter === "all" || c.channel === channelFilter);
+    .filter((c) => channelFilter === "all" || c.channel === channelFilter)
+    .filter((c) => {
+      const query = searchQuery.trim().toLowerCase();
+      if (!query) return true;
+      const lead = c.leadId ? leadMap.get(c.leadId) : undefined;
+      return [lead?.nome, lead?.telefone, lead?.email, channelLabel(c.channel)]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
 
   const channelCounts = conversations.reduce<Record<string, number>>(
     (acc, c) => {
@@ -859,7 +869,7 @@ export default function Conversations() {
   const totalUnread = conversations.reduce((acc, c) => acc + c.naoLidas, 0);
 
   return (
-    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-8 md:-my-8 overflow-hidden">
+    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-8 md:-my-8 overflow-hidden bg-muted/20">
       {/* ── View tabs: WhatsApp x Perguntas Praça.ai ── */}
       <div className="flex gap-1 px-4 pt-3 border-b border-border shrink-0 bg-background">
         <button
@@ -870,7 +880,7 @@ export default function Conversations() {
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          WhatsApp
+          Conversas
         </button>
         <button
           onClick={() => setActiveView("praca")}
@@ -898,16 +908,28 @@ export default function Conversations() {
       ) : (
       <div className="flex flex-1 overflow-hidden">
       {/* ── Left sidebar ── */}
-      <div className={`${showMobileChat ? "hidden md:flex" : "flex"} flex-col border-r border-border bg-background w-full md:w-80 md:shrink-0`}>
+      <div className={`${showMobileChat ? "hidden md:flex" : "flex"} flex-col border-r border-border bg-background w-full md:w-[360px] md:shrink-0`}>
         {/* Sidebar header */}
-        <div className="px-4 py-4 border-b border-border shrink-0">
+        <div className="px-4 py-3 border-b border-border shrink-0 space-y-3">
           <div className="flex items-center justify-between">
-            <h1 className="text-base font-semibold">Conversas</h1>
+            <div>
+              <h1 className="text-base font-semibold">Conversas</h1>
+              <p className="text-[11px] text-muted-foreground">WhatsApp, Instagram, e-mail e chat em uma caixa de entrada</p>
+            </div>
             {totalUnread > 0 && (
               <Badge variant="default" className="text-xs">
                 {totalUnread} não lidas
               </Badge>
             )}
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Buscar contato, telefone ou e-mail..."
+              className="h-9 pl-9 rounded-full bg-muted/60 border-0 focus-visible:ring-1"
+            />
           </div>
         </div>
 

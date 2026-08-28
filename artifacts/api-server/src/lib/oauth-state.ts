@@ -6,6 +6,7 @@ export interface OAuthStatePayload {
   tenantId: string;
   userId: string;
   provider: OAuthProvider;
+  returnTo?: string;
   nonce: string;
   issuedAt: number;
   expiresAt: number;
@@ -44,6 +45,7 @@ export function createOAuthState(
   tenantId: string,
   userId: string,
   provider: OAuthProvider,
+  returnTo?: string,
 ): string {
   const now = Date.now();
   cleanupExpiredNonces(now);
@@ -52,6 +54,7 @@ export function createOAuthState(
     tenantId,
     userId,
     provider,
+    ...(returnTo ? { returnTo } : {}),
     nonce: randomBytes(24).toString("base64url"),
     issuedAt: now,
     expiresAt: now + OAUTH_STATE_TTL_MS,

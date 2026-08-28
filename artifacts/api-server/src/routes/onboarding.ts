@@ -25,6 +25,7 @@ import { objectStorageClient } from "../lib/objectStorage.js";
 import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
 import { encrypt } from "../lib/crypto.js";
+import { getGoogleAdsConnectionByTenantId } from "../services/google-ads-oauth.js";
 
 const router: IRouter = Router();
 
@@ -1126,6 +1127,8 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     .from(agendasTable)
     .where(and(eq(agendasTable.tenantId, tenantId)));
 
+  const googleAdsConn = await getGoogleAdsConnectionByTenantId(tenantId);
+
   const [tenantData] = await db
     .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey })
     .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
@@ -1145,6 +1148,12 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
       connected: !!igConn?.username,
       username: igConn?.username ?? null,
     },
+    googleAds: {
+      connected: !!googleAdsConn && googleAdsConn.status !== "disconnected" && !googleAdsConn.disconnectedAt,
+      pendingAccountSelection: googleAdsConn?.status === "pending_account_selection",
+      customerId: googleAdsConn?.customerId ?? null,
+      descriptiveName: googleAdsConn?.descriptiveName ?? null,
+    },
     asaas: { connected: !!tenantData?.asaasApiKey },
     zapsign: { connected: !!tenantData?.zapsignApiKey },
   });
@@ -1154,7 +1163,7 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
 router.patch("/onboarding/integracoes/step", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
   if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
-  const { step } = z.object({ step: z.number().int().min(0).max(5) }).parse(req.body);
+  const { step } = z.object({ step: z.number().int().min(0).max(6) }).parse(req.body);
   await db.update(tenantsTable).set({ integracoesStep: step }).where(eq(tenantsTable.id, tenantId));
   return res.json({ ok: true });
 });
