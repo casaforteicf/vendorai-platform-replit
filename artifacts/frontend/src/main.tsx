@@ -2,7 +2,6 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import SubdomainSite from "./SubdomainSite";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { PlanningLauncher } from "./components/PlanningLauncher";
 import "./index.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
@@ -42,13 +41,13 @@ createRoot(document.getElementById("root")!).render(
     {tenantSlugForSite ? (
       <SubdomainSite slug={tenantSlugForSite} />
     ) : (
-      <>
-        <App />
-        <PlanningLauncher />
-      </>
+      <App />
     )}
   </ErrorBoundary>,
 );
+
+// O antigo PlanningLauncher permanece no código como fallback histórico,
+// mas não é mais renderizado: os módulos funcionais agora ficam na sidebar real.
 
 // PWA — só registra pro CRM em si (não pro site público do lojista) e só em
 // produção, pra não gerar cache confuso durante o desenvolvimento local.
