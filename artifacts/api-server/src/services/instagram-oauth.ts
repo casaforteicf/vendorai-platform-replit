@@ -15,11 +15,11 @@ function getRedirectUri(host?: string): string {
 
   const normalizedHost = host?.split(":")[0]?.toLowerCase();
   if (normalizedHost && PRODUCTION_HOSTS.has(normalizedHost)) {
-    return `https://appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
+    return `https://app.appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
   }
 
   if (process.env["NODE_ENV"] === "production") {
-    return `https://appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
+    return `https://app.appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
   }
 
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
@@ -38,7 +38,7 @@ export function buildInstagramOAuthUrl(tenantId: string, state: string, host?: s
   const params = new URLSearchParams({
     client_id: INSTAGRAM_APP_ID ?? "",
     redirect_uri: redirectUri,
-    scope: "instagram_business_basic,instagram_business_manage_messages,instagram_business_content_publish",
+    scope: "instagram_business_basic,instagram_business_manage_messages,instagram_business_content_publish,instagram_business_manage_insights",
     state,
     response_type: "code",
     enable_fb_login: "0",
