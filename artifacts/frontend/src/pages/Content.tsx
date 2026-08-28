@@ -534,17 +534,19 @@ function PublishInstagramButton({
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
-        const isNotConnected = data.error?.toLowerCase().includes("não conectado") ||
-          data.error?.toLowerCase().includes("page access");
+        const normalizedError = data.error?.toLowerCase() ?? "";
+        const isNotConnected = normalizedError.includes("não conectado") ||
+          normalizedError.includes("oauth") ||
+          normalizedError.includes("page access");
         toast({
-          title: isNotConnected ? "Instagram não configurado" : "Falha ao publicar",
+          title: isNotConnected ? "Instagram não conectado" : "Falha ao publicar",
           description: isNotConnected
-            ? "Configure o Page Access Token e o Page ID em Configurações para publicar no Instagram."
+            ? "Conecte sua conta profissional em Configurações → Integrações → Instagram."
             : (data.error ?? "Erro desconhecido"),
           variant: "destructive",
           action: isNotConnected ? (
-            <ToastAction altText="Ir para Configurações" onClick={() => navigate("/configuracoes")}>
-              Configurar agora
+            <ToastAction altText="Conectar Instagram" onClick={() => navigate("/configuracoes")}>
+              Conectar Instagram
             </ToastAction>
           ) : undefined,
         });
