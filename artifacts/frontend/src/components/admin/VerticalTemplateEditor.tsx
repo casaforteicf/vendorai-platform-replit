@@ -36,7 +36,7 @@ export function VerticalTemplateEditor({
   onSaved,
 }: {
   template: VerticalTemplate;
-  onSaved?: () => void | Promise<void>;
+  onSaved?: () => unknown | Promise<unknown>;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
