@@ -1,0 +1,33 @@
+name: Apply Praça.ai SuperAdmin release
+
+on:
+  push:
+    branches: [fix-praca-superadmin-release]
+    paths:
+      - 'scripts/apply-praca-superadmin-release.py'
+      - '.github/workflows/apply-praca-superadmin-release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-praca-superadmin-release
+          fetch-depth: 0
+      - name: Apply patch
+        run: python scripts/apply-praca-superadmin-release.py
+      - name: Commit product changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/api-server/src/routes/auth.ts artifacts/website/src/pages/CadastroPraca.tsx artifacts/frontend/src/pages/AdminTenantDetail.tsx
+          if git diff --cached --quiet; then
+            echo 'No product changes'
+          else
+            git commit -m 'fix: exigir liberação do SuperAdmin para Praça.ai [praca-superadmin-applied]'
+            git push origin HEAD:fix-praca-superadmin-release
+          fi
