@@ -1,0 +1,33 @@
+name: Apply reports overview
+
+on:
+  push:
+    branches: [feat-relatorios-visao-geral]
+    paths:
+      - 'scripts/apply-relatorios-visao-geral.py'
+      - '.github/workflows/apply-relatorios-visao-geral.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat-relatorios-visao-geral
+          fetch-depth: 0
+      - name: Apply patch
+        run: python scripts/apply-relatorios-visao-geral.py
+      - name: Commit product changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/frontend/src/App.tsx artifacts/frontend/src/components/layout/SidebarLayout.tsx artifacts/frontend/src/pages/RelatoriosVisaoGeral.tsx
+          if git diff --cached --quiet; then
+            echo 'No product changes'
+          else
+            git commit -m 'feat: integrar visão geral de relatórios [reports-overview-applied]'
+            git push origin HEAD:feat-relatorios-visao-geral
+          fi
