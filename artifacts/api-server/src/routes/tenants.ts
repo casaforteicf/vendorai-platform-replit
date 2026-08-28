@@ -299,6 +299,39 @@ router.post("/superadmin/tenants/:id/zapi-test", requireRole("super_admin"), asy
   }
 });
 
+// Liberação mestre do Praça.ai é uma decisão de plataforma. O lojista pode
+// escolher quais itens publicar depois de habilitado, mas não pode liberar
+// o próprio tenant no marketplace.
+router.patch("/superadmin/tenants/:id/praca-ai", requireRole("super_admin"), async (req, res) => {
+  const tenantId = String(req.params.id);
+  const enabled = req.body?.enabled;
+
+  if (typeof enabled !== "boolean") {
+    return res.status(422).json({ error: "O campo enabled deve ser booleano." });
+  }
+
+  const [tenant] = await db
+    .update(tenantsTable)
+    .set({ vendeNoPracaAi: enabled, updatedAt: new Date() })
+    .where(eq(tenantsTable.id, tenantId))
+    .returning({
+      id: tenantsTable.id,
+      vendeNoPracaAi: tenantsTable.vendeNoPracaAi,
+      comissaoPracaAiPercentual: tenantsTable.comissaoPracaAiPercentual,
+    });
+
+  if (!tenant) {
+    return res.status(404).json({ error: "Tenant não encontrado." });
+  }
+
+  req.log.info(
+    { tenantId, enabled, actorId: req.user?.sub },
+    "superadmin updated tenant Praça.ai access",
+  );
+
+  return res.json(tenant);
+});
+
 router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
   const parsed = updateTenantSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -313,10 +346,15 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
     return;
   }
 
-  // Comissão do Praça.ai é negociação de plataforma — nem o próprio lojista
-  // (tenant_admin) pode mudar isso, só o super_admin.
-  if ("comissaoPracaAiPercentual" in parsed.data && parsed.data.comissaoPracaAiPercentual !== undefined && req.user?.platformRole !== "super_admin") {
-    res.status(403).json({ error: "Só o admin da plataforma pode alterar a comissão do Praça.ai" });
+  // Liberação do tenant no Praça.ai e comissão são decisões de plataforma.
+  // O lojista gerencia os itens publicados somente depois que o SuperAdmin
+  // libera o tenant; ele não pode habilitar o próprio acesso via API.
+  const PRACA_AI_PLATFORM_FIELDS = ["comissaoPracaAiPercentual", "vendeNoPracaAi"] as const;
+  const hasPracaAiPlatformField = PRACA_AI_PLATFORM_FIELDS.some(
+    (field) => field in parsed.data && parsed.data[field] !== undefined,
+  );
+  if (hasPracaAiPlatformField && req.user?.platformRole !== "super_admin") {
+    res.status(403).json({ error: "Só o admin da plataforma pode alterar a liberação ou comissão do Praça.ai" });
     return;
   }
 
