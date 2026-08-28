@@ -2156,7 +2156,7 @@ export default function Content() {
                       <Card className="border-dashed">
                         <CardContent className="py-12 flex flex-col items-center gap-3 text-center text-muted-foreground">
                           <Sparkles className="h-10 w-10 opacity-30" />
-                          <p className="text-sm">Preencha o tema acima e toque em <strong>Gerar com IA</strong></p>
+                          <p className="text-sm">Preencha “Tema / contexto da publicação” ao lado e toque em <strong>Gerar com IA</strong></p>
                         </CardContent>
                       </Card>
                     )}
