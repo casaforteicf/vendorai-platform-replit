@@ -428,18 +428,21 @@ export default function AdminTenantDetail() {
   async function handleToggleVendeNoPracaAi(novoValor: boolean) {
     setSavingVendeNoPracaAi(true);
     try {
-      const r = await fetch(`/api/tenants/${id}`, {
+      const r = await fetch(`/api/superadmin/tenants/${id}/praca-ai`, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({ vendeNoPracaAi: novoValor }),
+        body: JSON.stringify({ enabled: novoValor }),
       });
       const data = await r.json() as { error?: string };
       if (!r.ok) {
         toast({ title: data.error ?? "Erro ao atualizar Praça.ai", variant: "destructive" });
         return;
       }
-      void qc.invalidateQueries({ queryKey: ["admin-tenant-detail", id] });
-      toast({ title: novoValor ? "Loja ativada no Praça.ai" : "Loja desativada do Praça.ai" });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["admin-tenant-detail", id] }),
+        qc.invalidateQueries({ queryKey: getListTenantsQueryKey() }),
+      ]);
+      toast({ title: novoValor ? "Loja liberada no Praça.ai" : "Loja removida do Praça.ai" });
     } finally {
       setSavingVendeNoPracaAi(false);
     }
