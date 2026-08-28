@@ -495,6 +495,7 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
       autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
       metaAccessToken: agentConfigsTable.metaAccessToken,
+      evolutionConnected: agentConfigsTable.evolutionConnected,
       instagramPageId: agentConfigsTable.instagramPageId,
       instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
       webhookSecret: agentConfigsTable.webhookSecret,
@@ -509,7 +510,7 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
   const productsConfigured    = Array.isArray(businessProfile?.produtos) && (businessProfile.produtos as unknown[]).length > 0;
   const agentConfigured       = !!agentConfig?.setupCompletedAt;
   const autonomyEnabled       = !!agentConfig?.autonomyEnabledAt;
-  const whatsappConnected     = !!(agentConfig?.metaPhoneNumberId && agentConfig?.metaAccessToken);
+  const whatsappConnected     = !!((agentConfig?.metaPhoneNumberId && agentConfig?.metaAccessToken) || agentConfig?.evolutionConnected);
   const instagramConnected    = !!(agentConfig?.instagramPageId && agentConfig?.instagramPageAccessToken);
   const webhookConfigured     = !!agentConfig?.webhookSecret;
   const firstLeadAdded        = (leadCountRow?.value ?? 0) > 0;
