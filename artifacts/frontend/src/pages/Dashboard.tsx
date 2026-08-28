@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import {
   Users,
   TrendingUp,
@@ -164,7 +165,7 @@ const SETUP_ITEMS: { key: keyof SetupStatus; label: string; href: string }[] = [
   { key: "businessProfileConfigured", label: "Perfil da empresa configurado",   href: "/configuracoes" },
   { key: "productsConfigured",        label: "Produtos/serviços cadastrados",   href: "/estoque" },
   { key: "agentConfigured",           label: "Agentes de IA configurados",      href: "/configuracoes" },
-  { key: "whatsappConnected",         label: "WhatsApp conectado (Meta Cloud API)", href: "/configuracoes" },
+  { key: "whatsappConnected",         label: "WhatsApp conectado",                  href: "/onboarding/integracoes" },
   { key: "webhookConfigured",         label: "Webhook de entrada ativo",        href: "/configuracoes" },
   { key: "instagramConnected",        label: "Instagram conectado",             href: "/configuracoes" },
   { key: "firstLeadAdded",            label: "Primeiro lead cadastrado",        href: "/leads" },
@@ -174,6 +175,11 @@ const SETUP_ITEMS: { key: keyof SetupStatus; label: string; href: string }[] = [
 function SetupChecklist({ tenantId }: { tenantId: string }) {
   const [dismissed, setDismissed] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantQuestion, setAssistantQuestion] = useState("");
+  const [assistantAnswer, setAssistantAnswer] = useState<string | null>(null);
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const { token } = useAuth();
 
   const { data: status } = useGetTenantSetupStatus(tenantId, {
     query: {
@@ -186,6 +192,28 @@ function SetupChecklist({ tenantId }: { tenantId: string }) {
   if (!status || dismissed || status.percentComplete === 100) return null;
 
   const pendingItems = SETUP_ITEMS.filter((item) => !status[item.key as keyof SetupStatus]);
+  const nextItem = pendingItems[0] ?? null;
+
+  async function askImplementationAgent() {
+    if (!token) return;
+    const message = assistantQuestion.trim() || "Qual é o próximo passo mais importante para concluir minha implantação?";
+    setAssistantLoading(true);
+    setAssistantAnswer(null);
+    try {
+      const response = await fetch("/api/onboarding/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message }),
+      });
+      const data = await response.json() as { resposta?: string; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Não foi possível consultar o agente");
+      setAssistantAnswer(data.resposta ?? "Posso ajudar você a concluir a próxima etapa da implantação.");
+    } catch (error) {
+      setAssistantAnswer(error instanceof Error ? error.message : "Não foi possível consultar o Agente de Implantação.");
+    } finally {
+      setAssistantLoading(false);
+    }
+  }
 
   return (
     <div className="rounded-xl border border-primary/20 bg-primary/5 overflow-hidden">
@@ -193,11 +221,12 @@ function SetupChecklist({ tenantId }: { tenantId: string }) {
         <div className="flex items-center gap-3">
           <BookOpen className="h-5 w-5 text-primary shrink-0" />
           <div>
-            <p className="font-semibold text-sm">
-              Configuração em andamento — {status.completedSteps}/{status.totalSteps} etapas concluídas
+            <p className="font-semibold text-sm flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Agente de Implantação — {status.completedSteps}/{status.totalSteps} etapas concluídas
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Complete o setup para ativar todos os recursos da plataforma.
+              Acompanho sua configuração e indico o próximo passo usando o status real da plataforma.
             </p>
           </div>
         </div>
@@ -243,15 +272,63 @@ function SetupChecklist({ tenantId }: { tenantId: string }) {
             );
           })}
 
-          {pendingItems.length > 0 && (
-            <div className="pt-2">
-              <Link
-                href="/guia-implantacao"
-                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+          {nextItem && (
+            <div className="pt-3 mt-2 border-t border-primary/10 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg bg-background/70 border p-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Próxima ação recomendada</p>
+                  <p className="text-sm font-medium">{nextItem.label}</p>
+                </div>
+                <Link href={nextItem.href}>
+                  <Button size="sm" className="w-full sm:w-auto">Fazer agora</Button>
+                </Link>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setAssistantOpen((current) => !current)}
               >
-                <BookOpen className="h-3 w-3" />
-                Ver guia completo de implantação
-              </Link>
+                <Sparkles className="h-4 w-4" />
+                {assistantOpen ? "Fechar Agente de Implantação" : "Perguntar ao Agente de Implantação"}
+              </Button>
+
+              {assistantOpen && (
+                <div className="rounded-lg border bg-background p-3 space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      value={assistantQuestion}
+                      onChange={(event) => setAssistantQuestion(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !assistantLoading) {
+                          event.preventDefault();
+                          void askImplementationAgent();
+                        }
+                      }}
+                      placeholder="Ex.: O que devo configurar primeiro?"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => void askImplementationAgent()}
+                      disabled={assistantLoading}
+                      className="shrink-0"
+                    >
+                      {assistantLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Perguntar"}
+                    </Button>
+                  </div>
+                  {assistantAnswer && (
+                    <div className="rounded-md bg-primary/5 border border-primary/10 px-3 py-2 text-sm whitespace-pre-wrap">
+                      {assistantAnswer}
+                    </div>
+                  )}
+                  <Link href="/faq" className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium">
+                    <BookOpen className="h-3 w-3" />
+                    Abrir FAQ e ajuda
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </div>
