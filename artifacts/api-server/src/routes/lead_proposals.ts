@@ -91,7 +91,7 @@ async function loadProposalContext(leadId: string, tenantId: string) {
 }
 
 /** Fetch uploaded proposal model content for AI guidance (max 6000 chars).
- * Supports text/HTML, PDF and DOCX/DOC using dependencies already present in the API. */
+ * Supports text/HTML, PDF and DOCX using dependencies already present in the API. */
 async function fetchTemplateGuidance(templateUrl: string | null | undefined): Promise<string | null> {
   if (!templateUrl) return null;
   try {
@@ -109,7 +109,7 @@ async function fetchTemplateGuidance(templateUrl: string | null | undefined): Pr
     if (ct.includes("pdf") || lowerUrl.endsWith(".pdf")) {
       const buffer = Buffer.from(await res.arrayBuffer());
       text = (await pdfParse(buffer)).text ?? "";
-    } else if (ct.includes("word") || ct.includes("officedocument") || lowerUrl.endsWith(".doc") || lowerUrl.endsWith(".docx")) {
+    } else if (ct.includes("officedocument") || lowerUrl.endsWith(".docx")) {
       const buffer = Buffer.from(await res.arrayBuffer());
       text = (await mammoth.extractRawText({ buffer })).value ?? "";
     } else {
