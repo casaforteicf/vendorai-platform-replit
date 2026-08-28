@@ -1,0 +1,32 @@
+name: Apply integrations UX
+
+on:
+  push:
+    branches:
+      - fix-integracoes-ux
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[integracoes-ux-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-integracoes-ux
+          fetch-depth: 0
+      - name: Apply patch
+        run: python scripts/apply-integracoes-ux.py
+      - name: Commit product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/pages/Configuracoes.tsx
+          if git diff --cached --quiet; then
+            echo "No product changes"
+            exit 0
+          fi
+          git commit -m "fix: organizar integrações e ocultar opções legadas [integracoes-ux-applied]"
+          git push origin HEAD:fix-integracoes-ux
