@@ -47,7 +47,12 @@ router.get("/auth/instagram", authenticate, async (req, res) => {
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth Instagram");
-    return res.status(500).json({ error: "Internal error" });
+    const isNotConfigured = err instanceof Error && err.message.startsWith("Instagram não configurado:");
+    return res.status(isNotConfigured ? 503 : 500).json({
+      error: isNotConfigured
+        ? "Instagram ainda não está configurado no servidor. Verifique INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET no Railway."
+        : "Não foi possível iniciar a conexão com Instagram.",
+    });
   }
 });
 
