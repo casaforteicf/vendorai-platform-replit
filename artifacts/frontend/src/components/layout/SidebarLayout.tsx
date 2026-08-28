@@ -57,7 +57,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
-  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/guia-implantacao"]);
+  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/faq"]);
   const isTenantAdmin = isEffectiveAdmin;
   const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin && !isTenantAdmin;
 
@@ -105,7 +105,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     arch:       ["/arch", "/arch/projetos", "/arch/render", "/arch/catalogo", "/arch/marketplace"],
     obras:      ["/obras", "/insumos", "/composicoes"],
     financeiro: ["/erp"],
-    settings:   ["/configuracoes"],
+    settings:   ["/configuracoes", "/faq"],
     varejo:       ["/varejo/produtos", "/varejo/colecoes", "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade", "/varejo/combos"],
     supermercado: ["/supermercado", "/supermercado/produtos", "/supermercado/pedidos", "/supermercado/campanhas", "/supermercado/config"],
     beauty:       ["/beauty", "/beauty/agenda", "/beauty/servicos", "/beauty/profissionais"],
@@ -156,8 +156,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
-    { name: "Content Autopilot", href: "/content-autopilot", icon: Sparkles, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
-    { name: "Campanhas",     href: "/campanhas-nova", icon: Megaphone,      sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Agentes",       href: "/agents/config", icon: Bot,           sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Base de Conhecimento", href: "/base-conhecimento", icon: BookOpen, sellerHidden: true, section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -165,10 +163,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Ajuda / FAQ",   href: "/faq",           icon: HelpCircle,       sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     // "Stories" agora é um item dentro do dropdown "Conteúdo" (renomeado
     // "Stories Praça.ai"), não mais um item de topo — ver bloco do
     // dropdown mais abaixo.
-    { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Obras",         href: "/obras",                    icon: Building2,   sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Composições",   href: "/composicoes",              icon: Layers,      sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
@@ -610,7 +608,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     const [relatoriosOpen, setRelatoriosOpen] = useState(false);
     const [conteudoOpen, setConteudoOpen] = useState(false);
     const isRelatorio = location.startsWith("/relatorios/");
-    const isConteudo = location === "/content" || location.startsWith("/content-studio");
+    const isConteudo = location === "/content" || location === "/content-autopilot";
     return (
       <>
         {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
@@ -628,7 +626,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           >
             <div className="flex items-center gap-3">
               <Sparkles className="h-4 w-4 shrink-0" />
-              Conteúdo
+              Marketing
             </div>
             {conteudoOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
@@ -647,16 +645,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 <Sparkles className="h-3.5 w-3.5" /> Gerador de Conteúdo
               </Link>
               <Link
-                href="/content-studio"
+                href="/content-autopilot"
                 onClick={onNavigate}
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
-                  location === "/content-studio"
+                  location === "/content-autopilot"
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                <Clapperboard className="h-3.5 w-3.5" /> Content Studio
+                <Sparkles className="h-3.5 w-3.5" /> Content Autopilot
               </Link>
               <Link
                 href="/content?tab=campanhas"

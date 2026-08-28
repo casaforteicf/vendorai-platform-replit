@@ -14,9 +14,9 @@ export default function ContentHub() {
       <div className="px-4 pt-4 md:px-6 md:pt-6">
         <div className="mb-4">
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" /> Conteúdo
+            <Sparkles className="h-6 w-6 text-primary" /> Marketing
           </h1>
-          <p className="text-sm text-muted-foreground">Criação, campanhas multicanal e Variedades do Praça.ai em um único lugar.</p>
+          <p className="text-sm text-muted-foreground">Conteúdo, campanhas e automação de marketing em um único lugar.</p>
         </div>
         <Tabs defaultValue={initialTab}>
           <TabsList className="h-auto flex flex-wrap">

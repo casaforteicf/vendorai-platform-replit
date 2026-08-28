@@ -211,7 +211,7 @@ router.get("/agendas/:id/google-auth-url", async (req, res) => {
   }
 
   const host = req.get("host") ?? undefined;
-  const url = buildAuthUrl(agenda.id, undefined, host);
+  const url = buildAuthUrl(agenda.id, "/agenda", host);
   res.json({ url });
 });
 
@@ -270,9 +270,14 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   // Prefer the actual request host so the user lands back on the same domain
   // they started from (appvendorai.com in prod, spock.replit.dev in dev).
   const reqHost = req.get("host") ?? "";
-  const appUrl = reqHost
-    ? `https://${reqHost}`
-    : (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
+  const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
+  const appUrl = configuredFrontend
+    ? configuredFrontend.replace(/\/$/, "")
+    : process.env.NODE_ENV === "production"
+      ? "https://app.appvendorai.com"
+      : reqHost
+        ? `https://${reqHost}`
+        : (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
 
   if (error || !code || !state) {
     res.redirect(`${appUrl}/configuracoes?googleError=access_denied`);
@@ -280,7 +285,7 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   }
 
   let agendaId: string;
-  let returnTo: string = "/app/configuracoes";
+  let returnTo: string = "/agenda";
   try {
     const decoded = JSON.parse(
       Buffer.from(state, "base64url").toString("utf-8")

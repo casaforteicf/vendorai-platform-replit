@@ -10,7 +10,7 @@ const SCOPES = [
   "openid",
 ];
 
-const PRODUCTION_HOSTS = ["appvendorai.com", "www.appvendorai.com"];
+const PRODUCTION_HOSTS = ["app.appvendorai.com", "appvendorai.com", "www.appvendorai.com"];
 const CALLBACK_PATH = "/api/auth/google/calendar/callback";
 
 /**
@@ -28,12 +28,18 @@ const CALLBACK_PATH = "/api/auth/google/calendar/callback";
  * goes to spock.replit.dev" breakage.
  */
 function getRedirectUri(host?: string): string {
+  // A mesma URI precisa ser usada ao gerar a autorização e ao trocar o code.
+  // Por isso uma configuração explícita sempre tem prioridade.
+  const explicit = process.env["GOOGLE_REDIRECT_URI"]?.trim();
+  if (explicit) return explicit;
+
   if (host && PRODUCTION_HOSTS.includes(host.toLowerCase())) {
-    return `https://appvendorai.com${CALLBACK_PATH}`;
+    return `https://app.appvendorai.com${CALLBACK_PATH}`;
   }
 
-  const explicit = process.env["GOOGLE_REDIRECT_URI"];
-  if (explicit) return explicit;
+  if (process.env.NODE_ENV === "production") {
+    return `https://app.appvendorai.com${CALLBACK_PATH}`;
+  }
 
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}${CALLBACK_PATH}`;
