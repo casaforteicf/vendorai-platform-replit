@@ -21,8 +21,22 @@ import { logger } from "../lib/logger.js";
 // Reaproveita o mesmo Meta App já usado pro Instagram/WhatsApp por padrão
 // (um único Meta App pode pedir múltiplos escopos), com override dedicado
 // se um dia fizer sentido separar em app próprio.
-const META_ADS_APP_ID = process.env["META_ADS_APP_ID"] ?? process.env["INSTAGRAM_APP_ID"];
-const META_ADS_APP_SECRET = process.env["META_ADS_APP_SECRET"] ?? process.env["INSTAGRAM_APP_SECRET"];
+const dedicatedMetaAppId = process.env["META_ADS_APP_ID"]?.trim();
+const hasValidDedicatedMetaApp = Boolean(dedicatedMetaAppId && /^\\d+$/.test(dedicatedMetaAppId));
+const instagramAppId = process.env["INSTAGRAM_APP_ID"]?.trim();
+
+const META_ADS_APP_ID = hasValidDedicatedMetaApp ? dedicatedMetaAppId : instagramAppId;
+const META_ADS_APP_SECRET = hasValidDedicatedMetaApp
+  ? process.env["META_ADS_APP_SECRET"]?.trim()
+  : process.env["INSTAGRAM_APP_SECRET"]?.trim();
+
+function assertMetaAdsAppConfigured(): asserts META_ADS_APP_ID is string {
+  if (!META_ADS_APP_ID || !/^\\d+$/.test(META_ADS_APP_ID) || !META_ADS_APP_SECRET) {
+    throw new Error(
+      "Meta Ads não configurado: informe META_ADS_APP_ID/META_ADS_APP_SECRET válidos ou mantenha INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET válidos como fallback.",
+    );
+  }
+}
 
 function getRedirectUri(): string {
   const configured = process.env["META_ADS_REDIRECT_URI"]?.trim();
@@ -42,6 +56,7 @@ export const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}
 const META_ADS_SCOPE = "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_basic";
 
 export function buildMetaAdsOAuthUrl(state: string): string {
+  assertMetaAdsAppConfigured();
   const params = new URLSearchParams({
     client_id: META_ADS_APP_ID ?? "",
     redirect_uri: getRedirectUri(),
@@ -59,6 +74,7 @@ interface MetaTokenResponse {
 }
 
 export async function exchangeCodeForToken(code: string): Promise<MetaTokenResponse> {
+  assertMetaAdsAppConfigured();
   const url = new URL(META_TOKEN_BASE);
   url.searchParams.set("client_id", META_ADS_APP_ID ?? "");
   url.searchParams.set("client_secret", META_ADS_APP_SECRET ?? "");
@@ -77,6 +93,7 @@ export async function exchangeCodeForToken(code: string): Promise<MetaTokenRespo
 // Curto -> longa duração (~60 dias). Também usado pra "renovar": passar um
 // token de longa duração ainda válido devolve um novo com prazo estendido.
 export async function exchangeForLongLivedToken(shortToken: string): Promise<MetaTokenResponse> {
+  assertMetaAdsAppConfigured();
   const url = new URL(META_TOKEN_BASE);
   url.searchParams.set("grant_type", "fb_exchange_token");
   url.searchParams.set("client_id", META_ADS_APP_ID ?? "");
