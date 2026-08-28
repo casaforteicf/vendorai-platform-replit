@@ -1635,11 +1635,19 @@ export default function Configuracoes() {
       const res = await fetch("/api/auth/whatsapp", {
         headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
       });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { url: string };
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? "Não foi possível iniciar a conexão.");
+      }
       window.location.href = data.url;
-    } catch {
-      toast({ title: "Erro ao iniciar conexão com WhatsApp.", variant: "destructive" });
+    } catch (err) {
+      setActiveTab("integracoes");
+      window.history.replaceState({}, "", "${window.location.pathname}?tab=integracoes");
+      toast({
+        title: "Erro ao iniciar conexão com WhatsApp.",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+        variant: "destructive",
+      });
       setWhatsappConnecting(false);
     }
   }
@@ -2641,7 +2649,7 @@ export default function Configuracoes() {
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
               </div>
             ) : (
-              <div className="space-y-6">
+              <div className="flex flex-col gap-6">
 
                 {/* Diferenciais + Público-alvo */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3395,8 +3403,8 @@ export default function Configuracoes() {
               )}
             </div>
 
-            {/* Webhook de entrada — WhatsApp Omnichannel */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            {/* Webhook de entrada — WhatsApp Omnichannel (integração técnica no final da aba) */}
+            <div className="order-last rounded-xl border bg-card p-6 space-y-5">
               <div>
                 <h2 className="font-semibold text-base flex items-center gap-2">
                   <Webhook className="h-4 w-4 text-primary" />
