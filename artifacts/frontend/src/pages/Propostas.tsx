@@ -2104,21 +2104,25 @@ function newFreeItem(): FreeItem {
               )} />
             </div>
 
-            {/* Mode tabs */}
+            {/* Origens do orçamento: todas usam o mesmo fluxo e persistência real. */}
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="text-xs font-medium">Como deseja montar este orçamento?</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Use um modelo pronto, selecione produtos do catálogo ou informe itens livres.</p>
+            </div>
             <div className="flex rounded-lg border overflow-hidden text-sm">
               <button
                 type="button"
                 onClick={() => setMode("template")}
                 className={`flex-1 py-2 font-medium transition-colors ${mode === "template" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
               >
-                Template de Plano
+                Modelos de orçamento
               </button>
               <button
                 type="button"
                 onClick={() => setMode("catalogo")}
                 className={`flex-1 py-2 font-medium transition-colors ${mode === "catalogo" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
               >
-                Do Catálogo
+                Catálogo
               </button>
               <button
                 type="button"
@@ -2132,7 +2136,7 @@ function newFreeItem(): FreeItem {
             {/* ── TEMPLATE MODE ─────────────────────────────────────────────── */}
             {mode === "template" && (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">Selecione um plano para pré-preencher implantação + mensalidade.</p>
+                <p className="text-sm text-muted-foreground">Escolha um modelo pronto para criar o orçamento com itens e valores pré-configurados. Você poderá revisar antes de enviar.</p>
                 {selectedTemplateSlug ? (
                   (() => {
                     const sel = propostaTemplates.find((t: PropostaTemplate) => t.slug === selectedTemplateSlug);

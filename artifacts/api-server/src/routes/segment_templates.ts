@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import {
   db,
   segmentTemplatesTable,
+  updateSegmentTemplateSchema,
   agentConfigsTable,
   funisTable,
   businessProfilesTable,
@@ -36,6 +37,51 @@ function userTenantId(req: Express.Request): string | undefined {
 function canAccessTenant(req: Express.Request, tenantId: string) {
   return isSuperAdmin(req) || userTenantId(req) === tenantId;
 }
+
+// PATCH /admin/segment-templates/:id
+// O nome da vertical não é editado por esta rota: hoje ele também funciona
+// como chave de layout/navegação e de vínculo nos tenants. Alterá-lo sem uma
+// migração coordenada quebraria telas existentes. O Super Admin pode editar
+// com segurança a configuração operacional aplicada pela vertical.
+router.patch("/admin/segment-templates/:id", async (req, res) => {
+  if (!isSuperAdmin(req)) {
+    res.status(403).json({ error: "Super Admin required" });
+    return;
+  }
+
+  const parsed = updateSegmentTemplateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const allowed = {
+    ...(parsed.data.descricao !== undefined ? { descricao: parsed.data.descricao } : {}),
+    ...(parsed.data.promptsSugeridos !== undefined ? { promptsSugeridos: parsed.data.promptsSugeridos } : {}),
+    ...(parsed.data.funilPadrao !== undefined ? { funilPadrao: parsed.data.funilPadrao } : {}),
+    ...(parsed.data.categoriasProdutoSugeridas !== undefined
+      ? { categoriasProdutoSugeridas: parsed.data.categoriasProdutoSugeridas }
+      : {}),
+  };
+
+  if (Object.keys(allowed).length === 0) {
+    res.status(422).json({ error: "Nenhum campo editável informado" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(segmentTemplatesTable)
+    .set(allowed)
+    .where(eq(segmentTemplatesTable.id, req.params.id as string))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "Template not found" });
+    return;
+  }
+
+  res.json(updated);
+});
 
 // POST /tenants/:tenantId/segment-templates/:id/apply
 router.post(
