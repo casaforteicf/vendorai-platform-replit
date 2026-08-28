@@ -1875,6 +1875,7 @@ export default function Configuracoes() {
   const [metaAdsConnection, setMetaAdsConnection] = useState<MetaAdsConnectionData | null>(null);
   const [metaAdsLoading, setMetaAdsLoading] = useState(false);
   const [metaAdsConnecting, setMetaAdsConnecting] = useState(false);
+  const [showMetaDetails, setShowMetaDetails] = useState(false);
   const [metaAdsDisconnecting, setMetaAdsDisconnecting] = useState(false);
   const [metaAdsRefreshing, setMetaAdsRefreshing] = useState(false);
   const [metaAdsAccounts, setMetaAdsAccounts] = useState<Array<{ adAccountId: string; name: string }>>([]);
@@ -3598,11 +3599,21 @@ Body:
                 <p className="text-xs text-muted-foreground">
                   O VendorAI continua automaticamente pelo próximo serviço que ainda estiver pendente.
                 </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowMetaDetails((current) => !current)}
+                  className="gap-1 text-muted-foreground"
+                >
+                  {showMetaDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {showMetaDetails ? "Ocultar detalhes avançados" : "Detalhes avançados"}
+                </Button>
               </div>
             </div>
 
             {/* WhatsApp — OAuth via Meta */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -3843,7 +3854,7 @@ Body:
             </div>
 
             {/* Meta Ads — OAuth por tenant, mesma estrutura do Google Ads acima */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -4332,7 +4343,7 @@ Body:
             </div>
 
             {/* Messenger — Facebook Page Access Token */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -4438,7 +4449,7 @@ Body:
             </div>
 
             {/* Instagram DM — OAuth via Meta */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
