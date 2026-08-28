@@ -5529,7 +5529,7 @@ function ProposalTemplateSection({
         ref={fileInputRef}
         type="file"
         className="hidden"
-        accept=".html,.htm,.txt,.md,.pdf,.doc,.docx"
+        accept=".html,.htm,.txt,.md,.pdf,.docx"
         onChange={handleFile}
       />
       <div>
