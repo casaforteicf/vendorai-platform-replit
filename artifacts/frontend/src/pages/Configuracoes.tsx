@@ -1642,7 +1642,7 @@ export default function Configuracoes() {
       window.location.href = data.url;
     } catch (err) {
       setActiveTab("integracoes");
-      window.history.replaceState({}, "", "${window.location.pathname}?tab=integracoes");
+      window.history.replaceState({}, "", `${window.location.pathname}?tab=integracoes`);
       toast({
         title: "Erro ao iniciar conexão com WhatsApp.",
         description: err instanceof Error ? err.message : "Tente novamente.",
