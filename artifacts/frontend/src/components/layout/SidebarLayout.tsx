@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SupportChatWidget } from "@/components/support/SupportChatWidget";
+import { AccessLicenseBanner } from "@/components/billing/AccessLicenseBanner";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Bell,
@@ -996,6 +997,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         )}
+        <AccessLicenseBanner />
         <main className="vendor-scrollbar flex-1 overflow-y-auto">
           <div className="vendor-page-canvas">{children}</div>
         </main>
