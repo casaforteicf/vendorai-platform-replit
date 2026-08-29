@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger.js";
 import {
   buildInstagramOAuthUrl,
+  getInstagramRedirectUri,
   exchangeShortCodeForToken,
   fetchDirectInstagramAccountInfo,
   saveDirectInstagramConnection,
@@ -41,9 +42,10 @@ router.get("/auth/instagram", authenticate, async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const state = createOAuthState(tenantId, userId, "instagram");
-    const url = buildInstagramOAuthUrl(tenantId, state, req.hostname);
-    logger.info({ tenantId, userId, host: req.hostname }, "Retornando URL OAuth Instagram");
+    const redirectUri = getInstagramRedirectUri(req.hostname);
+    const state = createOAuthState(tenantId, userId, "instagram", redirectUri);
+    const url = buildInstagramOAuthUrl(tenantId, state, req.hostname, redirectUri);
+    logger.info({ tenantId, userId, host: req.hostname, redirectUri }, "Retornando URL OAuth Instagram");
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth Instagram");
@@ -66,9 +68,11 @@ router.get("/auth/instagram/callback", async (req, res) => {
   }
 
   let tenantId: string;
+  let exactRedirectUri: string | undefined;
   try {
     const decoded = consumeOAuthState(state, "instagram");
     tenantId = decoded.tenantId;
+    exactRedirectUri = decoded.returnTo?.startsWith("https://") ? decoded.returnTo : undefined;
   } catch (err) {
     logger.warn({ err }, "Callback Instagram: state inválido, expirado ou reutilizado");
     return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=invalid_state`);
@@ -78,7 +82,7 @@ router.get("/auth/instagram/callback", async (req, res) => {
     logger.info({ tenantId }, "Processando callback Instagram");
     let tokenResponse;
     try {
-      tokenResponse = await exchangeShortCodeForToken(code, req.hostname);
+      tokenResponse = await exchangeShortCodeForToken(code, req.hostname, exactRedirectUri);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao trocar código OAuth do Instagram");
       const longLivedFailed = err instanceof Error && err.message.startsWith("Instagram long-lived");

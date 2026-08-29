@@ -13,7 +13,7 @@ function assertInstagramAppConfigured(): void {
 const INSTAGRAM_CALLBACK_PATH = "/api/auth/instagram/callback";
 const PRODUCTION_HOSTS = new Set(["appvendorai.com", "www.appvendorai.com", "app.appvendorai.com"]);
 
-function getRedirectUri(host?: string): string {
+export function getInstagramRedirectUri(host?: string): string {
   // A URL cadastrada no provedor deve ser a fonte principal. Em ambientes com
   // proxy (Vercel -> Railway), o Host recebido pelo backend pode ser o interno.
   const configured = process.env["INSTAGRAM_REDIRECT_URI"]?.trim();
@@ -42,9 +42,14 @@ const META_LONG_LIVED_BASE = "https://graph.instagram.com/access_token";
 const META_ACCOUNTS_BASE = "https://graph.facebook.com/v18.0/me/accounts";
 const META_PAGE_BASE = "https://graph.facebook.com/v18.0";
 
-export function buildInstagramOAuthUrl(tenantId: string, state: string, host?: string): string {
+export function buildInstagramOAuthUrl(
+  tenantId: string,
+  state: string,
+  host?: string,
+  exactRedirectUri?: string,
+): string {
   assertInstagramAppConfigured();
-  const redirectUri = getRedirectUri(host);
+  const redirectUri = exactRedirectUri ?? getInstagramRedirectUri(host);
   const params = new URLSearchParams({
     client_id: INSTAGRAM_APP_ID ?? "",
     redirect_uri: redirectUri,
@@ -159,8 +164,12 @@ async function subscribeDirectInstagramWebhooks(accountId: string, token: string
   }
 }
 
-export async function exchangeShortCodeForToken(code: string, host?: string): Promise<LongLivedTokenResponse> {
-  const redirectUri = getRedirectUri(host);
+export async function exchangeShortCodeForToken(
+  code: string,
+  host?: string,
+  exactRedirectUri?: string,
+): Promise<LongLivedTokenResponse> {
+  const redirectUri = exactRedirectUri ?? getInstagramRedirectUri(host);
   logger.info({ redirectUri }, "Trocando short code por token");
 
   const body = new URLSearchParams({
