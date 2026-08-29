@@ -22,7 +22,7 @@ import { logger } from "../lib/logger.js";
 // (um único Meta App pode pedir múltiplos escopos), com override dedicado
 // se um dia fizer sentido separar em app próprio.
 const dedicatedMetaAppId = process.env["META_ADS_APP_ID"]?.trim();
-const hasValidDedicatedMetaApp = Boolean(dedicatedMetaAppId && /^\\d+$/.test(dedicatedMetaAppId));
+const hasValidDedicatedMetaApp = Boolean(dedicatedMetaAppId && /^\d+$/.test(dedicatedMetaAppId));
 const instagramAppId = process.env["INSTAGRAM_APP_ID"]?.trim();
 
 const META_ADS_APP_ID = hasValidDedicatedMetaApp ? dedicatedMetaAppId : instagramAppId;
@@ -31,7 +31,7 @@ const META_ADS_APP_SECRET = hasValidDedicatedMetaApp
   : process.env["INSTAGRAM_APP_SECRET"]?.trim();
 
 function assertMetaAdsAppConfigured(): void {
-  if (!META_ADS_APP_ID || !/^\\d+$/.test(META_ADS_APP_ID) || !META_ADS_APP_SECRET) {
+  if (!META_ADS_APP_ID || !/^\d+$/.test(META_ADS_APP_ID) || !META_ADS_APP_SECRET) {
     throw new Error(
       "Meta Ads não configurado: informe META_ADS_APP_ID/META_ADS_APP_SECRET válidos ou mantenha INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET válidos como fallback.",
     );
