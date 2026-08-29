@@ -1,24 +1,22 @@
 import { and, eq, gt, sql } from "drizzle-orm";
 import { accessLicensesTable, db } from "@workspace/db";
+import {
+  ACCESS_PASS_DAYS,
+  ACCESS_PASS_HOURS,
+  ACCESS_PASS_PRICE,
+  addAccessDays,
+  brazilMonthKey,
+  hasActiveAccess as evaluateActiveAccess,
+  nextAccessWindow,
+} from "./accessLicenseCore.js";
 
-export const ACCESS_PASS_DAYS = 5;
-export const ACCESS_PASS_HOURS = 120;
-export const ACCESS_PASS_PRICE = 399;
-
-export function brazilMonthKey(date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-  }).formatToParts(date);
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  return `${year}-${month}`;
-}
-
-export function addAccessDays(date: Date, days = ACCESS_PASS_DAYS): Date {
-  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
-}
+export {
+  ACCESS_PASS_DAYS,
+  ACCESS_PASS_HOURS,
+  ACCESS_PASS_PRICE,
+  addAccessDays,
+  brazilMonthKey,
+} from "./accessLicenseCore.js";
 
 export async function getAccessLicense(tenantId: string) {
   const [license] = await db.select().from(accessLicensesTable)
@@ -27,10 +25,7 @@ export async function getAccessLicense(tenantId: string) {
 }
 
 export function hasActiveAccess(license: Awaited<ReturnType<typeof getAccessLicense>>, now = new Date()) {
-  if (!license) return true; // Backwards compatibility: existing tenants remain fully active.
-  if (license.mode === "legacy") return true;
-  if (license.mode === "annual" && license.annualEndsAt && license.annualEndsAt > now) return true;
-  return !!license.accessEndsAt && license.accessEndsAt > now;
+  return evaluateActiveAccess(license, now);
 }
 
 export async function activateMonthlyBenefit(tenantId: string) {
@@ -45,8 +40,7 @@ export async function activateMonthlyBenefit(tenantId: string) {
     if (license.freeBenefitMonth === month) throw new Error("MONTHLY_BENEFIT_ALREADY_USED");
 
     const now = new Date();
-    const start = license.accessEndsAt && license.accessEndsAt > now ? license.accessEndsAt : now;
-    const endsAt = addAccessDays(start);
+    const { startsAt: start, endsAt } = nextAccessWindow(license.accessEndsAt, now);
 
     const [updated] = await tx.update(accessLicensesTable).set({
       status: "active",
@@ -74,8 +68,7 @@ export async function grantPaidPassInTransaction(tx: any, tenantId: string) {
     if (!license) throw new Error("ACCESS_LICENSE_NOT_ENROLLED");
 
     const now = new Date();
-    const start = license.accessEndsAt && license.accessEndsAt > now ? license.accessEndsAt : now;
-    const endsAt = addAccessDays(start);
+    const { startsAt: start, endsAt } = nextAccessWindow(license.accessEndsAt, now);
     const [updated] = await tx.update(accessLicensesTable).set({
       status: "active",
       accessEndsAt: endsAt,
