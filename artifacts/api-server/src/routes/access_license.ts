@@ -174,11 +174,19 @@ router.post("/access-license/annual-contract", async (req, res) => {
     monthlyAmount: tenant?.monthlyAmount ?? null,
   }).returning();
 
-  await db.update(accessLicensesTable).set({
+  await db.insert(accessLicensesTable).values({
+    tenantId,
+    mode: "prepaid",
     status: "pending_contract",
     annualContractId: acceptance!.id,
-    updatedAt: new Date(),
-  }).where(eq(accessLicensesTable.tenantId, tenantId));
+  }).onConflictDoUpdate({
+    target: accessLicensesTable.tenantId,
+    set: {
+      status: "pending_contract",
+      annualContractId: acceptance!.id,
+      updatedAt: new Date(),
+    },
+  });
 
   res.status(201).json({
     id: acceptance!.id,
