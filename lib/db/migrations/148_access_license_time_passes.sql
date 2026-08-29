@@ -59,3 +59,17 @@ CREATE TABLE IF NOT EXISTS access_contract_acceptances (
 CREATE INDEX IF NOT EXISTS access_licenses_status_idx ON access_licenses(status,access_ends_at);
 CREATE INDEX IF NOT EXISTS access_pass_purchases_charge_idx ON access_pass_purchases(provider_charge_id);
 CREATE INDEX IF NOT EXISTS access_contract_acceptances_tenant_idx ON access_contract_acceptances(tenant_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS access_license_reminder_logs (
+  id text PRIMARY KEY,
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  cycle_key text NOT NULL,
+  reminder_type text NOT NULL,
+  channel text NOT NULL CHECK (channel IN ('in_app','email','whatsapp')),
+  recipient text NOT NULL,
+  status text NOT NULL CHECK (status IN ('sent','failed')),
+  error text,
+  sent_at timestamp NOT NULL DEFAULT now(),
+  CONSTRAINT access_license_reminders_dedupe UNIQUE
+    (tenant_id,cycle_key,reminder_type,channel,recipient)
+);
