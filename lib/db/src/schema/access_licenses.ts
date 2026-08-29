@@ -59,3 +59,17 @@ export const accessContractAcceptancesTable = pgTable("access_contract_acceptanc
 
 export type AccessLicense = typeof accessLicensesTable.$inferSelect;
 export type AccessPassPurchase = typeof accessPassPurchasesTable.$inferSelect;
+
+export const accessLicenseReminderLogsTable = pgTable("access_license_reminder_logs", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  cycleKey: text("cycle_key").notNull(),
+  reminderType: text("reminder_type").notNull(),
+  channel: text("channel").$type<"in_app" | "email" | "whatsapp">().notNull(),
+  recipient: text("recipient").notNull(),
+  status: text("status").$type<"sent" | "failed">().notNull(),
+  error: text("error"),
+  sentAt: timestamp("sent_at").notNull().defaultNow(),
+}, (t) => [unique("access_license_reminders_dedupe").on(
+  t.tenantId, t.cycleKey, t.reminderType, t.channel, t.recipient,
+)]);
