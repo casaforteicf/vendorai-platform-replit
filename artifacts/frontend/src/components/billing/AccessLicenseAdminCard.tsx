@@ -124,7 +124,7 @@ export function AccessLicenseAdminCard({ tenantId }: { tenantId: string }) {
 
   const data = licenseQuery.data;
   const license = data?.license;
-  const pendingContracts = data?.contracts.filter((contract) => contract.status === "pending") ?? [];
+  const pendingContracts = data?.contracts.filter((contract) => contract.status === "pending_payment") ?? [];
   const paidPurchases = data?.purchases.filter((purchase) => purchase.status === "paid") ?? [];
 
   return (
