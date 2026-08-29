@@ -1,0 +1,26 @@
+name: VendorAI Access License Reminders
+
+on:
+  schedule:
+    # 12:00 UTC = 09:00 America/Sao_Paulo during standard Brazil time.
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run activation and expiry reminders
+        env:
+          CRON_SECRET: ${{ secrets.VENDORAI_CRON_SECRET }}
+          ENDPOINT: https://app.appvendorai.com/api/internal/access-license/reminders
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "VENDORAI_CRON_SECRET is not configured"
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error             --retry 3 --retry-all-errors             --max-time 300             -X POST "$ENDPOINT"             -H "Authorization: Bearer $CRON_SECRET"             -H "Content-Type: application/json"

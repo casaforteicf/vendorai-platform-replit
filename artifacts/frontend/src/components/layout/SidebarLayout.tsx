@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SupportChatWidget } from "@/components/support/SupportChatWidget";
+import { AccessLicenseBanner } from "@/components/billing/AccessLicenseBanner";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Bell,
@@ -59,7 +60,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
   const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/faq"]);
   const isTenantAdmin = isEffectiveAdmin;
-  const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin && !isTenantAdmin;
+  // Todos os modelos comerciais entregam a experiência completa; a licença controla apenas o período ativo.
+  const isStartPlan = false;
 
   const { data: openBugsData } = useQuery<{ count: number }>({
     queryKey: ["admin", "bug-reports-open-count"],
@@ -996,6 +998,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         )}
+        <AccessLicenseBanner />
         <main className="vendor-scrollbar flex-1 overflow-y-auto">
           <div className="vendor-page-canvas">{children}</div>
         </main>

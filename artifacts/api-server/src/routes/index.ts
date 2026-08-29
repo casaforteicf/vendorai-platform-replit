@@ -60,6 +60,7 @@ import adminPlansRouter from "./admin_plans";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
+import accessLicenseRouter, { accessLicensePublicRouter } from "./access_license";
 import tenantDomainsRouter from "./tenant_domains";
 import notificationsRouter from "./notifications";
 import { intakeRouter } from "./intake";
@@ -138,7 +139,8 @@ import internalScoutSignalRouter from "./internal_scout_signal";
 import leadOportunidadesPrevistasRouter from "./lead_oportunidades_previstas";
 import contentAutopilotRouter from "./content_autopilot";
 import { siteBlogPublicRouter, siteBlogAdminRouter } from "./site_blog";
-import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { enforceAccessLicense } from "../middlewares/accessLicense";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
 
@@ -175,11 +177,11 @@ router.use(pracaPerguntasPublicRouter);
 router.use(pracaAvaliacoesPublicRouter);
 router.use(pracaPaymentsPublicRouter);
 router.use(pracaDeliveryPublicRouter);
+router.use(accessLicensePublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
 router.use(blockPartnerFromCRM);
-router.use(blockExpiredDemo);
 router.use(blockSuspendedTenants);
 
 // Onboarding gate — skip /onboarding/* and /auth/* paths; block unfinished tenants
@@ -201,8 +203,10 @@ router.use(async (req, res, next) => {
   next();
 });
 
-// Auth — protected endpoints (me, refresh)
+// Auth and license endpoints must remain reachable in read-only mode.
 router.use(authProtectedRouter);
+router.use(accessLicenseRouter);
+router.use(enforceAccessLicense);
 
 // Explicit module allowlist configured in Equipe. This protects the API too,
 // so typing a hidden URL directly does not bypass the permission.

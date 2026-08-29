@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { AccessLicenseAdminCard } from "@/components/billing/AccessLicenseAdminCard";
 import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Building2, Shield, ShieldOff, Mail, Loader2, Zap, Bot,
@@ -901,6 +902,8 @@ export default function AdminTenantDetail() {
           </CardContent>
         </Card>
       </div>
+
+      <AccessLicenseAdminCard tenantId={id} />
 
       <Card>
         <CardHeader className="pb-3">
