@@ -190,6 +190,40 @@ router.post("/access-license/annual-contract", async (req, res) => {
   });
 });
 
+router.get("/admin/access-license/tenants/:tenantId", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
+  const tenantId = String(req.params.tenantId);
+  const [license, purchases, contracts] = await Promise.all([
+    getAccessLicense(tenantId),
+    db.select({
+      id: accessPassPurchasesTable.id,
+      status: accessPassPurchasesTable.status,
+      days: accessPassPurchasesTable.days,
+      amount: accessPassPurchasesTable.amount,
+      paidAt: accessPassPurchasesTable.paidAt,
+      accessStartsAt: accessPassPurchasesTable.accessStartsAt,
+      accessEndsAt: accessPassPurchasesTable.accessEndsAt,
+      createdAt: accessPassPurchasesTable.createdAt,
+    }).from(accessPassPurchasesTable)
+      .where(eq(accessPassPurchasesTable.tenantId, tenantId))
+      .orderBy(desc(accessPassPurchasesTable.createdAt)).limit(20),
+    db.select({
+      id: accessContractAcceptancesTable.id,
+      responsibleName: accessContractAcceptancesTable.responsibleName,
+      responsibleRole: accessContractAcceptancesTable.responsibleRole,
+      responsibleEmail: accessContractAcceptancesTable.responsibleEmail,
+      status: accessContractAcceptancesTable.status,
+      termsVersion: accessContractAcceptancesTable.termsVersion,
+      acceptedAt: accessContractAcceptancesTable.acceptedAt,
+      monthlyAmount: accessContractAcceptancesTable.monthlyAmount,
+      createdAt: accessContractAcceptancesTable.createdAt,
+    }).from(accessContractAcceptancesTable)
+      .where(eq(accessContractAcceptancesTable.tenantId, tenantId))
+      .orderBy(desc(accessContractAcceptancesTable.createdAt)).limit(20),
+  ]);
+  res.json({ license: serialize(license), purchases, contracts });
+});
+
 router.post("/admin/access-license/enroll", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
   const parsed = z.object({ tenantIds: z.array(z.string().min(1)).min(1).max(500) }).safeParse(req.body);
