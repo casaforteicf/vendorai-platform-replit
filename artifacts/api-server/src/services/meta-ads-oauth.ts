@@ -38,15 +38,35 @@ function assertMetaAdsAppConfigured(): void {
   }
 }
 
-function getRedirectUri(): string {
-  const configured = process.env["META_ADS_REDIRECT_URI"]?.trim();
-  if (configured) return configured;
-  if (process.env["NODE_ENV"] === "production") {
-    return "https://app.appvendorai.com/api/auth/meta-ads/callback";
+const META_ADS_CALLBACK_PATH = "/api/auth/meta-ads/callback";
+const PRODUCTION_META_ADS_REDIRECT_URI =
+  `https://vendorai-platform-replit-production.up.railway.app${META_ADS_CALLBACK_PATH}`;
+
+function isValidMetaAdsRedirectUri(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.pathname === META_ADS_CALLBACK_PATH && !url.search && !url.hash;
+  } catch {
+    return false;
   }
+}
+
+export function getMetaAdsRedirectUri(): string {
+  const configured = process.env["META_ADS_REDIRECT_URI"]?.trim();
+  if (configured && isValidMetaAdsRedirectUri(configured)) return configured;
+
+  if (configured) {
+    logger.warn(
+      { configuredRedirectUri: configured, expectedPath: META_ADS_CALLBACK_PATH },
+      "META_ADS_REDIRECT_URI inválida; usando callback seguro do backend",
+    );
+  }
+
+  if (process.env["NODE_ENV"] === "production") return PRODUCTION_META_ADS_REDIRECT_URI;
+
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
-  if (domain) return `https://${domain}/api/auth/meta-ads/callback`;
-  return "http://localhost:3000/api/auth/meta-ads/callback";
+  if (domain) return `https://${domain}${META_ADS_CALLBACK_PATH}`;
+  return `http://localhost:3000${META_ADS_CALLBACK_PATH}`;
 }
 
 const META_GRAPH_VERSION = "v26.0";
@@ -55,11 +75,12 @@ const META_TOKEN_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/
 export const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 const META_ADS_SCOPE = "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_basic";
 
-export function buildMetaAdsOAuthUrl(state: string): string {
+export function buildMetaAdsOAuthUrl(state: string, exactRedirectUri?: string): string {
   assertMetaAdsAppConfigured();
+  const redirectUri = exactRedirectUri ?? getMetaAdsRedirectUri();
   const params = new URLSearchParams({
     client_id: META_ADS_APP_ID ?? "",
-    redirect_uri: getRedirectUri(),
+    redirect_uri: redirectUri,
     scope: META_ADS_SCOPE,
     state,
     response_type: "code",
@@ -73,12 +94,17 @@ interface MetaTokenResponse {
   expires_in?: number;
 }
 
-export async function exchangeCodeForToken(code: string): Promise<MetaTokenResponse> {
+export async function exchangeCodeForToken(
+  code: string,
+  exactRedirectUri?: string,
+): Promise<MetaTokenResponse> {
   assertMetaAdsAppConfigured();
+  const redirectUri = exactRedirectUri ?? getMetaAdsRedirectUri();
+  logger.info({ redirectUri }, "Trocando código OAuth do Meta Ads por token");
   const url = new URL(META_TOKEN_BASE);
   url.searchParams.set("client_id", META_ADS_APP_ID ?? "");
   url.searchParams.set("client_secret", META_ADS_APP_SECRET ?? "");
-  url.searchParams.set("redirect_uri", getRedirectUri());
+  url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("code", code);
 
   const res = await fetch(url.toString());
