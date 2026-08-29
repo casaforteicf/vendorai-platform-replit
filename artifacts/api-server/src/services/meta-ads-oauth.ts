@@ -73,7 +73,10 @@ const META_GRAPH_VERSION = "v26.0";
 const META_OAUTH_BASE = "https://www.facebook.com/v26.0/dialog/oauth";
 const META_TOKEN_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`;
 export const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
-const META_ADS_SCOPE = "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_basic";
+// Escopos mínimos para listar e gerenciar contas/campanhas de anúncios.
+// Permissões de Instagram e Páginas pertencem aos respectivos fluxos e não
+// devem ser misturadas ao OAuth do Meta Ads.
+const META_ADS_SCOPE = "ads_management,ads_read,business_management";
 
 export function buildMetaAdsOAuthUrl(state: string, exactRedirectUri?: string): string {
   assertMetaAdsAppConfigured();
