@@ -4,6 +4,7 @@ import { authenticate } from "../middlewares/auth.js";
 import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
 import {
   buildMetaAdsOAuthUrl,
+  getMetaAdsRedirectUri,
   exchangeCodeForToken,
   exchangeForLongLivedToken,
   listAccessibleAdAccounts,
@@ -34,9 +35,10 @@ router.get("/auth/meta-ads", authenticate, async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const state = createOAuthState(tenantId, userId, "meta-ads");
-    const url = buildMetaAdsOAuthUrl(state);
-    logger.info({ tenantId, userId }, "Retornando URL OAuth Meta Ads");
+    const redirectUri = getMetaAdsRedirectUri();
+    const state = createOAuthState(tenantId, userId, "meta-ads", redirectUri);
+    const url = buildMetaAdsOAuthUrl(state, redirectUri);
+    logger.info({ tenantId, userId, redirectUri }, "Retornando URL OAuth Meta Ads");
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth Meta Ads");
@@ -59,9 +61,11 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
   }
 
   let tenantId: string;
+  let exactRedirectUri: string | undefined;
   try {
     const decoded = consumeOAuthState(state, "meta-ads");
     tenantId = decoded.tenantId;
+    exactRedirectUri = decoded.returnTo?.startsWith("https://") ? decoded.returnTo : undefined;
   } catch (err) {
     logger.warn({ err }, "Callback Meta Ads: state inválido, expirado ou reutilizado");
     return res.redirect(`${appUrl}/configuracoes?metaAdsError=invalid_state`);
@@ -71,7 +75,7 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
     logger.info({ tenantId }, "Processando callback Meta Ads");
     let shortToken;
     try {
-      shortToken = await exchangeCodeForToken(code);
+      shortToken = await exchangeCodeForToken(code, exactRedirectUri);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao trocar codigo OAuth do Meta Ads");
       return res.redirect(`${appUrl}/configuracoes?metaAdsError=token_exchange`);
