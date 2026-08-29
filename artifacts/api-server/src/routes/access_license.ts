@@ -19,6 +19,7 @@ import {
   grantPaidPassInTransaction,
   hasActiveAccess,
 } from "../services/accessLicense.js";
+import { runAccessLicenseReminders } from "../services/accessLicenseReminders.js";
 
 const router: IRouter = Router();
 export const accessLicensePublicRouter: IRouter = Router();
@@ -216,6 +217,13 @@ router.post("/admin/access-license/contracts/:id/activate", async (req, res) => 
     }).where(eq(accessLicensesTable.tenantId, contract.tenantId));
   });
   res.json({ active: true, annualEndsAt });
+});
+
+accessLicensePublicRouter.post("/internal/access-license/reminders", async (req, res) => {
+  const configured = process.env.CRON_SECRET ?? "";
+  const received = String(req.get("authorization") ?? "").replace(/^Bearer\\s+/i, "");
+  if (!configured || !safeEqual(received, configured)) return res.status(401).json({ error: "Invalid cron token." });
+  res.json(await runAccessLicenseReminders());
 });
 
 accessLicensePublicRouter.post("/webhooks/asaas/access-license", async (req, res) => {
