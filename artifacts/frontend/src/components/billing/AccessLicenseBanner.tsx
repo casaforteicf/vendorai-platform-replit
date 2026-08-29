@@ -26,7 +26,9 @@ export function AccessLicenseBanner() {
     enabled,
     refetchInterval: 60_000,
     queryFn: async () => {
-      const response = await fetch("/api/access-license/status");
+      const response = await fetch("/api/access-license/status", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!response.ok) throw new Error("Não foi possível consultar a licença.");
       return response.json();
     },
@@ -35,7 +37,9 @@ export function AccessLicenseBanner() {
   const activate = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/access-license/activate-monthly", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: "{}",
       });
       if (!response.ok) throw new Error("Não foi possível ativar o benefício mensal.");
       return response.json();
@@ -47,7 +51,7 @@ export function AccessLicenseBanner() {
     mutationFn: async () => {
       const response = await fetch("/api/access-license/purchases", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
       });
       const data = await response.json();
@@ -62,7 +66,9 @@ export function AccessLicenseBanner() {
   const annualContract = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/access-license/annual-contract", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(annualForm),
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(annualForm),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Não foi possível registrar o contrato.");
