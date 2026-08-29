@@ -60,7 +60,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
   const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/base-conhecimento", "/configuracoes", "/faq"]);
   const isTenantAdmin = isEffectiveAdmin;
-  const isStartPlan = tenantData?.planSlug === "start" && !isSuperAdmin && !isTenantAdmin;
+  // Todos os modelos comerciais entregam a experiência completa; a licença controla apenas o período ativo.\n  const isStartPlan = false;
 
   const { data: openBugsData } = useQuery<{ count: number }>({
     queryKey: ["admin", "bug-reports-open-count"],
