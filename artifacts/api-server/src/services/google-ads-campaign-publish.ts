@@ -300,12 +300,23 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   const adGroupResourceName = adGroupRes.results[0]?.resourceName;
   if (!adGroupResourceName) throw new GoogleAdsPublishError("Google Ads não retornou o grupo de anúncios criado.");
 
-  // 5) Palavra-chave inicial (broad match no nome do item) — ponto de
-  // partida editável, não segmentação final. Sem isso o grupo fica sem
-  // nenhum critério de veiculação.
-  await mutate(customerId, accessToken, "adGroupCriteria", [
-    { create: { adGroup: adGroupResourceName, status: "ENABLED", keyword: { text: nomeCurto, matchType: "BROAD" } } },
-  ]);
+  // 5) Palavras-chave derivadas do público, nicho, objetivo e oferta.
+  // O plano é exibido no rascunho antes desta publicação. PHRASE evita
+  // alcance excessivamente aberto e ainda permite variações relevantes.
+  const plannedKeywords = campanha.segmentacao?.audiencePlan?.google?.keywords ?? [];
+  const keywords = plannedKeywords.length > 0 ? plannedKeywords : [nomeCurto];
+  await mutate(
+    customerId,
+    accessToken,
+    "adGroupCriteria",
+    keywords.slice(0, 15).map((text) => ({
+      create: {
+        adGroup: adGroupResourceName,
+        status: "ENABLED",
+        keyword: { text: text.slice(0, 80), matchType: "PHRASE" },
+      },
+    })),
+  );
 
   // 6) Anúncio RSA — títulos/descrições do criativo já aprovado
   const adRes = await mutate(customerId, accessToken, "adGroupAds", [
