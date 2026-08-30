@@ -491,9 +491,8 @@ export default function Ads() {
     },
   });
 
-  // Publicar cria a estrutura real na conta Google Ads do tenant — SEMPRE
-  // pausada em todos os níveis, não liga gasto nenhum. Ativar é a única
-  // ação que de fato liga a veiculação.
+  // Publicar cria a estrutura completa e a ativa em uma única ação confirmada.
+  // A plataforma ainda faz sua análise obrigatória antes de iniciar a entrega.
   const publicarCampanha = useMutation({
     mutationFn: async (campaignId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/publicar`, {
@@ -575,8 +574,8 @@ export default function Ads() {
       <Card className="bg-muted/30">
         <CardContent className="pt-4 text-sm space-y-2">
           <p className="font-medium">Como colocar um anúncio no ar</p>
-          <div className="grid gap-2 sm:grid-cols-5 py-2">
-            {["1. Criar rascunho", "2. Gerar criativo", "3. Aprovar", "4. Publicar pausada", "5. Ativar gasto real"].map((step) => (
+          <div className="grid gap-2 sm:grid-cols-3 py-2">
+            {["1. Configurar público e oferta", "2. Gerar o anúncio", "3. Publicar e iniciar"].map((step) => (
               <div key={step} className="rounded-md border bg-background px-2 py-2 text-center text-xs font-medium">{step}</div>
             ))}
           </div>
@@ -585,7 +584,8 @@ export default function Ads() {
             <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search) ou foto gerada por IA (Meta).</li>
             <li>Farmácia (venda livre), mercado e distribuidoras usam o feed do Google Shopping. Medicamento que exige receita nunca entra no feed.</li>
             <li>Anúncio na Meta exige Meta Ads conectado. Para veicular no Instagram, a conta profissional precisa estar vinculada à Página do Facebook acessível pela mesma conexão Meta.</li>
-            <li>Nenhuma campanha publica sozinha — todo criativo passa por aprovação antes.</li>
+            <li>Ao clicar em <strong>Publicar e iniciar</strong>, a plataforma analisa o anúncio e só começa a entrega depois da aprovação automática.</li>
+            <li>A mídia é cobrada diretamente pelo Google ou pela Meta usando a forma de pagamento da conta do cliente.</li>
           </ul>
           {feedInfo?.feedUrl && (
             <div className="flex items-center gap-2 pt-2">
