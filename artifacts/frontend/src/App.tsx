@@ -747,7 +747,7 @@ function AppRoutes() {
           {() => <ProtectedRoute component={FAQ} />}
         </Route>
         <Route path="/guia-implantacao">
-          <RedirectPage to="/faq" />
+          {() => <ProtectedRoute component={GuiaImplantacao} />}
         </Route>
         <Route path="/agents/config">
           {() => <ProtectedRoute component={AgentConfig} />}
