@@ -14,6 +14,7 @@ import {
   generatedSitesTable,
   contentGenerationsTable,
   contentPublishedPostsTable,
+  adCampaignEventsTable,
 } from "@workspace/db";
 import type { AdCampaign } from "@workspace/db";
 import { logger } from "../lib/logger.js";
@@ -25,6 +26,7 @@ import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehi
 import { enrichAdsSegmentacao } from "../services/ad-audience-plan.js";
 import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
 import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
+import { getAdsOverview, recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
 
@@ -114,6 +116,32 @@ async function buildResumoLivreOuLandingPage(campanha: AdCampaign, tenantId: str
     ? partes.join("\n")
     : `Campanha institucional/landing page, segmento: ${campanha.vertical}`;
 }
+
+router.get("/tenants/:tenantId/ads/overview", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  return res.json(await getAdsOverview(tenantId));
+});
+
+router.get("/tenants/:tenantId/ads/campaigns/:id/events", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const events = await db.select().from(adCampaignEventsTable)
+    .where(and(eq(adCampaignEventsTable.tenantId, tenantId), eq(adCampaignEventsTable.campaignId, req.params.id as string)))
+    .orderBy(desc(adCampaignEventsTable.createdAt));
+  return res.json(events);
+});
+
+router.post("/tenants/:tenantId/ads/events/:id/resolve", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const [event] = await db.update(adCampaignEventsTable)
+    .set({ resolvedAt: new Date() })
+    .where(and(eq(adCampaignEventsTable.id, req.params.id as string), eq(adCampaignEventsTable.tenantId, tenantId)))
+    .returning();
+  if (!event) return res.status(404).json({ error: "Alerta não encontrado" });
+  return res.json(event);
+});
 
 router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const tenantId = req.params.tenantId as string;
@@ -236,6 +264,7 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
       }).returning();
     }
   }
+  if (row) await recordAdCampaignEvent({ tenantId, campaignId: row.id, userId: (req as any).user?.sub, eventType: "created", message: "Campanha criada como rascunho." });
   return res.status(201).json({ ...row, latestCreative: importedCreative });
 });
 
@@ -276,6 +305,7 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/retry", async (req, res) => {
     utmCode: `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`,
   } as any).returning();
 
+  if (retry) await recordAdCampaignEvent({ tenantId, campaignId: retry.id, userId: (req as any).user?.sub, eventType: "retry_created", severity: "warning", message: "Nova versão criada para corrigir uma reprovação.", metadata: { sourceCampaignId: campaign.id, rejectionReason } });
   return res.status(201).json(retry);
 });
 
@@ -517,6 +547,7 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/ativar", async (req, res) => {
   try {
     if (plataforma === "google") await setGoogleAdsCampaignStatus(tenantId, campaignId, true);
     else await setMetaAdsCampaignStatus(tenantId, campaignId, true);
+    await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: "activated", severity: "success", message: "Campanha ativada manualmente.", metadata: { plataforma } });
     return res.json({ success: true, status: "ativo" });
   } catch (err) {
     if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
@@ -540,6 +571,7 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/pausar", async (req, res) => {
   try {
     if (plataforma === "google") await setGoogleAdsCampaignStatus(tenantId, campaignId, false);
     else await setMetaAdsCampaignStatus(tenantId, campaignId, false);
+    await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: "paused", severity: "warning", message: "Campanha pausada manualmente.", metadata: { plataforma } });
     return res.json({ success: true, status: "pausado" });
   } catch (err) {
     if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
