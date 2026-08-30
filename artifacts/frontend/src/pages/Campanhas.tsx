@@ -463,7 +463,7 @@ function CampaignModal({
           nome: values.nome,
           tipo: values.tipo,
           mensagem: values.mensagem,
-          segmentoFiltro: buildSegmentoFiltro(values) as any,
+          segmentoFiltro: { ...buildSegmentoFiltro(values), marketingContext } as any,
           mensagensEtapa: (values.mensagensEtapa && Object.keys(values.mensagensEtapa).length > 0)
             ? values.mensagensEtapa
             : undefined,
