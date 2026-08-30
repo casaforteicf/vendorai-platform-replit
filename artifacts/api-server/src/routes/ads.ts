@@ -157,7 +157,7 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
     if (!sourceContent) return res.status(422).json({ error: "Conteúdo de origem não encontrado neste tenant" });
   }
 
-  let segmentacao = enrichAdsSegmentacao((parsed.data.segmentacao ?? {}) as any);
+  let segmentacao: any = enrichAdsSegmentacao((parsed.data.segmentacao ?? {}) as any);
   const sourceVariationIndex = Number(req.body?.sourceVariationIndex);
   if (parsed.data.contentGenerationId && Number.isInteger(sourceVariationIndex) && sourceVariationIndex >= 0) {
     const [publishedPost] = await db
