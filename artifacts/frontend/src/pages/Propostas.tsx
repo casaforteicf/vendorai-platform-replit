@@ -418,6 +418,7 @@ export function CatalogoModal({
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<CsvPreviewRow[]>([]);
+  const [csvTotalRows, setCsvTotalRows] = useState(0);
   const [csvRaw, setCsvRaw] = useState("");
   const [importPreviewOpen, setImportPreviewOpen] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; errors: { row: number; message: string }[] } | null>(null);
@@ -653,7 +654,10 @@ export function CatalogoModal({
     if (lines.length < 2) { toast({ title: "Arquivo vazio ou sem dados", variant: "destructive" }); return; }
     const headers = parseCsvLinePreview(lines[0]).map(normalizeImportHeader);
     const rows: CsvPreviewRow[] = [];
-    for (let i = 1; i < Math.min(lines.length, 6); i++) {
+    // D-002: pré-visualização mostrava só 5 linhas -- muito pouco pra
+    // conferir um arquivo de verdade. Sobe pra 50 (o import real, do
+    // lado do backend, continua processando o arquivo inteiro).
+    for (let i = 1; i < Math.min(lines.length, 51); i++) {
       const cols = parseCsvLinePreview(lines[i]);
       const get = (aliases: string[]) => {
         for (const a of aliases) { const idx = headers.indexOf(a); if (idx >= 0) return cols[idx] ?? ""; }
@@ -674,6 +678,7 @@ export function CatalogoModal({
       });
     }
     setCsvPreview(rows);
+    setCsvTotalRows(lines.length - 1);
     setImportPreviewOpen(true);
   }
 
@@ -1573,17 +1578,17 @@ export function CatalogoModal({
 
       {/* Import CSV preview dialog */}
       <Dialog open={importPreviewOpen} onOpenChange={(o) => !o && setImportPreviewOpen(false)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-[95vw] w-full h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
             <DialogTitle>Pré-visualização da importação</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground mb-2">
-            Mostrando até 5 linhas. Confirme para importar <strong>todos</strong> os produtos do arquivo.
+          <p className="text-sm text-muted-foreground px-6 pb-2 shrink-0">
+            Mostrando {csvPreview.length} de <strong>{csvTotalRows}</strong> linhas do arquivo. A importação processa <strong>todas</strong> ao confirmar.
           </p>
           {csvPreview.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="flex-1 overflow-auto px-6">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
                     <TableHead>Nome</TableHead>
                     <TableHead>SKU</TableHead>
@@ -1616,7 +1621,7 @@ export function CatalogoModal({
               </Table>
             </div>
           )}
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-2 p-6 pt-4 border-t shrink-0">
             <Button variant="outline" className="flex-1" onClick={() => setImportPreviewOpen(false)}>Cancelar</Button>
             <Button className="flex-1" onClick={confirmImport} disabled={importMut.isPending}>
               {importMut.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
