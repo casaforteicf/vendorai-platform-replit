@@ -94,6 +94,7 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
         autoPauseNoResults: boolean;
         spendWithoutResultLimit?: number | null;
         allowBudgetIncrease: false;
+        lastAutoPause?: { at: string; spend: number; reason: string };
       };
     };
     previousRejectionReason?: string;
