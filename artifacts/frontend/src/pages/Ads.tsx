@@ -828,7 +828,7 @@ export default function Ads() {
                       </div>
                       {result.recommendation && (
                         <div className="rounded-md border border-blue-200 bg-blue-50 p-2">
-                          <p className="text-xs font-semibold flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" />Recomendação da IA: {result.recommendation.title}</p>
+                          <p className="text-xs font-semibold flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" />Recomendação do VendorAI: {result.recommendation.title}</p>
                           <p className="text-xs text-muted-foreground mt-1">{result.recommendation.reason}</p>
                           {result.recommendation.requiresApproval && <p className="text-[11px] font-medium mt-1">Qualquer mudança de prazo ou orçamento exigirá sua confirmação.</p>}
                         </div>
