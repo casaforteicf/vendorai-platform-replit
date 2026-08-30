@@ -202,7 +202,8 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
     // "click-to-WhatsApp" da Meta (que exigiria destination_type=WHATSAPP
     // no ad set + estrutura de creative diferente). Funciona (abre o
     // WhatsApp ao clicar), só não é o objetivo de campanha nativo.
-    return `https://wa.me/${numero}`;
+    const ref = campanha.utmCode ? `?text=${encodeURIComponent(`Olá, vim do anúncio ${campanha.utmCode}`)}` : "";
+    return `https://wa.me/${numero}${ref}`;
   }
 
   if (campanha.itemTipo === "landing_page") {
@@ -216,7 +217,9 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
     if (!site?.siteSlug) {
       throw new MetaAdsPublishError("Landing page da campanha não encontrada ou ainda sem endereço publicado.");
     }
-    return `https://${site.siteSlug}.appvendorai.com`;
+    const url = new URL(`https://${site.siteSlug}.appvendorai.com`);
+    if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+    return url.toString();
   }
 
   const [tenant] = await db
@@ -226,7 +229,9 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
   if (!tenant?.subdomainSlug) {
     throw new MetaAdsPublishError("Tenant sem site publicado (subdomínio) — necessário como destino do anúncio.");
   }
-  return `https://${tenant.subdomainSlug}.appvendorai.com`;
+  const url = new URL(`https://${tenant.subdomainSlug}.appvendorai.com`);
+  if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+  return url.toString();
 }
 
 async function getValidAccessToken(tenantId: string): Promise<{ accessToken: string; adAccountId: string }> {
