@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { ArrowRight, Check, CheckCircle2, Clock3, FileSignature, RefreshCcw } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, FileSignature, RefreshCcw } from "lucide-react";
 
 const options = [
   {
