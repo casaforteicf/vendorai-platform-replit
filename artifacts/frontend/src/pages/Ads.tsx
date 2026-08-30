@@ -497,14 +497,14 @@ export default function Ads() {
   const publicarCampanha = useMutation({
     mutationFn: async (campaignId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/publicar`, {
-        method: "POST", headers: authHeaders(),
+        method: "POST", headers: authHeaders(), body: JSON.stringify({ activate: true }),
       });
       if (!r.ok) throw new Error((await r.json())?.error ?? "Falha ao publicar");
       return r.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
-      toast({ title: "Campanha publicada", description: "Criada pausada na plataforma — revise e ative somente quando quiser começar a gastar." });
+      toast({ title: "Campanha enviada e ativada", description: "Ela ficará em análise e começará a veicular quando a plataforma aprovar." });
     },
     onError: (e: any) => toast({ title: "Erro ao publicar", description: e.message, variant: "destructive" }),
   });
@@ -720,12 +720,16 @@ export default function Ads() {
                             </Button>
                           </div>
 
-                          {creative.status === "aprovado" && (
+                          {(
                             <div className="border-t pt-2 mt-1">
                               {!c.externalCampaignId ? (
-                                <Button size="sm" onClick={() => publicarCampanha.mutate(c.id)} disabled={publicarCampanha.isPending}>
+                                <Button size="sm" onClick={() => {
+                                  if (window.confirm(`Publicar e iniciar esta campanha com limite de R$ ${c.orcamentoDiario} por dia? A cobrança da mídia será feita diretamente pela plataforma.`)) {
+                                    publicarCampanha.mutate(c.id);
+                                  }
+                                }} disabled={publicarCampanha.isPending}>
                                   {publicarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Megaphone className="h-4 w-4 mr-1" />}
-                                  Publicar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
+                                  Publicar e iniciar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
                                 </Button>
                               ) : (
                                 <div className="flex items-center gap-2 flex-wrap">
