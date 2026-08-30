@@ -11,14 +11,6 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
-    "id": "pr-203",
-    "titulo": "Automatiza o registro de todas as melhorias em Novidades",
-    "descricao": "registra automaticamente toda melhoria incorporada à versão principal publica título, resumo, tipo, data e número da entrega no sino de Novidades exibe os registros automáticos também na administração mantém a criação manual para comunicados especiais",
-    "tipo": "novidade",
-    "publicadoEm": "2026-08-30T22:26:11.000Z",
-    "pullRequest": 203
-  },
-  {
     "id": "pr-202",
     "titulo": "Todos os atendimentos agora têm protocolo e status",
     "descricao": "Toda conversa com o suporte fica registrada na tela de Suporte, inclusive quando o agente resolve sozinho. O cliente acompanha protocolo, status e responsável pela resolução.",
