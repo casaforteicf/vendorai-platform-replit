@@ -504,6 +504,7 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) =>
     }
 
     logger.info({ tenantId, campaignId, plataforma, activateNow }, "ads: campanha publicada via rota");
+    await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: activateNow ? "published_and_activated" : "published", severity: "success", message: activateNow ? "Campanha publicada e ativada na plataforma." : "Campanha publicada em modo pausado.", metadata: { plataforma } });
     return res.status(201).json({ ...result, activated: activateNow });
   } catch (err) {
     if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
@@ -527,6 +528,8 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/sync-status", async (req, res)
         ? await syncMetaAdsReviewStatus(tenantId, campaignId)
         : null;
     if (!platformReview) return res.status(422).json({ error: "Consulta de situação disponível apenas para Google e Meta." });
+    const severity = platformReview.status === "reprovada" || platformReview.status === "erro_pagamento" || platformReview.status === "erro_conta" ? "critical" : platformReview.status === "aprovada" ? "success" : "info";
+    await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: `review_${platformReview.status}`, severity, message: platformReview.reason ?? `Situação da plataforma: ${platformReview.status}.`, dedupeKey: `review:${platformReview.status}:${platformReview.syncedAt.slice(0, 10)}`, metadata: { plataforma, policyTopics: platformReview.policyTopics ?? [] } });
     return res.json(platformReview);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível atualizar a situação da campanha.";
