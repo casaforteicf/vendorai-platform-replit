@@ -28,6 +28,96 @@ export const quoteExtractionResultSchema = z.object({
 
 export type QuoteExtractionResult = z.infer<typeof quoteExtractionResultSchema>;
 
+// ─── Financial entry (lançamento) extraction — nota fiscal, recibo, boleto ───
+// D-004: novo lançamento no ERP por foto/upload -- IA identifica o tipo de
+// documento, extrai os dados e devolve pra revisão antes de lançar de
+// verdade (usuário aprova ou edita, nunca lança direto sem conferir).
+
+export const lancamentoExtractionResultSchema = z.object({
+  tipoDocumento: z.enum(["nfe", "nfse", "recibo", "boleto", "outro"]).nullable().optional(),
+  tipo: z.enum(["receber", "pagar"]).nullable().optional(),
+  categoria: z.enum(["receita", "custo", "despesa", "imposto", "investimento"]).nullable().optional(),
+  descricao: z.string().nullable().optional(),
+  pessoa: z.string().nullable().optional(),
+  documento: z.string().nullable().optional(),
+  valorOriginal: z.number().nullable().optional(),
+  vencimento: z.string().nullable().optional(),
+  numero: z.string().nullable().optional(),
+  chave: z.string().nullable().optional(),
+  observacoes: z.string().nullable().optional(),
+  confianca: z.number().nullable().optional(),
+});
+
+export type LancamentoExtractionResult = z.infer<typeof lancamentoExtractionResultSchema>;
+
+const LANCAMENTO_EXTRACTION_SYSTEM_PROMPT = `Você é um analisador especializado em documentos financeiros brasileiros: nota fiscal (NFe/NFSe), recibo e boleto.
+Analise o documento fornecido, identifique o tipo e extraia os dados pra um lançamento financeiro.
+Retorne APENAS um JSON válido (sem texto extra) com os campos abaixo. Omita ou deixe null campos não encontrados.
+
+{
+  "tipoDocumento": "nfe" | "nfse" | "recibo" | "boleto" | "outro",
+  "tipo": "receber" (empresa vai RECEBER esse valor, ex: nota fiscal de venda emitida pela empresa) ou "pagar" (empresa vai PAGAR, ex: nota de compra/serviço recebido, boleto a pagar),
+  "categoria": "receita" | "custo" | "despesa" | "imposto" | "investimento",
+  "descricao": "descrição curta do lançamento (ex: 'Compra de material elétrico - Fornecedor XYZ')",
+  "pessoa": "nome da pessoa ou empresa (emitente se for pagar, destinatário se for receber)",
+  "documento": "CNPJ ou CPF da pessoa, só números",
+  "valorOriginal": número_decimal_sem_símbolo_ou_null,
+  "vencimento": "data de vencimento/pagamento em formato YYYY-MM-DD ou null",
+  "numero": "número da nota/documento",
+  "chave": "chave de acesso da NFe/NFSe, se houver (44 dígitos)",
+  "observacoes": "informações adicionais relevantes (máx 300 chars)",
+  "confianca": 0.0
+}
+
+Instruções:
+- valorOriginal: use SOMENTE o valor numérico (ex: 1580.50), sem R$, sem pontos de milhar
+- confianca: número entre 0 e 1 indicando sua confiança na extração
+- Retorne SOMENTE o JSON, nenhum texto fora dele`;
+
+export async function extractLancamentoData(
+  files: Array<{ buffer: Buffer; mimeType: string; originalName: string }>,
+  tenantId: string
+): Promise<LancamentoExtractionResult> {
+  const texts: string[] = [];
+
+  for (const file of files) {
+    try {
+      const text = await extractTextFromBuffer(file.buffer, file.mimeType, file.originalName, tenantId);
+      if (text.trim().length > 20) {
+        texts.push(`=== ${file.originalName} ===\n${text.trim()}`);
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
+
+  if (texts.length === 0) return { confianca: 0 };
+
+  let combinedText = texts.join("\n\n");
+  if (combinedText.length > MAX_TEXT_LENGTH) {
+    combinedText = combinedText.slice(0, MAX_TEXT_LENGTH) + "\n[texto truncado]";
+  }
+
+  const aiResult = await gatewayCallOpenAI(
+    tenantId,
+    "document_extraction",
+    [
+      { role: "system", content: LANCAMENTO_EXTRACTION_SYSTEM_PROMPT },
+      { role: "user", content: combinedText },
+    ],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 1500, temperature: 0.1 },
+  );
+
+  const raw = aiResult.content || "{}";
+  try {
+    const parsed = JSON.parse(raw);
+    return lancamentoExtractionResultSchema.parse(parsed);
+  } catch {
+    return { confianca: 0 };
+  }
+}
+
+
 const QUOTE_EXTRACTION_SYSTEM_PROMPT = `Você é um analisador especializado em orçamentos, propostas comerciais e cotações.
 Analise o documento fornecido e extraia as informações do orçamento/proposta.
 Retorne APENAS um JSON válido (sem texto extra) com os campos abaixo. Omita ou deixe null campos não encontrados.

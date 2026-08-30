@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { z } from "zod/v4";
+import multer from "multer";
 import {
   db, erpTitulosTable, erpPagamentosTable, erpDocumentosFiscaisTable,
   insertErpTituloSchema, insertErpPagamentoSchema, insertErpDocumentoFiscalSchema,
@@ -10,8 +11,15 @@ import {
 } from "@workspace/db";
 import { createCharge, createOrGetCustomer, getTenantAsaasApiKey } from "../lib/asaas.js";
 import { emitirDocumentoFiscal, isNuvemFiscalConfigured } from "../lib/nuvem-fiscal.js";
+import { extractLancamentoData } from "../lib/document-extraction.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
+const objectStorageService = new ObjectStorageService();
+const uploadLancamento = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 function canAccess(req: Express.Request, tenantId: string) {
   return (req as any).user?.platformRole === "super_admin" || (req as any).user?.tenantId === tenantId;
@@ -43,6 +51,37 @@ router.post("/tenants/:tenantId/erp/titulos", async (req, res) => {
   await audit(req, tenantId, "criar", "titulo", row?.id, row);
   res.status(201).json(row);
 });
+
+// D-004: novo lançamento por foto/upload -- IA identifica o tipo de
+// documento (nota fiscal, recibo, boleto) e extrai os dados pra revisão.
+// Nunca lança direto: devolve os campos pro usuário aprovar ou editar
+// antes de confirmar (POST /titulos, já existente, faz o lançamento
+// de verdade depois que a pessoa confirmar os dados).
+router.post(
+  "/tenants/:tenantId/erp/extrair-lancamento",
+  uploadLancamento.single("file"),
+  async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+    if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Access denied" });
+    if (!req.file) return void res.status(400).json({ error: "Nenhum arquivo enviado" });
+
+    try {
+      const [result, documentoUrl] = await Promise.all([
+        extractLancamentoData([
+          { buffer: req.file.buffer, mimeType: req.file.mimetype, originalName: req.file.originalname },
+        ], tenantId),
+        objectStorageService.savePrivateBuffer(req.file.buffer, req.file.mimetype, req.file.originalname).catch((err) => {
+          req.log.warn({ err }, "extrair-lancamento: falha ao salvar arquivo no storage, seguindo sem ele");
+          return null;
+        }),
+      ]);
+      res.json({ ...result, documentoUrl, originalName: req.file.originalname });
+    } catch (err) {
+      req.log.error({ err }, "Falha ao extrair dados do lançamento");
+      res.status(500).json({ error: "Erro ao processar o arquivo" });
+    }
+  }
+);
 
 router.post("/tenants/:tenantId/erp/titulos/:id/cobranca", async (req,res)=>{
   const tenantId=String(req.params.tenantId); if(!canAccess(req,tenantId)) return void res.status(403).json({error:"Access denied"});

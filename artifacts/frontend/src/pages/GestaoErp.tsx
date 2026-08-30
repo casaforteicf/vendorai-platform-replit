@@ -90,7 +90,75 @@ export default function GestaoErp() {
   </div>;
 }
 
-function TitleDialog({open,onClose,onSave}:{open:boolean;onClose:()=>void;onSave:(b:any)=>Promise<void>}) { const [f,setF]=useState({tipo:"receber",categoria:"receita",descricao:"",pessoa:"",valorOriginal:"",vencimento:""}); return <Dialog open={open} onOpenChange={v=>!v&&onClose()}><DialogContent><DialogHeader><DialogTitle>Novo lançamento financeiro</DialogTitle></DialogHeader><form className="space-y-3" onSubmit={async e=>{e.preventDefault();await onSave({...f,vencimento:new Date(`${f.vencimento}T12:00:00`).toISOString()});}}><div className="grid grid-cols-2 gap-3"><Field label="Tipo"><select className="h-9 w-full border rounded-md px-2" value={f.tipo} onChange={e=>setF({...f,tipo:e.target.value,categoria:e.target.value==="receber"?"receita":"despesa"})}><option value="receber">A receber</option><option value="pagar">A pagar</option></select></Field><Field label="Categoria"><select className="h-9 w-full border rounded-md px-2" value={f.categoria} onChange={e=>setF({...f,categoria:e.target.value})}>{["receita","custo","despesa","imposto","investimento"].map(x=><option key={x}>{x}</option>)}</select></Field></div><Field label="Descrição"><Input required value={f.descricao} onChange={e=>setF({...f,descricao:e.target.value})}/></Field><Field label="Cliente / fornecedor"><Input value={f.pessoa} onChange={e=>setF({...f,pessoa:e.target.value})}/></Field><div className="grid grid-cols-2 gap-3"><Field label="Valor"><Input required type="number" step="0.01" value={f.valorOriginal} onChange={e=>setF({...f,valorOriginal:e.target.value})}/></Field><Field label="Vencimento"><Input required type="date" value={f.vencimento} onChange={e=>setF({...f,vencimento:e.target.value})}/></Field></div><Button className="w-full">Salvar lançamento</Button></form></DialogContent></Dialog>; }
+function TitleDialog({open,onClose,onSave}:{open:boolean;onClose:()=>void;onSave:(b:any)=>Promise<void>}) {
+  const { user, token } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+  const { toast } = useToast();
+  const [f,setF]=useState({tipo:"receber",categoria:"receita",descricao:"",pessoa:"",valorOriginal:"",vencimento:""});
+  const [extracting, setExtracting] = useState(false);
+  const [extractedInfo, setExtractedInfo] = useState<{ tipoDocumento?: string | null; numero?: string | null; confianca?: number | null } | null>(null);
+
+  // D-004: foto ou arquivo -- IA identifica o tipo (nota fiscal, recibo,
+  // boleto) e já preenche o formulário abaixo. A pessoa sempre confere/edita
+  // antes de salvar -- nada é lançado direto sem passar por aqui.
+  async function handleFileUpload(file: File) {
+    setExtracting(true);
+    setExtractedInfo(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`/api/tenants/${tenantId}/erp/extrair-lancamento`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!r.ok) throw new Error("Falha ao processar");
+      const data = await r.json();
+      setF((current) => ({
+        tipo: data.tipo ?? current.tipo,
+        categoria: data.categoria ?? (data.tipo === "receber" ? "receita" : current.categoria),
+        descricao: data.descricao ?? current.descricao,
+        pessoa: data.pessoa ?? current.pessoa,
+        valorOriginal: data.valorOriginal != null ? String(data.valorOriginal) : current.valorOriginal,
+        vencimento: data.vencimento ?? current.vencimento,
+      }));
+      setExtractedInfo({ tipoDocumento: data.tipoDocumento, numero: data.numero, confianca: data.confianca });
+      const confianca = data.confianca ?? 0;
+      toast({ title: confianca >= 0.5 ? "Documento lido com sucesso!" : "Documento importado (leitura parcial) — confira os campos" });
+    } catch {
+      toast({ title: "Erro ao ler o documento", variant: "destructive" });
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  return <Dialog open={open} onOpenChange={v=>!v&&onClose()}><DialogContent><DialogHeader><DialogTitle>Novo lançamento financeiro</DialogTitle></DialogHeader>
+    <div className="rounded-lg border border-dashed p-3 space-y-2">
+      <p className="text-xs text-muted-foreground">Tire uma foto ou envie a nota fiscal, recibo ou boleto — a IA preenche os campos abaixo pra você conferir.</p>
+      <input
+        type="file"
+        accept="image/*,.pdf"
+        capture="environment"
+        className="hidden"
+        id="erp-lancamento-upload"
+        onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleFileUpload(file); e.target.value = ""; }}
+      />
+      <label htmlFor="erp-lancamento-upload">
+        <Button type="button" variant="outline" size="sm" className="w-full" disabled={extracting} asChild>
+          <span className="cursor-pointer flex items-center justify-center gap-1.5">
+            {extracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+            {extracting ? "Lendo documento..." : "Tirar foto ou importar arquivo"}
+          </span>
+        </Button>
+      </label>
+      {extractedInfo && (
+        <p className="text-xs text-muted-foreground">
+          {extractedInfo.tipoDocumento && `Identificado: ${extractedInfo.tipoDocumento.toUpperCase()}`}
+          {extractedInfo.numero && ` · nº ${extractedInfo.numero}`}
+        </p>
+      )}
+    </div>
+    <form className="space-y-3" onSubmit={async e=>{e.preventDefault();await onSave({...f,vencimento:new Date(`${f.vencimento}T12:00:00`).toISOString()});}}><div className="grid grid-cols-2 gap-3"><Field label="Tipo"><select className="h-9 w-full border rounded-md px-2" value={f.tipo} onChange={e=>setF({...f,tipo:e.target.value,categoria:e.target.value==="receber"?"receita":"despesa"})}><option value="receber">A receber</option><option value="pagar">A pagar</option></select></Field><Field label="Categoria"><select className="h-9 w-full border rounded-md px-2" value={f.categoria} onChange={e=>setF({...f,categoria:e.target.value})}>{["receita","custo","despesa","imposto","investimento"].map(x=><option key={x}>{x}</option>)}</select></Field></div><Field label="Descrição"><Input required value={f.descricao} onChange={e=>setF({...f,descricao:e.target.value})}/></Field><Field label="Cliente / fornecedor"><Input value={f.pessoa} onChange={e=>setF({...f,pessoa:e.target.value})}/></Field><div className="grid grid-cols-2 gap-3"><Field label="Valor"><Input required type="number" step="0.01" value={f.valorOriginal} onChange={e=>setF({...f,valorOriginal:e.target.value})}/></Field><Field label="Vencimento"><Input required type="date" value={f.vencimento} onChange={e=>setF({...f,vencimento:e.target.value})}/></Field></div><Button className="w-full">Salvar lançamento</Button></form></DialogContent></Dialog>; }
 function PayDialog({title,onClose,onSave}:{title:Title|null;onClose:()=>void;onSave:(b:any)=>Promise<void>}) { const [valor,setValor]=useState(""); return <Dialog open={!!title} onOpenChange={v=>!v&&onClose()}><DialogContent><DialogHeader><DialogTitle>Registrar baixa</DialogTitle></DialogHeader><form className="space-y-3" onSubmit={async e=>{e.preventDefault();await onSave({valor,pagoEm:new Date().toISOString(),forma:"manual"});}}><p className="text-sm text-muted-foreground">{title?.descricao}</p><Field label="Valor pago"><Input required type="number" step="0.01" value={valor} onChange={e=>setValor(e.target.value)}/></Field><Button className="w-full">Confirmar pagamento</Button></form></DialogContent></Dialog>; }
 function FiscalDialog({open,onClose,onSave}:{open:boolean;onClose:()=>void;onSave:(b:any)=>Promise<void>}) { const [f,setF]=useState({tipo:"nfe",destinatario:"",documentoDestinatario:"",valor:"",status:"rascunho"}); return <Dialog open={open} onOpenChange={v=>!v&&onClose()}><DialogContent><DialogHeader><DialogTitle>Novo documento fiscal</DialogTitle></DialogHeader><form className="space-y-3" onSubmit={async e=>{e.preventDefault();await onSave(f);}}><Field label="Tipo"><select className="h-9 w-full border rounded-md px-2" value={f.tipo} onChange={e=>setF({...f,tipo:e.target.value})}><option value="nfe">NF-e</option><option value="nfse">NFS-e</option><option value="boleto">Boleto</option></select></Field><Field label="Destinatário"><Input required value={f.destinatario} onChange={e=>setF({...f,destinatario:e.target.value})}/></Field><Field label="CPF / CNPJ"><Input value={f.documentoDestinatario} onChange={e=>setF({...f,documentoDestinatario:e.target.value})}/></Field><Field label="Valor"><Input required type="number" step="0.01" value={f.valor} onChange={e=>setF({...f,valor:e.target.value})}/></Field><Button className="w-full"><FileText className="h-4 w-4 mr-2"/>Criar rascunho</Button></form></DialogContent></Dialog>; }
 function Field({label,children}:{label:string;children:React.ReactNode}) { return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>; }
