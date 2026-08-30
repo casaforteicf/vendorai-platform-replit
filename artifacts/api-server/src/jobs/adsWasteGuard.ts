@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { adCampaignsTable, adPerformanceSnapshotsTable, db, leadsTable } from "@workspace/db";
 import { fetchGoogleAdsCampaignPerformance, setGoogleAdsCampaignStatus } from "../services/google-ads-campaign-publish.js";
 import { fetchMetaAdsCampaignPerformance, setMetaAdsCampaignStatus } from "../services/meta-ads-campaign-publish.js";
+import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 /**
  * Proteção autorizada pelo cliente: pausa campanhas que alcançaram o limite
@@ -77,6 +78,7 @@ export async function runAdsWasteGuard(log: Logger): Promise<void> {
       };
       await db.update(adCampaignsTable).set({ segmentacao, updatedAt: new Date() })
         .where(and(eq(adCampaignsTable.id, campaign.id), eq(adCampaignsTable.tenantId, campaign.tenantId)));
+      await recordAdCampaignEvent({ tenantId: campaign.tenantId, campaignId: campaign.id, eventType: "auto_paused_no_results", severity: "critical", message: `Campanha pausada automaticamente após gastar R$ ${spend.toFixed(2)} sem conversão.`, dedupeKey: `auto-pause:${today}`, metadata: { spend, limit } });
       log.warn({ campaignId: campaign.id, spend, limit }, "scheduler/ads-waste-guard: campaign paused");
     } catch (err) {
       log.error({ err, campaignId: campaign.id }, "scheduler/ads-waste-guard: campaign failed (non-fatal)");
