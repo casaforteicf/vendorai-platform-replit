@@ -516,6 +516,37 @@ export async function setGoogleAdsCampaignStatus(
   logger.info({ tenantId, campaignId, ativar }, "ads: status da campanha alterado na API do Google Ads");
 }
 
+export async function fetchGoogleAdsCampaignPerformance(tenantId: string, campaignId: string) {
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign?.externalCampaignId) throw new GoogleAdsPublishError("Campanha ainda não foi enviada ao Google Ads.");
+  const { accessToken, customerId } = await getValidAccessToken(tenantId);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const query = [
+    "SELECT metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions",
+    "FROM campaign",
+    `WHERE campaign.id = ${campaign.externalCampaignId} AND segments.date = '${today}'`,
+  ].join(" ");
+  const res = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${customerId}/googleAds:searchStream`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) throw new GoogleAdsPublishError(traduzirErroGoogleAds(res.status, await res.text()));
+  const chunks = await res.json() as Array<{ results?: Array<{ metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number } }> }>;
+  const rows = chunks.flatMap((chunk) => chunk.results ?? []);
+  return rows.reduce((total, row) => ({
+    impressions: total.impressions + Number(row.metrics?.impressions ?? 0),
+    clicks: total.clicks + Number(row.metrics?.clicks ?? 0),
+    spend: total.spend + Number(row.metrics?.costMicros ?? 0) / 1_000_000,
+    conversions: total.conversions + Number(row.metrics?.conversions ?? 0),
+  }), { impressions: 0, clicks: 0, spend: 0, conversions: 0 });
+}
+
 export async function syncGoogleAdsReviewStatus(tenantId: string, campaignId: string) {
   const [campanha] = await db.select().from(adCampaignsTable)
     .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
