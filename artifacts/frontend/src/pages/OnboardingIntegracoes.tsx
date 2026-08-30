@@ -124,7 +124,7 @@ export default function OnboardingIntegracoes() {
     (async () => {
       try {
         const data = await apiFetch("/api/onboarding/integracoes") as IntegStatus;
-        if (data.concluido) { setLocation("/dashboard"); return; }
+        if (data.concluido) { setLocation("/guia-implantacao"); return; }
         setStatus(data);
         setStep(data.step ?? 0);
         if (data.googleAds?.pendingAccountSelection) void loadGoogleAdsAccounts();
@@ -188,7 +188,7 @@ export default function OnboardingIntegracoes() {
     setSubmitting(true);
     try {
       await apiFetch("/api/onboarding/integracoes/complete", { method: "POST" });
-      setLocation("/dashboard");
+      setLocation("/guia-implantacao");
     } catch {
       toast({ title: "Erro ao finalizar onboarding.", variant: "destructive" });
       setSubmitting(false);
@@ -372,7 +372,7 @@ export default function OnboardingIntegracoes() {
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             onClick={complete}
           >
-            Pular configuração de integrações
+            Continuar depois
           </button>
         )}
       </header>
@@ -497,7 +497,7 @@ export default function OnboardingIntegracoes() {
           {step === 2 && (
             <StepCard
               icon={<Instagram className="h-8 w-8 text-purple-500" />}
-              title="Conecte seu Instagram Business"
+              title="Conecte Instagram e Facebook Business"
               subtitle="Receba DMs e gere conteúdo para o Instagram direto pela Vendor.ai"
               connected={status?.instagram?.connected}
               connectedLabel={status?.instagram?.username ? `Instagram — @${status.instagram.username}` : "Instagram conectado"}
