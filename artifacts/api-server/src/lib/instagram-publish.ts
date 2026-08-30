@@ -5,10 +5,34 @@ import type { Logger } from "pino";
 // diretamente; não depende de uma Facebook Page vinculada.
 const GRAPH = "https://graph.instagram.com/v26.0";
 
+type InstagramGraphError = {
+  message?: string;
+  type?: string;
+  code?: number;
+  error_subcode?: number;
+  error_user_title?: string;
+  error_user_msg?: string;
+};
+
+export class InstagramApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly graph?: InstagramGraphError,
+  ) {
+    super(message);
+    this.name = "InstagramApiError";
+  }
+}
+
 async function gFetch(url: string, init?: RequestInit): Promise<unknown> {
   const res = await fetch(url, init);
-  const json = (await res.json()) as { error?: unknown };
-  if (!res.ok) throw new Error(JSON.stringify(json.error ?? json));
+  const json = (await res.json()) as { error?: InstagramGraphError };
+  if (!res.ok) {
+    const graph = json.error;
+    const message = graph?.error_user_msg || graph?.message || "A Meta recusou a operação.";
+    throw new InstagramApiError(message, res.status, graph);
+  }
   return json;
 }
 

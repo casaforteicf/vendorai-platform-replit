@@ -25,7 +25,7 @@ import {
   describeImage,
   improveVariationText,
 } from "../lib/content-generation.js";
-import { publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
+import { InstagramApiError, publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import { registerPublishedPost, buildOwnPerformancePromptBlock } from "../services/content-performance.js";
 import type { FeedVariation, StoriesVariation } from "@workspace/db";
@@ -590,8 +590,24 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     res.json({ success: true, postId });
   } catch (err) {
     req.log.error({ err }, "instagram-publish: route failed");
+    if (err instanceof InstagramApiError) {
+      const metaCode = err.graph?.code;
+      const tokenInvalid = metaCode === 190;
+      const permissionMissing = metaCode === 10 || metaCode === 200;
+      res.status(tokenInvalid ? 401 : permissionMissing ? 403 : 422).json({
+        code: tokenInvalid
+          ? "INSTAGRAM_TOKEN_INVALID"
+          : permissionMissing
+            ? "INSTAGRAM_PERMISSION_MISSING"
+            : "INSTAGRAM_PUBLISH_REJECTED",
+        error: err.message,
+        metaCode,
+        metaSubcode: err.graph?.error_subcode,
+      });
+      return;
+    }
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
-    res.status(502).json({ error: `Falha ao publicar no Instagram: ${msg}` });
+    res.status(502).json({ code: "INSTAGRAM_PUBLISH_FAILED", error: `Falha ao publicar no Instagram: ${msg}` });
   }
 });
 
