@@ -28,6 +28,7 @@ import {
   Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 import JSZip from "jszip";
 
 type ContentType = "feed" | "stories" | "reels";
@@ -1353,6 +1354,7 @@ export default function Content() {
   const [activeTab, setActiveTab] = useState<ContentType>("feed");
   const [feedSubFormat, setFeedSubFormat] = useState<"feed_square" | "feed_portrait">("feed_square");
   const [theme, setTheme] = useState("");
+  const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
   const [productId, setProductId] = useState<string>("none");
   const [variations, setVariations] = useState(1);
   const [imageCount, setImageCount] = useState(2);
@@ -1584,6 +1586,10 @@ export default function Content() {
   }
 
   function handleGenerate() {
+    if (!marketingContext.nicheId || marketingContext.productIds.length === 0) {
+      toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" });
+      return;
+    }
     if (!theme.trim()) {
       toast({ title: "Descreva o tema da publicação", variant: "destructive" });
       return;
@@ -1597,7 +1603,7 @@ export default function Content() {
     const materialImgs = uploadedImages.filter((img) => img.purpose === "post_material" && !img.uploading).map((img) => img.url);
     generateMutation.mutate({
       type: activeTab,
-      theme: theme.trim(),
+      theme: `${theme.trim()} | Nicho: ${marketingContext.nicheName} | Produtos: ${marketingContext.productNames.join(", ")}`,
       productId: productId !== "none" ? productId : undefined,
       productSource,
       variations,
@@ -1646,6 +1652,8 @@ export default function Content() {
           </div>
         </div>
       </div>
+
+      <MarketingContextSelector tenantId={tenantId} value={marketingContext} onChange={(next) => { setMarketingContext(next); if (next.productIds[0]) setProductId(next.productIds[0]); }} />
 
       {/* Mode toggle */}
       <div className="flex gap-2">

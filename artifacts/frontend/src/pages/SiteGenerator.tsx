@@ -28,6 +28,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate, Tag, Pencil, Check, X, VideoIcon } from "lucide-react";
+import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,10 @@ interface SiteConfig {
   produtoId?: string;
   /** Título/H1 sugerido para esta página — usado no lote por nicho/produto/serviço. */
   headline?: string;
+  nicheId?: string;
+  nicheName?: string;
+  productIds?: string[];
+  productNames?: string[];
 }
 interface BulkTopic {
   id: string;
@@ -475,6 +480,7 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   // (fluxo de sempre, vai pro Preview); mais de 1 dispara uma LP para cada
   // produto de uma vez (fluxo em massa).
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
 
   const requestUploadUrl = useRequestUploadUrl();
   const { toast } = useToast();
@@ -586,6 +592,10 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!marketingContext.nicheId || marketingContext.productIds.length === 0) {
+      toast({ title: "Escolha o nicho e ao menos um produto", description: "Essas informações orientam a IA sobre o que deve ser divulgado.", variant: "destructive" });
+      return;
+    }
     if (siteType === "product" && selectedProductIds.length === 0) return; // guarded by disabled submit button too
     const fd = new FormData(e.currentTarget);
 
@@ -604,6 +614,10 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
       images: images.filter(Boolean),
       videos: videos.filter(Boolean),
       servicos: (fd.get("servicos") as string) || "",
+      nicheId: marketingContext.nicheId,
+      nicheName: marketingContext.nicheName,
+      productIds: marketingContext.productIds,
+      productNames: marketingContext.productNames,
     };
 
     const activeBulkTopics = bulkTopics.filter((t) => t.nome.trim());
@@ -691,6 +705,8 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
           ))}
         </div>
       </div>
+
+      <MarketingContextSelector tenantId={tenantId} value={marketingContext} onChange={(next) => { setMarketingContext(next); setSelectedProductIds(next.productIds); }} />
 
       {/* ── Dados do perfil (auto-preenchidos) ── */}
       {profileItems.length > 0 && (

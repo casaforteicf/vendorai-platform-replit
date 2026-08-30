@@ -7,6 +7,7 @@ import {
   RefreshCw, Upload, X, Video, ShoppingBag, FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ export default function ContentStudio() {
 
   const [, navigate] = useLocation();
   const [mainTab, setMainTab] = useState<MainTab>("script");
+  const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
 
   // Script state
   const [scriptTab, setScriptTab]   = useState<ScriptTabId>("script");
@@ -264,13 +266,21 @@ export default function ContentStudio() {
   // ── Script generate ──────────────────────────────────────────────────────
   const generateScript = async () => {
     if (!scriptInput.trim() || !tenantId) return;
+    if (!marketingContext.nicheId || marketingContext.productIds.length === 0) {
+      toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" });
+      return;
+    }
     setScriptLoading(true);
     setScriptResult("");
     try {
       const res = await fetch(`/api/tenants/${tenantId}/content-studio/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
-        body: JSON.stringify({ tab: scriptTab, input: scriptInput.trim() }),
+        body: JSON.stringify({
+          tab: scriptTab,
+          input: `${scriptInput.trim()} | Nicho: ${marketingContext.nicheName} | Produtos: ${marketingContext.productNames.join(", ")}`,
+          marketingContext,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro na geração");
@@ -287,13 +297,19 @@ export default function ContentStudio() {
   // ── Product video generate ────────────────────────────────────────────────
   const generateProductVideo = async () => {
     if (!prodName.trim() || !tenantId) return;
+    if (!marketingContext.nicheId || marketingContext.productIds.length === 0) {
+      toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" });
+      return;
+    }
     setProdLoading(true);
     setProdResult("");
     try {
       const form = new FormData();
       if (prodImage) form.append("image", prodImage);
       form.append("name", prodName.trim());
-      form.append("description", prodDesc.trim());
+      form.append("description", `${prodDesc.trim()} | Nicho: ${marketingContext.nicheName} | Produtos: ${marketingContext.productNames.join(", ")}`);
+      form.append("nicheId", marketingContext.nicheId);
+      form.append("productIds", JSON.stringify(marketingContext.productIds));
       form.append("price", prodPrice.trim());
       form.append("benefits", prodBenefits.trim());
       form.append("cta", prodCta.trim() || "Compre agora");
@@ -396,6 +412,15 @@ export default function ContentStudio() {
           </h1>
           <p className="text-sm text-gray-400">Gere scripts, stories e reels com IA para Instagram</p>
         </div>
+
+        <MarketingContextSelector
+          tenantId={tenantId}
+          value={marketingContext}
+          onChange={(next) => {
+            setMarketingContext(next);
+            if (next.productNames.length > 0 && !prodName.trim()) setProdName(next.productNames.join(", "));
+          }}
+        />
 
         {/* Main tab switcher */}
         <div className="flex gap-2 p-1 rounded-2xl bg-white/5 border border-white/10">
@@ -579,7 +604,7 @@ export default function ContentStudio() {
 
               <button
                 onClick={generateScript}
-                disabled={scriptLoading || !scriptInput.trim()}
+                disabled={scriptLoading || !scriptInput.trim() || !marketingContext.nicheId || marketingContext.productIds.length === 0}
                 className={cn(
                   "w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all",
                   scriptLoading || !scriptInput.trim()
@@ -776,7 +801,7 @@ export default function ContentStudio() {
 
               <button
                 onClick={generateProductVideo}
-                disabled={prodLoading || !prodName.trim()}
+                disabled={prodLoading || !prodName.trim() || !marketingContext.nicheId || marketingContext.productIds.length === 0}
                 className={cn(
                   "w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all",
                   prodLoading || !prodName.trim()
