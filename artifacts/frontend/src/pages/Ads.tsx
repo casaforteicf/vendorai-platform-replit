@@ -477,6 +477,22 @@ export default function Ads() {
     onError: (e: any) => toast({ title: "Não foi possível gerar", description: e.message, variant: "destructive" }),
   });
 
+  const corrigirReprovada = useMutation({
+    mutationFn: async (campaignId: string) => {
+      const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/retry`, {
+        method: "POST", headers: authHeaders(),
+      });
+      if (!r.ok) throw new Error((await r.json())?.error ?? "Falha ao preparar a correção");
+      return (await r.json()) as AdCampaign;
+    },
+    onSuccess: (campaign) => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: "Nova versão criada", description: "A IA está refazendo o criativo considerando o motivo da reprovação." });
+      gerarCriativo.mutate(campaign.id);
+    },
+    onError: (e: any) => toast({ title: "Não foi possível corrigir", description: e.message, variant: "destructive" }),
+  });
+
   const aprovarCriativo = useMutation({
     mutationFn: async (creativeId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/creatives/${creativeId}/aprovar`, {
@@ -656,6 +672,18 @@ export default function Ads() {
                               : "Problema na conta de anúncios"}
                           </p>
                           {c.segmentacao.platformReview.reason && <p className="text-xs mt-1">{c.segmentacao.platformReview.reason}</p>}
+                          {c.segmentacao.platformReview.status === "reprovada" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              disabled={corrigirReprovada.isPending}
+                              onClick={() => corrigirReprovada.mutate(c.id)}
+                            >
+                              {corrigirReprovada.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                              Corrigir com IA
+                            </Button>
+                          )}
                           {c.segmentacao.platformReview.policyTopics && c.segmentacao.platformReview.policyTopics.length > 0 && (
                             <p className="text-[11px] mt-1">Políticas: {c.segmentacao.platformReview.policyTopics.join(", ")}</p>
                           )}
