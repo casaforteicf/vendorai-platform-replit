@@ -440,7 +440,12 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
 
   const requestedLocations = campanha.segmentacao?.localizacao?.locais ?? [];
   const geoLocations = await resolveMetaGeoLocations(accessToken, requestedLocations);
-  const demographicTargeting = metaDemographicTargeting(campanha);
+  const campaignControl = campanha.segmentacao?.campaignControl;
+  if (!campaignControl?.startDate || !campaignControl?.endDate) {
+    throw new MetaAdsPublishError("Defina as datas de início e término antes de publicar.");
+  }
+  const specialAdCategory = campaignControl.specialAdCategory ?? "NONE";
+  const demographicTargeting = specialAdCategory === "NONE" ? metaDemographicTargeting(campanha) : {};
 
   const campaignName = `Vendor.ai — ${headline} — ${new Date().toISOString().slice(0, 10)}`;
 
@@ -450,9 +455,11 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   // categoria declarada, fora do escopo dos verticais atendidos hoje).
   const campaignRes = await metaApi<{ id: string }>(`${adAccountPath}/campaigns`, accessToken, "POST", {
     name: campaignName,
-    objective: origemInstagram ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC",
+    objective: campaignControl.objective === "awareness"
+      ? "OUTCOME_AWARENESS"
+      : origemInstagram ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC",
     status: "PAUSED",
-    special_ad_categories: "[]",
+    special_ad_categories: specialAdCategory === "NONE" ? "[]" : JSON.stringify([specialAdCategory]),
   });
 
   // 2) Ad Set — orçamento (centavos, inteiro), geo Brasil fixo nessa
@@ -464,7 +471,11 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     campaign_id: campaignRes.id,
     daily_budget: String(dailyBudgetCents),
     billing_event: "IMPRESSIONS",
-    optimization_goal: origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
+    optimization_goal: campaignControl.objective === "awareness"
+      ? "REACH"
+      : origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
+    start_time: new Date(`${campaignControl.startDate}T00:00:00-03:00`).toISOString(),
+    end_time: new Date(`${campaignControl.endDate}T23:59:59-03:00`).toISOString(),
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     status: "PAUSED",
     targeting: JSON.stringify({
