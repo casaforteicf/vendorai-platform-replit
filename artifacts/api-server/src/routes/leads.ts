@@ -979,7 +979,7 @@ Objetivo registrado: ${lead.objetivo ?? "não informado"}
 
 ## Empresa vendedora
 Nome: ${profile?.nomeFantasia ?? "nossa empresa"}
-Vertical: ${profile?.vertical ?? "não especificado"}
+Segmento: ${profile?.vertical ?? "não especificado"}
 Método de vendas: ${abordagem}
 ${produtosDesc ? `Produtos/serviços: ${produtosDesc}` : ""}
 ${profile?.diferenciais ? `Diferenciais: ${profile.diferenciais}` : ""}
@@ -1090,7 +1090,7 @@ router.post("/leads/:leadId/briefing/summarize", async (req, res) => {
 
   const prompt = `Você é um coach de vendas especialista em fechamento. Analise o briefing abaixo e produza um resumo executivo do cliente para o vendedor usar na próxima abordagem de fechamento.
 
-EMPRESA VENDEDORA: ${profile?.nomeFantasia ?? "nossa empresa"} | Vertical: ${profile?.vertical ?? "—"} | Diferencial: ${profile?.diferenciais ?? "—"} | Produtos: ${produtosDesc}
+EMPRESA VENDEDORA: ${profile?.nomeFantasia ?? "nossa empresa"} | Segmento: ${profile?.vertical ?? "—"} | Diferencial: ${profile?.diferenciais ?? "—"} | Produtos: ${produtosDesc}
 
 CLIENTE:
 - Nome/Empresa: ${lead.empresa ?? lead.nome}
