@@ -470,9 +470,30 @@ export async function setMetaAdsCampaignStatus(tenantId: string, campaignId: str
 
   const { accessToken } = await getValidAccessToken(tenantId);
 
-  await metaApi(campanha.externalCampaignId, accessToken, "POST", {
+  const [adSets, ads] = await Promise.all([
+    metaApi<{ data?: Array<{ id: string }> }>(`${campanha.externalCampaignId}/adsets`, accessToken, "GET", { fields: "id", limit: "100" }),
+    metaApi<{ data?: Array<{ id: string }> }>(`${campanha.externalCampaignId}/ads`, accessToken, "GET", { fields: "id", limit: "100" }),
+  ]);
+
+  const updateCampaign = () => metaApi(campanha.externalCampaignId!, accessToken, "POST", {
     status: ativar ? "ACTIVE" : "PAUSED",
   });
+  const updateChildren = async () => {
+    for (const adSet of adSets.data ?? []) {
+      await metaApi(adSet.id, accessToken, "POST", { status: ativar ? "ACTIVE" : "PAUSED" });
+    }
+    for (const ad of ads.data ?? []) {
+      await metaApi(ad.id, accessToken, "POST", { status: ativar ? "ACTIVE" : "PAUSED" });
+    }
+  };
+
+  if (ativar) {
+    await updateChildren();
+    await updateCampaign();
+  } else {
+    await updateCampaign();
+    await updateChildren();
+  }
 
   await db
     .update(adCampaignsTable)
