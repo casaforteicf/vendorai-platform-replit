@@ -7,8 +7,8 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const links = [
-    { href: "/funcionalidades", label: "Como funciona" },
-    { href: "/precos", label: "Oferta" },
+    { href: "/funcionalidades", label: "Funcionalidades" },
+    { href: "/precos", label: "Planos" },
     { href: "/blog", label: "Conteúdo" },
     { href: "/sobre", label: "Sobre" },
   ];
