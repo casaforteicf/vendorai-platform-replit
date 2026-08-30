@@ -12,6 +12,8 @@ interface Message {
 interface BugReportResult {
   bugReportId: string;
   protocolo: string;
+  status: "aberto" | "em_analise" | "resolvido";
+  resolvidoPor: "agente" | "humano" | null;
 }
 
 export function SupportChatWidget() {
@@ -112,6 +114,8 @@ export function SupportChatWidget() {
               done?: boolean;
               bugReportId?: string | null;
               protocolo?: string | null;
+              status?: "aberto" | "em_analise" | "resolvido";
+              resolvidoPor?: "agente" | "humano" | null;
               error?: string;
             };
 
@@ -132,6 +136,8 @@ export function SupportChatWidget() {
                 setBugReport({
                   bugReportId: payload.bugReportId,
                   protocolo: payload.protocolo,
+                  status: payload.status ?? "aberto",
+                  resolvidoPor: payload.resolvidoPor ?? null,
                 });
               }
             }
@@ -188,6 +194,7 @@ export function SupportChatWidget() {
     abortRef.current?.abort();
     setMessages([]);
     setBugReport(null);
+    conversationIdRef.current = crypto.randomUUID();
     setInput("");
     setStreaming(false);
   };
@@ -256,10 +263,15 @@ export function SupportChatWidget() {
                 <div className="max-w-[85%] bg-green-50 border border-green-200 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">
                   <div className="flex items-center gap-1.5 text-green-700 font-medium mb-0.5">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    Chamado registrado!
+                    Atendimento registrado
                   </div>
                   <p className="text-green-600 text-xs">
-                    Protocolo <strong>{bugReport.protocolo}</strong>. Nossa equipe irá analisar em breve.
+                    Protocolo <strong>{bugReport.protocolo}</strong>.{" "}
+                    {bugReport.status === "resolvido" && bugReport.resolvidoPor === "agente"
+                      ? "Resolvido pelo agente e disponível no histórico do suporte."
+                      : bugReport.status === "em_analise"
+                        ? "Atendimento em análise pela equipe."
+                        : "Encaminhado para acompanhamento da equipe."}
                   </p>
                 </div>
               </div>

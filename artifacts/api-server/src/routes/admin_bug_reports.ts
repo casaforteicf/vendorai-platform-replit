@@ -25,6 +25,8 @@ router.get("/admin/bug-reports", requireRole("super_admin"), async (req, res) =>
       id: bugReportsTable.id,
       tenantId: bugReportsTable.tenantId,
       tenantName: tenantsTable.name,
+      conversationId: bugReportsTable.conversationId,
+      resolvidoPor: bugReportsTable.resolvidoPor,
       titulo: bugReportsTable.titulo,
       descricao: bugReportsTable.descricao,
       categoria: bugReportsTable.categoria,
@@ -87,7 +89,8 @@ router.patch("/admin/bug-reports/:id", requireRole("super_admin"), async (req, r
     .set({
       status,
       ...(respostaSuporte !== undefined ? { respostaSuporte } : {}),
-      ...(status === "resolvido" ? { resolvidoAt: new Date() } : {}),
+      resolvidoPor: status === "resolvido" ? "humano" : null,
+      resolvidoAt: status === "resolvido" ? new Date() : null,
       updatedAt: new Date(),
     } as any)
     .where(eq(bugReportsTable.id, (req.params.id as string)))

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, uuid, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -29,6 +29,8 @@ export const bugReportsTable = pgTable("bug_reports", {
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id"),
+  resolvidoPor: text("resolvido_por"),
   titulo: text("titulo").notNull(),
   descricao: text("descricao").notNull(),
   categoria: bugReportCategoriaEnum("categoria").notNull().default("bug"),
@@ -44,7 +46,10 @@ export const bugReportsTable = pgTable("bug_reports", {
     .notNull()
     .defaultNow()
     .$onUpdateFn(() => new Date()),
-});
+}, (table) => ({
+  tenantConversationUnique: uniqueIndex("bug_reports_tenant_conversation_idx")
+    .on(table.tenantId, table.conversationId),
+}));
 
 export const insertBugReportSchema = createInsertSchema(bugReportsTable, {
   titulo: z.string().min(1).max(255),
