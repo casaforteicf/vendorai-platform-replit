@@ -820,6 +820,22 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   const msg = (data as { message?: Record<string, unknown> }).message ?? {};
   let mensagem = "";
   let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+  let midiaUrl: string | null = null;
+
+  // Salva o arquivo original no nosso storage sempre que processar mídia --
+  // achado real: a mídia só era baixada pra gerar a descrição da IA
+  // (contexto pro agente), a imagem/áudio/documento de verdade nunca
+  // ficava salvo nem visível pro atendente, só o texto do resumo.
+  async function salvarMidiaOriginal(buffer: Buffer, mimeTypeFallback: string, fileNameFallback: string): Promise<string | null> {
+    try {
+      const objectPath = await objectStorage.savePrivateBuffer(buffer, mimeTypeFallback, fileNameFallback);
+      const baseOrigin = `${req.protocol}://${req.get("host")}`;
+      return `${baseOrigin}/api/storage${objectPath}`;
+    } catch (err) {
+      req.log.error({ err, tenantId }, "evolution-webhook: falha ao salvar mídia original recebida");
+      return null;
+    }
+  }
 
   if (typeof msg["conversation"] === "string") {
     mensagem = msg["conversation"] as string;
@@ -838,6 +854,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
       const buffer = Buffer.from(media.base64, "base64");
       mensagem = await transcribeAudioBuffer(buffer, tenantId, req.log);
       tipoConteudo = "audio";
+      midiaUrl = await salvarMidiaOriginal(buffer, media.mimetype ?? "audio/ogg", "audio.ogg");
     } catch (err) {
       req.log.error({ err, tenantId, remoteJid }, "evolution-webhook: falha ao processar áudio");
       res.status(200).json({ ignored: true, reason: "audio_processing_failed" });
@@ -854,9 +871,11 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     try {
       const media = await getBase64FromMediaMessage(tenantId, messageId);
       if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
+      const buffer = Buffer.from(media.base64, "base64");
       const dataUrl = `data:${media.mimetype ?? "image/jpeg"};base64,${media.base64}`;
       mensagem = await interpretImage(dataUrl, tenantId, caption, req.log);
       tipoConteudo = "imagem";
+      midiaUrl = await salvarMidiaOriginal(buffer, media.mimetype ?? "image/jpeg", "foto.jpg");
     } catch (err) {
       req.log.error({ err, tenantId, remoteJid }, "evolution-webhook: falha ao processar imagem");
       res.status(200).json({ ignored: true, reason: "image_processing_failed" });
@@ -881,6 +900,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
       const buffer = Buffer.from(media.base64, "base64");
       mensagem = await interpretPdfBuffer(buffer, fileName, req.log);
       tipoConteudo = "documento";
+      midiaUrl = await salvarMidiaOriginal(buffer, mimeType || "application/octet-stream", fileName ?? "documento.pdf");
     } catch (err) {
       req.log.error({ err, tenantId, remoteJid }, "evolution-webhook: falha ao processar documento");
       res.status(200).json({ ignored: true, reason: "document_processing_failed" });
@@ -946,6 +966,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
         conteudo: mensagem,
         enviadoPor: "lead",
         tipoConteudo,
+        midiaUrl,
         status: "entregue",
       })
       .returning();
