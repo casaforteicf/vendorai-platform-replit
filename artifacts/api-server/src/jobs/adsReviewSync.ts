@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { adCampaignsTable, db } from "@workspace/db";
 import { syncGoogleAdsReviewStatus } from "../services/google-ads-campaign-publish.js";
 import { syncMetaAdsReviewStatus } from "../services/meta-ads-campaign-publish.js";
+import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 /**
  * Consulta as plataformas mesmo quando ninguém está com a tela de Anúncios aberta.
@@ -26,13 +27,24 @@ export async function runAdsReviewSync(log: Logger): Promise<void> {
   let failed = 0;
   for (const campaign of campaigns) {
     try {
-      if (campaign.plataforma === "google") {
-        await syncGoogleAdsReviewStatus(campaign.tenantId, campaign.id);
-      } else if (campaign.plataforma === "meta") {
-        await syncMetaAdsReviewStatus(campaign.tenantId, campaign.id);
-      } else {
-        continue;
-      }
+      const review = campaign.plataforma === "google"
+        ? await syncGoogleAdsReviewStatus(campaign.tenantId, campaign.id)
+        : campaign.plataforma === "meta"
+          ? await syncMetaAdsReviewStatus(campaign.tenantId, campaign.id)
+          : null;
+      if (!review) continue;
+      const severity = ["reprovada", "erro_pagamento", "erro_conta"].includes(review.status)
+        ? "critical"
+        : review.status === "aprovada" ? "success" : "info";
+      await recordAdCampaignEvent({
+        tenantId: campaign.tenantId,
+        campaignId: campaign.id,
+        eventType: `review_${review.status}`,
+        severity,
+        message: review.reason ?? `Situação da plataforma: ${review.status}.`,
+        dedupeKey: `review:${review.status}:${review.syncedAt.slice(0, 10)}`,
+        metadata: { plataforma: campaign.plataforma, policyTopics: review.policyTopics ?? [] },
+      });
       synced++;
     } catch (err) {
       failed++;
