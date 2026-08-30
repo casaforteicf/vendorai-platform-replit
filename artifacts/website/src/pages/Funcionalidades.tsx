@@ -131,7 +131,7 @@ const modules = [
     id: "verticais",
     title: "Operações Especializadas",
     icon: PackageSearch,
-    desc: "Adapte processos, painéis, agentes e regras para construção, arquitetura, distribuição, varejo, serviços e outras verticais.",
+    desc: "Adapte processos, painéis, agentes e regras para construção, arquitetura, distribuição, varejo, serviços e outros segmentos.",
     features: ["Regras por segmento", "Módulos configuráveis", "Agentes especializados", "Visões operacionais"],
   },
 
@@ -146,6 +146,57 @@ const benefits = [
   ["Mais produtividade", "Equipe concentrada em decisões e relacionamento, não em tarefas repetitivas."],
   ["Gestão centralizada", "Clientes, produtos, projetos, campanhas, finanças e equipes no mesmo ambiente."],
   ["Crescimento organizado", "Processos padronizados, permissões, regras e automações que acompanham a escala."],
+];
+
+const capabilityGroups = [
+  {
+    title: "Vendas e relacionamento",
+    items: ["CRM completo", "Leads e contatos", "Negócios e pipeline", "Atividades e follow-ups", "Propostas e contratos", "Briefings", "Histórico 360°", "Lead scoring", "Próxima melhor ação", "Risco de churn"],
+  },
+  {
+    title: "Agentes e inteligência artificial",
+    items: ["SDR", "Closer", "Follow-up", "Prospecção", "Atendimento", "Suporte", "Agendamento", "Financeiro", "Cobrança", "Pós-venda", "Copilotos", "Memória e contexto"],
+  },
+  {
+    title: "Atendimento omnichannel",
+    items: ["WhatsApp oficial", "Instagram profissional", "Facebook Messenger", "Caixa de entrada unificada", "Distribuição de conversas", "Histórico por cliente", "Respostas assistidas", "Transferência para equipe"],
+  },
+  {
+    title: "Prospecção e oportunidades",
+    items: ["Revenue Scout", "Prospector inteligente", "Busca de empresas e contatos", "Qualificação", "Regras comerciais", "Aprovação pelo gestor", "Listas e segmentações", "Reativação de base"],
+  },
+  {
+    title: "Marketing, conteúdo e anúncios",
+    items: ["Planejamento de conteúdo", "Textos e imagens com IA", "Feed, Stories e Reels", "Biblioteca de conteúdo", "Publicação social", "Campanhas", "Meta Ads", "Patrocínio de conteúdo", "Segmentação", "Histórico e métricas"],
+  },
+  {
+    title: "Produtos, preços e propostas",
+    items: ["Catálogo", "Categorias", "Variações", "Fornecedores", "Estoque", "Insumos", "Composição de custos", "Margens e regras", "Tabelas de preço", "Propostas e orçamentos"],
+  },
+  {
+    title: "Financeiro e monetização",
+    items: ["Faturamento", "Contas a receber", "Cobrança", "PIX e cartão", "Conciliação", "Comissões", "Cupons", "Parceiros", "Influenciadores", "Indicadores financeiros"],
+  },
+  {
+    title: "Agenda, tarefas e operação",
+    items: ["Agenda inteligente", "Compromissos", "Tarefas", "Lembretes", "Agendamentos automáticos", "Visão por equipe", "Rotinas operacionais", "Alertas e notificações"],
+  },
+  {
+    title: "Sites e presença digital",
+    items: ["Sites", "Landing pages", "Formulários", "Captação de leads", "E-commerce", "Páginas de produtos", "Integração com CRM", "Jornadas digitais", "Vídeos e mídia"],
+  },
+  {
+    title: "Projetos, construção e Arqdor.ai",
+    items: ["Projetos e ambientes", "Clientes e portal", "Orçamentos por etapa", "Cronogramas", "Materiais e componentes", "Renders com IA", "Revisões e correções", "Memória de projeto", "Marketplace", "Gestão de obras"],
+  },
+  {
+    title: "Dados, analytics e conhecimento",
+    items: ["Dashboards", "Relatórios executivos", "Indicadores comerciais", "Indicadores operacionais", "Consumo de IA", "Base de conhecimento", "Documentos", "Regras da empresa", "Jornada do cliente", "Inteligência comportamental"],
+  },
+  {
+    title: "Gestão, segurança e ecossistema",
+    items: ["Multiempresa e multitenant", "Usuários e equipes", "Papéis e permissões", "Auditoria", "Proteção de dados", "Vendor Shield", "Licenças e acessos", "Administração central", "APIs e webhooks", "N8N e Typebot"],
+  },
 ];
 
 export default function Funcionalidades() {
@@ -200,6 +251,30 @@ export default function Funcionalidades() {
           })}
         </div>
 
+
+
+        <section className="mt-16">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">Mapa completo do sistema</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">As principais funções, sem esconder nenhuma área</h2>
+            <p className="mt-4 text-lg leading-8 text-slate-600">O TAD reúne recursos comerciais, operacionais, administrativos e especializados. Cada empresa utiliza a mesma plataforma completa, configurada para sua realidade.</p>
+          </div>
+          <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {capabilityGroups.map((group) => (
+              <article key={group.title} className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-950">{group.title}</h3>
+                <ul className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3">
+                  {group.items.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm leading-5 text-slate-600">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
 
         <section className="mt-16 rounded-[28px] bg-blue-50 p-8 md:p-12">
           <div className="mx-auto max-w-3xl text-center">

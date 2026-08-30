@@ -2554,11 +2554,11 @@ export default function Configuracoes() {
                       name="vertical"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Vertical / segmento</FormLabel>
+                          <FormLabel>Segmento</FormLabel>
                           <FormControl>
                             <Input
                               list="vendorai-vertical-options"
-                              placeholder="Selecione uma sugestão ou digite sua vertical"
+                              placeholder="Selecione uma sugestão ou digite seu segmento"
                               {...field}
                               value={field.value ?? ""}
                             />
@@ -2569,7 +2569,7 @@ export default function Configuracoes() {
                             ))}
                           </datalist>
                           <p className="text-xs text-muted-foreground">
-                            Você pode usar uma das sugestões ou cadastrar livremente um novo segmento. Verticais sem layout especializado usam o CRM padrão.
+                            Você pode usar uma das sugestões ou cadastrar livremente um novo segmento. Segmentos sem layout especializado usam o CRM padrão.
                           </p>
                           <FormMessage />
                         </FormItem>

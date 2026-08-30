@@ -52,7 +52,7 @@ function canAccess(req: Express.Request, tenantId: string) {
 /**
  * Resumo pra campanhas sem item estruturado (itemTipo 'livre' ou
  * 'landing_page') — antes era só "Campanha institucional/landing page,
- * vertical: X", o que não dá contexto nenhum pra IA e gera título/descrição
+ * segmento: X", o que não dá contexto nenhum pra IA e gera título/descrição
  * genéricos demais ("Aumente sua Visibilidade", "Desenvolvemos campanhas
  * únicas"). Agora puxa o perfil real do negócio e, quando a campanha aponta
  * pra uma landing page específica, os dados daquela página também — mesmo
@@ -102,7 +102,7 @@ async function buildResumoLivreOuLandingPage(campanha: AdCampaign, tenantId: str
 
   return partes.length > 0
     ? partes.join("\n")
-    : `Campanha institucional/landing page, vertical: ${campanha.vertical}`;
+    : `Campanha institucional/landing page, segmento: ${campanha.vertical}`;
 }
 
 router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
