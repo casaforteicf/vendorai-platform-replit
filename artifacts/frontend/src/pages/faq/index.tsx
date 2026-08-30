@@ -149,19 +149,19 @@ const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u0
 
 function helpContext() {
   const path = sessionStorage.getItem("vendorai_help_from") ?? "";
-  const mappings: Array<[RegExp, string, string]> = [
-    [/\\/(ads|marketing\\/plano)/, "Anúncios", "campanhas e resultados"],
-    [/\\/(content|content-studio|campanhas)/, "Marketing e conteúdo", "conteúdo e marketing"],
-    [/\\/agents|base-conhecimento/, "Agentes de IA", "agentes e conhecimento"],
-    [/\\/(leads|deals|negocios|propostas|trabalho|comissoes)/, "CRM e vendas", "clientes e vendas"],
-    [/\\/(conversations|agenda|onboarding\\/integracoes)/, "Integrações e atendimento", "integrações e atendimento"],
-    [/\\/(erp|catalogo|pacotes|usuarios|organizacao|analytics)/, "Gestão, ERP e equipe", "gestão da empresa"],
-    [/\\/(scout|brain|vkg|partner-hub|ecosystem-hub|vendor-certified-network|poe)/, "Inteligência e oportunidades", "inteligência e oportunidades"],
-    [/\\/(arch|obras|varejo|supermercado|beauty|clinic|farmacia|imoveis|fretes|veiculos)/, "Ferramentas por segmento", "ferramentas do seu segmento"],
-    [/\\/(configuracoes|trocar-senha)/, "Conta, segurança e suporte", "conta e segurança"],
-    [/\\/(guia-implantacao|onboarding)/, "Primeiros passos", "implantação"],
+  const mappings: Array<[string[], string, string]> = [
+    [["/ads", "/marketing/plano"], "Anúncios", "campanhas e resultados"],
+    [["/content", "/content-studio", "/campanhas"], "Marketing e conteúdo", "conteúdo e marketing"],
+    [["/agents", "/base-conhecimento"], "Agentes de IA", "agentes e conhecimento"],
+    [["/leads", "/deals", "/negocios", "/propostas", "/trabalho", "/comissoes"], "CRM e vendas", "clientes e vendas"],
+    [["/conversations", "/agenda", "/onboarding/integracoes"], "Integrações e atendimento", "integrações e atendimento"],
+    [["/erp", "/catalogo", "/pacotes", "/usuarios", "/organizacao", "/analytics"], "Gestão, ERP e equipe", "gestão da empresa"],
+    [["/scout", "/brain", "/vkg", "/partner-hub", "/ecosystem-hub", "/vendor-certified-network", "/poe"], "Inteligência e oportunidades", "inteligência e oportunidades"],
+    [["/arch", "/obras", "/varejo", "/supermercado", "/beauty", "/clinic", "/farmacia", "/imoveis", "/fretes", "/veiculos"], "Ferramentas por segmento", "ferramentas do seu segmento"],
+    [["/configuracoes", "/trocar-senha"], "Conta, segurança e suporte", "conta e segurança"],
+    [["/guia-implantacao", "/onboarding"], "Primeiros passos", "implantação"],
   ];
-  const match = mappings.find(([pattern]) => pattern.test(path));
+  const match = mappings.find(([prefixes]) => prefixes.some((prefix) => path.startsWith(prefix)));
   return { category: match?.[1] ?? "Todas", label: match?.[2] ?? "" };
 }
 
