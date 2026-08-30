@@ -67,44 +67,44 @@
 }
 
 :root {
-  --background: 30 25% 97%;
-  --foreground: 20 15% 13%;
+  --background: 240 9% 96%;
+  --foreground: 240 6% 10%;
 
-  --card: 30 20% 99%;
-  --card-foreground: 20 15% 13%;
-  --card-border: 25 15% 88%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 6% 10%;
+  --card-border: 240 6% 91%;
 
-  --popover: 30 20% 99%;
-  --popover-foreground: 20 15% 13%;
-  --popover-border: 25 15% 88%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 6% 10%;
+  --popover-border: 240 6% 91%;
 
   --primary: 16 65% 52%;
   --primary-foreground: 30 40% 98%;
 
-  --secondary: 174 20% 92%;
-  --secondary-foreground: 174 45% 18%;
+  --secondary: 240 5% 95%;
+  --secondary-foreground: 240 6% 15%;
 
-  --muted: 30 12% 93%;
-  --muted-foreground: 25 10% 42%;
+  --muted: 240 5% 95%;
+  --muted-foreground: 240 2% 54%;
 
-  --accent: 174 30% 90%;
-  --accent-foreground: 174 45% 20%;
+  --accent: 16 45% 94%;
+  --accent-foreground: 16 65% 32%;
 
   --destructive: 5 75% 55%;
   --destructive-foreground: 30 40% 98%;
 
-  --border: 25 15% 87%;
-  --input: 25 15% 82%;
+  --border: 240 6% 90%;
+  --input: 240 6% 85%;
   --ring: 16 65% 52%;
 
-  --sidebar: 174 45% 15%;
-  --sidebar-foreground: 30 20% 92%;
-  --sidebar-border: 174 40% 22%;
-  --sidebar-primary: 16 65% 55%;
+  --sidebar: 240 20% 99%;
+  --sidebar-foreground: 240 6% 12%;
+  --sidebar-border: 240 6% 91%;
+  --sidebar-primary: 16 65% 52%;
   --sidebar-primary-foreground: 30 40% 98%;
-  --sidebar-accent: 174 35% 22%;
-  --sidebar-accent-foreground: 30 20% 95%;
-  --sidebar-ring: 16 65% 55%;
+  --sidebar-accent: 240 5% 96%;
+  --sidebar-accent-foreground: 240 6% 12%;
+  --sidebar-ring: 16 65% 52%;
 
   --chart-1: 16 65% 52%;
   --chart-2: 174 45% 30%;
@@ -112,7 +112,7 @@
   --chart-4: 150 30% 45%;
   --chart-5: 350 45% 55%;
 
-  --radius: 0.875rem;
+  --radius: 1rem;
 
   --app-font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
   --app-font-serif: Georgia, serif;
@@ -121,43 +121,43 @@
 }
 
 .dark {
-  --background: 20 20% 8%;
-  --foreground: 30 20% 95%;
+  --background: 240 8% 9%;
+  --foreground: 240 6% 95%;
 
-  --card: 20 18% 11%;
-  --card-foreground: 30 20% 95%;
-  --card-border: 20 15% 20%;
+  --card: 240 7% 12%;
+  --card-foreground: 240 6% 95%;
+  --card-border: 240 6% 20%;
 
-  --popover: 20 18% 11%;
-  --popover-foreground: 30 20% 95%;
-  --popover-border: 20 15% 20%;
+  --popover: 240 7% 12%;
+  --popover-foreground: 240 6% 95%;
+  --popover-border: 240 6% 20%;
 
   --primary: 16 70% 58%;
   --primary-foreground: 20 20% 10%;
 
-  --secondary: 174 25% 18%;
-  --secondary-foreground: 30 20% 92%;
+  --secondary: 240 6% 18%;
+  --secondary-foreground: 240 6% 92%;
 
-  --muted: 20 15% 16%;
-  --muted-foreground: 25 10% 65%;
+  --muted: 240 6% 16%;
+  --muted-foreground: 240 3% 65%;
 
-  --accent: 174 30% 20%;
+  --accent: 16 40% 20%;
   --accent-foreground: 30 20% 92%;
 
   --destructive: 5 60% 45%;
   --destructive-foreground: 30 20% 95%;
 
-  --border: 20 15% 20%;
-  --input: 20 15% 22%;
+  --border: 240 6% 20%;
+  --input: 240 6% 22%;
   --ring: 16 70% 58%;
 
-  --sidebar: 174 50% 10%;
-  --sidebar-foreground: 30 20% 90%;
-  --sidebar-border: 174 40% 18%;
+  --sidebar: 240 8% 9%;
+  --sidebar-foreground: 240 6% 90%;
+  --sidebar-border: 240 6% 18%;
   --sidebar-primary: 16 70% 58%;
   --sidebar-primary-foreground: 20 20% 10%;
-  --sidebar-accent: 174 35% 18%;
-  --sidebar-accent-foreground: 30 20% 92%;
+  --sidebar-accent: 240 6% 15%;
+  --sidebar-accent-foreground: 240 6% 92%;
   --sidebar-ring: 16 70% 58%;
 }
 
