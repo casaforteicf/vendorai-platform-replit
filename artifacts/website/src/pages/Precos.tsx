@@ -4,26 +4,19 @@ import { ArrowRight, Check, CheckCircle2, Clock3, FileSignature, RefreshCcw } fr
 
 const options = [
   {
-    icon: Clock3,
-    title: "Ativação mensal gratuita",
-    price: "5 dias grátis",
-    detail: "A cada mês, o cliente pode ativar cinco dias corridos para usar a experiência completa do VendorAI.",
-    features: ["Todos os módulos disponíveis", "Cinco dias corridos após a ativação", "Sem cobrança na ativação gratuita"],
-  },
-  {
     icon: RefreshCcw,
-    title: "Nova ativação pré-paga",
-    price: "R$ 399",
-    detail: "Quando os dias ativos terminarem, compre mais cinco dias de uso diretamente pelo sistema.",
-    features: ["Mais cinco dias corridos", "Pagamento por PIX ou cartão", "Ativação após confirmação do pagamento"],
+    title: "Uso pré-pago",
+    price: "5 dias por ativação",
+    detail: "Ative cinco dias gratuitos a cada mês. Quando precisar continuar usando antes da próxima renovação, compre mais cinco dias por R$ 399.",
+    features: ["Primeira ativação mensal gratuita", "Novas ativações por R$ 399", "Pagamento por PIX ou cartão", "Sem compromisso anual"],
     featured: true,
   },
   {
     icon: FileSignature,
     title: "Licença oficial",
-    price: "Contrato anual",
-    detail: "Para empresas que precisam do VendorAI funcionando continuamente, com contratação formal por doze meses.",
-    features: ["Uso contínuo durante a vigência", "Renovação mensal da licença", "Contrato eletrônico com condições definidas"],
+    price: "Contrato de 12 meses",
+    detail: "Para empresas que precisam do VendorAI funcionando continuamente, com contratação formal e renovação mensal da licença.",
+    features: ["Uso contínuo durante a vigência", "Experiência completa", "Contrato eletrônico", "Condição comercial apresentada no aceite"],
   },
 ];
 
@@ -34,12 +27,12 @@ export default function Precos() {
         <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Uma única experiência completa</p>
         <h1 className="text-4xl font-semibold tracking-[-0.045em] md:text-6xl">Você escolhe o tempo de uso, não as funções.</h1>
         <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-slate-300 md:text-xl">
-          Não existem versões reduzidas do VendorAI. Ative cinco dias gratuitos por mês, compre novos períodos quando precisar ou contrate a licença oficial anual.
+          Não existem versões reduzidas do VendorAI. Escolha o uso pré-pago, com ativações de cinco dias, ou a licença oficial com contrato anual.
         </p>
       </section>
 
       <main className="container mx-auto max-w-6xl px-4 py-16">
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-2">
           {options.map((option) => {
             const Icon = option.icon;
             return (
@@ -49,7 +42,7 @@ export default function Precos() {
               >
                 {option.featured && (
                   <span className="absolute right-6 top-6 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
-                    Use quando precisar
+                    Modalidade flexível
                   </span>
                 )}
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
