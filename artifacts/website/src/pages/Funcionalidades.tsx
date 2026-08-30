@@ -99,6 +99,53 @@ const modules = [
     desc: "Gerencie usuários, vendedores, parceiros e influenciadores, vinculando indicações, cupons e comissões à origem correta.",
     features: ["Usuários e permissões", "Parceiros e indicados", "Cupons de desconto", "Comissões variáveis"],
   },
+  {
+    id: "sites",
+    title: "Sites, Landing Pages e E-commerce",
+    icon: Workflow,
+    desc: "Crie presença digital conectada à operação, capturando oportunidades diretamente para o CRM e acompanhando toda a conversão.",
+    features: ["Sites e páginas", "Formulários e captação", "E-commerce", "Integração com o CRM"],
+  },
+  {
+    id: "projetos",
+    title: "Projetos, Obras e Arqdor.ai",
+    icon: Boxes,
+    desc: "Gerencie projetos, ambientes, orçamentos, clientes e execução, com recursos de arquitetura, renderização e portal do cliente.",
+    features: ["Gestão de projetos", "Orçamentos e etapas", "Renders com IA", "Portal do cliente"],
+  },
+  {
+    id: "automacoes",
+    title: "Automações e Integrações",
+    icon: Workflow,
+    desc: "Conecte eventos, sistemas e rotinas para reduzir digitação, atrasos e tarefas repetitivas em toda a empresa.",
+    features: ["Fluxos automáticos", "Webhooks e APIs", "N8N e Typebot", "Alertas e notificações"],
+  },
+  {
+    id: "governanca",
+    title: "Administração e Segurança",
+    icon: BrainCircuit,
+    desc: "Controle empresas, usuários, acessos, permissões, licenças, auditoria e isolamento das informações entre operações.",
+    features: ["Multiempresa", "Papéis e permissões", "Auditoria e proteção", "Gestão de licenças"],
+  },
+  {
+    id: "verticais",
+    title: "Operações Especializadas",
+    icon: PackageSearch,
+    desc: "Adapte processos, painéis, agentes e regras para construção, arquitetura, distribuição, varejo, serviços e outras verticais.",
+    features: ["Regras por segmento", "Módulos configuráveis", "Agentes especializados", "Visões operacionais"],
+  },
+
+];
+
+const benefits = [
+  ["Mais vendas", "Oportunidades priorizadas, atendidas e acompanhadas até o fechamento."],
+  ["Resposta mais rápida", "Canais e agentes trabalhando com o mesmo contexto do cliente."],
+  ["Menos trabalho manual", "Rotinas, alertas, follow-ups e tarefas executados automaticamente."],
+  ["Decisões melhores", "Dados comerciais, financeiros e operacionais transformados em indicadores."],
+  ["Menos perdas", "Histórico centralizado, controle de churn, duplicidades e oportunidades esquecidas."],
+  ["Mais produtividade", "Equipe concentrada em decisões e relacionamento, não em tarefas repetitivas."],
+  ["Gestão centralizada", "Clientes, produtos, projetos, campanhas, finanças e equipes no mesmo ambiente."],
+  ["Crescimento organizado", "Processos padronizados, permissões, regras e automações que acompanham a escala."],
 ];
 
 export default function Funcionalidades() {
@@ -107,18 +154,18 @@ export default function Funcionalidades() {
       <section className="bg-[#070b14] px-4 py-20 text-white md:py-28">
         <div className="container mx-auto max-w-4xl text-center">
           <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Uma licença. Experiência completa.</p>
-          <h1 className="text-4xl font-semibold tracking-[-0.045em] md:text-6xl">Toda a operação comercial conectada.</h1>
+          <h1 className="text-4xl font-semibold tracking-[-0.045em] md:text-6xl">O sistema inteligente que conecta toda a empresa.</h1>
           <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-slate-300 md:text-xl">
-            O VendorAI não é apenas um CRM de follow-up. É uma plataforma para captar, atender, vender, comunicar, gerir e acompanhar o cliente durante toda a jornada.
+            VendorAI é a marca. TAD é o sistema: Tecnologia, Automação e Dados reunidos para captar, atender, vender, executar, gerir e acompanhar toda a empresa em uma única operação.
           </p>
         </div>
       </section>
 
       <section className="container mx-auto px-4 py-16 md:py-20">
         <div className="mx-auto mb-12 max-w-3xl text-center">
-          <h2 className="text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">Funções disponíveis no mesmo sistema</h2>
+          <h2 className="text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">Tudo o que o VendorAI TAD entrega</h2>
           <p className="mt-4 text-lg leading-8 text-slate-600">
-            Todos os usuários acessam os módulos liberados para sua operação. O formato de contratação altera o período de uso, não cria uma versão reduzida do produto.
+            Uma experiência completa, sem planos reduzidos. Os módulos trabalham conectados e o formato de contratação altera apenas o período de uso.
           </p>
         </div>
 
@@ -153,8 +200,25 @@ export default function Funcionalidades() {
           })}
         </div>
 
+
+        <section className="mt-16 rounded-[28px] bg-blue-50 p-8 md:p-12">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">Benefícios gerados pelo TAD</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">Funções conectadas para gerar resultado real</h2>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {benefits.map(([title, text]) => (
+              <article key={title} className="rounded-2xl border border-blue-100 bg-white p-5">
+                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                <h3 className="mt-4 font-semibold text-slate-950">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <div className="mt-16 rounded-[28px] bg-slate-950 p-8 text-center text-white md:p-12">
-          <h2 className="text-3xl font-semibold tracking-[-0.035em]">Veja o VendorAI completo na sua operação</h2>
+          <h2 className="text-3xl font-semibold tracking-[-0.035em]">Veja o VendorAI TAD completo na sua operação</h2>
           <p className="mx-auto mt-4 max-w-2xl leading-7 text-slate-300">
             Ative seus 5 dias gratuitos, mantenha todas as informações organizadas e escolha depois entre novas ativações ou a licença oficial.
           </p>
