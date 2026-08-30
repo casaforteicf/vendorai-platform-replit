@@ -25,6 +25,10 @@ import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, tenantOverride, clearTenantOverride, token, isEffectiveAdmin } = useAuth();
   const [location] = useLocation();
+  // D-007: menu lateral ocupava espaço fixo (272px) mesmo sem uso. Recolhe
+  // pra uma faixa estreita (só logo/ícones visíveis) por padrão, expande
+  // ao passar o mouse por cima.
+  const [sidebarHover, setSidebarHover] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
@@ -911,17 +915,23 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     <>
     <div className="flex h-screen bg-background">
       {/* ── Desktop sidebar ────────────────────────────────── */}
-      <div className="hidden md:flex w-[272px] bg-sidebar/92 backdrop-blur-2xl border-r border-sidebar-border/70 flex-col shrink-0">
-        <div className="p-5 border-b border-sidebar-border/70">
-          <LogoBranding size="lg" />
+      <div
+        className={`hidden md:flex ${sidebarHover ? "w-[272px]" : "w-[68px]"} bg-sidebar/92 backdrop-blur-2xl border-r border-sidebar-border/70 shrink-0 overflow-hidden transition-[width] duration-200 ease-out`}
+        onMouseEnter={() => setSidebarHover(true)}
+        onMouseLeave={() => setSidebarHover(false)}
+      >
+        <div className="w-[272px] shrink-0 flex flex-col h-full">
+          <div className="p-5 border-b border-sidebar-border/70">
+            <LogoBranding size="lg" />
+          </div>
+          <div className="px-3 py-2 border-b">
+            <StoreSwitcher />
+          </div>
+          <div className="vendor-scrollbar flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
+            <NavLinks />
+          </div>
+          <UserFooter />
         </div>
-        <div className="px-3 py-2 border-b">
-          <StoreSwitcher />
-        </div>
-        <div className="vendor-scrollbar flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
-          <NavLinks />
-        </div>
-        <UserFooter />
       </div>
 
       {/* ── Mobile drawer overlay ───────────────────────────── */}
