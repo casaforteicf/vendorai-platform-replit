@@ -15,7 +15,7 @@ const options = [
     icon: FileSignature,
     title: "Licença oficial",
     price: "Contrato de 12 meses",
-    detail: "Para empresas que precisam do VendorAI funcionando continuamente, com contratação formal e renovação mensal da licença.",
+    detail: "Para empresas que precisam do VendorAI TAD funcionando continuamente, com contratação formal e renovação mensal da licença.",
     features: ["Uso contínuo durante a vigência", "Experiência completa", "Contrato eletrônico", "Condição comercial apresentada no aceite"],
   },
 ];
@@ -24,10 +24,10 @@ export default function Precos() {
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       <section className="bg-[#070b14] px-4 py-20 text-center text-white md:py-24">
-        <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Uma única experiência completa</p>
-        <h1 className="text-4xl font-semibold tracking-[-0.045em] md:text-6xl">Você escolhe o tempo de uso, não as funções.</h1>
+        <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-300">VendorAI TAD completo</p>
+        <h1 className="text-4xl font-semibold tracking-[-0.045em] md:text-6xl">Toda a tecnologia. Todas as automações. Todos os dados.</h1>
         <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-slate-300 md:text-xl">
-          Não existem versões reduzidas do VendorAI. Escolha o uso pré-pago, com ativações de cinco dias, ou a licença oficial com contrato anual.
+          As duas modalidades liberam a experiência completa do TAD. Você escolhe o uso pré-pago, com ativações de cinco dias, ou a licença oficial com contrato anual.
         </p>
       </section>
 

@@ -104,7 +104,7 @@ export default function Home() {
           >
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-400/10 px-4 py-2 text-sm font-medium text-blue-200 shadow-[0_0_40px_rgba(59,130,246,0.08)]">
               <Sparkles className="h-4 w-4" />
-              5 dias para provar na sua operação
+              VendorAI TAD · Tecnologia, Automação e Dados
             </div>
 
             <h1 className="max-w-3xl text-5xl font-semibold leading-[0.98] tracking-[-0.055em] sm:text-6xl lg:text-7xl xl:text-[82px]">
@@ -115,7 +115,7 @@ export default function Home() {
             </h1>
 
             <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300 md:text-xl">
-              O VendorAI reúne CRM, agentes de IA, atendimento, marketing, conteúdo, propostas, gestão e automações para conduzir toda a jornada comercial — do primeiro contato ao pós-venda.
+              O VendorAI TAD conecta vendas, atendimento, marketing, gestão, finanças, projetos e inteligência artificial para transformar dados em ações e resultados — do primeiro contato ao pós-venda.
             </p>
 
             <div className="mt-9 flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -158,7 +158,7 @@ export default function Home() {
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500 text-sm font-bold shadow-lg shadow-blue-500/20">V</div>
                   <div>
-                    <p className="text-sm font-semibold text-white">VendorAI · Operação comercial</p>
+                    <p className="text-sm font-semibold text-white">VendorAI TAD · Centro de operações</p>
                     <p className="text-xs text-slate-500">Acompanhamento em tempo real</p>
                   </div>
                 </div>
@@ -262,9 +262,9 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-3xl text-center">
             <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-600">A dor não é falta de lead</p>
-            <h2 className="text-4xl font-semibold tracking-[-0.04em] md:text-5xl">Uma plataforma para tudo o que acontece depois que o lead chega.</h2>
+            <h2 className="text-4xl font-semibold tracking-[-0.04em] md:text-5xl">Tecnologia para conectar toda a empresa. Automação para executar. Dados para decidir.</h2>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-              Quando CRM, atendimento, marketing e gestão estão separados, oportunidades e informações se perdem. O VendorAI conecta toda a operação em um único sistema.
+              O TAD elimina sistemas isolados e reúne clientes, conversas, campanhas, tarefas, propostas, produtos, finanças, projetos, equipes e indicadores em uma única inteligência operacional.
             </p>
           </div>
 
@@ -299,7 +299,7 @@ export default function Home() {
             <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Veja o que muda</p>
             <h2 className="text-4xl font-semibold tracking-[-0.04em] md:text-5xl">Um lead não deveria desaparecer por silêncio.</h2>
             <p className="mt-5 max-w-xl text-lg leading-8 text-slate-400">
-              Clique nas etapas e veja como o VendorAI mantém a oportunidade viva sem transformar sua equipe em cobradora de lembretes.
+              Clique nas etapas e veja como o TAD mantém a oportunidade viva sem transformar sua equipe em cobradora de lembretes.
             </p>
 
             <div className="mt-8 space-y-3">
@@ -451,11 +451,11 @@ export default function Home() {
             </div>
             <h2 className="text-4xl font-semibold tracking-[-0.045em] md:text-6xl">Quantas vendas estão paradas porque ninguém voltou a falar com o cliente?</h2>
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-400">
-              Não tente adivinhar. Coloque o VendorAI na sua operação por 5 dias e veja o que muda.
+              Não tente adivinhar. Coloque o VendorAI TAD na sua empresa por 5 dias e veja tudo trabalhando de forma conectada.
             </p>
             <Button size="lg" className="group mt-9 h-14 rounded-xl bg-white px-8 text-base font-semibold text-slate-950 hover:bg-slate-100" asChild>
               <Link href="/demo">
-                Testar VendorAI agora
+                Testar o TAD agora
                 <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Link>
             </Button>
