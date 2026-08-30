@@ -1,0 +1,1 @@
+Temporary diagnostic marker for HTTP 502 investigation on 2026-08-30.
