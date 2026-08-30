@@ -39,6 +39,10 @@ export interface SiteGeneratorConfig {
   // URL, sem upload/hospedagem própria de vídeo.
   videos?: string[];
   servicos?: string;
+  nicheId?: string;
+  nicheName?: string;
+  productIds?: string[];
+  productNames?: string[];
 }
 
 export interface SiteSeoChecklist {
