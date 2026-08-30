@@ -23,8 +23,8 @@ import { gerarShoppingFeedXml, gerarFeedToken, validarFeedToken } from "../lib/a
 import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { enrichAdsSegmentacao } from "../services/ad-audience-plan.js";
-import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
-import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
+import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
+import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
 
 const router: IRouter = Router();
 
@@ -384,6 +384,26 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) =>
     }
     logger.error({ err, tenantId, campaignId, plataforma }, "ads: erro inesperado ao publicar campanha");
     return res.status(500).json({ error: `Erro inesperado ao publicar campanha no ${plataforma === "google" ? "Google Ads" : "Meta Ads"}.` });
+  }
+});
+
+router.post("/tenants/:tenantId/ads/campaigns/:id/sync-status", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const plataforma = await getCampanhaPlataforma(tenantId, campaignId);
+  try {
+    const platformReview = plataforma === "google"
+      ? await syncGoogleAdsReviewStatus(tenantId, campaignId)
+      : plataforma === "meta"
+        ? await syncMetaAdsReviewStatus(tenantId, campaignId)
+        : null;
+    if (!platformReview) return res.status(422).json({ error: "Consulta de situação disponível apenas para Google e Meta." });
+    return res.json(platformReview);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível atualizar a situação da campanha.";
+    return res.status(422).json({ error: message });
   }
 });
 
