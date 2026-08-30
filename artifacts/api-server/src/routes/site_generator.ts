@@ -187,7 +187,7 @@ function isDark(hex: string): boolean {
 }
 
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
-  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos, headline } = config;
+  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos, headline, nicheName, productNames = [] } = config;
   const waNumber = whatsapp?.replace(/\D/g, "") || "5511999999999";
 
   // Instagram: normaliza handle (remove @ e espaços), monta URL e bloco HTML do ícone
@@ -385,6 +385,8 @@ BRIEFING DO CLIENTE
 Tipo: ${TYPE_LABELS[type] || type}
 Negócio: ${name}
 Setor: ${sector || "a definir pelo contexto"}
+Nicho específico da divulgação: ${nicheName || "a definir pelo contexto"}
+Produtos/serviços selecionados para esta peça: ${productNames.length ? productNames.join(", ") : "usar os produtos informados no briefing"}
 Sobre o negócio: ${desc}${servicosBlock}
 Maior dor do cliente-alvo: ${pain || "ineficiência e falta de resultados"}
 Tom de voz: ${TONE_LABELS[tone] || tone}

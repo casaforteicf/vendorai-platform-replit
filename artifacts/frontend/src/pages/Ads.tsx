@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2 } from "lucide-react";
+import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
 // Label com ícone de ajuda (?) — explicação em linguagem simples pro lojista,
 // sem jargão de marketing. Texto validado no doc de mudanças (seção 4).
@@ -246,6 +247,7 @@ export default function Ads() {
   const [justification, setJustification] = useState("");
   const [sourceDraft, setSourceDraft] = useState<ImportedContentDraft | null>(null);
   const [autoGenerateAfterCreate, setAutoGenerateAfterCreate] = useState(false);
+  const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -346,7 +348,7 @@ export default function Ads() {
         tenantId,
         plataforma: form.plataforma,
         tipoAnuncio: form.tipoAnuncio,
-        vertical: form.vertical || form.itemTipo,
+        vertical: marketingContext.nicheName || form.vertical || form.itemTipo,
         itemTipo: form.itemTipo,
         itemId: form.modo === "unico" && form.itemTipo !== "livre" ? form.itemId : null,
         itemLabel: form.itemLabel || null,
@@ -361,6 +363,7 @@ export default function Ads() {
           demografia: { idades: form.idades, generos: form.generos, statusParental: form.statusParental, rendas: form.rendas },
           audiencias: { afinidade: form.afinidade, noMercado: form.noMercado, termosPesquisa: form.termosPesquisa, sites: form.sites, aplicativos: form.aplicativos },
           dadosProprios: { remarketing: form.remarketing, customerMatch: form.customerMatch, semelhantes: form.semelhantes },
+          marketingContext: { nicheId: marketingContext.nicheId, nicheName: marketingContext.nicheName, productIds: marketingContext.productIds, productNames: marketingContext.productNames },
         },
         pausarAoInteresse: form.itemTipo === "veiculo" && form.modo === "unico" ? form.pausarAoInteresse : false,
         slaNegociacaoHoras: Number(form.slaNegociacaoHoras || 48),
@@ -693,6 +696,8 @@ export default function Ads() {
                 <p className="text-xs text-muted-foreground mt-1">{sourceDraft.theme} · variação {sourceDraft.variationIndex + 1}. O texto e a mídia escolhidos serão salvos como o primeiro criativo da campanha.</p>
               </div>
             )}
+            <MarketingContextSelector tenantId={tenantId} value={marketingContext} onChange={setMarketingContext} />
+
             <div>
               <LabelTip tip="Onde o anúncio vai rodar. Meta cobre Facebook e Instagram juntos.">Plataforma</LabelTip>
               <Select value={form.plataforma} onValueChange={(v) => setForm((f) => ({
@@ -948,7 +953,7 @@ export default function Ads() {
               )}
             </div>
 
-            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
+            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
               onClick={() => criarCampanha.mutate()}>
               {criarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
               Criar campanha (rascunho)
