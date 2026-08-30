@@ -28,6 +28,20 @@ export function SupportChatWidget() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // A Central de Ajuda pode abrir o atendimento já levando a pergunta que
+  // não foi resolvida, evitando que o cliente precise explicar tudo de novo.
+  useEffect(() => {
+    const openFromHelp = (event: Event) => {
+      const detail = (event as CustomEvent<{ question?: string }>).detail;
+      const question = detail?.question?.trim();
+      setOpen(true);
+      if (question) setInput(`Preciso de ajuda com: ${question}`);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    };
+    window.addEventListener("vendorai:open-support", openFromHelp);
+    return () => window.removeEventListener("vendorai:open-support", openFromHelp);
+  }, []);
+
   useEffect(() => {
     if (open && messages.length === 0) {
       setMessages([
