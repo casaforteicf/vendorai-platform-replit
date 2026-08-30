@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -51,72 +51,72 @@
 }
 
 :root {
-  --background: 210 20% 98%;
-  --foreground: 222 47% 11%;
-  
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 221 83% 53%;
-  
+  --background: 240 9% 96%;
+  --foreground: 240 6% 10%;
+
+  --border: 240 6% 90%;
+  --input: 240 6% 85%;
+  --ring: 16 65% 52%;
+
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214 32% 91%;
-  
+  --card-foreground: 240 6% 10%;
+  --card-border: 240 6% 91%;
+
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214 32% 91%;
-  
-  --primary: 221 83% 53%;
-  --primary-foreground: 210 40% 98%;
-  
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222 47% 11.2%;
-  
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222 47% 11.2%;
-  
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
+  --popover-foreground: 240 6% 10%;
+  --popover-border: 240 6% 91%;
+
+  --primary: 16 65% 52%;
+  --primary-foreground: 30 40% 98%;
+
+  --secondary: 240 5% 95%;
+  --secondary-foreground: 240 6% 15%;
+
+  --muted: 240 5% 95%;
+  --muted-foreground: 240 2% 54%;
+
+  --accent: 16 45% 94%;
+  --accent-foreground: 16 65% 32%;
+
+  --destructive: 5 75% 55%;
+  --destructive-foreground: 30 40% 98%;
 
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
-  --radius: 0.5rem;
+  --radius: 1rem;
 }
 
 .dark {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 224.3 76.3% 48%;
-  
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217.2 32.6% 17.5%;
-  
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217.2 32.6% 17.5%;
-  
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 222 47% 11.2%;
-  
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
+  --background: 240 8% 9%;
+  --foreground: 240 6% 95%;
+
+  --border: 240 6% 20%;
+  --input: 240 6% 22%;
+  --ring: 16 70% 58%;
+
+  --card: 240 7% 12%;
+  --card-foreground: 240 6% 95%;
+  --card-border: 240 6% 20%;
+
+  --popover: 240 7% 12%;
+  --popover-foreground: 240 6% 95%;
+  --popover-border: 240 6% 20%;
+
+  --primary: 16 70% 58%;
+  --primary-foreground: 20 20% 10%;
+
+  --secondary: 240 6% 18%;
+  --secondary-foreground: 240 6% 92%;
+
+  --muted: 240 6% 16%;
+  --muted-foreground: 240 3% 65%;
+
+  --accent: 16 40% 20%;
+  --accent-foreground: 30 20% 92%;
+
+  --destructive: 5 60% 45%;
+  --destructive-foreground: 30 20% 95%;
 }
 
 @layer base {
@@ -126,7 +126,9 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Outfit', sans-serif;
+  h1, h2, h3, h4, h5, h6,
+  .text-3xl.font-bold, .text-2xl.font-bold, .text-xl.font-bold,
+  .text-3xl.font-semibold, .text-2xl.font-semibold, .text-xl.font-semibold {
+    font-family: 'Sora', sans-serif;
   }
 }

@@ -17,7 +17,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#070b14]/88 text-white backdrop-blur-xl">
       <div className="container mx-auto flex h-[72px] items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-[-0.02em]" data-testid="link-home">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500 text-base font-bold shadow-[0_8px_30px_rgba(37,99,235,0.28)]">V</div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-base font-bold text-primary-foreground shadow-[0_8px_30px_hsl(var(--primary)/0.28)]">V</div>
           <span className="text-lg">VendorAI</span>
         </Link>
 
