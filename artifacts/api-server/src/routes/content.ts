@@ -500,8 +500,12 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     return;
   }
 
-  const variation = gen.result.variations[body.data.variationIndex];
-  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+  const generatedVariations = Array.isArray(gen.result?.variations) ? gen.result.variations : [];
+  const variation = generatedVariations[body.data.variationIndex];
+  if (!variation) {
+    res.status(400).json({ error: "Este conteúdo antigo não possui uma variação publicável. Gere uma nova versão." });
+    return;
+  }
 
   const imageUrl = (variation as { imageUrl?: string }).imageUrl;
   if (!imageUrl) {
@@ -520,6 +524,7 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
         accessToken: instagramConnectionsTable.pageAccessToken,
         accountId: instagramConnectionsTable.accountId,
         disconnectedAt: instagramConnectionsTable.disconnectedAt,
+        tokenExpiresAt: instagramConnectionsTable.tokenExpiresAt,
       })
       .from(instagramConnectionsTable)
       .where(eq(instagramConnectionsTable.tenantId, tenantId))
@@ -534,16 +539,22 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
       .limit(1),
   ]);
 
-  const instagramAccessToken =
-    !directConnection?.disconnectedAt ? directConnection?.accessToken : null;
-  const instagramAccountId =
-    !directConnection?.disconnectedAt ? directConnection?.accountId : null;
+  const directTokenExpired = Boolean(
+    directConnection?.tokenExpiresAt && directConnection.tokenExpiresAt <= new Date(),
+  );
+  const directPublishReady = Boolean(
+    directConnection && !directConnection.disconnectedAt && !directTokenExpired,
+  );
+  const instagramAccessToken = directPublishReady ? directConnection?.accessToken : null;
+  const instagramAccountId = directPublishReady ? directConnection?.accountId : null;
   const publishAccessToken = instagramAccessToken || legacyConfig?.accessToken;
   const publishAccountId = instagramAccountId || legacyConfig?.accountId;
 
   if (!publishAccessToken || !publishAccountId) {
     res.status(400).json({
-      error: "Instagram não conectado. Acesse Configurações → Integrações e conecte sua conta profissional pelo Instagram OAuth.",
+      error: directTokenExpired
+        ? "A conexão do Instagram expirou. Reconecte a conta em Configurações → Integrações."
+        : "Instagram sem credenciais de publicação. Reconecte sua conta profissional em Configurações → Integrações.",
     });
     return;
   }
