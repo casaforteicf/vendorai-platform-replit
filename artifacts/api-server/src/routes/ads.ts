@@ -47,9 +47,9 @@ function canAccess(req: Express.Request, tenantId: string) {
 function detectSpecialAdCategory(text: string): "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS" | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (/\b(vaga|emprego|recrutamento|contratando|trabalhe conosco)\b/.test(normalized)) return "EMPLOYMENT";
+  if (/\b(imovel|apartamento|casa a venda|aluguel|locacao residencial|loteamento|financiamento imobiliario)\b/.test(normalized)) return "HOUSING";
   if (/\b(emprestimo|credito|cartao de credito|financiamento|consorcio)\b/.test(normalized)) return "CREDIT";
   if (/\b(candidato|eleicao|partido politico|vote|campanha eleitoral)\b/.test(normalized)) return "ISSUES_ELECTIONS_POLITICS";
-  if (/\b(imovel|apartamento|casa a venda|aluguel|locacao residencial|loteamento)\b/.test(normalized)) return "HOUSING";
   return null;
 }
 
