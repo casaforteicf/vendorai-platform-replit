@@ -342,7 +342,7 @@ function FeedCard({
         </div>
       ) : (
         <div className="flex flex-wrap gap-1">
-          {v.hashtags.map((h) => (
+          {(v.hashtags ?? []).map((h) => (
             <span key={h} className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">{h}</span>
           ))}
         </div>
@@ -1258,6 +1258,7 @@ function HistoryItem({
   const [expanded, setExpanded] = useState(false);
   const cfg = TYPE_CONFIG[item.type];
   const Icon = cfg.icon;
+  const historyVariations = Array.isArray(item.result?.variations) ? item.result.variations : [];
   const date = new Date(item.createdAt).toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "short",
@@ -1309,10 +1310,10 @@ function HistoryItem({
               {item.type !== "reels" && " Imagens geradas pela IA ficam disponíveis por até 1h após a geração."}
             </span>
           </div>
-          {item.result.variations.length === 0 ? (
+          {historyVariations.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-2">Sem variações salvas.</p>
           ) : (
-            item.result.variations.map((v, i) => (
+            historyVariations.map((v, i) => (
               <VariationCard key={i} index={i} type={item.type} variation={v} contentId={item.id} tenantId={item.tenantId} theme={item.theme} />
             ))
           )}
@@ -2065,7 +2066,7 @@ export default function Content() {
                             <p className="text-sm text-muted-foreground">{strategyResult.visualStyle}</p>
                           </CardContent>
                         </Card>
-                        {strategyResult.approaches.map((approach, i) => (
+                        {(strategyResult.approaches ?? []).map((approach, i) => (
                           <Card key={i}>
                             <CardHeader className="pb-2">
                               <div className="flex items-center justify-between">
@@ -2123,7 +2124,7 @@ export default function Content() {
                       <div className="space-y-3">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <p className="text-sm font-medium text-muted-foreground">
-                            {lastResult.result.variations.length} variações geradas
+                            {lastResult.result?.variations?.length ?? 0} variações geradas
                           </p>
                           <div className="flex items-center gap-2">
                             <Button
@@ -2140,7 +2141,7 @@ export default function Content() {
                               variant="outline"
                               size="sm"
                               className="text-xs gap-1"
-                              onClick={() => downloadAllImagesZip(lastResult.result.variations, lastResult.type, setZipping, toast)}
+                              onClick={() => downloadAllImagesZip(lastResult.result?.variations ?? [], lastResult.type, setZipping, toast)}
                               disabled={zipping}
                             >
                               {zipping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
@@ -2148,7 +2149,7 @@ export default function Content() {
                             </Button>
                           </div>
                         </div>
-                        {lastResult.result.variations.map((v, i) => (
+                        {(lastResult.result?.variations ?? []).map((v, i) => (
                           <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} theme={lastResult.theme} referenceImageUrl={uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading)?.url ?? null} />
                         ))}
                       </div>
@@ -2243,7 +2244,7 @@ export default function Content() {
               </p>
             ) : (
               <div className="px-4 divide-y">
-                {history?.items.map((item) => (
+                {history?.items?.map((item) => (
                   <HistoryItem
                     key={item.id}
                     item={item}
