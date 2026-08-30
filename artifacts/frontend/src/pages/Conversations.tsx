@@ -869,7 +869,7 @@ export default function Conversations() {
   const totalUnread = conversations.reduce((acc, c) => acc + c.naoLidas, 0);
 
   return (
-    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-8 md:-my-8 overflow-hidden bg-muted/20">
+    <div className="flex flex-col h-full overflow-hidden bg-muted/20">
       {/* ── View tabs: WhatsApp x Perguntas Praça.ai ── */}
       <div className="flex gap-1 px-4 pt-3 border-b border-border shrink-0 bg-background">
         <button

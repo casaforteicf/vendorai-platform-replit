@@ -999,8 +999,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           </div>
         )}
         <AccessLicenseBanner />
-        <main className="vendor-scrollbar flex-1 overflow-y-auto">
-          <div className="vendor-page-canvas">{children}</div>
+        {/* Achado real: /conversas (e telas parecidas com painel duplo,
+            tipo WhatsApp Business) têm SUAS PRÓPRIAS áreas de rolagem
+            internas (lista de contatos + painel de mensagens, cada
+            uma independente) -- mas o <main> aqui tinha overflow-y-auto
+            sempre ligado, então a página inteira rolava junto,
+            atropelando as rolagens internas. Pra essas telas, o <main>
+            não deve rolar por conta própria -- quem rola é o conteúdo
+            interno. */}
+        <main className={`vendor-scrollbar flex-1 ${location === "/conversations" ? "overflow-hidden" : "overflow-y-auto"}`}>
+          <div className={location === "/conversations" ? "h-full" : "vendor-page-canvas"}>{children}</div>
         </main>
       </div>
     </div>
