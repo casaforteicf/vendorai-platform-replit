@@ -2565,7 +2565,7 @@ export default function Deals() {
   );
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="flex flex-col h-full space-y-6 p-4 md:p-8">
       {/* Header */}
       <div className="flex justify-between items-center shrink-0 gap-3">
         <div>

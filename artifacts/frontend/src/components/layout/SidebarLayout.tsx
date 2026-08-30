@@ -999,17 +999,23 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           </div>
         )}
         <AccessLicenseBanner />
-        {/* Achado real: /conversas (e telas parecidas com painel duplo,
-            tipo WhatsApp Business) têm SUAS PRÓPRIAS áreas de rolagem
-            internas (lista de contatos + painel de mensagens, cada
-            uma independente) -- mas o <main> aqui tinha overflow-y-auto
-            sempre ligado, então a página inteira rolava junto,
-            atropelando as rolagens internas. Pra essas telas, o <main>
-            não deve rolar por conta própria -- quem rola é o conteúdo
-            interno. */}
-        <main className={`vendor-scrollbar flex-1 ${location === "/conversations" ? "overflow-hidden" : "overflow-y-auto"}`}>
-          <div className={location === "/conversations" ? "h-full" : "vendor-page-canvas"}>{children}</div>
-        </main>
+        {/* Achado real: /conversas (painel duplo tipo WhatsApp Business) e
+            /deals /negocios (kanban horizontal) têm SUAS PRÓPRIAS áreas de
+            rolagem internas -- mas o <main> aqui tinha overflow-y-auto
+            sempre ligado, então a página inteira rolava junto, empurrando
+            a barra de rolagem horizontal do kanban lá pro final da página
+            (achado real: D-006, "precisa abrir até o último card embaixo
+            pra rolar"). Pra essas telas, o <main> não deve rolar por conta
+            própria -- quem rola é o conteúdo interno (que já usa h-full +
+            flex-1 min-h-0 certinho, só faltava a altura vir contida). */}
+        {(() => {
+          const semRolagemPropria = location === "/conversations" || location === "/deals" || location === "/negocios";
+          return (
+            <main className={`vendor-scrollbar flex-1 ${semRolagemPropria ? "overflow-hidden" : "overflow-y-auto"}`}>
+              <div className={semRolagemPropria ? "h-full" : "vendor-page-canvas"}>{children}</div>
+            </main>
+          );
+        })()}
       </div>
     </div>
     {/* Hide global support widget on /arch/* routes (ARQDOR has its own shell) */}
