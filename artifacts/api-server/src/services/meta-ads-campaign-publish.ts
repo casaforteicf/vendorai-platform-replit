@@ -103,6 +103,30 @@ async function metaApi<T>(
   return res.json() as Promise<T>;
 }
 
+type MetaResolvedInterest = { id: string; name: string };
+
+async function resolveMetaInterests(accessToken: string, queries: string[]): Promise<MetaResolvedInterest[]> {
+  const resolved = new Map<string, MetaResolvedInterest>();
+  for (const query of queries.slice(0, 8)) {
+    try {
+      const result = await metaApi<{ data?: Array<{ id: string; name: string }> }>(
+        "search",
+        accessToken,
+        "GET",
+        { type: "adinterest", q: query, limit: "5" },
+      );
+      for (const interest of result.data ?? []) {
+        if (interest.id && interest.name) resolved.set(interest.id, { id: interest.id, name: interest.name });
+        if (resolved.size >= 10) break;
+      }
+    } catch (error) {
+      logger.warn({ error, query }, "Meta Ads: não foi possível resolver um termo de interesse");
+    }
+    if (resolved.size >= 10) break;
+  }
+  return [...resolved.values()];
+}
+
 // Mesma lógica de resolução de destino do Google Ads — duplicada em vez
 // de compartilhada porque cada serviço lança seu próprio tipo de erro e
 // não vale a pena acoplar os dois só por isso.
@@ -330,6 +354,19 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     ? await resolveBoostableInstagramMediaId(tenantId, origemInstagram.mediaId, instagramUserId, pageAccessToken)
     : null;
 
+  const interestQueries = campanha.segmentacao?.audiencePlan?.meta?.interestQueries ?? [];
+  const resolvedInterests = await resolveMetaInterests(accessToken, interestQueries);
+  if (campanha.segmentacao?.audiencePlan) {
+    const segmentacao = {
+      ...campanha.segmentacao,
+      audiencePlan: {
+        ...campanha.segmentacao.audiencePlan,
+        meta: { ...campanha.segmentacao.audiencePlan.meta, resolvedInterests },
+      },
+    };
+    await db.update(adCampaignsTable).set({ segmentacao, updatedAt: new Date() }).where(eq(adCampaignsTable.id, campaignId));
+  }
+
   const campaignName = `Vendor.ai — ${headline} — ${new Date().toISOString().slice(0, 10)}`;
 
   // 1) Campanha — objetivo Tráfego cobre landing page/WhatsApp-via-link/
@@ -355,7 +392,11 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     optimization_goal: origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     status: "PAUSED",
-    targeting: JSON.stringify(origemInstagram ? { geo_locations: { countries: ["BR"] }, publisher_platforms: ["instagram"] } : { geo_locations: { countries: ["BR"] } }),
+    targeting: JSON.stringify({
+      geo_locations: { countries: ["BR"] },
+      ...(origemInstagram ? { publisher_platforms: ["instagram"] } : {}),
+      ...(resolvedInterests.length > 0 ? { flexible_spec: [{ interests: resolvedInterests }] } : {}),
+    }),
   });
 
   let creativeRes: { id: string };
