@@ -161,7 +161,8 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
         "Tenant sem telefone de WhatsApp cadastrado (Configurações → Perfil do Negócio) — necessário pra destino de clique WhatsApp.",
       );
     }
-    return `https://wa.me/${numero}`;
+    const ref = campanha.utmCode ? `?text=${encodeURIComponent(`Olá, vim do anúncio ${campanha.utmCode}`)}` : "";
+    return `https://wa.me/${numero}${ref}`;
   }
 
   if (campanha.itemTipo === "landing_page") {
@@ -175,7 +176,9 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
     if (!site?.siteSlug) {
       throw new GoogleAdsPublishError("Landing page da campanha não encontrada ou ainda sem endereço publicado.");
     }
-    return `https://${site.siteSlug}.appvendorai.com`;
+    const url = new URL(`https://${site.siteSlug}.appvendorai.com`);
+    if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+    return url.toString();
   }
 
   // produto/veiculo/imovel: ainda não existe página pública de detalhe
@@ -189,7 +192,9 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
   if (!tenant?.subdomainSlug) {
     throw new GoogleAdsPublishError("Tenant sem site publicado (subdomínio) — necessário como destino do anúncio.");
   }
-  return `https://${tenant.subdomainSlug}.appvendorai.com`;
+  const url = new URL(`https://${tenant.subdomainSlug}.appvendorai.com`);
+  if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+  return url.toString();
 }
 
 async function getValidAccessToken(tenantId: string): Promise<{ accessToken: string; customerId: string }> {
