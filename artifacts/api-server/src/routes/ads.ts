@@ -203,7 +203,7 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const specialCategoryHint = detectSpecialAdCategory([
     parsed.data.vertical,
     parsed.data.itemLabel,
-    ...(control?.marketingContext?.productNames ?? []),
+    ...((segmentacao as any)?.marketingContext?.productNames ?? []),
   ].filter(Boolean).join(" "));
   if (specialCategoryHint && control.specialAdCategory === "NONE") {
     return res.status(422).json({
