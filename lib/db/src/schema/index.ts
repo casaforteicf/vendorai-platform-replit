@@ -216,3 +216,5 @@ export * from "./site_blog_posts";
 export * from "./access_licenses";
 
 export * from "./ad_campaign_events";
+
+export * from "./item_ad_reservations";
