@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { isNotNull } from "drizzle-orm";
 import type { Logger } from "pino";
 import { adCampaignsTable, db } from "@workspace/db";
 import { syncGoogleAdsReviewStatus } from "../services/google-ads-campaign-publish.js";
@@ -15,13 +15,9 @@ export async function runAdsReviewSync(log: Logger): Promise<void> {
       id: adCampaignsTable.id,
       tenantId: adCampaignsTable.tenantId,
       plataforma: adCampaignsTable.plataforma,
-      segmentacao: adCampaignsTable.segmentacao,
     })
     .from(adCampaignsTable)
-    .where(and(
-      isNotNull(adCampaignsTable.externalCampaignId),
-      eq(adCampaignsTable.excluida, false),
-    ))
+    .where(isNotNull(adCampaignsTable.externalCampaignId))
     .limit(500);
 
   if (campaigns.length === 0) return;
