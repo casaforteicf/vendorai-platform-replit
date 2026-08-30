@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1354,6 +1354,18 @@ export default function Content() {
   const [activeTab, setActiveTab] = useState<ContentType>("feed");
   const [feedSubFormat, setFeedSubFormat] = useState<"feed_square" | "feed_portrait">("feed_square");
   const [theme, setTheme] = useState("");
+  const [produtoInternoId, setProdutoInternoId] = useState<string>("none");
+  const [produtosInternos, setProdutosInternos] = useState<{ id: string; categoria: string; nome: string; descricaoUso: string }[]>([]);
+
+  // Catálogo interno de produtos Vendor.ai (Admin → Produtos) -- pedido
+  // real: usar as próprias funcionalidades do sistema como tema de post,
+  // sem descrever tudo na mão de novo a cada campanha.
+  useEffect(() => {
+    fetch("/api/produtos-internos", { headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setProdutosInternos)
+      .catch(() => setProdutosInternos([]));
+  }, []);
   const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
   const [productId, setProductId] = useState<string>("none");
   const [variations, setVariations] = useState(1);
@@ -1770,6 +1782,30 @@ export default function Content() {
                             </SelectContent>
                           </Select>
                         </div>
+
+                        {produtosInternos.length > 0 && (
+                          <div className="space-y-1.5">
+                            <Label>Ou divulgar um produto Vendor.ai (opcional)</Label>
+                            <Select
+                              value={produtoInternoId}
+                              onValueChange={(id) => {
+                                setProdutoInternoId(id);
+                                const p = produtosInternos.find((x) => x.id === id);
+                                if (p) setTheme(`${p.nome}: ${p.descricaoUso}`);
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione um produto do catálogo Vendor.ai" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Nenhum</SelectItem>
+                                {produtosInternos.map((p) => (
+                                  <SelectItem key={p.id} value={p.id}>{p.categoria} — {p.nome}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
 
                         <div className="space-y-1.5">
                           <Label>Tema / contexto da publicação <span className="text-destructive">*</span></Label>

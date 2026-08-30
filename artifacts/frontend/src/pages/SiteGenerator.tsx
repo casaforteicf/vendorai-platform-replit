@@ -540,9 +540,31 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   // (fotos gerais, logo, whatsapp, cor, tom) como base compartilhada.
   // Disponível para os tipos "landing" e "institutional" (ver JSX abaixo). ──
   const [bulkTopics, setBulkTopics] = useState<BulkTopic[]>([]);
+  const [produtosInternos, setProdutosInternos] = useState<{ id: string; categoria: string; nome: string; descricaoUso: string }[]>([]);
+  const [produtoPickerOpen, setProdutoPickerOpen] = useState(false);
+
+  // Carrega o catálogo interno de produtos (Admin → Produtos) uma vez, pra
+  // permitir gerar landing page em lote a partir dele -- pedido real:
+  // usar as próprias funcionalidades do Vendor.ai como matéria-prima de
+  // marketing (LP institucional divulgando o Pipeline de Negócios, o
+  // Revenue Scout, etc), em vez de descrever tudo na mão de novo.
+  useEffect(() => {
+    fetch("/api/produtos-internos", { headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setProdutosInternos)
+      .catch(() => setProdutosInternos([]));
+  }, []);
 
   function addBulkTopic() {
     setBulkTopics((prev) => [...prev, { id: crypto.randomUUID(), nome: "", titulo: "", descricao: "", images: [], uploadingCount: 0 }]);
+  }
+  function addBulkTopicsFromProdutosInternos(ids: string[]) {
+    const escolhidos = produtosInternos.filter((p) => ids.includes(p.id));
+    setBulkTopics((prev) => [
+      ...prev,
+      ...escolhidos.map((p) => ({ id: crypto.randomUUID(), nome: p.nome, titulo: "", descricao: p.descricaoUso, images: [], uploadingCount: 0 })),
+    ]);
+    setProdutoPickerOpen(false);
   }
   function removeBulkTopic(id: string) {
     setBulkTopics((prev) => prev.filter((t) => t.id !== id));
@@ -1080,6 +1102,20 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
           ))}
 
           <Button type="button" variant="ghost" className="self-start text-primary" onClick={addBulkTopic}>+ Adicionar página</Button>
+          {produtosInternos.length > 0 && (
+            <>
+              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setProdutoPickerOpen(true)}>
+                📦 Carregar do catálogo de produtos Vendor.ai
+              </Button>
+              {produtoPickerOpen && (
+                <ProdutoInternoPicker
+                  produtos={produtosInternos}
+                  onConfirm={addBulkTopicsFromProdutosInternos}
+                  onClose={() => setProdutoPickerOpen(false)}
+                />
+              )}
+            </>
+          )}
 
           {hasBulkTopics && (
             <p className="text-[10px] text-primary font-medium">
@@ -1850,6 +1886,65 @@ function RefinementChat({
 }
 
 // ── RefineDialog ───────────────────────────────────────────────────────────────
+
+function ProdutoInternoPicker({
+  produtos, onConfirm, onClose,
+}: {
+  produtos: { id: string; categoria: string; nome: string; descricaoUso: string }[];
+  onConfirm: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const porCategoria = new Map<string, typeof produtos>();
+  for (const p of produtos) {
+    const lista = porCategoria.get(p.categoria) ?? [];
+    lista.push(p);
+    porCategoria.set(p.categoria, lista);
+  }
+
+  function toggle(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Carregar produtos do catálogo Vendor.ai</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          Cada produto marcado vira uma página no lote, já com nome e descrição preenchidos.
+        </p>
+        <div className="space-y-4">
+          {Array.from(porCategoria.entries()).map(([categoria, itens]) => (
+            <div key={categoria} className="space-y-1.5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{categoria}</p>
+              {itens.map((p) => (
+                <label key={p.id} className="flex items-start gap-2 text-sm cursor-pointer rounded-md hover:bg-muted/60 px-2 py-1.5">
+                  <input type="checkbox" className="mt-0.5" checked={selecionados.has(p.id)} onChange={() => toggle(p.id)} />
+                  <span>
+                    <span className="font-medium">{p.nome}</span>
+                    <span className="text-muted-foreground"> — {p.descricaoUso}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button type="button" disabled={selecionados.size === 0} onClick={() => onConfirm(Array.from(selecionados))}>
+            Adicionar {selecionados.size > 0 ? `(${selecionados.size})` : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function RefineDialog({ onRefine }: { onRefine: (msg: string) => Promise<string> }) {
   const [open, setOpen] = useState(false);
