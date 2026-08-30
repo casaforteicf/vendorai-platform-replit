@@ -104,6 +104,43 @@ async function mutate(
   return res.json() as Promise<{ results: Array<{ resourceName: string }> }>;
 }
 
+async function resolveGoogleGeoTargets(accessToken: string, locationNames: string[]): Promise<string[]> {
+  if (locationNames.length === 0) {
+    throw new GoogleAdsPublishError("Informe pelo menos uma cidade, estado ou região antes de publicar. O VendorAI não publica campanha com Brasil inteiro por padrão.");
+  }
+  const res = await fetch(`${GOOGLE_ADS_API_BASE}/geoTargetConstants:suggest`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      locale: "pt_BR",
+      countryCode: "BR",
+      locationNames: { names: locationNames.slice(0, 25) },
+    }),
+  });
+  if (!res.ok) {
+    const raw = await res.text();
+    throw new GoogleAdsPublishError(traduzirErroGoogleAds(res.status, raw));
+  }
+  const data = await res.json() as {
+    geoTargetConstantSuggestions?: Array<{
+      geoTargetConstant?: { resourceName?: string; countryCode?: string; status?: string };
+      searchTerm?: string;
+    }>;
+  };
+  const targets = [...new Set((data.geoTargetConstantSuggestions ?? [])
+    .filter((item) => item.geoTargetConstant?.countryCode === "BR" && item.geoTargetConstant?.status !== "REMOVAL_PLANNED")
+    .map((item) => item.geoTargetConstant?.resourceName)
+    .filter(Boolean) as string[])];
+  if (targets.length === 0) {
+    throw new GoogleAdsPublishError(`O Google Ads não reconheceu a localização: ${locationNames.join(", ")}. Corrija a cidade/estado antes de publicar.`);
+  }
+  return targets;
+}
+
 // Resolve pra onde o clique do anúncio vai, de acordo com o eixo
 // destino_clique + a origem do item. Lança erro claro quando o destino
 // exige algo que o tenant ainda não tem configurado.
@@ -220,6 +257,8 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
 
   const finalUrl = await resolveFinalUrl(tenantId, campanha);
   const { accessToken, customerId } = await getValidAccessToken(tenantId);
+  const requestedLocations = campanha.segmentacao?.localizacao?.locais ?? [];
+  const geoTargetResources = await resolveGoogleGeoTargets(accessToken, requestedLocations);
 
   // Nome curto do item pra usar como palavra-chave inicial e no nome da
   // campanha — editável depois direto no Google Ads.
@@ -280,9 +319,11 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   const campaignResourceName = campaignRes.results[0]?.resourceName;
   if (!campaignResourceName) throw new GoogleAdsPublishError("Google Ads não retornou a campanha criada.");
 
-  // 3) Segmentação geo/idioma (Brasil/Português fixo nessa versão)
+  // 3) Segmentação geográfica real resolvida pela API + idioma.
   await mutate(customerId, accessToken, "campaignCriteria", [
-    { create: { campaign: campaignResourceName, location: { geoTargetConstant: GEO_TARGET_BRASIL } } },
+    ...geoTargetResources.map((geoTargetConstant) => ({
+      create: { campaign: campaignResourceName, location: { geoTargetConstant } },
+    })),
     { create: { campaign: campaignResourceName, language: { languageConstant: LANGUAGE_PORTUGUES } } },
   ]);
 
