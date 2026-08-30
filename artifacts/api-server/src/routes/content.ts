@@ -25,12 +25,35 @@ import {
   describeImage,
   improveVariationText,
 } from "../lib/content-generation.js";
-import { publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
+import { InstagramApiError, publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import { registerPublishedPost, buildOwnPerformancePromptBlock } from "../services/content-performance.js";
 import type { FeedVariation, StoriesVariation } from "@workspace/db";
 
 const router: IRouter = Router();
+const contentObjectStorage = new ObjectStorageService();
+
+async function resolveInstagramMediaUrl(rawUrl: string): Promise<string> {
+  const parsed = new URL(rawUrl, "https://vendorai.local");
+  const storagePrefixes = ["/api/storage/objects/", "/storage/objects/"];
+  const storagePrefix = storagePrefixes.find((prefix) => parsed.pathname.startsWith(prefix));
+
+  if (storagePrefix) {
+    const entityPath = `/objects/${decodeURIComponent(parsed.pathname.slice(storagePrefix.length))}`;
+    const objectFile = await contentObjectStorage.getObjectEntityFile(entityPath);
+    return objectFile.getPublicUrl();
+  }
+
+  if (/^https:\/\//i.test(rawUrl)) return rawUrl;
+
+  const publicBase = (
+    process.env["FRONTEND_APP_URL"] ||
+    process.env["APP_URL"] ||
+    "https://app.appvendorai.com"
+  ).replace(/\/$/, "");
+  return new URL(rawUrl, `${publicBase}/`).toString();
+}
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 20,
@@ -560,11 +583,12 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
   }
 
   try {
+    const publicImageUrl = await resolveInstagramMediaUrl(imageUrl);
     let postId: string;
     if (gen.type === "feed") {
       const v = variation as FeedVariation;
       const caption = body.data.captionOverride ?? `${v.caption}\n\n${(v.hashtags ?? []).join(" ")}`;
-      postId = await publishFeedPost(publishAccountId, publishAccessToken, caption, imageUrl, req.log);
+      postId = await publishFeedPost(publishAccountId, publishAccessToken, caption, publicImageUrl, req.log);
       await registerPublishedPost({
         tenantId,
         contentGenerationId: gen.id,
@@ -576,7 +600,7 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
       }).catch((err) => req.log.error({ err }, "content-performance: falha ao registrar post publicado"));
     } else {
       const v = variation as StoriesVariation;
-      postId = await publishStoriesPost(publishAccountId, publishAccessToken, imageUrl, req.log);
+      postId = await publishStoriesPost(publishAccountId, publishAccessToken, publicImageUrl, req.log);
       await registerPublishedPost({
         tenantId,
         contentGenerationId: gen.id,
@@ -590,8 +614,24 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     res.json({ success: true, postId });
   } catch (err) {
     req.log.error({ err }, "instagram-publish: route failed");
+    if (err instanceof InstagramApiError) {
+      const metaCode = err.graph?.code;
+      const tokenInvalid = metaCode === 190;
+      const permissionMissing = metaCode === 10 || metaCode === 200;
+      res.status(tokenInvalid ? 401 : permissionMissing ? 403 : 422).json({
+        code: tokenInvalid
+          ? "INSTAGRAM_TOKEN_INVALID"
+          : permissionMissing
+            ? "INSTAGRAM_PERMISSION_MISSING"
+            : "INSTAGRAM_PUBLISH_REJECTED",
+        error: err.message,
+        metaCode,
+        metaSubcode: err.graph?.error_subcode,
+      });
+      return;
+    }
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
-    res.status(502).json({ error: `Falha ao publicar no Instagram: ${msg}` });
+    res.status(502).json({ code: "INSTAGRAM_PUBLISH_FAILED", error: `Falha ao publicar no Instagram: ${msg}` });
   }
 });
 

@@ -532,24 +532,26 @@ function PublishInstagramButton({
         },
         body: JSON.stringify(body),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as { error?: string; code?: string };
       if (!res.ok) {
         const normalizedError = data.error?.toLowerCase() ?? "";
-        const isNotConnected = normalizedError.includes("não conectado") ||
-          normalizedError.includes("oauth") ||
-          normalizedError.includes("page access") ||
+        const tokenInvalid = data.code === "INSTAGRAM_TOKEN_INVALID" ||
+          normalizedError.includes("não conectado") ||
           normalizedError.includes("credenciais de publicação") ||
-          normalizedError.includes("expirou") ||
-          normalizedError.includes("reconect");
+          normalizedError.includes("expirou");
+        const permissionMissing = data.code === "INSTAGRAM_PERMISSION_MISSING";
+        const reconnectRequired = tokenInvalid || permissionMissing;
         toast({
-          title: isNotConnected ? "Instagram não conectado" : "Falha ao publicar",
-          description: isNotConnected
-            ? "Conecte sua conta profissional em Configurações → Integrações → Instagram."
-            : (data.error ?? "Erro desconhecido"),
+          title: tokenInvalid
+            ? "Reconecte o Instagram"
+            : permissionMissing
+              ? "Permissão para publicar ausente"
+              : "A Meta recusou a publicação",
+          description: data.error ?? "A Meta não informou o motivo. Tente novamente.",
           variant: "destructive",
-          action: isNotConnected ? (
-            <ToastAction altText="Conectar Instagram" onClick={() => navigate("/configuracoes?tab=integracoes")}>
-              Conectar Instagram
+          action: reconnectRequired ? (
+            <ToastAction altText="Reautorizar Instagram" onClick={() => navigate("/configuracoes?tab=integracoes")}>
+              Reautorizar Instagram
             </ToastAction>
           ) : undefined,
         });
