@@ -39,8 +39,7 @@ Ao registrar, inclua EXATAMENTE ao final da sua resposta (nunca antes, nunca den
 - Seja direto, empático e conciso
 - Nunca peça informações que já foram fornecidas
 - Máximo 1 pergunta de cada vez para coletar informações
-- Se for uma dúvida simples, responda diretamente sem burocracia de chamado
-- Só registre chamado quando o usuário descrever um problema concreto ou pedir explicitamente`;
+- Se for uma dúvida simples, responda diretamente; o sistema registrará o atendimento como resolvido pelo agente\n- Use o marcador somente quando houver problema, sugestão ou necessidade de acompanhamento humano`;
 
 const reportMarkerRegex =
   /<!--VENDORAI_REPORT:([\s\S]*?)-->/;
@@ -130,42 +129,89 @@ router.post("/support/chat", async (req, res) => {
     }
 
     const match = reportMarkerRegex.exec(fullResponse);
+    const visibleResponse = fullResponse.replace(reportMarkerRegex, "").trim();
     let bugReportId: string | null = null;
     let protocolo: string | null = null;
+    let atendimentoStatus: "aberto" | "em_analise" | "resolvido" = "resolvido";
+    let resolvidoPor: "agente" | "humano" | null = "agente";
 
-    if (match && match[1]) {
-      try {
-        const reportData = JSON.parse(match[1].trim()) as {
+    // Toda conversa de suporte vira um atendimento na tela administrativa.
+    // Uma dúvida respondida pela IA entra como resolvida pelo agente; quando
+    // existe marcador de problema/sugestão, o mesmo protocolo é reaberto para
+    // acompanhamento humano.
+    try {
+      if (tenantId) {
+        const primeiraMensagem = parsed.data.messages.find((m) => m.role === "user")?.content ?? "Conversa com o Suporte";
+        const tituloPadrao = primeiraMensagem.length > 80 ? primeiraMensagem.slice(0, 77) + "..." : primeiraMensagem;
+        let reportData: {
           titulo: string;
           descricao: string;
           categoria: "bug" | "duvida" | "sugestao";
           prioridade: "baixa" | "media" | "alta" | "critica";
           rotaAfetada?: string | null;
+        } = {
+          titulo: tituloPadrao,
+          descricao: primeiraMensagem,
+          categoria: "duvida",
+          prioridade: "baixa",
+          rotaAfetada: null,
         };
 
-        if (tenantId) {
-          const [created] = await db
-            .insert(bugReportsTable)
-            .values({
-              tenantId,
-              titulo: reportData.titulo ?? "Chamado de suporte",
-              descricao: reportData.descricao ?? "",
-              categoria: reportData.categoria ?? "bug",
-              prioridade: reportData.prioridade ?? "media",
-              rotaAfetada: reportData.rotaAfetada ?? null,
-              erroTecnico: null,
-              stackTrace: null,
-            })
-            .returning({ id: bugReportsTable.id });
-
-          bugReportId = created?.id ?? null;
-          if (bugReportId) {
-            protocolo = `#${bugReportId.substring(0, 8).toUpperCase()}`;
-          }
+        if (match?.[1]) {
+          reportData = { ...reportData, ...JSON.parse(match[1].trim()) };
+          atendimentoStatus = "aberto";
+          resolvidoPor = null;
         }
-      } catch {
-        req.log?.warn({ err: "report_parse_failed" }, "support: failed to parse report marker");
+
+        const conversationId = parsed.data.conversationId ?? null;
+        const [existing] = conversationId
+          ? await db.select().from(bugReportsTable).where(and(
+              eq(bugReportsTable.tenantId, tenantId),
+              eq(bugReportsTable.conversationId, conversationId),
+            )).limit(1)
+          : [];
+
+        // Um atendimento que já aguarda a equipe nunca é fechado por uma
+        // resposta posterior do agente sem decisão humana explícita.
+        if (existing && existing.status !== "resolvido" && !match) {
+          atendimentoStatus = existing.status;
+          resolvidoPor = existing.resolvidoPor as "agente" | "humano" | null;
+        }
+
+        const values = {
+          tenantId,
+          conversationId,
+          titulo: reportData.titulo || tituloPadrao,
+          descricao: reportData.descricao || primeiraMensagem,
+          categoria: reportData.categoria || "duvida",
+          prioridade: reportData.prioridade || "baixa",
+          rotaAfetada: reportData.rotaAfetada ?? null,
+          erroTecnico: null,
+          stackTrace: null,
+          status: atendimentoStatus,
+          respostaSuporte: visibleResponse || null,
+          resolvidoPor,
+          resolvidoAt: atendimentoStatus === "resolvido" ? new Date() : null,
+          updatedAt: new Date(),
+        } as const;
+
+        let saved;
+        if (existing) {
+          [saved] = await db.update(bugReportsTable)
+            .set(values as any)
+            .where(eq(bugReportsTable.id, existing.id))
+            .returning();
+        } else {
+          [saved] = await db.insert(bugReportsTable).values(values as any).returning();
+        }
+
+        bugReportId = saved?.id ?? null;
+        atendimentoStatus = saved?.status ?? atendimentoStatus;
+        resolvidoPor = (saved?.resolvidoPor as "agente" | "humano" | null) ?? resolvidoPor;
+        if (bugReportId) protocolo = `#${bugReportId.substring(0, 8).toUpperCase()}`;
       }
+    } catch (err) {
+      req.log?.warn({ err }, "support: falha ao registrar atendimento");
     }
 
     // Registro em relatos_tecnicos — TODA interação com o Suporte, não só
@@ -175,7 +221,6 @@ router.post("/support/chat", async (req, res) => {
       if (tenantId && parsed.data.conversationId) {
         const conversationId = parsed.data.conversationId;
         const userId = req.user?.sub ?? null;
-        const visibleResponse = fullResponse.replace(reportMarkerRegex, "").trim();
         const transcript =
           parsed.data.messages.map((m) => `${m.role === "user" ? "Usuário" : "Suporte"}: ${m.content}`).join("\n\n") +
           (visibleResponse ? `\n\nSuporte: ${visibleResponse}` : "");
@@ -207,7 +252,7 @@ router.post("/support/chat", async (req, res) => {
     }
 
     res.write(
-      `data: ${JSON.stringify({ done: true, bugReportId, protocolo })}\n\n`,
+      `data: ${JSON.stringify({ done: true, bugReportId, protocolo, status: atendimentoStatus, resolvidoPor })}\n\n`,
     );
     res.end();
   } catch (err) {
