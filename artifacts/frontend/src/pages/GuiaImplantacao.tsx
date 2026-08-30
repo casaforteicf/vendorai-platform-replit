@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, ChevronRight, Circle, MessageCircle, Users, FileSpreadsheet, Package, Rocket, HelpCircle, Download } from "lucide-react";
+import { CheckCircle2, ChevronRight, Circle, MessageCircle, Users, FileSpreadsheet, Package, Rocket, HelpCircle } from "lucide-react";
 
 const steps = [
   {
