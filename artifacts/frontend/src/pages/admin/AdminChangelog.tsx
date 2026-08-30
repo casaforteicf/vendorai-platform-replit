@@ -26,6 +26,7 @@ interface Entry {
   tipo: "novidade" | "melhoria" | "correcao";
   publicadoEm: string | null;
   createdAt: string;
+  automatico?: boolean;
 }
 
 const TIPO_OPTS = [
@@ -82,7 +83,7 @@ export default function AdminChangelog() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Bell className="h-5 w-5" /> Novidades</h1>
-          <p className="text-sm text-muted-foreground mt-1">Escreva e publique atualizações — aparecem pra todos os tenants no sino do menu.</p>
+          <p className="text-sm text-muted-foreground mt-1">Toda entrega é registrada automaticamente. Use a criação manual apenas para comunicados especiais.</p>
         </div>
         <Button onClick={() => { setForm({ ...EMPTY_FORM }); setOpen(true); }}>
           <Plus className="h-4 w-4 mr-2" /> Nova entrada
@@ -107,6 +108,9 @@ export default function AdminChangelog() {
                         <Badge variant="outline" className={`text-xs flex items-center gap-1 ${cfg.className}`}>
                           <Icon className="h-3 w-3" /> {cfg.label}
                         </Badge>
+                        {e.automatico && (
+                          <Badge variant="outline" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">Automático</Badge>
+                        )}
                         {e.publicadoEm ? (
                           <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600">
                             Publicado {format(new Date(e.publicadoEm), "dd/MM/yyyy", { locale: ptBR })}
@@ -119,17 +123,21 @@ export default function AdminChangelog() {
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-0.5">{e.descricao}</p>
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      {!e.publicadoEm && (
+                      {!e.automatico && !e.publicadoEm && (
                         <Button size="sm" variant="outline" onClick={() => publicarMutation.mutate(e.id)} disabled={publicarMutation.isPending}>
                           <Send className="h-3.5 w-3.5 mr-1.5" /> Publicar
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="h-9 w-9 p-0" onClick={() => { setForm({ id: e.id, titulo: e.titulo, descricao: e.descricao, tipo: e.tipo }); setOpen(true); }}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-9 w-9 p-0 text-destructive" onClick={() => deleteMutation.mutate(e.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {!e.automatico && (
+                        <>
+                          <Button size="sm" variant="ghost" className="h-9 w-9 p-0" onClick={() => { setForm({ id: e.id, titulo: e.titulo, descricao: e.descricao, tipo: e.tipo }); setOpen(true); }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-9 w-9 p-0 text-destructive" onClick={() => deleteMutation.mutate(e.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </CardContent>

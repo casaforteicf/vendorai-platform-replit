@@ -8,21 +8,34 @@ import {
   updateChangelogEntrySchema,
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
+import { automaticChangelogEntries } from "../data/automatic-changelog.js";
 
 const router: IRouter = Router();
 
-// ── Uso geral (qualquer usuário autenticado) ────────────────────────────────
+function automaticEntries() {
+  return automaticChangelogEntries.map((entry) => ({
+    ...entry,
+    publicadoEm: new Date(entry.publicadoEm),
+    createdAt: new Date(entry.publicadoEm),
+    updatedAt: new Date(entry.publicadoEm),
+    automatico: true,
+  }));
+}
 
-// GET /changelog — só entradas publicadas, mais recentes primeiro.
 router.get("/changelog", async (_req, res) => {
   const rows = await db.select()
     .from(changelogEntriesTable)
     .where(isNotNull(changelogEntriesTable.publicadoEm))
     .orderBy(desc(changelogEntriesTable.publicadoEm));
-  return res.json(rows);
+
+  const combined = [
+    ...rows.map((row) => ({ ...row, automatico: false })),
+    ...automaticEntries(),
+  ].sort((a, b) => (b.publicadoEm?.getTime() ?? 0) - (a.publicadoEm?.getTime() ?? 0));
+
+  return res.json(combined);
 });
 
-// GET /changelog/unread-count — quantas publicadas depois da última leitura do usuário.
 router.get("/changelog/unread-count", async (req, res) => {
   const userId = req.user?.sub;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -35,10 +48,13 @@ router.get("/changelog/unread-count", async (req, res) => {
     .from(changelogEntriesTable)
     .where(and(isNotNull(changelogEntriesTable.publicadoEm), gt(changelogEntriesTable.publicadoEm, cutoff)));
 
-  return res.json({ count: row?.total ?? 0 });
+  const automaticUnread = automaticChangelogEntries.filter(
+    (entry) => new Date(entry.publicadoEm) > cutoff,
+  ).length;
+
+  return res.json({ count: (row?.total ?? 0) + automaticUnread });
 });
 
-// POST /changelog/marcar-lido — usuário abriu o painel, zera o contador.
 router.post("/changelog/marcar-lido", async (req, res) => {
   const userId = req.user?.sub;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -47,12 +63,13 @@ router.post("/changelog/marcar-lido", async (req, res) => {
   return res.json({ ok: true });
 });
 
-// ── Gestão (super_admin only) ────────────────────────────────────────────────
-
-// GET /admin/changelog — inclui rascunhos (publicadoEm null).
 router.get("/admin/changelog", requireRole("super_admin"), async (_req, res) => {
   const rows = await db.select().from(changelogEntriesTable).orderBy(desc(changelogEntriesTable.createdAt));
-  return res.json(rows);
+  const combined = [
+    ...rows.map((row) => ({ ...row, automatico: false })),
+    ...automaticEntries(),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return res.json(combined);
 });
 
 router.post("/admin/changelog", requireRole("super_admin"), async (req, res) => {
@@ -75,7 +92,6 @@ router.patch("/admin/changelog/:id", requireRole("super_admin"), async (req, res
   return res.json(row);
 });
 
-// Publicar = atalho pra setar publicadoEm = agora.
 router.post("/admin/changelog/:id/publicar", requireRole("super_admin"), async (req, res) => {
   const [row] = await db.update(changelogEntriesTable)
     .set({ publicadoEm: new Date(), updatedAt: new Date() })
