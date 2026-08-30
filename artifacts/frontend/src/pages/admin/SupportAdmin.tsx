@@ -26,6 +26,8 @@ interface BugReport {
   id: string;
   tenantId: string;
   tenantName: string | null;
+  conversationId: string | null;
+  resolvidoPor: "agente" | "humano" | null;
   titulo: string;
   descricao: string;
   categoria: "bug" | "duvida" | "sugestao";
@@ -176,6 +178,7 @@ export default function SupportAdmin() {
   }
 
   const openCount = bugs.filter((b) => b.status === "aberto").length;
+  const agentResolvedCount = bugs.filter((b) => b.status === "resolvido" && b.resolvidoPor === "agente").length;
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -188,7 +191,7 @@ export default function SupportAdmin() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {openCount} chamado{openCount !== 1 ? "s" : ""} aberto{openCount !== 1 ? "s" : ""}
-            {bugs.length > 0 && ` · ${bugs.length} total`}
+            {bugs.length > 0 && ` · ${agentResolvedCount} resolvido${agentResolvedCount !== 1 ? "s" : ""} pelo agente · ${bugs.length} total`}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -316,6 +319,11 @@ export default function SupportAdmin() {
                         <Badge variant="outline" className={cn("text-xs", PRIORIDADE_CONFIG[bug.prioridade].className)}>
                           {PRIORIDADE_CONFIG[bug.prioridade].label}
                         </Badge>
+                        {bug.status === "resolvido" && (
+                          <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">
+                            {bug.resolvidoPor === "agente" ? "Resolvido pelo agente" : "Resolvido pela equipe"}
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="text-xs bg-slate-50 text-slate-600">
                           {bug.tenantName ?? bug.tenantId.substring(0, 8)}
                         </Badge>
@@ -356,6 +364,11 @@ export default function SupportAdmin() {
                   <Badge variant="outline" className={cn("text-xs", PRIORIDADE_CONFIG[selected.prioridade].className)}>
                     {PRIORIDADE_CONFIG[selected.prioridade].label}
                   </Badge>
+                  {selected.status === "resolvido" && (
+                    <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">
+                      {selected.resolvidoPor === "agente" ? "Resolvido pelo agente" : "Resolvido pela equipe"}
+                    </Badge>
+                  )}
                   <Badge variant="outline" className="text-xs">
                     {selected.tenantName ?? selected.tenantId}
                   </Badge>
@@ -453,7 +466,7 @@ export default function SupportAdmin() {
                   {selected.status === "resolvido" && (
                     <div className="flex items-center gap-1.5 text-sm text-green-600">
                       <CheckCircle2 className="h-4 w-4" />
-                      Resolvido em {selected.resolvidoAt ? format(new Date(selected.resolvidoAt), "dd/MM/yyyy HH:mm", { locale: ptBR }) : "—"}
+                      {selected.resolvidoPor === "agente" ? "Resolvido pelo agente em " : "Resolvido pela equipe em "}{selected.resolvidoAt ? format(new Date(selected.resolvidoAt), "dd/MM/yyyy HH:mm", { locale: ptBR }) : "—"}
                     </div>
                   )}
                 </div>
