@@ -389,11 +389,11 @@ export default function Home() {
                   </div>
                   <h2 className="text-4xl font-semibold tracking-[-0.045em] text-white md:text-5xl">Primeiro prove. Depois decida.</h2>
                   <p className="mt-5 max-w-lg text-lg leading-8 text-slate-400">
-                    Use o VendorAI completo por 5 dias. Se fizer sentido, você entra na condição especial de lançamento.
+                    Use o VendorAI completo e escolha entre duas modalidades: uso pré-pago por ativações ou licença oficial anual.
                   </p>
 
                   <div className="mt-9 space-y-4 text-sm text-slate-300">
-                    {["Uma única licença completa", "Sem cobrança durante o teste", "Sem preço normal fixado hoje"].map((item) => (
+                    {["Experiência completa nas duas modalidades", "5 dias gratuitos todos os meses", "Dados preservados entre ativações"].map((item) => (
                       <div key={item} className="flex items-center gap-3">
                         <CheckCircle2 className="h-5 w-5 text-emerald-300" /> {item}
                       </div>
@@ -407,9 +407,8 @@ export default function Home() {
                   <div className="absolute left-6 top-10 hidden h-[calc(100%-80px)] w-px bg-slate-200 sm:block" />
                   <div className="space-y-4">
                     {[
-                      { n: "01", period: "Primeiros 5 dias", price: "Grátis", detail: "Acesso completo para testar na prática." },
-                      { n: "02", period: "Mais 5 dias", price: "R$ 399", detail: "Ativação pré-paga sempre que precisar continuar usando." },
-                      { n: "03", period: "Licença oficial", price: "Contrato anual", detail: "Uso contínuo, renovação mensal e condição comercial formalizada." },
+                      { n: "01", period: "Uso pré-pago", price: "5 dias por ativação", detail: "Ativação mensal gratuita e novas ativações de 5 dias por R$ 399." },
+                      { n: "02", period: "Licença oficial", price: "Contrato de 12 meses", detail: "Uso contínuo e condição comercial formalizada por aceite eletrônico." },
                     ].map((phase) => (
                       <motion.div
                         key={phase.n}
