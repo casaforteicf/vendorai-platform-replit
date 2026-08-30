@@ -65,6 +65,7 @@ export default function PlanoMidia() {
   const [gerando, setGerando] = useState(false);
   const [calendario, setCalendario] = useState<CalendarItem[]>([]);
   const [gerandoCalendario, setGerandoCalendario] = useState(false);
+  const [semanasEscolhidas, setSemanasEscolhidas] = useState(2);
   const [gerandoConteudoId, setGerandoConteudoId] = useState<string | null>(null);
 
   async function carregar() {
@@ -115,12 +116,15 @@ export default function PlanoMidia() {
       const r = await fetch(`/api/tenants/${tenantId}/content-calendar/gerar`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ mediaPlanId: plan.id, semanas: 2 }),
+        body: JSON.stringify({ mediaPlanId: plan.id, semanas: semanasEscolhidas }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error ?? "Falha ao gerar o calendário");
-      setCalendario(data);
-      toast({ title: `${data.length} posts planejados pras próximas 2 semanas!` });
+      // Concatena com o que já existe -- agora o backend continua a partir
+      // do último post agendado em vez de reiniciar do zero, então isso
+      // é seguro: nunca sobrepõe datas já existentes.
+      setCalendario((atual) => [...atual, ...data]);
+      toast({ title: `${data.length} posts a mais planejados!` });
     } catch (err) {
       toast({ title: "Não foi possível gerar o calendário", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
     } finally {
@@ -308,49 +312,65 @@ export default function PlanoMidia() {
           <div className="pt-2 space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <p className="text-sm font-medium flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />Calendário de conteúdo</p>
-              <Button type="button" size="sm" variant="outline" onClick={gerarCalendario} disabled={gerandoCalendario}>
-                {gerandoCalendario ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
-                {calendario.length > 0 ? "Gerar novo calendário (2 semanas)" : "Gerar calendário (2 semanas)"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={semanasEscolhidas}
+                  onChange={(e) => setSemanasEscolhidas(Number(e.target.value))}
+                  className="h-8 text-xs border rounded-md px-2 bg-background"
+                >
+                  <option value={2}>2 semanas</option>
+                  <option value={4}>4 semanas</option>
+                  <option value={8}>8 semanas</option>
+                </select>
+                <Button type="button" size="sm" variant="outline" onClick={gerarCalendario} disabled={gerandoCalendario}>
+                  {gerandoCalendario ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+                  {calendario.length > 0 ? "Gerar mais" : "Gerar calendário"}
+                </Button>
+              </div>
             </div>
 
             {calendario.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhum post planejado ainda — gere o calendário pra transformar os pilares acima em posts concretos com data.</p>
             ) : (
-              <div className="space-y-2">
-                {calendario.map((item) => (
-                  <Card key={item.id}>
-                    <CardContent className="py-3 flex items-center gap-3">
-                      <div className="text-center shrink-0 w-12">
-                        <p className="text-[10px] text-muted-foreground uppercase">
-                          {new Date(item.dataAgendada + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short" })}
-                        </p>
-                        <p className="text-sm font-semibold">
-                          {new Date(item.dataAgendada + "T12:00:00").getDate()}
-                        </p>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge variant="outline" className="text-[10px]">{item.pilar}</Badge>
-                          <span className="text-[10px] text-muted-foreground uppercase">{item.tipo}</span>
+              <>
+                <div className="space-y-2">
+                  {calendario.map((item) => (
+                    <Card key={item.id}>
+                      <CardContent className="py-3 flex items-center gap-3">
+                        <div className="text-center shrink-0 w-12">
+                          <p className="text-[10px] text-muted-foreground uppercase">
+                            {new Date(item.dataAgendada + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short" })}
+                          </p>
+                          <p className="text-sm font-semibold">
+                            {new Date(item.dataAgendada + "T12:00:00").getDate()}
+                          </p>
                         </div>
-                        <p className="text-sm mt-0.5 truncate">{item.temaSugerido}</p>
-                      </div>
-                      {item.status === "planejado" ? (
-                        <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={gerandoConteudoId === item.id} onClick={() => gerarConteudoItem(item)}>
-                          {gerandoConteudoId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1.5" />}
-                          {gerandoConteudoId === item.id ? "" : "Gerar"}
-                        </Button>
-                      ) : (
-                        <Button type="button" size="sm" variant="ghost" className="shrink-0 text-primary" onClick={() => navigate("/content")}>
-                          <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                          Revisar
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="outline" className="text-[10px]">{item.pilar}</Badge>
+                            <span className="text-[10px] text-muted-foreground uppercase">{item.tipo}</span>
+                          </div>
+                          <p className="text-sm mt-0.5 truncate">{item.temaSugerido}</p>
+                        </div>
+                        {item.status === "planejado" ? (
+                          <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={gerandoConteudoId === item.id} onClick={() => gerarConteudoItem(item)}>
+                            {gerandoConteudoId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1.5" />}
+                            {gerandoConteudoId === item.id ? "" : "Gerar"}
+                          </Button>
+                        ) : (
+                          <Button type="button" size="sm" variant="ghost" className="shrink-0 text-primary" onClick={() => navigate("/content")}>
+                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                            Revisar
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground pt-1">
+                  O calendário não se renova sozinho — quando esses posts acabarem, volte aqui e toque em "Gerar mais" pra continuar de onde parou.
+                </p>
+              </>
             )}
           </div>
         </div>

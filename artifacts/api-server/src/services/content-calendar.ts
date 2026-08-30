@@ -11,7 +11,7 @@
  * (content-performance.ts).
  */
 import { db, mediaPlansTable, contentCalendarItemsTable, type ContentCalendarTipo } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const SYSTEM_PROMPT = `Você é um planejador de conteúdo para redes sociais de pequenas e médias empresas brasileiras.
@@ -51,11 +51,26 @@ export async function generateContentCalendar(
     .map((c) => c.canal)
     .join(", ") || "Instagram";
 
+  // Achado real: gerar de novo sempre recomeçava contando "hoje" -- clicar
+  // "gerar mais" depois de já ter posts agendados criava datas sobrepostas
+  // às que já existiam. Agora continua a partir do dia seguinte ao último
+  // post já agendado desse plano (se houver), em vez de sempre reiniciar.
+  const [ultimoAgendado] = await db
+    .select({ dataAgendada: contentCalendarItemsTable.dataAgendada })
+    .from(contentCalendarItemsTable)
+    .where(and(eq(contentCalendarItemsTable.tenantId, tenantId), eq(contentCalendarItemsTable.mediaPlanId, mediaPlanId)))
+    .orderBy(desc(contentCalendarItemsTable.dataAgendada))
+    .limit(1);
+
+  const dataBase = ultimoAgendado
+    ? (() => { const d = new Date(ultimoAgendado.dataAgendada + "T12:00:00"); d.setDate(d.getDate() + 1); return d; })()
+    : new Date();
+
   const postsEstimados = Math.max(4, Math.min(semanas * 3, 40));
 
   const userPrompt = `Pilares de conteúdo: ${pilares.join(", ")}
 Canais prioritários: ${canaisRelevantes}
-Período: ${semanas} semana(s) a partir de hoje
+Período: ${semanas} semana(s) a partir de ${ultimoAgendado ? "onde o calendário já parou" : "hoje"}
 Gere aproximadamente ${postsEstimados} posts distribuídos nesse período.`;
 
   const response = await anthropic.messages.create({
@@ -76,9 +91,8 @@ Gere aproximadamente ${postsEstimados} posts distribuídos nesse período.`;
     throw new ContentCalendarError("Falha ao interpretar o calendário gerado — tente novamente.");
   }
 
-  const hoje = new Date();
   const rows = parsedItems.map((item) => {
-    const data = new Date(hoje);
+    const data = new Date(dataBase);
     data.setDate(data.getDate() + Math.max(0, item.diaOffset ?? 0));
     const tipo: ContentCalendarTipo = ["feed", "stories", "reels"].includes(item.tipo) ? (item.tipo as ContentCalendarTipo) : "feed";
     return {
