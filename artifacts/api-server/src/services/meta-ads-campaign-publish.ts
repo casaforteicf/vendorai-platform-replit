@@ -127,6 +127,56 @@ async function resolveMetaInterests(accessToken: string, queries: string[]): Pro
   return [...resolved.values()];
 }
 
+type MetaGeoTarget = { key: string; name?: string };
+type MetaGeoLocations = { countries?: string[]; cities?: MetaGeoTarget[]; regions?: MetaGeoTarget[]; zips?: MetaGeoTarget[] };
+
+async function resolveMetaGeoLocations(accessToken: string, locations: string[]): Promise<MetaGeoLocations> {
+  if (locations.length === 0) {
+    throw new MetaAdsPublishError("Informe pelo menos uma cidade, estado ou CEP. O VendorAI não publica campanha para o Brasil inteiro por padrão.");
+  }
+  const cities = new Map<string, MetaGeoTarget>();
+  const regions = new Map<string, MetaGeoTarget>();
+  const zips = new Map<string, MetaGeoTarget>();
+  for (const query of locations.slice(0, 20)) {
+    const result = await metaApi<{ data?: Array<{ key: string; name?: string; type?: string; country_code?: string }> }>(
+      "search",
+      accessToken,
+      "GET",
+      { type: "adgeolocation", q: query, location_types: JSON.stringify(["city", "region", "zip"]), limit: "10" },
+    );
+    const candidates = (result.data ?? []).filter((item) => item.country_code === "BR");
+    const exact = candidates.find((item) => item.name?.toLocaleLowerCase("pt-BR") === query.toLocaleLowerCase("pt-BR")) ?? candidates[0];
+    if (!exact?.key) continue;
+    const target = { key: exact.key, name: exact.name };
+    if (exact.type === "region") regions.set(exact.key, target);
+    else if (exact.type === "zip") zips.set(exact.key, target);
+    else cities.set(exact.key, target);
+  }
+  const geo: MetaGeoLocations = {};
+  if (cities.size) geo.cities = [...cities.values()];
+  if (regions.size) geo.regions = [...regions.values()];
+  if (zips.size) geo.zips = [...zips.values()];
+  if (!geo.cities && !geo.regions && !geo.zips) {
+    throw new MetaAdsPublishError(`A Meta não reconheceu a localização: ${locations.join(", ")}. Corrija antes de publicar.`);
+  }
+  return geo;
+}
+
+function metaDemographicTargeting(campanha: AdCampaign) {
+  const selectedAges = campanha.segmentacao?.demografia?.idades ?? [];
+  const numericAges = selectedAges.flatMap((range) => {
+    const match = range.match(/(\d{2})(?:-(\d{2})|\+)/);
+    return match ? [Number(match[1]), Number(match[2] ?? 65)] : [];
+  });
+  const genders = campanha.segmentacao?.demografia?.generos ?? [];
+  return {
+    ...(numericAges.length ? { age_min: Math.min(...numericAges), age_max: Math.max(...numericAges) } : {}),
+    ...(genders.length && !genders.includes("Desconhecido")
+      ? { genders: [...new Set(genders.flatMap((item) => item === "Masculino" ? [1] : item === "Feminino" ? [2] : []))] }
+      : {}),
+  };
+}
+
 // Mesma lógica de resolução de destino do Google Ads — duplicada em vez
 // de compartilhada porque cada serviço lança seu próprio tipo de erro e
 // não vale a pena acoplar os dois só por isso.
@@ -367,6 +417,10 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     await db.update(adCampaignsTable).set({ segmentacao, updatedAt: new Date() }).where(eq(adCampaignsTable.id, campaignId));
   }
 
+  const requestedLocations = campanha.segmentacao?.localizacao?.locais ?? [];
+  const geoLocations = await resolveMetaGeoLocations(accessToken, requestedLocations);
+  const demographicTargeting = metaDemographicTargeting(campanha);
+
   const campaignName = `Vendor.ai — ${headline} — ${new Date().toISOString().slice(0, 10)}`;
 
   // 1) Campanha — objetivo Tráfego cobre landing page/WhatsApp-via-link/
@@ -393,7 +447,8 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     status: "PAUSED",
     targeting: JSON.stringify({
-      geo_locations: { countries: ["BR"] },
+      geo_locations: geoLocations,
+      ...demographicTargeting,
       ...(origemInstagram ? { publisher_platforms: ["instagram"] } : {}),
       ...(resolvedInterests.length > 0 ? { flexible_spec: [{ interests: resolvedInterests }] } : {}),
     }),
