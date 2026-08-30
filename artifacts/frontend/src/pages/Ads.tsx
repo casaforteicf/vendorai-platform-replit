@@ -564,6 +564,22 @@ export default function Ads() {
     onError: (e: any) => toast({ title: "Não foi possível corrigir", description: e.message, variant: "destructive" }),
   });
 
+  const prepararRecomendacao = useMutation({
+    mutationFn: async ({ campaignId, action }: { campaignId: string; action: string }) => {
+      const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/prepare-recommendation`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({ action }),
+      });
+      const payload = await r.json();
+      if (!r.ok) throw new Error(payload?.error ?? "Não foi possível preparar a recomendação");
+      return payload as { campaign: AdCampaign; guidance: string[] };
+    },
+    onSuccess: ({ guidance }) => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: "Nova versão preparada", description: guidance.join(" ") });
+    },
+    onError: (e: any) => toast({ title: "Não foi possível preparar", description: e.message, variant: "destructive" }),
+  });
+
   const aprovarCriativo = useMutation({
     mutationFn: async (creativeId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/creatives/${creativeId}/aprovar`, {
@@ -831,6 +847,23 @@ export default function Ads() {
                           <p className="text-xs font-semibold flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" />Recomendação do VendorAI: {result.recommendation.title}</p>
                           <p className="text-xs text-muted-foreground mt-1">{result.recommendation.reason}</p>
                           {result.recommendation.requiresApproval && <p className="text-[11px] font-medium mt-1">Qualquer mudança de prazo ou orçamento exigirá sua confirmação.</p>}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-2"
+                            disabled={prepararRecomendacao.isPending || corrigirReprovada.isPending}
+                            onClick={() => {
+                              if (result.recommendation?.action === "correct_creative") {
+                                corrigirReprovada.mutate(c.id);
+                                return;
+                              }
+                              if (result.recommendation?.requiresApproval && !window.confirm("Preparar uma nova versão para sua revisão? Nenhum gasto será alterado ou ativado agora.")) return;
+                              prepararRecomendacao.mutate({ campaignId: c.id, action: result.recommendation!.action });
+                            }}
+                          >
+                            {(prepararRecomendacao.isPending || corrigirReprovada.isPending) && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                            {result.recommendation.action === "correct_creative" ? "Preparar correção" : "Aplicar em novo rascunho"}
+                          </Button>
                         </div>
                       )}
                     </div>
