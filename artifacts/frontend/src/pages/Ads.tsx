@@ -164,6 +164,7 @@ interface AdCampaign {
       google: { keywords: string[] };
       meta: { interestQueries: string[]; resolvedInterests?: Array<{ id: string; name: string }> };
     };
+    campaignControl?: { objective: string; startDate: string; endDate: string; totalBudget: number; specialAdCategory: string };
     platformReview?: {
       status: "nao_enviada" | "em_analise" | "aprovada" | "aprovada_limitada" | "reprovada" | "erro_pagamento" | "erro_conta";
       reason?: string;
@@ -251,6 +252,12 @@ const OPCOES_STATUS_PARENTAL = ["Com filhos", "Sem filhos", "Desconhecido"];
 const OPCOES_RENDA = ["10% superior", "11-20%", "21-30%", "31-40%", "41-50%", "50% inferior", "Desconhecida"];
 
 const lista = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+const campaignDays = (start: string, end: string) => {
+  const from = new Date(`${start}T00:00:00`).getTime();
+  const to = new Date(`${end}T00:00:00`).getTime();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return 0;
+  return Math.floor((to - from) / 86_400_000) + 1;
+};
 
 export default function Ads() {
   const { user } = useAuth();
@@ -773,7 +780,7 @@ export default function Ads() {
                             <div className="border-t pt-2 mt-1">
                               {!c.externalCampaignId ? (
                                 <Button size="sm" onClick={() => {
-                                  if (window.confirm(`Publicar e iniciar com até R$ ${c.orcamentoDiario} por dia (estimativa máxima de R$ ${(Number(c.orcamentoDiario) * 30).toFixed(2)} em 30 dias)? A mídia será cobrada diretamente pela plataforma.`)) {
+                                  if (window.confirm(`Publicar e iniciar com até R$ ${c.orcamentoDiario} por dia e limite planejado de R$ ${Number(c.segmentacao?.campaignControl?.totalBudget ?? Number(c.orcamentoDiario) * 30).toFixed(2)}? A mídia será cobrada diretamente pela plataforma.`)) {
                                     publicarCampanha.mutate(c.id);
                                   }
                                 }} disabled={publicarCampanha.isPending}>
