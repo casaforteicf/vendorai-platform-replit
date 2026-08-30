@@ -22,8 +22,9 @@ import { gerarCriativoImagem } from "../lib/adContentGeneratorImagem.js";
 import { gerarShoppingFeedXml, gerarFeedToken, validarFeedToken } from "../lib/adShoppingFeed.js";
 import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
-import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
-import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
+import { enrichAdsSegmentacao } from "../services/ad-audience-plan.js";
+import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
+import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
 
 const router: IRouter = Router();
 
@@ -156,7 +157,7 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
     if (!sourceContent) return res.status(422).json({ error: "Conteúdo de origem não encontrado neste tenant" });
   }
 
-  let segmentacao = parsed.data.segmentacao ?? {};
+  let segmentacao: any = enrichAdsSegmentacao((parsed.data.segmentacao ?? {}) as any);
   const sourceVariationIndex = Number(req.body?.sourceVariationIndex);
   if (parsed.data.contentGenerationId && Number.isInteger(sourceVariationIndex) && sourceVariationIndex >= 0) {
     const [publishedPost] = await db
@@ -372,17 +373,50 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) =>
   }
 
   try {
+    const activateNow = req.body?.activate !== false;
+    if (activateNow) {
+      await db.update(adCreativesTable)
+        .set({ status: "aprovado", aprovadoPorId: (req as any).user?.sub ?? null, aprovadoEm: new Date() })
+        .where(eq(adCreativesTable.campaignId, campaignId));
+    }
+
     const result = plataforma === "google"
       ? await publishCampaignToGoogleAds(tenantId, campaignId)
       : await publishCampaignToMetaAds(tenantId, campaignId);
-    logger.info({ tenantId, campaignId, plataforma }, "ads: campanha publicada via rota");
-    return res.status(201).json(result);
+
+    if (activateNow) {
+      if (plataforma === "google") await setGoogleAdsCampaignStatus(tenantId, campaignId, true);
+      else await setMetaAdsCampaignStatus(tenantId, campaignId, true);
+    }
+
+    logger.info({ tenantId, campaignId, plataforma, activateNow }, "ads: campanha publicada via rota");
+    return res.status(201).json({ ...result, activated: activateNow });
   } catch (err) {
     if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
       return res.status(422).json({ error: err.message });
     }
     logger.error({ err, tenantId, campaignId, plataforma }, "ads: erro inesperado ao publicar campanha");
     return res.status(500).json({ error: `Erro inesperado ao publicar campanha no ${plataforma === "google" ? "Google Ads" : "Meta Ads"}.` });
+  }
+});
+
+router.post("/tenants/:tenantId/ads/campaigns/:id/sync-status", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const plataforma = await getCampanhaPlataforma(tenantId, campaignId);
+  try {
+    const platformReview = plataforma === "google"
+      ? await syncGoogleAdsReviewStatus(tenantId, campaignId)
+      : plataforma === "meta"
+        ? await syncMetaAdsReviewStatus(tenantId, campaignId)
+        : null;
+    if (!platformReview) return res.status(422).json({ error: "Consulta de situação disponível apenas para Google e Meta." });
+    return res.json(platformReview);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível atualizar a situação da campanha.";
+    return res.status(422).json({ error: message });
   }
 });
 
