@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2, RefreshCw, AlertTriangle, TrendingUp, DollarSign, Users, Eye } from "lucide-react";
+import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2, RefreshCw, AlertTriangle, Eye } from "lucide-react";
 import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
 // Label com ícone de ajuda (?) — explicação em linguagem simples pro lojista,
@@ -292,6 +292,7 @@ export default function Ads() {
   const [sourceDraft, setSourceDraft] = useState<ImportedContentDraft | null>(null);
   const [autoGenerateAfterCreate, setAutoGenerateAfterCreate] = useState(false);
   const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
+  const [historyCampaignId, setHistoryCampaignId] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -368,6 +369,12 @@ export default function Ads() {
       return r.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ads-overview", tenantId] }),
+  });
+
+  const { data: campaignHistory = [] } = useQuery<Array<{ id: string; eventType: string; severity: string; message: string; metadata: Record<string, unknown>; createdAt: string }>>({
+    queryKey: ["ads-campaign-history", tenantId, historyCampaignId],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/ads/campaigns/${historyCampaignId}/events`, { headers: authHeaders() }).then((r) => r.json()),
+    enabled: !!tenantId && !!historyCampaignId,
   });
 
   const { data: reservations = [] } = useQuery<VehicleReservation[]>({
@@ -783,6 +790,9 @@ export default function Ads() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
+                      <Button size="sm" variant="ghost" className="h-8" onClick={() => setHistoryCampaignId(c.id)}>
+                        <Eye className="h-3.5 w-3.5 mr-1" /> Histórico
+                      </Button>
                       {!c.externalCampaignId && (
                         <Button
                           size="icon"
@@ -1270,6 +1280,23 @@ export default function Ads() {
           </TooltipProvider>
         </DialogContent>
       </Dialog>
+      <Dialog open={!!historyCampaignId} onOpenChange={(value) => !value && setHistoryCampaignId(null)}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Histórico da campanha</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            {campaignHistory.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma ação registrada ainda.</p> : campaignHistory.map((event) => (
+              <div key={event.id} className="rounded-lg border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant="outline">{event.eventType.replaceAll("_", " ")}</Badge>
+                  <span className="text-[11px] text-muted-foreground">{new Date(event.createdAt).toLocaleString("pt-BR")}</span>
+                </div>
+                <p className="text-sm mt-2">{event.message}</p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!reservationDecision} onOpenChange={(value) => !value && setReservationDecision(null)}>
         <DialogContent><DialogHeader><DialogTitle>Atualizar negociação do veículo</DialogTitle></DialogHeader>
           <div className="space-y-4">
