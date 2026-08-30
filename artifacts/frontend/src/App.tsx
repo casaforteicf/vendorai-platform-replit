@@ -537,6 +537,16 @@ function AppRoutes() {
         <Route path="/">
           <PublicRoute component={Login} />
         </Route>
+        {/* Achado real: link/favorito salvo apontando pra /app/ (prefixo
+            que não existe como rota própria, só /app/prospector é real)
+            dava 404. Redireciona pra raiz em vez de manter esse caminho
+            quebrado indefinidamente. */}
+        <Route path="/app">
+          <RedirectPage to="/" />
+        </Route>
+        <Route path="/app/">
+          <RedirectPage to="/" />
+        </Route>
         <Route path="/dashboard">
           <ProtectedRoute component={Dashboard} />
         </Route>
