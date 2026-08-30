@@ -131,7 +131,7 @@ const modules = [
     id: "verticais",
     title: "Operações Especializadas",
     icon: PackageSearch,
-    desc: "Adapte processos, painéis, agentes e regras para construção, arquitetura, distribuição, varejo, serviços e outras verticais.",
+    desc: "Adapte processos, painéis, agentes e regras para construção, arquitetura, distribuição, varejo, serviços e outros segmentos.",
     features: ["Regras por segmento", "Módulos configuráveis", "Agentes especializados", "Visões operacionais"],
   },
 
