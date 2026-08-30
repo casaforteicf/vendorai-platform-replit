@@ -7,7 +7,7 @@ import {
   insertCategoriaProdutoSchema,
   updateCategoriaProdutoSchema,
 } from "@workspace/db";
-import { ensureOfficialItemCategories } from "../lib/itemCategories";
+import { ensureOfficialItemCategories, findOfficialItemCategory, normalizeCategoryName } from "../lib/itemCategories";
 
 const router: IRouter = Router();
 
@@ -37,7 +37,26 @@ router.post("/tenants/:tenantId/categorias-produto", async (req, res) => {
     return;
   }
 
-  const parsed = insertCategoriaProdutoSchema.safeParse({ ...req.body, tenantId });
+  const nivel = req.body?.nivel ?? "categoria";
+  const officialName = nivel === "categoria" ? findOfficialItemCategory(String(req.body?.nome ?? "")) : null;
+  if (nivel === "categoria" && !officialName) {
+    res.status(422).json({ error: "Categoria principal fora do padrão oficial do Vendor.ai." });
+    return;
+  }
+  if (nivel !== "categoria" && !req.body?.parentId) {
+    res.status(422).json({ error: `O nível ${nivel} precisa estar ligado a uma categoria superior.` });
+    return;
+  }
+
+  const nome = officialName ?? String(req.body?.nome ?? "").trim();
+  const parsed = insertCategoriaProdutoSchema.safeParse({
+    ...req.body,
+    tenantId,
+    nome,
+    nivel,
+    slug: normalizeCategoryName(nome).replace(/\s+/g, "-"),
+    oficial: nivel === "categoria",
+  });
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
     return;
@@ -55,7 +74,7 @@ router.patch("/categorias-produto/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: categoriasProdutoTable.id, tenantId: categoriasProdutoTable.tenantId })
+    .select({ id: categoriasProdutoTable.id, tenantId: categoriasProdutoTable.tenantId, oficial: categoriasProdutoTable.oficial })
     .from(categoriasProdutoTable)
     .where(eq(categoriasProdutoTable.id, String(req.params.id)));
 
@@ -69,9 +88,18 @@ router.patch("/categorias-produto/:id", async (req, res) => {
     return;
   }
 
+  if (existing.oficial && (parsed.data.nome || parsed.data.nivel || parsed.data.parentId)) {
+    res.status(422).json({ error: "Categorias oficiais não podem ter nome, nível ou vínculo alterados." });
+    return;
+  }
+
   const [categoria] = await db
     .update(categoriasProdutoTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({
+      ...parsed.data,
+      ...(parsed.data.nome ? { slug: normalizeCategoryName(parsed.data.nome).replace(/\s+/g, "-") } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(categoriasProdutoTable.id, existing.id))
     .returning();
 
@@ -80,7 +108,7 @@ router.patch("/categorias-produto/:id", async (req, res) => {
 
 router.delete("/categorias-produto/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: categoriasProdutoTable.id, tenantId: categoriasProdutoTable.tenantId })
+    .select({ id: categoriasProdutoTable.id, tenantId: categoriasProdutoTable.tenantId, oficial: categoriasProdutoTable.oficial })
     .from(categoriasProdutoTable)
     .where(eq(categoriasProdutoTable.id, String(req.params.id)));
 
@@ -91,6 +119,11 @@ router.delete("/categorias-produto/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (existing.oficial) {
+    res.status(422).json({ error: "Categorias oficiais não podem ser excluídas." });
     return;
   }
 

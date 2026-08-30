@@ -2,9 +2,25 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, whatsappConnectionsTable, agentConfigsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-const WHATSAPP_APP_ID = process.env["WHATSAPP_APP_ID"] ?? process.env["INSTAGRAM_APP_ID"];
-const WHATSAPP_APP_SECRET = process.env["WHATSAPP_APP_SECRET"] ?? process.env["INSTAGRAM_APP_SECRET"];
+const dedicatedWhatsappAppId = process.env["WHATSAPP_APP_ID"]?.trim();
+const metaAdsAppId = process.env["META_ADS_APP_ID"]?.trim();
+const instagramAppId = process.env["INSTAGRAM_APP_ID"]?.trim();
+
+const WHATSAPP_APP_ID = dedicatedWhatsappAppId || metaAdsAppId || instagramAppId;
+const WHATSAPP_APP_SECRET = dedicatedWhatsappAppId
+  ? process.env["WHATSAPP_APP_SECRET"]?.trim()
+  : metaAdsAppId
+    ? process.env["META_ADS_APP_SECRET"]?.trim()
+    : process.env["INSTAGRAM_APP_SECRET"]?.trim();
 const WHATSAPP_EMBEDDED_CONFIG_ID = process.env["WHATSAPP_EMBEDDED_CONFIG_ID"]?.trim();
+
+function assertWhatsappAppConfigured(): void {
+  if (!WHATSAPP_APP_ID || !/^\d+$/.test(WHATSAPP_APP_ID) || !WHATSAPP_APP_SECRET) {
+    throw new Error(
+      "WhatsApp oficial não configurado: informe WHATSAPP_APP_ID/WHATSAPP_APP_SECRET ou credenciais válidas do mesmo Meta App.",
+    );
+  }
+}
 
 function getRedirectUri(): string {
   const configured = process.env["WHATSAPP_REDIRECT_URI"]?.trim();
@@ -13,7 +29,7 @@ function getRedirectUri(): string {
   // Railway ainda pode carregar REPLIT_DOMAINS legado. Em produção, a URL
   // pública canônica precisa prevalecer para corresponder exatamente ao Meta.
   if (process.env["NODE_ENV"] === "production") {
-    return "https://appvendorai.com/api/auth/whatsapp/callback";
+    return "https://app.appvendorai.com/api/auth/whatsapp/callback";
   }
 
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
@@ -21,12 +37,14 @@ function getRedirectUri(): string {
   return "http://localhost:3000/api/auth/whatsapp/callback";
 }
 
-const META_OAUTH_BASE = "https://www.facebook.com/v18.0/dialog/oauth";
-const META_TOKEN_BASE = "https://graph.facebook.com/v18.0/oauth/access_token";
-const META_LONG_LIVED_BASE = "https://graph.facebook.com/v18.0/oauth/access_token";
-const META_WABA_BASE = "https://graph.facebook.com/v18.0";
+const META_GRAPH_VERSION = "v26.0";
+const META_OAUTH_BASE = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`;
+const META_TOKEN_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`;
+const META_LONG_LIVED_BASE = META_TOKEN_BASE;
+const META_WABA_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 
 export function buildWhatsappOAuthUrl(tenantId: string, state: string): string {
+  assertWhatsappAppConfigured();
   const redirectUri = getRedirectUri();
   const params = new URLSearchParams({
     client_id: WHATSAPP_APP_ID ?? "",

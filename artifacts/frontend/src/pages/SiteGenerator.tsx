@@ -83,6 +83,16 @@ interface SiteConfig {
   servicos?: string;
   /** Set when type === "product" — id of the single catalog product this page sells. */
   produtoId?: string;
+  /** Título/H1 sugerido para esta página — usado no lote por nicho/produto/serviço. */
+  headline?: string;
+}
+interface BulkTopic {
+  id: string;
+  nome: string;
+  titulo: string;
+  descricao: string;
+  images: string[];
+  uploadingCount: number;
 }
 interface CatalogProductOption {
   id: string;
@@ -111,6 +121,14 @@ interface BulkJobState {
   error?: string;
   siteId?: string;
   siteSlug?: string;
+}
+
+function absolutizeStorageUrls(html: string): string {
+  if (!html || typeof window === "undefined") return html;
+  return html.replace(
+    /(["'(])\/api\/storage\//g,
+    `$1${window.location.origin}/api/storage/`,
+  );
 }
 
 function useSiteGenerator(tenantId: string, token: string | null) {
@@ -144,7 +162,17 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}`, { headers: authHeaders });
       if (!res.ok) return;
       const site = await res.json();
-      setHtml(site.html ?? "");
+      const originalHtml = site.html ?? "";
+      const repairedHtml = absolutizeStorageUrls(originalHtml);
+      if (repairedHtml !== originalHtml) {
+        const repairRes = await fetch(`/api/tenants/${tenantId}/site-generator/${site.id}/html`, {
+          method: "PATCH",
+          headers: authHeaders,
+          body: JSON.stringify({ html: repairedHtml }),
+        });
+        if (!repairRes.ok) throw new Error("Não foi possível corrigir as URLs das imagens");
+      }
+      setHtml(repairedHtml);
       setSiteId(site.id);
       setSiteSlug(site.siteSlug ?? null);
       setIsPublished(site.published ?? false);
@@ -160,7 +188,17 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const res = await fetch(`/api/tenants/${tenantId}/site-generator/latest`, { headers: authHeaders });
       if (!res.ok) return;
       const site = await res.json();
-      setHtml(site.html ?? "");
+      const originalHtml = site.html ?? "";
+      const repairedHtml = absolutizeStorageUrls(originalHtml);
+      if (repairedHtml !== originalHtml) {
+        const repairRes = await fetch(`/api/tenants/${tenantId}/site-generator/${site.id}/html`, {
+          method: "PATCH",
+          headers: authHeaders,
+          body: JSON.stringify({ html: repairedHtml }),
+        });
+        if (!repairRes.ok) throw new Error("Não foi possível corrigir as URLs das imagens");
+      }
+      setHtml(repairedHtml);
       setSiteId(site.id);
       setSiteSlug(site.siteSlug ?? null);
       setIsPublished(site.published ?? false);
@@ -182,45 +220,73 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   }, [siteId, tenantId, token]);
 
   const saveHtml = useCallback(async (newHtml: string) => {
-    if (!siteId) return;
-    setHtml(newHtml);
-    await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/html`, {
+    if (!siteId) throw new Error("Nenhum site gerado");
+    const persistedHtml = absolutizeStorageUrls(newHtml);
+    const res = await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/html`, {
       method: "PATCH",
       headers: authHeaders,
-      body: JSON.stringify({ html: newHtml }),
+      body: JSON.stringify({ html: persistedHtml }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `Erro ${res.status}`);
+    }
+    const saved = (await res.json()) as { html?: string };
+    // O servidor é a fonte de verdade: preview e download recebem exatamente
+    // o mesmo documento já validado e persistido, inclusive os fallbacks CSS.
+    setHtml(saved.html ?? persistedHtml);
   }, [siteId, tenantId, token]);
 
   // Submits one generate job and polls it to completion — shared by the
   // single-site flow (generate) and the bulk flow (generateBulk), so both
   // go through the exact same request/poll/timeout logic.
   const submitAndPollJob = useCallback(async (config: SiteConfig) => {
-    const startRes = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify(config),
-    });
-    if (!startRes.ok) {
-      const err = await startRes.json().catch(() => ({}));
-      throw new Error(err.error ?? `Erro ${startRes.status}`);
-    }
-    const { jobId } = await startRes.json();
-    if (!jobId) throw new Error("Resposta inválida do servidor");
+    const startJob = async (): Promise<string> => {
+      const startRes = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
+        method: "POST", headers: authHeaders, body: JSON.stringify(config),
+      });
+      if (!startRes.ok) {
+        const err = await startRes.json().catch(() => ({}));
+        throw new Error(err.error ?? `Erro ${startRes.status}`);
+      }
+      const { jobId } = await startRes.json();
+      if (!jobId) throw new Error("Resposta inválida do servidor");
+      return jobId as string;
+    };
 
-    const deadline = Date.now() + 5 * 60 * 1000;
+    // A full commercial page may require a second AI pass for quality repair.
+    const deadline = Date.now() + 12 * 60 * 1000;
+    let jobId = await startJob();
+    let restarts = 0;
+    let transientFailures = 0;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3000));
-      const pollRes = await fetch(
-        `/api/tenants/${tenantId}/site-generator/jobs/${jobId}`,
-        { headers: authHeaders },
-      );
+      let pollRes: Response;
+      try {
+        pollRes = await fetch(`/api/tenants/${tenantId}/site-generator/jobs/${jobId}`, { headers: authHeaders });
+      } catch {
+        transientFailures += 1;
+        if (transientFailures <= 10) continue;
+        throw new Error("O servidor está temporariamente indisponível. Tente novamente em instantes.");
+      }
       if (!pollRes.ok) {
         const body = await pollRes.json().catch(() => ({}));
+        if ([429, 502, 503, 504].includes(pollRes.status)) {
+          transientFailures += 1;
+          if (transientFailures <= 10) continue;
+        }
         if (pollRes.status === 404) {
-          throw new Error("A geração foi interrompida no servidor. Tente gerar novamente.");
+          if (restarts === 0) {
+            restarts += 1;
+            transientFailures = 0;
+            jobId = await startJob();
+            continue;
+          }
+          throw new Error("A geração foi interrompida duas vezes no servidor. Tente novamente.");
         }
         throw new Error(body.error ?? `Erro ao acompanhar geração (${pollRes.status})`);
       }
+      transientFailures = 0;
       const job = await pollRes.json();
 
       if (job.status === "done") return job.result;
@@ -321,46 +387,13 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   const download = useCallback(async (filename = "site") => {
     if (!html) return;
 
-    // Collect all unique src/href URLs that reference images
-    const srcRe = /\b(src|href)=["']([^"']+\.(png|jpg|jpeg|gif|webp|svg|ico))["']/gi;
-    const urlSet = new Set<string>();
-    for (const m of html.matchAll(srcRe)) { urlSet.add(m[2]!); }
-
-    // Also pick up CSS url(...) background images
-    const cssRe = /url\(["']?([^"')]+\.(png|jpg|jpeg|gif|webp|svg|ico))["']?\)/gi;
-    for (const m of html.matchAll(cssRe)) { urlSet.add(m[1]!); }
-
-    // Convert each to base64 data URL (skip if already data: or fails to fetch)
-    const replacements = new Map<string, string>();
-    await Promise.all(Array.from(urlSet).map(async (url) => {
-      if (url.startsWith('data:')) return;
-      try {
-        const absolute = url.startsWith('http') ? url : url.startsWith('/') ? url : `/${url}`;
-        const res = await fetch(absolute, { credentials: 'include' });
-        if (!res.ok) return;
-        const blob = await res.blob();
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-        replacements.set(url, dataUrl);
-      } catch { /* skip */ }
-    }));
-
-    // Apply replacements (longest-first to avoid partial-URL collisions)
-    let inlined = html;
-    const sorted = Array.from(replacements.entries()).sort((a, b) => b[0].length - a[0].length);
-    for (const [orig, dataUrl] of sorted) {
-      const escaped = orig.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      inlined = inlined.replace(new RegExp(escaped, 'g'), dataUrl);
-    }
-
-    const blobOut = new Blob([inlined], { type: 'text/html' });
-    const a = document.createElement('a');
+    // Não reconstrua nem reescreva o HTML aqui. URLs de mídia já chegam
+    // absolutas do servidor; baixar a mesma string garante paridade total
+    // entre o srcDoc do preview, o documento persistido e o arquivo entregue.
+    const blobOut = new Blob([html], { type: "text/html;charset=utf-8" });
+    const a = document.createElement("a");
     a.href = URL.createObjectURL(blobOut);
-    a.download = filename.toLowerCase().replace(/\s+/g, '-') + '.html';
+    a.download = filename.toLowerCase().replace(/\s+/g, "-") + ".html";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -471,7 +504,7 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
         headers: { "Content-Type": file.type || "image/jpeg" },
       });
       if (!putRes.ok) throw new Error("Upload falhou");
-      setImages((prev) => [...prev, `${window.location.origin}/api/storage/${result.objectPath}`]);
+      setImages((prev) => [...prev, `${window.location.origin}/api/storage${result.objectPath}`]);
     } catch {
       toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
     } finally {
@@ -482,6 +515,55 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   async function handleImagesUpload(files: File[]) {
     for (const file of files) {
       await uploadOneImage(file);
+    }
+  }
+
+  // ── Lote por nicho/produto/serviço — várias LPs de uma vez, cada uma com
+  // seu próprio título/descrição/fotos, reaproveitando o resto do formulário
+  // (fotos gerais, logo, whatsapp, cor, tom) como base compartilhada.
+  // Disponível para os tipos "landing" e "institutional" (ver JSX abaixo). ──
+  const [bulkTopics, setBulkTopics] = useState<BulkTopic[]>([]);
+
+  function addBulkTopic() {
+    setBulkTopics((prev) => [...prev, { id: crypto.randomUUID(), nome: "", titulo: "", descricao: "", images: [], uploadingCount: 0 }]);
+  }
+  function removeBulkTopic(id: string) {
+    setBulkTopics((prev) => prev.filter((t) => t.id !== id));
+  }
+  function updateBulkTopic(id: string, field: "nome" | "titulo" | "descricao", value: string) {
+    setBulkTopics((prev) => prev.map((t) => (t.id === id ? { ...t, [field]: value } : t)));
+  }
+  function removeBulkTopicImage(id: string, idx: number) {
+    setBulkTopics((prev) => prev.map((t) => (t.id === id ? { ...t, images: t.images.filter((_, i) => i !== idx) } : t)));
+  }
+
+  async function uploadOneTopicImage(topicId: string, file: File): Promise<void> {
+    setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, uploadingCount: t.uploadingCount + 1 } : t)));
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const putRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "image/jpeg" },
+      });
+      if (!putRes.ok) throw new Error("Upload falhou");
+      const url = `${window.location.origin}/api/storage${result.objectPath}`;
+      setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, images: [...t.images, url] } : t)));
+    } catch {
+      toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
+    } finally {
+      setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, uploadingCount: Math.max(0, t.uploadingCount - 1) } : t)));
+    }
+  }
+
+  async function handleTopicImagesUpload(topicId: string, files: File[]) {
+    for (const file of files) {
+      await uploadOneTopicImage(topicId, file);
     }
   }
 
@@ -513,6 +595,33 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
       servicos: (fd.get("servicos") as string) || "",
     };
 
+    const activeBulkTopics = bulkTopics.filter((t) => t.nome.trim());
+    if ((siteType === "landing" || siteType === "institutional") && activeBulkTopics.length > 0) {
+      // Lote por nicho/produto/serviço → gera uma LP por item, reaproveitando
+      // as fotos/logo/whatsapp/cor/tom compartilhados como base.
+      onGenerateBulk(
+        activeBulkTopics.map((t) => {
+          const nome = t.nome.trim();
+          const descricao = t.descricao.trim();
+          return {
+            key: t.id,
+            label: nome,
+            config: {
+              ...baseConfig,
+              name: [nomeNegocio, nome].filter(Boolean).join(" — ") || nome,
+              headline: t.titulo.trim() || undefined,
+              pain: descricao || baseConfig.pain,
+              servicos: [nome, descricao].filter(Boolean).join(": ") || baseConfig.servicos,
+              // Fotos específicas deste item primeiro — viram a "Foto 1" no
+              // prompt (hero da página), seguidas das fotos gerais do negócio.
+              images: [...t.images, ...(baseConfig.images ?? [])].filter(Boolean),
+            },
+          };
+        }),
+      );
+      return;
+    }
+
     if (siteType === "product" && selectedProductIds.length > 1) {
       // Vários produtos marcados → gera uma LP para cada um, em paralelo.
       onGenerateBulk(
@@ -537,6 +646,8 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   const missingName = !nomeNegocio;
   const missingSetor = !setor;
   const missingDesc = !descNegocio;
+  const hasBulkTopics = (siteType === "landing" || siteType === "institutional") && bulkTopics.some((t) => t.nome.trim());
+  const bulkTopicsUploading = bulkTopics.some((t) => t.uploadingCount > 0);
 
   const profileItems = [
     nomeNegocio && { label: "Nome", value: nomeNegocio },
@@ -639,10 +750,14 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
           <Input
             id="sg-pain"
             name="pain"
-            required
+            required={!hasBulkTopics}
             placeholder="Ex: não consigo encontrar flores frescas de qualidade na cidade"
           />
-          <p className="text-[10px] text-muted-foreground">Usado para criar um headline que ressoa com o problema real do cliente</p>
+          <p className="text-[10px] text-muted-foreground">
+            {hasBulkTopics
+              ? "Usado como padrão para páginas do lote abaixo sem descrição própria"
+              : "Usado para criar um headline que ressoa com o problema real do cliente"}
+          </p>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -857,6 +972,96 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
         </div>
       )}
 
+      {/* ── Lote por nicho/produto/serviço — várias LPs de uma vez ── */}
+      {(siteType === "landing" || siteType === "institutional") && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Gerar várias páginas de uma vez</Label>
+            <span className="text-[10px] text-muted-foreground">Opcional</span>
+          </div>
+          <p className="text-xs text-muted-foreground rounded-md bg-muted/60 border border-dashed px-3 py-2">
+            🎯 Adicione um item para cada nicho, produto ou serviço que merece a própria página (ex: "Esquadrias PVC", "ACM e Fachadas", "Brises Soleil"). As fotos, logo, WhatsApp, cor e tom acima são reaproveitados em todas — cada página sai focada só no assunto que você descrever aqui.
+          </p>
+
+          {bulkTopics.map((t, i) => (
+            <div key={t.id} className="rounded-lg border border-border p-3 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground shrink-0">#{i + 1}</span>
+                <Input
+                  placeholder="Nome do nicho/produto/serviço *"
+                  value={t.nome}
+                  onChange={(e) => updateBulkTopic(t.id, "nome", e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => removeBulkTopic(t.id)}
+                  className="shrink-0 text-destructive hover:border-destructive hover:text-destructive"
+                >
+                  ✕
+                </Button>
+              </div>
+              <Input
+                placeholder="Título da página (opcional — se vazio, a IA escreve um)"
+                value={t.titulo}
+                onChange={(e) => updateBulkTopic(t.id, "titulo", e.target.value)}
+              />
+              <Textarea
+                rows={2}
+                placeholder="Descrição curta: dor do cliente ou diferencial (opcional)"
+                value={t.descricao}
+                onChange={(e) => updateBulkTopic(t.id, "descricao", e.target.value)}
+              />
+              {t.images.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {t.images.map((url, idx) => (
+                    <div key={idx} className="relative group">
+                      <img src={url} alt={`Foto ${idx + 1} de ${t.nome || "página"}`} className="h-16 w-16 object-cover rounded-md border border-border" />
+                      <button
+                        type="button"
+                        onClick={() => removeBulkTopicImage(t.id, idx)}
+                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className={`cursor-pointer ${t.uploadingCount > 0 ? "pointer-events-none opacity-60" : ""}`}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="sr-only"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    handleTopicImagesUpload(t.id, files);
+                    e.target.value = "";
+                  }}
+                />
+                <div className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                  {t.uploadingCount > 0
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />Enviando…</>
+                    : <><Upload className="h-3.5 w-3.5 shrink-0" />+ Foto específica desta página (opcional)</>
+                  }
+                </div>
+              </label>
+            </div>
+          ))}
+
+          <Button type="button" variant="ghost" className="self-start text-primary" onClick={addBulkTopic}>+ Adicionar página</Button>
+
+          {hasBulkTopics && (
+            <p className="text-[10px] text-primary font-medium">
+              ✦ {bulkTopics.filter((t) => t.nome.trim()).length} página{bulkTopics.filter((t) => t.nome.trim()).length > 1 ? "s" : ""} configurada{bulkTopics.filter((t) => t.nome.trim()).length > 1 ? "s" : ""} — vai gerar {bulkTopics.filter((t) => t.nome.trim()).length} landing page{bulkTopics.filter((t) => t.nome.trim()).length > 1 ? "s" : ""}, uma para cada uma.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Aparência e tom ── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
@@ -918,13 +1123,15 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
         type="submit"
         size="lg"
         className="mt-1 w-full font-semibold"
-        disabled={uploadingCount > 0 || (siteType === "product" && selectedProductIds.length === 0)}
+        disabled={uploadingCount > 0 || bulkTopicsUploading || (siteType === "product" && selectedProductIds.length === 0)}
       >
-        {uploadingCount > 0
+        {uploadingCount > 0 || bulkTopicsUploading
           ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando fotos…</>
-          : selectedProductIds.length > 1
-            ? `✦ Gerar ${selectedProductIds.length} landing pages com IA`
-            : "✦ Gerar site com IA"
+          : hasBulkTopics
+            ? `✦ Gerar ${bulkTopics.filter((t) => t.nome.trim()).length} landing pages com IA`
+            : selectedProductIds.length > 1
+              ? `✦ Gerar ${selectedProductIds.length} landing pages com IA`
+              : "✦ Gerar site com IA"
         }
       </Button>
     </form>
@@ -944,8 +1151,9 @@ const INLINE_EDIT_SCRIPT = `
     '[data-ve-editable]:focus{outline:2px solid #6366f1!important;outline-offset:2px;background:rgba(99,102,241,0.06)!important;border-radius:2px;}'+
     '[data-ve-img]:hover .ve-img-overlay{opacity:1!important;}'+
     '.ve-img-wrap{position:relative;display:inline-block;width:100%;}'+
-    '.ve-img-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;cursor:pointer;border-radius:inherit;z-index:9;}'+
-    '.ve-img-overlay-label{color:#fff;font-size:13px;font-weight:600;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.5);}'+
+    '.ve-img-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;gap:8px;opacity:0;transition:opacity .18s;border-radius:inherit;z-index:9;}'+
+    '.ve-img-overlay button{color:#fff;font:600 13px system-ui;border:1px solid rgba(255,255,255,.65);background:rgba(15,23,42,.72);padding:7px 10px;border-radius:7px;cursor:pointer;text-shadow:0 1px 4px rgba(0,0,0,.5);}'+
+    '.ve-img-overlay button:hover{background:#4f46e5}.ve-img-overlay button.ve-img-delete:hover{background:#dc2626;}'+
     '.ve-sec-ctrl{position:absolute;top:6px;right:8px;display:none;gap:4px;z-index:100;}'+
     '[data-ve-sec]:hover>.ve-sec-ctrl{display:flex!important;}'+
     '[data-ve-sec]{position:relative;}'+
@@ -963,7 +1171,7 @@ const INLINE_EDIT_SCRIPT = `
      (controls, wrappers, attributes, injected style/toolbar) before
      serializing — so what gets saved/published is always clean HTML,
      never the WYSIWYG editing state. ── */
-  function send(){
+  function send(editKind){
     var clone=document.documentElement.cloneNode(true);
     ['#__ve_editor__','#__ve_style__','#__ve_fmt__','.ve-sec-ctrl','.ve-img-overlay','.ve-ph-overlay'].forEach(function(sel){
       clone.querySelectorAll(sel).forEach(function(el){el.remove();});
@@ -975,7 +1183,7 @@ const INLINE_EDIT_SCRIPT = `
       if(img)wrap.replaceWith(img);
     });
     clone.querySelectorAll('[data-ve-img]').forEach(function(el){el.removeAttribute('data-ve-img');});
-    window.parent.postMessage({type:'ve-html-edit',html:'<!DOCTYPE html>'+clone.outerHTML},'*');
+    window.parent.postMessage({type:'ve-html-edit',editKind:editKind||'manual',html:'<!DOCTYPE html>'+clone.outerHTML},'*');
   }
 
   /* ── formatting toolbar ── */
@@ -1058,9 +1266,11 @@ const INLINE_EDIT_SCRIPT = `
     }
     if(!par.querySelector('.ve-img-overlay')){
       var ov=document.createElement('div');ov.className='ve-img-overlay';
-      var lbl=document.createElement('span');lbl.className='ve-img-overlay-label';lbl.textContent='🖼 Trocar foto';
-      ov.appendChild(lbl);par.appendChild(ov);
-      ov.addEventListener('click',function(e){e.stopPropagation();window.parent.postMessage({type:'ve-img-pick',mode:'img',imgIndex:index},'*');});
+      var swap=document.createElement('button');swap.type='button';swap.textContent='🖼 Trocar';
+      swap.addEventListener('click',function(e){e.stopPropagation();window.parent.postMessage({type:'ve-img-pick',mode:'img',imgIndex:index},'*');});
+      var del=document.createElement('button');del.type='button';del.className='ve-img-delete';del.textContent='✕ Excluir';
+      del.addEventListener('click',function(e){e.stopPropagation();if(confirm('Excluir esta imagem do site?')){par.remove();send('image');}});
+      ov.appendChild(swap);ov.appendChild(del);par.appendChild(ov);
     }
   }
 
@@ -1149,10 +1359,10 @@ const INLINE_EDIT_SCRIPT = `
           newImg.style.cssText='width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;';
           ph.innerHTML='';ph.appendChild(newImg);
           setupImg(newImg,imgs.length);
-          send();
+          send('image');
         }
       } else {
-        var img=imgs[e.data.imgIndex];if(img){img.src=e.data.newSrc;send();}
+        var img=imgs[e.data.imgIndex];if(img){img.src=e.data.newSrc;send('image');}
       }
     }
     if(e.data.type==='ve-inject-section'){
@@ -1237,7 +1447,7 @@ function stripEditScript(html: string): string {
 // ── Section templates for "Add Section" ────────────────────────────────────────
 
 const SECTION_TEMPLATES: Array<{ id: string; label: string; icon: string; prompt: string }> = [
-  { id: 'gallery', label: 'Galeria de Fotos', icon: '🖼️', prompt: 'Adicione uma seção de galeria de fotos ao site. Use um grid responsivo de 3 colunas com tags <img> reais (use src de imagens Unsplash relacionadas ao setor, ex: https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop), alt descritivo e loading="lazy". Não use gradiente CSS como placeholder de imagem — use sempre <img> com URLs reais.' },
+  { id: 'gallery', label: 'Galeria de Fotos', icon: '🖼️', prompt: 'Adicione uma seção de galeria de fotos usando somente imagens reais já fornecidas no briefing ou no HTML atual. Se não houver URL real disponível, não crie a galeria. Use grid responsivo, alt descritivo, loading="lazy", width/height ou aspect-ratio e object-fit.' },
   { id: 'team', label: 'Nossa Equipe', icon: '👥', prompt: 'Adicione uma seção "Nossa Equipe" com 3 cards de membros (foto placeholder circular, nome, cargo e breve bio). Use o mesmo estilo visual do site.' },
   { id: 'services', label: 'Serviços', icon: '⚙️', prompt: 'Adicione uma seção de Serviços com 4 cards (ícone SVG, título, descrição breve). Use o mesmo estilo visual e cores do site.' },
   { id: 'contact', label: 'Formulário de Contato', icon: '📬', prompt: 'Adicione uma seção de Contato com formulário (Nome, E-mail, Mensagem, botão Enviar) e informações de contato ao lado (telefone, email, endereço). Use o mesmo estilo visual do site.' },
@@ -1283,7 +1493,26 @@ function SitePreview({
     async function handler(e: MessageEvent) {
       if (!e.data?.type) return;
       if (e.data.type === 've-html-edit') {
-        setPendingHtml(stripEditScript(e.data.html as string));
+        const editedHtml = stripEditScript(e.data.html as string);
+        if (e.data.editKind === 'image' && onSave) {
+          setSaving(true);
+          try {
+            await onSave(editedHtml);
+            setPendingHtml(null);
+            toast({ description: '✓ Imagem atualizada no site' });
+          } catch (error) {
+            setPendingHtml(editedHtml);
+            toast({
+              title: 'Não foi possível salvar a imagem',
+              description: error instanceof Error ? error.message : 'Tente novamente.',
+              variant: 'destructive',
+            });
+          } finally {
+            setSaving(false);
+          }
+        } else {
+          setPendingHtml(editedHtml);
+        }
       } else if (e.data.type === 've-img-pick') {
         pendingImgIndex.current = e.data.imgIndex as number;
         pendingImgMode.current = (e.data.mode as string) === 'placeholder' ? 'placeholder' : 'img';
@@ -1294,7 +1523,7 @@ function SitePreview({
     }
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, []);
+  }, [onSave, toast]);
 
   // Reset pending when html prop changes (new generation)
   useEffect(() => { setPendingHtml(null); setSections([]); }, [html]);
@@ -1315,7 +1544,9 @@ function SitePreview({
         headers: { 'Content-Type': file.type || 'image/png' },
       });
       if (!uploadRes.ok) throw new Error('Upload falhou');
-      const newSrc = `/api/storage/${uploadResult.objectPath}`;
+      // O site publicado usa outro subdomínio. A URL precisa permanecer
+      // apontando para a API principal, não para o host do site gerado.
+      const newSrc = `${window.location.origin}/api/storage${uploadResult.objectPath}`;
       iframeRef.current?.contentWindow?.postMessage({ type: 've-img-set', mode: pendingImgMode.current, imgIndex: idx, newSrc }, '*');
     } catch {
       toast({ title: 'Erro ao enviar foto. Tente novamente.', variant: 'destructive' });
@@ -1454,14 +1685,14 @@ function SitePreview({
           <>
             <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/50">
               <span className="text-[10px] text-muted-foreground">
-                ✏️ Textos: clique para editar (B/I/U + tamanho + cor) · 🖼️ Fotos: passe o mouse · Seções: hover → ↑↓✕
+                ✏️ Textos: clique para editar (B/I/U + tamanho + cor) · 🖼️ Fotos: passe o mouse para trocar ou excluir · Seções: hover → ↑↓✕
               </span>
             </div>
             <iframe
               ref={iframeRef}
               srcDoc={displayHtml}
               title="Preview do site gerado"
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts allow-same-origin allow-modals"
               className="w-full border-none block"
               style={{ height: 520 }}
             />
@@ -1515,10 +1746,11 @@ function RefinementChat({
     try {
       await onRefine(msg);
       setMessages((m) => [...m, { role: "assistant", content: "Site atualizado! Veja o preview." }]);
-    } catch {
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Tente novamente.";
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: "Não consegui aplicar o ajuste. Tente novamente." },
+        { role: "assistant", content: `Não consegui aplicar o ajuste: ${detail}` },
       ]);
     } finally {
       setLoading(false);
@@ -1886,7 +2118,7 @@ function PortfolioDialog({ html, onRefine, tenantId }: { html: string; onRefine:
         headers: { "Content-Type": file.type || "image/png" },
       });
       if (!uploadRes.ok) throw new Error("Upload falhou");
-      return `/api/storage/${result.objectPath}`;
+      return `${window.location.origin}/api/storage${result.objectPath}`;
     } finally {
       setUploading(null);
     }
@@ -2095,7 +2327,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
         headers: { "Content-Type": file.type || "image/png" },
       });
       if (!uploadRes.ok) throw new Error("Upload falhou");
-      return `/api/storage/${result.objectPath}`;
+      return `${window.location.origin}/api/storage${result.objectPath}`;
     } finally {
       setUploading(null);
     }

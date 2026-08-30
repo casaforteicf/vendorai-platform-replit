@@ -33,6 +33,22 @@ export const subscriptionsTable = pgTable(
     plano: subscriptionPlanoEnum("plano").notNull(),
     valorMensal: numeric("valor_mensal", { precision: 12, scale: 2 }).notNull(),
     status: subscriptionStatusEnum("status").notNull().default("trial"),
+
+    // Commercial acquisition snapshot. Keeps the exact campaign accepted
+    // by this tenant even when the public offer changes later.
+    campaignCode: text("campaign_code"),
+    billingPhase: text("billing_phase").notNull().default("trial"),
+    trialEndsAt: timestamp("trial_ends_at"),
+    promoPhase1Price: numeric("promo_phase_1_price", { precision: 12, scale: 2 }),
+    promoPhase1EndsAt: timestamp("promo_phase_1_ends_at"),
+    promoPhase2Price: numeric("promo_phase_2_price", { precision: 12, scale: 2 }),
+    promoPhase2EndsAt: timestamp("promo_phase_2_ends_at"),
+    regularPriceAtTransition: numeric("regular_price_at_transition", { precision: 12, scale: 2 }),
+    acceptedOfferAt: timestamp("accepted_offer_at"),
+    acceptedTermsAt: timestamp("accepted_terms_at"),
+    acceptedTermsVersion: text("accepted_terms_version"),
+
+    billingProvider: text("billing_provider").default("asaas"),
     asaasCustomerId: text("asaas_customer_id"),
     asaasSubscriptionId: text("asaas_subscription_id"),
     dataInicio: timestamp("data_inicio").notNull(),
@@ -45,14 +61,30 @@ export const subscriptionsTable = pgTable(
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable, {
   valorMensal: decimalField,
+  promoPhase1Price: decimalField.optional(),
+  promoPhase2Price: decimalField.optional(),
+  regularPriceAtTransition: decimalField.optional(),
   dataInicio: z.coerce.date(),
   proximaCobranca: z.coerce.date().optional(),
+  trialEndsAt: z.coerce.date().optional(),
+  promoPhase1EndsAt: z.coerce.date().optional(),
+  promoPhase2EndsAt: z.coerce.date().optional(),
+  acceptedOfferAt: z.coerce.date().optional(),
+  acceptedTermsAt: z.coerce.date().optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateSubscriptionSchema = createSelectSchema(subscriptionsTable, {
   valorMensal: decimalField.optional(),
+  promoPhase1Price: decimalField.optional(),
+  promoPhase2Price: decimalField.optional(),
+  regularPriceAtTransition: decimalField.optional(),
   dataInicio: z.coerce.date().optional(),
   proximaCobranca: z.coerce.date().optional(),
+  trialEndsAt: z.coerce.date().optional(),
+  promoPhase1EndsAt: z.coerce.date().optional(),
+  promoPhase2EndsAt: z.coerce.date().optional(),
+  acceptedOfferAt: z.coerce.date().optional(),
+  acceptedTermsAt: z.coerce.date().optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();

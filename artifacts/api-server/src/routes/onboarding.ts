@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { z } from "zod/v4";
 import multer from "multer";
 import {
@@ -7,6 +7,7 @@ import {
   tenantsTable,
   businessProfilesTable,
   agentConfigsTable,
+  leadsTable,
   funisTable,
   knowledgeBaseTable,
   segmentTemplatesTable,
@@ -25,6 +26,8 @@ import { objectStorageClient } from "../lib/objectStorage.js";
 import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
 import { encrypt } from "../lib/crypto.js";
+import { getGoogleAdsConnectionByTenantId } from "../services/google-ads-oauth.js";
+import { callOpenAI } from "../lib/ai-gateway.js";
 
 const router: IRouter = Router();
 
@@ -1102,6 +1105,93 @@ router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
   }
 });
 
+// ── POST /onboarding/assistant ────────────────────────────────────────────────
+// Agente de Implantação: usa o mesmo comportamento do agente onboarding e o
+// status REAL do tenant para orientar a próxima ação. Não cria dados nem marca
+// etapas como concluídas — apenas acompanha e explica o setup.
+router.post("/onboarding/assistant", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const parsed = z.object({ message: z.string().trim().min(1).max(2000) }).safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "Mensagem inválida" });
+
+  const [[tenant], [profile], [config], [leadCountRow]] = await Promise.all([
+    db.select({
+      name: tenantsTable.name,
+      isDemo: tenantsTable.isDemo,
+      setupCompletedAt: tenantsTable.setupCompletedAt,
+      onboardingConcluido: tenantsTable.onboardingConcluido,
+    }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select({ id: businessProfilesTable.id, produtos: businessProfilesTable.produtos })
+      .from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
+    db.select({
+      setupCompletedAt: agentConfigsTable.setupCompletedAt,
+      autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      metaAccessToken: agentConfigsTable.metaAccessToken,
+      evolutionConnected: agentConfigsTable.evolutionConnected,
+      instagramPageId: agentConfigsTable.instagramPageId,
+      instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
+      webhookSecret: agentConfigsTable.webhookSecret,
+    }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
+    db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId)),
+  ]);
+
+  if (!tenant) return res.status(404).json({ error: "Tenant não encontrado" });
+
+  const productsConfigured = Array.isArray(profile?.produtos) && profile.produtos.length > 0;
+  const whatsappConnected = !!(
+    (config?.metaPhoneNumberId && config?.metaAccessToken) || config?.evolutionConnected
+  );
+  const steps = [
+    { key: "onboarding", label: "Concluir o onboarding inicial", done: !!(tenant.setupCompletedAt || tenant.onboardingConcluido), href: "/onboarding" },
+    { key: "perfil", label: "Configurar o perfil da empresa", done: !!profile, href: "/configuracoes" },
+    { key: "produtos", label: "Cadastrar produtos ou serviços", done: productsConfigured, href: "/estoque" },
+    { key: "agentes", label: "Configurar os agentes de IA", done: !!config?.setupCompletedAt, href: "/configuracoes" },
+    { key: "whatsapp", label: "Conectar o WhatsApp", done: whatsappConnected, href: "/onboarding/integracoes" },
+    { key: "webhook", label: "Ativar o webhook de entrada", done: !!config?.webhookSecret, href: "/configuracoes" },
+    { key: "instagram", label: "Conectar o Instagram", done: !!(config?.instagramPageId && config?.instagramPageAccessToken), href: "/onboarding/integracoes" },
+    { key: "lead", label: "Cadastrar o primeiro lead real", done: Number(leadCountRow?.value ?? 0) > 0, href: "/leads" },
+    { key: "autonomia", label: "Habilitar a autonomia dos agentes", done: !!config?.autonomyEnabledAt, href: "/configuracoes" },
+  ];
+  const nextAction = steps.find((step) => !step.done) ?? null;
+  const completed = steps.filter((step) => step.done).length;
+
+  const statusText = steps.map((step) => `${step.done ? "✓" : "○"} ${step.label}`).join("\n");
+  const systemPrompt = `${AGENT_BEHAVIOR_TEMPLATES.onboarding}
+
+` +
+    `Você também é o Agente de Implantação do VendorAI. Sua missão é acompanhar a configuração do sistema com base EXCLUSIVAMENTE no status real fornecido. ` +
+    `Nunca diga que uma etapa está concluída se ela estiver marcada como pendente. Não invente integrações ou dados. ` +
+    `Responda em português do Brasil, de forma curta, prática e acolhedora. Quando fizer sentido, indique UMA próxima ação concreta e explique onde clicar. ` +
+    `Se o cliente perguntar sobre algo fora da implantação, responda brevemente e traga o foco de volta para a ativação da plataforma.`;
+
+  try {
+    const result = await callOpenAI(
+      tenantId,
+      "agent_onboarding",
+      [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: `EMPRESA: ${tenant.name}\nTIPO: ${tenant.isDemo ? "Demo/Trial" : "Cliente ativo"}\nPROGRESSO: ${completed}/${steps.length}\n\nSTATUS REAL:\n${statusText}\n\nPRÓXIMA AÇÃO CALCULADA: ${nextAction?.label ?? "Implantação concluída"}\n\nPERGUNTA DO CLIENTE: ${parsed.data.message}`,
+        },
+      ],
+      { temperature: 0.3, maxTokens: 450, log: req.log },
+    );
+
+    return res.json({
+      resposta: result.content,
+      progress: { completed, total: steps.length },
+      nextAction: nextAction ? { key: nextAction.key, label: nextAction.label, href: nextAction.href } : null,
+    });
+  } catch (error) {
+    req.log.warn({ error, tenantId }, "onboarding assistant failed");
+    return res.status(502).json({ error: error instanceof Error ? error.message : "Não foi possível consultar o Agente de Implantação." });
+  }
+});
+
 // ── GET /onboarding/integracoes ────────────────────────────────────────────────
 router.get("/onboarding/integracoes", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
@@ -1116,6 +1206,11 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     .from(whatsappConnectionsTable)
     .where(and(eq(whatsappConnectionsTable.tenantId, tenantId)));
 
+  const [evolutionConn] = await db
+    .select({ connected: agentConfigsTable.evolutionConnected, phone: agentConfigsTable.evolutionPhone })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
+
   const [igConn] = await db
     .select({ username: instagramConnectionsTable.username })
     .from(instagramConnectionsTable)
@@ -1126,6 +1221,8 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     .from(agendasTable)
     .where(and(eq(agendasTable.tenantId, tenantId)));
 
+  const googleAdsConn = await getGoogleAdsConnectionByTenantId(tenantId);
+
   const [tenantData] = await db
     .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey })
     .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
@@ -1134,8 +1231,8 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     step: tenant?.step ?? 0,
     concluido: tenant?.concluido ?? false,
     whatsapp: {
-      connected: waConn?.status === "active",
-      phone: waConn?.displayPhoneNumber ?? null,
+      connected: waConn?.status === "active" || evolutionConn?.connected === true,
+      phone: waConn?.displayPhoneNumber ?? evolutionConn?.phone ?? null,
     },
     googleCalendar: {
       connected: !!(gcAgenda?.googleCalendarId),
@@ -1144,6 +1241,12 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     instagram: {
       connected: !!igConn?.username,
       username: igConn?.username ?? null,
+    },
+    googleAds: {
+      connected: !!googleAdsConn && googleAdsConn.status !== "disconnected" && !googleAdsConn.disconnectedAt,
+      pendingAccountSelection: googleAdsConn?.status === "pending_account_selection",
+      customerId: googleAdsConn?.customerId ?? null,
+      descriptiveName: googleAdsConn?.descriptiveName ?? null,
     },
     asaas: { connected: !!tenantData?.asaasApiKey },
     zapsign: { connected: !!tenantData?.zapsignApiKey },
@@ -1154,7 +1257,7 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
 router.patch("/onboarding/integracoes/step", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
   if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
-  const { step } = z.object({ step: z.number().int().min(0).max(5) }).parse(req.body);
+  const { step } = z.object({ step: z.number().int().min(0).max(6) }).parse(req.body);
   await db.update(tenantsTable).set({ integracoesStep: step }).where(eq(tenantsTable.id, tenantId));
   return res.json({ ok: true });
 });

@@ -570,6 +570,7 @@ export default function Leads() {
         </div>
 
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => setLocation("/contacts-nonleads")}>Outros contatos</Button>
           {/* Import button + dialog */}
           <Dialog open={isImportOpen} onOpenChange={(v) => { setIsImportOpen(v); if (!v) resetImport(); }}>
             <DialogTrigger asChild>
@@ -597,6 +598,9 @@ export default function Leads() {
                   <Button variant="ghost" size="sm" className="gap-2 text-primary" onClick={downloadTemplate}>
                     <FileDown className="h-4 w-4" />
                     Baixar planilha modelo
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => { setIsImportOpen(false); setLocation("/leads/import-config"); }}>
+                    Mapeamento avançado
                   </Button>
 
                   {/* File upload */}

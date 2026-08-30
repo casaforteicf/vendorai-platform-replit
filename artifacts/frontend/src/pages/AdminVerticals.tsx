@@ -35,6 +35,7 @@ import {
   Shield, DraftingCompass, Scissors, Stethoscope, Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VerticalTemplateEditor } from "@/components/admin/VerticalTemplateEditor";
 
 interface VerticalMeta {
   label: string;
@@ -191,7 +192,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
   const [targetTenantId, setTargetTenantId] = useState<string>("");
   const [activating, setActivating] = useState(false);
 
-  const { data: templates = [] } = useListSegmentTemplates();
+  const { data: templates = [], refetch: refetchTemplates } = useListSegmentTemplates();
   const applyMutation = useApplySegmentTemplate();
 
   if (!vertical) return null;
@@ -317,6 +318,21 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
               Visualizar layout
             </Button>
           </section>
+
+          {template && (
+            <section className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">Configuração operacional</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Edite o funil, categorias e orientações dos agentes desta vertical sem alterar o layout nem os tenants existentes.
+                </p>
+              </div>
+              <VerticalTemplateEditor
+                template={template}
+                onSaved={() => refetchTemplates()}
+              />
+            </section>
+          )}
 
           {/* ── Funcionalidades do módulo ──────────────────────── */}
           <section className="space-y-2">
@@ -517,7 +533,7 @@ export default function AdminVerticals() {
             Verticais e previews
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Visualize qualquer layout sem tenant ou acesse módulos vinculados a clientes reais.
+            Visualize layouts, edite a configuração operacional das verticais e acesse módulos vinculados a clientes reais.
           </p>
         </div>
         {tenantOverride && (

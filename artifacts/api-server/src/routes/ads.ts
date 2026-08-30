@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod/v4";
 import {
   db,
   adCampaignsTable,
@@ -10,7 +11,11 @@ import {
   dealsTable,
   vehicleAdReservationsTable,
   businessProfilesTable,
+  generatedSitesTable,
+  contentGenerationsTable,
+  contentPublishedPostsTable,
 } from "@workspace/db";
+import type { AdCampaign } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { gerarCriativoRSA } from "../lib/adContentGenerator.js";
 import { gerarCriativoImagem } from "../lib/adContentGeneratorImagem.js";
@@ -21,6 +26,12 @@ import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, GoogleAdsPublis
 import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
 
 const router: IRouter = Router();
+
+const importedCreativeSchema = z.object({
+  headlines: z.array(z.string().min(1).max(500)).max(15).default([]),
+  descriptions: z.array(z.string().min(1).max(5000)).max(4).default([]),
+  imagens: z.array(z.string().min(1).max(4000)).max(10).default([]),
+});
 
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
@@ -38,11 +49,90 @@ function canAccess(req: Express.Request, tenantId: string) {
  * livre estruturado em vez de tentar unificar os 3 schemas.
  */
 
+/**
+ * Resumo pra campanhas sem item estruturado (itemTipo 'livre' ou
+ * 'landing_page') — antes era só "Campanha institucional/landing page,
+ * vertical: X", o que não dá contexto nenhum pra IA e gera título/descrição
+ * genéricos demais ("Aumente sua Visibilidade", "Desenvolvemos campanhas
+ * únicas"). Agora puxa o perfil real do negócio e, quando a campanha aponta
+ * pra uma landing page específica, os dados daquela página também — mesmo
+ * padrão já usado no gerador de copy de campanhas e no gerador de sites.
+ */
+async function buildResumoLivreOuLandingPage(campanha: AdCampaign, tenantId: string): Promise<string> {
+  const [perfil] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
+
+  const partes: string[] = [];
+
+  if (campanha.contentGenerationId) {
+    const [sourceContent] = await db
+      .select({ theme: contentGenerationsTable.theme, type: contentGenerationsTable.type, result: contentGenerationsTable.result })
+      .from(contentGenerationsTable)
+      .where(and(eq(contentGenerationsTable.id, campanha.contentGenerationId), eq(contentGenerationsTable.tenantId, tenantId)));
+    if (sourceContent) {
+      partes.push(`Conteúdo de origem do Marketing: ${sourceContent.theme}`);
+      partes.push(`Formato original: ${sourceContent.type}`);
+      const firstVariation = sourceContent.result?.variations?.[0];
+      if (firstVariation) partes.push(`Variação de referência: ${JSON.stringify(firstVariation).slice(0, 5000)}`);
+    }
+  }
+
+  const nomeNegocio = perfil?.nomeFantasia || perfil?.razaoSocial;
+  if (nomeNegocio) partes.push(`Empresa: ${nomeNegocio}`);
+  if (perfil?.vertical) partes.push(`Setor: ${perfil.vertical}`);
+  if (perfil?.diferenciais) partes.push(`Diferenciais: ${perfil.diferenciais}`);
+  if (perfil?.publicoAlvo) partes.push(`Público-alvo: ${perfil.publicoAlvo}`);
+  if (perfil?.produtos && perfil.produtos.length > 0) {
+    partes.push(`Produtos/serviços: ${perfil.produtos.map((p) => p.nome).join(", ")}`);
+  }
+
+  if (campanha.itemTipo === "landing_page" && campanha.landingPageId) {
+    const [site] = await db.select({ config: generatedSitesTable.config })
+      .from(generatedSitesTable)
+      .where(eq(generatedSitesTable.id, campanha.landingPageId));
+    if (site?.config) {
+      const { name, desc, pain, servicos } = site.config;
+      partes.push(`Foco específico desta campanha: ${name}`);
+      if (desc) partes.push(`O que oferece: ${desc}`);
+      if (pain) partes.push(`Dor do cliente que resolve: ${pain}`);
+      if (servicos) partes.push(`Serviços/produtos em destaque: ${servicos}`);
+    }
+  }
+
+  if (campanha.itemLabel) partes.push(`Rótulo interno da campanha: ${campanha.itemLabel}`);
+
+  return partes.length > 0
+    ? partes.join("\n")
+    : `Campanha institucional/landing page, vertical: ${campanha.vertical}`;
+}
+
 router.get("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const rows = await db.select().from(adCampaignsTable).where(eq(adCampaignsTable.tenantId, tenantId));
-  return res.json(rows);
+  if (rows.length === 0) return res.json([]);
+  const creatives = await db.select().from(adCreativesTable)
+    .where(inArray(adCreativesTable.campaignId, rows.map((row) => row.id)))
+    .orderBy(desc(adCreativesTable.geradoEm));
+  const latestByCampaign = new Map<string, typeof creatives[number]>();
+  for (const creative of creatives) {
+    if (!latestByCampaign.has(creative.campaignId)) latestByCampaign.set(creative.campaignId, creative);
+  }
+  return res.json(rows.map((row) => ({ ...row, latestCreative: latestByCampaign.get(row.id) ?? null })));
+});
+
+router.delete("/tenants/:tenantId/ads/campaigns/:id", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  const campaignId = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada" });
+  if (campaign.externalCampaignId) {
+    return res.status(409).json({ error: "Campanha já enviada à plataforma. Pause a campanha; a exclusão só é permitida para rascunhos." });
+  }
+  await db.delete(adCampaignsTable).where(eq(adCampaignsTable.id, campaignId));
+  return res.status(204).send();
 });
 
 router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
@@ -52,12 +142,60 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const parsed = insertAdCampaignSchema.safeParse({ ...req.body, tenantId });
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const creativeDraft = req.body?.creativeDraft
+    ? importedCreativeSchema.safeParse(req.body.creativeDraft)
+    : null;
+  if (creativeDraft && !creativeDraft.success) {
+    return res.status(400).json({ error: creativeDraft.error.flatten() });
+  }
+
+  if (parsed.data.contentGenerationId) {
+    const [sourceContent] = await db.select({ id: contentGenerationsTable.id })
+      .from(contentGenerationsTable)
+      .where(and(eq(contentGenerationsTable.id, parsed.data.contentGenerationId), eq(contentGenerationsTable.tenantId, tenantId)));
+    if (!sourceContent) return res.status(422).json({ error: "Conteúdo de origem não encontrado neste tenant" });
+  }
+
+  let segmentacao = parsed.data.segmentacao ?? {};
+  const sourceVariationIndex = Number(req.body?.sourceVariationIndex);
+  if (parsed.data.contentGenerationId && Number.isInteger(sourceVariationIndex) && sourceVariationIndex >= 0) {
+    const [publishedPost] = await db
+      .select({ instagramMediaId: contentPublishedPostsTable.instagramMediaId })
+      .from(contentPublishedPostsTable)
+      .where(and(
+        eq(contentPublishedPostsTable.tenantId, tenantId),
+        eq(contentPublishedPostsTable.contentGenerationId, parsed.data.contentGenerationId),
+        eq(contentPublishedPostsTable.variationIndex, sourceVariationIndex),
+      ))
+      .orderBy(desc(contentPublishedPostsTable.publishedAt))
+      .limit(1);
+    if (publishedPost?.instagramMediaId) {
+      segmentacao = { ...segmentacao, origemInstagram: { mediaId: publishedPost.instagramMediaId, variationIndex: sourceVariationIndex, contentGenerationId: parsed.data.contentGenerationId } };
+    }
+  }
+
   // Código curto e único pra usar como utm_campaign em qualquer link de
   // divulgação dessa campanha (ver adAttribution.ts).
   const utmCode = `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
-  const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, utmCode }).returning();
-  return res.status(201).json(row);
+  const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, segmentacao, utmCode }).returning();
+  let importedCreative = null;
+  if (row && creativeDraft?.success) {
+    const draft = creativeDraft.data;
+    const hasExistingInstagramPost = Boolean((segmentacao as any)?.origemInstagram?.mediaId);
+    const canImportDraft =
+      (draft.headlines.length || draft.descriptions.length || draft.imagens.length) &&
+      (row.tipoAnuncio !== "imagem" || draft.imagens.length > 0 || hasExistingInstagramPost);
+    if (canImportDraft) {
+      [importedCreative] = await db.insert(adCreativesTable).values({
+        campaignId: row.id,
+        headlines: draft.headlines,
+        descriptions: draft.descriptions,
+        imagens: draft.imagens,
+      }).returning();
+    }
+  }
+  return res.status(201).json({ ...row, latestCreative: importedCreative });
 });
 
 // Chamado pelo canal que confirmou o interesse (WhatsApp, formulário ou ação
@@ -123,14 +261,15 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, r
   }
 
   // buildResumoItem só cobre produto/veiculo/imovel — landing_page/livre
-  // usam um resumo simples (não têm registro estruturado de item pra ler).
+  // não têm registro estruturado de item pra ler, então montam o resumo a
+  // partir do perfil do negócio (+ dados da LP, quando houver uma ligada).
   const item = (campanha.itemTipo === "produto" || campanha.itemTipo === "veiculo" || campanha.itemTipo === "imovel")
     ? await buildResumoItem(campanha.itemTipo, campanha.itemId as string, tenantId)
-    : { itemTipo: campanha.itemTipo, resumo: `Campanha institucional/landing page, vertical: ${campanha.vertical}`, nomeCurto: campanha.vertical };
+    : { itemTipo: campanha.itemTipo, resumo: await buildResumoLivreOuLandingPage(campanha, tenantId), nomeCurto: campanha.itemLabel || campanha.vertical };
   if (!item) return res.status(404).json({ error: "Item de origem da campanha não encontrado" });
 
   if (campanha.tipoAnuncio === "rsa_pmax") {
-    const gerado = await gerarCriativoRSA(item as any, logger);
+    const gerado = await gerarCriativoRSA(item as any, logger, tenantId);
     if (!gerado) return res.status(502).json({ error: "Falha ao gerar criativo — ver logs do servidor. Tente novamente." });
 
     const [creative] = await db.insert(adCreativesTable).values({

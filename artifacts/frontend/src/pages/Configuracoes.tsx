@@ -222,17 +222,29 @@ const AGENT_LABELS: Record<AgentKey, { label: string; description: string }> = {
 const AGENT_KEYS: AgentKey[] = ["sdr", "closer", "followup", "reactivation", "scheduler", "service", "onboarding", "relacionamento"];
 
 const VERTICAIS = [
-  { value: "Farmácia",       label: "Farmácia" },
-  { value: "tecnologia",     label: "Tecnologia" },
-  { value: "saude",          label: "Saúde" },
-  { value: "educacao",       label: "Educação" },
-  { value: "financeiro",     label: "Financeiro" },
-  { value: "varejo",         label: "Varejo" },
-  { value: "imobiliario",    label: "Imobiliário" },
-  { value: "servicos",       label: "Serviços" },
-  { value: "industria",      label: "Indústria" },
-  { value: "outro",          label: "Outro" },
-];
+  "Farmácia",
+  "Tecnologia",
+  "Saúde",
+  "Educação",
+  "Financeiro",
+  "Varejo",
+  "Imobiliário",
+  "Serviços",
+  "Indústria",
+  "Construção & Reforma",
+  "Material de Construção — Varejo",
+  "Distribuidora de Materiais de Construção",
+  "Distribuidora de Peças",
+  "Distribuidora de Alimentos",
+  "Máquinas e Insumos",
+  "Loja de Piscina",
+  "Automotivo",
+  "Supermercado",
+  "Restaurante",
+  "Salão de Beleza",
+  "Clínica",
+  "Pet Shop (Varejo)",
+] as const;
 
 // ─── Autonomy Status ──────────────────────────────────────────────────────────
 
@@ -1095,6 +1107,7 @@ export default function Configuracoes() {
 
   // ── Integrações — bloqueio por senha ────────────────────────────────────
   const [integracoesUnlocked, setIntegracoesUnlocked] = useState(false);
+  const [showAdvancedIntegrations, setShowAdvancedIntegrations] = useState(false);
   const [integracoesPasswordInput, setIntegracoesPasswordInput] = useState("");
   const [integracoesUnlocking, setIntegracoesUnlocking] = useState(false);
   const [integracoesUnlockError, setIntegracoesUnlockError] = useState("");
@@ -1480,10 +1493,21 @@ export default function Configuracoes() {
         access_denied: "Permissão negada. Tente novamente.",
         invalid_state: "Sessão inválida. Tente novamente.",
         no_pages: "Nenhuma página encontrada. Verifique se sua conta tem uma página com Instagram Business.",
-        exchange_failed: "Erro ao conectar. Tente novamente.",
+        token_exchange: "A Meta recusou a troca do código de acesso. Verifique o App Secret e a URL de callback do Instagram.",
+        short_token_exchange: "A Meta recusou o código inicial. Verifique INSTAGRAM_APP_SECRET e a URL de callback cadastrada.",
+        long_token_exchange: "O código inicial foi aceito, mas falhou ao gerar o token de longa duração.",
+        profile_lookup: "O token foi criado, mas a Meta não liberou a leitura da conta profissional.",
+        account_in_use: "Esta conta do Instagram já está conectada a outro tenant.",
+        persist_failed: "A conta foi autorizada, mas não foi possível salvar a conexão.",
+        exchange_failed: "A conexão retornou incompleta. Tente novamente.",
       };
-      toast({ title: messages[error] ?? "Erro ao conectar Instagram.", variant: "destructive" });
-      window.history.replaceState({}, "", window.location.pathname);
+      setActiveTab("integracoes");
+      toast({
+        title: "Não foi possível conectar o Instagram",
+        description: messages[error] ?? "Erro ao conectar Instagram.",
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", `${window.location.pathname}?tab=integracoes`);
     }
   }, [location]);
 
@@ -1493,11 +1517,18 @@ export default function Configuracoes() {
       const res = await fetch("/api/auth/instagram", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { url: string };
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
       window.location.href = data.url;
     } catch (err) {
-      toast({ title: "Erro ao iniciar conexão com Instagram.", variant: "destructive" });
+      setActiveTab("integracoes");
+      toast({
+        title: "Erro ao iniciar conexão com Instagram.",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+        variant: "destructive",
+      });
     }
   }
   function onDisconnectInstagramOAuth() {
@@ -1622,14 +1653,41 @@ export default function Configuracoes() {
       const res = await fetch("/api/auth/whatsapp", {
         headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
       });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { url: string };
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? "Não foi possível iniciar a conexão.");
+      }
       window.location.href = data.url;
-    } catch {
-      toast({ title: "Erro ao iniciar conexão com WhatsApp.", variant: "destructive" });
+    } catch (err) {
+      setActiveTab("integracoes");
+      window.history.replaceState({}, "", `${window.location.pathname}?tab=integracoes`);
+      toast({
+        title: "Erro ao iniciar conexão com WhatsApp.",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+        variant: "destructive",
+      });
       setWhatsappConnecting(false);
     }
   }
+  function onConnectMetaBusiness() {
+    if (!igConnection.data?.connected) {
+      void onConnectInstagram();
+      return;
+    }
+    if (!metaAdsConnection?.connected || metaAdsConnection.pendingAccountSelection) {
+      void onConnectMetaAds();
+      return;
+    }
+    if (!waConnection.data?.connected) {
+      void onConnectWhatsapp();
+      return;
+    }
+    toast({
+      title: "Meta Business conectado",
+      description: "Instagram, Página do Facebook, Meta Ads e WhatsApp oficial estão disponíveis.",
+    });
+  }
+
   function onDisconnectWhatsappOAuth() {
     disconnectWa.mutate(
       { tenantId: tenantId ?? "" },
@@ -1843,6 +1901,7 @@ export default function Configuracoes() {
   const [metaAdsConnection, setMetaAdsConnection] = useState<MetaAdsConnectionData | null>(null);
   const [metaAdsLoading, setMetaAdsLoading] = useState(false);
   const [metaAdsConnecting, setMetaAdsConnecting] = useState(false);
+  const [showMetaDetails, setShowMetaDetails] = useState(false);
   const [metaAdsDisconnecting, setMetaAdsDisconnecting] = useState(false);
   const [metaAdsRefreshing, setMetaAdsRefreshing] = useState(false);
   const [metaAdsAccounts, setMetaAdsAccounts] = useState<Array<{ adAccountId: string; name: string }>>([]);
@@ -1925,11 +1984,17 @@ export default function Configuracoes() {
       const res = await fetch("/api/auth/meta-ads", {
         headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
       });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { url: string };
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? "Não foi possível iniciar a conexão.");
+      }
       window.location.href = data.url;
-    } catch {
-      toast({ title: "Erro ao iniciar conexão com Meta Ads.", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: "Erro ao iniciar conexão com Meta Ads.",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+        variant: "destructive",
+      });
       setMetaAdsConnecting(false);
     }
   }
@@ -2489,20 +2554,23 @@ export default function Configuracoes() {
                       name="vertical"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Vertical / Segmento</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || "__none__"}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecionar segmento..." />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="__none__">Não informado</SelectItem>
-                              {VERTICAIS.map((v) => (
-                                <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FormLabel>Vertical / segmento</FormLabel>
+                          <FormControl>
+                            <Input
+                              list="vendorai-vertical-options"
+                              placeholder="Selecione uma sugestão ou digite sua vertical"
+                              {...field}
+                              value={field.value ?? ""}
+                            />
+                          </FormControl>
+                          <datalist id="vendorai-vertical-options">
+                            {VERTICAIS.map((vertical) => (
+                              <option key={vertical} value={vertical} />
+                            ))}
+                          </datalist>
+                          <p className="text-xs text-muted-foreground">
+                            Você pode usar uma das sugestões ou cadastrar livremente um novo segmento. Verticais sem layout especializado usam o CRM padrão.
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -2599,7 +2667,7 @@ export default function Configuracoes() {
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
               </div>
             ) : (
-              <div className="space-y-6">
+              <div className="flex flex-col gap-6">
 
                 {/* Diferenciais + Público-alvo */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2914,6 +2982,7 @@ export default function Configuracoes() {
               profileId={profileQuery.data.id}
               templateUrl={profileQuery.data.proposalTemplateUrl ?? null}
               templateName={profileQuery.data.proposalTemplateName ?? null}
+              discoveryData={(profileQuery.data.discoveryData as Record<string, unknown>) ?? null}
               onUpdate={() => queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) })}
             />
           )}
@@ -3204,7 +3273,7 @@ export default function Configuracoes() {
           <CalendarSettingsTab tenantId={tenantId} />
         </TabsContent>
 
-        {/* ── Tab: Integrações ERP ────────────────────────────────────────── */}
+        {/* ── Tab: Integrações ────────────────────────────────────────────── */}
         <TabsContent value="integracoes">
           {/* ── Lock screen ─────────────────────────────────────────────── */}
           {!integracoesUnlocked ? (
@@ -3259,7 +3328,7 @@ export default function Configuracoes() {
               </div>
             </div>
           ) : (
-          <div className="space-y-6">
+          <div className="flex flex-col gap-6">
 
             {/* Google Calendar — OAuth */}
             <div className="rounded-xl border bg-card p-6 space-y-5">
@@ -3352,8 +3421,8 @@ export default function Configuracoes() {
               )}
             </div>
 
-            {/* Webhook de entrada — WhatsApp Omnichannel */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            {/* Webhook de entrada — WhatsApp Omnichannel (integração técnica no final da aba) */}
+            <div className="order-last rounded-xl border bg-card p-6 space-y-5">
               <div>
                 <h2 className="font-semibold text-base flex items-center gap-2">
                   <Webhook className="h-4 w-4 text-primary" />
@@ -3487,8 +3556,91 @@ Body:
               </div>
             </div>
 
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-1">
+              <p className="text-sm font-semibold">Conexões recomendadas</p>
+              <p className="text-sm text-muted-foreground">
+                Para WhatsApp, priorize a integração oficial via Meta ou a conexão rápida por QR Code.
+                Configurações manuais e provedores alternativos continuam disponíveis em Opções avançadas.
+              </p>
+            </div>
+
+            {/* Hub Meta Business — fluxo principal unificado; cards individuais abaixo preservam detalhes e manutenção */}
+            <div className="rounded-xl border-2 border-blue-200 dark:border-blue-900 bg-gradient-to-br from-blue-50/70 to-card dark:from-blue-950/20 p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-lg flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                    Meta Business
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Uma entrada para conectar e acompanhar Facebook, Instagram, anúncios e WhatsApp oficial.
+                    A Meta pode solicitar confirmações adicionais conforme cada produto.
+                  </p>
+                </div>
+                {igConnection.data?.connected &&
+                 metaAdsConnection?.connected &&
+                 !metaAdsConnection.pendingAccountSelection &&
+                 waConnection.data?.connected ? (
+                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400">
+                    <CheckCircle2 className="h-3 w-3 mr-1" /> Completo
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">Configuração em andamento</Badge>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { label: "Instagram profissional", connected: Boolean(igConnection.data?.connected) },
+                  { label: "Facebook / Página", connected: Boolean(igConnection.data?.connected && igConnection.data.pageId) },
+                  { label: "Meta Ads", connected: Boolean(metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection) },
+                  { label: "WhatsApp oficial", connected: Boolean(waConnection.data?.connected) },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between rounded-lg border bg-background/80 px-3 py-2.5">
+                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className={cn(
+                      "text-xs font-medium",
+                      item.connected ? "text-green-600 dark:text-green-400" : "text-muted-foreground",
+                    )}>
+                      {item.connected ? "Conectado" : "Pendente"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  onClick={onConnectMetaBusiness}
+                  disabled={metaAdsConnecting || whatsappConnecting}
+                  className="gap-2"
+                >
+                  {(metaAdsConnecting || whatsappConnecting) && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {!igConnection.data?.connected
+                    ? "Conectar Instagram — etapa 1"
+                    : !metaAdsConnection?.connected || metaAdsConnection.pendingAccountSelection
+                      ? "Conectar Meta Ads — etapa 2"
+                      : !waConnection.data?.connected
+                        ? "Conectar WhatsApp — etapa 3"
+                        : "Gerenciar conexão Meta"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  O VendorAI continua automaticamente pelo próximo serviço que ainda estiver pendente.
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowMetaDetails((current) => !current)}
+                  className="gap-1 text-muted-foreground"
+                >
+                  {showMetaDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {showMetaDetails ? "Ocultar detalhes avançados" : "Detalhes avançados"}
+                </Button>
+              </div>
+            </div>
+
             {/* WhatsApp — OAuth via Meta */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -3729,7 +3881,7 @@ Body:
             </div>
 
             {/* Meta Ads — OAuth por tenant, mesma estrutura do Google Ads acima */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -3875,7 +4027,7 @@ Body:
             </div>
 
             {/* Meta WhatsApp Cloud API — Legacy Manual */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showAdvancedIntegrations && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -4079,8 +4231,27 @@ Body:
             {/* Evolution API — WhatsApp via QR Code (self-hosted, sem custo por cliente) */}
             <EvolutionWhatsAppCard tenantId={tenantId ?? ""} toast={toast} />
 
+            <div className="rounded-xl border border-dashed bg-muted/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Opções avançadas de WhatsApp</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Configuração manual da Meta e Z-API ficam preservadas para cenários específicos e compatibilidade.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0"
+                onClick={() => setShowAdvancedIntegrations((current) => !current)}
+              >
+                {showAdvancedIntegrations ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {showAdvancedIntegrations ? "Ocultar avançado" : "Mostrar avançado"}
+              </Button>
+            </div>
+
             {/* Z-API — WhatsApp não-oficial via Baileys */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showAdvancedIntegrations && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -4199,7 +4370,7 @@ Body:
             </div>
 
             {/* Messenger — Facebook Page Access Token */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -4305,7 +4476,7 @@ Body:
             </div>
 
             {/* Instagram DM — OAuth via Meta */}
-            <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -5356,113 +5527,201 @@ const CONTRACT_VARIABLES = [
 ];
 
 // ── Proposal Template Section ──────────────────────────────────────────────────
+type ProposalLineTemplate = {
+  id: string;
+  name: string;
+  productLine: string;
+  url: string;
+  fileName: string;
+  contentType?: string;
+  isDefault?: boolean;
+  uploadedAt: string;
+};
+
 function ProposalTemplateSection({
-  profileId, templateUrl, templateName, onUpdate,
-}: { profileId: string; templateUrl: string | null; templateName: string | null; onUpdate: () => void }) {
+  profileId, templateUrl, templateName, discoveryData, onUpdate,
+}: {
+  profileId: string;
+  templateUrl: string | null;
+  templateName: string | null;
+  discoveryData: Record<string, unknown> | null;
+  onUpdate: () => void;
+}) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [modelName, setModelName] = useState("");
+  const [productLine, setProductLine] = useState("");
   const requestUploadUrl = useRequestUploadUrl();
   const updateProfile = useUpdateBusinessProfile();
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
-        requestUploadUrl.mutate(
-          { data: { name: file.name, size: file.size, contentType: file.type } },
-          { onSuccess: resolve, onError: reject },
-        );
-      });
-      const uploadRes = await fetch(result.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      if (!uploadRes.ok) throw new Error("Upload falhou");
-      updateProfile.mutate(
-        { id: profileId, data: { proposalTemplateUrl: result.objectPath, proposalTemplateName: file.name } },
-        {
-          onSuccess: () => { onUpdate(); toast({ title: "Modelo de proposta importado com sucesso." }); },
-          onError: () => toast({ title: "Erro ao salvar modelo.", variant: "destructive" }),
-        },
-      );
-    } catch {
-      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+  const rawTemplates = discoveryData?.proposalTemplates;
+  const templates: ProposalLineTemplate[] = Array.isArray(rawTemplates)
+    ? rawTemplates.filter((item): item is ProposalLineTemplate => !!item && typeof item === "object" && typeof (item as any).id === "string" && typeof (item as any).url === "string")
+    : [];
+
+  function previewUrl(url: string) {
+    return url.startsWith("/objects/") ? `/api/storage${url}` : url;
   }
 
-  function handleRemove() {
+  function saveTemplates(next: ProposalLineTemplate[], extra: Record<string, unknown> = {}) {
+    const nextDiscovery = { ...(discoveryData ?? {}), proposalTemplates: next };
     updateProfile.mutate(
-      { id: profileId, data: { proposalTemplateUrl: null as unknown as string, proposalTemplateName: null as unknown as string } },
+      { id: profileId, data: { discoveryData: nextDiscovery as any, ...extra } as any },
       {
-        onSuccess: () => { onUpdate(); toast({ title: "Modelo de proposta removido." }); },
-        onError: () => toast({ title: "Erro ao remover.", variant: "destructive" }),
+        onSuccess: () => { onUpdate(); },
+        onError: () => toast({ title: "Erro ao salvar modelos de proposta.", variant: "destructive" }),
       },
     );
   }
 
-  const previewUrl = templateUrl
-    ? (templateUrl.startsWith("/objects/") ? `/api/storage${templateUrl}` : templateUrl)
-    : null;
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!modelName.trim() || !productLine.trim()) {
+      toast({ title: "Informe o nome do modelo e a linha de produto antes do upload.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+      if (!uploadRes.ok) throw new Error("Upload falhou");
+
+      const first = templates.length === 0;
+      const item: ProposalLineTemplate = {
+        id: crypto.randomUUID(),
+        name: modelName.trim(),
+        productLine: productLine.trim(),
+        url: result.objectPath,
+        fileName: file.name,
+        contentType: file.type || undefined,
+        isDefault: first,
+        uploadedAt: new Date().toISOString(),
+      };
+      const next = [...templates, item];
+      saveTemplates(next, first ? { proposalTemplateUrl: item.url, proposalTemplateName: item.name } : {});
+      setModelName("");
+      setProductLine("");
+      toast({ title: "Modelo adicionado", description: `Linha: ${item.productLine}` });
+    } catch (err) {
+      toast({ title: "Erro no upload do modelo.", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function setDefault(id: string) {
+    const selected = templates.find((item) => item.id === id);
+    if (!selected) return;
+    const next = templates.map((item) => ({ ...item, isDefault: item.id === id }));
+    saveTemplates(next, { proposalTemplateUrl: selected.url, proposalTemplateName: selected.name });
+    toast({ title: "Modelo padrão atualizado." });
+  }
+
+  function removeTemplate(id: string) {
+    const removed = templates.find((item) => item.id === id);
+    const remaining = templates.filter((item) => item.id !== id);
+    let next = remaining;
+    const extra: Record<string, unknown> = {};
+    if (removed?.isDefault) {
+      if (remaining.length > 0) {
+        next = remaining.map((item, index) => ({ ...item, isDefault: index === 0 }));
+        extra.proposalTemplateUrl = next[0].url;
+        extra.proposalTemplateName = next[0].name;
+      } else {
+        extra.proposalTemplateUrl = null;
+        extra.proposalTemplateName = null;
+      }
+    }
+    saveTemplates(next, extra);
+    toast({ title: "Modelo removido." });
+  }
+
+  const legacyOnly = templates.length === 0 && templateUrl;
 
   return (
-    <div className="rounded-xl border bg-card p-6 space-y-4">
-      <input ref={fileInputRef} type="file" className="hidden" accept=".html,.htm,.txt,.pdf,.doc,.docx" onChange={handleFile} />
+    <div className="rounded-xl border bg-card p-6 space-y-5">
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept=".html,.htm,.txt,.md,.pdf,.docx"
+        onChange={handleFile}
+      />
       <div>
         <h2 className="font-semibold text-base flex items-center gap-2">
           <FileText className="h-4 w-4 text-primary" />
-          Modelo de Proposta
+          Modelos de Proposta por Linha de Produto
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Importe o modelo de proposta padrão da empresa. A IA usará a estrutura e o tom do documento como referência ao gerar novas propostas. Formatos aceitos: HTML, TXT, PDF, DOC.
+          Cadastre vários modelos e associe cada um a uma linha. HTML, TXT, PDF e DOCX são lidos como referência pela IA; o modelo padrão continua sendo usado quando nenhum modelo específico é escolhido.
         </p>
       </div>
 
-      {templateUrl ? (
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 flex items-start gap-3">
-          <FileText className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-blue-800">Modelo ativo</p>
-            <p className="text-xs text-blue-600 truncate">{templateName || "modelo-proposta"}</p>
+      {legacyOnly && (
+        <div className="rounded-lg border bg-muted/30 p-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Modelo legado atual</p>
+            <p className="text-xs text-muted-foreground truncate">{templateName || "modelo-proposta"}</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {previewUrl && (
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
-                <a href={previewUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Ver
-                </a>
-              </Button>
-            )}
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => fileInputRef.current?.click()} disabled={uploading || updateProfile.isPending}>
-              <Upload className="h-3.5 w-3.5" />
-              Trocar
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs text-destructive hover:bg-red-50" onClick={handleRemove} disabled={updateProfile.isPending}>
-              <X className="h-3.5 w-3.5" />
-              Remover
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-lg border-2 border-dashed border-border p-6 text-center space-y-3">
-          <div className="flex justify-center">
-            <div className="rounded-full bg-muted p-3">
-              <Upload className="h-5 w-5 text-muted-foreground" />
-            </div>
-          </div>
-          <div>
-            <p className="text-sm font-medium">Nenhum modelo importado</p>
-            <p className="text-xs text-muted-foreground">A IA usará o estilo padrão até você enviar o seu modelo.</p>
-          </div>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-            {uploading ? "Enviando..." : "Importar modelo"}
+          <Button variant="outline" size="sm" asChild>
+            <a href={previewUrl(templateUrl!)} target="_blank" rel="noopener noreferrer">Visualizar</a>
           </Button>
         </div>
       )}
+
+      {templates.length > 0 && (
+        <div className="space-y-2">
+          {templates.map((item) => (
+            <div key={item.id} className="rounded-lg border p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium">{item.name}</p>
+                  <Badge variant="secondary">{item.productLine}</Badge>
+                  {item.isDefault && <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Padrão</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground truncate mt-1">{item.fileName}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="outline" size="sm" asChild><a href={previewUrl(item.url)} target="_blank" rel="noopener noreferrer">Ver</a></Button>
+                {!item.isDefault && <Button variant="outline" size="sm" onClick={() => setDefault(item.id)}>Tornar padrão</Button>}
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeTemplate(item.id)}><Trash2 className="h-4 w-4" /></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] items-end border-t pt-4">
+        <div className="space-y-1.5">
+          <Label>Nome do modelo</Label>
+          <Input value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="Ex: Orçamento Pisos" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Linha de produto</Label>
+          <Input value={productLine} onChange={(e) => setProductLine(e.target.value)} placeholder="Ex: Pisos drenantes" />
+        </div>
+        <Button
+          type="button"
+          className="gap-2"
+          disabled={uploading || !modelName.trim() || !productLine.trim()}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {uploading ? "Enviando..." : "Adicionar modelo"}
+        </Button>
+      </div>
     </div>
   );
 }

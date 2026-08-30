@@ -1,2 +1,12 @@
 User-agent: *
 Allow: /
+
+Disallow: /login
+Disallow: /app
+Disallow: /admin
+Disallow: /crm
+Disallow: /tenants
+Disallow: /settings
+Disallow: /api
+
+Sitemap: https://appvendorai.com/sitemap.xml

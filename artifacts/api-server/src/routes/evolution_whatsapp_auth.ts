@@ -25,7 +25,13 @@ async function ensureWebhookSecret(tenantId: string): Promise<string> {
   if (config?.webhookSecret) return config.webhookSecret;
 
   const secret = `whs_${crypto.randomUUID().replace(/-/g, "")}`;
-  await db.update(agentConfigsTable).set({ webhookSecret: secret }).where(eq(agentConfigsTable.tenantId, tenantId));
+  await db
+    .insert(agentConfigsTable)
+    .values({ tenantId, webhookSecret: secret })
+    .onConflictDoUpdate({
+      target: agentConfigsTable.tenantId,
+      set: { webhookSecret: secret, updatedAt: new Date() },
+    });
   return secret;
 }
 

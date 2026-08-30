@@ -77,6 +77,7 @@ export * from "./restaurante_cardapio";
 export * from "./restaurante_pedidos";
 export * from "./supermercado_campanhas";
 export * from "./generated_sites";
+export * from "./site_generation_jobs";
 export * from "./instagram_connections";
 export * from "./whatsapp_connections";
 export * from "./whatsapp_contacts";
@@ -209,3 +210,5 @@ export * from "./vehicle_lookup";
 export * from "./vehicle_ad_reservations";
 export * from "./content_autopilot";
 export * from "./site_blog_posts";
+
+export * from "./access_licenses";

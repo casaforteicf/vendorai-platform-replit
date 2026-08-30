@@ -25,7 +25,7 @@ import {
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image, ImageIcon,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
-  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw,
+  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import JSZip from "jszip";
@@ -266,7 +266,7 @@ function FeedCard({
   onUploadClick?: () => void;
 }) {
   const displayCaption = editing ? editedCaption : v.caption;
-  const displayHashtagsStr = editing ? editedHashtags : v.hashtags.join(" ");
+  const displayHashtagsStr = editing ? editedHashtags : (v.hashtags ?? []).join(" ");
   const fullText = `${displayCaption}\n\n${displayHashtagsStr}`;
   const images = v.imageUrls ?? (v.imageUrl ? [v.imageUrl] : []);
 
@@ -342,7 +342,7 @@ function FeedCard({
         </div>
       ) : (
         <div className="flex flex-wrap gap-1">
-          {v.hashtags.map((h) => (
+          {(v.hashtags ?? []).map((h) => (
             <span key={h} className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">{h}</span>
           ))}
         </div>
@@ -455,7 +455,7 @@ function ReelsCard({ v }: { v: ReelsVariation }) {
   const scriptText = [
     `🎬 ${v.title}`,
     "",
-    ...v.scenes.map((s, i) => `Cena ${i + 1} (${s.duracao})\nVisual: ${s.visual}\nFala: ${s.fala}`),
+    ...(v.scenes ?? []).map((s, i) => `Cena ${i + 1} (${s.duracao})\nVisual: ${s.visual}\nFala: ${s.fala}`),
     "",
     `🎵 Trilha sugerida: ${v.audioSuggestion}`,
     `📢 CTA: ${v.cta}`,
@@ -475,7 +475,7 @@ function ReelsCard({ v }: { v: ReelsVariation }) {
         />
       )}
       <div className="space-y-2">
-        {v.scenes.map((scene, i) => (
+        {(v.scenes ?? []).map((scene, i) => (
           <div key={i} className="border rounded-md p-3 bg-muted/30 text-sm space-y-1">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-xs font-mono">Cena {i + 1}</Badge>
@@ -534,17 +534,22 @@ function PublishInstagramButton({
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
-        const isNotConnected = data.error?.toLowerCase().includes("não conectado") ||
-          data.error?.toLowerCase().includes("page access");
+        const normalizedError = data.error?.toLowerCase() ?? "";
+        const isNotConnected = normalizedError.includes("não conectado") ||
+          normalizedError.includes("oauth") ||
+          normalizedError.includes("page access") ||
+          normalizedError.includes("credenciais de publicação") ||
+          normalizedError.includes("expirou") ||
+          normalizedError.includes("reconect");
         toast({
-          title: isNotConnected ? "Instagram não configurado" : "Falha ao publicar",
+          title: isNotConnected ? "Instagram não conectado" : "Falha ao publicar",
           description: isNotConnected
-            ? "Configure o Page Access Token e o Page ID em Configurações para publicar no Instagram."
+            ? "Conecte sua conta profissional em Configurações → Integrações → Instagram."
             : (data.error ?? "Erro desconhecido"),
           variant: "destructive",
           action: isNotConnected ? (
-            <ToastAction altText="Ir para Configurações" onClick={() => navigate("/configuracoes")}>
-              Configurar agora
+            <ToastAction altText="Conectar Instagram" onClick={() => navigate("/configuracoes?tab=integracoes")}>
+              Conectar Instagram
             </ToastAction>
           ) : undefined,
         });
@@ -871,6 +876,7 @@ function VariationCard({
   const [localVideoUrl, setLocalVideoUrl] = useState<string | undefined>(undefined);
   const uploadTriggerRef = useRef<(() => void) | null>(null);
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const effectiveVariation =
     type === "reels"
@@ -998,16 +1004,59 @@ function VariationCard({
     if (!hasEdits) return undefined;
     if (type === "feed") {
       const v = displayVariation as FeedVariation;
-      return `${v.caption}\n\n${v.hashtags.join(" ")}`;
+      return `${v.caption}\n\n${(v.hashtags ?? []).join(" ")}`;
     }
     return undefined;
   })();
+
+
+
+  function sendToSponsoredAds() {
+    if (!contentId) return;
+
+    let headlines: string[] = [];
+    let descriptions: string[] = [];
+    let imagens: string[] = [];
+
+    if (type === "feed") {
+      const v = displayVariation as FeedVariation;
+      headlines = [(theme || v.caption || "Conteúdo patrocinado").slice(0, 80)];
+      descriptions = [`${v.caption}${(v.hashtags?.length ?? 0) ? `
+
+${(v.hashtags ?? []).join(" ")}` : ""}`];
+      imagens = v.imageUrls?.length ? v.imageUrls : v.imageUrl ? [v.imageUrl] : [];
+    } else if (type === "stories") {
+      const v = displayVariation as StoriesVariation;
+      headlines = [(theme || v.text || "Story patrocinado").slice(0, 80)];
+      descriptions = [`${v.text}${v.cta ? `
+
+CTA: ${v.cta}` : ""}`];
+      imagens = v.imageUrls?.length ? v.imageUrls : v.imageUrl ? [v.imageUrl] : [];
+    } else {
+      const v = displayVariation as ReelsVariation;
+      headlines = [(v.title || theme || "Reel patrocinado").slice(0, 80)];
+      descriptions = [
+        [...(v.scenes ?? []).map((scene) => scene.fala).filter(Boolean), v.cta].filter(Boolean).join(" ").slice(0, 4000),
+      ];
+    }
+
+    sessionStorage.setItem("vendorai_ads_content_draft_v1", JSON.stringify({
+      contentGenerationId: contentId,
+      variationIndex: index,
+      theme: theme || "Conteúdo do Marketing",
+      sourceType: type,
+      suggestedPlatform: "meta",
+      sourceVariationIndex: index,
+      creativeDraft: { headlines, descriptions, imagens },
+    }));
+    setLocation("/ads?from=content");
+  }
 
   function startEdit() {
     if (type === "feed") {
       const v = displayVariation as FeedVariation;
       setEditCaption(v.caption);
-      setEditHashtags(v.hashtags.join(" "));
+      setEditHashtags((v.hashtags ?? []).join(" "));
     } else if (type === "stories") {
       const v = displayVariation as StoriesVariation;
       setEditText(v.text);
@@ -1172,6 +1221,18 @@ function VariationCard({
                   : <Archive className="h-3 w-3" />}
               {saveMutation.isPending ? "Salvando..." : savedToLibrary ? "Salvo!" : "Salvar na Biblioteca"}
             </Button>
+            {contentId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs gap-1 h-7"
+                onClick={sendToSponsoredAds}
+                title="Se esta variação já foi publicada no Instagram, impulsiona a publicação existente; se ainda não foi, cria um anúncio Meta usando este conteúdo."
+              >
+                <Megaphone className="h-3 w-3" />
+                Patrocinar este conteúdo
+              </Button>
+            )}
             {improvedVariation && (
               <Button
                 variant="ghost"
@@ -1200,6 +1261,7 @@ function HistoryItem({
   const [expanded, setExpanded] = useState(false);
   const cfg = TYPE_CONFIG[item.type];
   const Icon = cfg.icon;
+  const historyVariations = Array.isArray(item.result?.variations) ? item.result.variations : [];
   const date = new Date(item.createdAt).toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "short",
@@ -1251,10 +1313,10 @@ function HistoryItem({
               {item.type !== "reels" && " Imagens geradas pela IA ficam disponíveis por até 1h após a geração."}
             </span>
           </div>
-          {item.result.variations.length === 0 ? (
+          {historyVariations.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-2">Sem variações salvas.</p>
           ) : (
-            item.result.variations.map((v, i) => (
+            historyVariations.map((v, i) => (
               <VariationCard key={i} index={i} type={item.type} variation={v} contentId={item.id} tenantId={item.tenantId} theme={item.theme} />
             ))
           )}
@@ -2007,7 +2069,7 @@ export default function Content() {
                             <p className="text-sm text-muted-foreground">{strategyResult.visualStyle}</p>
                           </CardContent>
                         </Card>
-                        {strategyResult.approaches.map((approach, i) => (
+                        {(strategyResult.approaches ?? []).map((approach, i) => (
                           <Card key={i}>
                             <CardHeader className="pb-2">
                               <div className="flex items-center justify-between">
@@ -2065,7 +2127,7 @@ export default function Content() {
                       <div className="space-y-3">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <p className="text-sm font-medium text-muted-foreground">
-                            {lastResult.result.variations.length} variações geradas
+                            {lastResult.result?.variations?.length ?? 0} variações geradas
                           </p>
                           <div className="flex items-center gap-2">
                             <Button
@@ -2082,7 +2144,7 @@ export default function Content() {
                               variant="outline"
                               size="sm"
                               className="text-xs gap-1"
-                              onClick={() => downloadAllImagesZip(lastResult.result.variations, lastResult.type, setZipping, toast)}
+                              onClick={() => downloadAllImagesZip(lastResult.result?.variations ?? [], lastResult.type, setZipping, toast)}
                               disabled={zipping}
                             >
                               {zipping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
@@ -2090,7 +2152,7 @@ export default function Content() {
                             </Button>
                           </div>
                         </div>
-                        {lastResult.result.variations.map((v, i) => (
+                        {(lastResult.result?.variations ?? []).map((v, i) => (
                           <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} theme={lastResult.theme} referenceImageUrl={uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading)?.url ?? null} />
                         ))}
                       </div>
@@ -2100,7 +2162,7 @@ export default function Content() {
                       <Card className="border-dashed">
                         <CardContent className="py-12 flex flex-col items-center gap-3 text-center text-muted-foreground">
                           <Sparkles className="h-10 w-10 opacity-30" />
-                          <p className="text-sm">Preencha o tema acima e toque em <strong>Gerar com IA</strong></p>
+                          <p className="text-sm">Preencha “Tema / contexto da publicação” ao lado e toque em <strong>Gerar com IA</strong></p>
                         </CardContent>
                       </Card>
                     )}
@@ -2185,7 +2247,7 @@ export default function Content() {
               </p>
             ) : (
               <div className="px-4 divide-y">
-                {history?.items.map((item) => (
+                {history?.items?.map((item) => (
                   <HistoryItem
                     key={item.id}
                     item={item}

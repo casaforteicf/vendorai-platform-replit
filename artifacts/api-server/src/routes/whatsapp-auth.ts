@@ -45,7 +45,12 @@ router.get("/auth/whatsapp", authenticate, async (req, res) => {
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth WhatsApp");
-    return res.status(500).json({ error: "Internal error" });
+    const isNotConfigured = err instanceof Error && err.message.startsWith("WhatsApp oficial não configurado:");
+    return res.status(isNotConfigured ? 503 : 500).json({
+      error: isNotConfigured
+        ? "WhatsApp oficial ainda não está configurado no servidor. Verifique as credenciais do Meta App no Railway."
+        : "Não foi possível iniciar a conexão com WhatsApp oficial.",
+    });
   }
 });
 

@@ -62,6 +62,7 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
     demografia?: { idades: string[]; generos: string[]; statusParental: string[]; rendas: string[] };
     audiencias?: { afinidade: string[]; noMercado: string[]; termosPesquisa: string[]; sites: string[]; aplicativos: string[] };
     dadosProprios?: { remarketing: string[]; customerMatch: string[]; semelhantes: string[] };
+    origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string };
   }>().notNull().default({}),
   status: adCampanhaStatusEnum("status").notNull().default("rascunho"),
   // Código curto único pra usar como utm_campaign em qualquer link que

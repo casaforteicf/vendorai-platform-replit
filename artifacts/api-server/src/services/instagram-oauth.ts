@@ -2,24 +2,30 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, instagramConnectionsTable, agentConfigsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
-const INSTAGRAM_APP_ID = process.env["INSTAGRAM_APP_ID"];
-const INSTAGRAM_APP_SECRET = process.env["INSTAGRAM_APP_SECRET"];
+const INSTAGRAM_APP_ID = process.env["INSTAGRAM_APP_ID"]?.trim();
+const INSTAGRAM_APP_SECRET = process.env["INSTAGRAM_APP_SECRET"]?.trim();
+
+function assertInstagramAppConfigured(): void {
+  if (!INSTAGRAM_APP_ID || !/^\d+$/.test(INSTAGRAM_APP_ID) || !INSTAGRAM_APP_SECRET) {
+    throw new Error("Instagram não configurado: verifique INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET.");
+  }
+}
 const INSTAGRAM_CALLBACK_PATH = "/api/auth/instagram/callback";
 const PRODUCTION_HOSTS = new Set(["appvendorai.com", "www.appvendorai.com", "app.appvendorai.com"]);
 
-function getRedirectUri(host?: string): string {
+export function getInstagramRedirectUri(host?: string): string {
   // A URL cadastrada no provedor deve ser a fonte principal. Em ambientes com
   // proxy (Vercel -> Railway), o Host recebido pelo backend pode ser o interno.
   const configured = process.env["INSTAGRAM_REDIRECT_URI"]?.trim();
   if (configured) return configured;
 
-  const normalizedHost = host?.split(":")[0]?.toLowerCase();
-  if (normalizedHost && PRODUCTION_HOSTS.has(normalizedHost)) {
-    return `https://appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
+  if (process.env["NODE_ENV"] === "production") {
+    return `https://app.appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
   }
 
-  if (process.env["NODE_ENV"] === "production") {
-    return `https://appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
+  const normalizedHost = host?.split(":")[0]?.toLowerCase();
+  if (normalizedHost && PRODUCTION_HOSTS.has(normalizedHost)) {
+    return `https://app.appvendorai.com${INSTAGRAM_CALLBACK_PATH}`;
   }
 
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
@@ -29,16 +35,25 @@ function getRedirectUri(host?: string): string {
 
 const META_OAUTH_BASE = "https://www.instagram.com/oauth/authorize";
 const META_TOKEN_BASE = "https://api.instagram.com/oauth/access_token";
+const META_GRAPH_VERSION = "v26.0";
+// A troca de token do Instagram usa o endpoint próprio /access_token,
+// sem prefixo de versão. A versão v26 continua nas chamadas de dados.
 const META_LONG_LIVED_BASE = "https://graph.instagram.com/access_token";
 const META_ACCOUNTS_BASE = "https://graph.facebook.com/v18.0/me/accounts";
 const META_PAGE_BASE = "https://graph.facebook.com/v18.0";
 
-export function buildInstagramOAuthUrl(tenantId: string, state: string, host?: string): string {
-  const redirectUri = getRedirectUri(host);
+export function buildInstagramOAuthUrl(
+  tenantId: string,
+  state: string,
+  host?: string,
+  exactRedirectUri?: string,
+): string {
+  assertInstagramAppConfigured();
+  const redirectUri = exactRedirectUri ?? getInstagramRedirectUri(host);
   const params = new URLSearchParams({
     client_id: INSTAGRAM_APP_ID ?? "",
     redirect_uri: redirectUri,
-    scope: "instagram_business_basic,instagram_business_manage_messages",
+    scope: "instagram_business_basic,instagram_business_manage_messages,instagram_business_content_publish,instagram_business_manage_insights",
     state,
     response_type: "code",
     enable_fb_login: "0",
@@ -75,7 +90,7 @@ interface InstagramAccountInfo {
 }
 
 export async function fetchDirectInstagramAccountInfo(token: string): Promise<InstagramAccountInfo> {
-  const url = new URL("https://graph.instagram.com/me");
+  const url = new URL(`https://graph.instagram.com/${META_GRAPH_VERSION}/me`);
   url.searchParams.set("fields", "id,username,name");
   url.searchParams.set("access_token", token);
   const response = await fetch(url);
@@ -116,12 +131,23 @@ export async function saveDirectInstagramConnection(
     .where(eq(instagramConnectionsTable.id, existing.id));
   else await db.insert(instagramConnectionsTable).values({ tenantId, ...values });
 
-  await db.update(agentConfigsTable).set({
-    instagramPageAccessToken: token.access_token,
-    instagramPageId: account.id,
-    instagramUsername: account.username,
-    updatedAt: new Date(),
-  }).where(eq(agentConfigsTable.tenantId, tenantId));
+  await db
+    .insert(agentConfigsTable)
+    .values({
+      tenantId,
+      instagramPageAccessToken: token.access_token,
+      instagramPageId: account.id,
+      instagramUsername: account.username,
+    })
+    .onConflictDoUpdate({
+      target: agentConfigsTable.tenantId,
+      set: {
+        instagramPageAccessToken: token.access_token,
+        instagramPageId: account.id,
+        instagramUsername: account.username,
+        updatedAt: new Date(),
+      },
+    });
 
   await subscribeDirectInstagramWebhooks(account.id, token.access_token);
 }
@@ -138,8 +164,12 @@ async function subscribeDirectInstagramWebhooks(accountId: string, token: string
   }
 }
 
-export async function exchangeShortCodeForToken(code: string, host?: string): Promise<LongLivedTokenResponse> {
-  const redirectUri = getRedirectUri(host);
+export async function exchangeShortCodeForToken(
+  code: string,
+  host?: string,
+  exactRedirectUri?: string,
+): Promise<LongLivedTokenResponse> {
+  const redirectUri = exactRedirectUri ?? getInstagramRedirectUri(host);
   logger.info({ redirectUri }, "Trocando short code por token");
 
   const body = new URLSearchParams({
@@ -157,7 +187,7 @@ export async function exchangeShortCodeForToken(code: string, host?: string): Pr
   if (!res.ok) {
     const body = await res.text();
     logger.error({ status: res.status, body }, "Falha na troca de code por token");
-    throw new Error(`Meta token exchange failed: ${res.status} ${body}`);
+    throw new Error(`Instagram short token exchange failed: ${res.status} ${body}`);
   }
 
   const short = (await res.json()) as TokenExchangeResponse;
@@ -176,7 +206,7 @@ async function exchangeForLongLivedToken(shortToken: string): Promise<LongLivedT
   if (!res.ok) {
     const body = await res.text();
     logger.error({ status: res.status, body }, "Falha ao converter para long-lived token");
-    throw new Error(`Long-lived token exchange failed: ${res.status} ${body}`);
+    throw new Error(`Instagram long-lived token exchange failed: ${res.status} ${body}`);
   }
 
   const data = (await res.json()) as LongLivedTokenResponse;

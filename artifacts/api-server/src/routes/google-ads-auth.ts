@@ -38,7 +38,9 @@ router.get("/auth/google-ads", authenticate, async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const state = createOAuthState(tenantId, userId, "google-ads");
+    const requestedReturnTo = typeof req.query.returnTo === "string" ? req.query.returnTo : "";
+    const returnTo = requestedReturnTo === "/onboarding/integracoes" ? requestedReturnTo : "/configuracoes";
+    const state = createOAuthState(tenantId, userId, "google-ads", returnTo);
     const url = buildGoogleAdsOAuthUrl(tenantId, state);
     logger.info({ tenantId, userId }, "Retornando URL OAuth Google Ads");
     return res.json({ url });
@@ -51,19 +53,21 @@ router.get("/auth/google-ads", authenticate, async (req, res) => {
 router.get("/auth/google-ads/callback", async (req, res) => {
   const { code, state, error } = req.query as Record<string, string>;
   const appUrl = getAppUrl();
+  let returnTo = "/configuracoes";
 
   if (error || !code || !state) {
     logger.warn({ error, hasCode: !!code, hasState: !!state }, "Callback Google Ads: parâmetros inválidos");
-    return res.redirect(`${appUrl}/configuracoes?googleAdsError=access_denied`);
+    return res.redirect(`${appUrl}${returnTo}?googleAdsError=access_denied`);
   }
 
   let tenantId: string;
   try {
     const decoded = consumeOAuthState(state, "google-ads");
     tenantId = decoded.tenantId;
+    if (decoded.returnTo === "/onboarding/integracoes") returnTo = decoded.returnTo;
   } catch (err) {
     logger.warn({ err }, "Callback Google Ads: state inválido, expirado ou reutilizado");
-    return res.redirect(`${appUrl}/configuracoes?googleAdsError=invalid_state`);
+    return res.redirect(`${appUrl}${returnTo}?googleAdsError=invalid_state`);
   }
 
   try {
@@ -73,7 +77,7 @@ router.get("/auth/google-ads/callback", async (req, res) => {
       tokens = await exchangeCodeForTokens(code);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao trocar codigo OAuth do Google Ads");
-      return res.redirect(`${appUrl}/configuracoes?googleAdsError=token_exchange`);
+      return res.redirect(`${appUrl}${returnTo}?googleAdsError=token_exchange`);
     }
 
     if (!tokens.refresh_token) {
@@ -83,7 +87,7 @@ router.get("/auth/google-ads/callback", async (req, res) => {
       // é melhor que salvar uma conexão que não sobrevive à expiração do
       // access token.
       logger.error({ tenantId }, "Google não retornou refresh_token no callback");
-      return res.redirect(`${appUrl}/configuracoes?googleAdsError=no_refresh_token`);
+      return res.redirect(`${appUrl}${returnTo}?googleAdsError=no_refresh_token`);
     }
 
     await saveGoogleAdsPendingConnection(tenantId, tokens.refresh_token, tokens.access_token, tokens.expires_in);
@@ -93,12 +97,12 @@ router.get("/auth/google-ads/callback", async (req, res) => {
       accounts = await listAccessibleCustomers(tokens.access_token);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao listar contas Google Ads acessíveis");
-      return res.redirect(`${appUrl}/configuracoes?googleAdsConnected=pending`);
+      return res.redirect(`${appUrl}${returnTo}?googleAdsConnected=pending`);
     }
 
     if (accounts.length === 0) {
       logger.warn({ tenantId }, "Nenhuma conta Google Ads acessível para o usuário");
-      return res.redirect(`${appUrl}/configuracoes?googleAdsError=no_account`);
+      return res.redirect(`${appUrl}${returnTo}?googleAdsError=no_account`);
     }
 
     if (accounts.length === 1 && accounts[0]) {
@@ -107,20 +111,20 @@ router.get("/auth/google-ads/callback", async (req, res) => {
       try {
         await selectGoogleAdsAccount(tenantId, accounts[0].customerId);
         logger.info({ tenantId, customerId: accounts[0].customerId }, "Google Ads conectado com sucesso");
-        return res.redirect(`${appUrl}/configuracoes?googleAdsConnected=1`);
+        return res.redirect(`${appUrl}${returnTo}?googleAdsConnected=1`);
       } catch (err) {
         logger.error({ err, tenantId }, "Erro ao selecionar automaticamente a única conta Google Ads");
-        return res.redirect(`${appUrl}/configuracoes?googleAdsConnected=pending`);
+        return res.redirect(`${appUrl}${returnTo}?googleAdsConnected=pending`);
       }
     }
 
     // Mais de uma conta acessível: fica pendente até o usuário escolher em
     // /tenants/:tenantId/google-ads-connection/select-account.
     logger.info({ tenantId, count: accounts.length }, "Múltiplas contas Google Ads encontradas, aguardando seleção");
-    return res.redirect(`${appUrl}/configuracoes?googleAdsConnected=pending`);
+    return res.redirect(`${appUrl}${returnTo}?googleAdsConnected=pending`);
   } catch (err) {
     logger.error({ err, tenantId }, "Erro no callback Google Ads");
-    return res.redirect(`${appUrl}/configuracoes?googleAdsError=exchange_failed`);
+    return res.redirect(`${appUrl}${returnTo}?googleAdsError=exchange_failed`);
   }
 });
 

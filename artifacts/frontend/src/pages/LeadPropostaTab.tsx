@@ -196,8 +196,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const profileQuery = useGetBusinessProfileByTenant(tenantId, {
     query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false },
   });
-  const hasProposalTemplate = !!(profileQuery.data as any)?.proposalTemplateUrl;
+  type ProposalLineTemplate = { id: string; name: string; productLine: string; url: string; isDefault?: boolean };
+  const profileDiscovery = (((profileQuery.data as any)?.discoveryData ?? {}) as Record<string, unknown>);
+  const proposalLineTemplates: ProposalLineTemplate[] = Array.isArray(profileDiscovery.proposalTemplates)
+    ? (profileDiscovery.proposalTemplates as ProposalLineTemplate[]).filter((item) => item && typeof item.id === "string" && typeof item.url === "string")
+    : [];
+  const legacyProposalTemplate = !!(profileQuery.data as any)?.proposalTemplateUrl;
+  const hasProposalTemplate = legacyProposalTemplate || proposalLineTemplates.length > 0;
   const proposalTemplateName = (profileQuery.data as any)?.proposalTemplateName as string | null;
+  const [selectedProposalTemplateId, setSelectedProposalTemplateId] = useState<string>("__auto__");
 
   // Imagens da proposta
   const [proposalImages, setProposalImages] = useState<string[]>([]);
@@ -438,7 +445,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       headers: { "Content-Type": file.type || "image/jpeg" },
     });
     if (!uploadRes.ok) throw new Error("Upload falhou");
-    return `/api/storage/${result.objectPath}`;
+    return `/api/storage${result.objectPath}`;
   }
 
   async function handleLogoUpload(file: File) {
@@ -565,6 +572,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           imagens: proposalImages.length > 0 ? proposalImages : undefined,
           objetivo: lead?.objetivo || undefined,
           propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
+          proposalTemplateId: selectedProposalTemplateId !== "__auto__" ? selectedProposalTemplateId : undefined,
           refinementNotes: notes?.trim() || undefined,
         } as any,
       });
@@ -1188,21 +1196,29 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               {generating ? "Gerando..." : "Gerar Proposta"}
             </Button>
           </CardTitle>
-          {/* Template de proposta */}
-          <Link href="/configuracoes?tab=perfil" className="flex items-center gap-1.5 text-xs mt-1 no-underline">
-            {hasProposalTemplate ? (
-              <span className="flex items-center gap-1.5 text-emerald-600">
-                <FileText className="h-3 w-3" />
-                Modelo ativo: <span className="font-medium truncate max-w-[160px]">{proposalTemplateName || "modelo-proposta"}</span>
-                <span className="text-muted-foreground ml-1">· Trocar</span>
+          {/* Modelo de proposta por linha */}
+          <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+            {proposalLineTemplates.length > 0 ? (
+              <Select value={selectedProposalTemplateId} onValueChange={setSelectedProposalTemplateId}>
+                <SelectTrigger className="h-8 w-full sm:w-[280px] text-xs">
+                  <SelectValue placeholder="Modelo da proposta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__auto__">Automático — usar modelo padrão</SelectItem>
+                  {proposalLineTemplates.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>{item.name} — {item.productLine}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : hasProposalTemplate ? (
+              <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                <FileText className="h-3 w-3" /> Modelo ativo: {proposalTemplateName || "modelo-proposta"}
               </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors">
-                <Upload className="h-3 w-3" />
-                Importar modelo de proposta da empresa
-              </span>
-            )}
-          </Link>
+            ) : null}
+            <Link href="/configuracoes?tab=perfil" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary no-underline">
+              <Upload className="h-3 w-3" /> {hasProposalTemplate ? "Gerenciar modelos" : "Adicionar modelos"}
+            </Link>
+          </div>
         </CardHeader>
         <CardContent>
           {/* Seletor de orçamento a incluir */}

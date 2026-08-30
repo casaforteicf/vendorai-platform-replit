@@ -299,6 +299,39 @@ router.post("/superadmin/tenants/:id/zapi-test", requireRole("super_admin"), asy
   }
 });
 
+// Liberação mestre do Praça.ai é uma decisão de plataforma. O lojista pode
+// escolher quais itens publicar depois de habilitado, mas não pode liberar
+// o próprio tenant no marketplace.
+router.patch("/superadmin/tenants/:id/praca-ai", requireRole("super_admin"), async (req, res) => {
+  const tenantId = String(req.params.id);
+  const enabled = req.body?.enabled;
+
+  if (typeof enabled !== "boolean") {
+    return res.status(422).json({ error: "O campo enabled deve ser booleano." });
+  }
+
+  const [tenant] = await db
+    .update(tenantsTable)
+    .set({ vendeNoPracaAi: enabled, updatedAt: new Date() })
+    .where(eq(tenantsTable.id, tenantId))
+    .returning({
+      id: tenantsTable.id,
+      vendeNoPracaAi: tenantsTable.vendeNoPracaAi,
+      comissaoPracaAiPercentual: tenantsTable.comissaoPracaAiPercentual,
+    });
+
+  if (!tenant) {
+    return res.status(404).json({ error: "Tenant não encontrado." });
+  }
+
+  req.log.info(
+    { tenantId, enabled, actorId: req.user?.sub },
+    "superadmin updated tenant Praça.ai access",
+  );
+
+  return res.json(tenant);
+});
+
 router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
   const parsed = updateTenantSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -313,10 +346,15 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
     return;
   }
 
-  // Comissão do Praça.ai é negociação de plataforma — nem o próprio lojista
-  // (tenant_admin) pode mudar isso, só o super_admin.
-  if ("comissaoPracaAiPercentual" in parsed.data && parsed.data.comissaoPracaAiPercentual !== undefined && req.user?.platformRole !== "super_admin") {
-    res.status(403).json({ error: "Só o admin da plataforma pode alterar a comissão do Praça.ai" });
+  // Liberação do tenant no Praça.ai e comissão são decisões de plataforma.
+  // O lojista gerencia os itens publicados somente depois que o SuperAdmin
+  // libera o tenant; ele não pode habilitar o próprio acesso via API.
+  const PRACA_AI_PLATFORM_FIELDS = ["comissaoPracaAiPercentual", "vendeNoPracaAi"] as const;
+  const hasPracaAiPlatformField = PRACA_AI_PLATFORM_FIELDS.some(
+    (field) => field in parsed.data && parsed.data[field] !== undefined,
+  );
+  if (hasPracaAiPlatformField && req.user?.platformRole !== "super_admin") {
+    res.status(403).json({ error: "Só o admin da plataforma pode alterar a liberação ou comissão do Praça.ai" });
     return;
   }
 
@@ -457,6 +495,7 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
       autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
       metaAccessToken: agentConfigsTable.metaAccessToken,
+      evolutionConnected: agentConfigsTable.evolutionConnected,
       instagramPageId: agentConfigsTable.instagramPageId,
       instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
       webhookSecret: agentConfigsTable.webhookSecret,
@@ -471,7 +510,7 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
   const productsConfigured    = Array.isArray(businessProfile?.produtos) && (businessProfile.produtos as unknown[]).length > 0;
   const agentConfigured       = !!agentConfig?.setupCompletedAt;
   const autonomyEnabled       = !!agentConfig?.autonomyEnabledAt;
-  const whatsappConnected     = !!(agentConfig?.metaPhoneNumberId && agentConfig?.metaAccessToken);
+  const whatsappConnected     = !!((agentConfig?.metaPhoneNumberId && agentConfig?.metaAccessToken) || agentConfig?.evolutionConnected);
   const instagramConnected    = !!(agentConfig?.instagramPageId && agentConfig?.instagramPageAccessToken);
   const webhookConfigured     = !!agentConfig?.webhookSecret;
   const firstLeadAdded        = (leadCountRow?.value ?? 0) > 0;
@@ -521,7 +560,7 @@ router.delete("/tenants/:id", requireRole("super_admin"), async (req, res) => {
 });
 
 // ── POST /admin/tenants/demo ────────────────────────────────────────────
-// Cria um tenant de demonstração com expiração de 5 dias e popula com dados fake
+// Cria um tenant de demonstração com expiração de 5 dias, sem dados fictícios
 
 router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) => {
   const { nomeEmpresa, emailContato } = req.body;
@@ -548,8 +587,8 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
 
   await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
 
-  // Popular com dados fake
-  await seedDemoData(tenant.id);
+  // Não popula produtos, leads, conversas ou negócios fictícios. A experiência
+  // Demo começa vazia e o usuário inclui seus próprios dados durante o uso.
 
   res.status(201).json({
     tenant,
@@ -558,7 +597,8 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
   });
 });
 
-// ── Seed de dados fake para demo ──────────────────────────────────────────
+// ── Fixture interna opcional para ambientes de teste/desenvolvimento ──────
+// Não chamar automaticamente em fluxos reais de criação de Demo.
 
 export async function seedDemoData(tenantId: string) {
   const now = new Date();

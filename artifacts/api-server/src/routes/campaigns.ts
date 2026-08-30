@@ -13,8 +13,9 @@ import {
 import type { NumericFilter, SegmentoFiltro } from "@workspace/db";
 import type { SQL } from "drizzle-orm";
 import { z } from "zod";
-import { callReplicateFlux11Pro } from "../lib/arch-render-pipeline.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { callReplicateFlux11Pro, callReplicateFluxKontext } from "../lib/arch-render-pipeline.js";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
 
@@ -103,6 +104,208 @@ router.post("/tenants/:tenantId/campaigns/generate-image", async (req, res) => {
   const imageUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
 
   res.json({ imageUrl, objectPath });
+});
+
+// ── AI image enhancement (edita foto enviada pelo lojista, sem gerar do zero) ─
+const enhanceImageSchema = z.object({
+  objectPath: z.string().min(1).max(500),
+  instrucao: z.string().max(500).optional(),
+});
+
+router.post("/tenants/:tenantId/campaigns/enhance-image", async (req, res) => {
+  const { tenantId } = req.params;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const parsed = enhanceImageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { objectPath, instrucao } = parsed.data;
+
+  const storage = new ObjectStorageService();
+  let sourceBuffer: Buffer;
+  let sourceContentType: string;
+  try {
+    const file = await storage.getObjectEntityFile(objectPath);
+    const [buf] = await file.download();
+    const [meta] = await file.getMetadata();
+    sourceBuffer = buf;
+    sourceContentType = meta.contentType || "image/jpeg";
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: "Imagem enviada não encontrada" });
+      return;
+    }
+    throw err;
+  }
+
+  const imageDataUrl = `data:${sourceContentType};base64,${sourceBuffer.toString("base64")}`;
+  const prompt = instrucao?.trim()
+    ? `Melhore esta foto para uso em uma campanha de marketing: ${instrucao.trim()}. Preserve o produto/pessoa e o enquadramento original, só melhore luz, nitidez e apelo visual.`
+    : "Melhore a qualidade desta foto para uso em uma campanha de marketing: mais nítida, bem iluminada, cores vibrantes. Preserve o produto/pessoa e o enquadramento original.";
+
+  const outputBase64 = await callReplicateFluxKontext({ imageDataUrl, prompt });
+  const buf = Buffer.from(outputBase64, "base64");
+
+  const outObjectPath = await storage.savePrivateBuffer(buf, "image/png", `campaign-img-enhanced-${crypto.randomUUID()}.png`);
+  const imageUrl = `/api/storage/objects${outObjectPath.replace(/^\/objects/, "")}`;
+
+  res.json({ imageUrl, objectPath: outObjectPath });
+});
+
+// ── AI copy generation for campaigns (retenção/conversão) ─────────────────────
+const generateCopySchema = z.object({
+  nome: z.string().min(1).max(200),
+  tipo: z.enum(["whatsapp", "email", "instagram"]),
+  objetivo: z.string().min(3).max(500),
+  segmentoFiltro: z.unknown().optional(),
+  gerarVariantesAB: z.boolean().optional().default(false),
+});
+
+function resumoSegmento(filtro?: SegmentoFiltro): string {
+  if (!filtro) return "público geral, sem filtro de segmento definido";
+
+  const partes: string[] = [];
+
+  if (filtro.churnRisk !== undefined) {
+    const f = filtro.churnRisk as NumericFilter;
+    if (typeof f === "number") {
+      partes.push(`risco de churn = ${f}`);
+    } else {
+      const trechos = [
+        f.gte !== undefined ? `risco de churn >= ${f.gte}` : null,
+        f.gt !== undefined ? `risco de churn > ${f.gt}` : null,
+        f.lte !== undefined ? `risco de churn <= ${f.lte}` : null,
+        f.lt !== undefined ? `risco de churn < ${f.lt}` : null,
+        f.eq !== undefined ? `risco de churn = ${f.eq}` : null,
+      ].filter((v): v is string => v !== null);
+      partes.push(...trechos);
+    }
+  }
+
+  if (filtro.journeyStage) partes.push(`estágio da jornada: ${filtro.journeyStage}`);
+  if (filtro.nextBestAction) partes.push(`próxima ação recomendada: ${filtro.nextBestAction}`);
+  if (filtro.intentAnalysis) partes.push(`intenção detectada: ${filtro.intentAnalysis}`);
+  if (filtro.dealEtapas?.length) partes.push(`etapa(s) do funil: ${filtro.dealEtapas.join(", ")}`);
+
+  return partes.length > 0 ? partes.join("; ") : "público geral, sem filtro de segmento definido";
+}
+
+const CHANNEL_GUIDE: Record<"whatsapp" | "email" | "instagram", string> = {
+  whatsapp:
+    "Mensagem de WhatsApp: até 300 caracteres, tom pessoal e direto, no máximo 1 emoji, 1 CTA claro no final. Sem linha de assunto.",
+  email:
+    "E-mail: a primeira linha deve ser 'Assunto: ...' (até 60 caracteres), seguida de uma linha em branco e o corpo do e-mail com saudação, desenvolvimento e CTA.",
+  instagram:
+    "Legenda de post do Instagram: parágrafos curtos, tom conversacional, até 3 hashtags relevantes ao final, CTA claro no fim do texto.",
+};
+
+function isChurnFocus(segmentoResumo: string): boolean {
+  return /risco de churn (>=|>) [5-9]\b|risco de churn = (6|7|8|9|10)\b/.test(segmentoResumo);
+}
+
+function buildCopyPrompt(input: {
+  nome: string;
+  tipo: "whatsapp" | "email" | "instagram";
+  objetivo: string;
+  segmentoResumo: string;
+  abTest: boolean;
+}): string {
+  const { nome, tipo, objetivo, segmentoResumo, abTest } = input;
+  const churnFocus = isChurnFocus(segmentoResumo);
+
+  return `Você é um copywriter especialista em marketing de retenção e conversão para pequenos e médios negócios brasileiros.
+
+CAMPANHA: "${nome}"
+CANAL: ${tipo}
+OBJETIVO INFORMADO PELO LOJISTA: ${objetivo}
+PÚBLICO-ALVO DESTA CAMPANHA: ${segmentoResumo}
+
+DIRETRIZES DE CANAL:
+${CHANNEL_GUIDE[tipo]}
+
+${
+    churnFocus
+      ? "Este público tem risco de churn ALTO — use tom de reconquista, reconheça a ausência sem soar acusatório, ofereça um motivo concreto e de baixo atrito pra voltar (não apenas desconto genérico)."
+      : "Escreva com foco em conversão direta, sem soar genérico — a mensagem deve parecer escrita especificamente pra esse público, não um template reaproveitado."
+  }
+
+MÉTODO (aplique implicitamente, sem citar o método no texto final):
+Situação → reconheça o contexto do público. Problema → nomeie a dor/motivo real de agir agora. Implicação → o custo de não agir. Necessidade → a oferta como solução natural, com CTA de verbo de ação.
+
+REGRAS:
+- Português do Brasil, natural, sem parecer robótico ou genérico de IA.
+- Nunca invente números, depoimentos ou nomes de clientes reais.
+- CTA sempre com verbo de ação (ex: "Aproveitar agora", "Voltar e ganhar 10%").
+${abTest ? '- Gere TAMBÉM duas variantes (A e B) com ângulos diferentes entre si (ex: uma focada em urgência, outra em benefício direto), pra teste A/B.' : ""}
+
+Retorne APENAS um JSON válido, sem markdown, sem explicação, no formato exato:
+{"mensagem": "texto principal aqui"${abTest ? ', "variantA": "texto da variante A", "variantB": "texto da variante B"' : ""}}`;
+}
+
+router.post("/tenants/:tenantId/campaigns/generate-copy", async (req, res) => {
+  const { tenantId } = req.params;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const parsed = generateCopySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { nome, tipo, objetivo, segmentoFiltro, gerarVariantesAB } = parsed.data;
+  const filtroResult = segmentoFiltroSchema.safeParse(segmentoFiltro);
+  const segmentoResumo = resumoSegmento(filtroResult.success ? filtroResult.data : undefined);
+  const prompt = buildCopyPrompt({ nome, tipo, objetivo, segmentoResumo, abTest: gerarVariantesAB });
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1024,
+      system: "Você responde SEMPRE em JSON válido, sem markdown, sem texto fora do JSON.",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = message.content
+      .filter((b) => b.type === "text")
+      .map((b) => (b as { type: "text"; text: string }).text)
+      .join("\n")
+      .trim();
+
+    let result: { mensagem?: string; variantA?: string; variantB?: string };
+    try {
+      const jsonStart = raw.indexOf("{");
+      const jsonEnd = raw.lastIndexOf("}");
+      result = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+    } catch {
+      result = { mensagem: raw };
+    }
+
+    if (!result.mensagem) {
+      res.status(502).json({ error: "IA não retornou uma mensagem válida" });
+      return;
+    }
+
+    res.json({
+      mensagem: result.mensagem,
+      variantA: gerarVariantesAB ? result.variantA : undefined,
+      variantB: gerarVariantesAB ? result.variantB : undefined,
+      segmentoResumo,
+    });
+  } catch (err) {
+    req.log.error({ err }, "campaigns: generate-copy failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Erro desconhecido" });
+  }
 });
 
 router.post("/campaigns", async (req, res) => {

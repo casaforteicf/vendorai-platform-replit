@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, or } from "drizzle-orm";
-import { db, generatedSitesTable, businessProfilesTable, tenantsTable, produtosCatalogoTable, inventoryItemsTable } from "@workspace/db";
+import { db, generatedSitesTable, siteGenerationJobsTable, businessProfilesTable, tenantsTable, produtosCatalogoTable, inventoryItemsTable } from "@workspace/db";
 import type { SiteGeneratorConfig, SiteGeneratorProduct } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { SITE_GENERATOR_SYSTEM_PROMPT, extractHtmlDocument, prepareSiteHtml, validateSiteHtml } from "../lib/site-html-quality.js";
 
 // Prefer Anthropic when available; fallback to OpenAI
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -13,21 +14,26 @@ const anthropic = useAnthropic ? new Anthropic({ apiKey: anthropicApiKey }) : nu
 const AI_PROVIDER = useAnthropic ? "anthropic" : "openai";
 const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
 
-// ─── In-memory job store for async generation ─────────────────────────────────
+// The database is the source of truth. This set only prevents the same API
+// process from resuming one pending job more than once concurrently.
 type GenerationJob =
   | { status: "pending"; createdAt: number }
   | { status: "done"; result: Record<string, unknown>; createdAt: number }
   | { status: "error"; error: string; createdAt: number };
 
-const generationJobs = new Map<string, GenerationJob>();
+const activeGenerationJobs = new Set<string>();
 
-// Clean up jobs older than 30 minutes every 5 minutes
-setInterval(() => {
-  const cutoff = Date.now() - 30 * 60 * 1000;
-  for (const [id, job] of generationJobs) {
-    if (job.createdAt < cutoff) generationJobs.delete(id);
-  }
-}, 5 * 60 * 1000);
+async function persistGenerationJob(jobId: string, job: GenerationJob) {
+  await db
+    .update(siteGenerationJobsTable)
+    .set({
+      status: job.status,
+      result: job.status === "done" ? job.result : null,
+      error: job.status === "error" ? job.error : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(siteGenerationJobsTable.id, jobId));
+}
 
 // ─── Public router (no auth) — serves generated HTML sites ───────────────────
 export const publicSiteGeneratorRouter: IRouter = Router();
@@ -180,7 +186,7 @@ function isDark(hex: string): boolean {
 }
 
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
-  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos } = config;
+  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos, headline } = config;
   const waNumber = whatsapp?.replace(/\D/g, "") || "5511999999999";
 
   // Instagram: normaliza handle (remove @ e espaços), monta URL e bloco HTML do ícone
@@ -321,7 +327,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
   const structureByType: Record<string, string> = {
     landing: `ESTRUTURA DA LANDING PAGE (nesta ordem exata):
 1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo à esquerda (inicial do nome em círculo colorido + nome)"}, nav âncoras à direita, botão CTA no canto, hamburger mobile
-2. HERO — título impactante (H1, problema que o cliente já sente), subtítulo com a promessa, 2 botões (primário + secundário outline)${images.length > 0 ? `, imagem real da empresa como elemento visual (use a Foto 1 do briefing)` : ", elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)"}
+2. HERO — título impactante (H1${headline ? `: use exatamente ou uma variação muito próxima de "${headline}"` : ", problema que o cliente já sente"}), subtítulo com a promessa, 2 botões (primário + secundário outline)${images.length > 0 ? `, imagem real da empresa como elemento visual (use a Foto 1 do briefing)` : ", elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)"}
 3. DORES — seção escura/contrastante com 3-4 cards de dores reais do mercado (ícones SVG inline simples, título curto + descrição)
 4. SOLUÇÃO — como o negócio resolve cada dor, 3 pilares com ícone SVG + título + parágrafo
 5. BENEFÍCIOS / DIFERENCIAIS — grid 2x3 ou 3x2 de cards com número destacado ou ícone grande
@@ -347,7 +353,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 
     institutional: `ESTRUTURA DO SITE INSTITUCIONAL (nesta ordem exata):
 1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav âncoras, botão CTA, hamburger mobile
-2. HERO — headline sobre a empresa, subtítulo com proposta de valor, 2 botões${images.length > 0 ? `, imagem real da empresa (use a Foto 1 do briefing)` : ", elemento visual"}
+2. HERO — headline sobre a empresa${headline ? ` (H1: use exatamente ou uma variação muito próxima de "${headline}")` : ""}, subtítulo com proposta de valor, 2 botões${images.length > 0 ? `, imagem real da empresa (use a Foto 1 do briefing)` : ", elemento visual"}
 3. SOBRE — história/missão em 2 colunas (texto + estatísticas em destaque: anos, clientes, projetos)${images.length > 1 ? " + galeria das fotos reais fornecidas" : ""}
 4. SERVIÇOS — grid de 4-6 serviços com ícone SVG, título, descrição curta (baseados nos serviços informados no briefing)
 5. PROCESSO — timeline ou steps numerados explicando como funciona
@@ -465,7 +471,8 @@ MOVIMENTO — use com intenção, não em tudo por padrão. Efeito de revelar-ao
   Respeite prefers-reduced-motion: desative transições quando o usuário pedir.
 
 GRADE RESPONSIVA:
-  Mobile-first. Grids com grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  Mobile-first. Em 360px, nenhum bloco pode exigir mais de 100% da viewport. Use minmax(0, 1fr), min-width: 0 e grids que colapsem para uma coluna abaixo de 48rem; só use minmax(280px, 1fr) em contêineres que tenham espaço real. Nunca use width fixa acima de 100%, 100vw, translate horizontal ou overflow-x para esconder um erro.
+  Cada seção deve ter uma única função e densidade equilibrada: no máximo 3-4 cards por linha, conteúdo real em cada card, padding vertical entre 48px e 96px e no máximo uma seção hero com altura limitada. Não crie estatísticas, depoimentos, equipes, FAQs ou seções extras apenas para preencher espaço.
   Hamburger menu: toggle classe .open no nav mobile
 
 ÍCONES: Use SVG inline simples (viewBox, stroke ou fill) — não use bibliotecas externas.
@@ -485,12 +492,19 @@ QUALIDADE OBRIGATÓRIA:
 ✓ Visual profissional — equivalente a sites feitos por agências de marketing digital
 ✓ Imagens externas SOMENTE as fornecidas no briefing; demais elementos decorativos: gradientes CSS, SVGs inline, iniciais em círculo
 ✓ VÍDEO (quando fornecido no briefing): use o HTML pronto exatamente como está — não decorativo, é conteúdo real do cliente
-✓ GALERIA DE FOTOS (quando presente): use SEMPRE tags <img> com src reais de imagens Unsplash relacionadas ao setor (ex: https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop), alt descritivo e loading="lazy" — NUNCA use divs com gradiente CSS como placeholder de imagem em galerias
+✓ GALERIA DE FOTOS (quando presente): use SOMENTE as URLs reais fornecidas no briefing, com tags <img>, alt descritivo, loading="lazy", aspect-ratio e object-fit — nunca invente URLs; sem fotos fornecidas, use SVG/CSS decorativo sem fingir que é uma galeria real
 ✓ 100% responsivo — mobile impecável
 ✓ Smooth scroll, hover states, animações sutis
 ✓ Formulário de contato com validação JS básica (campos obrigatórios)
 ✓ WhatsApp CTA abre wa.me/${waNumber}${igHandle ? `\n✓ Instagram no footer: link clicável para ${igUrl} com ícone SVG inline e @${igHandle}` : ""}
 ✓ Acessibilidade: alt em imagens, aria-labels, foco visível
+
+REVISÃO FINAL OBRIGATÓRIA ANTES DE RESPONDER:
+✓ Verifique cada combinação de texto e fundo, inclusive cards, links, botões, placeholders e seções escuras; texto normal precisa de contraste mínimo 4.5:1.
+✓ Verifique que nenhum elemento visível depende de cor herdada sem contraste, opacity 0, visibility hidden, display none ou font-size 0.
+✓ Verifique que toda imagem tem URL fornecida e dimensões estáveis; não use placeholder remoto, URL inventada ou imagem sem tratamento de erro.
+✓ Verifique que o HTML fecha corretamente e que o mesmo documento funciona no preview e como arquivo baixado, sem scripts/estilos que dependam do editor.
+✓ Verifique visualmente as larguras 360px, 768px e 1440px: sem overflow horizontal, cartões gigantes, áreas vazias desproporcionais, links/botões nativos ou títulos que estouram a tela.
 
 RETORNE APENAS o código HTML completo, sem explicações, sem markdown, sem blocos de código.
 Comece diretamente com <!DOCTYPE html>`;
@@ -516,31 +530,7 @@ Comece diretamente com <!DOCTYPE html>`;
 }
 
 function extractHtml(text: string): string {
-  // Remove markdown fences anywhere in the text
-  let cleaned = text
-    .replace(/```html\s*/gi, "")
-    .replace(/```\s*/g, "")
-    .trim();
-
-  // Find the first HTML tag or DOCTYPE and discard everything before it
-  const doctypeMatch = cleaned.match(/<!DOCTYPE/i);
-  const htmlTagMatch = cleaned.match(/<html/i);
-  const firstIndex = Math.min(
-    doctypeMatch?.index ?? Infinity,
-    htmlTagMatch?.index ?? Infinity
-  );
-  if (firstIndex !== Infinity && firstIndex > 0) {
-    cleaned = cleaned.slice(firstIndex);
-  }
-
-  // Truncate after the LAST closing </html> tag (not the first)
-  // This handles cases where </html> appears inside <script> tags
-  const lastClosingHtml = [...cleaned.matchAll(/<\/html\s*>/gi)].pop();
-  if (lastClosingHtml && lastClosingHtml.index !== undefined) {
-    cleaned = cleaned.slice(0, lastClosingHtml.index + lastClosingHtml[0].length);
-  }
-
-  return cleaned.trim();
+  return extractHtmlDocument(text);
 }
 
 /** Safe wrapper that logs for debugging */
@@ -552,7 +542,12 @@ function extractHtmlSafe(text: string, log: { info: (obj: object, msg: string) =
 }
 
 function isValidHtml(html: string): boolean {
-  return html.length >= 500 && (/<html/i.test(html) || /<!DOCTYPE/i.test(html));
+  return html.length >= 500 && !validateSiteHtml(html).issues.some((issue) => !issue.repairable);
+}
+
+function htmlChanged(before: string, after: string): boolean {
+  const normalize = (value: string) => value.replace(/\r\n/g, "\n").trim();
+  return normalize(before) !== normalize(after);
 }
 
 // Unified AI caller with provider logging
@@ -561,19 +556,19 @@ type AiMessage = { role: "user" | "assistant"; content: string };
 async function callAI(
   messages: AiMessage[],
   tenantId: string,
-  log: { info: (obj: object, msg: string) => void }
+  log: { info: (obj: object, msg: string) => void },
+  systemPrompt = SITE_GENERATOR_SYSTEM_PROMPT,
 ): Promise<{ content: string; provider: string; model: string }> {
   if (useAnthropic && anthropic) {
     try {
       log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for site generation");
-      const system = messages.find((m) => m.role === "assistant")?.content;
       const userMessages = messages.filter((m) => m.role === "user");
       const stream = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 64000,
         stream: true,
         messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
-        ...(system ? { system } : {}),
+        system: systemPrompt,
       });
       const chunks: string[] = [];
       let stopReason: string | null = null;
@@ -612,7 +607,10 @@ async function callAI(
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       max_tokens: 16000,
-      messages: messages as Array<{ role: "user" | "assistant"; content: string }>,
+      messages: [
+        { role: "system" as const, content: systemPrompt },
+        ...messages.map((message) => ({ role: message.role, content: message.content })),
+      ],
     });
     return {
       content: response.choices[0]?.message?.content ?? "",
@@ -706,7 +704,7 @@ async function runGenerateSite(
     const logoUrl = config.logoUrl || bp?.logoUrl || undefined;
 
     if (!name || !desc) {
-      generationJobs.set(jobId, { status: "error", error: "name e desc são obrigatórios. Preencha no cadastro da empresa (Configurações) ou no formulário.", createdAt: Date.now() });
+      await persistGenerationJob(jobId, { status: "error", error: "name e desc são obrigatórios. Preencha no cadastro da empresa (Configurações) ou no formulário.", createdAt: Date.now() });
       return;
     }
 
@@ -716,7 +714,7 @@ async function runGenerateSite(
     if (config.type === "product") {
       const produtoId = (config as unknown as { produtoId?: string }).produtoId;
       if (!produtoId) {
-        generationJobs.set(jobId, { status: "error", error: "Selecione um produto do catálogo para gerar a página.", createdAt: Date.now() });
+        await persistGenerationJob(jobId, { status: "error", error: "Selecione um produto do catálogo para gerar a página.", createdAt: Date.now() });
         return;
       }
 
@@ -743,7 +741,7 @@ async function runGenerateSite(
         .limit(1);
 
       if (!row) {
-        generationJobs.set(jobId, { status: "error", error: "Produto não encontrado no catálogo.", createdAt: Date.now() });
+        await persistGenerationJob(jobId, { status: "error", error: "Produto não encontrado no catálogo.", createdAt: Date.now() });
         return;
       }
 
@@ -840,20 +838,39 @@ async function runGenerateSite(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
       log.error({ error: msg, provider: AI_PROVIDER }, "Site generation failed");
-      generationJobs.set(jobId, { status: "error", error: `Erro na geração: ${msg}`, createdAt: Date.now() });
+      await persistGenerationJob(jobId, { status: "error", error: `Erro na geração: ${msg}`, createdAt: Date.now() });
       return;
     }
 
     log.info({ provider: result.provider, model: result.model, tenantId }, "Site generated successfully");
 
     const rawText = result.content;
-    const html = extractHtmlSafe(rawText, log);
+    let html = extractHtmlSafe(rawText, log);
 
     if (!isValidHtml(html)) {
       log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider }, "Site generation returned invalid HTML");
-      generationJobs.set(jobId, { status: "error", error: "Resposta da IA inválida ou muito curta", createdAt: Date.now() });
+      await persistGenerationJob(jobId, { status: "error", error: "Resposta da IA inválida ou muito curta", createdAt: Date.now() });
       return;
     }
+
+    let prepared = prepareSiteHtml(html);
+    if (!prepared.validation.valid) {
+      const issueSummary = prepared.validation.issues.map((issue) => `${issue.code}: ${issue.message}`).join("\n");
+      log.info({ tenantId, issues: prepared.validation.issues }, "Site quality validation failed; requesting automatic repair");
+      try {
+        const repair = await callAI([{ role: "user", content: `Repare integralmente o HTML abaixo. Corrija todos os problemas listados, preserve o conteúdo e as funcionalidades e retorne somente o documento HTML completo.\n\nPROBLEMAS DETECTADOS:\n${issueSummary}\n\nHTML:\n${html}` }], tenantId, log);
+        const repairedByAi = extractHtmlSafe(repair.content, log);
+        if (isValidHtml(repairedByAi)) prepared = prepareSiteHtml(repairedByAi);
+      } catch (repairError) {
+        log.info({ repairError, tenantId }, "AI repair failed; retaining deterministic safe fallback");
+      }
+    }
+    if (!prepared.validation.valid) {
+      log.error({ tenantId, issues: prepared.validation.issues }, "Site remained invalid after repair and fallbacks");
+      await persistGenerationJob(jobId, { status: "error", error: "O site gerado não passou na validação de qualidade. Tente novamente.", createdAt: Date.now() });
+      return;
+    }
+    html = prepared.html;
 
     // Product pages are addressed and named after the product itself, not
     // the business — that's what makes each product's LP its own distinct,
@@ -874,14 +891,16 @@ async function runGenerateSite(
       })
       .returning();
 
-    generationJobs.set(jobId, {
+    await persistGenerationJob(jobId, {
       status: "done",
       result: { ...site, _provider: result.provider, _model: result.model } as Record<string, unknown>,
       createdAt: Date.now(),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Erro interno";
-    generationJobs.set(jobId, { status: "error", error: msg, createdAt: Date.now() });
+    await persistGenerationJob(jobId, { status: "error", error: msg, createdAt: Date.now() });
+  } finally {
+    activeGenerationJobs.delete(jobId);
   }
 }
 
@@ -896,9 +915,15 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
   }
 
   const jobId = crypto.randomUUID();
-  generationJobs.set(jobId, { status: "pending", createdAt: Date.now() });
-
   const baseOrigin = `${req.protocol}://${req.get("host")}`;
+  await db.insert(siteGenerationJobsTable).values({
+    id: jobId,
+    tenantId,
+    status: "pending",
+    config,
+    baseOrigin,
+  });
+  activeGenerationJobs.add(jobId);
   // Fire-and-forget — does not block the HTTP response
   void runGenerateSite(jobId, tenantId, config, baseOrigin, req.log);
 
@@ -906,13 +931,26 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
 });
 
 // GET /tenants/:tenantId/site-generator/jobs/:jobId — poll generation status
-router.get("/tenants/:tenantId/site-generator/jobs/:jobId", (req, res) => {
-  const job = generationJobs.get(req.params.jobId);
+router.get("/tenants/:tenantId/site-generator/jobs/:jobId", async (req, res) => {
+  const [job] = await db
+    .select()
+    .from(siteGenerationJobsTable)
+    .where(
+      and(
+        eq(siteGenerationJobsTable.id, req.params.jobId),
+        eq(siteGenerationJobsTable.tenantId, req.params.tenantId),
+      ),
+    )
+    .limit(1);
   if (!job) {
     res.status(404).json({ error: "Job não encontrado ou expirado" });
     return;
   }
-  return res.json(job);
+  if (job.status === "pending" && !activeGenerationJobs.has(job.id)) {
+    activeGenerationJobs.add(job.id);
+    void runGenerateSite(job.id, job.tenantId, job.config, job.baseOrigin, req.log);
+  }
+  return res.json({ status: job.status, result: job.result, error: job.error });
 });
 
 // POST /tenants/:tenantId/site-generator/:siteId/refine — refine via chat
@@ -956,12 +994,53 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
 
   req.log.info({ provider: result.provider, model: result.model, tenantId, siteId }, "Site refined successfully");
 
-  const rawText = result.content;
-  const html = extractHtml(rawText);
+  let rawText = result.content;
+  let html = extractHtml(rawText);
+
+  // Alguns modelos ocasionalmente devolvem o HTML sem aplicar o pedido. Não
+  // confirme sucesso ao usuário nesse caso: faça uma segunda tentativa explícita.
+  if (isValidHtml(html) && !htmlChanged(existing.html ?? "", html)) {
+    req.log.info({ tenantId, siteId }, "Site refinement returned unchanged HTML; retrying");
+    try {
+      result = await callAI([
+        { role: "user", content: `${refinePrompt}\n\nATENÇÃO: a tentativa anterior devolveu o site sem nenhuma alteração. O HTML final PRECISA incorporar o pedido do cliente de forma verificável.` },
+      ], tenantId, req.log);
+      rawText = result.content;
+      html = extractHtml(rawText);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
+      res.status(502).json({ error: `Erro no refinamento: ${msg}` });
+      return;
+    }
+  }
 
   if (!isValidHtml(html)) {
     req.log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider }, "Site refinement returned invalid HTML");
     res.status(502).json({ error: "Resposta da IA inválida" });
+    return;
+  }
+
+  let prepared = prepareSiteHtml(html);
+  if (!prepared.validation.valid) {
+    const issues = prepared.validation.issues.map((issue) => `${issue.code}: ${issue.message}`).join("\n");
+    try {
+      result = await callAI([{ role: "user", content: `${refinePrompt}\n\nA versão produzida falhou nestes critérios de qualidade:\n${issues}\nCorrija-os também e retorne o HTML completo.` }], tenantId, req.log);
+      html = extractHtml(result.content);
+      prepared = prepareSiteHtml(html);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Falha ao reparar HTML";
+      res.status(502).json({ error: `Erro no reparo automático: ${msg}` });
+      return;
+    }
+  }
+  if (!prepared.validation.valid) {
+    res.status(422).json({ error: "A alteração não passou na validação visual e de segurança." });
+    return;
+  }
+  html = prepared.html;
+
+  if (!htmlChanged(existing.html ?? "", html)) {
+    res.status(422).json({ error: "A IA não aplicou nenhuma mudança. Reformule o pedido com mais detalhes." });
     return;
   }
 
@@ -1072,13 +1151,19 @@ router.patch("/tenants/:tenantId/site-generator/:siteId/html", async (req, res) 
     return;
   }
 
+  const prepared = prepareSiteHtml(extractHtml(html));
+  if (!prepared.validation.valid) {
+    res.status(422).json({ error: "O HTML editado não passou na validação.", issues: prepared.validation.issues });
+    return;
+  }
+
   const [updated] = await db
     .update(generatedSitesTable)
-    .set({ html, updatedAt: new Date() })
+    .set({ html: prepared.html, updatedAt: new Date() })
     .where(eq(generatedSitesTable.id, siteId))
     .returning({ id: generatedSitesTable.id });
 
-  return res.json(updated);
+  return res.json({ ...updated, html: prepared.html });
 });
 
 // PATCH /tenants/:tenantId/site-generator/:siteId/name — rename a generated site (switcher "Meus sites")

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import ComissoesVendedor from "@/pages/ComissoesVendedor";
 import Estoque from "@/pages/Estoque";
-import { ArrowDownCircle, ArrowUpCircle, Banknote, Barcode, Boxes, FileCheck2, FileText, Landmark, Loader2, PackageCheck, Plus, Receipt, RefreshCw, Scale, ShieldCheck, ShoppingCart, TrendingUp, WalletCards } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, Banknote, Barcode, Boxes, Camera, FileCheck2, FileText, Landmark, Loader2, PackageCheck, Plus, Receipt, RefreshCw, Scale, ShieldCheck, ShoppingCart, TrendingUp, WalletCards } from "lucide-react";
 
 type Title = { id:string; tipo:"receber"|"pagar"; categoria:string; descricao:string; pessoa?:string|null; documento?:string|null; valorOriginal:string; juros:string; multa:string; desconto:string; valorPago:string; vencimento:string; pagoEm?:string|null; status:"pendente"|"pago"|"vencido"|"cancelado"; provedorCobrancaId?:string|null; urlCobranca?:string|null };
 type Summary = { receitas:number; custos:number; despesas:number; impostos:number; lucroLiquido:number; saldoRealizado:number; receberAberto:number; pagarAberto:number };
@@ -52,7 +52,7 @@ export default function GestaoErp() {
   return <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
     <div className="flex items-start justify-between gap-3 flex-wrap">
       <div><h1 className="text-2xl font-bold flex items-center gap-2"><Banknote className="h-6 w-6 text-primary"/>Gestão ERP</h1><p className="text-sm text-muted-foreground">Financeiro, faturamento, vendas, estoque e compras conectados.</p></div>
-      <div className="flex gap-2"><Button variant="outline" onClick={()=>sync.mutate()} disabled={sync.isPending}>{sync.isPending?<Loader2 className="h-4 w-4 mr-2 animate-spin"/>:<RefreshCw className="h-4 w-4 mr-2"/>}Sincronizar operação</Button><Button onClick={()=>setTitleOpen(true)}><Plus className="h-4 w-4 mr-2"/>Novo lançamento</Button></div>
+      <div className="flex gap-2 flex-wrap"><Button asChild variant="outline"><Link href="/erp/captura"><Camera className="h-4 w-4 mr-2"/>Capturar documento</Link></Button><Button variant="outline" onClick={()=>sync.mutate()} disabled={sync.isPending}>{sync.isPending?<Loader2 className="h-4 w-4 mr-2 animate-spin"/>:<RefreshCw className="h-4 w-4 mr-2"/>}Sincronizar operação</Button><Button onClick={()=>setTitleOpen(true)}><Plus className="h-4 w-4 mr-2"/>Novo lançamento</Button></div>
     </div>
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{stats.map(({label,value,icon:Icon,tone})=><Card key={label}><CardContent className="p-4 flex items-center gap-3"><div className={`h-10 w-10 rounded-lg flex items-center justify-center ${tone}`}><Icon className="h-5 w-5"/></div><div><p className="text-lg font-bold">{money(value)}</p><p className="text-xs text-muted-foreground">{label}</p></div></CardContent></Card>)}</div>
 

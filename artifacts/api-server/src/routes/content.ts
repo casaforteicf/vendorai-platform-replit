@@ -13,6 +13,7 @@ import {
   supermercadoProdutoTable,
   insumosTable,
   subscriptionsTable,
+  instagramConnectionsTable,
 } from "@workspace/db";
 import {
   generateFeedContent,
@@ -499,8 +500,12 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     return;
   }
 
-  const variation = gen.result.variations[body.data.variationIndex];
-  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+  const generatedVariations = Array.isArray(gen.result?.variations) ? gen.result.variations : [];
+  const variation = generatedVariations[body.data.variationIndex];
+  if (!variation) {
+    res.status(400).json({ error: "Este conteúdo antigo não possui uma variação publicável. Gere uma nova versão." });
+    return;
+  }
 
   const imageUrl = (variation as { imageUrl?: string }).imageUrl;
   if (!imageUrl) {
@@ -510,17 +515,47 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     return;
   }
 
-  const [config] = await db
-    .select({
-      instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
-      instagramPageId: agentConfigsTable.instagramPageId,
-    })
-    .from(agentConfigsTable)
-    .where(eq(agentConfigsTable.tenantId, tenantId))
-    .limit(1);
+  // A publicação usa primeiro a conexão OAuth direta atual. O fallback
+  // legado preserva tenants antigos durante a migração, sem exigir que o
+  // usuário copie Page Access Token ou Page ID manualmente.
+  const [[directConnection], [legacyConfig]] = await Promise.all([
+    db
+      .select({
+        accessToken: instagramConnectionsTable.pageAccessToken,
+        accountId: instagramConnectionsTable.accountId,
+        disconnectedAt: instagramConnectionsTable.disconnectedAt,
+        tokenExpiresAt: instagramConnectionsTable.tokenExpiresAt,
+      })
+      .from(instagramConnectionsTable)
+      .where(eq(instagramConnectionsTable.tenantId, tenantId))
+      .limit(1),
+    db
+      .select({
+        accessToken: agentConfigsTable.instagramPageAccessToken,
+        accountId: agentConfigsTable.instagramPageId,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1),
+  ]);
 
-  if (!config?.instagramPageAccessToken || !config?.instagramPageId) {
-    res.status(400).json({ error: "Instagram não conectado. Configure o Page Access Token nas Configurações." });
+  const directTokenExpired = Boolean(
+    directConnection?.tokenExpiresAt && directConnection.tokenExpiresAt <= new Date(),
+  );
+  const directPublishReady = Boolean(
+    directConnection && !directConnection.disconnectedAt && !directTokenExpired,
+  );
+  const instagramAccessToken = directPublishReady ? directConnection?.accessToken : null;
+  const instagramAccountId = directPublishReady ? directConnection?.accountId : null;
+  const publishAccessToken = instagramAccessToken || legacyConfig?.accessToken;
+  const publishAccountId = instagramAccountId || legacyConfig?.accountId;
+
+  if (!publishAccessToken || !publishAccountId) {
+    res.status(400).json({
+      error: directTokenExpired
+        ? "A conexão do Instagram expirou. Reconecte a conta em Configurações → Integrações."
+        : "Instagram sem credenciais de publicação. Reconecte sua conta profissional em Configurações → Integrações.",
+    });
     return;
   }
 
@@ -528,8 +563,8 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     let postId: string;
     if (gen.type === "feed") {
       const v = variation as FeedVariation;
-      const caption = body.data.captionOverride ?? `${v.caption}\n\n${v.hashtags.join(" ")}`;
-      postId = await publishFeedPost(config.instagramPageId, config.instagramPageAccessToken, caption, imageUrl, req.log);
+      const caption = body.data.captionOverride ?? `${v.caption}\n\n${(v.hashtags ?? []).join(" ")}`;
+      postId = await publishFeedPost(publishAccountId, publishAccessToken, caption, imageUrl, req.log);
       await registerPublishedPost({
         tenantId,
         contentGenerationId: gen.id,
@@ -541,7 +576,7 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
       }).catch((err) => req.log.error({ err }, "content-performance: falha ao registrar post publicado"));
     } else {
       const v = variation as StoriesVariation;
-      postId = await publishStoriesPost(config.instagramPageId, config.instagramPageAccessToken, imageUrl, req.log);
+      postId = await publishStoriesPost(publishAccountId, publishAccessToken, imageUrl, req.log);
       await registerPublishedPost({
         tenantId,
         contentGenerationId: gen.id,

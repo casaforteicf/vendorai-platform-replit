@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSegmentHints } from "@/lib/segmentHints";
 import {
@@ -83,6 +83,7 @@ import {
   Sparkles,
   RefreshCw,
   CheckCircle2,
+  Upload,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -218,6 +219,153 @@ function CampaignModal({
   const [aiImageLoading, setAiImageLoading] = useState(false);
   const [aiImageError, setAiImageError] = useState<string | null>(null);
 
+  interface RefImage {
+    id: string;
+    previewUrl: string;
+    objectPath: string | null;
+    realUrl: string | null;
+    uploading: boolean;
+    enhancing: boolean;
+    error: string | null;
+  }
+  const [refImages, setRefImages] = useState<RefImage[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleUploadRefImages(files: FileList) {
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    const validFiles = Array.from(files).filter((f) => {
+      if (!allowed.includes(f.type)) {
+        setAiImageError(`${f.name}: formato inválido (use JPG, PNG ou WebP)`);
+        return false;
+      }
+      if (f.size > 10 * 1024 * 1024) {
+        setAiImageError(`${f.name}: máximo 10 MB por imagem`);
+        return false;
+      }
+      return true;
+    });
+    if (!validFiles.length) return;
+
+    const placeholders: RefImage[] = validFiles.map((f) => ({
+      id: crypto.randomUUID(),
+      previewUrl: URL.createObjectURL(f),
+      objectPath: null,
+      realUrl: null,
+      uploading: true,
+      enhancing: false,
+      error: null,
+    }));
+    setRefImages((prev) => [...prev, ...placeholders]);
+
+    await Promise.all(
+      validFiles.map(async (file, i) => {
+        const placeholderId = placeholders[i]!.id;
+        try {
+          const metaRes = await fetch("/api/storage/uploads/request-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+          });
+          if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
+          const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+          const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+          if (!putRes.ok) throw new Error("Falha ao enviar imagem");
+          setRefImages((prev) =>
+            prev.map((img) =>
+              img.id === placeholderId
+                ? { ...img, objectPath, realUrl: `/api/storage${objectPath}`, uploading: false }
+                : img
+            )
+          );
+        } catch (err) {
+          setRefImages((prev) =>
+            prev.map((img) =>
+              img.id === placeholderId
+                ? { ...img, uploading: false, error: err instanceof Error ? err.message : "Erro no envio" }
+                : img
+            )
+          );
+        }
+      })
+    );
+  }
+
+  async function handleEnhanceRefImage(id: string) {
+    const img = refImages.find((i) => i.id === id);
+    if (!img || !img.objectPath) return;
+    setRefImages((prev) => prev.map((i) => (i.id === id ? { ...i, enhancing: true, error: null } : i)));
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/campaigns/enhance-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ objectPath: img.objectPath, instrucao: aiImagePrompt.trim() || undefined }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).error ?? `Erro ${res.status}`);
+      }
+      const { imageUrl, objectPath } = await res.json();
+      setAiImageUrl(imageUrl);
+      setAiImageObjectPath(objectPath);
+      setRefImages((prev) => prev.map((i) => (i.id === id ? { ...i, enhancing: false } : i)));
+    } catch (err) {
+      setRefImages((prev) =>
+        prev.map((i) =>
+          i.id === id
+            ? { ...i, enhancing: false, error: err instanceof Error ? err.message : "Erro ao melhorar imagem" }
+            : i
+        )
+      );
+    }
+  }
+
+  function useRefImageDirectly(id: string) {
+    const img = refImages.find((i) => i.id === id);
+    if (!img || !img.objectPath || !img.realUrl) return;
+    setAiImageUrl(img.realUrl);
+    setAiImageObjectPath(img.objectPath);
+  }
+
+  const [aiCopyEnabled, setAiCopyEnabled] = useState(false);
+  const [aiCopyObjetivo, setAiCopyObjetivo] = useState("");
+  const [aiCopyLoading, setAiCopyLoading] = useState(false);
+  const [aiCopyError, setAiCopyError] = useState<string | null>(null);
+
+  async function generateAiCopy() {
+    if (!aiCopyObjetivo.trim()) return;
+    const { nome, tipo } = form.getValues();
+    if (!nome.trim()) {
+      setAiCopyError("Preencha o nome da campanha antes de gerar a copy");
+      return;
+    }
+    setAiCopyLoading(true);
+    setAiCopyError(null);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/campaigns/generate-copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome,
+          tipo,
+          objetivo: aiCopyObjetivo,
+          segmentoFiltro: buildSegmentoFiltro(form.getValues()),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).error ?? `Erro ${res.status}`);
+      }
+      const { mensagem } = await res.json();
+      if (mensagem) {
+        form.setValue("mensagem", mensagem, { shouldValidate: true, shouldDirty: true });
+      }
+    } catch (err) {
+      setAiCopyError(err instanceof Error ? err.message : "Erro ao gerar copy");
+    } finally {
+      setAiCopyLoading(false);
+    }
+  }
+
   async function generateAiImage() {
     if (!aiImagePrompt.trim()) return;
     setAiImageLoading(true);
@@ -265,6 +413,10 @@ function CampaignModal({
     setAiImageUrl(null);
     setAiImageObjectPath(null);
     setAiImageError(null);
+    setRefImages([]);
+    setAiCopyEnabled(false);
+    setAiCopyObjetivo("");
+    setAiCopyError(null);
     form.reset();
     onClose();
   }
@@ -549,6 +701,69 @@ function CampaignModal({
                 )}
               />
 
+              {/* ── AI copy section ───────────────────────────────────────── */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !aiCopyEnabled;
+                    setAiCopyEnabled(next);
+                    if (!next) {
+                      setAiCopyObjetivo("");
+                      setAiCopyError(null);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                  {aiCopyEnabled ? "Fechar gerador de copy" : "Gerar mensagem com IA"}
+                </button>
+
+                {aiCopyEnabled && (
+                  <div className="rounded-lg border border-purple-200 p-3 space-y-2 bg-purple-50/40">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Qual o objetivo desta campanha?
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={aiCopyObjetivo}
+                        onChange={(e) => setAiCopyObjetivo(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            generateAiCopy();
+                          }
+                        }}
+                        placeholder="Ex: recuperar clientes com risco de churn alto"
+                        className="flex-1 h-8 text-xs rounded-md border border-input bg-background px-3 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={aiCopyLoading || !aiCopyObjetivo.trim()}
+                        onClick={generateAiCopy}
+                        className="h-8 text-xs shrink-0 bg-purple-100 hover:bg-purple-200 text-purple-700 border-purple-200"
+                      >
+                        {aiCopyLoading ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <Sparkles className="h-3 w-3 mr-1" />
+                        )}
+                        {aiCopyLoading ? "Gerando…" : "Gerar"}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Usa o nome, o canal e o segmento já preenchidos acima para escrever a mensagem.
+                    </p>
+                    {aiCopyError && (
+                      <p className="text-xs text-destructive">{aiCopyError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* ── AI image section ───────────────────────────────────────── */}
               <div className="space-y-2">
                 <button
@@ -609,6 +824,90 @@ function CampaignModal({
                       </div>
                       {aiImageError && (
                         <p className="text-xs text-destructive">{aiImageError}</p>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-purple-200/60 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Ou envie suas fotos (a IA pode melhorar)
+                        </label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Upload className="h-3 w-3 mr-1" />
+                          Enviar fotos
+                        </Button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              handleUploadRefImages(e.target.files);
+                            }
+                            e.target.value = "";
+                          }}
+                        />
+                      </div>
+
+                      {refImages.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2">
+                          {refImages.map((img) => (
+                            <div key={img.id} className="rounded-md border border-purple-200 overflow-hidden bg-white">
+                              <div className="relative">
+                                <img src={img.previewUrl} alt="Foto enviada" className="w-full h-20 object-cover" />
+                                {(img.uploading || img.enhancing) && (
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-center gap-1 py-1 border-t border-purple-100">
+                                <button
+                                  type="button"
+                                  title="Melhorar com IA"
+                                  disabled={img.uploading || img.enhancing || !img.objectPath}
+                                  onClick={() => handleEnhanceRefImage(img.id)}
+                                  className="h-5 w-5 rounded hover:bg-purple-100 flex items-center justify-center disabled:opacity-40"
+                                >
+                                  <Sparkles className="h-3 w-3 text-purple-600" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Usar esta foto"
+                                  disabled={img.uploading || img.enhancing || !img.objectPath}
+                                  onClick={() => useRefImageDirectly(img.id)}
+                                  className="h-5 w-5 rounded hover:bg-emerald-100 flex items-center justify-center disabled:opacity-40"
+                                >
+                                  <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Remover"
+                                  onClick={() => setRefImages((prev) => prev.filter((i) => i.id !== img.id))}
+                                  className="h-5 w-5 rounded hover:bg-red-100 flex items-center justify-center"
+                                >
+                                  <X className="h-3 w-3 text-destructive" />
+                                </button>
+                              </div>
+                              {img.error && (
+                                <p className="text-[9px] text-destructive px-1 pb-1 leading-tight">{img.error}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {refImages.length > 0 && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Clique na estrela para a IA melhorar a foto, ou no check para usar como está.
+                        </p>
                       )}
                     </div>
 

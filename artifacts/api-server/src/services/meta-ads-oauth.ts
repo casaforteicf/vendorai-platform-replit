@@ -21,30 +21,69 @@ import { logger } from "../lib/logger.js";
 // Reaproveita o mesmo Meta App já usado pro Instagram/WhatsApp por padrão
 // (um único Meta App pode pedir múltiplos escopos), com override dedicado
 // se um dia fizer sentido separar em app próprio.
-const META_ADS_APP_ID = process.env["META_ADS_APP_ID"] ?? process.env["INSTAGRAM_APP_ID"];
-const META_ADS_APP_SECRET = process.env["META_ADS_APP_SECRET"] ?? process.env["INSTAGRAM_APP_SECRET"];
+const dedicatedMetaAppId = process.env["META_ADS_APP_ID"]?.trim();
+const hasValidDedicatedMetaApp = Boolean(dedicatedMetaAppId && /^\d+$/.test(dedicatedMetaAppId));
+const instagramAppId = process.env["INSTAGRAM_APP_ID"]?.trim();
 
-function getRedirectUri(): string {
-  const configured = process.env["META_ADS_REDIRECT_URI"]?.trim();
-  if (configured) return configured;
-  if (process.env["NODE_ENV"] === "production") {
-    return "https://appvendorai.com/api/auth/meta-ads/callback";
+const META_ADS_APP_ID = hasValidDedicatedMetaApp ? dedicatedMetaAppId : instagramAppId;
+const META_ADS_APP_SECRET = hasValidDedicatedMetaApp
+  ? process.env["META_ADS_APP_SECRET"]?.trim()
+  : process.env["INSTAGRAM_APP_SECRET"]?.trim();
+
+function assertMetaAdsAppConfigured(): void {
+  if (!META_ADS_APP_ID || !/^\d+$/.test(META_ADS_APP_ID) || !META_ADS_APP_SECRET) {
+    throw new Error(
+      "Meta Ads não configurado: informe META_ADS_APP_ID/META_ADS_APP_SECRET válidos ou mantenha INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET válidos como fallback.",
+    );
   }
-  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
-  if (domain) return `https://${domain}/api/auth/meta-ads/callback`;
-  return "http://localhost:3000/api/auth/meta-ads/callback";
 }
 
-const META_GRAPH_VERSION = "v21.0";
-const META_OAUTH_BASE = "https://www.facebook.com/v21.0/dialog/oauth";
+const META_ADS_CALLBACK_PATH = "/api/auth/meta-ads/callback";
+const PRODUCTION_META_ADS_REDIRECT_URI =
+  `https://vendorai-platform-replit-production.up.railway.app${META_ADS_CALLBACK_PATH}`;
+
+function isValidMetaAdsRedirectUri(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.pathname === META_ADS_CALLBACK_PATH && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+export function getMetaAdsRedirectUri(): string {
+  const configured = process.env["META_ADS_REDIRECT_URI"]?.trim();
+  if (configured && isValidMetaAdsRedirectUri(configured)) return configured;
+
+  if (configured) {
+    logger.warn(
+      { configuredRedirectUri: configured, expectedPath: META_ADS_CALLBACK_PATH },
+      "META_ADS_REDIRECT_URI inválida; usando callback seguro do backend",
+    );
+  }
+
+  if (process.env["NODE_ENV"] === "production") return PRODUCTION_META_ADS_REDIRECT_URI;
+
+  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
+  if (domain) return `https://${domain}${META_ADS_CALLBACK_PATH}`;
+  return `http://localhost:3000${META_ADS_CALLBACK_PATH}`;
+}
+
+const META_GRAPH_VERSION = "v26.0";
+const META_OAUTH_BASE = "https://www.facebook.com/v26.0/dialog/oauth";
 const META_TOKEN_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`;
 export const META_GRAPH_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
+// Escopos mínimos para listar e gerenciar contas/campanhas de anúncios.
+// Permissões de Instagram e Páginas pertencem aos respectivos fluxos e não
+// devem ser misturadas ao OAuth do Meta Ads.
 const META_ADS_SCOPE = "ads_management,ads_read,business_management";
 
-export function buildMetaAdsOAuthUrl(state: string): string {
+export function buildMetaAdsOAuthUrl(state: string, exactRedirectUri?: string): string {
+  assertMetaAdsAppConfigured();
+  const redirectUri = exactRedirectUri ?? getMetaAdsRedirectUri();
   const params = new URLSearchParams({
     client_id: META_ADS_APP_ID ?? "",
-    redirect_uri: getRedirectUri(),
+    redirect_uri: redirectUri,
     scope: META_ADS_SCOPE,
     state,
     response_type: "code",
@@ -58,11 +97,17 @@ interface MetaTokenResponse {
   expires_in?: number;
 }
 
-export async function exchangeCodeForToken(code: string): Promise<MetaTokenResponse> {
+export async function exchangeCodeForToken(
+  code: string,
+  exactRedirectUri?: string,
+): Promise<MetaTokenResponse> {
+  assertMetaAdsAppConfigured();
+  const redirectUri = exactRedirectUri ?? getMetaAdsRedirectUri();
+  logger.info({ redirectUri }, "Trocando código OAuth do Meta Ads por token");
   const url = new URL(META_TOKEN_BASE);
   url.searchParams.set("client_id", META_ADS_APP_ID ?? "");
   url.searchParams.set("client_secret", META_ADS_APP_SECRET ?? "");
-  url.searchParams.set("redirect_uri", getRedirectUri());
+  url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("code", code);
 
   const res = await fetch(url.toString());
@@ -77,6 +122,7 @@ export async function exchangeCodeForToken(code: string): Promise<MetaTokenRespo
 // Curto -> longa duração (~60 dias). Também usado pra "renovar": passar um
 // token de longa duração ainda válido devolve um novo com prazo estendido.
 export async function exchangeForLongLivedToken(shortToken: string): Promise<MetaTokenResponse> {
+  assertMetaAdsAppConfigured();
   const url = new URL(META_TOKEN_BASE);
   url.searchParams.set("grant_type", "fb_exchange_token");
   url.searchParams.set("client_id", META_ADS_APP_ID ?? "");
@@ -101,6 +147,55 @@ export interface AccessibleAdAccount {
 
 interface AdAccountsApiResponse {
   data: Array<{ id: string; name: string; currency: string; business?: { id: string } }>;
+}
+
+export interface AccessibleInstagramIdentity {
+  pageId: string;
+  pageName: string;
+  pageAccessToken: string;
+  instagramUserId: string;
+  instagramUsername: string | null;
+}
+
+interface PagesApiResponse {
+  data: Array<{
+    id: string;
+    name: string;
+    access_token?: string;
+    instagram_business_account?: { id: string; username?: string };
+  }>;
+}
+
+export function normalizeMetaAdAccountId(adAccountId: string): string {
+  const normalized = adAccountId.trim();
+  if (!normalized) throw new Error("Ad account ID ausente");
+  return normalized.startsWith("act_") ? normalized : `act_${normalized}`;
+}
+
+export async function listAccessibleInstagramIdentities(accessToken: string): Promise<AccessibleInstagramIdentity[]> {
+  const url = new URL(`${META_GRAPH_BASE}/me/accounts`);
+  url.searchParams.set("fields", "id,name,access_token,instagram_business_account{id,username}");
+  url.searchParams.set("access_token", accessToken);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const text = await res.text();
+    logger.error({ status: res.status, body: text }, "Falha ao listar Páginas/Instagram acessíveis pela conexão Meta Ads");
+    throw new Error(`Failed to list Meta Pages/Instagram identities: ${res.status}`);
+  }
+
+  const payload = (await res.json()) as PagesApiResponse;
+  return payload.data.flatMap((page) => {
+    const ig = page.instagram_business_account;
+    if (!ig?.id || !page.access_token) return [];
+    return [{
+      pageId: page.id,
+      pageName: page.name,
+      pageAccessToken: page.access_token,
+      instagramUserId: ig.id,
+      instagramUsername: ig.username ?? null,
+    }];
+  });
 }
 
 export async function listAccessibleAdAccounts(accessToken: string): Promise<AccessibleAdAccount[]> {

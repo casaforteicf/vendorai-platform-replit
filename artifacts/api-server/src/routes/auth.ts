@@ -140,8 +140,9 @@ router.post("/auth/demo-signup", async (req, res) => {
       });
     }
 
-    const { seedDemoData } = await import("./tenants.js");
-    await seedDemoData(tenant.id);
+    // A Demo deve nascer limpa para o usuário conhecer o produto com os próprios
+    // dados. A fixture seedDemoData continua disponível internamente, mas não é
+    // executada automaticamente no cadastro de trial.
 
     const [user] = await db
       .insert(usersTable)
@@ -251,7 +252,7 @@ router.post("/auth/praca-signup", async (req, res) => {
         isDemo: false,
         planId: startPlan?.id ?? null,
         provisioningMethod: "self_service",
-        vendeNoPracaAi: true,
+        vendeNoPracaAi: false,
         codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
       })
       .returning();
@@ -321,7 +322,7 @@ router.post("/auth/praca-signup", async (req, res) => {
     res.status(201).json({
       token,
       user,
-      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, comissaoPracaAiPercentual: tenant.comissaoPracaAiPercentual },
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, vendeNoPracaAi: tenant.vendeNoPracaAi, comissaoPracaAiPercentual: tenant.comissaoPracaAiPercentual },
       appUrl: `/app?tenant=${tenant.slug}`,
     });
   } catch (err: unknown) {

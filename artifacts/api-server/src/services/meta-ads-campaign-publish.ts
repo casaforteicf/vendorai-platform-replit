@@ -38,6 +38,8 @@ import { logger } from "../lib/logger.js";
 import {
   getMetaAdsConnectionByTenantId,
   refreshMetaAdsToken,
+  listAccessibleInstagramIdentities,
+  normalizeMetaAdAccountId,
   META_GRAPH_BASE,
 } from "./meta-ads-oauth.js";
 
@@ -175,17 +177,107 @@ async function getValidAccessToken(tenantId: string): Promise<{ accessToken: str
   return { accessToken: conn.accessToken, adAccountId: conn.adAccountId };
 }
 
-async function getPageIdFromInstagramConnection(tenantId: string): Promise<string> {
-  const [conn] = await db
-    .select({ pageId: instagramConnectionsTable.pageId })
+async function getInstagramIdentity(
+  tenantId: string,
+  accessToken: string,
+): Promise<{ pageId: string; pageAccessToken: string; instagramUserId: string }> {
+  const [directInstagram] = await db
+    .select({ username: instagramConnectionsTable.username })
     .from(instagramConnectionsTable)
-    .where(and(eq(instagramConnectionsTable.tenantId, tenantId)));
-  if (!conn?.pageId) {
+    .where(eq(instagramConnectionsTable.tenantId, tenantId));
+
+  const identities = await listAccessibleInstagramIdentities(accessToken);
+  if (identities.length === 0) {
     throw new MetaAdsPublishError(
-      "Anúncio da Meta precisa de uma Página do Facebook pra rodar — conecte o Instagram (Configurações → Integrações) primeiro, o anúncio reaproveita a mesma Página vinculada lá.",
+      "A conexão Meta Ads não encontrou nenhuma Página do Facebook com Instagram profissional vinculado. Vincule a conta profissional a uma Página e reconecte Meta Ads.",
     );
   }
-  return conn.pageId;
+
+  const expectedUsername = directInstagram?.username?.trim().toLowerCase();
+  if (expectedUsername) {
+    const matching = identities.find(
+      (identity) => identity.instagramUsername?.trim().toLowerCase() === expectedUsername,
+    );
+    if (matching) {
+      return {
+        pageId: matching.pageId,
+        pageAccessToken: matching.pageAccessToken,
+        instagramUserId: matching.instagramUserId,
+      };
+    }
+  }
+
+  if (identities.length === 1 && identities[0]) {
+    const identity = identities[0];
+    return {
+      pageId: identity.pageId,
+      pageAccessToken: identity.pageAccessToken,
+      instagramUserId: identity.instagramUserId,
+    };
+  }
+
+  throw new MetaAdsPublishError(
+    "A conexão Meta Ads administra mais de uma Página com Instagram e não foi possível identificar automaticamente qual corresponde ao Instagram conectado no VendorAI. Confirme que as duas integrações usam a mesma conta profissional.",
+  );
+}
+
+async function fetchDirectInstagramPermalink(tenantId: string, mediaId: string): Promise<string | null> {
+  const [direct] = await db
+    .select({ token: instagramConnectionsTable.pageAccessToken })
+    .from(instagramConnectionsTable)
+    .where(eq(instagramConnectionsTable.tenantId, tenantId));
+  if (!direct?.token) return null;
+
+  const url = new URL(`https://graph.instagram.com/v26.0/${encodeURIComponent(mediaId)}`);
+  url.searchParams.set("fields", "id,permalink");
+  url.searchParams.set("access_token", direct.token);
+  try {
+    const res = await fetch(url.toString());
+    if (!res.ok) return null;
+    const payload = (await res.json()) as { permalink?: string };
+    return payload.permalink ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveBoostableInstagramMediaId(
+  tenantId: string,
+  sourceMediaId: string,
+  instagramUserId: string,
+  pageAccessToken: string,
+): Promise<string> {
+  const directPermalink = await fetchDirectInstagramPermalink(tenantId, sourceMediaId);
+
+  let nextUrl: string | null = `${META_GRAPH_BASE}/${encodeURIComponent(instagramUserId)}/media`;
+  for (let page = 0; page < 5 && nextUrl; page += 1) {
+    const url = new URL(nextUrl);
+    if (page === 0) {
+      url.searchParams.set("fields", "id,permalink");
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("access_token", pageAccessToken);
+    }
+
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      const raw = await res.text();
+      throw new MetaAdsPublishError(traduzirErroMetaAds(`${instagramUserId}/media`, res.status, raw));
+    }
+    const payload = (await res.json()) as {
+      data?: Array<{ id: string; permalink?: string }>;
+      paging?: { next?: string };
+    };
+
+    const match = (payload.data ?? []).find(
+      (media) => media.id === sourceMediaId || (!!directPermalink && media.permalink === directPermalink),
+    );
+    if (match) return match.id;
+    nextUrl = payload.paging?.next ?? null;
+  }
+
+  throw new MetaAdsPublishError(
+    "A publicação do Instagram existe no VendorAI, mas não apareceu na identidade Instagram vinculada ao Meta Ads. Confirme que Instagram e Meta Ads usam a mesma conta profissional/Página e tente novamente.",
+  );
 }
 
 export interface MetaPublishResult {
@@ -222,16 +314,21 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   if (!creative) {
     throw new MetaAdsPublishError("Nenhum criativo aprovado pra essa campanha — gere e aprove o criativo antes de publicar.");
   }
-  if (!creative.imagens[0]) {
+  const origemInstagram = campanha.segmentacao?.origemInstagram;
+  if (!origemInstagram && !creative.imagens[0]) {
     throw new MetaAdsPublishError("Criativo aprovado está sem imagem.");
   }
   const headline = creative.headlines[0] ?? campanha.vertical;
   const primaryText = creative.headlines[1] ?? headline;
   const description = creative.descriptions[0] ?? "";
 
-  const finalUrl = await resolveFinalUrl(tenantId, campanha);
+  const finalUrl = origemInstagram ? null : await resolveFinalUrl(tenantId, campanha);
   const { accessToken, adAccountId } = await getValidAccessToken(tenantId);
-  const pageId = await getPageIdFromInstagramConnection(tenantId);
+  const adAccountPath = normalizeMetaAdAccountId(adAccountId);
+  const { pageId, pageAccessToken, instagramUserId } = await getInstagramIdentity(tenantId, accessToken);
+  const boostableInstagramMediaId = origemInstagram
+    ? await resolveBoostableInstagramMediaId(tenantId, origemInstagram.mediaId, instagramUserId, pageAccessToken)
+    : null;
 
   const campaignName = `Vendor.ai — ${headline} — ${new Date().toISOString().slice(0, 10)}`;
 
@@ -239,9 +336,9 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   // fallback institucional. special_ad_categories vazio é o padrão pra
   // retail/serviços comuns (housing/credit/employment/political exigem
   // categoria declarada, fora do escopo dos verticais atendidos hoje).
-  const campaignRes = await metaApi<{ id: string }>(`act_${adAccountId}/campaigns`, accessToken, "POST", {
+  const campaignRes = await metaApi<{ id: string }>(`${adAccountPath}/campaigns`, accessToken, "POST", {
     name: campaignName,
-    objective: "OUTCOME_TRAFFIC",
+    objective: origemInstagram ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC",
     status: "PAUSED",
     special_ad_categories: "[]",
   });
@@ -250,37 +347,46 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   // versão (mesma simplificação do Google — segmentação fina fica pro
   // motor de recomendação).
   const dailyBudgetCents = Math.round(Number(campanha.orcamentoDiario) * 100);
-  const adSetRes = await metaApi<{ id: string }>(`act_${adAccountId}/adsets`, accessToken, "POST", {
+  const adSetRes = await metaApi<{ id: string }>(`${adAccountPath}/adsets`, accessToken, "POST", {
     name: `${campaignName} — conjunto`,
     campaign_id: campaignRes.id,
     daily_budget: String(dailyBudgetCents),
     billing_event: "IMPRESSIONS",
-    optimization_goal: "LINK_CLICKS",
+    optimization_goal: origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     status: "PAUSED",
-    targeting: JSON.stringify({ geo_locations: { countries: ["BR"] } }),
+    targeting: JSON.stringify(origemInstagram ? { geo_locations: { countries: ["BR"] }, publisher_platforms: ["instagram"] } : { geo_locations: { countries: ["BR"] } }),
   });
 
-  // 3) Ad Creative — link ad de imagem única, roda como a Página do
-  // Facebook vinculada ao Instagram do tenant.
-  const objectStorySpec = {
-    page_id: pageId,
-    link_data: {
-      message: primaryText,
-      link: finalUrl,
-      name: headline,
-      description,
-      picture: creative.imagens[0],
-      call_to_action: { type: "LEARN_MORE", value: { link: finalUrl } },
-    },
-  };
-  const creativeRes = await metaApi<{ id: string }>(`act_${adAccountId}/adcreatives`, accessToken, "POST", {
-    name: `${campaignName} — criativo`,
-    object_story_spec: JSON.stringify(objectStorySpec),
-  });
+  let creativeRes: { id: string };
+  if (origemInstagram) {
+    creativeRes = await metaApi<{ id: string }>(`${adAccountPath}/adcreatives`, accessToken, "POST", {
+      name: `${campaignName} — publicação Instagram`,
+      object_id: pageId,
+      instagram_user_id: instagramUserId!,
+      source_instagram_media_id: boostableInstagramMediaId!,
+    });
+  } else {
+    const objectStorySpec = {
+      page_id: pageId,
+      instagram_user_id: instagramUserId,
+      link_data: {
+        message: primaryText,
+        link: finalUrl!,
+        name: headline,
+        description,
+        picture: creative.imagens[0],
+        call_to_action: { type: "LEARN_MORE", value: { link: finalUrl! } },
+      },
+    };
+    creativeRes = await metaApi<{ id: string }>(`act_${adAccountId}/adcreatives`, accessToken, "POST", {
+      name: `${campaignName} — criativo`,
+      object_story_spec: JSON.stringify(objectStorySpec),
+    });
+  }
 
   // 4) Anúncio — liga ad set + criativo, também pausado.
-  const adRes = await metaApi<{ id: string }>(`act_${adAccountId}/ads`, accessToken, "POST", {
+  const adRes = await metaApi<{ id: string }>(`${adAccountPath}/ads`, accessToken, "POST", {
     name: `${campaignName} — anúncio`,
     adset_id: adSetRes.id,
     creative: JSON.stringify({ creative_id: creativeRes.id }),

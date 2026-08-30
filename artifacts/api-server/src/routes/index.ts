@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import healthRouter from "./health";
 import storageRouter from "./storage";
 import authRouter, { authProtectedRouter } from "./auth";
+import googleLoginRouter from "./google-login";
 import tenantsRouter from "./tenants";
 import usersRouter from "./users";
 import leadsRouter from "./leads";
@@ -59,6 +60,7 @@ import adminPlansRouter from "./admin_plans";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
+import accessLicenseRouter, { accessLicensePublicRouter } from "./access_license";
 import tenantDomainsRouter from "./tenant_domains";
 import notificationsRouter from "./notifications";
 import { intakeRouter } from "./intake";
@@ -85,7 +87,17 @@ import storiesRouter from "./stories";
 import manifestRouter from "./manifest";
 import variedadesDiaRouter from "./variedades_dia";
 import veiculosRouter from "./veiculos";
-import pracaPerguntasRouter from "./praca_perguntas";
+import pracaPerguntasRouter, { pracaPerguntasPublicRouter } from "./praca_perguntas";
+import pracaAvaliacoesRouter, { pracaAvaliacoesPublicRouter } from "./praca_avaliacoes";
+import pracaOrdersRouter from "./praca_orders";
+import pracaPaymentsRouter, { pracaPaymentsPublicRouter } from "./praca_payments";
+import pracaLogisticsRouter from "./praca_logistics";
+import pracaCourierRouter from "./praca_courier";
+import pracaRelayRouter from "./praca_relay";
+import pracaDeliveryOpsRouter, { pracaDeliveryPublicRouter } from "./praca_delivery_ops";
+import pracaExceptionsRouter from "./praca_exceptions";
+import pracaExecutiveRouter from "./praca_executive";
+import pracaReconciliationRouter from "./praca_reconciliation";
 import restauranteRouter from "./restaurante";
 import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
@@ -127,7 +139,8 @@ import internalScoutSignalRouter from "./internal_scout_signal";
 import leadOportunidadesPrevistasRouter from "./lead_oportunidades_previstas";
 import contentAutopilotRouter from "./content_autopilot";
 import { siteBlogPublicRouter, siteBlogAdminRouter } from "./site_blog";
-import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, enforceModulePermission, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { enforceAccessLicense } from "../middlewares/accessLicense";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
 
@@ -137,6 +150,7 @@ const router: IRouter = Router();
 router.use(healthRouter);
 router.use(storageRouter);
 router.use(authRouter);
+router.use(googleLoginRouter);
 router.use(manifestRouter);
 router.use(invitesRouter);
 router.use(webhooksRouter);
@@ -159,11 +173,15 @@ router.use(supermercadoPublicRouter);
 router.use(fretesPublicRouter);
 router.use(adsPublicRouter);
 router.use(internalScoutSignalRouter);
+router.use(pracaPerguntasPublicRouter);
+router.use(pracaAvaliacoesPublicRouter);
+router.use(pracaPaymentsPublicRouter);
+router.use(pracaDeliveryPublicRouter);
+router.use(accessLicensePublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
 router.use(blockPartnerFromCRM);
-router.use(blockExpiredDemo);
 router.use(blockSuspendedTenants);
 
 // Onboarding gate — skip /onboarding/* and /auth/* paths; block unfinished tenants
@@ -185,8 +203,10 @@ router.use(async (req, res, next) => {
   next();
 });
 
-// Auth — protected endpoints (me, refresh)
+// Auth and license endpoints must remain reachable in read-only mode.
 router.use(authProtectedRouter);
+router.use(accessLicenseRouter);
+router.use(enforceAccessLicense);
 
 // Explicit module allowlist configured in Equipe. This protects the API too,
 // so typing a hidden URL directly does not bypass the permission.
@@ -318,6 +338,7 @@ router.use(storiesRouter);
 router.use(variedadesDiaRouter);
 router.use(veiculosRouter);
 router.use(pracaPerguntasRouter);
+router.use(pracaAvaliacoesRouter);
 router.use(restauranteRouter);
 
 // Site Generator Hub
@@ -408,6 +429,15 @@ router.use(sellerCommissionsRouter);
 // Módulos de navegação por tenant
 router.use(tenantNavModulesRouter);
 router.use(vendasPracaRouter);
+router.use(pracaOrdersRouter);
+router.use(pracaPaymentsRouter);
+router.use(pracaLogisticsRouter);
+router.use(pracaCourierRouter);
+router.use(pracaRelayRouter);
+router.use(pracaDeliveryOpsRouter);
+router.use(pracaExceptionsRouter);
+router.use(pracaExecutiveRouter);
+router.use(pracaReconciliationRouter);
 
 // Rastreamento de clique em materiais de fluxo de nutrição (sem auth)
 router.use(contentTrackingRouter);

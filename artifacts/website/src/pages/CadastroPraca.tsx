@@ -54,7 +54,7 @@ export default function CadastroPraca() {
       }
 
       localStorage.setItem("vendorai_token", data.token);
-      toast({ title: "Loja cadastrada!", description: "Redirecionando pro painel..." });
+      toast({ title: "Loja cadastrada!", description: "Sua conta está pronta. A publicação no Praça.ai fica aguardando liberação da plataforma." });
       setTimeout(() => { window.location.href = "/app"; }, 1500);
     } catch {
       toast({ title: "Erro de conexão", description: "Tente novamente.", variant: "destructive" });
@@ -78,10 +78,10 @@ export default function CadastroPraca() {
             <Store className="h-7 w-7 text-white" />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            Venda no Praça.ai de graça
+            Cadastre sua loja para vender no Praça.ai
           </h1>
           <p className="text-xl text-blue-100 max-w-2xl mx-auto">
-            Cadastre sua loja sem custo nenhum. Comece com o essencial e evolua no seu ritmo.
+            Cadastre sua loja sem custo. Você já pode configurar o catálogo e o painel; a publicação na vitrine do Praça.ai acontece após liberação da plataforma.
           </p>
         </div>
       </div>
@@ -90,7 +90,7 @@ export default function CadastroPraca() {
         <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden grid md:grid-cols-5 border border-slate-100">
           <div className="p-8 md:p-12 md:col-span-3">
             <h2 className="text-2xl font-bold text-slate-900 mb-2">Cadastrar minha loja</h2>
-            <p className="text-slate-500 mb-6">Gratuito. Sem cartão de crédito. Sem prazo pra expirar.</p>
+            <p className="text-slate-500 mb-6">Gratuito. Sem cartão de crédito. Sem prazo pra expirar. Publicação sujeita à liberação da plataforma.</p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid md:grid-cols-2 gap-5">

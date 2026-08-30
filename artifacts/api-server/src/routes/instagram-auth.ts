@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger.js";
 import {
   buildInstagramOAuthUrl,
+  getInstagramRedirectUri,
   exchangeShortCodeForToken,
   fetchDirectInstagramAccountInfo,
   saveDirectInstagramConnection,
@@ -41,13 +42,19 @@ router.get("/auth/instagram", authenticate, async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const state = createOAuthState(tenantId, userId, "instagram");
-    const url = buildInstagramOAuthUrl(tenantId, state, req.hostname);
-    logger.info({ tenantId, userId, host: req.hostname }, "Retornando URL OAuth Instagram");
+    const redirectUri = getInstagramRedirectUri(req.hostname);
+    const state = createOAuthState(tenantId, userId, "instagram", redirectUri);
+    const url = buildInstagramOAuthUrl(tenantId, state, req.hostname, redirectUri);
+    logger.info({ tenantId, userId, host: req.hostname, redirectUri }, "Retornando URL OAuth Instagram");
     return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth Instagram");
-    return res.status(500).json({ error: "Internal error" });
+    const isNotConfigured = err instanceof Error && err.message.startsWith("Instagram não configurado:");
+    return res.status(isNotConfigured ? 503 : 500).json({
+      error: isNotConfigured
+        ? "Instagram ainda não está configurado no servidor. Verifique INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET no Railway."
+        : "Não foi possível iniciar a conexão com Instagram.",
+    });
   }
 });
 
@@ -57,26 +64,52 @@ router.get("/auth/instagram/callback", async (req, res) => {
 
   if (error || !code || !state) {
     logger.warn({ error, hasCode: !!code, hasState: !!state }, "Callback Instagram: parâmetros inválidos");
-    return res.redirect(`${appUrl}/configuracoes?instagramError=access_denied`);
+    return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=access_denied`);
   }
 
   let tenantId: string;
+  let exactRedirectUri: string | undefined;
   try {
     const decoded = consumeOAuthState(state, "instagram");
     tenantId = decoded.tenantId;
+    exactRedirectUri = decoded.returnTo?.startsWith("https://") ? decoded.returnTo : undefined;
   } catch (err) {
     logger.warn({ err }, "Callback Instagram: state inválido, expirado ou reutilizado");
-    return res.redirect(`${appUrl}/configuracoes?instagramError=invalid_state`);
+    return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=invalid_state`);
   }
 
   try {
     logger.info({ tenantId }, "Processando callback Instagram");
-    const tokenResponse = await exchangeShortCodeForToken(code, req.hostname);
+    let tokenResponse;
+    try {
+      tokenResponse = await exchangeShortCodeForToken(code, req.hostname, exactRedirectUri);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao trocar código OAuth do Instagram");
+      const longLivedFailed = err instanceof Error && err.message.startsWith("Instagram long-lived");
+      return res.redirect(
+        `${appUrl}/configuracoes?tab=integracoes&instagramError=${longLivedFailed ? "long_token_exchange" : "short_token_exchange"}`,
+      );
+    }
 
-    const directAccount = await fetchDirectInstagramAccountInfo(tokenResponse.access_token);
-    await saveDirectInstagramConnection(tenantId, directAccount, tokenResponse);
+    let directAccount;
+    try {
+      directAccount = await fetchDirectInstagramAccountInfo(tokenResponse.access_token);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao consultar conta profissional do Instagram");
+      return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramError=profile_lookup`);
+    }
+
+    try {
+      await saveDirectInstagramConnection(tenantId, directAccount, tokenResponse);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao salvar conexão do Instagram");
+      const accountInUse = err instanceof Error && err.message.includes("outro tenant");
+      return res.redirect(
+        `${appUrl}/configuracoes?tab=integracoes&instagramError=${accountInUse ? "account_in_use" : "persist_failed"}`,
+      );
+    }
     logger.info({ tenantId, username: directAccount.username }, "Instagram conectado com sucesso");
-    return res.redirect(`${appUrl}/configuracoes?instagramConnected=1`);
+    return res.redirect(`${appUrl}/configuracoes?tab=integracoes&instagramConnected=1`);
 
     /* Fluxo legado Facebook Pages removido em favor do Instagram Login.
     const pages = await fetchUserPages(tokenResponse.access_token);
@@ -112,12 +145,30 @@ router.get("/tenants/:tenantId/instagram-connection", authenticate, async (req, 
     }
 
     const conn = await getInstagramConnectionByTenantId(tenantId);
-    if (!conn || conn.disconnectedAt) {
-      return res.json({ connected: false });
+    const tokenExpired = Boolean(conn?.tokenExpiresAt && conn.tokenExpiresAt <= new Date());
+    const publishReady = Boolean(conn?.pageAccessToken && conn.accountId);
+    if (!conn || conn.disconnectedAt || !publishReady || tokenExpired) {
+      return res.json({
+        connected: false,
+        needsReconnect: Boolean(conn && !conn.disconnectedAt),
+        reason: tokenExpired ? "token_expired" : conn && !publishReady ? "missing_publish_credentials" : "not_connected",
+      });
+    }
+
+    try {
+      const liveAccount = await fetchDirectInstagramAccountInfo(conn.pageAccessToken!);
+      if (liveAccount.id !== conn.accountId) {
+        logger.warn({ tenantId, storedAccountId: conn.accountId, liveAccountId: liveAccount.id }, "Instagram: conta do token diverge da conexão salva");
+        return res.json({ connected: false, needsReconnect: true, reason: "account_mismatch" });
+      }
+    } catch (validationError) {
+      logger.warn({ validationError, tenantId }, "Instagram: token salvo não passou na validação ao vivo");
+      return res.json({ connected: false, needsReconnect: true, reason: "token_invalid" });
     }
 
     return res.json({
       connected: true,
+      publishReady: true,
       id: conn.id,
       username: conn.username,
       accountId: conn.accountId,

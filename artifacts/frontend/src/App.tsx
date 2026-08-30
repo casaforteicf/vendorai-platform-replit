@@ -18,6 +18,8 @@ const Login              = lazy(() => import("@/pages/Login"));
 const Register           = lazy(() => import("@/pages/Register"));
 const ForgotPassword     = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword      = lazy(() => import("@/pages/ResetPassword"));
+const GoogleAuthSuccess  = lazy(() => import("@/pages/GoogleAuthSuccess"));
+const ContactSales       = lazy(() => import("@/pages/demo/contact-sales"));
 const PortalObra         = lazy(() => import("@/pages/PortalObra"));
 const PublicProposta     = lazy(() => import("@/pages/PublicProposta"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
@@ -29,6 +31,8 @@ const Dashboard          = lazy(() => import("@/pages/dashboard/Dashboard"));
 const CentralTrabalho    = lazy(() => import("@/pages/CentralTrabalho"));
 const ComissoesVendedor  = lazy(() => import("@/pages/ComissoesVendedor"));
 const Leads              = lazy(() => import("@/pages/Leads"));
+const ImportConfig       = lazy(() => import("@/pages/leads/import-config"));
+const NonLeadContacts    = lazy(() => import("@/pages/contacts-nonleads"));
 const LeadDetail         = lazy(() => import("@/pages/LeadDetail"));
 const Prospector         = lazy(() => import("@/pages/Prospector"));
 const FlowBuilder        = lazy(() => import("@/pages/prospector/FlowBuilder"));
@@ -44,8 +48,14 @@ const Pacotes            = lazy(() => import("@/pages/Pacotes"));
 const ContentAutopilot   = lazy(() => import("@/pages/ContentAutopilot"));
 const Ads                = lazy(() => import("@/pages/Ads"));
 const RastreioFrete      = lazy(() => import("@/pages/RastreioFrete"));
+const AcompanharEntrega  = lazy(() => import("@/pages/AcompanharEntrega"));
+const MonitorLogisticaPraca = lazy(() => import("@/pages/MonitorLogisticaPraca"));
+const DashboardExecutivoPraca = lazy(() => import("@/pages/DashboardExecutivoPraca"));
+const ConciliacaoFinanceiraPraca = lazy(() => import("@/pages/ConciliacaoFinanceiraPraca"));
+const AppEntregadorPraca = lazy(() => import("@/pages/AppEntregadorPraca"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
 const Campanhas          = lazy(() => import("@/pages/Campanhas"));
+const CampanhasHub       = lazy(() => import("@/pages/CampanhasHub"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
 const CatalogoProdutos   = lazy(() => import("@/pages/CatalogoProdutos"));
 const PropostaPrint      = lazy(() => import("@/pages/PropostaPrint"));
@@ -70,6 +80,7 @@ const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
 const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
 const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
+const ErpCapture         = lazy(() => import("@/pages/erp"));
 const Onboarding                = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes     = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
@@ -82,9 +93,11 @@ const VideoLegendaPage   = lazy(() => import("@/pages/video/VideoLegendaPage"));
 const VideoClipesPage    = lazy(() => import("@/pages/video/VideoClipesPage"));
 const VideoLotePage      = lazy(() => import("@/pages/video/VideoLotePage"));
 const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
+const FAQ                 = lazy(() => import("@/pages/faq"));
 const Questionario       = lazy(() => import("@/pages/Questionario"));
 const Analytics          = lazy(() => import("@/pages/Analytics"));
 const AgentConfig        = lazy(() => import("@/pages/agents/AgentConfig"));
+const RelatoriosVisaoGeral = lazy(() => import("@/pages/RelatoriosVisaoGeral"));
 const RelatorioGanhosMes = lazy(() => import("@/pages/RelatorioGanhosMes"));
 const RelatorioTipoCliente = lazy(() => import("@/pages/RelatorioTipoCliente"));
 const RelatorioDores     = lazy(() => import("@/pages/RelatorioDores"));
@@ -480,6 +493,12 @@ function AppRoutes() {
         <Route path="/register">
           <RegisterRoute />
         </Route>
+        <Route path="/auth/success">
+          {() => <GoogleAuthSuccess />}
+        </Route>
+        <Route path="/demo/contact-sales">
+          {() => <ContactSales />}
+        </Route>
         <Route path="/esqueci-senha">
           <PublicRoute component={ForgotPassword} />
         </Route>
@@ -502,6 +521,9 @@ function AppRoutes() {
         <Route path="/rastreio/:id">
           {() => <RastreioFrete />}
         </Route>
+        <Route path="/acompanhar-entrega/:token">
+          {() => <AcompanharEntrega />}
+        </Route>
         <Route path="/onboarding">
           <OnboardingRoute />
         </Route>
@@ -520,6 +542,12 @@ function AppRoutes() {
         </Route>
         <Route path="/trabalho">
           <ProtectedRoute component={CentralTrabalho} />
+        </Route>
+        <Route path="/leads/import-config">
+          <ProtectedRoute component={ImportConfig} />
+        </Route>
+        <Route path="/contacts-nonleads">
+          <ProtectedRoute component={NonLeadContacts} />
         </Route>
         <Route path="/leads">
           <ProtectedRoute component={Leads} />
@@ -554,6 +582,18 @@ function AppRoutes() {
         <Route path="/entregas">
           <ProtectedRoute component={MinhasEntregas} />
         </Route>
+        <Route path="/praca-executivo">
+          <ProtectedRoute component={DashboardExecutivoPraca} />
+        </Route>
+        <Route path="/praca-conciliacao">
+          <ProtectedRoute component={ConciliacaoFinanceiraPraca} />
+        </Route>
+        <Route path="/logistica-praca">
+          <ProtectedRoute component={MonitorLogisticaPraca} />
+        </Route>
+        <Route path="/entregas-praca">
+          <ProtectedRoute component={AppEntregadorPraca} />
+        </Route>
         <Route path="/configuracoes">
           <ProtectedRoute component={Configuracoes} />
         </Route>
@@ -587,11 +627,17 @@ function AppRoutes() {
         <Route path="/propostas/:id">
           {() => <ProtectedRoute component={PropostaPrint} />}
         </Route>
+        <Route path="/campanhas-nova">
+          <ProtectedRoute component={CampanhasHub} />
+        </Route>
         <Route path="/campanhas">
           <ProtectedRoute component={Campanhas} />
         </Route>
         <Route path="/estoque">
           {() => <ProtectedRoute component={Estoque} />}
+        </Route>
+        <Route path="/erp/captura">
+          {() => <ProtectedRoute component={ErpCapture} />}
         </Route>
         <Route path="/erp">
           {() => <ProtectedRoute component={GestaoErp} />}
@@ -683,14 +729,20 @@ function AppRoutes() {
         <Route path="/content-studio/video/lote">
           {() => <ProtectedRoute component={VideoLotePage} />}
         </Route>
+        <Route path="/faq">
+          {() => <ProtectedRoute component={FAQ} />}
+        </Route>
         <Route path="/guia-implantacao">
-          {() => <ProtectedRoute component={GuiaImplantacao} />}
+          <RedirectPage to="/faq" />
         </Route>
         <Route path="/agents/config">
           {() => <ProtectedRoute component={AgentConfig} />}
         </Route>
         <Route path="/analytics">
           {() => <ProtectedRoute component={Analytics} />}
+        </Route>
+        <Route path="/relatorios">
+          {() => <ProtectedRoute component={RelatoriosVisaoGeral} />}
         </Route>
         <Route path="/relatorios/ganhos-mes">
           {() => <ProtectedRoute component={RelatorioGanhosMes} />}
