@@ -233,7 +233,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const CORE_VERTICAL_HREFS = [
     "/", "/trabalho", "/leads", "/app/prospector", "/deals", "/comissoes",
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas", "/campanhas-nova",
-    "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes",
+    "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes", "/faq",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
     "/praca-perguntas", "/erp", "/ads", "/marketing/plano-de-midia",
   ];
@@ -588,7 +588,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return (
       <Link
         href={item.href}
-        onClick={onNavigate}
+        onClick={() => {
+          if (item.href === "/faq") sessionStorage.setItem("vendorai_help_from", location);
+          onNavigate?.();
+        }}
         className={cn(
           "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
           isActive

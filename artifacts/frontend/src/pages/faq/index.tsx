@@ -147,10 +147,28 @@ const FAQS: FAQItem[] = Object.entries(RAW).flatMap(([category, items]) =>
 const CATEGORIES = ["Todas", ...Object.keys(RAW)];
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
+function helpContext() {
+  const path = sessionStorage.getItem("vendorai_help_from") ?? "";
+  const mappings: Array<[string[], string, string]> = [
+    [["/ads", "/marketing/plano"], "Anúncios", "campanhas e resultados"],
+    [["/content", "/content-studio", "/campanhas"], "Marketing e conteúdo", "conteúdo e marketing"],
+    [["/agents", "/base-conhecimento"], "Agentes de IA", "agentes e conhecimento"],
+    [["/leads", "/deals", "/negocios", "/propostas", "/trabalho", "/comissoes"], "CRM e vendas", "clientes e vendas"],
+    [["/conversations", "/agenda", "/onboarding/integracoes"], "Integrações e atendimento", "integrações e atendimento"],
+    [["/erp", "/catalogo", "/pacotes", "/usuarios", "/organizacao", "/analytics"], "Gestão, ERP e equipe", "gestão da empresa"],
+    [["/scout", "/brain", "/vkg", "/partner-hub", "/ecosystem-hub", "/vendor-certified-network", "/poe"], "Inteligência e oportunidades", "inteligência e oportunidades"],
+    [["/arch", "/obras", "/varejo", "/supermercado", "/beauty", "/clinic", "/farmacia", "/imoveis", "/fretes", "/veiculos"], "Ferramentas por segmento", "ferramentas do seu segmento"],
+    [["/configuracoes", "/trocar-senha"], "Conta, segurança e suporte", "conta e segurança"],
+    [["/guia-implantacao", "/onboarding"], "Primeiros passos", "implantação"],
+  ];
+  const match = mappings.find(([prefixes]) => prefixes.some((prefix) => path.startsWith(prefix)));
+  return { category: match?.[1] ?? "Todas", label: match?.[2] ?? "" };
+}
+
 export default function FAQ() {
   const [open, setOpen] = useState<number | null>(1);
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("Todas");
+  const [category, setCategory] = useState(context.category);
 
   const filtered = useMemo(() => {
     const term = normalize(query.trim());
@@ -183,6 +201,16 @@ export default function FAQ() {
           </div>
         </div>
       </section>
+
+      {context.category !== "Todas" && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">Ajuda desta tela</p>
+            <p className="text-sm text-muted-foreground">Mostrando primeiro as respostas sobre {context.label}.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setCategory("Todas")}>Ver todas as 100 dúvidas</Button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {CATEGORIES.map((item) => (
