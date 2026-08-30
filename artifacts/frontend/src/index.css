@@ -117,6 +117,7 @@
   --app-font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
+  --app-font-display: 'Sora', var(--app-font-sans);
 }
 
 .dark {
@@ -207,6 +208,7 @@
 
   .vendor-page-title {
     color: hsl(var(--foreground));
+    font-family: var(--app-font-display);
     font-size: clamp(1.5rem, 2.4vw, 2rem);
     font-weight: 700;
     line-height: 1.15;
@@ -249,6 +251,38 @@
 ::selection {
   background: hsl(var(--primary) / 0.18);
   color: hsl(var(--foreground));
+}
+
+/* Unifica a fonte de TODOS os títulos do sistema numa tacada só --
+   achado real: 260 títulos espalhados por ~130 telas, cada um com seu
+   próprio h1/h2/div estilizado ad-hoc, sem convenção nenhuma (só 1
+   arquivo usava .vendor-page-title). Em vez de editar tela por tela
+   (arriscado hoje, com tantos incidentes de produção), esse seletor
+   pega qualquer h1-h4 de verdade OU qualquer elemento com a combinação
+   Tailwind "texto grande + negrito" (o padrão que praticamente todo
+   título no sistema já usa) e aplica a fonte de destaque em todos de
+   uma vez, retroativamente. */
+h1, h2, h3, h4,
+.text-3xl.font-bold, .text-2xl.font-bold, .text-xl.font-bold,
+.text-3xl.font-semibold, .text-2xl.font-semibold, .text-xl.font-semibold {
+  font-family: var(--app-font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Interatividade real nas ações -- não só cor: elevação sutil em
+   qualquer botão/link "primário" ao passar o mouse, com curva de
+   easing com leve overshoot (sensação de resposta física, não só
+   fade). Cards clicáveis (data-clickable, usado nas listas) ganham a
+   mesma elevação + leve deslocamento pra cima. */
+.btn-lift, [data-clickable="true"] {
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 180ms ease;
+}
+.btn-lift:hover, [data-clickable="true"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px hsl(var(--primary) / 0.12);
+}
+.btn-lift:active, [data-clickable="true"]:active {
+  transform: translateY(0) scale(0.99);
 }
 
 /* Painéis avançados seguem o mesmo tema claro das telas administrativas. */
