@@ -76,6 +76,7 @@ import { processDuePickupWaves } from "../services/pracaRoutePlanner.js";
 import { processDeliveryNotificationOutbox } from "../services/pracaDeliveryNotifications.js";
 import { runPracaExceptionScan } from "../services/pracaExceptionDetector.js";
 import { markOverdueVehicleReservations } from "../services/vehicle-reservation.js";
+import { markOverdueItemReservations } from "../services/item-reservation.js";
 import {
   prospectorConfigTable,
   prospectorQueueTable,
@@ -1632,6 +1633,13 @@ export function startScheduler(log: Logger): void {
     markOverdueVehicleReservations()
       .then((total) => total > 0 && log.info({ total }, "scheduler/vehicle-reservations: justification required"))
       .catch((err) => log.error({ err }, "scheduler/vehicle-reservations: unhandled error"));
+  });
+  // Mesma checagem, generalizada pra qualquer "Modo: Só este item" que
+  // não seja veículo (imóvel, produto, landing_page, livre).
+  cron.schedule("*/15 * * * *", () => {
+    markOverdueItemReservations()
+      .then((total) => total > 0 && log.info({ total }, "scheduler/item-reservations: justification required"))
+      .catch((err) => log.error({ err }, "scheduler/item-reservations: unhandled error"));
   });
   // Job 1: Churn check — every hour at :05
   cron.schedule("5 * * * *", () => {

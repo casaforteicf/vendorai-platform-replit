@@ -10,6 +10,7 @@ import {
   leadsTable,
   dealsTable,
   vehicleAdReservationsTable,
+  itemAdReservationsTable,
   businessProfilesTable,
   generatedSitesTable,
   contentGenerationsTable,
@@ -22,6 +23,7 @@ import { gerarCriativoImagem } from "../lib/adContentGeneratorImagem.js";
 import { gerarShoppingFeedXml, gerarFeedToken, validarFeedToken } from "../lib/adShoppingFeed.js";
 import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
+import { decideItemReservation, reserveUniqueItem } from "../services/item-reservation.js";
 import { enrichAdsSegmentacao } from "../services/ad-audience-plan.js";
 import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
 import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
@@ -316,6 +318,52 @@ router.post("/tenants/:tenantId/ads/vehicle-reservations/:id/decision", async (r
   }
   try {
     const row = await decideVehicleReservation({
+      tenantId, reservationId: req.params.id as string,
+      userId: (req as any).user?.sub ?? null, decision,
+      justification: typeof req.body?.justification === "string" ? req.body.justification : "",
+    });
+    return res.json(row);
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Decisão inválida" });
+  }
+});
+
+// Versão genérica das 3 rotas acima -- pra qualquer campanha "Modo: Só
+// este item" que não seja veículo (imóvel, produto, landing_page, livre).
+router.post("/tenants/:tenantId/ads/campaigns/:id/item-interest", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const leadId = typeof req.body?.leadId === "string" ? req.body.leadId : "";
+  if (!leadId) return res.status(422).json({ error: "leadId é obrigatório" });
+  try {
+    const reservation = await reserveUniqueItem({
+      tenantId, campaignId: req.params.id as string, leadId,
+      sellerId: typeof req.body?.sellerId === "string" ? req.body.sellerId : null,
+    });
+    return res.status(201).json(reservation);
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : "Não foi possível reservar o item" });
+  }
+});
+
+router.get("/tenants/:tenantId/ads/item-reservations", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(itemAdReservationsTable)
+    .where(eq(itemAdReservationsTable.tenantId, tenantId))
+    .orderBy(desc(itemAdReservationsTable.createdAt));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/ads/item-reservations/:id/decision", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const decision = req.body?.decision;
+  if (!["manter", "avancar", "perdido"].includes(decision)) {
+    return res.status(422).json({ error: "decision deve ser manter, avancar ou perdido" });
+  }
+  try {
+    const row = await decideItemReservation({
       tenantId, reservationId: req.params.id as string,
       userId: (req as any).user?.sub ?? null, decision,
       justification: typeof req.body?.justification === "string" ? req.body.justification : "",

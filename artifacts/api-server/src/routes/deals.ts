@@ -51,6 +51,7 @@ import { generateContractPDF } from "../lib/contract-generation.js";
 import { requireRole, buildUserFunctionFilter, type UserFunction } from "../middlewares/auth.js";
 import { captureLeadFeatureSnapshot, backfillResultadoSnapshots } from "../lib/mlFeatureStore.js";
 import { finalizeVehicleReservation } from "../services/vehicle-reservation.js";
+import { finalizeItemReservation } from "../services/item-reservation.js";
 import { z } from "zod";
 
 const router: IRouter = Router();
@@ -421,8 +422,10 @@ router.patch("/deals/:id", async (req, res) => {
 
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
     await finalizeVehicleReservation(deal.id, "ganho");
+    await finalizeItemReservation(deal.id, "ganho");
   } else if (parsed.data.etapa === "perdido" && existing.etapa !== "perdido") {
     await finalizeVehicleReservation(deal.id, "perdido", parsed.data.motivoPerda ?? parsed.data.lostReasonDetail);
+    await finalizeItemReservation(deal.id, "perdido", parsed.data.motivoPerda ?? parsed.data.lostReasonDetail);
   }
 
   // Feature store — captura a mudança de etapa e, quando o negócio resolve

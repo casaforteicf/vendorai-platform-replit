@@ -38,6 +38,7 @@ import { callOpenAI } from "../lib/ai-gateway.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
+import { reserveUniqueItem } from "../services/item-reservation.js";
 
 const router: IRouter = Router();
 
@@ -132,14 +133,23 @@ router.post("/leads", async (req, res) => {
     });
   }
 
-  // Leads atribuídos por UTM a uma campanha de veículo único entram
-  // automaticamente no fluxo de reserva. Campanhas de outros tipos são
-  // ignoradas sem impedir o cadastro normal do lead.
+  // Leads atribuídos por UTM a uma campanha "Modo: Só este item" entram
+  // automaticamente no fluxo de reserva. Veículo continua no fluxo
+  // dedicado (reserveUniqueVehicle, com reserva de estoque real); os
+  // outros tipos (imóvel, produto, landing_page, livre) entram no fluxo
+  // genérico (reserveUniqueItem) -- generalização pedida pelo Marcos:
+  // pausar+prazo do vendedor serve pra qualquer "Modo: Só este item",
+  // não só veículo. Cada função ignora silenciosamente o tipo que não é
+  // seu, sem impedir o cadastro normal do lead.
   if (lead.adCampaignId) {
     reserveUniqueVehicle({
       tenantId: lead.tenantId, campaignId: lead.adCampaignId,
       leadId: lead.id, sellerId: resolvedAssignedTo,
     }).catch((error) => req.log?.warn?.({ err: error, leadId: lead.id }, "lead: automatic vehicle reservation skipped"));
+    reserveUniqueItem({
+      tenantId: lead.tenantId, campaignId: lead.adCampaignId,
+      leadId: lead.id, sellerId: resolvedAssignedTo,
+    }).catch((error) => req.log?.warn?.({ err: error, leadId: lead.id }, "lead: automatic item reservation skipped"));
   }
 
   res.status(201).json(lead);
