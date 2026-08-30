@@ -180,6 +180,31 @@ export default function PlanoMidia() {
         </Button>
       </div>
 
+      {/* Duas formas de criar posts -- pedido real: uma semi-automática
+          (calendário sugere e gera, você revisa/edita antes de publicar)
+          e uma manual (você escolhe tudo do zero, sem passar pelo
+          calendário). As 2 já existiam separadas -- só faltava ficar
+          claro que dá pra usar as duas juntas. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Card className="border-primary/20">
+          <CardContent className="pt-4 space-y-1.5">
+            <p className="text-sm font-semibold flex items-center gap-1.5"><Wand2 className="h-3.5 w-3.5 text-primary" />Semi-automática</p>
+            <p className="text-xs text-muted-foreground">A IA sugere o calendário e gera legenda+imagem. Você sempre revisa e edita antes de publicar — nada sai sem você conferir.</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold flex items-center gap-1.5"><ListChecks className="h-3.5 w-3.5" />Manual</p>
+              <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => navigate("/content")}>
+                Criar agora <ExternalLink className="h-3 w-3 ml-1" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Escolhe o tema, produto e formato do zero na Central de Conteúdo, sem passar pelo calendário.</p>
+          </CardContent>
+        </Card>
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
