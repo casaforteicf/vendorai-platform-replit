@@ -298,6 +298,27 @@ export default function Ads() {
     enabled: !!tenantId,
   });
 
+  useEffect(() => {
+    const pending = campaigns.filter((campaign) =>
+      campaign.externalCampaignId &&
+      (!campaign.segmentacao?.platformReview || campaign.segmentacao.platformReview.status === "em_analise"),
+    );
+    if (!tenantId || pending.length === 0) return;
+
+    const sync = async () => {
+      await Promise.allSettled(pending.map((campaign) =>
+        fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaign.id}/sync-status`, {
+          method: "POST",
+          headers: authHeaders(),
+        }),
+      ));
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+    };
+    void sync();
+    const timer = window.setInterval(sync, 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [tenantId, campaigns.map((campaign) => `${campaign.id}:${campaign.segmentacao?.platformReview?.status ?? ""}`).join("|")]);
+
   const { data: reservations = [] } = useQuery<VehicleReservation[]>({
     queryKey: ["vehicle-ad-reservations", tenantId],
     queryFn: () => fetch(`/api/tenants/${tenantId}/ads/vehicle-reservations`, { headers: authHeaders() }).then((r) => r.json()),
