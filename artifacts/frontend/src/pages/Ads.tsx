@@ -157,7 +157,14 @@ interface AdCampaign {
   pausarAoInteresse: boolean;
   slaNegociacaoHoras: number;
   latestCreative: AdCreative | null;
-  segmentacao?: { origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string } };
+  segmentacao?: {
+    origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string };
+    audiencePlan?: {
+      summary: string;
+      google: { keywords: string[] };
+      meta: { interestQueries: string[]; resolvedInterests?: Array<{ id: string; name: string }> };
+    };
+  };
 }
 
 interface VehicleReservation {
@@ -363,7 +370,7 @@ export default function Ads() {
           demografia: { idades: form.idades, generos: form.generos, statusParental: form.statusParental, rendas: form.rendas },
           audiencias: { afinidade: form.afinidade, noMercado: form.noMercado, termosPesquisa: form.termosPesquisa, sites: form.sites, aplicativos: form.aplicativos },
           dadosProprios: { remarketing: form.remarketing, customerMatch: form.customerMatch, semelhantes: form.semelhantes },
-          marketingContext: { nicheId: marketingContext.nicheId, nicheName: marketingContext.nicheName, productIds: marketingContext.productIds, productNames: marketingContext.productNames },
+          marketingContext: { ...marketingContext },
         },
         pausarAoInteresse: form.itemTipo === "veiculo" && form.modo === "unico" ? form.pausarAoInteresse : false,
         slaNegociacaoHoras: Number(form.slaNegociacaoHoras || 48),
@@ -569,6 +576,22 @@ export default function Ads() {
                         {c.segmentacao?.origemInstagram && <Badge className="bg-pink-100 text-pink-800">Publicação do Instagram</Badge>}
                       </div>
                       {c.itemLabel && <p className="text-sm font-medium mt-1">Divulgando: {c.itemLabel}</p>}
+                      {c.segmentacao?.audiencePlan && (
+                        <div className="mt-2 rounded-md border bg-muted/30 p-2 space-y-1">
+                          <p className="text-xs font-semibold">Segmentação preparada para revisão</p>
+                          <p className="text-xs text-muted-foreground">{c.segmentacao.audiencePlan.summary}</p>
+                          {c.plataforma === "google" ? (
+                            <div className="flex flex-wrap gap-1">
+                              {c.segmentacao.audiencePlan.google.keywords.map((keyword) => <Badge key={keyword} variant="secondary" className="font-normal">{keyword}</Badge>)}
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {c.segmentacao.audiencePlan.meta.interestQueries.map((interest) => <Badge key={interest} variant="secondary" className="font-normal">{interest}</Badge>)}
+                            </div>
+                          )}
+                          <p className="text-[11px] text-muted-foreground">A publicação continuará pausada. Revise este plano antes de publicar e ativar.</p>
+                        </div>
+                      )}
                       <p className="text-sm text-muted-foreground mt-1">Orçamento diário: R$ {c.orcamentoDiario}</p>
                       {c.utmCode && <p className="text-xs text-muted-foreground">Código de atribuição: <code className="bg-muted px-1 rounded">{c.utmCode}</code></p>}
                       {c.itemTipo === "veiculo" && c.modo === "unico" && <p className="text-xs text-muted-foreground">Reserva automática: {c.pausarAoInteresse ? "pausa o patrocínio" : "não pausa"} · SLA {c.slaNegociacaoHoras}h</p>}
