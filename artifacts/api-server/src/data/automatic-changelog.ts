@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-208",
+    "titulo": "Hotfix 502: restaurar backend para último deploy estável",
+    "descricao": "O deploy Railway do commit 61731fe estava estável; o deploy seguinte, 108823f, falhou. Este hotfix restaura o arquivo de changelog ao estado do último deploy estável e remove o arquivo vazio de diagnóstico criado acidentalmente. Objetivo: forçar novo deploy limpo do backend sem desfazer as demais melhorias do dia.",
+    "tipo": "novidade",
+    "publicadoEm": "2026-08-30T22:53:20.000Z",
+    "pullRequest": 208
+  },
+  {
     "id": "pr-202",
     "titulo": "Todos os atendimentos agora têm protocolo e status",
     "descricao": "Toda conversa com o suporte fica registrada na tela de Suporte, inclusive quando o agente resolve sozinho. O cliente acompanha protocolo, status e responsável pela resolução.",
