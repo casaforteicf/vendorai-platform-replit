@@ -46,19 +46,34 @@ const journey = [
 
 const painCards = [
   {
-    icon: MessageCircle,
-    title: "Responde rápido",
-    text: "Centraliza o contato e reduz o tempo entre o interesse e a primeira ação comercial.",
-  },
-  {
-    icon: RefreshCcw,
-    title: "Não esquece o follow-up",
-    text: "Mantém a cadência acontecendo para que o lead não desapareça no meio da rotina.",
-  },
-  {
     icon: Target,
-    title: "Conduz até a decisão",
-    text: "Cada oportunidade continua acompanhada até avançar, comprar ou encerrar de forma clara.",
+    title: "CRM e operação comercial",
+    text: "Leads, contatos, negócios, pipeline, propostas, atividades, briefing e histórico completo em uma única operação.",
+  },
+  {
+    icon: Bot,
+    title: "Agentes de IA especializados",
+    text: "SDR, prospecção, qualificação, negociação, follow-up, atendimento, cobrança, agendamento e pós-venda trabalhando em conjunto.",
+  },
+  {
+    icon: MessageCircle,
+    title: "Atendimento omnichannel",
+    text: "WhatsApp oficial, Instagram, Facebook Messenger e demais canais centralizados, com contexto preservado no CRM.",
+  },
+  {
+    icon: Sparkles,
+    title: "Marketing e conteúdo",
+    text: "Criação de posts, biblioteca de conteúdo, publicação no Instagram, campanhas, anúncios Meta e automações de comunicação.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Inteligência e gestão",
+    text: "Analytics, relatórios, lead scoring, risco de churn, próxima melhor ação, duplicidades e visão executiva da operação.",
+  },
+  {
+    icon: Zap,
+    title: "Catálogo, propostas e financeiro",
+    text: "Produtos, estoque, fornecedores, composição de preços, propostas, faturamento, cobrança, comissões e conciliação.",
   },
 ];
 
@@ -100,7 +115,7 @@ export default function Home() {
             </h1>
 
             <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300 md:text-xl">
-              O VendorAI acompanha cada oportunidade, faz follow-up e mantém o cliente em movimento — sem depender da memória da equipe.
+              O VendorAI reúne CRM, agentes de IA, atendimento, marketing, conteúdo, propostas, gestão e automações para conduzir toda a jornada comercial — do primeiro contato ao pós-venda.
             </p>
 
             <div className="mt-9 flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -247,13 +262,13 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-3xl text-center">
             <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-600">A dor não é falta de lead</p>
-            <h2 className="text-4xl font-semibold tracking-[-0.04em] md:text-5xl">É tudo o que acontece depois que ele chega.</h2>
+            <h2 className="text-4xl font-semibold tracking-[-0.04em] md:text-5xl">Uma plataforma para tudo o que acontece depois que o lead chega.</h2>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-              Quando o acompanhamento depende de memória, planilha e boa vontade, oportunidades somem. O VendorAI transforma isso em processo.
+              Quando CRM, atendimento, marketing e gestão estão separados, oportunidades e informações se perdem. O VendorAI conecta toda a operação em um único sistema.
             </p>
           </div>
 
-          <div className="mx-auto mt-14 grid max-w-6xl gap-5 md:grid-cols-3">
+          <div className="mx-auto mt-14 grid max-w-6xl gap-5 md:grid-cols-2 lg:grid-cols-3">
             {painCards.map((item, index) => {
               const Icon = item.icon;
               return (
@@ -374,11 +389,11 @@ export default function Home() {
                   </div>
                   <h2 className="text-4xl font-semibold tracking-[-0.045em] text-white md:text-5xl">Primeiro prove. Depois decida.</h2>
                   <p className="mt-5 max-w-lg text-lg leading-8 text-slate-400">
-                    Use o VendorAI completo por 5 dias. Se fizer sentido, você entra na condição especial de lançamento.
+                    Use o VendorAI completo e escolha entre duas modalidades: uso pré-pago por ativações ou licença oficial anual.
                   </p>
 
                   <div className="mt-9 space-y-4 text-sm text-slate-300">
-                    {["Uma única licença completa", "Sem cobrança durante o teste", "Sem preço normal fixado hoje"].map((item) => (
+                    {["Experiência completa nas duas modalidades", "5 dias gratuitos todos os meses", "Dados preservados entre ativações"].map((item) => (
                       <div key={item} className="flex items-center gap-3">
                         <CheckCircle2 className="h-5 w-5 text-emerald-300" /> {item}
                       </div>
@@ -392,9 +407,8 @@ export default function Home() {
                   <div className="absolute left-6 top-10 hidden h-[calc(100%-80px)] w-px bg-slate-200 sm:block" />
                   <div className="space-y-4">
                     {[
-                      { n: "01", period: "Primeiros 5 dias", price: "Grátis", detail: "Acesso completo para testar na prática." },
-                      { n: "02", period: "Próximos 60 dias", price: "R$ 497/mês", detail: "Condição especial de entrada." },
-                      { n: "03", period: "6 meses seguintes", price: "R$ 990/mês", detail: "Período promocional de continuidade." },
+                      { n: "01", period: "Uso pré-pago", price: "5 dias por ativação", detail: "Ativação mensal gratuita e novas ativações de 5 dias por R$ 399." },
+                      { n: "02", period: "Licença oficial", price: "Contrato de 12 meses", detail: "Uso contínuo e condição comercial formalizada por aceite eletrônico." },
                     ].map((phase) => (
                       <motion.div
                         key={phase.n}
@@ -412,7 +426,7 @@ export default function Home() {
                   </div>
 
                   <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-5 text-sm leading-6 text-slate-700">
-                    Depois do período promocional, a assinatura segue pelo <strong>preço normal vigente</strong>.
+                    Todos acessam o sistema completo. Sem dias ativos, seus dados continuam disponíveis para consulta, mas novas ações ficam pausadas até a próxima ativação.
                   </div>
 
                   <Button className="group mt-6 h-14 w-full rounded-xl bg-blue-600 text-base font-semibold hover:bg-blue-500" asChild>

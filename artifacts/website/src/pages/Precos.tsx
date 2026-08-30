@@ -1,83 +1,122 @@
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, FileSignature, RefreshCcw } from "lucide-react";
 
-const phases = [
-  { period: "Primeiros 5 dias", price: "Grátis", detail: "Acesso completo para testar na sua operação." },
-  { period: "Próximos 60 dias", price: "R$ 497/mês", detail: "Condição especial de entrada." },
-  { period: "6 meses seguintes", price: "R$ 990/mês", detail: "Condição promocional de continuidade." },
+const options = [
+  {
+    icon: RefreshCcw,
+    title: "Uso pré-pago",
+    price: "5 dias por ativação",
+    detail: "Ative cinco dias gratuitos a cada mês. Quando precisar continuar usando antes da próxima renovação, compre mais cinco dias por R$ 399.",
+    features: ["Primeira ativação mensal gratuita", "Novas ativações por R$ 399", "Pagamento por PIX ou cartão", "Sem compromisso anual"],
+    featured: true,
+  },
+  {
+    icon: FileSignature,
+    title: "Licença oficial",
+    price: "Contrato de 12 meses",
+    detail: "Para empresas que precisam do VendorAI funcionando continuamente, com contratação formal e renovação mensal da licença.",
+    features: ["Uso contínuo durante a vigência", "Experiência completa", "Contrato eletrônico", "Condição comercial apresentada no aceite"],
+  },
 ];
 
 export default function Precos() {
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
-      <section className="pt-20 pb-12 px-4 text-center">
-        <p className="text-sm font-semibold uppercase tracking-wider text-primary mb-3">Uma única licença</p>
-        <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">Teste primeiro. Decida com resultado.</h1>
-        <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-          O VendorAI acompanha seus leads para você parar de perder oportunidades por falta de follow-up.
+      <section className="bg-[#070b14] px-4 py-20 text-center text-white md:py-24">
+        <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Uma única experiência completa</p>
+        <h1 className="text-4xl font-semibold tracking-[-0.045em] md:text-6xl">Você escolhe o tempo de uso, não as funções.</h1>
+        <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-slate-300 md:text-xl">
+          Não existem versões reduzidas do VendorAI. Escolha o uso pré-pago, com ativações de cinco dias, ou a licença oficial com contrato anual.
         </p>
       </section>
 
-      <div className="container mx-auto px-4 max-w-4xl">
-        <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-8 md:p-12">
-          <div className="grid md:grid-cols-3 gap-5 mb-8">
-            {phases.map((phase) => (
-              <div key={phase.period} className="rounded-2xl border border-slate-200 p-6 text-center">
-                <p className="text-sm text-slate-500 mb-2">{phase.period}</p>
-                <p className="text-3xl font-bold text-slate-900 mb-3">{phase.price}</p>
-                <p className="text-sm text-slate-600">{phase.detail}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-2xl bg-slate-50 p-6 mb-8">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="font-semibold text-slate-900">Depois do período promocional</p>
-                <p className="text-slate-600 mt-1">A assinatura segue pelo preço normal vigente.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center">
-            <Button size="lg" className="h-14 px-8 text-lg font-bold" asChild data-testid="btn-start-trial">
-              <Link href="/demo">Começar meus 5 dias grátis <ArrowRight className="ml-2 w-5 h-5" /></Link>
-            </Button>
-            <p className="text-sm text-slate-500 mt-4">Sem cobrança durante os 5 dias de teste.</p>
-          </div>
+      <main className="container mx-auto max-w-6xl px-4 py-16">
+        <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-2">
+          {options.map((option) => {
+            const Icon = option.icon;
+            return (
+              <article
+                key={option.title}
+                className={`relative rounded-[28px] border bg-white p-8 shadow-sm ${option.featured ? "border-blue-400 ring-4 ring-blue-100" : "border-slate-200"}`}
+              >
+                {option.featured && (
+                  <span className="absolute right-6 top-6 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+                    Modalidade flexível
+                  </span>
+                )}
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Icon className="h-6 w-6" />
+                </div>
+                <p className="mt-7 text-sm font-semibold uppercase tracking-wide text-slate-500">{option.title}</p>
+                <h2 className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-slate-950">{option.price}</h2>
+                <p className="mt-4 min-h-[84px] leading-7 text-slate-600">{option.detail}</p>
+                <ul className="mt-7 space-y-3 border-t border-slate-100 pt-6">
+                  {option.features.map((feature) => (
+                    <li key={feature} className="flex gap-3 text-sm font-medium text-slate-700">
+                      <Check className="h-5 w-5 shrink-0 text-emerald-500" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            );
+          })}
         </div>
 
-        <div className="mt-16 max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold text-center text-slate-900 mb-8">Perguntas rápidas</h2>
-          <div className="space-y-4">
+        <section className="mt-10 rounded-[28px] border border-slate-200 bg-white p-8 md:p-10">
+          <div className="flex flex-col gap-7 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                <h2 className="text-2xl font-semibold text-slate-950">Seus dados não desaparecem quando os dias terminam</h2>
+              </div>
+              <p className="mt-4 leading-7 text-slate-600">
+                Sem um período ativo, você continua consultando leads, conversas, propostas, relatórios e informações já registradas. Novas gerações, envios, automações e demais atividades ficam pausados até uma nova ativação ou contratação da licença oficial.
+              </p>
+            </div>
+            <Button size="lg" className="h-14 shrink-0 rounded-xl px-8" asChild>
+              <Link href="/demo">
+                Ativar meus 5 dias
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+            </Button>
+          </div>
+        </section>
+
+        <section className="mx-auto mt-16 max-w-4xl">
+          <h2 className="text-center text-3xl font-semibold tracking-[-0.035em] text-slate-950">Perguntas importantes</h2>
+          <div className="mt-8 space-y-4">
             {[
               {
-                q: "O teste é realmente grátis?",
-                a: "Sim. Os primeiros 5 dias são gratuitos e sem cobrança durante o período de teste.",
+                q: "Os cinco dias gratuitos renovam?",
+                a: "Sim. Em cada novo mês existe uma nova ativação gratuita de cinco dias corridos, contados a partir da ativação.",
               },
               {
-                q: "O que acontece depois dos 5 dias?",
-                a: "Se você decidir continuar, entra na condição especial da campanha: R$ 497/mês pelos próximos 60 dias.",
+                q: "Depois dos cinco dias sou obrigado a contratar?",
+                a: "Não. Você pode aguardar o próximo mês, comprar mais cinco dias por R$ 399 ou escolher a licença oficial.",
               },
               {
-                q: "E depois da promoção?",
-                a: "Após os 60 dias, a condição passa para R$ 990/mês pelos 6 meses seguintes. Depois disso, a assinatura segue pelo preço normal vigente.",
+                q: "Vou perder acesso aos meus dados?",
+                a: "Não. As informações permanecem disponíveis para consulta. O sistema apenas impede novas atividades enquanto não houver dias ativos.",
               },
               {
-                q: "É uma versão limitada?",
-                a: "Não. A proposta é permitir que você teste o VendorAI completo e avalie o impacto real na sua operação.",
+                q: "Existem planos com menos funcionalidades?",
+                a: "Não. A experiência é completa em todas as modalidades; o que muda é o período em que as funções de ação permanecem habilitadas.",
+              },
+              {
+                q: "Como funciona a licença oficial?",
+                a: "A licença mantém o uso contínuo e é formalizada por contrato eletrônico com vigência de doze meses e condições comerciais apresentadas antes do aceite.",
               },
             ].map((faq) => (
-              <div key={faq.q} className="bg-white p-6 rounded-2xl border border-slate-200">
-                <h3 className="font-bold text-slate-900 mb-2">{faq.q}</h3>
-                <p className="text-slate-600 text-sm">{faq.a}</p>
-              </div>
+              <article key={faq.q} className="rounded-2xl border border-slate-200 bg-white p-6">
+                <h3 className="font-semibold text-slate-950">{faq.q}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{faq.a}</p>
+              </article>
             ))}
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
