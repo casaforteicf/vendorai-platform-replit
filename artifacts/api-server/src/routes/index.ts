@@ -59,6 +59,7 @@ import adminPartnersRouter from "./admin_partners";
 import adminPlansRouter from "./admin_plans";
 import mediaPlanRouter from "./media_plan";
 import contentCalendarRouter from "./content_calendar";
+import adminProdutosInternosRouter from "./admin_produtos_internos";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
@@ -322,6 +323,7 @@ router.use(adminPartnersRouter);
 router.use(adminPlansRouter);
 router.use(mediaPlanRouter);
 router.use(contentCalendarRouter);
+router.use(adminProdutosInternosRouter);
 router.use(adminAgentDefaultsRouter);
 
 // Construção Civil Hub
