@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2 } from "lucide-react";
+import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2, RefreshCw } from "lucide-react";
 import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
 // Label com ícone de ajuda (?) — explicação em linguagem simples pro lojista,
