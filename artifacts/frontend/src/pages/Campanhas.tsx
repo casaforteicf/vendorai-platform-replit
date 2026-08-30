@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSegmentHints } from "@/lib/segmentHints";
 import {
@@ -186,6 +187,7 @@ function CampaignModal({
   // "form" → filling | "preview" → showing audience after create-as-rascunho
   const [step, setStep] = useState<"form" | "preview">("form");
   const [previewCampaignId, setPreviewCampaignId] = useState<string | null>(null);
+  const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -347,7 +349,7 @@ function CampaignModal({
         body: JSON.stringify({
           nome,
           tipo,
-          objetivo: aiCopyObjetivo,
+          objetivo: `${aiCopyObjetivo} | Nicho: ${marketingContext.nicheName} | Produtos: ${marketingContext.productNames.join(", ")}`,
           segmentoFiltro: buildSegmentoFiltro(form.getValues()),
         }),
       });
@@ -374,7 +376,7 @@ function CampaignModal({
       const res = await fetch(`/api/tenants/${tenantId}/campaigns/generate-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ descricao: aiImagePrompt, aspectRatio: "1:1" }),
+        body: JSON.stringify({ descricao: `${aiImagePrompt} | Nicho: ${marketingContext.nicheName} | Produtos: ${marketingContext.productNames.join(", ")}`, aspectRatio: "1:1" }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -418,12 +420,14 @@ function CampaignModal({
     setAiCopyObjetivo("");
     setAiCopyError(null);
     form.reset();
+    setMarketingContext({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
     onClose();
   }
 
   // ── Editar: save directly ─────────────────────────────────────────────────
   function onSubmitEdit(values: FormValues) {
     if (!editingCampaign) return;
+    if (!marketingContext.nicheId || marketingContext.productIds.length === 0) { toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" }); return; }
     updateMutation.mutate(
       {
         id: editingCampaign.id,
@@ -431,7 +435,7 @@ function CampaignModal({
           nome: values.nome,
           tipo: values.tipo,
           mensagem: values.mensagem,
-          segmentoFiltro: buildSegmentoFiltro(values) as any,
+          segmentoFiltro: { ...buildSegmentoFiltro(values), marketingContext } as any,
           mensagensEtapa: (values.mensagensEtapa && Object.keys(values.mensagensEtapa).length > 0)
             ? values.mensagensEtapa
             : undefined,
@@ -451,6 +455,7 @@ function CampaignModal({
 
   // ── Nova: create as rascunho, fetch preview ───────────────────────────────
   function onVerificarAudiencia(values: FormValues) {
+    if (!marketingContext.nicheId || marketingContext.productIds.length === 0) { toast({ title: "Escolha o nicho e ao menos um produto", variant: "destructive" }); return; }
     createMutation.mutate(
       {
         data: {
@@ -645,6 +650,8 @@ function CampaignModal({
               onSubmit={form.handleSubmit(isEdit ? onSubmitEdit : onVerificarAudiencia)}
               className="space-y-4"
             >
+              <MarketingContextSelector tenantId={tenantId} value={marketingContext} onChange={setMarketingContext} />
+
               <FormField
                 control={form.control}
                 name="nome"
