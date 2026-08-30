@@ -177,6 +177,27 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
 
   // Código curto e único pra usar como utm_campaign em qualquer link de
   // divulgação dessa campanha (ver adAttribution.ts).
+  const control = (segmentacao as any)?.campaignControl;
+  if (!control) {
+    return res.status(422).json({ error: "Defina objetivo, período, orçamento total e medição antes de criar a campanha." });
+  }
+  const startDate = new Date(`${control.startDate}T00:00:00`);
+  const endDate = new Date(`${control.endDate}T23:59:59`);
+  const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / 86_400_000);
+  const dailyBudget = Number(parsed.data.orcamentoDiario);
+  if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || durationDays < 1 || durationDays > 90) {
+    return res.status(422).json({ error: "O período da campanha deve ter entre 2 e 90 dias." });
+  }
+  if (!Number.isFinite(control.totalBudget) || control.totalBudget < dailyBudget) {
+    return res.status(422).json({ error: "O orçamento total precisa ser igual ou maior que o limite diário." });
+  }
+  if (["whatsapp", "lead", "sale", "visit"].includes(control.objective) && control.conversionTracking?.mode === "clicks") {
+    return res.status(422).json({ error: "Para este objetivo, escolha a medição de contatos do VendorAI ou uma conversão configurada na plataforma." });
+  }
+  if (control.conversionTracking?.mode === "platform" && !control.conversionTracking?.confirmed) {
+    return res.status(422).json({ error: "Confirme que a conversão da plataforma foi instalada e testada antes de publicar." });
+  }
+
   const utmCode = `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
   const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, segmentacao, utmCode }).returning();
