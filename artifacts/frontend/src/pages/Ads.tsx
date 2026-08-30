@@ -477,6 +477,22 @@ export default function Ads() {
     onError: (e: any) => toast({ title: "Não foi possível gerar", description: e.message, variant: "destructive" }),
   });
 
+  const corrigirReprovada = useMutation({
+    mutationFn: async (campaignId: string) => {
+      const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/retry`, {
+        method: "POST", headers: authHeaders(),
+      });
+      if (!r.ok) throw new Error((await r.json())?.error ?? "Falha ao preparar a correção");
+      return (await r.json()) as AdCampaign;
+    },
+    onSuccess: (campaign) => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: "Nova versão criada", description: "A IA está refazendo o criativo considerando o motivo da reprovação." });
+      gerarCriativo.mutate(campaign.id);
+    },
+    onError: (e: any) => toast({ title: "Não foi possível corrigir", description: e.message, variant: "destructive" }),
+  });
+
   const aprovarCriativo = useMutation({
     mutationFn: async (creativeId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/creatives/${creativeId}/aprovar`, {
@@ -656,6 +672,18 @@ export default function Ads() {
                               : "Problema na conta de anúncios"}
                           </p>
                           {c.segmentacao.platformReview.reason && <p className="text-xs mt-1">{c.segmentacao.platformReview.reason}</p>}
+                          {c.segmentacao.platformReview.status === "reprovada" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-2"
+                              disabled={corrigirReprovada.isPending}
+                              onClick={() => corrigirReprovada.mutate(c.id)}
+                            >
+                              {corrigirReprovada.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                              Corrigir com IA
+                            </Button>
+                          )}
                           {c.segmentacao.platformReview.policyTopics && c.segmentacao.platformReview.policyTopics.length > 0 && (
                             <p className="text-[11px] mt-1">Políticas: {c.segmentacao.platformReview.policyTopics.join(", ")}</p>
                           )}
@@ -724,7 +752,7 @@ export default function Ads() {
                             <div className="border-t pt-2 mt-1">
                               {!c.externalCampaignId ? (
                                 <Button size="sm" onClick={() => {
-                                  if (window.confirm(`Publicar e iniciar esta campanha com limite de R$ ${c.orcamentoDiario} por dia? A cobrança da mídia será feita diretamente pela plataforma.`)) {
+                                  if (window.confirm(`Publicar e iniciar com até R$ ${c.orcamentoDiario} por dia (estimativa máxima de R$ ${(Number(c.orcamentoDiario) * 30).toFixed(2)} em 30 dias)? A mídia será cobrada diretamente pela plataforma.`)) {
                                     publicarCampanha.mutate(c.id);
                                   }
                                 }} disabled={publicarCampanha.isPending}>
@@ -976,7 +1004,7 @@ export default function Ads() {
             )}
 
             <div className="border-t pt-4 space-y-4">
-              <div><h3 className="font-semibold">Localização e frequência</h3><p className="text-xs text-muted-foreground">Separe países, estados, cidades, CEPs ou endereços por vírgula. Em branco usa a localização padrão da empresa.</p></div>
+              <div><h3 className="font-semibold">Localização obrigatória</h3><p className="text-xs text-muted-foreground">Informe cidades, estados ou CEPs separados por vírgula. O sistema bloqueia campanhas sem uma região reconhecida para evitar anunciar para o Brasil inteiro.</p></div>
               <Input placeholder="Ex: Curitiba, Paraná, 80000-000" value={form.locais} onChange={(e) => setForm((f) => ({ ...f, locais: e.target.value }))} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><LabelTip tip="Pra quem está fisicamente na região agora vs. quem só demonstra interesse nela.">Intenção de local / presença</LabelTip><Select value={form.tipoPresenca} onValueChange={(v) => setForm((f) => ({ ...f, tipoPresenca: v as typeof f.tipoPresenca }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="presenca">Pessoas presentes na região</SelectItem><SelectItem value="interesse">Pessoas interessadas na região</SelectItem><SelectItem value="ambos">Presença ou interesse</SelectItem></SelectContent></Select></div>
@@ -1050,7 +1078,7 @@ export default function Ads() {
               )}
             </div>
 
-            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
+            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || !form.locais.trim() || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
               onClick={() => criarCampanha.mutate()}>
               {criarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
               Criar campanha (rascunho)
