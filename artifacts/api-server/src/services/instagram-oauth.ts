@@ -155,7 +155,10 @@ export async function saveDirectInstagramConnection(
 async function subscribeDirectInstagramWebhooks(accountId: string, token: string): Promise<void> {
   try {
     const url = new URL(`https://graph.instagram.com/${accountId}/subscribed_apps`);
-    url.searchParams.set("subscribed_fields", "messages");
+    // messages = DMs; comments = comentários em posts/reels (inclui anúncios que usam
+    // post orgânico como criativo) -- achado real: só "messages" estava inscrito,
+    // comentário nunca chegava na Conversas mesmo com o webhook já pronto pra tratar.
+    url.searchParams.set("subscribed_fields", "messages,comments");
     url.searchParams.set("access_token", token);
     const response = await fetch(url, { method: "POST" });
     if (!response.ok) logger.warn({ accountId, status: response.status }, "Falha ao assinar webhook Instagram");
@@ -397,11 +400,13 @@ export async function saveInstagramConnection(
 }
 
 // Inscreve o app nos webhooks da página do Facebook vinculada ao Instagram Business,
-// assinando o campo "messages" para receber DMs. Best-effort: falha não impede a conexão.
+// assinando "messages" (DMs) e "comments" (comentário em post/reels/anúncio -- achado
+// real: só "messages" estava inscrito, comentário nunca chegava mesmo com o handler
+// do webhook já pronto). Best-effort: falha não impede a conexão.
 async function subscribePageToWebhooks(pageId: string, pageAccessToken: string): Promise<void> {
   try {
     const url = new URL(`${META_PAGE_BASE}/${pageId}/subscribed_apps`);
-    url.searchParams.set("subscribed_fields", "messages");
+    url.searchParams.set("subscribed_fields", "messages,comments");
     const res = await fetch(url.toString(), {
       method: "POST",
       headers: { Authorization: `Bearer ${pageAccessToken}` },
@@ -411,7 +416,7 @@ async function subscribePageToWebhooks(pageId: string, pageAccessToken: string):
       logger.warn({ pageId, status: res.status, body }, "Falha ao inscrever app nos webhooks da página");
       return;
     }
-    logger.info({ pageId }, "App inscrito nos webhooks da página (Instagram DMs)");
+    logger.info({ pageId }, "App inscrito nos webhooks da página (Instagram DMs + comentários)");
   } catch (err) {
     logger.warn({ err, pageId }, "Erro ao inscrever app nos webhooks da página");
   }
