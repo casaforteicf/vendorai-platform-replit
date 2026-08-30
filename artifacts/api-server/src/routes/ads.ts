@@ -22,6 +22,7 @@ import { gerarCriativoImagem } from "../lib/adContentGeneratorImagem.js";
 import { gerarShoppingFeedXml, gerarFeedToken, validarFeedToken } from "../lib/adShoppingFeed.js";
 import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
+import { enrichAdsSegmentacao } from "../services/ad-audience-plan.js";
 import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
 import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
 
@@ -156,7 +157,7 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
     if (!sourceContent) return res.status(422).json({ error: "Conteúdo de origem não encontrado neste tenant" });
   }
 
-  let segmentacao = parsed.data.segmentacao ?? {};
+  let segmentacao = enrichAdsSegmentacao((parsed.data.segmentacao ?? {}) as any);
   const sourceVariationIndex = Number(req.body?.sourceVariationIndex);
   if (parsed.data.contentGenerationId && Number.isInteger(sourceVariationIndex) && sourceVariationIndex >= 0) {
     const [publishedPost] = await db
