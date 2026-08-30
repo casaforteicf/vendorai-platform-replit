@@ -355,6 +355,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [, navigate] = useLocation();
+  const [mostrarAnalise, setMostrarAnalise] = useState(false);
 
   const { data: dashboard, isLoading } = useGetTenantDashboard(tenantId, {
     query: {
@@ -410,12 +411,18 @@ export default function Dashboard() {
 
   const perfil = dashboard?.negocioPerfil;
 
+  const horaAtual = new Date().getHours();
+  const saudacao = horaAtual < 12 ? "Bom dia" : horaAtual < 18 ? "Boa tarde" : "Boa noite";
+  const primeiroNome = user?.name?.split(" ")[0] ?? "";
+
   return (
     <div className="space-y-6 md:space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Visão Geral</h1>
+        <h1 className="vendor-page-title">
+          {saudacao}{primeiroNome ? `, ${primeiroNome}` : ""}
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Bem-vindo de volta, {user?.name}.
+          Aqui está o resumo do seu negócio hoje.
         </p>
       </div>
 
@@ -504,6 +511,29 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Botão pra revelar o resto -- pedido real: dashboard tinha
+          demais informação visível de cara (3 fileiras de KPI, funil,
+          perfil de cliente, análise de IA, dados do negócio, tudo
+          junto). Só o essencial (saudação + checklist + KPIs de
+          pipeline) fica sempre visível; o resto é 1 clique. */}
+      <div className="flex justify-center">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setMostrarAnalise((v) => !v)}
+          className="gap-1.5 text-muted-foreground"
+        >
+          {mostrarAnalise ? (
+            <>Mostrar menos <ChevronUp className="h-3.5 w-3.5" /></>
+          ) : (
+            <>Ver análise completa <ChevronDown className="h-3.5 w-3.5" /></>
+          )}
+        </Button>
+      </div>
+
+      {mostrarAnalise && (
+      <>
       {/* KPI Row 2 — Operacional */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
@@ -1437,6 +1467,8 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }
