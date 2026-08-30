@@ -406,6 +406,11 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
 
   const interestQueries = campanha.segmentacao?.audiencePlan?.meta?.interestQueries ?? [];
   const resolvedInterests = await resolveMetaInterests(accessToken, interestQueries);
+  if (interestQueries.length > 0 && resolvedInterests.length === 0) {
+    throw new MetaAdsPublishError(
+      `A Meta não encontrou interesses válidos para: ${interestQueries.join(", ")}. Ajuste o nicho antes de publicar; o VendorAI bloqueou a campanha para evitar anunciar para um público amplo demais.`,
+    );
+  }
   if (campanha.segmentacao?.audiencePlan) {
     const segmentacao = {
       ...campanha.segmentacao,
