@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2 } from "lucide-react";
+import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2, RefreshCw } from "lucide-react";
 import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
 // Label com ícone de ajuda (?) — explicação em linguagem simples pro lojista,
@@ -157,7 +157,20 @@ interface AdCampaign {
   pausarAoInteresse: boolean;
   slaNegociacaoHoras: number;
   latestCreative: AdCreative | null;
-  segmentacao?: { origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string } };
+  segmentacao?: {
+    origemInstagram?: { mediaId: string; variationIndex: number; contentGenerationId: string };
+    audiencePlan?: {
+      summary: string;
+      google: { keywords: string[] };
+      meta: { interestQueries: string[]; resolvedInterests?: Array<{ id: string; name: string }> };
+    };
+    platformReview?: {
+      status: "nao_enviada" | "em_analise" | "aprovada" | "aprovada_limitada" | "reprovada" | "erro_pagamento" | "erro_conta";
+      reason?: string;
+      policyTopics?: string[];
+      syncedAt: string;
+    };
+  };
 }
 
 interface VehicleReservation {
@@ -285,6 +298,27 @@ export default function Ads() {
     enabled: !!tenantId,
   });
 
+  useEffect(() => {
+    const pending = campaigns.filter((campaign) =>
+      campaign.externalCampaignId &&
+      (!campaign.segmentacao?.platformReview || campaign.segmentacao.platformReview.status === "em_analise"),
+    );
+    if (!tenantId || pending.length === 0) return;
+
+    const sync = async () => {
+      await Promise.allSettled(pending.map((campaign) =>
+        fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaign.id}/sync-status`, {
+          method: "POST",
+          headers: authHeaders(),
+        }),
+      ));
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+    };
+    void sync();
+    const timer = window.setInterval(sync, 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [tenantId, campaigns.map((campaign) => `${campaign.id}:${campaign.segmentacao?.platformReview?.status ?? ""}`).join("|")]);
+
   const { data: reservations = [] } = useQuery<VehicleReservation[]>({
     queryKey: ["vehicle-ad-reservations", tenantId],
     queryFn: () => fetch(`/api/tenants/${tenantId}/ads/vehicle-reservations`, { headers: authHeaders() }).then((r) => r.json()),
@@ -363,7 +397,7 @@ export default function Ads() {
           demografia: { idades: form.idades, generos: form.generos, statusParental: form.statusParental, rendas: form.rendas },
           audiencias: { afinidade: form.afinidade, noMercado: form.noMercado, termosPesquisa: form.termosPesquisa, sites: form.sites, aplicativos: form.aplicativos },
           dadosProprios: { remarketing: form.remarketing, customerMatch: form.customerMatch, semelhantes: form.semelhantes },
-          marketingContext: { nicheId: marketingContext.nicheId, nicheName: marketingContext.nicheName, productIds: marketingContext.productIds, productNames: marketingContext.productNames },
+          marketingContext: { ...marketingContext },
         },
         pausarAoInteresse: form.itemTipo === "veiculo" && form.modo === "unico" ? form.pausarAoInteresse : false,
         slaNegociacaoHoras: Number(form.slaNegociacaoHoras || 48),
@@ -457,20 +491,19 @@ export default function Ads() {
     },
   });
 
-  // Publicar cria a estrutura real na conta Google Ads do tenant — SEMPRE
-  // pausada em todos os níveis, não liga gasto nenhum. Ativar é a única
-  // ação que de fato liga a veiculação.
+  // Publicar cria a estrutura completa e a ativa em uma única ação confirmada.
+  // A plataforma ainda faz sua análise obrigatória antes de iniciar a entrega.
   const publicarCampanha = useMutation({
     mutationFn: async (campaignId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/publicar`, {
-        method: "POST", headers: authHeaders(),
+        method: "POST", headers: authHeaders(), body: JSON.stringify({ activate: true }),
       });
       if (!r.ok) throw new Error((await r.json())?.error ?? "Falha ao publicar");
       return r.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
-      toast({ title: "Campanha publicada", description: "Criada pausada na plataforma — revise e ative somente quando quiser começar a gastar." });
+      toast({ title: "Campanha enviada e ativada", description: "Ela ficará em análise e começará a veicular quando a plataforma aprovar." });
     },
     onError: (e: any) => toast({ title: "Erro ao publicar", description: e.message, variant: "destructive" }),
   });
@@ -488,6 +521,23 @@ export default function Ads() {
       toast({ title: ativar ? "Campanha ativada — gasto real começou" : "Campanha pausada" });
     },
     onError: (e: any) => toast({ title: "Erro ao alterar status", description: e.message, variant: "destructive" }),
+  });
+
+  const sincronizarSituacao = useMutation({
+    mutationFn: async (campaignId: string) => {
+      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/sync-status`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível consultar a plataforma");
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: "Situação atualizada" });
+    },
+    onError: (error: any) => toast({ title: "Falha ao consultar plataforma", description: error.message, variant: "destructive" }),
   });
 
   const excluirCampanha = useMutation({
@@ -524,8 +574,8 @@ export default function Ads() {
       <Card className="bg-muted/30">
         <CardContent className="pt-4 text-sm space-y-2">
           <p className="font-medium">Como colocar um anúncio no ar</p>
-          <div className="grid gap-2 sm:grid-cols-5 py-2">
-            {["1. Criar rascunho", "2. Gerar criativo", "3. Aprovar", "4. Publicar pausada", "5. Ativar gasto real"].map((step) => (
+          <div className="grid gap-2 sm:grid-cols-3 py-2">
+            {["1. Configurar público e oferta", "2. Gerar o anúncio", "3. Publicar e iniciar"].map((step) => (
               <div key={step} className="rounded-md border bg-background px-2 py-2 text-center text-xs font-medium">{step}</div>
             ))}
           </div>
@@ -534,7 +584,8 @@ export default function Ads() {
             <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search) ou foto gerada por IA (Meta).</li>
             <li>Farmácia (venda livre), mercado e distribuidoras usam o feed do Google Shopping. Medicamento que exige receita nunca entra no feed.</li>
             <li>Anúncio na Meta exige Meta Ads conectado. Para veicular no Instagram, a conta profissional precisa estar vinculada à Página do Facebook acessível pela mesma conexão Meta.</li>
-            <li>Nenhuma campanha publica sozinha — todo criativo passa por aprovação antes.</li>
+            <li>Ao clicar em <strong>Publicar e iniciar</strong>, a plataforma analisa o anúncio e só começa a entrega depois da aprovação automática.</li>
+            <li>A mídia é cobrada diretamente pelo Google ou pela Meta usando a forma de pagamento da conta do cliente.</li>
           </ul>
           {feedInfo?.feedUrl && (
             <div className="flex items-center gap-2 pt-2">
@@ -569,9 +620,47 @@ export default function Ads() {
                         {c.segmentacao?.origemInstagram && <Badge className="bg-pink-100 text-pink-800">Publicação do Instagram</Badge>}
                       </div>
                       {c.itemLabel && <p className="text-sm font-medium mt-1">Divulgando: {c.itemLabel}</p>}
+                      {c.segmentacao?.audiencePlan && (
+                        <div className="mt-2 rounded-md border bg-muted/30 p-2 space-y-1">
+                          <p className="text-xs font-semibold">Segmentação preparada para revisão</p>
+                          <p className="text-xs text-muted-foreground">{c.segmentacao.audiencePlan.summary}</p>
+                          {c.plataforma === "google" ? (
+                            <div className="flex flex-wrap gap-1">
+                              {c.segmentacao.audiencePlan.google.keywords.map((keyword) => <Badge key={keyword} variant="secondary" className="font-normal">{keyword}</Badge>)}
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {c.segmentacao.audiencePlan.meta.interestQueries.map((interest) => <Badge key={interest} variant="secondary" className="font-normal">{interest}</Badge>)}
+                            </div>
+                          )}
+                          <p className="text-[11px] text-muted-foreground">A publicação continuará pausada. Revise este plano antes de publicar e ativar.</p>
+                        </div>
+                      )}
                       <p className="text-sm text-muted-foreground mt-1">Orçamento diário: R$ {c.orcamentoDiario}</p>
                       {c.utmCode && <p className="text-xs text-muted-foreground">Código de atribuição: <code className="bg-muted px-1 rounded">{c.utmCode}</code></p>}
                       {c.itemTipo === "veiculo" && c.modo === "unico" && <p className="text-xs text-muted-foreground">Reserva automática: {c.pausarAoInteresse ? "pausa o patrocínio" : "não pausa"} · SLA {c.slaNegociacaoHoras}h</p>}
+                      {c.segmentacao?.platformReview && (
+                        <div className={`mt-2 rounded-md border p-2 ${
+                          c.segmentacao.platformReview.status === "reprovada" || c.segmentacao.platformReview.status === "erro_pagamento" || c.segmentacao.platformReview.status === "erro_conta"
+                            ? "border-red-200 bg-red-50"
+                            : c.segmentacao.platformReview.status === "aprovada" || c.segmentacao.platformReview.status === "aprovada_limitada"
+                              ? "border-green-200 bg-green-50"
+                              : "border-amber-200 bg-amber-50"
+                        }`}>
+                          <p className="text-xs font-semibold">
+                            {c.segmentacao.platformReview.status === "em_analise" ? "Em análise pela plataforma"
+                              : c.segmentacao.platformReview.status === "aprovada" ? "Aprovada pela plataforma"
+                              : c.segmentacao.platformReview.status === "aprovada_limitada" ? "Aprovada com limitações"
+                              : c.segmentacao.platformReview.status === "reprovada" ? "Reprovada pela plataforma"
+                              : c.segmentacao.platformReview.status === "erro_pagamento" ? "Problema no pagamento da mídia"
+                              : "Problema na conta de anúncios"}
+                          </p>
+                          {c.segmentacao.platformReview.reason && <p className="text-xs mt-1">{c.segmentacao.platformReview.reason}</p>}
+                          {c.segmentacao.platformReview.policyTopics && c.segmentacao.platformReview.policyTopics.length > 0 && (
+                            <p className="text-[11px] mt-1">Políticas: {c.segmentacao.platformReview.policyTopics.join(", ")}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
@@ -631,16 +720,24 @@ export default function Ads() {
                             </Button>
                           </div>
 
-                          {creative.status === "aprovado" && (
+                          {(
                             <div className="border-t pt-2 mt-1">
                               {!c.externalCampaignId ? (
-                                <Button size="sm" onClick={() => publicarCampanha.mutate(c.id)} disabled={publicarCampanha.isPending}>
+                                <Button size="sm" onClick={() => {
+                                  if (window.confirm(`Publicar e iniciar esta campanha com limite de R$ ${c.orcamentoDiario} por dia? A cobrança da mídia será feita diretamente pela plataforma.`)) {
+                                    publicarCampanha.mutate(c.id);
+                                  }
+                                }} disabled={publicarCampanha.isPending}>
                                   {publicarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Megaphone className="h-4 w-4 mr-1" />}
-                                  Publicar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
+                                  Publicar e iniciar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
                                 </Button>
                               ) : (
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <p className="text-xs text-muted-foreground">Publicada na conta {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"} (ID {c.externalCampaignId}).</p>
+                                  <Button size="sm" variant="ghost" onClick={() => sincronizarSituacao.mutate(c.id)} disabled={sincronizarSituacao.isPending}>
+                                    {sincronizarSituacao.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+                                    Atualizar análise
+                                  </Button>
                                   {c.status === "ativo" ? (
                                     <Button size="sm" variant="outline" onClick={() => alterarStatusCampanha.mutate({ campaignId: c.id, ativar: false })} disabled={alterarStatusCampanha.isPending}>
                                       Pausar

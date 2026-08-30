@@ -103,6 +103,30 @@ async function metaApi<T>(
   return res.json() as Promise<T>;
 }
 
+type MetaResolvedInterest = { id: string; name: string };
+
+async function resolveMetaInterests(accessToken: string, queries: string[]): Promise<MetaResolvedInterest[]> {
+  const resolved = new Map<string, MetaResolvedInterest>();
+  for (const query of queries.slice(0, 8)) {
+    try {
+      const result = await metaApi<{ data?: Array<{ id: string; name: string }> }>(
+        "search",
+        accessToken,
+        "GET",
+        { type: "adinterest", q: query, limit: "5" },
+      );
+      for (const interest of result.data ?? []) {
+        if (interest.id && interest.name) resolved.set(interest.id, { id: interest.id, name: interest.name });
+        if (resolved.size >= 10) break;
+      }
+    } catch (error) {
+      logger.warn({ error, query }, "Meta Ads: não foi possível resolver um termo de interesse");
+    }
+    if (resolved.size >= 10) break;
+  }
+  return [...resolved.values()];
+}
+
 // Mesma lógica de resolução de destino do Google Ads — duplicada em vez
 // de compartilhada porque cada serviço lança seu próprio tipo de erro e
 // não vale a pena acoplar os dois só por isso.
@@ -330,6 +354,19 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     ? await resolveBoostableInstagramMediaId(tenantId, origemInstagram.mediaId, instagramUserId, pageAccessToken)
     : null;
 
+  const interestQueries = campanha.segmentacao?.audiencePlan?.meta?.interestQueries ?? [];
+  const resolvedInterests = await resolveMetaInterests(accessToken, interestQueries);
+  if (campanha.segmentacao?.audiencePlan) {
+    const segmentacao = {
+      ...campanha.segmentacao,
+      audiencePlan: {
+        ...campanha.segmentacao.audiencePlan,
+        meta: { ...campanha.segmentacao.audiencePlan.meta, resolvedInterests },
+      },
+    };
+    await db.update(adCampaignsTable).set({ segmentacao, updatedAt: new Date() }).where(eq(adCampaignsTable.id, campaignId));
+  }
+
   const campaignName = `Vendor.ai — ${headline} — ${new Date().toISOString().slice(0, 10)}`;
 
   // 1) Campanha — objetivo Tráfego cobre landing page/WhatsApp-via-link/
@@ -355,7 +392,11 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     optimization_goal: origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     status: "PAUSED",
-    targeting: JSON.stringify(origemInstagram ? { geo_locations: { countries: ["BR"] }, publisher_platforms: ["instagram"] } : { geo_locations: { countries: ["BR"] } }),
+    targeting: JSON.stringify({
+      geo_locations: { countries: ["BR"] },
+      ...(origemInstagram ? { publisher_platforms: ["instagram"] } : {}),
+      ...(resolvedInterests.length > 0 ? { flexible_spec: [{ interests: resolvedInterests }] } : {}),
+    }),
   });
 
   let creativeRes: { id: string };
@@ -393,9 +434,19 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     status: "PAUSED",
   });
 
+  const finalSegmentacao = {
+    ...campanha.segmentacao,
+    audiencePlan: campanha.segmentacao?.audiencePlan
+      ? {
+          ...campanha.segmentacao.audiencePlan,
+          meta: { ...campanha.segmentacao.audiencePlan.meta, resolvedInterests },
+        }
+      : undefined,
+    platformReview: { status: "em_analise" as const, reason: "Enviado à Meta para análise automática.", syncedAt: new Date().toISOString() },
+  };
   await db
     .update(adCampaignsTable)
-    .set({ externalCampaignId: campaignRes.id, status: "pausado", updatedAt: new Date() })
+    .set({ externalCampaignId: campaignRes.id, status: "pausado", segmentacao: finalSegmentacao, updatedAt: new Date() })
     .where(eq(adCampaignsTable.id, campaignId));
 
   logger.info(
@@ -419,9 +470,30 @@ export async function setMetaAdsCampaignStatus(tenantId: string, campaignId: str
 
   const { accessToken } = await getValidAccessToken(tenantId);
 
-  await metaApi(campanha.externalCampaignId, accessToken, "POST", {
+  const [adSets, ads] = await Promise.all([
+    metaApi<{ data?: Array<{ id: string }> }>(`${campanha.externalCampaignId}/adsets`, accessToken, "GET", { fields: "id", limit: "100" }),
+    metaApi<{ data?: Array<{ id: string }> }>(`${campanha.externalCampaignId}/ads`, accessToken, "GET", { fields: "id", limit: "100" }),
+  ]);
+
+  const updateCampaign = () => metaApi(campanha.externalCampaignId!, accessToken, "POST", {
     status: ativar ? "ACTIVE" : "PAUSED",
   });
+  const updateChildren = async () => {
+    for (const adSet of adSets.data ?? []) {
+      await metaApi(adSet.id, accessToken, "POST", { status: ativar ? "ACTIVE" : "PAUSED" });
+    }
+    for (const ad of ads.data ?? []) {
+      await metaApi(ad.id, accessToken, "POST", { status: ativar ? "ACTIVE" : "PAUSED" });
+    }
+  };
+
+  if (ativar) {
+    await updateChildren();
+    await updateCampaign();
+  } else {
+    await updateCampaign();
+    await updateChildren();
+  }
 
   await db
     .update(adCampaignsTable)
@@ -429,6 +501,88 @@ export async function setMetaAdsCampaignStatus(tenantId: string, campaignId: str
     .where(eq(adCampaignsTable.id, campaignId));
 
   logger.info({ tenantId, campaignId, ativar }, "ads: status da campanha Meta alterado na Marketing API");
+}
+
+export async function syncMetaAdsReviewStatus(tenantId: string, campaignId: string) {
+  const [campanha] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campanha?.externalCampaignId) throw new MetaAdsPublishError("Campanha ainda não foi enviada à Meta.");
+
+  const { accessToken, adAccountId } = await getValidAccessToken(tenantId);
+  let platformReview: NonNullable<AdCampaign["segmentacao"]>["platformReview"];
+  try {
+    const [campaignState, adsState, accountState] = await Promise.all([
+      metaApi<{ effective_status?: string; issues_info?: Array<{ error_summary?: string; error_message?: string; level?: string }> }>(
+        campanha.externalCampaignId,
+        accessToken,
+        "GET",
+        { fields: "effective_status,issues_info" },
+      ),
+      metaApi<{ data?: Array<{ effective_status?: string; issues_info?: Array<{ error_summary?: string; error_message?: string }> }> }>(
+        `${campanha.externalCampaignId}/ads`,
+        accessToken,
+        "GET",
+        { fields: "effective_status,issues_info", limit: "50" },
+      ),
+      metaApi<{ account_status?: number; disable_reason?: number }>(
+        normalizeMetaAdAccountId(adAccountId),
+        accessToken,
+        "GET",
+        { fields: "account_status,disable_reason" },
+      ),
+    ]);
+
+    const statuses = [campaignState.effective_status, ...(adsState.data ?? []).map((ad) => ad.effective_status)].filter(Boolean) as string[];
+    const issues = [
+      ...(campaignState.issues_info ?? []),
+      ...(adsState.data ?? []).flatMap((ad) => ad.issues_info ?? []),
+    ];
+    const reasons = [...new Set(issues.flatMap((issue) => [issue.error_summary, issue.error_message]).filter(Boolean) as string[])];
+    const combined = `${statuses.join(" ")} ${reasons.join(" ")}`;
+    const paymentProblem = /payment|billing|pagamento|cobrança/i.test(combined) || statuses.includes("PENDING_BILLING_INFO");
+    const rejected = statuses.some((status) => ["DISAPPROVED", "WITH_ISSUES"].includes(status)) || reasons.length > 0;
+    const underReview = statuses.some((status) => ["PENDING_REVIEW", "PREAPPROVED"].includes(status));
+    const approved = statuses.some((status) => ["ACTIVE", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "PAUSED"].includes(status));
+
+    const status = paymentProblem
+      ? "erro_pagamento"
+      : rejected
+        ? "reprovada"
+        : underReview
+          ? "em_analise"
+          : approved
+            ? "aprovada"
+            : accountState.account_status && accountState.account_status !== 1
+              ? "erro_conta"
+              : "em_analise";
+
+    platformReview = {
+      status,
+      reason: paymentProblem
+        ? "A Meta informou um problema na forma de pagamento ou na cobrança da conta."
+        : reasons.join(" · ") || (
+            status === "aprovada"
+              ? "Anúncio aprovado pela Meta."
+              : status === "reprovada"
+                ? "A Meta reprovou ou bloqueou a entrega deste anúncio."
+                : status === "erro_conta"
+                  ? "A conta de anúncios está restrita ou desativada."
+                  : "A Meta ainda está analisando o anúncio."
+          ),
+      policyTopics: reasons,
+      syncedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    platformReview = {
+      status: "erro_conta",
+      reason: error instanceof Error ? error.message : "Não foi possível consultar a situação da campanha na Meta.",
+      syncedAt: new Date().toISOString(),
+    };
+  }
+
+  const segmentacao = { ...campanha.segmentacao, platformReview };
+  await db.update(adCampaignsTable).set({ segmentacao, updatedAt: new Date() }).where(eq(adCampaignsTable.id, campaignId));
+  return platformReview;
 }
 
 export { MetaAdsPublishError };
