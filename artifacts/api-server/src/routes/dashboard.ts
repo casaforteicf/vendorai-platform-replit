@@ -128,7 +128,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         novosUltimos30Dias: sql<number>`count(*) filter (where ${leadsTable.createdAt} >= ${thirtyDaysAgo})`.mapWith(Number),
       })
       .from(leadsTable)
-      .where(eq(leadsTable.tenantId, tenantId)),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.naoLeadTipo))),
 
     // 2. Deals por etapa
     db
@@ -194,6 +194,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         and(
           eq(customerIntelligenceTable.tenantId, tenantId),
           isNotNull(customerIntelligenceTable.churnRisk),
+          isNull(leadsTable.naoLeadTipo),
         ),
       )
       .orderBy(desc(customerIntelligenceTable.churnRisk))
@@ -286,7 +287,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         acima55: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} ~ '^\\d{4}-\\d{2}-\\d{2}$' and extract(year from age(now(), to_date(${leadsTable.dataNascimento}, 'YYYY-MM-DD'))) > 55)`.mapWith(Number),
       })
       .from(leadsTable)
-      .where(eq(leadsTable.tenantId, tenantId)),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.naoLeadTipo))),
 
     // 13. Dias da semana com mais fechamentos (últimos 6 meses)
     db
@@ -335,6 +336,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
           eq(leadsTable.tenantId, tenantId),
           isNotNull(leadsTable.dorPrincipal),
           ne(leadsTable.dorPrincipal, ""),
+          isNull(leadsTable.naoLeadTipo),
         ),
       )
       .groupBy(leadsTable.dorPrincipal)
@@ -348,7 +350,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         total: sql<number>`count(*)::integer`.mapWith(Number),
       })
       .from(leadsTable)
-      .where(eq(leadsTable.tenantId, tenantId))
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.naoLeadTipo)))
       .groupBy(leadsTable.urgencia),
 
     // 17. Distribuição de orçamento dos leads
@@ -363,6 +365,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
           eq(leadsTable.tenantId, tenantId),
           isNotNull(leadsTable.orcamento),
           ne(leadsTable.orcamento, ""),
+          isNull(leadsTable.naoLeadTipo),
         ),
       )
       .groupBy(leadsTable.orcamento)
@@ -380,6 +383,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
           eq(leadsTable.tenantId, tenantId),
           isNotNull(leadsTable.planoRecomendado),
           ne(leadsTable.planoRecomendado, ""),
+          isNull(leadsTable.naoLeadTipo),
         ),
       )
       .groupBy(leadsTable.planoRecomendado)
@@ -392,7 +396,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         b2c: sql<number>`count(*) filter (where ${leadsTable.empresa} is null or ${leadsTable.empresa} = '')`.mapWith(Number),
       })
       .from(leadsTable)
-      .where(eq(leadsTable.tenantId, tenantId)),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.naoLeadTipo))),
 
     // 20. Tempo médio de fechamento (dias do created_at até updated_at em deals ganhos)
     db
@@ -581,26 +585,26 @@ router.post("/tenants/:tenantId/dashboard/perfil-insight", async (req, res) => {
       db
         .select({ total: count() })
         .from(leadsTable)
-        .where(eq(leadsTable.tenantId, tenantId)),
+        .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.naoLeadTipo))),
       db
         .select({
           valor: leadsTable.dorPrincipal,
           total: sql<number>`count(*)::integer`.mapWith(Number),
         })
         .from(leadsTable)
-        .where(and(eq(leadsTable.tenantId, tenantId), isNotNull(leadsTable.dorPrincipal), ne(leadsTable.dorPrincipal, "")))
+        .where(and(eq(leadsTable.tenantId, tenantId), isNotNull(leadsTable.dorPrincipal), ne(leadsTable.dorPrincipal, ""), isNull(leadsTable.naoLeadTipo)))
         .groupBy(leadsTable.dorPrincipal)
         .orderBy(desc(sql`count(*)`))
         .limit(5),
       db
         .select({ valor: leadsTable.urgencia, total: sql<number>`count(*)::integer`.mapWith(Number) })
         .from(leadsTable)
-        .where(and(eq(leadsTable.tenantId, tenantId), isNotNull(leadsTable.urgencia), ne(leadsTable.urgencia, "")))
+        .where(and(eq(leadsTable.tenantId, tenantId), isNotNull(leadsTable.urgencia), ne(leadsTable.urgencia, ""), isNull(leadsTable.naoLeadTipo)))
         .groupBy(leadsTable.urgencia),
       db
         .select({ valor: leadsTable.orcamento, total: sql<number>`count(*)::integer`.mapWith(Number) })
         .from(leadsTable)
-        .where(and(eq(leadsTable.tenantId, tenantId), isNotNull(leadsTable.orcamento), ne(leadsTable.orcamento, "")))
+        .where(and(eq(leadsTable.tenantId, tenantId), isNotNull(leadsTable.orcamento), ne(leadsTable.orcamento, ""), isNull(leadsTable.naoLeadTipo)))
         .groupBy(leadsTable.orcamento)
         .orderBy(desc(sql`count(*)`)),
       db
@@ -609,7 +613,7 @@ router.post("/tenants/:tenantId/dashboard/perfil-insight", async (req, res) => {
           b2c: sql<number>`count(*) filter (where ${leadsTable.empresa} is null or ${leadsTable.empresa} = '')`.mapWith(Number),
         })
         .from(leadsTable)
-        .where(eq(leadsTable.tenantId, tenantId)),
+        .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.naoLeadTipo))),
       db
         .select({ valor: dealsTable.motivoPerda, total: sql<number>`count(*)::integer`.mapWith(Number) })
         .from(dealsTable)
@@ -631,7 +635,7 @@ router.post("/tenants/:tenantId/dashboard/perfil-insight", async (req, res) => {
           de36a45: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} ~ '^\\d{4}-\\d{2}-\\d{2}$' and extract(year from age(now(), to_date(${leadsTable.dataNascimento}, 'YYYY-MM-DD'))) between 36 and 45)`.mapWith(Number),
         })
         .from(leadsTable)
-        .where(eq(leadsTable.tenantId, tenantId)),
+        .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.naoLeadTipo))),
     ])) as [
       { total: number }[],
       { valor: string | null; total: number }[],
@@ -746,21 +750,21 @@ router.get("/dashboard", authenticate, async (req, res) => {
     leadsSemContatoRaw,
     pipelineRaw,
   ] = await Promise.all([
-    // totalLeads no período (30d) — exclui leads com exclusão lógica
+    // totalLeads no período (30d) — exclui leads com exclusão lógica e não-leads
     db.select({ c: count() }).from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), gte(leadsTable.createdAt, thirtyDaysAgo))),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), isNull(leadsTable.naoLeadTipo), gte(leadsTable.createdAt, thirtyDaysAgo))),
 
     // leadsNovos (últimos 7d)
     db.select({ c: count() }).from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), gte(leadsTable.createdAt, sevenDaysAgo))),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), isNull(leadsTable.naoLeadTipo), gte(leadsTable.createdAt, sevenDaysAgo))),
 
     // leads convertidos (status='cliente') no período
     db.select({ c: count() }).from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), eq(leadsTable.status, "cliente"), gte(leadsTable.createdAt, thirtyDaysAgo))),
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), isNull(leadsTable.naoLeadTipo), eq(leadsTable.status, "cliente"), gte(leadsTable.createdAt, thirtyDaysAgo))),
 
     // leads por status (estado atual, sem filtro de período)
     db.select({ status: leadsTable.status, c: count() }).from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)))
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), isNull(leadsTable.naoLeadTipo)))
       .groupBy(leadsTable.status),
 
     // deals ganhos no período para ticket médio
@@ -820,7 +824,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
 
     // atividade: últimos leads criados
     db.select({ id: leadsTable.id, nome: leadsTable.nome, createdAt: leadsTable.createdAt })
-      .from(leadsTable).where(eq(leadsTable.tenantId, tenantId))
+      .from(leadsTable).where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.naoLeadTipo)))
       .orderBy(desc(leadsTable.createdAt)).limit(20),
 
     // atividade: mensagens de agente recentes
@@ -841,7 +845,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
     // atividade: clientes convertidos recentemente
     db.select({ id: leadsTable.id, nome: leadsTable.nome, createdAt: leadsTable.createdAt })
       .from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.status, "cliente")))
+      .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.status, "cliente"), isNull(leadsTable.naoLeadTipo)))
       .orderBy(desc(leadsTable.createdAt)).limit(20),
 
     // evolução de leads: agrupado por dia nos últimos 30d (SQL raw)
@@ -892,6 +896,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
         isNotNull(customerIntelligenceTable.churnRisk),
         sql`${customerIntelligenceTable.churnRisk} > 60`,
         notInArray(leadsTable.status, ["cliente", "perdido"]),
+        isNull(leadsTable.naoLeadTipo),
       ))
       .orderBy(desc(customerIntelligenceTable.churnRisk))
       .limit(8),
@@ -908,6 +913,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
         eq(leadsTable.tenantId, tenantId),
         inArray(leadsTable.status, ["negociando", "proposta"]),
         lt(leadsTable.updatedAt, sevenDaysAgo),
+        isNull(leadsTable.naoLeadTipo),
       ))
       .orderBy(asc(leadsTable.updatedAt))
       .limit(8),
@@ -925,6 +931,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
       .where(and(
         eq(leadsTable.tenantId, tenantId),
         inArray(leadsTable.status, ["novo", "qualificado", "proposta", "negociando"]),
+        isNull(leadsTable.naoLeadTipo),
       ))
       .orderBy(desc(leadsTable.updatedAt)),
   ]);

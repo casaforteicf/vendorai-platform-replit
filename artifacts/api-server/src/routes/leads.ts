@@ -343,6 +343,16 @@ router.post("/leads/:id/classificar-nao-lead", async (req, res) => {
     })
     .where(eq(leadsTable.id, id))
     .returning();
+
+  // Achado real do Marcos: score de churn calculado ANTES da classificação
+  // continuava aparecendo no dashboard mesmo depois de virar não-lead --
+  // meu bloqueio anterior só impede análise NOVA, não limpa a que já
+  // existia. Zera o score de churn na hora de classificar, pra sumir do
+  // dashboard imediatamente, sem esperar um próximo ciclo de análise.
+  await db
+    .update(customerIntelligenceTable)
+    .set({ churnRisk: null, churnRiskExplicacao: null, updatedAt: new Date() })
+    .where(eq(customerIntelligenceTable.leadId, id));
   res.json(lead);
 });
 
