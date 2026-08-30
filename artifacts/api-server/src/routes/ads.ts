@@ -44,6 +44,15 @@ function canAccess(req: Express.Request, tenantId: string) {
   return isSuperAdmin(req) || tid(req) === tenantId;
 }
 
+function detectSpecialAdCategory(text: string): "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS" | null {
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(vaga|emprego|recrutamento|contratando|trabalhe conosco)\b/.test(normalized)) return "EMPLOYMENT";
+  if (/\b(imovel|apartamento|casa a venda|aluguel|locacao residencial|loteamento|financiamento imobiliario)\b/.test(normalized)) return "HOUSING";
+  if (/\b(emprestimo|credito|cartao de credito|financiamento|consorcio)\b/.test(normalized)) return "CREDIT";
+  if (/\b(candidato|eleicao|partido politico|vote|campanha eleitoral)\b/.test(normalized)) return "ISSUES_ELECTIONS_POLITICS";
+  return null;
+}
+
 /**
  * Monta o resumo de dados do item pra alimentar o gerador de criativo —
  * cada tipo tem campos bem diferentes, então normaliza aqui pra um texto
@@ -177,6 +186,37 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
 
   // Código curto e único pra usar como utm_campaign em qualquer link de
   // divulgação dessa campanha (ver adAttribution.ts).
+  const control = (segmentacao as any)?.campaignControl;
+  if (!control) {
+    return res.status(422).json({ error: "Defina objetivo, período, orçamento total e medição antes de criar a campanha." });
+  }
+  const startDate = new Date(`${control.startDate}T00:00:00`);
+  const endDate = new Date(`${control.endDate}T23:59:59`);
+  const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / 86_400_000);
+  const dailyBudget = Number(parsed.data.orcamentoDiario);
+  if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || durationDays < 1 || durationDays > 90) {
+    return res.status(422).json({ error: "O período da campanha deve ter entre 2 e 90 dias." });
+  }
+  if (!Number.isFinite(control.totalBudget) || control.totalBudget < dailyBudget) {
+    return res.status(422).json({ error: "O orçamento total precisa ser igual ou maior que o limite diário." });
+  }
+  const specialCategoryHint = detectSpecialAdCategory([
+    parsed.data.vertical,
+    parsed.data.itemLabel,
+    ...((segmentacao as any)?.marketingContext?.productNames ?? []),
+  ].filter(Boolean).join(" "));
+  if (specialCategoryHint && control.specialAdCategory === "NONE") {
+    return res.status(422).json({
+      error: `Este anúncio parece pertencer à categoria especial ${specialCategoryHint}. Confirme a categoria correta antes de criar.`,
+    });
+  }
+  if (["whatsapp", "lead", "sale", "visit"].includes(control.objective) && control.conversionTracking?.mode === "clicks") {
+    return res.status(422).json({ error: "Para este objetivo, escolha a medição de contatos do VendorAI ou uma conversão configurada na plataforma." });
+  }
+  if (control.conversionTracking?.mode === "platform" && !control.conversionTracking?.confirmed) {
+    return res.status(422).json({ error: "Confirme que a conversão da plataforma foi instalada e testada antes de publicar." });
+  }
+
   const utmCode = `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
   const [row] = await db.insert(adCampaignsTable).values({ ...parsed.data, segmentacao, utmCode }).returning();

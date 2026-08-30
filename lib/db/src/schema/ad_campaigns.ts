@@ -80,6 +80,24 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
         resolvedInterests?: Array<{ id: string; name: string }>;
       };
     };
+    campaignControl?: {
+      objective: "whatsapp" | "lead" | "sale" | "visit" | "awareness";
+      startDate: string;
+      endDate: string;
+      totalBudget: number;
+      specialAdCategory: "NONE" | "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS";
+      conversionTracking: {
+        mode: "vendorai" | "platform" | "clicks";
+        confirmed: boolean;
+      };
+      automation: {
+        autoPauseNoResults: boolean;
+        spendWithoutResultLimit?: number | null;
+        allowBudgetIncrease: false;
+        lastAutoPause?: { at: string; spend: number; reason: string };
+      };
+    };
+    previousRejectionReason?: string;
     platformReview?: {
       status: "nao_enviada" | "em_analise" | "aprovada" | "aprovada_limitada" | "reprovada" | "erro_pagamento" | "erro_conta";
       reason?: string;

@@ -23,6 +23,7 @@ import { runContentAutopilotJob } from "../services/contentAutopilotJob.js";
 import { runAppointmentReminders } from "./appointmentReminders.js";
 import { runReviewRequests } from "./reviewRequests.js";
 import { runAdsReviewSync } from "./adsReviewSync.js";
+import { runAdsWasteGuard } from "./adsWasteGuard.js";
 import { pollPendingRenders } from "../services/blenderService.js";
 import { sendOutgoingMessage } from "../services/omnichannel.js";
 import type { Logger } from "pino";
@@ -1756,6 +1757,13 @@ export function startScheduler(log: Logger): void {
     });
   });
 
+  // Proteção de gasto — a cada hora; apenas pausa quando o cliente autorizou.
+  cron.schedule("25 * * * *", () => {
+    runAdsWasteGuard(log).catch((err) => {
+      log.error({ err }, "scheduler/ads-waste-guard: unhandled error");
+    });
+  });
+
   // Job 14: No-response closing message — daily at 09:30
   cron.schedule("30 9 * * *", () => {
     runNoResponseClosingMessage(log).catch((err) => {
@@ -1856,7 +1864,7 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, content-autopilot @05:00-BRT, appointment-reminders @*/30min, ads-review-sync @*/10min, no-response-closing @09:30, pos-venda-inactivity @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT, feedback-loop @mon-06:00-BRT)");
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, content-autopilot @05:00-BRT, appointment-reminders @*/30min, ads-review-sync @*/10min, ads-waste-guard @:25, no-response-closing @09:30, pos-venda-inactivity @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT, feedback-loop @mon-06:00-BRT)");
 }
 
 // ── Job 16: Automatic prospector sync ─────────────────────────────────────────

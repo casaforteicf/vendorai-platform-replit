@@ -161,7 +161,8 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
         "Tenant sem telefone de WhatsApp cadastrado (Configurações → Perfil do Negócio) — necessário pra destino de clique WhatsApp.",
       );
     }
-    return `https://wa.me/${numero}`;
+    const ref = campanha.utmCode ? `?text=${encodeURIComponent(`Olá, vim do anúncio ${campanha.utmCode}`)}` : "";
+    return `https://wa.me/${numero}${ref}`;
   }
 
   if (campanha.itemTipo === "landing_page") {
@@ -175,7 +176,9 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
     if (!site?.siteSlug) {
       throw new GoogleAdsPublishError("Landing page da campanha não encontrada ou ainda sem endereço publicado.");
     }
-    return `https://${site.siteSlug}.appvendorai.com`;
+    const url = new URL(`https://${site.siteSlug}.appvendorai.com`);
+    if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+    return url.toString();
   }
 
   // produto/veiculo/imovel: ainda não existe página pública de detalhe
@@ -189,7 +192,9 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
   if (!tenant?.subdomainSlug) {
     throw new GoogleAdsPublishError("Tenant sem site publicado (subdomínio) — necessário como destino do anúncio.");
   }
-  return `https://${tenant.subdomainSlug}.appvendorai.com`;
+  const url = new URL(`https://${tenant.subdomainSlug}.appvendorai.com`);
+  if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+  return url.toString();
 }
 
 async function getValidAccessToken(tenantId: string): Promise<{ accessToken: string; customerId: string }> {
@@ -302,6 +307,11 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   }
 
   const campaignName = `Vendor.ai — ${nomeCurto} — ${new Date().toISOString().slice(0, 10)}`;
+  const campaignControl = campanha.segmentacao?.campaignControl;
+  if (!campaignControl?.startDate || !campaignControl?.endDate) {
+    throw new GoogleAdsPublishError("Defina as datas de início e término antes de publicar.");
+  }
+  const googleDate = (value: string) => value.replace(/-/g, "");
   const amountMicros = String(Math.round(Number(campanha.orcamentoDiario) * 1_000_000));
 
   // 1) Orçamento
@@ -333,6 +343,8 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
         advertisingChannelType: "SEARCH",
         status: "PAUSED",
         campaignBudget: budgetResourceName,
+        startDate: googleDate(campaignControl.startDate),
+        endDate: googleDate(campaignControl.endDate),
         targetSpend: {},
         networkSettings: {
           targetGoogleSearch: true,
@@ -502,6 +514,37 @@ export async function setGoogleAdsCampaignStatus(
     .where(eq(adCampaignsTable.id, campaignId));
 
   logger.info({ tenantId, campaignId, ativar }, "ads: status da campanha alterado na API do Google Ads");
+}
+
+export async function fetchGoogleAdsCampaignPerformance(tenantId: string, campaignId: string) {
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign?.externalCampaignId) throw new GoogleAdsPublishError("Campanha ainda não foi enviada ao Google Ads.");
+  const { accessToken, customerId } = await getValidAccessToken(tenantId);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const query = [
+    "SELECT metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions",
+    "FROM campaign",
+    `WHERE campaign.id = ${campaign.externalCampaignId} AND segments.date = '${today}'`,
+  ].join(" ");
+  const res = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${customerId}/googleAds:searchStream`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) throw new GoogleAdsPublishError(traduzirErroGoogleAds(res.status, await res.text()));
+  const chunks = await res.json() as Array<{ results?: Array<{ metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number } }> }>;
+  const rows = chunks.flatMap((chunk) => chunk.results ?? []);
+  return rows.reduce((total, row) => ({
+    impressions: total.impressions + Number(row.metrics?.impressions ?? 0),
+    clicks: total.clicks + Number(row.metrics?.clicks ?? 0),
+    spend: total.spend + Number(row.metrics?.costMicros ?? 0) / 1_000_000,
+    conversions: total.conversions + Number(row.metrics?.conversions ?? 0),
+  }), { impressions: 0, clicks: 0, spend: 0, conversions: 0 });
 }
 
 export async function syncGoogleAdsReviewStatus(tenantId: string, campaignId: string) {

@@ -202,7 +202,8 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
     // "click-to-WhatsApp" da Meta (que exigiria destination_type=WHATSAPP
     // no ad set + estrutura de creative diferente). Funciona (abre o
     // WhatsApp ao clicar), só não é o objetivo de campanha nativo.
-    return `https://wa.me/${numero}`;
+    const ref = campanha.utmCode ? `?text=${encodeURIComponent(`Olá, vim do anúncio ${campanha.utmCode}`)}` : "";
+    return `https://wa.me/${numero}${ref}`;
   }
 
   if (campanha.itemTipo === "landing_page") {
@@ -216,7 +217,9 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
     if (!site?.siteSlug) {
       throw new MetaAdsPublishError("Landing page da campanha não encontrada ou ainda sem endereço publicado.");
     }
-    return `https://${site.siteSlug}.appvendorai.com`;
+    const url = new URL(`https://${site.siteSlug}.appvendorai.com`);
+    if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+    return url.toString();
   }
 
   const [tenant] = await db
@@ -226,7 +229,9 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
   if (!tenant?.subdomainSlug) {
     throw new MetaAdsPublishError("Tenant sem site publicado (subdomínio) — necessário como destino do anúncio.");
   }
-  return `https://${tenant.subdomainSlug}.appvendorai.com`;
+  const url = new URL(`https://${tenant.subdomainSlug}.appvendorai.com`);
+  if (campanha.utmCode) url.searchParams.set("utm_campaign", campanha.utmCode);
+  return url.toString();
 }
 
 async function getValidAccessToken(tenantId: string): Promise<{ accessToken: string; adAccountId: string }> {
@@ -440,7 +445,12 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
 
   const requestedLocations = campanha.segmentacao?.localizacao?.locais ?? [];
   const geoLocations = await resolveMetaGeoLocations(accessToken, requestedLocations);
-  const demographicTargeting = metaDemographicTargeting(campanha);
+  const campaignControl = campanha.segmentacao?.campaignControl;
+  if (!campaignControl?.startDate || !campaignControl?.endDate) {
+    throw new MetaAdsPublishError("Defina as datas de início e término antes de publicar.");
+  }
+  const specialAdCategory = campaignControl.specialAdCategory ?? "NONE";
+  const demographicTargeting = specialAdCategory === "NONE" ? metaDemographicTargeting(campanha) : {};
 
   const campaignName = `Vendor.ai — ${headline} — ${new Date().toISOString().slice(0, 10)}`;
 
@@ -450,9 +460,11 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   // categoria declarada, fora do escopo dos verticais atendidos hoje).
   const campaignRes = await metaApi<{ id: string }>(`${adAccountPath}/campaigns`, accessToken, "POST", {
     name: campaignName,
-    objective: origemInstagram ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC",
+    objective: campaignControl.objective === "awareness"
+      ? "OUTCOME_AWARENESS"
+      : origemInstagram ? "OUTCOME_ENGAGEMENT" : "OUTCOME_TRAFFIC",
     status: "PAUSED",
-    special_ad_categories: "[]",
+    special_ad_categories: specialAdCategory === "NONE" ? "[]" : JSON.stringify([specialAdCategory]),
   });
 
   // 2) Ad Set — orçamento (centavos, inteiro), geo Brasil fixo nessa
@@ -464,7 +476,13 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     campaign_id: campaignRes.id,
     daily_budget: String(dailyBudgetCents),
     billing_event: "IMPRESSIONS",
-    optimization_goal: origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
+    optimization_goal: campaignControl.objective === "awareness"
+      ? "REACH"
+      : origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
+    ...(campaignControl.startDate > new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+      ? { start_time: new Date(`${campaignControl.startDate}T00:00:00-03:00`).toISOString() }
+      : {}),
+    end_time: new Date(`${campaignControl.endDate}T23:59:59-03:00`).toISOString(),
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     status: "PAUSED",
     targeting: JSON.stringify({
@@ -577,6 +595,31 @@ export async function setMetaAdsCampaignStatus(tenantId: string, campaignId: str
     .where(eq(adCampaignsTable.id, campaignId));
 
   logger.info({ tenantId, campaignId, ativar }, "ads: status da campanha Meta alterado na Marketing API");
+}
+
+export async function fetchMetaAdsCampaignPerformance(tenantId: string, campaignId: string) {
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign?.externalCampaignId) throw new MetaAdsPublishError("Campanha ainda não foi enviada à Meta.");
+  const { accessToken } = await getValidAccessToken(tenantId);
+  const insights = await metaApi<{ data?: Array<{
+    impressions?: string;
+    clicks?: string;
+    spend?: string;
+    actions?: Array<{ action_type?: string; value?: string }>;
+  }> }>(`${campaign.externalCampaignId}/insights`, accessToken, "GET", {
+    fields: "impressions,clicks,spend,actions",
+    date_preset: "today",
+  });
+  const conversionTypes = new Set(["lead", "purchase", "contact", "onsite_conversion.messaging_conversation_started_7d"]);
+  return (insights.data ?? []).reduce((total, row) => ({
+    impressions: total.impressions + Number(row.impressions ?? 0),
+    clicks: total.clicks + Number(row.clicks ?? 0),
+    spend: total.spend + Number(row.spend ?? 0),
+    conversions: total.conversions + (row.actions ?? [])
+      .filter((action) => conversionTypes.has(action.action_type ?? ""))
+      .reduce((sum, action) => sum + Number(action.value ?? 0), 0),
+  }), { impressions: 0, clicks: 0, spend: 0, conversions: 0 });
 }
 
 export async function syncMetaAdsReviewStatus(tenantId: string, campaignId: string) {

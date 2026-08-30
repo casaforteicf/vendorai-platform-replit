@@ -164,6 +164,7 @@ interface AdCampaign {
       google: { keywords: string[] };
       meta: { interestQueries: string[]; resolvedInterests?: Array<{ id: string; name: string }> };
     };
+    campaignControl?: { objective: string; startDate: string; endDate: string; totalBudget: number; specialAdCategory: string };
     platformReview?: {
       status: "nao_enviada" | "em_analise" | "aprovada" | "aprovada_limitada" | "reprovada" | "erro_pagamento" | "erro_conta";
       reason?: string;
@@ -230,6 +231,14 @@ const EMPTY_FORM = {
   idades: [] as string[], generos: [] as string[], statusParental: [] as string[], rendas: [] as string[],
   afinidade: [] as string[], noMercado: [] as string[], termosPesquisa: [] as string[], sites: [] as string[], aplicativos: [] as string[],
   remarketing: [] as string[], customerMatch: [] as string[], semelhantes: [] as string[],
+  objective: "whatsapp" as "whatsapp" | "lead" | "sale" | "visit" | "awareness",
+  startDate: new Date().toISOString().slice(0, 10),
+  endDate: new Date(Date.now() + 6 * 86_400_000).toISOString().slice(0, 10),
+  specialAdCategory: "NONE" as "NONE" | "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS",
+  conversionMode: "vendorai" as "vendorai" | "platform" | "clicks",
+  conversionConfirmed: true,
+  autoPauseNoResults: true,
+  spendWithoutResultLimit: "",
   pausarAoInteresse: true, slaNegociacaoHoras: "48",
   imagemEscolhidaUrl: "" as string, // vazio = gera com IA; preenchido = usa essa foto real do item
   contentGenerationId: "" as string,
@@ -243,6 +252,12 @@ const OPCOES_STATUS_PARENTAL = ["Com filhos", "Sem filhos", "Desconhecido"];
 const OPCOES_RENDA = ["10% superior", "11-20%", "21-30%", "31-40%", "41-50%", "50% inferior", "Desconhecida"];
 
 const lista = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+const campaignDays = (start: string, end: string) => {
+  const from = new Date(`${start}T00:00:00`).getTime();
+  const to = new Date(`${end}T00:00:00`).getTime();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return 0;
+  return Math.floor((to - from) / 86_400_000) + 1;
+};
 
 export default function Ads() {
   const { user } = useAuth();
@@ -398,6 +413,19 @@ export default function Ads() {
           audiencias: { afinidade: form.afinidade, noMercado: form.noMercado, termosPesquisa: form.termosPesquisa, sites: form.sites, aplicativos: form.aplicativos },
           dadosProprios: { remarketing: form.remarketing, customerMatch: form.customerMatch, semelhantes: form.semelhantes },
           marketingContext: { ...marketingContext },
+          campaignControl: {
+            objective: form.objective,
+            startDate: form.startDate,
+            endDate: form.endDate,
+            totalBudget: Number(form.orcamentoDiario) * campaignDays(form.startDate, form.endDate),
+            specialAdCategory: form.specialAdCategory,
+            conversionTracking: { mode: form.conversionMode, confirmed: form.conversionMode !== "platform" || form.conversionConfirmed },
+            automation: {
+              autoPauseNoResults: form.autoPauseNoResults,
+              spendWithoutResultLimit: form.spendWithoutResultLimit ? Number(form.spendWithoutResultLimit) : null,
+              allowBudgetIncrease: false,
+            },
+          },
         },
         pausarAoInteresse: form.itemTipo === "veiculo" && form.modo === "unico" ? form.pausarAoInteresse : false,
         slaNegociacaoHoras: Number(form.slaNegociacaoHoras || 48),
@@ -752,7 +780,7 @@ export default function Ads() {
                             <div className="border-t pt-2 mt-1">
                               {!c.externalCampaignId ? (
                                 <Button size="sm" onClick={() => {
-                                  if (window.confirm(`Publicar e iniciar com até R$ ${c.orcamentoDiario} por dia (estimativa máxima de R$ ${(Number(c.orcamentoDiario) * 30).toFixed(2)} em 30 dias)? A mídia será cobrada diretamente pela plataforma.`)) {
+                                  if (window.confirm(`Publicar e iniciar com até R$ ${c.orcamentoDiario} por dia e limite planejado de R$ ${Number(c.segmentacao?.campaignControl?.totalBudget ?? Number(c.orcamentoDiario) * 30).toFixed(2)}? A mídia será cobrada diretamente pela plataforma.`)) {
                                     publicarCampanha.mutate(c.id);
                                   }
                                 }} disabled={publicarCampanha.isPending}>
@@ -1004,6 +1032,71 @@ export default function Ads() {
             )}
 
             <div className="border-t pt-4 space-y-4">
+              <div>
+                <h3 className="font-semibold">Objetivo, período e limite total</h3>
+                <p className="text-xs text-muted-foreground">Essas escolhas definem como o anúncio será medido e impedem que ele fique rodando sem prazo.</p>
+              </div>
+              <div>
+                <LabelTip tip="Escolha o resultado que você espera, não apenas o tipo de anúncio.">O que deve acontecer?</LabelTip>
+                <Select value={form.objective} onValueChange={(v) => setForm((f) => ({ ...f, objective: v as typeof f.objective, conversionMode: v === "awareness" ? "clicks" : "vendorai" }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="whatsapp">Receber conversas no WhatsApp</SelectItem>
+                    <SelectItem value="lead">Receber cadastros de interessados</SelectItem>
+                    <SelectItem value="sale">Gerar vendas</SelectItem>
+                    <SelectItem value="visit">Agendar visita ou atendimento</SelectItem>
+                    <SelectItem value="awareness">Divulgar a marca</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><Label>Começa em</Label><Input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} /></div>
+                <div><Label>Termina em</Label><Input type="date" min={form.startDate} value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} /></div>
+              </div>
+              <div className="rounded-lg border bg-primary/5 p-3 text-sm">
+                <p><strong>{campaignDays(form.startDate, form.endDate)} dias</strong> · até <strong>R$ {Number(form.orcamentoDiario || 0).toFixed(2)}/dia</strong></p>
+                <p className="text-base mt-1">Limite planejado: <strong>R$ {(Number(form.orcamentoDiario || 0) * campaignDays(form.startDate, form.endDate)).toFixed(2)}</strong></p>
+                <p className="text-xs text-muted-foreground mt-1">O VendorAI nunca aumenta o orçamento automaticamente.</p>
+              </div>
+              <div>
+                <LabelTip tip="Habitação, emprego, crédito e política possuem restrições obrigatórias nas plataformas.">Este anúncio pertence a uma categoria especial?</LabelTip>
+                <Select value={form.specialAdCategory} onValueChange={(v) => setForm((f) => ({ ...f, specialAdCategory: v as typeof f.specialAdCategory, idades: v === "NONE" ? f.idades : [], generos: v === "NONE" ? f.generos : [], rendas: v === "NONE" ? f.rendas : [] }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">Não</SelectItem>
+                    <SelectItem value="HOUSING">Habitação — imóveis, locação ou financiamento habitacional</SelectItem>
+                    <SelectItem value="EMPLOYMENT">Emprego — vagas e recrutamento</SelectItem>
+                    <SelectItem value="CREDIT">Crédito — empréstimo, cartão ou financiamento</SelectItem>
+                    <SelectItem value="ISSUES_ELECTIONS_POLITICS">Política, eleição ou tema social</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.specialAdCategory !== "NONE" && <p className="text-xs text-amber-700 mt-1">Filtros de idade, gênero e renda serão removidos para respeitar as regras da plataforma.</p>}
+              </div>
+              <div>
+                <LabelTip tip="O VendorAI consegue ligar contatos recebidos à campanha usando o código da própria campanha.">Como medir o resultado?</LabelTip>
+                <Select value={form.conversionMode} onValueChange={(v) => setForm((f) => ({ ...f, conversionMode: v as typeof f.conversionMode, conversionConfirmed: v !== "platform" }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="vendorai">Contatos e negócios registrados no VendorAI</SelectItem>
+                    <SelectItem value="platform">Conversão já instalada no Google/Meta</SelectItem>
+                    <SelectItem value="clicks" disabled={form.objective !== "awareness"}>Somente cliques (apenas divulgação de marca)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.conversionMode === "platform" && (
+                <label className="flex items-start gap-2 text-sm rounded-lg border p-3">
+                  <input type="checkbox" className="mt-1" checked={form.conversionConfirmed} onChange={(e) => setForm((f) => ({ ...f, conversionConfirmed: e.target.checked }))} />
+                  Confirmo que a conversão foi instalada e testada na conta de anúncios.
+                </label>
+              )}
+              <label className="flex items-start gap-2 text-sm rounded-lg border p-3">
+                <input type="checkbox" className="mt-1" checked={form.autoPauseNoResults} onChange={(e) => setForm((f) => ({ ...f, autoPauseNoResults: e.target.checked }))} />
+                <span><strong>Pausar se gastar sem gerar resultado</strong><span className="block text-xs text-muted-foreground">O sistema poderá reduzir desperdício, mas nunca aumentar o orçamento.</span></span>
+              </label>
+              {form.autoPauseNoResults && <div><Label>Limite gasto sem resultado (R$)</Label><Input type="number" min="1" placeholder="Ex: 150" value={form.spendWithoutResultLimit} onChange={(e) => setForm((f) => ({ ...f, spendWithoutResultLimit: e.target.value }))} /></div>}
+            </div>
+
+            <div className="border-t pt-4 space-y-4">
               <div><h3 className="font-semibold">Localização obrigatória</h3><p className="text-xs text-muted-foreground">Informe cidades, estados ou CEPs separados por vírgula. O sistema bloqueia campanhas sem uma região reconhecida para evitar anunciar para o Brasil inteiro.</p></div>
               <Input placeholder="Ex: Curitiba, Paraná, 80000-000" value={form.locais} onChange={(e) => setForm((f) => ({ ...f, locais: e.target.value }))} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1078,7 +1171,7 @@ export default function Ads() {
               )}
             </div>
 
-            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || !form.locais.trim() || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
+            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || campaignDays(form.startDate, form.endDate) < 1 || (form.conversionMode === "platform" && !form.conversionConfirmed) || !form.locais.trim() || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
               onClick={() => criarCampanha.mutate()}>
               {criarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
               Criar campanha (rascunho)
