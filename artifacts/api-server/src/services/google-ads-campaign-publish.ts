@@ -341,9 +341,13 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   // ID numérico final, mesmo padrão já usado em listAccessibleCustomers.
   const externalCampaignId = campaignResourceName.split("/").pop() ?? campaignResourceName;
 
+  const segmentacao = {
+    ...campanha.segmentacao,
+    platformReview: { status: "em_analise" as const, reason: "Enviado ao Google Ads para análise automática.", syncedAt: new Date().toISOString() },
+  };
   await db
     .update(adCampaignsTable)
-    .set({ externalCampaignId, status: "pausado", updatedAt: new Date() })
+    .set({ externalCampaignId, status: "pausado", segmentacao, updatedAt: new Date() })
     .where(eq(adCampaignsTable.id, campaignId));
 
   logger.info(
@@ -387,6 +391,71 @@ export async function setGoogleAdsCampaignStatus(
     .where(eq(adCampaignsTable.id, campaignId));
 
   logger.info({ tenantId, campaignId, ativar }, "ads: status da campanha alterado na API do Google Ads");
+}
+
+export async function syncGoogleAdsReviewStatus(tenantId: string, campaignId: string) {
+  const [campanha] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campanha?.externalCampaignId) throw new GoogleAdsPublishError("Campanha ainda não foi enviada ao Google Ads.");
+
+  const { accessToken, customerId } = await getValidAccessToken(tenantId);
+  const query = [
+    "SELECT campaign.status, ad_group_ad.status,",
+    "ad_group_ad.policy_summary.approval_status,",
+    "ad_group_ad.policy_summary.policy_topic_entries",
+    "FROM ad_group_ad",
+    `WHERE campaign.id = ${campanha.externalCampaignId}`,
+  ].join(" ");
+  const res = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${customerId}/googleAds:searchStream`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  let platformReview: NonNullable<AdCampaign["segmentacao"]>["platformReview"];
+  if (!res.ok) {
+    const raw = await res.text();
+    const paymentProblem = /billing|payment|payments_account|customer_not_enabled/i.test(raw);
+    platformReview = {
+      status: paymentProblem ? "erro_pagamento" : "erro_conta",
+      reason: paymentProblem
+        ? "O Google Ads informou um problema de cobrança ou forma de pagamento."
+        : traduzirErroGoogleAds(res.status, raw),
+      syncedAt: new Date().toISOString(),
+    };
+  } else {
+    const chunks = await res.json() as Array<{ results?: Array<{ adGroupAd?: { policySummary?: { approvalStatus?: string; policyTopicEntries?: Array<{ topic?: string; type?: string }> } } }> }>;
+    const rows = chunks.flatMap((chunk) => chunk.results ?? []);
+    const approvals = rows.map((row) => row.adGroupAd?.policySummary?.approvalStatus ?? "UNKNOWN");
+    const policyTopics = [...new Set(rows.flatMap((row) => row.adGroupAd?.policySummary?.policyTopicEntries ?? []).map((entry) => entry.topic ?? entry.type ?? "").filter(Boolean))];
+    const status = approvals.some((item) => item === "DISAPPROVED")
+      ? "reprovada"
+      : approvals.some((item) => item === "APPROVED_LIMITED")
+        ? "aprovada_limitada"
+        : approvals.length > 0 && approvals.every((item) => item === "APPROVED")
+          ? "aprovada"
+          : "em_analise";
+    platformReview = {
+      status,
+      reason: status === "reprovada"
+        ? "O Google Ads reprovou o anúncio. Consulte os tópicos de política e corrija antes de reenviar."
+        : status === "aprovada_limitada"
+          ? "O anúncio foi aprovado com limitações de público, local ou formato."
+          : status === "aprovada"
+            ? "Anúncio aprovado pelo Google Ads."
+            : "O Google Ads ainda está analisando o anúncio.",
+      policyTopics,
+      syncedAt: new Date().toISOString(),
+    };
+  }
+
+  const segmentacao = { ...campanha.segmentacao, platformReview };
+  await db.update(adCampaignsTable).set({ segmentacao, updatedAt: new Date() }).where(eq(adCampaignsTable.id, campaignId));
+  return platformReview;
 }
 
 export { GoogleAdsPublishError };
