@@ -199,6 +199,46 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   return res.status(201).json({ ...row, latestCreative: importedCreative });
 });
 
+// Cria uma nova versão segura de uma campanha reprovada. A campanha externa
+// original permanece registrada (e pode ser pausada); a nova volta como
+// rascunho, sem IDs externos e carregando o motivo para orientar a IA.
+router.post("/tenants/:tenantId/ads/campaigns/:id/retry", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, req.params.id as string), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada" });
+  if (campaign.segmentacao?.platformReview?.status !== "reprovada") {
+    return res.status(409).json({ error: "Somente campanhas reprovadas podem usar este fluxo de correção." });
+  }
+
+  const rejectionReason = campaign.segmentacao.platformReview.reason
+    || campaign.segmentacao.platformReview.policyTopics?.join(", ")
+    || "Motivo não informado pela plataforma";
+  const {
+    id: _id,
+    externalCampaignId: _externalCampaignId,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...copy
+  } = campaign;
+  const segmentacao = {
+    ...campaign.segmentacao,
+    platformReview: undefined,
+    previousRejectionReason: rejectionReason,
+  };
+  const [retry] = await db.insert(adCampaignsTable).values({
+    ...copy,
+    status: "rascunho",
+    externalCampaignId: null,
+    segmentacao,
+    utmCode: `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`,
+  } as any).returning();
+
+  return res.status(201).json(retry);
+});
+
 // Chamado pelo canal que confirmou o interesse (WhatsApp, formulário ou ação
 // manual). Para veículo único, pausa a mídia, reserva o estoque e abre/vincula
 // o negócio ao vendedor com SLA configurável (48h por padrão).
@@ -268,6 +308,10 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, r
     ? await buildResumoItem(campanha.itemTipo, campanha.itemId as string, tenantId)
     : { itemTipo: campanha.itemTipo, resumo: await buildResumoLivreOuLandingPage(campanha, tenantId), nomeCurto: campanha.itemLabel || campanha.vertical };
   if (!item) return res.status(404).json({ error: "Item de origem da campanha não encontrado" });
+  const previousRejectionReason = (campanha.segmentacao as any)?.previousRejectionReason;
+  if (previousRejectionReason) {
+    item.resumo += `\nCorreção obrigatória de política: a versão anterior foi recusada por: ${previousRejectionReason}. Crie uma formulação diferente, factual e compatível; não repita o trecho ou alegação problemática.`;
+  }
 
   if (campanha.tipoAnuncio === "rsa_pmax") {
     const gerado = await gerarCriativoRSA(item as any, logger, tenantId);
