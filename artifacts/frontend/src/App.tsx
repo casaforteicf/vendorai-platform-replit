@@ -47,6 +47,7 @@ const SolicitacaoCompra  = lazy(() => import("@/pages/SolicitacaoCompra"));
 const Pacotes            = lazy(() => import("@/pages/Pacotes"));
 const ContentAutopilot   = lazy(() => import("@/pages/ContentAutopilot"));
 const Ads                = lazy(() => import("@/pages/Ads"));
+const PlanoMidia          = lazy(() => import("@/pages/PlanoMidia"));
 const RastreioFrete      = lazy(() => import("@/pages/RastreioFrete"));
 const AcompanharEntrega  = lazy(() => import("@/pages/AcompanharEntrega"));
 const MonitorLogisticaPraca = lazy(() => import("@/pages/MonitorLogisticaPraca"));
@@ -634,6 +635,9 @@ function AppRoutes() {
         </Route>
         <Route path="/ads">
           {() => <ProtectedRoute component={Ads} />}
+        </Route>
+        <Route path="/marketing/plano-de-midia">
+          {() => <ProtectedRoute component={PlanoMidia} />}
         </Route>
         <Route path="/propostas/:id/print">
           {() => <ProtectedRoute component={PropostaPrint} />}

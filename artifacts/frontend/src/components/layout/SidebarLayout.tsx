@@ -235,7 +235,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas", "/campanhas-nova",
     "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
-    "/praca-perguntas", "/erp", "/ads",
+    "/praca-perguntas", "/erp", "/ads", "/marketing/plano-de-midia",
   ];
 
   const verticalHrefAllowlists: Record<string, Set<string>> = {
@@ -681,6 +681,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Target className="h-3.5 w-3.5" /> Anúncios Patrocinados
+              </Link>
+              <Link
+                href="/marketing/plano-de-midia"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/marketing/plano-de-midia"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Plano de Mídia (IA)
               </Link>
               <Link
                 href="/variedades-dia"

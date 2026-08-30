@@ -78,6 +78,7 @@ export * from "./restaurante_pedidos";
 export * from "./supermercado_campanhas";
 export * from "./generated_sites";
 export * from "./site_generation_jobs";
+export * from "./media_plans";
 export * from "./instagram_connections";
 export * from "./whatsapp_connections";
 export * from "./whatsapp_contacts";

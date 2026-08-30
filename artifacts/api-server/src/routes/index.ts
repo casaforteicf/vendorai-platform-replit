@@ -57,6 +57,7 @@ import poeRouter from "./poe";
 import knowledgeGraphRouter from "./knowledge_graph";
 import adminPartnersRouter from "./admin_partners";
 import adminPlansRouter from "./admin_plans";
+import mediaPlanRouter from "./media_plan";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
@@ -318,6 +319,7 @@ router.use(adminBugReportsRouter);
 router.use(adminRelatosTecnicosRouter);
 router.use(adminPartnersRouter);
 router.use(adminPlansRouter);
+router.use(mediaPlanRouter);
 router.use(adminAgentDefaultsRouter);
 
 // Construção Civil Hub
