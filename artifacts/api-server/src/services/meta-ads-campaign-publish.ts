@@ -595,6 +595,31 @@ export async function setMetaAdsCampaignStatus(tenantId: string, campaignId: str
   logger.info({ tenantId, campaignId, ativar }, "ads: status da campanha Meta alterado na Marketing API");
 }
 
+export async function fetchMetaAdsCampaignPerformance(tenantId: string, campaignId: string) {
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign?.externalCampaignId) throw new MetaAdsPublishError("Campanha ainda não foi enviada à Meta.");
+  const { accessToken } = await getValidAccessToken(tenantId);
+  const insights = await metaApi<{ data?: Array<{
+    impressions?: string;
+    clicks?: string;
+    spend?: string;
+    actions?: Array<{ action_type?: string; value?: string }>;
+  }> }>(`${campaign.externalCampaignId}/insights`, accessToken, "GET", {
+    fields: "impressions,clicks,spend,actions",
+    date_preset: "today",
+  });
+  const conversionTypes = new Set(["lead", "purchase", "contact", "onsite_conversion.messaging_conversation_started_7d"]);
+  return (insights.data ?? []).reduce((total, row) => ({
+    impressions: total.impressions + Number(row.impressions ?? 0),
+    clicks: total.clicks + Number(row.clicks ?? 0),
+    spend: total.spend + Number(row.spend ?? 0),
+    conversions: total.conversions + (row.actions ?? [])
+      .filter((action) => conversionTypes.has(action.action_type ?? ""))
+      .reduce((sum, action) => sum + Number(action.value ?? 0), 0),
+  }), { impressions: 0, clicks: 0, spend: 0, conversions: 0 });
+}
+
 export async function syncMetaAdsReviewStatus(tenantId: string, campaignId: string) {
   const [campanha] = await db.select().from(adCampaignsTable)
     .where(and(eq(adCampaignsTable.id, campaignId), eq(adCampaignsTable.tenantId, tenantId)));
