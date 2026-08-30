@@ -7,6 +7,7 @@
  */
 import type { UpdateLeadBodyFilhosItem } from './updateLeadBodyFilhosItem';
 import type { UpdateLeadBodyMetadata } from './updateLeadBodyMetadata';
+import type { UpdateLeadBodyNaoLeadTipo } from './updateLeadBodyNaoLeadTipo';
 
 export interface UpdateLeadBody {
   nome?: string;
@@ -30,6 +31,9 @@ export interface UpdateLeadBody {
   agenteDesativado?: boolean;
   excluidoEm?: Date | null;
   motivoExclusao?: string | null;
+  naoLeadTipo?: UpdateLeadBodyNaoLeadTipo;
+  naoLeadNotas?: string | null;
+  naoLeadClassificadoEm?: Date | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;

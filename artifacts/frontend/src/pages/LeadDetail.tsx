@@ -95,6 +95,7 @@ import {
   CalendarDays,
   UserRound,
   Trash2,
+  UserCog,
   FileText,
   Printer,
   Video,
@@ -304,6 +305,10 @@ export default function LeadDetail() {
   const [propostaModalOpen, setPropostaModalOpen] = useState(false);
   const [agendarOpen, setAgendarOpen] = useState(false);
   const [vendidoOpen, setVendidoOpen] = useState(false);
+  const [naoLeadOpen, setNaoLeadOpen] = useState(false);
+  const [naoLeadTipoSel, setNaoLeadTipoSel] = useState<string>("fornecedor");
+  const [naoLeadNotasInput, setNaoLeadNotasInput] = useState("");
+  const [naoLeadSalvando, setNaoLeadSalvando] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string>("");
 
@@ -446,6 +451,47 @@ export default function LeadDetail() {
       },
     },
   });
+
+  async function classificarComoNaoLead() {
+    if (!id) return;
+    setNaoLeadSalvando(true);
+    try {
+      const r = await fetch(`/api/leads/${id}/classificar-nao-lead`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ tipo: naoLeadTipoSel, notas: naoLeadNotasInput.trim() || undefined }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error ?? "Falha ao classificar");
+      void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
+      setNaoLeadOpen(false);
+      setNaoLeadNotasInput("");
+      toast({ title: "Classificado como não-lead", description: "Sai da pipeline e da análise de churn." });
+    } catch (err) {
+      toast({ title: "Erro ao classificar", description: String(err), variant: "destructive" });
+    } finally {
+      setNaoLeadSalvando(false);
+    }
+  }
+
+  async function reclassificarComoLead() {
+    if (!id) return;
+    setNaoLeadSalvando(true);
+    try {
+      const r = await fetch(`/api/leads/${id}/reclassificar-como-lead`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error ?? "Falha ao reclassificar");
+      void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
+      toast({ title: "Voltou a ser lead", description: "Reaparece na pipeline normal agora." });
+    } catch (err) {
+      toast({ title: "Erro ao reclassificar", description: String(err), variant: "destructive" });
+    } finally {
+      setNaoLeadSalvando(false);
+    }
+  }
 
   function saveLeadDados() {
     if (!id) return;
@@ -1215,6 +1261,28 @@ export default function LeadDetail() {
             >
               <CheckCircle2 className="h-4 w-4" />
               Vendido
+            </Button>
+          )}
+          {lead.naoLeadTipo ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={naoLeadSalvando}
+              onClick={() => void reclassificarComoLead()}
+            >
+              <UserCog className="h-4 w-4" />
+              Voltar a ser lead
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-muted-foreground"
+              onClick={() => setNaoLeadOpen(true)}
+            >
+              <UserCog className="h-4 w-4" />
+              Classificar como Não Lead
             </Button>
           )}
           <Badge
@@ -3926,6 +3994,49 @@ export default function LeadDetail() {
           void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
         }}
       />
+
+      <Dialog open={naoLeadOpen} onOpenChange={setNaoLeadOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Classificar como Não Lead</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {lead?.nome ?? "Este contato"} sai da pipeline de vendas e da análise de churn. Continua acessível na aba "Contatos não-leads".
+            </p>
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Tipo de contato</p>
+              <Select value={naoLeadTipoSel} onValueChange={setNaoLeadTipoSel}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="colaborador">Colaborador</SelectItem>
+                  <SelectItem value="fornecedor">Fornecedor</SelectItem>
+                  <SelectItem value="parceiro">Parceiro</SelectItem>
+                  <SelectItem value="familiar">Familiar</SelectItem>
+                  <SelectItem value="amigo">Amigo</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Observações (opcional)</p>
+              <Textarea
+                value={naoLeadNotasInput}
+                onChange={(e) => setNaoLeadNotasInput(e.target.value)}
+                placeholder="Ex: fornecedor de material elétrico"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNaoLeadOpen(false)}>Cancelar</Button>
+            <Button onClick={() => void classificarComoNaoLead()} disabled={naoLeadSalvando}>
+              {naoLeadSalvando && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Agendar reunião — mesmo modal da pipeline */}
       <AgendarReuniaoModal

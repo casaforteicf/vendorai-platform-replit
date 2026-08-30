@@ -7,6 +7,7 @@
  */
 import type { LeadDadosPj } from './leadDadosPj';
 import type { LeadFilhosItem } from './leadFilhosItem';
+import type { LeadNaoLeadTipo } from './leadNaoLeadTipo';
 
 export interface Lead {
   id: string;
@@ -30,6 +31,9 @@ export interface Lead {
   agenteDesativado?: boolean;
   excluidoEm?: Date | null;
   motivoExclusao?: string | null;
+  naoLeadTipo?: LeadNaoLeadTipo;
+  naoLeadNotas?: string | null;
+  naoLeadClassificadoEm?: Date | null;
   /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
   instagramScopedId?: string | null;
   /** Data de nascimento do lead (YYYY-MM-DD). */

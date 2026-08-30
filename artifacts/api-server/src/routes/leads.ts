@@ -289,6 +289,15 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   } else if (incluirExcluidos !== "incluir") {
     conditions.push(isNull(leadsTable.excluidoEm));
   }
+  // Mesmo padrão pra contato classificado como não-lead (D-003) -- sai
+  // da pipeline/dashboard/campanhas por padrão, sem precisar filtrar em
+  // cada tela que consome esse endpoint.
+  const incluirNaoLeads = req.query["incluirNaoLeads"];
+  if (incluirNaoLeads === "apenas") {
+    conditions.push(isNotNull(leadsTable.naoLeadTipo));
+  } else if (incluirNaoLeads !== "incluir") {
+    conditions.push(isNull(leadsTable.naoLeadTipo));
+  }
   conditions.push(...buildUserFunctionFilter(req, leadsTable));
 
   const leads = await db
@@ -297,6 +306,71 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
     .where(and(...conditions))
     .orderBy(leadsTable.createdAt);
   res.json(leads);
+});
+
+// Classifica um lead como não-lead -- sai da pipeline, análise de churn
+// e contagem de "novos" a partir de agora, mas continua acessível na
+// aba "Não-Leads".
+const classificarNaoLeadSchema = z.object({
+  tipo: z.enum(["colaborador", "fornecedor", "parceiro", "familiar", "amigo", "outro"]),
+  notas: z.string().optional(),
+});
+
+router.post("/leads/:id/classificar-nao-lead", async (req, res) => {
+  const parsed = classificarNaoLeadSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+  const id = String(req.params["id"]);
+  const [existing] = await db.select({ id: leadsTable.id, tenantId: leadsTable.tenantId }).from(leadsTable).where(eq(leadsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [lead] = await db
+    .update(leadsTable)
+    .set({
+      naoLeadTipo: parsed.data.tipo,
+      naoLeadNotas: parsed.data.notas ?? null,
+      naoLeadClassificadoEm: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(leadsTable.id, id))
+    .returning();
+  res.json(lead);
+});
+
+// Reverte a classificação -- volta a ser lead normal, reaparece na
+// pipeline como "novo".
+router.post("/leads/:id/reclassificar-como-lead", async (req, res) => {
+  const id = String(req.params["id"]);
+  const [existing] = await db.select({ id: leadsTable.id, tenantId: leadsTable.tenantId }).from(leadsTable).where(eq(leadsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [lead] = await db
+    .update(leadsTable)
+    .set({
+      naoLeadTipo: null,
+      naoLeadNotas: null,
+      naoLeadClassificadoEm: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(leadsTable.id, id))
+    .returning();
+  res.json(lead);
 });
 
 router.get("/leads/:id", async (req, res) => {

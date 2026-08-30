@@ -136,6 +136,7 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
             gt(customerIntelligenceTable.churnRisk, 70),
             not(inArray(leadsTable.status, ["novo", "aquecimento"])),
             eq(leadsTable.isChurned, false),
+            isNull(leadsTable.naoLeadTipo),
           )
         )
         .limit(200);

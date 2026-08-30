@@ -465,6 +465,10 @@ router.post(
         return;
       }
       const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("classificado como não-lead")) {
+        res.status(422).json({ error: message });
+        return;
+      }
       if (message.includes("not found")) {
         res.status(404).json({ error: "Lead not found" });
         return;

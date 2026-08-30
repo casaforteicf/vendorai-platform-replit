@@ -143,6 +143,15 @@ export async function analyzeLeadIntelligence(params: {
     throw new Error(`Lead ${leadId} not found in tenant ${tenantId}`);
   }
 
+  // D-003: contato classificado como não-lead (colaborador, fornecedor,
+  // parceiro, familiar, amigo, outro) não passa por análise de churn --
+  // não é prospect de venda, não faz sentido gastar IA nem alertar sobre
+  // "risco de perder" alguém que não é cliente.
+  if (lead.naoLeadTipo) {
+    log.info({ tenantId, leadId, naoLeadTipo: lead.naoLeadTipo }, "analyzeLeadIntelligence: pulado -- lead classificado como não-lead");
+    throw new Error(`Lead classificado como não-lead (${lead.naoLeadTipo}) -- análise de churn não se aplica`);
+  }
+
   // Mark in-flight, then acquire the DB lock. Both are released in the finally
   // block below, which runs on every exit path (return, throw, or error).
   inFlightAnalyses.add(leadId);
@@ -603,6 +612,10 @@ export function maybeReanalyze(params: {
     .catch((err) => {
       if (err instanceof AnalysisAlreadyInFlightError) {
         log.debug({ leadId, tenantId }, "auto-analyze: skipped — analysis already in flight");
+        return;
+      }
+      if (err instanceof Error && err.message.includes("classificado como não-lead")) {
+        log.debug({ leadId, tenantId }, "auto-analyze: skipped — lead classificado como não-lead");
         return;
       }
       log.error({ err, leadId, tenantId }, "auto-analyze: background re-analysis failed");

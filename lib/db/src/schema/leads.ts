@@ -35,6 +35,13 @@ export const leadsTable = pgTable("leads", {
   // visível na aba "Excluídos" com o motivo registrado.
   excluidoEm: timestamp("excluido_em"),
   motivoExclusao: text("motivo_exclusao"),
+  // Classificação como não-lead (D-003/D-003A) -- diferente de exclusão:
+  // contato válido (colaborador, fornecedor, parceiro, familiar, amigo,
+  // outro), só que não é prospect de venda. Sai da pipeline/análise de
+  // churn quando setado; null = é lead de verdade.
+  naoLeadTipo: text("nao_lead_tipo").$type<"colaborador" | "fornecedor" | "parceiro" | "familiar" | "amigo" | "outro">(),
+  naoLeadNotas: text("nao_lead_notas"),
+  naoLeadClassificadoEm: timestamp("nao_lead_classificado_em"),
   // Pós-venda: quando setado, a próxima mensagem recebida do lead é tratada
   // como resposta à pesquisa de satisfação da entrega (não passa pelo roteamento
   // normal de agentes). Sem FK para evitar import circular com entregas.ts.

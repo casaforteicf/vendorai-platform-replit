@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateLeadBodyFilhosItem } from './createLeadBodyFilhosItem';
+import type { CreateLeadBodyNaoLeadTipo } from './createLeadBodyNaoLeadTipo';
 
 export interface CreateLeadBody {
   tenantId: string;
@@ -28,6 +29,9 @@ export interface CreateLeadBody {
   agenteDesativado?: boolean;
   excluidoEm?: Date | null;
   motivoExclusao?: string | null;
+  naoLeadTipo?: CreateLeadBodyNaoLeadTipo;
+  naoLeadNotas?: string | null;
+  naoLeadClassificadoEm?: Date | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;

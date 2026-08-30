@@ -3199,6 +3199,18 @@ export interface UpdateUserBody {
   limiteEntregasPorTurno?: string | number;
 }
 
+export type LeadNaoLeadTipo = typeof LeadNaoLeadTipo[keyof typeof LeadNaoLeadTipo] | null;
+
+
+export const LeadNaoLeadTipo = {
+  colaborador: 'colaborador',
+  fornecedor: 'fornecedor',
+  parceiro: 'parceiro',
+  familiar: 'familiar',
+  amigo: 'amigo',
+  outro: 'outro',
+} as const;
+
 export type LeadFilhosItem = {
   nome: string;
   dataNascimento?: string;
@@ -3250,6 +3262,9 @@ export interface Lead {
   agenteDesativado?: boolean;
   excluidoEm?: string | null;
   motivoExclusao?: string | null;
+  naoLeadTipo?: LeadNaoLeadTipo;
+  naoLeadNotas?: string | null;
+  naoLeadClassificadoEm?: string | null;
   /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
   instagramScopedId?: string | null;
   /** Data de nascimento do lead (YYYY-MM-DD). */
@@ -3317,6 +3332,18 @@ export interface Lead {
   updatedAt: string;
 }
 
+export type CreateLeadBodyNaoLeadTipo = typeof CreateLeadBodyNaoLeadTipo[keyof typeof CreateLeadBodyNaoLeadTipo] | null;
+
+
+export const CreateLeadBodyNaoLeadTipo = {
+  colaborador: 'colaborador',
+  fornecedor: 'fornecedor',
+  parceiro: 'parceiro',
+  familiar: 'familiar',
+  amigo: 'amigo',
+  outro: 'outro',
+} as const;
+
 export type CreateLeadBodyFilhosItem = {
   nome: string;
   dataNascimento?: string;
@@ -3348,6 +3375,9 @@ export interface CreateLeadBody {
   agenteDesativado?: boolean;
   excluidoEm?: string | null;
   motivoExclusao?: string | null;
+  naoLeadTipo?: CreateLeadBodyNaoLeadTipo;
+  naoLeadNotas?: string | null;
+  naoLeadClassificadoEm?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;
@@ -3388,6 +3418,18 @@ export interface DeleteLeadBody {
   motivo?: string;
 }
 
+export type UpdateLeadBodyNaoLeadTipo = typeof UpdateLeadBodyNaoLeadTipo[keyof typeof UpdateLeadBodyNaoLeadTipo] | null;
+
+
+export const UpdateLeadBodyNaoLeadTipo = {
+  colaborador: 'colaborador',
+  fornecedor: 'fornecedor',
+  parceiro: 'parceiro',
+  familiar: 'familiar',
+  amigo: 'amigo',
+  outro: 'outro',
+} as const;
+
 export type UpdateLeadBodyFilhosItem = {
   nome: string;
   dataNascimento?: string;
@@ -3425,6 +3467,9 @@ export interface UpdateLeadBody {
   agenteDesativado?: boolean;
   excluidoEm?: string | null;
   motivoExclusao?: string | null;
+  naoLeadTipo?: UpdateLeadBodyNaoLeadTipo;
+  naoLeadNotas?: string | null;
+  naoLeadClassificadoEm?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;

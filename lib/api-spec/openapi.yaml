@@ -15475,6 +15475,17 @@ components:
         motivoExclusao:
           type: string
           nullable: true
+        naoLeadTipo:
+          type: string
+          enum: [colaborador, fornecedor, parceiro, familiar, amigo, outro]
+          nullable: true
+        naoLeadNotas:
+          type: string
+          nullable: true
+        naoLeadClassificadoEm:
+          type: string
+          format: date-time
+          nullable: true
         instagramScopedId:
           type: string
           nullable: true
@@ -15736,6 +15747,17 @@ components:
         motivoExclusao:
           type: string
           nullable: true
+        naoLeadTipo:
+          type: string
+          enum: [colaborador, fornecedor, parceiro, familiar, amigo, outro]
+          nullable: true
+        naoLeadNotas:
+          type: string
+          nullable: true
+        naoLeadClassificadoEm:
+          type: string
+          format: date-time
+          nullable: true
         dataNascimento:
           type: string
           nullable: true
@@ -15906,6 +15928,17 @@ components:
           nullable: true
         motivoExclusao:
           type: string
+          nullable: true
+        naoLeadTipo:
+          type: string
+          enum: [colaborador, fornecedor, parceiro, familiar, amigo, outro]
+          nullable: true
+        naoLeadNotas:
+          type: string
+          nullable: true
+        naoLeadClassificadoEm:
+          type: string
+          format: date-time
           nullable: true
         dataNascimento:
           type: string
