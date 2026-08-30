@@ -75,7 +75,8 @@ import {
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -451,7 +452,11 @@ function DealCard({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      style={{ opacity: isDragging && !overlay ? 0.4 : 1, touchAction: "none" }}
+      // Achado real: touchAction "none" fixo bloqueava a rolagem por toque
+      // o tempo todo, não só durante o arrasto de verdade -- agora que o
+      // TouchSensor usa atraso (precisa segurar) em vez de distância, a
+      // rolagem nativa pode ficar livre por padrão.
+      style={{ opacity: isDragging && !overlay ? 0.4 : 1 }}
       className={`group bg-card border rounded-lg p-3 space-y-2 ${
         overlay
           ? "shadow-2xl rotate-1 cursor-grabbing border-border"
@@ -874,7 +879,11 @@ function SaasDealCard({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      style={{ opacity: isDragging && !overlay ? 0.4 : 1, touchAction: "none" }}
+      // Achado real: touchAction "none" fixo bloqueava a rolagem por toque
+      // o tempo todo, não só durante o arrasto de verdade -- agora que o
+      // TouchSensor usa atraso (precisa segurar) em vez de distância, a
+      // rolagem nativa pode ficar livre por padrão.
+      style={{ opacity: isDragging && !overlay ? 0.4 : 1 }}
       className={`group bg-card border border-border rounded-lg p-3 space-y-2 ${
         overlay
           ? "shadow-2xl rotate-1 cursor-grabbing"
@@ -2321,8 +2330,16 @@ export default function Deals() {
     );
   }
 
+  // Achado real: PointerSensor sozinho intercepta qualquer arrasto de 8px+
+  // como início de "mover card" -- inclusive um gesto de rolar a tela por
+  // toque no celular, já que o quadro inteiro é a mesma área de rolagem
+  // horizontal. Padrão documentado do dnd-kit pra esse conflito: separar
+  // mouse (distance-based, sem afetar toque) de toque (delay-based -- só
+  // vira "arrastar" depois de segurar 200ms, um toque rápido de rolar
+  // passa direto sem ser capturado).
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
   );
 
   const activeDeal = activeId ? deals.find((d) => d.id === activeId) ?? null : null;
@@ -2561,7 +2578,8 @@ export default function Deals() {
   }, 0);
 
   const saasSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
   );
 
   return (
