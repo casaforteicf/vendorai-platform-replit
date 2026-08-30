@@ -155,6 +155,17 @@ router.get("/tenants/:tenantId/instagram-connection", authenticate, async (req, 
       });
     }
 
+    try {
+      const liveAccount = await fetchDirectInstagramAccountInfo(conn.pageAccessToken!);
+      if (liveAccount.id !== conn.accountId) {
+        logger.warn({ tenantId, storedAccountId: conn.accountId, liveAccountId: liveAccount.id }, "Instagram: conta do token diverge da conexão salva");
+        return res.json({ connected: false, needsReconnect: true, reason: "account_mismatch" });
+      }
+    } catch (validationError) {
+      logger.warn({ validationError, tenantId }, "Instagram: token salvo não passou na validação ao vivo");
+      return res.json({ connected: false, needsReconnect: true, reason: "token_invalid" });
+    }
+
     return res.json({
       connected: true,
       publishReady: true,
