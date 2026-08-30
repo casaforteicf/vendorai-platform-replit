@@ -31,6 +31,7 @@ import {
   scoutOportunidadesTable,
   servicosOrdensTable,
   veiculosTestDrivesTable,
+  adCampaignsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -39,6 +40,7 @@ import { pickNextVendedor } from "../lib/round-robin.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
+import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
 
@@ -62,7 +64,24 @@ router.get("/leads", async (req, res) => {
 });
 
 router.post("/leads", async (req, res) => {
-  const parsed = insertLeadSchema.safeParse(req.body);
+  // Formulários e landing pages podem enviar apenas o código público da
+  // campanha. O backend resolve o vínculo, sem confiar em um ID informado
+  // pelo navegador e sem exigir conhecimento técnico do integrador.
+  const rawBody = { ...(req.body ?? {}) };
+  const metadata = rawBody.metadata && typeof rawBody.metadata === "object" ? rawBody.metadata : {};
+  const attributionCode = [rawBody.utmCode, rawBody.utm_code, rawBody.adCode, metadata.utmCode, metadata.utm_code, metadata.adCode]
+    .find((value) => typeof value === "string" && /^vai_[a-z0-9]{6,20}$/i.test(value)) as string | undefined;
+  if (!rawBody.adCampaignId && attributionCode && typeof rawBody.tenantId === "string") {
+    const [campaign] = await db.select({ id: adCampaignsTable.id }).from(adCampaignsTable)
+      .where(and(eq(adCampaignsTable.tenantId, rawBody.tenantId), eq(adCampaignsTable.utmCode, attributionCode.toLowerCase())));
+    if (campaign) {
+      rawBody.adCampaignId = campaign.id;
+      rawBody.source = rawBody.source && rawBody.source !== "manual" ? rawBody.source : "anuncio";
+      rawBody.metadata = { ...metadata, attributionCode, attributedBy: "campaign_code" };
+    }
+  }
+
+  const parsed = insertLeadSchema.safeParse(rawBody);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
     return;
@@ -142,6 +161,16 @@ router.post("/leads", async (req, res) => {
   // não só veículo. Cada função ignora silenciosamente o tipo que não é
   // seu, sem impedir o cadastro normal do lead.
   if (lead.adCampaignId) {
+    await recordAdCampaignEvent({
+      tenantId: lead.tenantId,
+      campaignId: lead.adCampaignId,
+      userId: req.user?.sub ?? null,
+      eventType: "lead_attributed",
+      severity: "success",
+      message: `Lead ${lead.nome} atribuído à campanha por formulário ou landing page.`,
+      dedupeKey: `lead:${lead.id}`,
+      metadata: { leadId: lead.id, source: lead.source },
+    });
     reserveUniqueVehicle({
       tenantId: lead.tenantId, campaignId: lead.adCampaignId,
       leadId: lead.id, sellerId: resolvedAssignedTo,

@@ -6,6 +6,7 @@ import {
   db,
   dealsTable,
   leadsTable,
+  notificationsTable,
 } from "@workspace/db";
 
 export async function recordAdCampaignEvent(input: {
@@ -28,6 +29,15 @@ export async function recordAdCampaignEvent(input: {
     dedupeKey: input.dedupeKey ?? null,
     metadata: input.metadata ?? {},
   }).onConflictDoNothing().returning();
+  if (event && (event.severity === "warning" || event.severity === "critical")) {
+    await db.insert(notificationsTable).values({
+      tenantId: input.tenantId,
+      type: event.severity === "critical" ? "error" : "warning",
+      category: "ads",
+      title: event.severity === "critical" ? "Anúncio exige ação" : "Atenção na campanha",
+      message: input.message,
+    });
+  }
   return event ?? null;
 }
 
