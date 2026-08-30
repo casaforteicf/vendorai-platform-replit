@@ -378,12 +378,55 @@ export async function setGoogleAdsCampaignStatus(
   const { accessToken, customerId } = await getValidAccessToken(tenantId);
   const campaignResourceName = `customers/${customerId}/campaigns/${campanha.externalCampaignId}`;
 
-  await mutate(customerId, accessToken, "campaigns", [
-    {
-      update: { resourceName: campaignResourceName, status: ativar ? "ENABLED" : "PAUSED" },
-      updateMask: "status",
+  const query = [
+    "SELECT ad_group.resource_name, ad_group_ad.resource_name",
+    "FROM ad_group_ad",
+    `WHERE campaign.id = ${campanha.externalCampaignId}`,
+  ].join(" ");
+  const searchRes = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${customerId}/googleAds:searchStream`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+      "Content-Type": "application/json",
     },
-  ]);
+    body: JSON.stringify({ query }),
+  });
+  if (!searchRes.ok) {
+    const raw = await searchRes.text();
+    throw new GoogleAdsPublishError(traduzirErroGoogleAds(searchRes.status, raw));
+  }
+  const chunks = await searchRes.json() as Array<{ results?: Array<{ adGroup?: { resourceName?: string }; adGroupAd?: { resourceName?: string } }> }>;
+  const rows = chunks.flatMap((chunk) => chunk.results ?? []);
+  const adGroupNames = [...new Set(rows.map((row) => row.adGroup?.resourceName).filter(Boolean) as string[])];
+  const adNames = [...new Set(rows.map((row) => row.adGroupAd?.resourceName).filter(Boolean) as string[])];
+
+  const updateCampaign = () => mutate(customerId, accessToken, "campaigns", [{
+    update: { resourceName: campaignResourceName, status: ativar ? "ENABLED" : "PAUSED" },
+    updateMask: "status",
+  }]);
+  const updateChildren = async () => {
+    if (adGroupNames.length) {
+      await mutate(customerId, accessToken, "adGroups", adGroupNames.map((resourceName) => ({
+        update: { resourceName, status: ativar ? "ENABLED" : "PAUSED" },
+        updateMask: "status",
+      })));
+    }
+    if (adNames.length) {
+      await mutate(customerId, accessToken, "adGroupAds", adNames.map((resourceName) => ({
+        update: { resourceName, status: ativar ? "ENABLED" : "PAUSED" },
+        updateMask: "status",
+      })));
+    }
+  };
+
+  if (ativar) {
+    await updateChildren();
+    await updateCampaign();
+  } else {
+    await updateCampaign();
+    await updateChildren();
+  }
 
   await db
     .update(adCampaignsTable)
