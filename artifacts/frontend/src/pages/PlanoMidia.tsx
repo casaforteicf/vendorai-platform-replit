@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Sparkles, Loader2, TrendingUp, Target, Lightbulb, ListChecks,
-  BarChart3, Search, RefreshCw,
+  BarChart3, Search, RefreshCw, CalendarDays, Wand2, ExternalLink,
 } from "lucide-react";
 
 interface MediaPlanCanal {
@@ -34,6 +35,15 @@ interface MediaPlan {
   createdAt: string;
 }
 
+interface CalendarItem {
+  id: string;
+  dataAgendada: string;
+  pilar: string;
+  temaSugerido: string;
+  tipo: "feed" | "stories" | "reels";
+  status: "planejado" | "gerado" | "publicado" | "pulado";
+}
+
 function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
 }
@@ -47,11 +57,15 @@ const PRIORIDADE_STYLE: Record<string, string> = {
 export default function PlanoMidia() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const tenantId = user?.tenantId ?? "";
 
   const [plan, setPlan] = useState<MediaPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [gerando, setGerando] = useState(false);
+  const [calendario, setCalendario] = useState<CalendarItem[]>([]);
+  const [gerandoCalendario, setGerandoCalendario] = useState(false);
+  const [gerandoConteudoId, setGerandoConteudoId] = useState<string | null>(null);
 
   async function carregar() {
     setLoading(true);
@@ -59,6 +73,10 @@ export default function PlanoMidia() {
       const r = await fetch(`/api/tenants/${tenantId}/media-plan`, { headers: authHeaders() });
       const data = await r.json();
       setPlan(data);
+      if (data?.id) {
+        const rCal = await fetch(`/api/tenants/${tenantId}/content-calendar`, { headers: authHeaders() });
+        setCalendario(await rCal.json());
+      }
     } catch {
       // silencioso -- tela simplesmente mostra o estado "gerar plano"
     } finally {
@@ -81,11 +99,59 @@ export default function PlanoMidia() {
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error ?? "Falha ao gerar o plano");
       setPlan(data);
+      setCalendario([]);
       toast({ title: "Plano de mídia gerado!" });
     } catch (err) {
       toast({ title: "Não foi possível gerar o plano", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
     } finally {
       setGerando(false);
+    }
+  }
+
+  async function gerarCalendario() {
+    if (!plan) return;
+    setGerandoCalendario(true);
+    try {
+      const r = await fetch(`/api/tenants/${tenantId}/content-calendar/gerar`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaPlanId: plan.id, semanas: 2 }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error ?? "Falha ao gerar o calendário");
+      setCalendario(data);
+      toast({ title: `${data.length} posts planejados pras próximas 2 semanas!` });
+    } catch (err) {
+      toast({ title: "Não foi possível gerar o calendário", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
+    } finally {
+      setGerandoCalendario(false);
+    }
+  }
+
+  // Gera legenda + criativo pra esse post específico -- reaproveita
+  // /content/generate, que já usa o perfil da marca automaticamente
+  // (business_profiles), sem precisar duplicar essa lógica aqui.
+  async function gerarConteudoItem(item: CalendarItem) {
+    setGerandoConteudoId(item.id);
+    try {
+      const r = await fetch(`/api/tenants/${tenantId}/content/generate`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ type: item.tipo, theme: item.temaSugerido }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error ?? "Falha ao gerar conteúdo");
+      await fetch(`/api/content-calendar/${item.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "gerado", contentGenerationId: data.id }),
+      });
+      setCalendario((atual) => atual.map((c) => (c.id === item.id ? { ...c, status: "gerado" } : c)));
+      toast({ title: "Conteúdo gerado!", description: "Revise e publique na Central de Conteúdo." });
+    } catch (err) {
+      toast({ title: "Erro ao gerar conteúdo", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
+    } finally {
+      setGerandoConteudoId(null);
     }
   }
 
@@ -236,6 +302,57 @@ export default function PlanoMidia() {
               </CardContent>
             </Card>
           )}
+
+          {/* Calendário de conteúdo -- transforma o plano em posts concretos,
+              agendados, prontos pra gerar legenda+criativo e publicar. */}
+          <div className="pt-2 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm font-medium flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />Calendário de conteúdo</p>
+              <Button type="button" size="sm" variant="outline" onClick={gerarCalendario} disabled={gerandoCalendario}>
+                {gerandoCalendario ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+                {calendario.length > 0 ? "Gerar novo calendário (2 semanas)" : "Gerar calendário (2 semanas)"}
+              </Button>
+            </div>
+
+            {calendario.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhum post planejado ainda — gere o calendário pra transformar os pilares acima em posts concretos com data.</p>
+            ) : (
+              <div className="space-y-2">
+                {calendario.map((item) => (
+                  <Card key={item.id}>
+                    <CardContent className="py-3 flex items-center gap-3">
+                      <div className="text-center shrink-0 w-12">
+                        <p className="text-[10px] text-muted-foreground uppercase">
+                          {new Date(item.dataAgendada + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short" })}
+                        </p>
+                        <p className="text-sm font-semibold">
+                          {new Date(item.dataAgendada + "T12:00:00").getDate()}
+                        </p>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge variant="outline" className="text-[10px]">{item.pilar}</Badge>
+                          <span className="text-[10px] text-muted-foreground uppercase">{item.tipo}</span>
+                        </div>
+                        <p className="text-sm mt-0.5 truncate">{item.temaSugerido}</p>
+                      </div>
+                      {item.status === "planejado" ? (
+                        <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={gerandoConteudoId === item.id} onClick={() => gerarConteudoItem(item)}>
+                          {gerandoConteudoId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1.5" />}
+                          {gerandoConteudoId === item.id ? "" : "Gerar"}
+                        </Button>
+                      ) : (
+                        <Button type="button" size="sm" variant="ghost" className="shrink-0 text-primary" onClick={() => navigate("/content")}>
+                          <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                          Revisar
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
