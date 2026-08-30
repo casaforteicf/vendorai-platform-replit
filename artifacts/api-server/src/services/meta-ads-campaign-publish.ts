@@ -365,8 +365,10 @@ export interface MetaPublishResult {
 export async function preflightMetaAdsAccount(tenantId: string): Promise<void> {
   const { accessToken, adAccountId } = await getValidAccessToken(tenantId);
   const account = await metaApi<{ account_status?: number; disable_reason?: number; currency?: string }>(
-    `${normalizeMetaAdAccountId(adAccountId)}?fields=account_status,disable_reason,currency`,
+    normalizeMetaAdAccountId(adAccountId),
     accessToken,
+    "GET",
+    { fields: "account_status,disable_reason,currency" },
   );
   if (account.account_status != null && account.account_status !== 1) {
     throw new MetaAdsPublishError(
