@@ -373,11 +373,24 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) =>
   }
 
   try {
+    const activateNow = req.body?.activate !== false;
+    if (activateNow) {
+      await db.update(adCreativesTable)
+        .set({ status: "aprovado", aprovadoPorId: (req as any).user?.sub ?? null, aprovadoEm: new Date() })
+        .where(eq(adCreativesTable.campaignId, campaignId));
+    }
+
     const result = plataforma === "google"
       ? await publishCampaignToGoogleAds(tenantId, campaignId)
       : await publishCampaignToMetaAds(tenantId, campaignId);
-    logger.info({ tenantId, campaignId, plataforma }, "ads: campanha publicada via rota");
-    return res.status(201).json(result);
+
+    if (activateNow) {
+      if (plataforma === "google") await setGoogleAdsCampaignStatus(tenantId, campaignId, true);
+      else await setMetaAdsCampaignStatus(tenantId, campaignId, true);
+    }
+
+    logger.info({ tenantId, campaignId, plataforma, activateNow }, "ads: campanha publicada via rota");
+    return res.status(201).json({ ...result, activated: activateNow });
   } catch (err) {
     if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
       return res.status(422).json({ error: err.message });
