@@ -17,6 +17,7 @@ import {
   erpIntegracaoEventosTable,
   instagramConnectionsTable,
   whatsappConnectionsTable,
+  adCampaignsTable,
 } from "@workspace/db";
 import { dispatchSkuDelivery } from "../lib/product-delivery.js";
 import { z } from "zod";
@@ -36,10 +37,42 @@ import { getBase64FromMediaMessage } from "../services/evolution-whatsapp.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const objectStorage = new ObjectStorageService();
 
 const router: IRouter = Router();
+
+async function attributeWhatsAppLeadFromCampaignCode(
+  tenantId: string,
+  leadId: string,
+  messageText: string,
+): Promise<string | null> {
+  const code = messageText.match(/\b(vai_[a-z0-9]{6,20})\b/i)?.[1]?.toLowerCase();
+  if (!code) return null;
+  const [campaign] = await db.select({ id: adCampaignsTable.id })
+    .from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.tenantId, tenantId), eq(adCampaignsTable.utmCode, code)))
+    .limit(1);
+  if (!campaign) return null;
+
+  const updated = await db.update(leadsTable)
+    .set({ adCampaignId: campaign.id, updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId), isNull(leadsTable.adCampaignId)))
+    .returning({ id: leadsTable.id });
+  if (updated.length === 0) return null;
+
+  await recordAdCampaignEvent({
+    tenantId,
+    campaignId: campaign.id,
+    eventType: "lead_attributed",
+    severity: "success",
+    message: "Novo lead atribuído à campanha pelo código recebido no WhatsApp.",
+    dedupeKey: `lead:${leadId}`,
+    metadata: { leadId, channel: "whatsapp", attribution: "campaign_code" },
+  });
+  return campaign.id;
+}
 
 // ── Meta Cloud API media download ─────────────────────────────────────────────
 async function downloadMetaMedia(mediaId: string, accessToken: string): Promise<Buffer> {
@@ -180,6 +213,8 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
     req.log.info({ leadId: lead.id, telefone: normalized }, "webhook: new lead created");
     await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
   }
+
+  await attributeWhatsAppLeadFromCampaignCode(tenantId, lead.id, mensagem);
 
   // ── 4. Find or create whatsapp conversation for this lead ──────────────
   let [conversation] = await db
@@ -520,6 +555,8 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       req.log.info({ leadId: lead.id, telefone: normalized }, "zapi-webhook: new lead created");
       await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
     }
+
+    await attributeWhatsAppLeadFromCampaignCode(tenantId, lead.id, mensagem);
 
     // ── 5. Find or create whatsapp conversation ──────────────────────────
     const [existingConv] = await db
@@ -1616,6 +1653,8 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             req.log.info({ leadId: lead.id, phone: normalized }, "meta-webhook: new lead created");
             await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
           }
+
+          await attributeWhatsAppLeadFromCampaignCode(tenantId, lead.id, mensagem);
 
           // Find or create conversation
           let [conversation] = await db
