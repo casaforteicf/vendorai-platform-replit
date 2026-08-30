@@ -5,6 +5,7 @@ import type { SiteGeneratorConfig, SiteGeneratorProduct } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { SITE_GENERATOR_SYSTEM_PROMPT, extractHtmlDocument, prepareSiteHtml, validateSiteHtml } from "../lib/site-html-quality.js";
+import { computeSiteSeoScore } from "../lib/site-seo-analysis.js";
 
 // Prefer Anthropic when available; fallback to OpenAI
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -891,9 +892,24 @@ async function runGenerateSite(
       })
       .returning();
 
+    // D-005: análise de SEO/legibilidade/qualidade -- roda automaticamente
+    // pra toda página gerada, sem precisar de ação manual.
+    let siteComScore = site;
+    try {
+      const { score, checklist } = computeSiteSeoScore(html);
+      const [updated] = await db
+        .update(generatedSitesTable)
+        .set({ seoScore: score, seoChecklist: checklist, analisadoEm: new Date() })
+        .where(eq(generatedSitesTable.id, site.id))
+        .returning();
+      if (updated) siteComScore = updated;
+    } catch (err) {
+      log.warn({ err, siteId: site.id }, "Site generator: falha ao calcular score de SEO (não bloqueia a geração)");
+    }
+
     await persistGenerationJob(jobId, {
       status: "done",
-      result: { ...site, _provider: result.provider, _model: result.model } as Record<string, unknown>,
+      result: { ...siteComScore, _provider: result.provider, _model: result.model } as Record<string, unknown>,
       createdAt: Date.now(),
     });
   } catch (err: unknown) {
@@ -1044,12 +1060,16 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
     return;
   }
 
+  // D-005: recalcula o score de SEO/qualidade -- o refinamento muda o
+  // HTML, o score anterior fica desatualizado se não recalcular.
+  const { score: seoScore, checklist: seoChecklist } = computeSiteSeoScore(html);
+
   await db
     .update(generatedSitesTable)
-    .set({ html, updatedAt: new Date() })
+    .set({ html, seoScore, seoChecklist, analisadoEm: new Date(), updatedAt: new Date() })
     .where(eq(generatedSitesTable.id, siteId));
 
-  return res.json({ html, _provider: result.provider, _model: result.model });
+  return res.json({ html, seoScore, seoChecklist, _provider: result.provider, _model: result.model });
 });
 
 // DELETE /tenants/:tenantId/site-generator/:siteId
@@ -1157,13 +1177,17 @@ router.patch("/tenants/:tenantId/site-generator/:siteId/html", async (req, res) 
     return;
   }
 
+  // D-005: recalcula o score de SEO/qualidade -- edição manual muda o
+  // HTML, o score anterior fica desatualizado se não recalcular.
+  const { score: seoScore, checklist: seoChecklist } = computeSiteSeoScore(prepared.html);
+
   const [updated] = await db
     .update(generatedSitesTable)
-    .set({ html: prepared.html, updatedAt: new Date() })
+    .set({ html: prepared.html, seoScore, seoChecklist, analisadoEm: new Date(), updatedAt: new Date() })
     .where(eq(generatedSitesTable.id, siteId))
     .returning({ id: generatedSitesTable.id });
 
-  return res.json({ ...updated, html: prepared.html });
+  return res.json({ ...updated, html: prepared.html, seoScore, seoChecklist });
 });
 
 // PATCH /tenants/:tenantId/site-generator/:siteId/name — rename a generated site (switcher "Meus sites")

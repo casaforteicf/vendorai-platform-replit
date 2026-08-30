@@ -141,6 +141,8 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [currentSiteType, setCurrentSiteType] = useState<string | null>(null);
   const [currentConfig, setCurrentConfig] = useState<SiteConfig | null>(null);
+  const [seoScore, setSeoScore] = useState<number | null>(null);
+  const [seoChecklist, setSeoChecklist] = useState<Record<string, boolean> | null>(null);
   const [sitesList, setSitesList] = useState<SiteSummary[]>([]);
 
   const authHeaders: Record<string, string> = token
@@ -178,6 +180,8 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       setIsPublished(site.published ?? false);
       setCurrentSiteType(site.siteType ?? null);
       setCurrentConfig(site.config ?? null);
+      setSeoScore(site.seoScore ?? null);
+      setSeoChecklist(site.seoChecklist ?? null);
       setStatus("ready");
     } catch {}
   }, [tenantId, token]);
@@ -204,6 +208,8 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       setIsPublished(site.published ?? false);
       setCurrentSiteType(site.siteType ?? null);
       setCurrentConfig(site.config ?? null);
+      setSeoScore(site.seoScore ?? null);
+      setSeoChecklist(site.seoChecklist ?? null);
       setStatus("ready");
     } catch {
       // No existing site — keep idle state
@@ -313,6 +319,8 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       setSiteSlug(site.siteSlug ?? null);
       setCurrentSiteType(site.siteType ?? config.type);
       setCurrentConfig(site.config ?? config);
+      setSeoScore(site.seoScore ?? null);
+      setSeoChecklist(site.seoChecklist ?? null);
       setHistory([
         { role: "user", content: `Gerar site para: ${config.name}` },
         { role: "assistant", content: site.html },
@@ -376,6 +384,8 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     }
     const data = await res.json();
     setHtml(data.html);
+    setSeoScore(data.seoScore ?? null);
+    setSeoChecklist(data.seoChecklist ?? null);
     setHistory((h) => [
       ...h,
       { role: "user", content: message },
@@ -438,6 +448,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
 
   return {
     status, html, siteId, siteSlug, isPublished, error, currentSiteType, currentConfig, sitesList,
+    seoScore, seoChecklist,
     generate, generateBulk, bulkJobs, bulkRunning, clearBulk,
     refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish, renameSite, deleteSite,
   };
@@ -2660,6 +2671,8 @@ function PersonalizePanel({
   siteSlug,
   currentSiteType,
   tenantId,
+  seoScore,
+  seoChecklist,
   onRefine,
   onSave,
   onPublish,
@@ -2670,6 +2683,8 @@ function PersonalizePanel({
   siteSlug: string | null;
   currentSiteType: string | null;
   tenantId: string;
+  seoScore: number | null;
+  seoChecklist: Record<string, boolean> | null;
   onRefine: (msg: string) => Promise<string>;
   onSave: (html: string) => Promise<void>;
   onPublish: () => Promise<void>;
@@ -2677,6 +2692,7 @@ function PersonalizePanel({
 }) {
   const [publishing, setPublishing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showSeoDetail, setShowSeoDetail] = useState(false);
 
   const siteUrl = siteSlug ? `https://${siteSlug}.appvendorai.com` : null;
 
@@ -2738,6 +2754,56 @@ function PersonalizePanel({
           </Button>
         )}
       </div>
+
+      {/* D-005: score de SEO/legibilidade/qualidade -- análise automática
+          rodada a cada geração/refinamento/edição desta página. */}
+      {seoScore != null && (
+        <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm space-y-2">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between gap-2"
+            onClick={() => setShowSeoDetail((v) => !v)}
+          >
+            <span className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  seoScore >= 80 ? "text-green-700 border-green-300" :
+                  seoScore >= 50 ? "text-amber-700 border-amber-300" :
+                  "text-red-700 border-red-300"
+                }
+              >
+                SEO {seoScore}/100
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                Título, meta description, cabeçalhos, tamanho, legibilidade e imagens
+              </span>
+            </span>
+            <span className="text-xs text-muted-foreground">{showSeoDetail ? "ocultar" : "ver detalhes"}</span>
+          </button>
+          {showSeoDetail && seoChecklist && (
+            <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-border">
+              {([
+                ["tituloOk", "Título (tamanho ideal)"],
+                ["metaDescriptionOk", "Meta description"],
+                ["headersOk", "Cabeçalhos (H1-H3)"],
+                ["tamanhoMinimoOk", "Tamanho do conteúdo"],
+                ["legibilidadeOk", "Legibilidade"],
+                ["imagensAltOk", "Imagens com texto alternativo"],
+              ] as const).map(([key, label]) => (
+                <div key={key} className="flex items-center gap-1.5 text-xs">
+                  {seoChecklist[key] ? (
+                    <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                  ) : (
+                    <X className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                  )}
+                  <span className={seoChecklist[key] ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Subdomain URL row */}
       {siteUrl && (
@@ -2802,6 +2868,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
   const {
     status, html, siteId, siteSlug, isPublished, error,
     currentSiteType, currentConfig, sitesList,
+    seoScore, seoChecklist,
     generate, generateBulk, bulkJobs, bulkRunning, clearBulk,
     refine, download, reset,
     loadLatest, loadAll, loadSite, saveHtml, publish, renameSite, deleteSite,
@@ -2999,6 +3066,8 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
           siteSlug={siteSlug}
           currentSiteType={currentSiteType}
           tenantId={tenantId}
+          seoScore={seoScore}
+          seoChecklist={seoChecklist}
           onRefine={refine}
           onSave={saveHtml}
           onPublish={publish}

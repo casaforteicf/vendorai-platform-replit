@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -41,6 +41,15 @@ export interface SiteGeneratorConfig {
   servicos?: string;
 }
 
+export interface SiteSeoChecklist {
+  tituloOk: boolean;
+  metaDescriptionOk: boolean;
+  headersOk: boolean;
+  tamanhoMinimoOk: boolean;
+  legibilidadeOk: boolean;
+  imagensAltOk: boolean;
+}
+
 export const generatedSitesTable = pgTable("generated_sites", {
   id: text("id")
     .primaryKey()
@@ -54,6 +63,12 @@ export const generatedSitesTable = pgTable("generated_sites", {
   config: jsonb("config").$type<SiteGeneratorConfig>().notNull(),
   html: text("html").notNull(),
   published: boolean("published").notNull().default(false),
+  // D-005: análise de SEO/legibilidade/qualidade -- mesmo espírito do
+  // checklist do Content Autopilot (Otimizador), adaptado pra HTML de
+  // página em vez de markdown de artigo de blog.
+  seoScore: integer("seo_score"),
+  seoChecklist: jsonb("seo_checklist").$type<SiteSeoChecklist>(),
+  analisadoEm: timestamp("analisado_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
