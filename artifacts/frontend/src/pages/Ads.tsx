@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2, RefreshCw } from "lucide-react";
+import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2, RefreshCw, AlertTriangle, TrendingUp, DollarSign, Users, Eye } from "lucide-react";
 import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
 // Label com ícone de ajuda (?) — explicação em linguagem simples pro lojista,
@@ -191,6 +191,22 @@ interface AdCreative {
 
 interface ItemBusca { id: string; label: string; imagens?: string[] }
 
+interface AdsOverviewAlert {
+  id: string; campaignId: string; severity: string; message: string; eventType: string; createdAt: string;
+}
+interface AdsOverviewCampaign {
+  campaignId: string; label: string; plataforma: string; status: string; objective: string | null;
+  startDate: string | null; endDate: string | null; daysRemaining: number | null;
+  plannedBudget: number; dailyBudget: number; spend: number; impressions: number; clicks: number;
+  platformConversions: number; leads: number; sales: number; revenue: number;
+  costPerLead: number | null; roas: number | null; alerts: AdsOverviewAlert[];
+  recommendation: { title: string; reason: string; action: string; requiresApproval: boolean } | null;
+}
+interface AdsOverview {
+  totals: { plannedBudget: number; spend: number; leads: number; sales: number; revenue: number; activeCampaigns: number; unresolvedAlerts: number };
+  campaigns: AdsOverviewCampaign[];
+}
+
 interface ImportedContentDraft {
   contentGenerationId: string;
   variationIndex: number;
@@ -333,6 +349,26 @@ export default function Ads() {
     const timer = window.setInterval(sync, 5 * 60 * 1000);
     return () => window.clearInterval(timer);
   }, [tenantId, campaigns.map((campaign) => `${campaign.id}:${campaign.segmentacao?.platformReview?.status ?? ""}`).join("|")]);
+
+  const { data: adsOverview } = useQuery<AdsOverview>({
+    queryKey: ["ads-overview", tenantId],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/ads/overview`, { headers: authHeaders() }).then((r) => {
+      if (!r.ok) throw new Error("Não foi possível carregar os resultados");
+      return r.json();
+    }),
+    enabled: !!tenantId,
+    refetchInterval: 60_000,
+  });
+  const overviewByCampaign = new Map((adsOverview?.campaigns ?? []).map((item) => [item.campaignId, item]));
+
+  const resolveAlert = useMutation({
+    mutationFn: async (eventId: string) => {
+      const r = await fetch(`/api/tenants/${tenantId}/ads/events/${eventId}/resolve`, { method: "POST", headers: authHeaders() });
+      if (!r.ok) throw new Error("Não foi possível marcar o alerta como resolvido");
+      return r.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ads-overview", tenantId] }),
+  });
 
   const { data: reservations = [] } = useQuery<VehicleReservation[]>({
     queryKey: ["vehicle-ad-reservations", tenantId],
@@ -615,6 +651,32 @@ export default function Ads() {
         </Button>
       </div>
 
+      {adsOverview && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+            <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Campanhas ativas</p><p className="text-xl font-bold">{adsOverview.totals.activeCampaigns}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Planejado</p><p className="text-xl font-bold">R$ {adsOverview.totals.plannedBudget.toFixed(2)}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Gasto real</p><p className="text-xl font-bold">R$ {adsOverview.totals.spend.toFixed(2)}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Leads</p><p className="text-xl font-bold">{adsOverview.totals.leads}</p></CardContent></Card>
+            <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Vendas</p><p className="text-xl font-bold">{adsOverview.totals.sales}</p></CardContent></Card>
+            <Card className={adsOverview.totals.unresolvedAlerts > 0 ? "border-amber-300 bg-amber-50" : ""}><CardContent className="p-3"><p className="text-xs text-muted-foreground">Alertas</p><p className="text-xl font-bold">{adsOverview.totals.unresolvedAlerts}</p></CardContent></Card>
+          </div>
+          {adsOverview.campaigns.some((item) => item.alerts.length > 0) && (
+            <Card className="border-amber-200">
+              <CardContent className="pt-4 space-y-2">
+                <h2 className="font-semibold flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" />Atenção necessária</h2>
+                {adsOverview.campaigns.flatMap((item) => item.alerts.map((alert) => ({ ...alert, label: item.label }))).slice(0, 8).map((alert) => (
+                  <div key={alert.id} className="flex items-start justify-between gap-3 rounded-md border p-2 text-sm">
+                    <div><p className="font-medium">{alert.label}</p><p className="text-xs text-muted-foreground">{alert.message}</p></div>
+                    {!alert.id.startsWith("computed-") && <Button size="sm" variant="ghost" onClick={() => resolveAlert.mutate(alert.id)}>Resolvido</Button>}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       <Card className="bg-muted/30">
         <CardContent className="pt-4 text-sm space-y-2">
           <p className="font-medium">Como colocar um anúncio no ar</p>
@@ -651,6 +713,7 @@ export default function Ads() {
         <div className="space-y-3">
           {campaigns.map((c) => {
             const creative = expandedCreative[c.id] ?? c.latestCreative;
+            const result = overviewByCampaign.get(c.id);
             return (
               <Card key={c.id}>
                 <CardContent className="pt-4 space-y-3">
@@ -736,6 +799,32 @@ export default function Ads() {
                       )}
                     </div>
                   </div>
+
+                  {result && (
+                    <div className="rounded-lg border bg-background p-3 space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 text-center">
+                        <div><p className="text-[11px] text-muted-foreground">Gasto</p><p className="text-sm font-semibold">R$ {result.spend.toFixed(2)}</p></div>
+                        <div><p className="text-[11px] text-muted-foreground">Impressões</p><p className="text-sm font-semibold">{result.impressions}</p></div>
+                        <div><p className="text-[11px] text-muted-foreground">Cliques</p><p className="text-sm font-semibold">{result.clicks}</p></div>
+                        <div><p className="text-[11px] text-muted-foreground">Leads</p><p className="text-sm font-semibold">{result.leads}</p></div>
+                        <div><p className="text-[11px] text-muted-foreground">Custo/lead</p><p className="text-sm font-semibold">{result.costPerLead == null ? "—" : `R$ ${result.costPerLead.toFixed(2)}`}</p></div>
+                        <div><p className="text-[11px] text-muted-foreground">Vendas</p><p className="text-sm font-semibold">{result.sales}</p></div>
+                        <div><p className="text-[11px] text-muted-foreground">Receita</p><p className="text-sm font-semibold">R$ {result.revenue.toFixed(2)}</p></div>
+                        <div><p className="text-[11px] text-muted-foreground">ROAS</p><p className="text-sm font-semibold">{result.roas == null ? "—" : `${result.roas.toFixed(2)}x`}</p></div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {result.daysRemaining != null && <Badge variant="outline">{result.daysRemaining} dia(s) restante(s)</Badge>}
+                        <Badge variant="outline">Limite R$ {result.plannedBudget.toFixed(2)}</Badge>
+                      </div>
+                      {result.recommendation && (
+                        <div className="rounded-md border border-blue-200 bg-blue-50 p-2">
+                          <p className="text-xs font-semibold flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" />Recomendação da IA: {result.recommendation.title}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{result.recommendation.reason}</p>
+                          {result.recommendation.requiresApproval && <p className="text-[11px] font-medium mt-1">Qualquer mudança de prazo ou orçamento exigirá sua confirmação.</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {(c.tipoAnuncio === "rsa_pmax" || c.tipoAnuncio === "imagem") && (
                     <div className="space-y-2">
