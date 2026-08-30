@@ -362,7 +362,21 @@ export interface MetaPublishResult {
   adId: string;
 }
 
+export async function preflightMetaAdsAccount(tenantId: string): Promise<void> {
+  const { accessToken, adAccountId } = await getValidAccessToken(tenantId);
+  const account = await metaApi<{ account_status?: number; disable_reason?: number; currency?: string }>(
+    `${normalizeMetaAdAccountId(adAccountId)}?fields=account_status,disable_reason,currency`,
+    accessToken,
+  );
+  if (account.account_status != null && account.account_status !== 1) {
+    throw new MetaAdsPublishError(
+      `A conta Meta Ads não está ativa (status ${account.account_status}, motivo ${account.disable_reason ?? "não informado"}). Regularize a conta e a forma de pagamento antes de publicar.`,
+    );
+  }
+}
+
 export async function publishCampaignToMetaAds(tenantId: string, campaignId: string): Promise<MetaPublishResult> {
+  await preflightMetaAdsAccount(tenantId);
   const [campanha] = await db
     .select()
     .from(adCampaignsTable)
