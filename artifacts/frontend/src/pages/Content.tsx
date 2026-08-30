@@ -537,7 +537,10 @@ function PublishInstagramButton({
         const normalizedError = data.error?.toLowerCase() ?? "";
         const isNotConnected = normalizedError.includes("não conectado") ||
           normalizedError.includes("oauth") ||
-          normalizedError.includes("page access");
+          normalizedError.includes("page access") ||
+          normalizedError.includes("credenciais de publicação") ||
+          normalizedError.includes("expirou") ||
+          normalizedError.includes("reconect");
         toast({
           title: isNotConnected ? "Instagram não conectado" : "Falha ao publicar",
           description: isNotConnected
@@ -545,7 +548,7 @@ function PublishInstagramButton({
             : (data.error ?? "Erro desconhecido"),
           variant: "destructive",
           action: isNotConnected ? (
-            <ToastAction altText="Conectar Instagram" onClick={() => navigate("/configuracoes")}>
+            <ToastAction altText="Conectar Instagram" onClick={() => navigate("/configuracoes?tab=integracoes")}>
               Conectar Instagram
             </ToastAction>
           ) : undefined,
