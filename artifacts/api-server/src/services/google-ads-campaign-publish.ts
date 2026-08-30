@@ -40,7 +40,6 @@ const GOOGLE_ADS_DEVELOPER_TOKEN = process.env["GOOGLE_ADS_DEVELOPER_TOKEN"];
 // cidade/raio (campanha.segmentacao.localizacao) fica pra quando o
 // motor de recomendação entrar — precisa de GeoTargetConstantService
 // pra resolver nome de cidade -> geo target constant, escopo maior.
-const GEO_TARGET_BRASIL = "geoTargetConstants/2076";
 const LANGUAGE_PORTUGUES = "languageConstants/1014";
 
 class GoogleAdsPublishError extends Error {}
@@ -225,7 +224,35 @@ export interface PublishResult {
 // em todos os níveis — publicar não liga gasto nenhum, só coloca a
 // estrutura pronta na conta pra revisão. Idempotente na prática porque
 // o chamador (rota) só invoca isso quando externalCampaignId ainda é null.
+export async function preflightGoogleAdsAccount(tenantId: string): Promise<void> {
+  const { accessToken, customerId } = await getValidAccessToken(tenantId);
+  const query = "SELECT customer.status, customer.descriptive_name, customer.currency_code FROM customer LIMIT 1";
+  const res = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${customerId}/googleAds:searchStream`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    const raw = await res.text();
+    throw new GoogleAdsPublishError(
+      /billing|payment|payments_account|customer_not_enabled/i.test(raw)
+        ? "A conta Google Ads não está pronta para veicular: revise faturamento, forma de pagamento e ativação da conta."
+        : traduzirErroGoogleAds(res.status, raw),
+    );
+  }
+  const chunks = await res.json() as Array<{ results?: Array<{ customer?: { status?: string } }> }>;
+  const status = chunks.flatMap((chunk) => chunk.results ?? [])[0]?.customer?.status;
+  if (status && status !== "ENABLED") {
+    throw new GoogleAdsPublishError(`A conta Google Ads está com status ${status}. Ative a conta e confirme a forma de pagamento antes de publicar.`);
+  }
+}
+
 export async function publishCampaignToGoogleAds(tenantId: string, campaignId: string): Promise<PublishResult> {
+  await preflightGoogleAdsAccount(tenantId);
   const [campanha] = await db
     .select()
     .from(adCampaignsTable)
