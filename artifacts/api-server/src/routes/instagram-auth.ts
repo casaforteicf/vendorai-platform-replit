@@ -145,12 +145,19 @@ router.get("/tenants/:tenantId/instagram-connection", authenticate, async (req, 
     }
 
     const conn = await getInstagramConnectionByTenantId(tenantId);
-    if (!conn || conn.disconnectedAt) {
-      return res.json({ connected: false });
+    const tokenExpired = Boolean(conn?.tokenExpiresAt && conn.tokenExpiresAt <= new Date());
+    const publishReady = Boolean(conn?.pageAccessToken && conn.accountId);
+    if (!conn || conn.disconnectedAt || !publishReady || tokenExpired) {
+      return res.json({
+        connected: false,
+        needsReconnect: Boolean(conn && !conn.disconnectedAt),
+        reason: tokenExpired ? "token_expired" : conn && !publishReady ? "missing_publish_credentials" : "not_connected",
+      });
     }
 
     return res.json({
       connected: true,
+      publishReady: true,
       id: conn.id,
       username: conn.username,
       accountId: conn.accountId,
