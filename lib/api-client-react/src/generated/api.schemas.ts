@@ -982,12 +982,35 @@ export interface ImportProdutosCatalogoBody {
   csv: string;
 }
 
+export type CategoriaProdutoNivel = typeof CategoriaProdutoNivel[keyof typeof CategoriaProdutoNivel];
+
+
+export const CategoriaProdutoNivel = {
+  categoria: 'categoria',
+  subcategoria: 'subcategoria',
+  nicho: 'nicho',
+  linha: 'linha',
+  aplicacao: 'aplicacao',
+  sublinha: 'sublinha',
+  utilidade: 'utilidade',
+  familia: 'familia',
+} as const;
+
 export interface CategoriaProduto {
   id: string;
   tenantId: string;
   nome: string;
+  slug?: string | null;
+  parentId?: string | null;
+  nivel: CategoriaProdutoNivel;
+  oficial: boolean;
+  ativo: boolean;
+  ordem: number;
   /** Teto de desconto (%) padrão para produtos desta categoria */
   descontoMaximoPercentual: string;
+  precisaAprovacao: boolean;
+  aprovadoPor?: string | null;
+  aprovadoEm?: string | null;
   createdAt: string;
   updatedAt: string;
 }

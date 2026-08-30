@@ -11548,16 +11548,40 @@ components:
           type: string
         nome:
           type: string
+        slug:
+          type: string
+          nullable: true
+        parentId:
+          type: string
+          nullable: true
+        nivel:
+          type: string
+          enum: [categoria, subcategoria, nicho, linha, aplicacao, sublinha, utilidade, familia]
+        oficial:
+          type: boolean
+        ativo:
+          type: boolean
+        ordem:
+          type: integer
         descontoMaximoPercentual:
           type: string
           description: Teto de desconto (%) padrão para produtos desta categoria
+        precisaAprovacao:
+          type: boolean
+        aprovadoPor:
+          type: string
+          nullable: true
+        aprovadoEm:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
-      required: [id, tenantId, nome, descontoMaximoPercentual, createdAt, updatedAt]
+      required: [id, tenantId, nome, nivel, oficial, ativo, ordem, descontoMaximoPercentual, precisaAprovacao, createdAt, updatedAt]
 
     CreateCategoriaProdutoBody:
       type: object

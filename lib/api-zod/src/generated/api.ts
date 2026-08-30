@@ -3656,7 +3656,16 @@ export const ListCategoriasProdutoResponseItem = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
   "nome": zod.string(),
+  "slug": zod.string().nullish(),
+  "parentId": zod.string().nullish(),
+  "nivel": zod.enum(['categoria', 'subcategoria', 'nicho', 'linha', 'aplicacao', 'sublinha', 'utilidade', 'familia']),
+  "oficial": zod.boolean(),
+  "ativo": zod.boolean(),
+  "ordem": zod.number(),
   "descontoMaximoPercentual": zod.string().describe('Teto de desconto (%) padrão para produtos desta categoria'),
+  "precisaAprovacao": zod.boolean(),
+  "aprovadoPor": zod.string().nullish(),
+  "aprovadoEm": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3692,7 +3701,16 @@ export const UpdateCategoriaProdutoResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
   "nome": zod.string(),
+  "slug": zod.string().nullish(),
+  "parentId": zod.string().nullish(),
+  "nivel": zod.enum(['categoria', 'subcategoria', 'nicho', 'linha', 'aplicacao', 'sublinha', 'utilidade', 'familia']),
+  "oficial": zod.boolean(),
+  "ativo": zod.boolean(),
+  "ordem": zod.number(),
   "descontoMaximoPercentual": zod.string().describe('Teto de desconto (%) padrão para produtos desta categoria'),
+  "precisaAprovacao": zod.boolean(),
+  "aprovadoPor": zod.string().nullish(),
+  "aprovadoEm": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

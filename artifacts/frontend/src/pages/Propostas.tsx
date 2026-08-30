@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { ordenarArvoreCategorias } from "@/lib/categoriaTree";
 import {
   CalculoOrcamentoM2Dialog,
   type ResultadoCalculoM2,
@@ -946,8 +947,10 @@ export function CatalogoModal({
                         <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {categorias.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                        {ordenarArvoreCategorias(categorias).map(({ categoria: c, profundidade }) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {"　".repeat(profundidade)}{profundidade > 0 ? "↳ " : ""}{c.nome}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

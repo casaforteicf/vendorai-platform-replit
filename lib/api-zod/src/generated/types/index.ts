@@ -61,6 +61,7 @@ export * from './campaignMensagensEtapa';
 export * from './campaignStatus';
 export * from './campaignTipo';
 export * from './categoriaProduto';
+export * from './categoriaProdutoNivel';
 export * from './changePasswordBody';
 export * from './checkAgendamentoDisponibilidadeParams';
 export * from './completeOnboarding200';

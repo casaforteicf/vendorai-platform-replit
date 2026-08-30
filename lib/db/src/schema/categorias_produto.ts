@@ -2,6 +2,7 @@ import { pgTable, text, timestamp, numeric, boolean, integer, type AnyPgColumn }
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { usersTable } from "./users";
 
 export const TAXONOMY_LEVELS = [
   "categoria",
@@ -32,6 +33,11 @@ export const categoriasProdutoTable = pgTable("categorias_produto", {
   descontoMaximoPercentual: numeric("desconto_maximo_percentual", { precision: 5, scale: 2 })
     .notNull()
     .default("0"),
+  // Fluxo de aprovação pra categorias criadas automaticamente na
+  // importação (sem correspondência exata com nenhuma existente).
+  precisaAprovacao: boolean("precisa_aprovacao").notNull().default(false),
+  aprovadoPor: text("aprovado_por").references(() => usersTable.id),
+  aprovadoEm: timestamp("aprovado_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

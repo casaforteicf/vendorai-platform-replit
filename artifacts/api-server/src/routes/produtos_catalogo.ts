@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { findOfficialItemCategory } from "../lib/itemCategories";
+import { findOfficialItemCategory, ITEM_CATEGORIES, categoryNameSimilarity } from "../lib/itemCategories";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { generateImage } from "../lib/ai-gateway.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -603,7 +603,11 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     }
     const categoriaNome = findOfficialItemCategory(categoriaInformada);
     if (!categoriaNome) {
-      errors.push({ row: rowNum, message: `Categoria fora do padrão oficial: "${categoriaInformada}"` });
+      const sugestao = ITEM_CATEGORIES
+        .map((nome) => ({ nome, score: categoryNameSimilarity(categoriaInformada, nome) }))
+        .sort((a, b) => b.score - a.score)[0];
+      const dica = sugestao && sugestao.score > 0.15 ? ` Você quis dizer "${sugestao.nome}"?` : "";
+      errors.push({ row: rowNum, message: `Categoria fora do padrão oficial: "${categoriaInformada}".${dica}` });
       continue;
     }
     if (categoriaInformada !== categoriaNome) {

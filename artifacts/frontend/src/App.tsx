@@ -58,6 +58,7 @@ const Campanhas          = lazy(() => import("@/pages/Campanhas"));
 const CampanhasHub       = lazy(() => import("@/pages/CampanhasHub"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
 const CatalogoProdutos   = lazy(() => import("@/pages/CatalogoProdutos"));
+const CategoriasProduto  = lazy(() => import("@/pages/CategoriasProduto"));
 const PropostaPrint      = lazy(() => import("@/pages/PropostaPrint"));
 const AdminAIUsage       = lazy(() => import("@/pages/AdminAIUsage"));
 const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
@@ -615,6 +616,9 @@ function AppRoutes() {
         </Route>
         <Route path="/catalogo">
           {() => <ProtectedRoute component={CatalogoProdutos} />}
+        </Route>
+        <Route path="/catalogo/categorias">
+          {() => <ProtectedRoute component={CategoriasProduto} />}
         </Route>
         <Route path="/base-conhecimento">
           {() => <ProtectedRoute component={KnowledgeBase} />}

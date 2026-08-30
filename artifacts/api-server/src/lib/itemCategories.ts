@@ -91,6 +91,22 @@ export function findOfficialItemCategory(value: string): string | null {
 }
 
 /**
+ * Similaridade simples por sobreposição de tokens (Jaccard) -- suficiente
+ * pra sugerir "essa categoria já existe, quis dizer essa?" sem precisar de
+ * biblioteca de fuzzy-match. Ex: "Tinta Acrílica" vs "Tintas Acrílicas" ->
+ * tokens praticamente iguais, pontuação alta.
+ */
+export function categoryNameSimilarity(a: string, b: string): number {
+  const tokensA = new Set(normalizeCategoryName(a).split(" ").filter(Boolean));
+  const tokensB = new Set(normalizeCategoryName(b).split(" ").filter(Boolean));
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+  let intersection = 0;
+  for (const t of tokensA) if (tokensB.has(t)) intersection++;
+  const union = tokensA.size + tokensB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
  * Garante que todo parceiro veja as 31 categorias no cadastro de produtos.
  * Categorias antigas são preservadas para não invalidar produtos existentes.
  */
