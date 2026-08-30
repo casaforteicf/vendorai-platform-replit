@@ -311,6 +311,62 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/retry", async (req, res) => {
   return res.status(201).json(retry);
 });
 
+// Transforma uma recomendação em um novo rascunho seguro. Nenhuma ação
+// aumenta gasto automaticamente: o usuário revisa e publica a nova versão.
+router.post("/tenants/:tenantId/ads/campaigns/:id/prepare-recommendation", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const action = req.body?.action;
+  if (!["review_targeting", "improve_destination", "extend_campaign"].includes(action)) {
+    return res.status(422).json({ error: "Recomendação inválida." });
+  }
+  const [campaign] = await db.select().from(adCampaignsTable)
+    .where(and(eq(adCampaignsTable.id, req.params.id as string), eq(adCampaignsTable.tenantId, tenantId)));
+  if (!campaign) return res.status(404).json({ error: "Campanha não encontrada" });
+
+  const { id: _id, externalCampaignId: _externalId, createdAt: _created, updatedAt: _updated, ...copy } = campaign;
+  const currentControl = campaign.segmentacao?.campaignControl;
+  let campaignControl = currentControl;
+  let guidance: string[];
+  if (action === "extend_campaign") {
+    const base = currentControl?.endDate ? new Date(`${currentControl.endDate}T12:00:00Z`) : new Date();
+    const start = new Date(base.getTime() + 86_400_000);
+    const end = new Date(start.getTime() + 4 * 86_400_000);
+    campaignControl = {
+      ...(currentControl ?? { objective: "lead", specialAdCategory: "NONE" }),
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+      totalBudget: Number(campaign.orcamentoDiario) * 5,
+    } as any;
+    guidance = ["Período adicional de 5 dias preparado.", "Revise o orçamento total.", "Publique somente depois de confirmar."];
+  } else if (action === "review_targeting") {
+    guidance = ["Revise cidades, raio e perfil do público.", "Confirme se a oferta corresponde ao nicho escolhido.", "Gere um novo criativo antes de publicar."];
+  } else {
+    guidance = ["Confira se o destino abre corretamente no celular.", "Deixe a chamada principal clara.", "Use WhatsApp ou formulário curto para reduzir abandono."];
+  }
+  const segmentacao = {
+    ...campaign.segmentacao,
+    platformReview: undefined,
+    campaignControl,
+    sourceCampaignId: campaign.id,
+    preparedRecommendation: { action, guidance, preparedAt: new Date().toISOString() },
+  };
+  const [draft] = await db.insert(adCampaignsTable).values({
+    ...copy,
+    status: "rascunho",
+    externalCampaignId: null,
+    segmentacao,
+    utmCode: `vai_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`,
+  } as any).returning();
+  await recordAdCampaignEvent({
+    tenantId, campaignId: draft.id, userId: (req as any).user?.sub,
+    eventType: "recommendation_prepared", severity: "info",
+    message: "Novo rascunho criado a partir de uma recomendação do VendorAI.",
+    metadata: { action, sourceCampaignId: campaign.id, guidance },
+  });
+  return res.status(201).json({ campaign: draft, guidance });
+});
+
 // Chamado pelo canal que confirmou o interesse (WhatsApp, formulário ou ação
 // manual). Para veículo único, pausa a mídia, reserva o estoque e abre/vincula
 // o negócio ao vendedor com SLA configurável (48h por padrão).
