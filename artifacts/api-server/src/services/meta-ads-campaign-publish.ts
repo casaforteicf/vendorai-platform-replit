@@ -539,9 +539,9 @@ export async function syncMetaAdsReviewStatus(tenantId: string, campaignId: stri
     ];
     const reasons = [...new Set(issues.flatMap((issue) => [issue.error_summary, issue.error_message]).filter(Boolean) as string[])];
     const combined = `${statuses.join(" ")} ${reasons.join(" ")}`;
-    const paymentProblem = /payment|billing|pagamento|cobrança/i.test(combined) || accountState.disable_reason === 1;
+    const paymentProblem = /payment|billing|pagamento|cobrança/i.test(combined) || statuses.includes("PENDING_BILLING_INFO");
     const rejected = statuses.some((status) => ["DISAPPROVED", "WITH_ISSUES"].includes(status)) || reasons.length > 0;
-    const underReview = statuses.some((status) => ["PENDING_REVIEW", "PREAPPROVED", "PENDING_BILLING_INFO"].includes(status));
+    const underReview = statuses.some((status) => ["PENDING_REVIEW", "PREAPPROVED"].includes(status));
     const approved = statuses.some((status) => ["ACTIVE", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "PAUSED"].includes(status));
 
     const status = paymentProblem
