@@ -76,22 +76,24 @@ export function MarketingContextSelector({
     const goal = next.campaignGoal ?? "";
     onChange({
       ...next,
-      nicheId: segment,
+      nicheId: segment && niche.trim() ? `${segment}:${niche.trim()}` : "",
       nicheName: buildNicheName(segment, niche, goal),
     });
   }
 
   function toggleProduct(product: Product) {
-    const selected = value.productIds.includes(product.id);
-    const productIds = selected
-      ? value.productIds.filter((id) => id !== product.id)
-      : [...value.productIds, product.id];
-    const customNames = value.productIds
-      .filter((id) => id.startsWith("custom:") && productIds.includes(id))
-      .map((id) => value.productNames[value.productIds.indexOf(id)])
-      .filter(Boolean);
-    const catalogNames = products.filter((item) => productIds.includes(item.id)).map((item) => item.nome);
-    emit({ productIds, productNames: [...catalogNames, ...customNames] });
+    const selectedIndex = value.productIds.indexOf(product.id);
+    if (selectedIndex >= 0) {
+      emit({
+        productIds: value.productIds.filter((_, index) => index !== selectedIndex),
+        productNames: value.productNames.filter((_, index) => index !== selectedIndex),
+      });
+      return;
+    }
+    emit({
+      productIds: [...value.productIds, product.id],
+      productNames: [...value.productNames, product.nome],
+    });
   }
 
   function addCustomOffer() {
