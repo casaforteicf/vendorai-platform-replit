@@ -164,6 +164,12 @@ interface AdCampaign {
       google: { keywords: string[] };
       meta: { interestQueries: string[]; resolvedInterests?: Array<{ id: string; name: string }> };
     };
+    platformReview?: {
+      status: "nao_enviada" | "em_analise" | "aprovada" | "aprovada_limitada" | "reprovada" | "erro_pagamento" | "erro_conta";
+      reason?: string;
+      policyTopics?: string[];
+      syncedAt: string;
+    };
   };
 }
 
@@ -497,6 +503,23 @@ export default function Ads() {
     onError: (e: any) => toast({ title: "Erro ao alterar status", description: e.message, variant: "destructive" }),
   });
 
+  const sincronizarSituacao = useMutation({
+    mutationFn: async (campaignId: string) => {
+      const response = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/sync-status`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível consultar a plataforma");
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      toast({ title: "Situação atualizada" });
+    },
+    onError: (error: any) => toast({ title: "Falha ao consultar plataforma", description: error.message, variant: "destructive" }),
+  });
+
   const excluirCampanha = useMutation({
     mutationFn: async (campaignId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}`, {
@@ -595,6 +618,28 @@ export default function Ads() {
                       <p className="text-sm text-muted-foreground mt-1">Orçamento diário: R$ {c.orcamentoDiario}</p>
                       {c.utmCode && <p className="text-xs text-muted-foreground">Código de atribuição: <code className="bg-muted px-1 rounded">{c.utmCode}</code></p>}
                       {c.itemTipo === "veiculo" && c.modo === "unico" && <p className="text-xs text-muted-foreground">Reserva automática: {c.pausarAoInteresse ? "pausa o patrocínio" : "não pausa"} · SLA {c.slaNegociacaoHoras}h</p>}
+                      {c.segmentacao?.platformReview && (
+                        <div className={`mt-2 rounded-md border p-2 ${
+                          c.segmentacao.platformReview.status === "reprovada" || c.segmentacao.platformReview.status === "erro_pagamento" || c.segmentacao.platformReview.status === "erro_conta"
+                            ? "border-red-200 bg-red-50"
+                            : c.segmentacao.platformReview.status === "aprovada" || c.segmentacao.platformReview.status === "aprovada_limitada"
+                              ? "border-green-200 bg-green-50"
+                              : "border-amber-200 bg-amber-50"
+                        }`}>
+                          <p className="text-xs font-semibold">
+                            {c.segmentacao.platformReview.status === "em_analise" ? "Em análise pela plataforma"
+                              : c.segmentacao.platformReview.status === "aprovada" ? "Aprovada pela plataforma"
+                              : c.segmentacao.platformReview.status === "aprovada_limitada" ? "Aprovada com limitações"
+                              : c.segmentacao.platformReview.status === "reprovada" ? "Reprovada pela plataforma"
+                              : c.segmentacao.platformReview.status === "erro_pagamento" ? "Problema no pagamento da mídia"
+                              : "Problema na conta de anúncios"}
+                          </p>
+                          {c.segmentacao.platformReview.reason && <p className="text-xs mt-1">{c.segmentacao.platformReview.reason}</p>}
+                          {c.segmentacao.platformReview.policyTopics && c.segmentacao.platformReview.policyTopics.length > 0 && (
+                            <p className="text-[11px] mt-1">Políticas: {c.segmentacao.platformReview.policyTopics.join(", ")}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className={STATUS_COLOR[c.status] ?? ""}>{STATUS_LABEL[c.status] ?? c.status}</Badge>
@@ -664,6 +709,10 @@ export default function Ads() {
                               ) : (
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <p className="text-xs text-muted-foreground">Publicada na conta {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"} (ID {c.externalCampaignId}).</p>
+                                  <Button size="sm" variant="ghost" onClick={() => sincronizarSituacao.mutate(c.id)} disabled={sincronizarSituacao.isPending}>
+                                    {sincronizarSituacao.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+                                    Atualizar análise
+                                  </Button>
                                   {c.status === "ativo" ? (
                                     <Button size="sm" variant="outline" onClick={() => alterarStatusCampanha.mutate({ campaignId: c.id, ativar: false })} disabled={alterarStatusCampanha.isPending}>
                                       Pausar
