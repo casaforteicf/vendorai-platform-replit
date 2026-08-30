@@ -80,6 +80,12 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
         resolvedInterests?: Array<{ id: string; name: string }>;
       };
     };
+    platformReview?: {
+      status: "nao_enviada" | "em_analise" | "aprovada" | "aprovada_limitada" | "reprovada" | "erro_pagamento" | "erro_conta";
+      reason?: string;
+      policyTopics?: string[];
+      syncedAt: string;
+    };
   }>().notNull().default({}),
   status: adCampanhaStatusEnum("status").notNull().default("rascunho"),
   // Código curto único pra usar como utm_campaign em qualquer link que
