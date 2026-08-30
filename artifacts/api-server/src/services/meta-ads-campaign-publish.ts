@@ -479,7 +479,9 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
     optimization_goal: campaignControl.objective === "awareness"
       ? "REACH"
       : origemInstagram ? "POST_ENGAGEMENT" : "LINK_CLICKS",
-    start_time: new Date(`${campaignControl.startDate}T00:00:00-03:00`).toISOString(),
+    ...(campaignControl.startDate > new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+      ? { start_time: new Date(`${campaignControl.startDate}T00:00:00-03:00`).toISOString() }
+      : {}),
     end_time: new Date(`${campaignControl.endDate}T23:59:59-03:00`).toISOString(),
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     status: "PAUSED",
