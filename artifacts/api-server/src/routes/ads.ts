@@ -610,6 +610,17 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) =>
     await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: activateNow ? "published_and_activated" : "published", severity: "success", message: activateNow ? "Campanha publicada e ativada na plataforma." : "Campanha publicada em modo pausado.", metadata: { plataforma } });
     return res.status(201).json({ ...result, activated: activateNow });
   } catch (err) {
+    const failureMessage = err instanceof Error ? err.message : "Falha não identificada ao publicar.";
+    await recordAdCampaignEvent({
+      tenantId, campaignId, userId: (req as any).user?.sub,
+      eventType: /pagamento|payment|billing|saldo|cart[aã]o/i.test(failureMessage) ? "payment_error" : "publish_error",
+      severity: "critical",
+      message: /pagamento|payment|billing|saldo|cart[aã]o/i.test(failureMessage)
+        ? `A plataforma interrompeu a publicação por pagamento: ${failureMessage}`
+        : `Não foi possível publicar a campanha: ${failureMessage}`,
+      dedupeKey: `publish-error:${new Date().toISOString().slice(0, 13)}`,
+      metadata: { plataforma },
+    }).catch(() => null);
     if (err instanceof GoogleAdsPublishError || err instanceof MetaAdsPublishError) {
       return res.status(422).json({ error: err.message });
     }
