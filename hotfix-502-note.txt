@@ -1,0 +1,1 @@
+Hotfix 502: desativa changelog automático e restaura arquivo de dados ao último estado conhecido estável.
