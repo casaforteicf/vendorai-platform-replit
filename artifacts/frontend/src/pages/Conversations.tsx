@@ -768,7 +768,7 @@ export default function Conversations() {
   const [showMobileChat, setShowMobileChat] = useState(!!initialConvId);
   const [channelFilter, setChannelFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeView, setActiveView] = useState<"whatsapp" | "praca">("whatsapp");
+  const [activeView, setActiveView] = useState<"whatsapp" | "instagram" | "praca">("whatsapp");
 
   const { data: conversations = [], isLoading: convsLoading } =
     useListTenantConversations(tenantId, {
@@ -816,6 +816,10 @@ export default function Conversations() {
     },
     {}
   );
+
+  const instagramUnread = conversations
+    .filter((c) => c.channel === "instagram")
+    .reduce((acc, c) => acc + c.naoLidas, 0);
 
   const filterChips: { key: string; label: string }[] = [
     { key: "all", label: "Todas" },
@@ -870,10 +874,10 @@ export default function Conversations() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-muted/20">
-      {/* ── View tabs: WhatsApp x Perguntas Praça.ai ── */}
+      {/* ── View tabs: WhatsApp x Instagram x Perguntas Praça.ai ── */}
       <div className="flex gap-1 px-4 pt-3 border-b border-border shrink-0 bg-background">
         <button
-          onClick={() => setActiveView("whatsapp")}
+          onClick={() => { setActiveView("whatsapp"); setChannelFilter("all"); }}
           className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
             activeView === "whatsapp"
               ? "border-primary text-foreground"
@@ -882,6 +886,26 @@ export default function Conversations() {
         >
           Conversas
         </button>
+        {channelCounts["instagram"] > 0 && (
+          <button
+            onClick={() => { setActiveView("instagram"); setChannelFilter("instagram"); }}
+            className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+              activeView === "instagram"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Instagram className="h-3.5 w-3.5 text-pink-500" />
+              Instagram
+              {instagramUnread > 0 && (
+                <Badge className="h-5 min-w-5 justify-center rounded-full px-1.5 text-[11px]">
+                  {instagramUnread}
+                </Badge>
+              )}
+            </span>
+          </button>
+        )}
         <button
           onClick={() => setActiveView("praca")}
           className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
@@ -913,8 +937,12 @@ export default function Conversations() {
         <div className="px-4 py-3 border-b border-border shrink-0 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-base font-semibold">Conversas</h1>
-              <p className="text-[11px] text-muted-foreground">WhatsApp, Instagram, e-mail e chat em uma caixa de entrada</p>
+              <h1 className="text-base font-semibold">{activeView === "instagram" ? "Instagram" : "Conversas"}</h1>
+              <p className="text-[11px] text-muted-foreground">
+                {activeView === "instagram"
+                  ? "DMs, comentários em posts, reels e anúncios"
+                  : "WhatsApp, Instagram, e-mail e chat em uma caixa de entrada"}
+              </p>
             </div>
             {totalUnread > 0 && (
               <Badge variant="default" className="text-xs">
@@ -933,8 +961,9 @@ export default function Conversations() {
           </div>
         </div>
 
-        {/* Channel filter chips */}
-        {filterChips.length > 1 && (
+        {/* Channel filter chips -- escondido na aba dedicada do Instagram,
+            já vem pré-filtrado, mostrar de novo seria redundante */}
+        {activeView !== "instagram" && filterChips.length > 1 && (
           <div className="flex gap-2 px-4 py-2 overflow-x-auto scrollbar-none border-b border-border shrink-0">
             {filterChips.map((chip) => (
               <button
