@@ -724,7 +724,7 @@ export default function Ads() {
                             <div className="border-t pt-2 mt-1">
                               {!c.externalCampaignId ? (
                                 <Button size="sm" onClick={() => {
-                                  if (window.confirm(`Publicar e iniciar esta campanha com limite de R$ ${c.orcamentoDiario} por dia? A cobrança da mídia será feita diretamente pela plataforma.`)) {
+                                  if (window.confirm(`Publicar e iniciar com até R$ ${c.orcamentoDiario} por dia (estimativa máxima de R$ ${(Number(c.orcamentoDiario) * 30).toFixed(2)} em 30 dias)? A mídia será cobrada diretamente pela plataforma.`)) {
                                     publicarCampanha.mutate(c.id);
                                   }
                                 }} disabled={publicarCampanha.isPending}>
@@ -976,7 +976,7 @@ export default function Ads() {
             )}
 
             <div className="border-t pt-4 space-y-4">
-              <div><h3 className="font-semibold">Localização e frequência</h3><p className="text-xs text-muted-foreground">Separe países, estados, cidades, CEPs ou endereços por vírgula. Em branco usa a localização padrão da empresa.</p></div>
+              <div><h3 className="font-semibold">Localização obrigatória</h3><p className="text-xs text-muted-foreground">Informe cidades, estados ou CEPs separados por vírgula. O sistema bloqueia campanhas sem uma região reconhecida para evitar anunciar para o Brasil inteiro.</p></div>
               <Input placeholder="Ex: Curitiba, Paraná, 80000-000" value={form.locais} onChange={(e) => setForm((f) => ({ ...f, locais: e.target.value }))} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><LabelTip tip="Pra quem está fisicamente na região agora vs. quem só demonstra interesse nela.">Intenção de local / presença</LabelTip><Select value={form.tipoPresenca} onValueChange={(v) => setForm((f) => ({ ...f, tipoPresenca: v as typeof f.tipoPresenca }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="presenca">Pessoas presentes na região</SelectItem><SelectItem value="interesse">Pessoas interessadas na região</SelectItem><SelectItem value="ambos">Presença ou interesse</SelectItem></SelectContent></Select></div>
@@ -1050,7 +1050,7 @@ export default function Ads() {
               )}
             </div>
 
-            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
+            <Button className="w-full" disabled={criarCampanha.isPending || !form.orcamentoDiario || !form.locais.trim() || !marketingContext.nicheId || marketingContext.productIds.length === 0 || (form.modo === "unico" && form.itemTipo !== "livre" && !form.itemId)}
               onClick={() => criarCampanha.mutate()}>
               {criarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
               Criar campanha (rascunho)
