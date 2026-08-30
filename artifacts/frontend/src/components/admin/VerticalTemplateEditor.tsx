@@ -72,14 +72,14 @@ export function VerticalTemplateEditor({
         }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error ?? "Não foi possível salvar a vertical");
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível salvar o segmento");
 
       await onSaved?.();
-      toast({ title: "Vertical atualizada", description: "Funil, categorias e agentes foram salvos no template real." });
+      toast({ title: "Segmento atualizado", description: "Funil, categorias e agentes foram salvos no template real." });
       setOpen(false);
     } catch (error) {
       toast({
-        title: "Erro ao salvar vertical",
+        title: "Erro ao salvar segmento",
         description: error instanceof Error ? error.message : "Tente novamente.",
         variant: "destructive",
       });
@@ -93,21 +93,21 @@ export function VerticalTemplateEditor({
       <DialogTrigger asChild>
         <Button variant="outline" className="w-full gap-2">
           <Pencil className="h-4 w-4" />
-          Editar configuração da vertical
+          Editar configuração do segmento
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar {template.nome}</DialogTitle>
           <DialogDescription>
-            O nome e o layout da vertical são preservados para não quebrar tenants existentes. Edite aqui o comportamento operacional aplicado aos clientes.
+            O nome e o layout do segmento são preservados para não quebrar tenants existentes. Edite aqui o comportamento operacional aplicado aos clientes.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 py-2">
           <div className="space-y-2">
             <Label>Descrição</Label>
-            <Textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} placeholder="Descrição da vertical..." />
+            <Textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} placeholder="Descrição do segmento..." />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">

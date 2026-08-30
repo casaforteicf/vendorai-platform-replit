@@ -595,7 +595,7 @@ export default function AdminTenantDetail() {
                 </Badge>
               }
             />
-            <InfoRow label="Vertical"    value={tenant.vertical ?? "—"} />
+            <InfoRow label="Segmento"    value={tenant.vertical ?? "—"} />
             <InfoRow
               label="Origem"
               value={tenant.provisioningMethod
@@ -1075,7 +1075,7 @@ export default function AdminTenantDetail() {
           </div>
           <Button variant="outline" size="sm" onClick={() => void applyVerticalPreset()} disabled={applyingPreset || modulesLoading}>
             {applyingPreset && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-            Aplicar recomendado para a vertical
+            Aplicar recomendado para o segmento
           </Button>
         </CardHeader>
         <CardContent>

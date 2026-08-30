@@ -225,11 +225,23 @@ export default function ImportConfig() {
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-5">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><FileSpreadsheet className="h-6 w-6 text-primary" />Importação inteligente de leads</h1>
-        <p className="text-sm text-muted-foreground mt-1">Envie um CSV, associe qualquer cabeçalho aos campos do VendorAI, revise a prévia e importe para o CRM real.</p>
+        <p className="text-sm text-muted-foreground mt-1">Não precisa preparar a planilha sozinho. Envie o arquivo exportado e o TAD ajudará a organizar cada coluna antes da confirmação.</p>
       </div>
 
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader><CardTitle className="text-base">Antes de enviar o arquivo</CardTitle></CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p>No sistema que você usa hoje, procure por <strong>Exportar</strong>, <strong>Relatório de clientes</strong> ou <strong>Lista de contatos</strong>.</p>
+          <p>Salve em CSV. Se receber uma planilha do Excel, abra o arquivo e escolha <strong>Salvar como → CSV</strong>.</p>
+          <div className="rounded-lg bg-background p-3 text-muted-foreground">
+            Informações mais importantes: <strong>nome, telefone, e-mail, empresa, cidade, origem, responsável, etapa atual e observações</strong>. Não tem problema se os nomes das colunas forem diferentes — o TAD ajudará no próximo passo.
+          </div>
+          <p className="text-xs text-muted-foreground">Nada será importado sem você conferir a prévia e confirmar.</p>
+        </CardContent>
+      </Card>
+
       <Card>
-        <CardHeader><CardTitle className="text-base">1. Arquivo CSV</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">1. Selecione o arquivo exportado</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <input ref={inputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void loadFile(file); }} />
           <div className="flex flex-wrap items-center gap-3">

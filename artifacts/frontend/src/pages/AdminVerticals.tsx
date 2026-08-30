@@ -222,7 +222,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
         onSuccess: () => {
           setActivating(false);
           toast({
-            title: `Vertical ativada para ${tName}`,
+            title: `Segmento ativado para ${tName}`,
             description: `O módulo "${vertical}" foi ativado com sucesso.`,
           });
           qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
@@ -232,7 +232,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
         onError: () => {
           setActivating(false);
           toast({
-            title: "Erro ao ativar vertical",
+            title: "Erro ao ativar segmento",
             description: "Tente novamente.",
             variant: "destructive",
           });
@@ -281,7 +281,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
               {meta.label}
             </SheetTitle>
             <SheetDescription className="text-sm mt-1">
-              {template?.descricao ?? `Módulo vertical para ${meta.label}`}
+              {template?.descricao ?? `Módulo do segmento ${meta.label}`}
             </SheetDescription>
           </SheetHeader>
 
@@ -309,7 +309,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
                 Preview sem tenant
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Abra o layout desta vertical como Super Admin, sem cadastrar empresa, tenant ou e-mail.
+                Abra o layout deste segmento como Super Admin, sem cadastrar empresa, tenant ou e-mail.
                 Dados reais de clientes não são carregados.
               </p>
             </div>
@@ -324,7 +324,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
               <div>
                 <h3 className="text-sm font-semibold">Configuração operacional</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Edite o funil, categorias e orientações dos agentes desta vertical sem alterar o layout nem os tenants existentes.
+                  Edite o funil, categorias e orientações dos agentes deste segmento sem alterar o layout nem os tenants existentes.
                 </p>
               </div>
               <VerticalTemplateEditor
@@ -410,7 +410,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
               <Badge variant="secondary" className="text-xs">{tenantsWithVertical.length}</Badge>
             </h3>
             {tenantsWithVertical.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhum tenant ativo nesta vertical ainda.</p>
+              <p className="text-xs text-muted-foreground">Nenhum cliente ativo neste segmento ainda.</p>
             ) : (
               <div className="space-y-2">
                 {tenantsWithVertical.map((t) => (
@@ -445,7 +445,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
                 Ativar módulo para um tenant
               </h3>
               <p className="text-xs text-muted-foreground">
-                Selecione um tenant ativo que ainda não possui este módulo e aplique o template completo (agentes, funil, vertical).
+                Selecione um tenant ativo que ainda não possui este módulo e aplique a configuração completa (agentes, funil e segmento).
               </p>
               <Select value={targetTenantId} onValueChange={setTargetTenantId}>
                 <SelectTrigger className="w-full">
@@ -454,7 +454,7 @@ function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheet
                 <SelectContent>
                   {tenantsWithout.length === 0 ? (
                     <SelectItem value="__none__" disabled>
-                      Todos os tenants ativos já têm esta vertical
+                      Todos os clientes ativos já têm este segmento
                     </SelectItem>
                   ) : (
                     tenantsWithout.map((t) => (
@@ -530,10 +530,10 @@ export default function AdminVerticals() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Building2 className="h-6 w-6 text-primary" />
-            Verticais e previews
+            Segmentos e visualizações
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Visualize layouts, edite a configuração operacional das verticais e acesse módulos vinculados a clientes reais.
+            Visualize layouts, edite a configuração operacional dos segmentos e acesse módulos vinculados a clientes reais.
           </p>
         </div>
         {tenantOverride && (
@@ -626,7 +626,7 @@ export default function AdminVerticals() {
 
       {!isLoading && tenantsWithVertical.length === 0 && (
         <div className="text-center py-16 text-muted-foreground text-sm">
-          Nenhum tenant com vertical ativa cadastrado.
+          Nenhum cliente com segmento ativo cadastrado.
         </div>
       )}
 
