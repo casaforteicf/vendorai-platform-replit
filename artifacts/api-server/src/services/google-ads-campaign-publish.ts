@@ -302,6 +302,11 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   }
 
   const campaignName = `Vendor.ai — ${nomeCurto} — ${new Date().toISOString().slice(0, 10)}`;
+  const campaignControl = campanha.segmentacao?.campaignControl;
+  if (!campaignControl?.startDate || !campaignControl?.endDate) {
+    throw new GoogleAdsPublishError("Defina as datas de início e término antes de publicar.");
+  }
+  const googleDate = (value: string) => value.replace(/-/g, "");
   const amountMicros = String(Math.round(Number(campanha.orcamentoDiario) * 1_000_000));
 
   // 1) Orçamento
@@ -333,6 +338,8 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
         advertisingChannelType: "SEARCH",
         status: "PAUSED",
         campaignBudget: budgetResourceName,
+        startDate: googleDate(campaignControl.startDate),
+        endDate: googleDate(campaignControl.endDate),
         targetSpend: {},
         networkSettings: {
           targetGoogleSearch: true,
