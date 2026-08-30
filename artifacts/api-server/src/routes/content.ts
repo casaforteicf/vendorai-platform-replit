@@ -819,12 +819,49 @@ router.get("/tenants/:tenantId/content/library", async (req, res) => {
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Acesso negado" }); return;
   }
-  const items = await db
-    .select()
-    .from(contentLibraryTable)
-    .where(eq(contentLibraryTable.tenantId, tenantId))
-    .orderBy(desc(contentLibraryTable.savedAt));
-  res.json({ items });
+  const [items, generations] = await Promise.all([
+    db
+      .select()
+      .from(contentLibraryTable)
+      .where(eq(contentLibraryTable.tenantId, tenantId))
+      .orderBy(desc(contentLibraryTable.savedAt)),
+    db
+      .select({
+        id: contentGenerationsTable.id,
+        type: contentGenerationsTable.type,
+        theme: contentGenerationsTable.theme,
+        result: contentGenerationsTable.result,
+      })
+      .from(contentGenerationsTable)
+      .where(eq(contentGenerationsTable.tenantId, tenantId))
+      .orderBy(desc(contentGenerationsTable.createdAt))
+      .limit(100),
+  ]);
+
+  const enrichedItems = items.map((item) => {
+    const serializedVariation = JSON.stringify(item.variation);
+    let fallback: { id: string; variationIndex: number } | null = null;
+
+    for (const generation of generations) {
+      if (generation.type !== item.type) continue;
+      const variations = Array.isArray(generation.result?.variations) ? generation.result.variations : [];
+      const exactIndex = variations.findIndex((variation) => JSON.stringify(variation) === serializedVariation);
+      if (exactIndex >= 0) {
+        return { ...item, contentGenerationId: generation.id, variationIndex: exactIndex };
+      }
+      if (!fallback && generation.theme === item.theme && variations.length > 0) {
+        fallback = { id: generation.id, variationIndex: 0 };
+      }
+    }
+
+    return {
+      ...item,
+      contentGenerationId: fallback?.id ?? null,
+      variationIndex: fallback?.variationIndex ?? null,
+    };
+  });
+
+  res.json({ items: enrichedItems });
 });
 
 router.delete("/tenants/:tenantId/content/library/:id", async (req, res) => {

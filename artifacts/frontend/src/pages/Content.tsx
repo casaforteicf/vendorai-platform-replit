@@ -1404,7 +1404,7 @@ export default function Content() {
     ? insumosProducts?.map((p) => ({ id: p.id, nome: p.nome }))
     : catalogProducts?.map((p) => ({ id: p.id, nome: p.nome }));
 
-  type ContentLibraryItem = { id: string; tenantId: string; type: ContentType; variation: ContentVariation; theme: string | null; title: string | null; savedAt: string };
+  type ContentLibraryItem = { id: string; tenantId: string; type: ContentType; variation: ContentVariation; theme: string | null; title: string | null; savedAt: string; contentGenerationId?: string | null; variationIndex?: number | null };
 
   const { data: library, isLoading: libraryLoading } = useQuery<{ items: ContentLibraryItem[] }>({
     queryKey: ["content-library", tenantId],
@@ -2219,9 +2219,10 @@ export default function Content() {
                         </Button>
                       </div>
                       <VariationCard
-                        index={0}
+                        index={item.variationIndex ?? 0}
                         type={item.type}
                         variation={item.variation}
+                        contentId={item.contentGenerationId ?? undefined}
                         tenantId={tenantId}
                         theme={item.theme ?? undefined}
                       />
