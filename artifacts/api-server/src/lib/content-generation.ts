@@ -7,6 +7,8 @@ import type {
   FeedVariation,
   StoriesVariation,
   ReelsVariation,
+  LinkedInVariation,
+  YouTubeVariation,
   ContentGenerationResult,
   ContentType,
   ContentVariation,
@@ -602,6 +604,128 @@ Retorne SOMENTE JSON válido no formato:
   };
 }
 
+// D-LinkedIn: LinkedIn tem tom diferente do Instagram -- profissional, sem
+// emoji excessivo, foco em autoridade/resultado de negócio em vez de
+// venda direta. Sem geração de imagem (post de texto puro é o formato
+// mais nativo e performático no LinkedIn).
+export async function generateLinkedInContent(
+  profile: TenantProfile,
+  tenantId: string,
+  theme: string,
+  productName: string | undefined,
+  variationsCount: number,
+  productExtra?: string,
+  strategy?: ContentStrategyHints,
+): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
+  const brand = profile.nomeFantasia || "a empresa";
+  const context = buildBrandContext(profile);
+  const hints = verticalHints(profile.vertical);
+  const strategyBlock = buildStrategyBlock(strategy);
+
+  let subjectLines: string[] = [];
+  if (productName) {
+    subjectLines.push(`Produto/serviço: ${productName}`);
+    if (productExtra) subjectLines.push(productExtra);
+    subjectLines.push(`Tema/ângulo da publicação: ${theme}`);
+  } else {
+    subjectLines.push(`Tema da publicação: ${theme}`);
+  }
+  const subject = subjectLines.join("\n");
+
+  const prompt = `Você é um copywriter especialista em LinkedIn para a marca "${brand}".
+
+Contexto da marca:
+${context}
+${hints ? `\n${hints}\n` : ""}
+${subject}
+${strategyBlock}
+Crie ${variationsCount} variações distintas de post para o LinkedIn. Diferente do Instagram, o tom aqui é profissional e
+consultivo -- fala pra tomador de decisão B2B, foca em autoridade e resultado de negócio, não em venda direta. Cada variação deve ter:
+- Um "hook" (primeira linha, que aparece antes do "ver mais" -- precisa parar o scroll sozinho)
+- Corpo do post (3-6 parágrafos curtos, quebras de linha frequentes -- formato nativo do LinkedIn, sem emoji em excesso)
+- 3 a 5 hashtags profissionais (não use hashtag genérica de Instagram tipo #instagood)
+
+Retorne SOMENTE JSON válido no formato:
+{"variations": [{"hook": "...", "caption": "...", "hashtags": ["#hashtag1", "#hashtag2"]}]}`;
+
+  const textResult = await gatewayCallOpenAI(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: prompt }],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.8 },
+  );
+
+  const tokensUsed = textResult.inputTokens + textResult.outputTokens;
+  const raw = JSON.parse(textResult.content || "{}") as {
+    variations?: LinkedInVariation[];
+  };
+  return {
+    result: { variations: raw.variations ?? [] },
+    tokensUsed,
+  };
+}
+
+// D-YouTube: gera ROTEIRO + título + descrição pra gravação -- não gera
+// vídeo de verdade (nenhuma ferramenta do sistema produz vídeo do zero
+// hoje). A pessoa grava seguindo o roteiro; o texto de título/descrição/
+// tags já sai pronto pra colar na hora de publicar.
+export async function generateYouTubeScript(
+  profile: TenantProfile,
+  tenantId: string,
+  theme: string,
+  productName: string | undefined,
+  variationsCount: number,
+  productExtra?: string,
+  strategy?: ContentStrategyHints,
+): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
+  const brand = profile.nomeFantasia || "a empresa";
+  const context = buildBrandContext(profile);
+  const hints = verticalHints(profile.vertical);
+  const strategyBlock = buildStrategyBlock(strategy);
+
+  let subjectLines: string[] = [];
+  if (productName) {
+    subjectLines.push(`Produto/serviço: ${productName}`);
+    if (productExtra) subjectLines.push(productExtra);
+    subjectLines.push(`Tema: ${theme}`);
+  } else {
+    subjectLines.push(`Tema: ${theme}`);
+  }
+  const subject = subjectLines.join("\n");
+
+  const prompt = `Você é um roteirista especialista em YouTube para a marca "${brand}".
+
+Contexto da marca:
+${context}
+${hints ? `\n${hints}\n` : ""}
+${subject}
+${strategyBlock}
+Crie ${variationsCount} roteiros distintos para vídeo de YouTube (3-8 minutos, formato educativo/institucional). Cada roteiro deve ter:
+- Título otimizado para busca e cliques (máx 70 caracteres)
+- Descrição do vídeo pronta pra colar no YouTube (2-3 parágrafos + call to action)
+- 8 a 12 tags de busca
+- Roteiro em blocos: Gancho (primeiros 15s, por que continuar assistindo), Desenvolvimento (pontos principais, um por bloco, com o que falar em cada um), Encerramento (resumo + CTA)
+
+Retorne SOMENTE JSON válido no formato:
+{"variations": [{"titulo": "...", "descricao": "...", "tags": ["tag1", "tag2"], "roteiro": [{"bloco": "Gancho", "conteudo": "..."}, {"bloco": "Desenvolvimento", "conteudo": "..."}, {"bloco": "Encerramento", "conteudo": "..."}]}]}`;
+
+  const textResult = await gatewayCallOpenAI(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: prompt }],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.8 },
+  );
+
+  const tokensUsed = textResult.inputTokens + textResult.outputTokens;
+  const raw = JSON.parse(textResult.content || "{}") as {
+    variations?: YouTubeVariation[];
+  };
+  return {
+    result: { variations: raw.variations ?? [] },
+    tokensUsed,
+  };
+}
+
 export interface ContentStrategy {
   strategy: string;
   prompts: string[];
@@ -730,6 +854,45 @@ ${v.cta}
 
 Retorne SOMENTE JSON válido no formato:
 {"text": "...", "cta": "..."}`;
+
+  } else if (type === "linkedin") {
+    const v = variation as LinkedInVariation;
+    prompt = `Você é um copywriter especialista em LinkedIn. Abaixo está um post existente${theme ? ` sobre "${theme}"` : ""}.
+
+Reescreva tornando-o mais forte e persuasivo, mantendo o tom profissional/consultivo (nunca informal como Instagram):
+- Melhore o hook (primeira linha) pra parar o scroll de quem toma decisão B2B
+- Fortaleça a autoridade/prova de resultado
+- Mantenha a mesma mensagem central, mais direta
+
+Hook atual:
+${v.hook}
+
+Post atual:
+${v.caption}
+
+Hashtags atuais:
+${v.hashtags.join(" ")}
+
+Retorne SOMENTE JSON válido no formato:
+{"hook": "...", "caption": "...", "hashtags": ["#hashtag1", "#hashtag2"]}`;
+
+  } else if (type === "youtube") {
+    const v = variation as YouTubeVariation;
+    const roteiroStr = v.roteiro.map((b) => `[${b.bloco}] ${b.conteudo}`).join("\n\n");
+    prompt = `Você é um roteirista especialista em YouTube. Abaixo está um roteiro existente${theme ? ` sobre "${theme}"` : ""}.
+
+Reescreva tornando o gancho mais forte e o roteiro mais claro de seguir na gravação:
+- Fortaleça os primeiros 15 segundos (motivo pra continuar assistindo)
+- Deixe cada bloco mais objetivo pra gravar
+- Melhore o título pra busca/clique, mantendo o mesmo assunto
+
+Título atual: ${v.titulo}
+Descrição atual: ${v.descricao}
+Roteiro atual:
+${roteiroStr}
+
+Retorne SOMENTE JSON válido no formato:
+{"titulo": "...", "descricao": "...", "tags": ["tag1", "tag2"], "roteiro": [{"bloco": "Gancho", "conteudo": "..."}, {"bloco": "Desenvolvimento", "conteudo": "..."}, {"bloco": "Encerramento", "conteudo": "..."}]}`;
 
   } else {
     const v = variation as ReelsVariation;

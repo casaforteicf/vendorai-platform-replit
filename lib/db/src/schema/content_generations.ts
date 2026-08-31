@@ -3,7 +3,7 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
-export const CONTENT_TYPES = ["feed", "stories", "reels"] as const;
+export const CONTENT_TYPES = ["feed", "stories", "reels", "linkedin", "youtube"] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
 export type FeedVariation = { caption: string; hashtags: string[]; imageUrl?: string };
@@ -16,7 +16,10 @@ export type ReelsVariation = {
   cta: string;
   videoUrl?: string;
 };
-export type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation;
+export type LinkedInVariation = { hook: string; caption: string; hashtags: string[] };
+export type YouTubeScriptBlock = { bloco: string; conteudo: string };
+export type YouTubeVariation = { titulo: string; descricao: string; tags: string[]; roteiro: YouTubeScriptBlock[] };
+export type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation | LinkedInVariation | YouTubeVariation;
 export type ContentGenerationResult = { variations: ContentVariation[] };
 
 export const CONTENT_FORMATS = ["feed_square", "feed_portrait", "stories", "reels"] as const;
@@ -41,11 +44,11 @@ export const contentGenerationsTable = pgTable("content_generations", {
 });
 
 export const insertContentGenerationSchema = createInsertSchema(contentGenerationsTable, {
-  type: z.enum(["feed", "stories", "reels"]),
+  type: z.enum(CONTENT_TYPES),
 }).omit({ id: true, createdAt: true });
 
 export const selectContentGenerationSchema = createSelectSchema(contentGenerationsTable, {
-  type: z.enum(["feed", "stories", "reels"]),
+  type: z.enum(CONTENT_TYPES),
 });
 
 export type InsertContentGeneration = z.infer<typeof insertContentGenerationSchema>;

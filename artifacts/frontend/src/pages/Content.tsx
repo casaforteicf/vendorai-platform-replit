@@ -25,20 +25,23 @@ import {
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image, ImageIcon,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
-  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Megaphone,
+  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Megaphone, Linkedin, Youtube,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 import JSZip from "jszip";
 
-type ContentType = "feed" | "stories" | "reels";
+type ContentType = "feed" | "stories" | "reels" | "linkedin" | "youtube";
 type ProductSource = "catalog" | "varejo" | "supermercado" | "insumo";
 
 interface FeedVariation { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[] }
 interface StoriesVariation { text: string; cta: string; imageUrl?: string; imageUrls?: string[] }
 interface ReelsScene { visual: string; fala: string; duracao: string }
 interface ReelsVariation { title: string; scenes: ReelsScene[]; audioSuggestion: string; cta: string; videoUrl?: string }
-type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation;
+interface LinkedInVariation { hook: string; caption: string; hashtags: string[] }
+interface YouTubeScriptBlock { bloco: string; conteudo: string }
+interface YouTubeVariation { titulo: string; descricao: string; tags: string[]; roteiro: YouTubeScriptBlock[] }
+type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation | LinkedInVariation | YouTubeVariation;
 
 interface ContentStrategy {
   strategy: string;
@@ -90,9 +93,21 @@ const TYPE_CONFIG = {
     description: "Roteiro completo com cenas, falas e sugestão de trilha",
     placeholder: "Ex: Mostrar bastidores do processo de produção de forma dinâmica e envolvente",
   },
+  linkedin: {
+    label: "LinkedIn",
+    icon: Linkedin,
+    description: "Post profissional (hook + corpo + hashtags) — tom consultivo, sem geração de imagem",
+    placeholder: "Ex: Como reduzimos o tempo de resposta ao cliente em 40% — bastidores de um case real",
+  },
+  youtube: {
+    label: "YouTube",
+    icon: Youtube,
+    description: "Roteiro pra gravar (gancho + desenvolvimento + encerramento) + título/descrição/tags prontos",
+    placeholder: "Ex: Tutorial mostrando como funciona nosso processo de instalação, passo a passo",
+  },
 };
 
-const VERTICAL_PLACEHOLDERS: Record<string, Record<ContentType, string>> = {
+const VERTICAL_PLACEHOLDERS: Record<string, Partial<Record<ContentType, string>>> = {
   "Varejo de Roupas & Acessórios": {
     feed: "Ex: Nova coleção de inverno chegou — looks exclusivos para arrasar na temporada",
     stories: "Ex: Grade completa de tamanhos P ao GG disponível — corre que vai esgotar!",
@@ -491,6 +506,64 @@ function ReelsCard({ v }: { v: ReelsVariation }) {
         <span className="text-muted-foreground">🎵 <span className="font-medium text-foreground">{v.audioSuggestion}</span></span>
         <span className="text-muted-foreground">📢 <span className="font-medium text-foreground">{v.cta}</span></span>
       </div>
+    </div>
+  );
+}
+
+function LinkedInCard({ v }: { v: LinkedInVariation }) {
+  const fullText = [v.hook, "", v.caption, "", (v.hashtags ?? []).join(" ")].join("\n");
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="font-semibold text-sm flex-1">💼 {v.hook}</h4>
+        <CopyButton text={fullText} />
+      </div>
+      <p className="text-sm whitespace-pre-wrap">{v.caption}</p>
+      {(v.hashtags?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {v.hashtags.map((h, i) => (
+            <Badge key={i} variant="outline" className="text-xs">{h}</Badge>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Sem publicação automática — copie e publique direto no LinkedIn.</p>
+    </div>
+  );
+}
+
+function YouTubeCard({ v }: { v: YouTubeVariation }) {
+  const fullText = [
+    `📹 ${v.titulo}`,
+    "",
+    v.descricao,
+    "",
+    `Tags: ${(v.tags ?? []).join(", ")}`,
+    "",
+    ...(v.roteiro ?? []).map((b) => `[${b.bloco}]\n${b.conteudo}`),
+  ].join("\n");
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="font-semibold text-sm flex-1">📹 {v.titulo}</h4>
+        <CopyButton text={fullText} />
+      </div>
+      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{v.descricao}</p>
+      {(v.tags?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {v.tags.map((t, i) => (
+            <Badge key={i} variant="outline" className="text-xs">{t}</Badge>
+          ))}
+        </div>
+      )}
+      <div className="space-y-2">
+        {(v.roteiro ?? []).map((bloco, i) => (
+          <div key={i} className="border rounded-md p-3 bg-muted/30 text-sm space-y-1">
+            <Badge variant="outline" className="text-xs font-mono">{bloco.bloco}</Badge>
+            <p className="text-muted-foreground">{bloco.conteudo}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">Roteiro pra gravar — nenhum vídeo é gerado automaticamente. Título/descrição/tags já vêm prontos pra colar no YouTube.</p>
     </div>
   );
 }
@@ -1132,7 +1205,7 @@ CTA: ${v.cta}` : ""}`];
                     Editar
                   </Button>
                 )}
-                {contentId && tenantId && (
+                {contentId && tenantId && (type === "feed" || type === "stories" || type === "reels") && (
                   <MediaUploadButton
                     contentId={contentId}
                     variationIndex={index}
@@ -1142,15 +1215,17 @@ CTA: ${v.cta}` : ""}`];
                     triggerRef={type !== "reels" ? uploadTriggerRef : undefined}
                   />
                 )}
-                {type !== "reels" && contentId && tenantId && (
-                  <PublishInstagramButton
-                    contentId={contentId}
-                    variationIndex={index}
-                    hasImage={hasImage}
-                    tenantId={tenantId}
-                    captionOverride={captionOverride}
-                  />
-                )}
+                {type === "feed" || type === "stories" ? (
+                  contentId && tenantId && (
+                    <PublishInstagramButton
+                      contentId={contentId}
+                      variationIndex={index}
+                      hasImage={hasImage}
+                      tenantId={tenantId}
+                      captionOverride={captionOverride}
+                    />
+                  )
+                ) : null}
               </>
             )}
           </div>
@@ -1182,7 +1257,9 @@ CTA: ${v.cta}` : ""}`];
           />
         )}
         {type === "reels" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
-        {type !== "reels" && contentId && tenantId && (
+        {type === "linkedin" && <LinkedInCard v={displayVariation as LinkedInVariation} />}
+        {type === "youtube" && <YouTubeCard v={displayVariation as YouTubeVariation} />}
+        {(type === "feed" || type === "stories") && contentId && tenantId && (
           <ImageActionPanel
             contentId={contentId}
             variationIndex={index}
@@ -1687,7 +1764,7 @@ export default function Content() {
 
       {/* Main content */}
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as ContentType); setLastResult(null); setStrategyResult(null); }}>
-        <TabsList className="grid grid-cols-3 w-full max-w-sm">
+        <TabsList className="grid grid-cols-5 w-full max-w-xl">
           {(Object.keys(TYPE_CONFIG) as ContentType[]).map((key) => {
             const Icon = TYPE_CONFIG[key].icon;
             return (

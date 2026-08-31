@@ -166,6 +166,7 @@ function helpContext() {
 }
 
 export default function FAQ() {
+  const context = helpContext();
   const [open, setOpen] = useState<number | null>(1);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState(context.category);

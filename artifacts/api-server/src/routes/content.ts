@@ -19,6 +19,8 @@ import {
   generateFeedContent,
   generateStoriesContent,
   generateReelsScript,
+  generateLinkedInContent,
+  generateYouTubeScript,
   generateImagesForContent,
   generateImagesWithReference,
   generateContentStrategy,
@@ -62,7 +64,7 @@ const PLAN_LIMITS: Record<string, number> = {
 };
 
 const generateBodySchema = z.object({
-  type: z.enum(["feed", "stories", "reels"]),
+  type: z.enum(["feed", "stories", "reels", "linkedin", "youtube"]),
   theme: z.string().min(3, "Descreva o tema (mín. 3 caracteres)"),
   productId: z.string().optional().nullable(),
   productSource: z.enum(["catalog", "varejo", "supermercado", "insumo"]).optional().default("catalog"),
@@ -215,6 +217,10 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
       result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrls.length > 0 ? referenceImageUrls : undefined, aspectRatio ?? undefined, strategy);
     } else if (type === "stories") {
       result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrls.length > 0 ? referenceImageUrls : undefined, aspectRatio ?? undefined, strategy);
+    } else if (type === "linkedin") {
+      result = await generateLinkedInContent(profile ?? {}, tenantId, theme, productName, variations, productExtra, strategy);
+    } else if (type === "youtube") {
+      result = await generateYouTubeScript(profile ?? {}, tenantId, theme, productName, variations, productExtra, strategy);
     } else {
       result = await generateReelsScript(profile ?? {}, tenantId, theme, productName, variations, productExtra, strategy);
     }
@@ -268,7 +274,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
 
 const strategyBodySchema = z.object({
   command: z.string().min(3, "Descreva o comando (mín. 3 caracteres)"),
-  contentType: z.enum(["feed", "stories", "reels"]).default("feed"),
+  contentType: z.enum(["feed", "stories", "reels", "linkedin", "youtube"]).default("feed"),
   variations: z.coerce.number().int().min(1).max(5).default(3),
 });
 
@@ -766,7 +772,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
 // ── Melhorar texto ────────────────────────────────────────────────────────────
 
 const improveBodySchema = z.object({
-  type: z.enum(["feed", "stories", "reels"]),
+  type: z.enum(["feed", "stories", "reels", "linkedin", "youtube"]),
   variation: z.record(z.string(), z.unknown()),
   theme: z.string().optional().nullable(),
 });
@@ -793,7 +799,7 @@ router.post("/tenants/:tenantId/content/improve", async (req, res) => {
 // ── Biblioteca de Conteúdo ─────────────────────────────────────────────────────
 
 const libraryBodySchema = z.object({
-  type: z.enum(["feed", "stories", "reels"]),
+  type: z.enum(["feed", "stories", "reels", "linkedin", "youtube"]),
   variation: z.any(),
   theme: z.string().optional().nullable(),
   title: z.string().optional().nullable(),
