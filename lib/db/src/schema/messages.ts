@@ -16,6 +16,9 @@ export const messageCanalEnum = pgEnum("message_canal", [
   "messenger",
   "email",
   "chat",
+  "youtube",
+  "linkedin",
+  "tiktok",
 ]);
 
 export const messageTipoConteudoEnum = pgEnum("message_tipo_conteudo", [

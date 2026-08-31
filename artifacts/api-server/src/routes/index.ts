@@ -27,6 +27,7 @@ import { instagramCallbackRouter } from "./instagram-auth";
 import { whatsappCallbackRouter } from "./whatsapp-auth";
 import { googleAdsCallbackRouter } from "./google-ads-auth";
 import { metaAdsCallbackRouter } from "./meta-ads-auth";
+import socialIntegrationsRouter, { socialIntegrationsCallbackRouter } from "./social-integrations";
 import agendamentosRouter from "./agendamentos";
 import entregasRouter from "./entregas";
 import bloqueiosAgendaRouter from "./bloqueios_agenda";
@@ -164,6 +165,7 @@ router.use(instagramCallbackRouter);
 router.use(whatsappCallbackRouter);
 router.use(googleAdsCallbackRouter);
 router.use(metaAdsCallbackRouter);
+router.use(socialIntegrationsCallbackRouter);
 router.use(publicProposalsRouter);
 router.use(supermercadoPublicRouter);
 router.use(fretesPublicRouter);
@@ -295,6 +297,7 @@ router.use(onboardingRouter);
 
 // Content Generation Hub
 router.use(contentRouter);
+router.use(socialIntegrationsRouter);
 router.use(contentReferenceCreatorsRouter);
 router.use(contentPerformanceRouter);
 router.use(evolutionWhatsappAuthRouter);
