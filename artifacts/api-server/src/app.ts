@@ -156,12 +156,10 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     ? cfSubdomain.trim()
     : null;
 
-  // O domínio *.up.railway.app é o host interno da API. Quando Vercel faz
-  // rewrite de /api/*, o Railway pode substituir Host/X-Forwarded-Host pelo
-  // próprio domínio interno. Esse host nunca representa um tenant/site e deve
-  // ir direto para as rotas da API; a autenticação JWT continua protegendo as
-  // rotas privadas normalmente.
-  if (!subdomainFromHeader && hostname.endsWith(".up.railway.app")) return next();
+  // Authentication is tenant-scoped by the JWT/user itself. These endpoints
+  // must never be intercepted by the public-site/custom-domain resolver,
+  // especially after Vercel rewrites the request to the Railway hostname.
+  if (req.path.startsWith("/api/auth/")) return next();
 
   // Vercel faz rewrite de /api/* para o Railway. Em alguns POPs o Railway
   // substitui Host/X-Forwarded-Host pelo domínio *.up.railway.app; nesse caso
