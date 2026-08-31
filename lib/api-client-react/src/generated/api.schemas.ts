@@ -2363,6 +2363,12 @@ export interface Tenant {
   /** Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.
    */
   googleReviewLink?: string | null;
+  /** ID de conversão do Google Ads da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant. Independente da tag do site institucional appvendorai.com.
+   */
+  googleAdsConversionId?: string | null;
+  /** ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.
+   */
+  metaPixelId?: string | null;
   /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
    */
   confirmarEstoqueAntesFinanceiro?: boolean;
@@ -2446,6 +2452,12 @@ export interface UpdateTenantBody {
   /** Link para avaliação do Google configurado pelo tenant. Editável a qualquer momento; vazio por padrão.
    */
   googleReviewLink?: string | null;
+  /** ID de conversão do Google Ads da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant. Independente da tag do site institucional appvendorai.com.
+   */
+  googleAdsConversionId?: string | null;
+  /** ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.
+   */
+  metaPixelId?: string | null;
   /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
    */
   confirmarEstoqueAntesFinanceiro?: boolean;
