@@ -11,13 +11,13 @@ import { CheckCircle2, Loader2, ArrowRight, ChevronRight, ShieldCheck } from "lu
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
-// ─── Google Ads conversion tracking (placeholder) ────────────────────────────
+// ─── Google Ads conversion tracking ───────────────────────────────────────────
 function trackConversion(label: string) {
   try {
     const w = window as unknown as { gtag?: (...args: unknown[]) => void };
     if (typeof w.gtag === "function") {
       w.gtag("event", "conversion", {
-        send_to: `AW-PLACEHOLDER_ID/${label}`,
+        send_to: `AW-18407923582/${label}`,
         value: 1.0,
         currency: "BRL",
         event_category: "lead",
