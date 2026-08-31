@@ -10,6 +10,9 @@ export interface OperatingProfile {
   dailyTargetReferencePct: number;
   maxTradesPerDay: null;
   stopAfterDailyTarget: boolean;
+  maxPortfolioRiskPct: number;
+  maxGrossExposureMultiple: number;
+  maxClusterRiskPct: number;
   riskPolicy: RiskPolicy;
 }
 
@@ -18,6 +21,9 @@ export const GLOBAL_PAPER_SAFETY_CAPS = {
   maxDailyLossPct: 4,
   maxLeverage: 6,
   maxOpenPositions: 6,
+  maxPortfolioRiskPct: 2.4,
+  maxGrossExposureMultiple: 8,
+  maxClusterRiskPct: 1.6,
 } as const;
 
 export const OPERATING_PROFILES: Record<OperatingProfileId, OperatingProfile> = {
@@ -29,6 +35,9 @@ export const OPERATING_PROFILES: Record<OperatingProfileId, OperatingProfile> = 
     dailyTargetReferencePct: 1.6,
     maxTradesPerDay: null,
     stopAfterDailyTarget: false,
+    maxPortfolioRiskPct: 1.2,
+    maxGrossExposureMultiple: 4,
+    maxClusterRiskPct: 0.8,
     riskPolicy: {
       maxRiskPerTradePct: 0.4,
       maxDailyLossPct: 2,
@@ -46,6 +55,9 @@ export const OPERATING_PROFILES: Record<OperatingProfileId, OperatingProfile> = 
     dailyTargetReferencePct: 2.24,
     maxTradesPerDay: null,
     stopAfterDailyTarget: false,
+    maxPortfolioRiskPct: 1.68,
+    maxGrossExposureMultiple: 5.6,
+    maxClusterRiskPct: 1.12,
     riskPolicy: {
       maxRiskPerTradePct: 0.56,
       maxDailyLossPct: 2.8,
@@ -63,6 +75,9 @@ export const OPERATING_PROFILES: Record<OperatingProfileId, OperatingProfile> = 
     dailyTargetReferencePct: 3.2,
     maxTradesPerDay: null,
     stopAfterDailyTarget: false,
+    maxPortfolioRiskPct: 2.4,
+    maxGrossExposureMultiple: 8,
+    maxClusterRiskPct: 1.6,
     riskPolicy: {
       maxRiskPerTradePct: 0.8,
       maxDailyLossPct: 4,
