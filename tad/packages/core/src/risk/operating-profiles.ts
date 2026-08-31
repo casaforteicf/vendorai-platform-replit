@@ -44,7 +44,7 @@ export const OPERATING_PROFILES: Record<OperatingProfileId, OperatingProfile> = 
       maxLeverage: 3,
       maxOpenPositions: 3,
       maxSpreadPct: 0.08,
-      minConsensus: 70,
+      minConsensus: 0.70,
     },
   },
   INTERMEDIATE: {
@@ -64,7 +64,7 @@ export const OPERATING_PROFILES: Record<OperatingProfileId, OperatingProfile> = 
       maxLeverage: 4.2,
       maxOpenPositions: 4,
       maxSpreadPct: 0.08,
-      minConsensus: 70,
+      minConsensus: 0.70,
     },
   },
   AGGRESSIVE: {
@@ -84,7 +84,7 @@ export const OPERATING_PROFILES: Record<OperatingProfileId, OperatingProfile> = 
       maxLeverage: 6,
       maxOpenPositions: 6,
       maxSpreadPct: 0.08,
-      minConsensus: 70,
+      minConsensus: 0.70,
     },
   },
 };
