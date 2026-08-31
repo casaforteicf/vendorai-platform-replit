@@ -1,8 +1,10 @@
 export * from './types/index';
 export * from './market/scanner';
+export * from './market/market-registry';
 export * from './strategy/momentum';
 export * from './brain/consensus';
 export * from './risk/risk-engine';
+export * from './risk/operating-profiles';
 export * from './execution/paper-engine';
 export * from './audit/event';
 

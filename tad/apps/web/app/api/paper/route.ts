@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { breakoutSignal, buildConsensus, combineIntelligence, evaluateRisk, evaluatePortfolioRisk, evaluatePortfolioIntelligence, classifyRegimeContext, evaluateRegimeGate, evaluateRiskBudget, evaluateStrategyLifecycle, supervise, executePaper, metricPrior, momentumSignal, portfolioCorrelationRisk, strategyMetrics, trendPullbackSignal, vwapReversionSignal, summarizePortfolio, simulateShadowOrder, shadowQualityScore, type MarketSnapshot, type StrategySignal, type StrategyMetric } from '@tad/core';
+import { breakoutSignal, buildConsensus, combineIntelligence, evaluateRisk, evaluatePortfolioRisk, evaluatePortfolioIntelligence, classifyRegimeContext, evaluateRegimeGate, evaluateRiskBudget, evaluateStrategyLifecycle, supervise, executePaper, getOperatingProfile, metricPrior, momentumSignal, portfolioCorrelationRisk, strategyMetrics, trendPullbackSignal, vwapReversionSignal, summarizePortfolio, simulateShadowOrder, shadowQualityScore, type MarketSnapshot, type StrategySignal, type StrategyMetric, type TadMarketId } from '@tad/core';
 import { bearerToken } from '../../../lib/auth';
 import { appendAudit, findPositionByAutopilotKey, getPaperWallet, listPositions, savePosition, saveShadowExecution, storageMode } from '../../../lib/store';
+import { getOperatingSettings } from '../../../lib/operating-settings';
 import { loadCandles, loadConfiguredEvents, loadDerivativesIntelligence, loadTechnical, loadMarkets } from '../../../lib/binance';
 import { runRegimeHistory } from '../../../lib/regime-history';
 import { computeRobustness, type RobustnessStrategyId } from '../../../lib/robustness';
 import { assessDataHealth } from '../../../lib/data-health';
 
-const POLICY={maxRiskPerTradePct:.4,maxDailyLossPct:2,maxLeverage:3,maxOpenPositions:3,maxSpreadPct:.08,minConsensus:.70};
 function agentScores(m:MarketSnapshot,techScore:number,intel:any){
   const score=(m.opportunityScore??50)/100;const base=Math.max(.5,Math.min(.96,.53+score*.28+techScore*.16));
   const news=intel.eventProvider==='CONFIGURED'&&intel.events.length?Math.max(.45,Math.min(.95,.5+(intel.combinedScore-50)/100)):.66;
@@ -17,14 +17,20 @@ function agentScores(m:MarketSnapshot,techScore:number,intel:any){
 
 export async function POST(req:NextRequest){
   const token=bearerToken(req); if(!token)return NextResponse.json({error:'AUTH_REQUIRED'},{status:401});
-  const body=await req.json() as {market?:MarketSnapshot;leverage?:number;autopilotKey?:string};
+  const body=await req.json() as {market?:MarketSnapshot;marketId?:TadMarketId;leverage?:number;autopilotKey?:string};
   if(!body.market)return NextResponse.json({error:'MARKET_REQUIRED'},{status:400});
-  if(body.autopilotKey){const existing=await findPositionByAutopilotKey(token,body.autopilotKey);if(existing)return NextResponse.json({approved:true,idempotentReplay:true,mode:'PAPER',execution:existing,storage:storageMode()});}
-  const wallet=await getPaperWallet(token); const accountSize=wallet.depositedCapital; if(accountSize<100)return NextResponse.json({approved:false,reason:'PAPER_WALLET_EMPTY',mode:'PAPER',requiredMinimum:100});
+  const operatingSettings=await getOperatingSettings(token);
+  const profile=getOperatingProfile(operatingSettings.profile);
+  const policy=profile.riskPolicy;
+  const marketId=body.marketId??operatingSettings.primaryMarket??'CRYPTO';
+  if(marketId!=='CRYPTO')return NextResponse.json({approved:false,reason:'MARKET_FEED_NOT_CONNECTED',marketId,profile:profile.id,mode:'PAPER',liveTrading:false},{status:409});
+  if(body.autopilotKey){const existing=await findPositionByAutopilotKey(token,body.autopilotKey);if(existing)return NextResponse.json({approved:true,idempotentReplay:true,mode:'PAPER',profile:profile.id,execution:existing,storage:storageMode()});}
+  const wallet=await getPaperWallet(token); const accountSize=wallet.depositedCapital; if(accountSize<100)return NextResponse.json({approved:false,reason:'PAPER_WALLET_EMPTY',mode:'PAPER',profile:profile.id,requiredMinimum:100});
   const all=await listPositions(token); const summary=summarizePortfolio(all,accountSize); const open=all.filter(p=>p.status==='OPEN');
-  if(open.some(p=>p.symbol===body.market!.symbol)){await appendAudit(token,'PAPER_BLOCKED_SYMBOL_ALREADY_OPEN',{symbol:body.market.symbol,autopilotKey:body.autopilotKey??null});return NextResponse.json({approved:false,reason:'SYMBOL_ALREADY_OPEN',mode:'PAPER',storage:storageMode()});}
+  if(open.some(p=>p.symbol===body.market!.symbol)){await appendAudit(token,'PAPER_BLOCKED_SYMBOL_ALREADY_OPEN',{symbol:body.market.symbol,autopilotKey:body.autopilotKey??null,profile:profile.id});return NextResponse.json({approved:false,reason:'SYMBOL_ALREADY_OPEN',mode:'PAPER',profile:profile.id,storage:storageMode()});}
   const metrics=strategyMetrics(all);
   const dailyLossPct=Math.max(0,(-Math.min(0,summary.realizedPnl+summary.unrealizedPnl)/accountSize)*100);
+  const requestedLeverage=Math.max(1,Math.min(policy.maxLeverage,body.leverage??Math.min(2,policy.maxLeverage)));
   const [technical,derivatives,eventFeed,freshMarkets]=await Promise.all([loadTechnical(body.market.symbol),loadDerivativesIntelligence(body.market.symbol),loadConfiguredEvents(body.market.symbol),loadMarkets()]);
   const freshMarket=freshMarkets.find(m=>m.symbol===body.market!.symbol);
   const dataHealth=assessDataHealth({market:body.market,candles5m:technical.candles5m,derivatives,eventProvider:eventFeed.provider,restPrice:freshMarket?.price});
@@ -36,7 +42,7 @@ export async function POST(req:NextRequest){
     const adaptiveScore=s.confidence*100+prior+biasMatch;
     return {signal:s,adaptiveScore,prior,biasMatch};
   }).sort((a,b)=>b.adaptiveScore-a.adaptiveScore);
-  if(!valid.length){await appendAudit(token,'NO_SIGNAL',{market:body.market,technical:technical.mtf,intelligence});return NextResponse.json({approved:false,reason:'NO_VALID_STRATEGY_SIGNAL',technical:technical.mtf,intelligence,storage:storageMode()})}
+  if(!valid.length){await appendAudit(token,'NO_SIGNAL',{market:body.market,technical:technical.mtf,intelligence,profile:profile.id});return NextResponse.json({approved:false,reason:'NO_VALID_STRATEGY_SIGNAL',technical:technical.mtf,intelligence,profile:profile.id,storage:storageMode()})}
   const signal=valid[0].signal; const decision=buildConsensus(signal,agentScores(body.market,technical.mtf.alignmentScore/100,intelligence));
   const strategyMetric:StrategyMetric=metrics.find(m=>m.strategyId===signal.strategyId)??{strategyId:signal.strategyId,trades:0,wins:0,losses:0,winRatePct:0,realizedPnl:0,avgPnl:0,profitFactor:null};
   const lifecycle=evaluateStrategyLifecycle(strategyMetric,all);
@@ -49,13 +55,13 @@ export async function POST(req:NextRequest){
   const seriesEntries=await Promise.all(symbols.map(async symbol=>{const c=await loadCandles(symbol,'5m',120);return [symbol,c.map(x=>x.close)] as const}));
   const priceSeries=Object.fromEntries(seriesEntries);
   const correlation=portfolioCorrelationRisk(open,priceSeries,.75);
-  const portfolioRisk=evaluatePortfolioRisk({positions:open,accountSize,correlation,maxPortfolioRiskPct:1.2,maxGrossExposureMultiple:4});
-  const risk=evaluateRisk(decision,body.market,POLICY,{dailyLossPct,openPositions:open.length,requestedLeverage:Math.max(1,Math.min(3,body.leverage??2))});
+  const portfolioRisk=evaluatePortfolioRisk({positions:open,accountSize,correlation,maxPortfolioRiskPct:profile.maxPortfolioRiskPct,maxGrossExposureMultiple:profile.maxGrossExposureMultiple});
+  const risk=evaluateRisk(decision,body.market,policy,{dailyLossPct,openPositions:open.length,requestedLeverage});
   const baseRiskPct=risk.approved?risk.effectiveRiskPct:0;
-  let portfolioIntelligence=evaluatePortfolioIntelligence({positions:open,priceSeries,correlationThreshold:.72,maxClusterRiskPct:.8});
+  let portfolioIntelligence=evaluatePortfolioIntelligence({positions:open,priceSeries,correlationThreshold:.72,maxClusterRiskPct:profile.maxClusterRiskPct});
   if(risk.approved){
-    const provisional=executePaper(decision,{...risk,effectiveRiskPct:baseRiskPct},{accountSize,leverage:body.leverage??2});
-    portfolioIntelligence=evaluatePortfolioIntelligence({positions:[...open,provisional],priceSeries,correlationThreshold:.72,maxClusterRiskPct:.8});
+    const provisional=executePaper(decision,{...risk,effectiveRiskPct:baseRiskPct},{accountSize,leverage:requestedLeverage});
+    portfolioIntelligence=evaluatePortfolioIntelligence({positions:[...open,provisional],priceSeries,correlationThreshold:.72,maxClusterRiskPct:profile.maxClusterRiskPct});
   }
   const supervisor=supervise({
     portfolioRiskApproved:portfolioRisk.approved,
@@ -85,10 +91,10 @@ export async function POST(req:NextRequest){
   risk.approved=riskBudget.approved;
   risk.effectiveRiskPct=riskBudget.finalRiskPct;
   risk.reasons.push(...riskBudget.reasons);
-  await appendAudit(token,'DECISION',{decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,market:body.market,technical:technical.mtf,intelligence,candidates:valid.map(v=>({strategyId:v.signal.strategyId,confidence:v.signal.confidence,adaptiveScore:v.adaptiveScore,prior:v.prior,biasMatch:v.biasMatch}))});
-  if(!risk.approved)return NextResponse.json({approved:false,decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,technical:technical.mtf,intelligence,candidates:valid,mode:'PAPER',storage:storageMode()});
-  const position=executePaper(decision,risk,{accountSize,leverage:body.leverage??2}); if(body.autopilotKey)(position as any).autopilotKey=body.autopilotKey; await savePosition(token,position);
+  await appendAudit(token,'DECISION',{decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,market:body.market,marketId,profile:profile.id,operatingSettings,technical:technical.mtf,intelligence,candidates:valid.map(v=>({strategyId:v.signal.strategyId,confidence:v.signal.confidence,adaptiveScore:v.adaptiveScore,prior:v.prior,biasMatch:v.biasMatch}))});
+  if(!risk.approved)return NextResponse.json({approved:false,decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,technical:technical.mtf,intelligence,candidates:valid,mode:'PAPER',profile:profile.id,operatingSettings,storage:storageMode()});
+  const position=executePaper(decision,risk,{accountSize,leverage:requestedLeverage}); if(body.autopilotKey)(position as any).autopilotKey=body.autopilotKey; await savePosition(token,position);
   const shadowOrder=simulateShadowOrder(decision,body.market,{latencyMs:180,feeBpsPerSide:2}); const shadow={...shadowOrder,qualityScore:shadowQualityScore(shadowOrder),paperPositionId:position.id}; await saveShadowExecution(token,shadow);
-  await appendAudit(token,'PAPER_OPEN',{position,shadow,technical:technical.mtf,intelligence,adaptiveSelection:valid[0]});
-  return NextResponse.json({approved:true,mode:'PAPER',decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,technical:technical.mtf,intelligence,candidates:valid,adaptiveSelection:valid[0],execution:position,shadow,storage:storageMode()});
+  await appendAudit(token,'PAPER_OPEN',{position,shadow,profile:profile.id,marketId,technical:technical.mtf,intelligence,adaptiveSelection:valid[0]});
+  return NextResponse.json({approved:true,mode:'PAPER',profile:profile.id,operatingSettings,decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,technical:technical.mtf,intelligence,candidates:valid,adaptiveSelection:valid[0],execution:position,shadow,storage:storageMode(),liveTrading:false});
 }
