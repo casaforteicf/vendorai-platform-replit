@@ -141,6 +141,12 @@ export const tenantsTable = pgTable(
     // guardado pra rastreabilidade, mesmo que a chamada de indicação em si
     // já tenha sido disparada no momento do signup.
     codigoIndicacaoPraca: text("codigo_indicacao_praca"),
+    // Marketing por tenant — cada cliente cola o próprio ID de conversão
+    // pros sites gerados pelo Vendor.ai (LP/site do tenant). Independente
+    // da tag do institucional appvendorai.com. Formato esperado:
+    // googleAdsConversionId = "AW-XXXXXXXXX", metaPixelId = ID numérico do Meta.
+    googleAdsConversionId: varchar("google_ads_conversion_id", { length: 40 }),
+    metaPixelId: varchar("meta_pixel_id", { length: 40 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

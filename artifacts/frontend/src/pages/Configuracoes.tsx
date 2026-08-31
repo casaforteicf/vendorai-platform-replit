@@ -1038,6 +1038,35 @@ export default function Configuracoes() {
     );
   }
 
+  // ── Marketing: Google Ads / Meta Pixel do site gerado deste tenant ───────
+  const [googleAdsConversionIdLocal, setGoogleAdsConversionIdLocal] = useState("");
+  const [metaPixelIdLocal, setMetaPixelIdLocal] = useState("");
+  const [syncedMarketingIds, setSyncedMarketingIds] = useState(false);
+  if (tenantQuery.data !== undefined && !syncedMarketingIds) {
+    setGoogleAdsConversionIdLocal(tenantQuery.data.googleAdsConversionId ?? "");
+    setMetaPixelIdLocal(tenantQuery.data.metaPixelId ?? "");
+    setSyncedMarketingIds(true);
+  }
+
+  function onSaveMarketingIds() {
+    updateTenant.mutate(
+      {
+        id: tenantId,
+        data: {
+          googleAdsConversionId: googleAdsConversionIdLocal.trim() || null,
+          metaPixelId: metaPixelIdLocal.trim() || null,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+          toast({ title: "IDs de conversão salvos." });
+        },
+        onError: () => toast({ title: "Erro ao salvar IDs de conversão.", variant: "destructive" }),
+      }
+    );
+  }
+
   function onSaveTipoFechamento() {
     updateTenant.mutate(
       { id: tenantId, data: { tipoFechamentoDefault: tipoFechamentoDefaultLocal } },
@@ -3265,6 +3294,47 @@ export default function Configuracoes() {
                   Adicione um domínio próprio para apontar seu site para um endereço personalizado.
                 </p>
               )}
+            </div>
+          </div>
+
+          {/* ── Marketing: Google Ads / Meta Pixel do site gerado ─────────── */}
+          <div className="rounded-xl border bg-card p-6 space-y-4">
+            <div>
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <Link className="h-4 w-4 text-primary" />
+                Rastreamento de anúncios do seu site
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Cole aqui os IDs da sua própria conta de Google Ads e/ou Meta (Facebook/Instagram) para medir conversões de quem visita o site do seu negócio gerado pelo Vendor.ai. Independente da conta do Vendor.ai — é a sua conta de anúncios.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">ID de conversão do Google Ads</label>
+                <Input
+                  placeholder="AW-XXXXXXXXX"
+                  value={googleAdsConversionIdLocal}
+                  onChange={(e) => setGoogleAdsConversionIdLocal(e.target.value)}
+                  onBlur={onSaveMarketingIds}
+                  disabled={updateTenant.isPending || tenantQuery.isLoading}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Google Ads → Ferramentas → Conversões → clique na conversão → "Configuração da tag".
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">ID do Meta Pixel</label>
+                <Input
+                  placeholder="Ex: 1234567890123456"
+                  value={metaPixelIdLocal}
+                  onChange={(e) => setMetaPixelIdLocal(e.target.value)}
+                  onBlur={onSaveMarketingIds}
+                  disabled={updateTenant.isPending || tenantQuery.isLoading}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Gerenciador de Eventos do Meta → Origens de dados → Pixel.
+                </p>
+              </div>
             </div>
           </div>
         </TabsContent>

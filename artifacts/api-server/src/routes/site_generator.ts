@@ -15,6 +15,42 @@ const anthropic = useAnthropic ? new Anthropic({ apiKey: anthropicApiKey }) : nu
 const AI_PROVIDER = useAnthropic ? "anthropic" : "openai";
 const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
 
+// ─── Marketing tags por tenant (Google Ads / Meta Pixel) ──────────────────────
+// Cada tenant pode colar o próprio ID de conversão nas Configurações
+// (tenants.google_ads_conversion_id / meta_pixel_id). Injetado direto no
+// HTML gerado antes de servir, pra não precisar regenerar o site quando o
+// tenant configura ou troca o ID.
+function injectTenantMarketingTags(
+  html: string,
+  ids: { googleAdsConversionId?: string | null; metaPixelId?: string | null },
+): string {
+  if (!ids.googleAdsConversionId && !ids.metaPixelId) return html;
+
+  const scripts: string[] = [];
+  if (ids.googleAdsConversionId) {
+    scripts.push(
+      `<script async src="https://www.googletagmanager.com/gtag/js?id=${ids.googleAdsConversionId}"></script>` +
+        `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}` +
+        `gtag('js',new Date());gtag('config','${ids.googleAdsConversionId}');</script>`,
+    );
+  }
+  if (ids.metaPixelId) {
+    scripts.push(
+      `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?` +
+        `n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;` +
+        `n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;` +
+        `t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}` +
+        `(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');` +
+        `fbq('init','${ids.metaPixelId}');fbq('track','PageView');</script>`,
+    );
+  }
+
+  const tagsBlock = scripts.join("");
+  return html.includes("</head>")
+    ? html.replace("</head>", `${tagsBlock}</head>`)
+    : tagsBlock + html;
+}
+
 // The database is the source of truth. This set only prevents the same API
 // process from resuming one pending job more than once concurrently.
 type GenerationJob =
@@ -44,7 +80,12 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
   const { siteSlug } = req.params;
 
   const [site] = await db
-    .select({ html: generatedSitesTable.html, published: generatedSitesTable.published, name: generatedSitesTable.name })
+    .select({
+      html: generatedSitesTable.html,
+      published: generatedSitesTable.published,
+      name: generatedSitesTable.name,
+      tenantId: generatedSitesTable.tenantId,
+    })
     .from(generatedSitesTable)
     .where(eq(generatedSitesTable.siteSlug, siteSlug))
     .limit(1);
@@ -59,9 +100,15 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
     return;
   }
 
+  const [siteTenant] = await db
+    .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, site.tenantId))
+    .limit(1);
+
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.send(site.html);
+  res.send(injectTenantMarketingTags(site.html, siteTenant ?? {}));
 });
 
 publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) => {
@@ -73,7 +120,12 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
   //    tenant have several sites live at the same time, each with its
   //    own working address.
   const [siteBySlug] = await db
-    .select({ html: generatedSitesTable.html, published: generatedSitesTable.published, name: generatedSitesTable.name })
+    .select({
+      html: generatedSitesTable.html,
+      published: generatedSitesTable.published,
+      name: generatedSitesTable.name,
+      tenantId: generatedSitesTable.tenantId,
+    })
     .from(generatedSitesTable)
     .where(eq(generatedSitesTable.siteSlug, tenantSlug))
     .limit(1);
@@ -83,9 +135,14 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
       res.status(403).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Site não publicado</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;}div{text-align:center;}</style></head><body><div><p style="font-size:3rem">🔒</p><h1 style="color:#1e293b">${siteBySlug.name}</h1><p style="color:#64748b">Este site ainda não foi publicado pelo proprietário.</p></div></body></html>`);
       return;
     }
+    const [tenantForSlug] = await db
+      .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, siteBySlug.tenantId))
+      .limit(1);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.send(siteBySlug.html);
+    res.send(injectTenantMarketingTags(siteBySlug.html, tenantForSlug ?? {}));
     return;
   }
 
@@ -93,7 +150,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
   //    site for this tenant, addressed by the tenant's own subdomain
   //    (kept for sites created before per-site slugs became routable).
   const [tenant] = await db
-    .select({ id: tenantsTable.id })
+    .select({ id: tenantsTable.id, googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId })
     .from(tenantsTable)
     .where(or(eq(tenantsTable.slug, tenantSlug), eq(tenantsTable.subdomainSlug, tenantSlug)));
 
@@ -116,7 +173,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.send(site.html);
+  res.send(injectTenantMarketingTags(site.html, tenant));
 });
 
 const router: IRouter = Router();
