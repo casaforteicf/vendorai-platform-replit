@@ -1,9 +1,9 @@
 /*
- * Correção defensiva do layout do Gerador de Sites.
+ * Ajustes isolados do Gerador de Sites.
  *
- * O formulário do gerador é identificável por ter um <section> direto
- * (MarketingContextSelector). As regras abaixo ficam restritas a esse fluxo
- * para não alterar grids ou cards de outras telas do Vendor.ai.
+ * Importante: a rolagem pertence ao <main> global do Vendor.ai. Não alteramos
+ * overflow/altura dos TabsContent ou cards ancestrais, porque isso criava uma
+ * segunda área de rolagem e fazia o formulário desaparecer durante o scroll.
  */
 
 /* Quatro tipos de site: 4 colunas no desktop, 2x2 em telas menores. */
@@ -18,21 +18,33 @@ form.flex.flex-col.gap-5:has(> section) > div:first-child > .grid.grid-cols-3 {
 }
 
 /*
- * Evita o corte que deixava apenas o cabeçalho "Para quem e o que você quer
- * divulgar?" visível e fazia o restante do card desaparecer. O formulário,
- * o painel de contexto e os ancestrais imediatos precisam crescer com o
- * conteúdo; a rolagem continua sendo responsabilidade do <main> da aplicação.
+ * O formulário e o seletor de contexto precisam participar do fluxo normal
+ * da página. Nenhum ancestral recebe overflow:visible aqui — isso evita o
+ * "scroll fantasma" que mostrava um grande vazio cinza e pulava conteúdo.
  */
-form.flex.flex-col.gap-5:has(> section),
-form.flex.flex-col.gap-5:has(> section) > section,
-[data-state="active"]:has(> form.flex.flex-col.gap-5 > section),
-.rounded-2xl:has(form.flex.flex-col.gap-5 > section) {
+form.flex.flex-col.gap-5:has(> section) {
   height: auto !important;
+  min-height: 0 !important;
   max-height: none !important;
   overflow: visible !important;
+  padding-bottom: 6rem;
 }
 
-/* Garante que o conteúdo interno do seletor participe normalmente da altura. */
+form.flex.flex-col.gap-5:has(> section) > section {
+  display: flex !important;
+  flex-direction: column !important;
+  position: relative !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  contain: none !important;
+  content-visibility: visible !important;
+}
+
+/* Neutraliza qualquer posicionamento/transformação herdada que possa tirar
+ * os blocos internos do fluxo vertical e gerar espaços vazios durante o scroll. */
 form.flex.flex-col.gap-5:has(> section) > section > * {
-  position: relative;
+  position: static !important;
+  transform: none !important;
 }
