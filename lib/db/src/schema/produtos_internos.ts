@@ -1,6 +1,9 @@
-import { pgTable, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+export const PRODUTO_INTERNO_TIPOS = ["servico", "produto", "oferta"] as const;
+export type ProdutoInternoTipo = (typeof PRODUTO_INTERNO_TIPOS)[number];
 
 // Catálogo interno de "produtos" (funcionalidades) do Vendor.ai -- pra uso
 // de marketing/vendas do próprio time, não controla acesso de tenant
@@ -10,18 +13,30 @@ export const produtosInternosTable = pgTable("produtos_internos", {
   categoria: text("categoria").notNull(),
   nome: text("nome").notNull(),
   descricaoUso: text("descricao_uso").notNull(),
+  // Classifica o TIPO de oferta -- serviço (execução contínua, ex: Agente
+  // SDR), produto (ferramenta/recurso, ex: Pipeline de Negócios) ou oferta
+  // (arranjo comercial, ex: Pacotes, Compra de Créditos Avulsos).
+  tipo: text("tipo").$type<ProdutoInternoTipo>().notNull().default("produto"),
+  // Nichos/segmentos (nomes iguais aos de segment_templates) em que esse
+  // produto faz mais sentido como oferta de marketing -- padrão pra
+  // filtrar/relacionar ao gerar conteúdo voltado a um nicho específico.
+  nichosRelacionados: jsonb("nichos_relacionados").$type<string[]>().notNull().default([]),
   ordem: integer("ordem").notNull().default(0),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertProdutoInternoSchema = createInsertSchema(produtosInternosTable).omit({
+export const insertProdutoInternoSchema = createInsertSchema(produtosInternosTable, {
+  tipo: z.enum(PRODUTO_INTERNO_TIPOS),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
-export const updateProdutoInternoSchema = createSelectSchema(produtosInternosTable)
+export const updateProdutoInternoSchema = createSelectSchema(produtosInternosTable, {
+  tipo: z.enum(PRODUTO_INTERNO_TIPOS),
+})
   .omit({ id: true, createdAt: true, updatedAt: true })
   .partial();
 
