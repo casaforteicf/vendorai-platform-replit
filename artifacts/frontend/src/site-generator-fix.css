@@ -1,0 +1,38 @@
+/*
+ * Correção defensiva do layout do Gerador de Sites.
+ *
+ * O formulário do gerador é identificável por ter um <section> direto
+ * (MarketingContextSelector). As regras abaixo ficam restritas a esse fluxo
+ * para não alterar grids ou cards de outras telas do Vendor.ai.
+ */
+
+/* Quatro tipos de site: 4 colunas no desktop, 2x2 em telas menores. */
+form.flex.flex-col.gap-5:has(> section) > div:first-child > .grid.grid-cols-3 {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 767px) {
+  form.flex.flex-col.gap-5:has(> section) > div:first-child > .grid.grid-cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/*
+ * Evita o corte que deixava apenas o cabeçalho "Para quem e o que você quer
+ * divulgar?" visível e fazia o restante do card desaparecer. O formulário,
+ * o painel de contexto e os ancestrais imediatos precisam crescer com o
+ * conteúdo; a rolagem continua sendo responsabilidade do <main> da aplicação.
+ */
+form.flex.flex-col.gap-5:has(> section),
+form.flex.flex-col.gap-5:has(> section) > section,
+[data-state="active"]:has(> form.flex.flex-col.gap-5 > section),
+.rounded-2xl:has(form.flex.flex-col.gap-5 > section) {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* Garante que o conteúdo interno do seletor participe normalmente da altura. */
+form.flex.flex-col.gap-5:has(> section) > section > * {
+  position: relative;
+}
