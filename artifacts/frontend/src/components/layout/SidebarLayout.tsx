@@ -11,7 +11,7 @@ import {
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Bell,
   Store, Package, PackagePlus, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
-  BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
+  BarChart3, ChevronRight, ChevronLeft, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog,
 } from "lucide-react";
@@ -25,10 +25,24 @@ import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, tenantOverride, clearTenantOverride, token, isEffectiveAdmin } = useAuth();
   const [location] = useLocation();
-  // D-007: menu lateral ocupava espaço fixo (272px) mesmo sem uso. Recolhe
-  // pra uma faixa estreita (só logo/ícones visíveis) por padrão, expande
-  // ao passar o mouse por cima.
-  const [sidebarHover, setSidebarHover] = useState(false);
+  // Menu lateral desktop -- botão manual (não mais hover) que alterna entre
+  // expandida (com texto) e recolhida (só ícones), com a preferência salva
+  // em localStorage. Lida direto do localStorage na inicialização, então
+  // sobrevive a troca de tela mesmo que o componente remonte (era o motivo
+  // real de "sumir"/resetar antes: o estado vivia só em memória).
+  const SIDEBAR_STORAGE_KEY = "vendorai_sidebar_expanded";
+  const [sidebarExpanded, setSidebarExpanded] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const saved = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    return saved === null ? true : saved === "true";
+  });
+  function toggleSidebar() {
+    setSidebarExpanded((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      return next;
+    });
+  }
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
 
@@ -933,13 +947,24 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen bg-background">
       {/* ── Desktop sidebar ────────────────────────────────── */}
       <div
-        className={`hidden md:flex ${sidebarHover ? "w-[272px]" : "w-[68px]"} bg-sidebar/92 backdrop-blur-2xl border-r border-sidebar-border/70 shrink-0 overflow-hidden transition-[width] duration-200 ease-out`}
-        onMouseEnter={() => setSidebarHover(true)}
-        onMouseLeave={() => setSidebarHover(false)}
+        className={`hidden md:flex sticky top-0 h-screen ${sidebarExpanded ? "w-[272px]" : "w-[68px]"} bg-sidebar/92 backdrop-blur-2xl border-r border-sidebar-border/70 shrink-0 overflow-hidden transition-[width] duration-200 ease-out`}
       >
         <div className="w-[272px] shrink-0 flex flex-col h-full">
-          <div className="p-5 border-b border-sidebar-border/70">
-            <LogoBranding size="lg" />
+          <div className="p-3 border-b border-sidebar-border/70 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="shrink-0 h-9 w-9 flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+              aria-label={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
+              title={sidebarExpanded ? "Recolher menu" : "Expandir menu"}
+            >
+              {sidebarExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </button>
+            {sidebarExpanded && (
+              <div className="min-w-0 flex-1">
+                <LogoBranding size="lg" />
+              </div>
+            )}
           </div>
           <div className="px-3 py-2 border-b">
             <StoreSwitcher />
