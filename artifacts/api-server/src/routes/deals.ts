@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import multer from "multer";
 import {
   db,
@@ -96,6 +96,25 @@ router.post("/deals", async (req, res) => {
     return;
   }
 
+  // Contatos classificados como "Não lead" permanecem no histórico, mas não
+  // podem voltar ao funil comercial por criação manual ou automação.
+  if (parsed.data.leadId) {
+    const [linkedLead] = await db
+      .select({ naoLeadTipo: leadsTable.naoLeadTipo })
+      .from(leadsTable)
+      .where(and(
+        eq(leadsTable.id, parsed.data.leadId),
+        eq(leadsTable.tenantId, parsed.data.tenantId),
+      ));
+    if (linkedLead?.naoLeadTipo) {
+      res.status(422).json({
+        error: "Contato classificado como Não lead não pode ser incluído na pipeline.",
+        code: "NON_LEAD_PIPELINE_EXEMPT",
+      });
+      return;
+    }
+  }
+
   const assignedTo = parsed.data.assignedTo ?? (
     req.user?.platformRole !== "super_admin" && req.user?.sub ? req.user.sub : null
   );
@@ -119,6 +138,19 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
   if (leadId) conditions.push(eq(dealsTable.leadId, leadId));
 
   conditions.push(...buildUserFunctionFilter(req, dealsTable));
+
+  // Negócios antigos continuam armazenados para auditoria, porém somem da
+  // pipeline assim que o contato é classificado como "Não lead". O NOT EXISTS
+  // preserva negócios sem lead vinculado e evita alterar o formato da resposta.
+  conditions.push(notExists(
+    db
+      .select({ id: leadsTable.id })
+      .from(leadsTable)
+      .where(and(
+        eq(leadsTable.id, dealsTable.leadId),
+        isNotNull(leadsTable.naoLeadTipo),
+      )),
+  ));
 
   const deals = await db
     .select()
