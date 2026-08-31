@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server';
+import { selectAutoScannerCandidates } from '@tad/core';
+export async function POST(req:Request){const body=await req.json() as {rows?:any[];enabled?:boolean;minimumScore?:number;cooldownMinutes?:number;maxNewTradesPerCycle?:number;lastTradeAt?:Record<string,number>};const selected=selectAutoScannerCandidates(body.rows??[],{enabled:body.enabled??false,minimumScore:body.minimumScore??70,cooldownMinutes:body.cooldownMinutes??30,maxNewTradesPerCycle:body.maxNewTradesPerCycle??1},body.lastTradeAt??{});return NextResponse.json({mode:'PAPER_PREVIEW_ONLY',selected,willExecuteLive:false,note:'This endpoint only selects PAPER candidates; it never signs or sends exchange orders.',ts:Date.now()});}
