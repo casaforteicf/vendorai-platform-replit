@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tad/core": "workspace:*",
+    "@tad/core": "file:../../packages/core",
     "next": "15.5.24",
     "react": "19.2.8",
     "react-dom": "19.2.8",
