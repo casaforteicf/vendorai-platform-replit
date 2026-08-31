@@ -156,10 +156,27 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     ? cfSubdomain.trim()
     : null;
 
-  // Authentication is tenant-scoped by the JWT/user itself. These endpoints
-  // must never be intercepted by the public-site/custom-domain resolver,
-  // especially after Vercel rewrites the request to the Railway hostname.
-  if (req.path.startsWith("/api/auth/")) return next();
+  // O resolvedor abaixo existe para sites públicos/subdomínios de tenant.
+  // Ele não deve participar de chamadas autenticadas do CRM: nesses casos o
+  // tenant já está no JWT e o enforceTenantPath valida qualquer escopo de
+  // tenant informado pela própria requisição. O Vercel/Railway pode remover
+  // Host, Referer e headers customizados durante external rewrites; usar o
+  // Bearer como sinal torna esse bypass independente do comportamento do proxy.
+  const requestPaths = [req.path, req.originalUrl, req.url]
+    .map((value) => value.split("?", 1)[0] ?? value);
+  const isApiRequest = requestPaths.some((value) => value === "/api" || value.startsWith("/api/"));
+  const isAuthApiRequest = requestPaths.some(
+    (value) =>
+      value === "/api/auth" ||
+      value.startsWith("/api/auth/") ||
+      value === "/auth" ||
+      value.startsWith("/auth/"),
+  );
+  const hasBearerAuth = req.headers.authorization?.startsWith("Bearer ") === true;
+
+  if (!subdomainFromHeader && (isAuthApiRequest || (isApiRequest && hasBearerAuth))) {
+    return next();
+  }
 
   // Vercel faz rewrite de /api/* para o Railway. Em alguns POPs o Railway
   // substitui Host/X-Forwarded-Host pelo domínio *.up.railway.app; nesse caso
@@ -180,7 +197,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   if (!subdomainFromHeader && isCrmRequest) return next();
 
   const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
-  const isApi = req.path.startsWith("/api/");
+  const isApi = isApiRequest;
 
   // Endereço real digitado pelo visitante, só para mensagens de erro — o
   // Cloudflare Worker que faz proxy do *.appvendorai.com remove o Host
