@@ -2,13 +2,16 @@
   "name": "tad-vendorai",
   "private": true,
   "version": "0.22.0",
-  "packageManager": "pnpm@10.26.1",
   "engines": {
     "node": "22.x"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "pnpm --filter @tad/web dev",
-    "build": "pnpm --filter @tad/web build",
-    "typecheck": "pnpm -r typecheck"
+    "dev": "npm --workspace @tad/web run dev",
+    "build": "npm --workspace @tad/web run build",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }
