@@ -11,22 +11,6 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
-    "id": "pr-213",
-    "titulo": "autenticação completa V0.21",
-    "descricao": "TAD passa a ter contas individuais completas, recuperação de senha e Minha Conta, preservando isolamento das carteiras PAPER e LIVE bloqueado.",
-    "tipo": "novidade",
-    "publicadoEm": "2026-08-31T11:26:06.000Z",
-    "pullRequest": 213
-  },
-  {
-    "id": "pr-211",
-    "titulo": "sincronizar fonte publicada TAD V0.20",
-    "descricao": "Código-fonte da V0.20 do TAD passa a ficar versionado no GitHub em pasta dedicada, sem interferir no VendorAI principal.",
-    "tipo": "novidade",
-    "publicadoEm": "2026-08-31T10:49:18.000Z",
-    "pullRequest": 211
-  },
-  {
     "id": "pr-202",
     "titulo": "Todos os atendimentos agora têm protocolo e status",
     "descricao": "Toda conversa com o suporte fica registrada na tela de Suporte, inclusive quando o agente resolve sozinho. O cliente acompanha protocolo, status e responsável pela resolução.",

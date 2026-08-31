@@ -20,8 +20,10 @@ jobs:
       - name: Registrar melhoria incorporada
         env:
           PR_PAYLOAD: ${{ toJson(github.event.pull_request) }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PAYLOAD=$(node -e 'const p=JSON.parse(process.env.PR_PAYLOAD); process.stdout.write(Buffer.from(JSON.stringify({number:p.number,title:p.title,body:p.body,merged:p.merged,mergedAt:p.merged_at})).toString("base64"))')
+          export CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | tr '\n' ',')
+          PAYLOAD=$(node -e 'const p=JSON.parse(process.env.PR_PAYLOAD); process.stdout.write(Buffer.from(JSON.stringify({number:p.number,title:p.title,body:p.body,merged:p.merged,mergedAt:p.merged_at,changedFiles:process.env.CHANGED_FILES})).toString("base64"))')
           node scripts/register-changelog.mjs artifacts/api-server/src/data/automatic-changelog.ts "$PAYLOAD"
 
       - name: Publicar registro em Novidades
