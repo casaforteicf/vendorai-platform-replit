@@ -129,18 +129,50 @@ function suspendedHtml(name: string) {
   );
 }
 
+function normalizeHostHeader(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return null;
+  return raw.split(",")[0]?.trim().replace(/:\d+$/, "").toLowerCase() || null;
+}
+
+function hostnameFromUrlHeader(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function isCrmHostname(hostname: string | null): boolean {
+  if (!hostname) return false;
+  return MAIN_HOSTNAMES.has(hostname) || hostname.endsWith(`.app.${ROOT_DOMAIN}`);
+}
+
 app.use(async (req: Request, res: Response, next: NextFunction) => {
-  const hostname = req.hostname;
+  const hostname = req.hostname.toLowerCase();
   const cfSubdomain = req.headers["x-tenant-subdomain"];
   const subdomainFromHeader = typeof cfSubdomain === "string" && cfSubdomain.trim()
     ? cfSubdomain.trim()
     : null;
 
-  if (!subdomainFromHeader && MAIN_HOSTNAMES.has(hostname)) return next();
-  // <slug>.app.appvendorai.com é o CRM com link exclusivo por lojista, não
-  // o site público dele — mesma regra do MAIN_HOSTNAMES, só que como padrão
-  // em vez de lista fixa (não dá pra listar todo slug de antemão).
-  if (!subdomainFromHeader && hostname.endsWith(`.app.${ROOT_DOMAIN}`)) return next();
+  // Vercel faz rewrite de /api/* para o Railway. Em alguns POPs o Railway
+  // substitui Host/X-Forwarded-Host pelo domínio *.up.railway.app; nesse caso
+  // req.hostname deixa de ser app.appvendorai.com e o resolver abaixo tentava
+  // tratar o próprio domínio do Railway como domínio customizado de tenant,
+  // devolvendo { error: "Tenant não encontrado" } antes de /auth/me.
+  //
+  // Para requisições do CRM, recuperamos o host original a partir dos headers
+  // preservados pelo proxy e, como fallback de navegador, Origin/Referer.
+  // x-tenant-subdomain continua tendo precedência para os sites públicos que
+  // chegam pelo Worker do Cloudflare.
+  const forwardedHost = normalizeHostHeader(req.headers["x-forwarded-host"]);
+  const originalHost = normalizeHostHeader(req.headers["x-original-host"]);
+  const originHost = hostnameFromUrlHeader(typeof req.headers.origin === "string" ? req.headers.origin : undefined);
+  const refererHost = hostnameFromUrlHeader(typeof req.headers.referer === "string" ? req.headers.referer : undefined);
+  const isCrmRequest = [hostname, forwardedHost, originalHost, originHost, refererHost].some(isCrmHostname);
+
+  if (!subdomainFromHeader && isCrmRequest) return next();
 
   const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
   const isApi = req.path.startsWith("/api/");
