@@ -1,3 +1,3 @@
 import { NextResponse } from 'next/server';
 import { storageMode } from '../../../lib/store';
-export async function GET(){return NextResponse.json({ok:true,service:'tad-vendorai',version:'0.21.0',mode:'PAPER',liveTrading:false,auth:'PASSWORD_MAGIC_LINK_RLS',storage:storageMode(),ts:Date.now()})}
+export async function GET(){return NextResponse.json({ok:true,service:'tad-vendorai',version:'0.22.0',mode:'PAPER',liveTrading:false,auth:'PASSWORD_MAGIC_LINK_RLS',operatingProfiles:['CONSERVATIVE','INTERMEDIATE','AGGRESSIVE'],markets:{CRYPTO:'ACTIVE',B3:'READY_FOR_FEED',US:'READY_FOR_FEED',FOREX:'READY_FOR_FEED',COMMODITIES:'READY_FOR_FEED'},dailyTradeLimit:null,opportunityDriven:true,storage:storageMode(),ts:Date.now()})}
