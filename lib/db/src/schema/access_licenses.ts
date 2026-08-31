@@ -23,7 +23,7 @@ export const accessPassPurchasesTable = pgTable("access_pass_purchases", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
   days: integer("days").notNull().default(5),
-  amount: numeric("amount", { precision: 10, scale: 2 }).notNull().default("399.00"),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull().default("399.99"),
   status: text("status").$type<"pending" | "paid" | "cancelled" | "refunded" | "chargeback">().notNull().default("pending"),
   provider: text("provider").notNull().default("asaas"),
   providerChargeId: text("provider_charge_id"),

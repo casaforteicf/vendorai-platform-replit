@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, CheckCircle2, CreditCard } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, CreditCard, Package, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -14,6 +14,70 @@ type AccessStatus = {
   accessEndsAt?: string | null;
   pass?: { days: number; price: number };
 };
+
+interface ProdutoInterno {
+  id: string;
+  categoria: string;
+  nome: string;
+  descricaoUso: string;
+}
+
+// Os 2 planos (5 dias pré-pago e contrato anual) dão acesso à MESMA lista
+// completa de produtos -- não existe uma versão "menor" pra um e "maior"
+// pro outro. Por isso um único bloco "o que está incluso" serve pros dois
+// botões, em vez de duplicar a lista.
+function WhatsIncluded() {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const query = useQuery<ProdutoInterno[]>({
+    queryKey: ["produtos-internos-publico"],
+    enabled: open,
+    queryFn: async () => {
+      const response = await fetch("/api/produtos-internos", { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("Não foi possível carregar a lista.");
+      return response.json();
+    },
+  });
+
+  const porCategoria = new Map<string, ProdutoInterno[]>();
+  for (const p of query.data ?? []) {
+    const lista = porCategoria.get(p.categoria) ?? [];
+    lista.push(p);
+    porCategoria.set(p.categoria, lista);
+  }
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-xs font-medium underline underline-offset-2"
+      >
+        <Package className="h-3.5 w-3.5" />
+        O que está incluso (mesma lista nos 2 planos)
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+      {open && (
+        <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-current/20 bg-background/60 p-3 space-y-3">
+          {query.isLoading && <p className="text-xs opacity-70">Carregando...</p>}
+          {Array.from(porCategoria.entries()).map(([categoria, itens]) => (
+            <div key={categoria}>
+              <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{categoria}</p>
+              <ul className="mt-1 space-y-0.5">
+                {itens.map((p) => (
+                  <li key={p.id} className="text-xs">
+                    <span className="font-medium">{p.nome}</span>
+                    <span className="opacity-70"> — {p.descricaoUso}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function AccessLicenseBanner() {
   const { user, token } = useAuth();
@@ -101,6 +165,7 @@ export function AccessLicenseBanner() {
                 : `${status.remainingHours ?? 0} horas restantes. Antecipe a renovação sem perder os dias atuais.`}
             </p>
             {(activate.error || buy.error) && <p className="mt-1 text-xs font-medium text-red-700">{String((activate.error || buy.error)?.message)}</p>}
+            <WhatsIncluded />
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -112,7 +177,7 @@ export function AccessLicenseBanner() {
           )}
           <Button size="sm" variant={status.readOnly ? "default" : "outline"} onClick={() => buy.mutate()} disabled={buy.isPending}>
             <CreditCard className="mr-2 h-4 w-4" />
-            {buy.isPending ? "Preparando..." : "Mais 5 dias — R$ 399"}
+            {buy.isPending ? "Preparando..." : "Mais 5 dias — R$ 399,99"}
           </Button>
           <Button size="sm" variant="outline" onClick={() => setAnnualOpen(true)}>Contrato de 1 ano</Button>
         </div>
@@ -125,6 +190,7 @@ export function AccessLicenseBanner() {
           >
             <h2 id="annual-contract-title" className="text-lg font-semibold">Licença VendorAI por 1 ano</h2>
             <p className="mt-1 text-sm text-muted-foreground">Acesso completo e contínuo por 12 meses, com a mensalidade comercial já definida para sua empresa.</p>
+            <WhatsIncluded />
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <input required aria-label="Nome do responsável" placeholder="Nome do responsável" className="rounded-lg border bg-background px-3 py-2 text-sm" value={annualForm.responsibleName} onChange={(e) => setAnnualForm((v) => ({ ...v, responsibleName: e.target.value }))} />
               <input required aria-label="CPF do responsável" placeholder="CPF do responsável" inputMode="numeric" className="rounded-lg border bg-background px-3 py-2 text-sm" value={annualForm.responsibleCpf} onChange={(e) => setAnnualForm((v) => ({ ...v, responsibleCpf: e.target.value }))} />
