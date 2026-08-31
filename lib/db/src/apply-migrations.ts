@@ -24,6 +24,22 @@ import { fileURLToPath } from "url";
 export const ADVISORY_LOCK_KEY = "7767366262";
 export const CONTROL_TABLE = "vendorai_schema_migrations";
 
+// Migrations corrigidas depois de chegarem a algum ambiente precisam aceitar
+// o checksum original. Isso mantém a proteção contra alterações arbitrárias,
+// mas permite tornar o SQL idempotente sem derrubar bancos que já aplicaram a
+// primeira versão.
+const LEGACY_CHECKSUMS: Readonly<Record<string, readonly string[]>> = {
+  "161": ["a52c13b2b5c54e67b3acb36efe8317772f6ea2ba19e59acdcfaacf9f521c3f87"],
+};
+
+export function isAcceptedMigrationChecksum(
+  version: string,
+  current: string,
+  stored: string,
+): boolean {
+  return current === stored || LEGACY_CHECKSUMS[version]?.includes(stored) === true;
+}
+
 /**
  * Resolve a pasta lib/db/migrations de forma resiliente.
  *
@@ -190,7 +206,7 @@ export async function applyPendingMigrations(
         const content = fs.readFileSync(f.filePath, "utf8");
         const checksum = sha256(content);
         const stored = applied.get(f.version)!;
-        if (stored !== checksum) {
+        if (!isAcceptedMigrationChecksum(f.version, checksum, stored)) {
           throw new Error(
             `Checksum mismatch for migration ${f.version} ("${f.name}"). ` +
               `Migration file was modified after being applied.`,

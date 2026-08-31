@@ -5,5 +5,17 @@
 ALTER TABLE produtos_internos
   ADD COLUMN IF NOT EXISTS tipo text NOT NULL DEFAULT 'produto';
 
-ALTER TABLE produtos_internos
-  ADD CONSTRAINT produtos_internos_tipo_check CHECK (tipo IN ('servico', 'produto', 'oferta'));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'produtos_internos_tipo_check'
+      AND conrelid = 'produtos_internos'::regclass
+  ) THEN
+    ALTER TABLE produtos_internos
+      ADD CONSTRAINT produtos_internos_tipo_check
+      CHECK (tipo IN ('servico', 'produto', 'oferta'));
+  END IF;
+END
+$$;
