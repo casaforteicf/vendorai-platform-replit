@@ -219,6 +219,48 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     req.tenantId = tenant.id;
     if (isApi) return next();
 
+    const publicUrl = `https://${displayAddress}`;
+
+    if (req.path === "/robots.txt") {
+      res.type("text/plain");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.send(`User-agent: *\nAllow: /\nSitemap: ${publicUrl}/sitemap.xml\n`);
+    }
+
+    if (req.path === "/sitemap.xml") {
+      const publishedSites = await db
+        .select({ siteSlug: generatedSitesTable.siteSlug, updatedAt: generatedSitesTable.updatedAt })
+        .from(generatedSitesTable)
+        .where(and(eq(generatedSitesTable.tenantId, tenant.id), eq(generatedSitesTable.published, true)))
+        .orderBy(desc(generatedSitesTable.updatedAt));
+
+      const lastmod = publishedSites[0]?.updatedAt
+        ? new Date(publishedSites[0].updatedAt).toISOString().slice(0, 10)
+        : undefined;
+
+      // A raiz do domínio deste tenant sempre entra; sites com siteSlug
+      // próprio (ex: uma landing de campanha à parte) entram também, no
+      // próprio subdomínio deles.
+      const extraUrls = publishedSites
+        .filter((s) => s.siteSlug && s.siteSlug !== identifier)
+        .map(
+          (s) =>
+            `  <url><loc>https://${s.siteSlug}.${ROOT_DOMAIN}/</loc><priority>0.8</priority></url>`,
+        )
+        .join("\n");
+
+      const xml =
+        `<?xml version="1.0" encoding="UTF-8"?>\n` +
+        `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+        `  <url><loc>${publicUrl}/</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<priority>1.0</priority></url>\n` +
+        (extraUrls ? extraUrls + "\n" : "") +
+        `</urlset>`;
+
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.send(xml);
+    }
+
     let site: { html: string } | undefined;
 
     if (matchedSite) {
