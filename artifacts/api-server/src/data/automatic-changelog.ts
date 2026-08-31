@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-214",
+    "titulo": "Remove contatos Não lead da pipeline comercial",
+    "descricao": "contatos classificados como **Não lead** deixam de aparecer imediatamente na pipeline a quantidade de negócios passa a considerar apenas oportunidades comerciais alertas de tempo esgotado não são mais gerados visualmente para esses contatos o histórico permanece preservado no banco e na área de Não leads",
+    "tipo": "novidade",
+    "publicadoEm": "2026-08-31T12:35:39.000Z",
+    "pullRequest": 214
+  },
+  {
     "id": "pr-202",
     "titulo": "Todos os atendimentos agora têm protocolo e status",
     "descricao": "Toda conversa com o suporte fica registrada na tela de Suporte, inclusive quando o agente resolve sozinho. O cliente acompanha protocolo, status e responsável pela resolução.",
