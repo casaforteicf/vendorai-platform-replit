@@ -54,7 +54,7 @@ export function moduleForPath(path: string): UserModuleKey | null {
   if (path.startsWith("/analytics") || path.startsWith("/relatorios")) return "analytics";
   if (path.startsWith("/usuarios") || path.startsWith("/organizacao")) return "team";
   if (path.startsWith("/configuracoes") || path.startsWith("/guia-implantacao")) return "settings";
-  if (path.startsWith("/content") || path.startsWith("/campanhas") || path.startsWith("/video") || path.startsWith("/marketing")) return "content";
+  if (path.startsWith("/content") || path.startsWith("/campanhas") || path.startsWith("/video")) return "content";
   if (path.startsWith("/scout")) return "revenue_scout";
   if (path.startsWith("/farmacia")) return "pharmacy";
   return null;

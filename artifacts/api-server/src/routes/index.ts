@@ -86,6 +86,8 @@ import varejoRouter from "./varejo";
 import supermercadoRouter, { supermercadoPublicRouter } from "./supermercado";
 import farmaciaRouter from "./farmacia";
 import adsRouter, { adsPublicRouter } from "./ads";
+import launchCommandCenterRouter from "./launch_command_center";
+import trialJourneyRouter from "./trial_journey";
 import imoveisRouter from "./imoveis";
 import fretesRouter, { fretesPublicRouter } from "./fretes";
 import storiesRouter from "./stories";
@@ -192,6 +194,11 @@ router.use(authenticate);
 // Session endpoints must be mounted immediately after JWT validation. The
 // frontend needs /auth/me before tenant, onboarding or license checks.
 router.use(authProtectedRouter);
+
+// Trial status/continuity must remain reachable even after trial suspension or
+// before onboarding is complete; all other CRM routes keep the normal gates.
+router.use(trialJourneyRouter);
+
 router.use(blockPartnerFromCRM);
 router.use(blockSuspendedTenants);
 
@@ -259,6 +266,7 @@ router.use(agentsRouter);
 
 // Marketing Hub
 router.use(campaignsRouter);
+router.use(launchCommandCenterRouter);
 
 // Sales / CPQ Hub
 router.use(produtosCatalogoRouter);

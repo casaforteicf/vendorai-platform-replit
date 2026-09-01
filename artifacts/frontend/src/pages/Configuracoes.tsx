@@ -153,6 +153,7 @@ import {
   ChevronUp,
   TrendingUp,
 } from "lucide-react";
+import { SiteGeneratorTab } from "./SiteGenerator";
 import { SdrTemplatesSection } from "@/components/SdrTemplatesSection";
 import { FaturamentoTab } from "./FaturamentoTab";
 import { ContractTemplateTab } from "@/components/ContractTemplateTab";
@@ -582,8 +583,7 @@ export default function Configuracoes() {
 
   const [activeTab, setActiveTab] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
-    const requestedTab = params.get("tab");
-    return requestedTab === "site" ? "dominio" : requestedTab ?? "perfil";
+    return params.get("tab") ?? "perfil";
   });
 
   // ── Team Management ────────────────────────────────────────────────────────
@@ -2268,9 +2268,9 @@ export default function Configuracoes() {
             <Brain className="h-4 w-4" />
             Análise
           </TabsTrigger>
-          <TabsTrigger value="dominio" className="gap-1.5">
+          <TabsTrigger value="site" className="gap-1.5">
             <Globe className="h-4 w-4" />
-            Domínio
+            Site
           </TabsTrigger>
           <TabsTrigger value="calendario" className="gap-1.5">
             <CalendarHeart className="h-4 w-4" />
@@ -3269,8 +3269,10 @@ export default function Configuracoes() {
           </div>
         </TabsContent>
 
-        {/* ── Tab: Domínio ────────────────────────────────────────────────── */}
-        <TabsContent value="dominio" className="space-y-5">
+        {/* ── Tab: Site ───────────────────────────────────────────────────── */}
+        <TabsContent value="site" className="space-y-5">
+          <SiteGeneratorTab />
+
           {/* ── Domain Card ─────────────────────────────────────────────── */}
           <div className="rounded-xl border bg-card p-6 space-y-5">
             <div>

@@ -5,6 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Sparkles, Clock, Users, Zap } from "lucide-react";
 import { Link } from "wouter";
+import {
+  getAdDataConsentState,
+  getLaunchAttribution,
+  setAdDataConsent,
+} from "@/lib/launchAttribution";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com").replace(/\/$/, "");
@@ -12,16 +17,21 @@ const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com")
 export default function Demo() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     nomeEmpresa: "",
     nomePessoa: "",
     email: "",
     senha: "",
     telefone: "",
-  });
+    adDataConsent: getAdDataConsentState()?.granted ?? false,
+  }));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+    const { name, type, value, checked } = e.target;
+    if (name === "adDataConsent" && type === "checkbox") {
+      setAdDataConsent(checked);
+    }
+    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,10 +47,11 @@ export default function Demo() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/demo-signup`, {
+      const attribution = getLaunchAttribution();
+      const res = await fetch(`${API_BASE}/auth/trial-signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ...attribution, adDataConsent: form.adDataConsent }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -121,6 +132,21 @@ export default function Demo() {
                 <Input id="telefone" name="telefone" value={form.telefone} onChange={handleChange} placeholder="(48) 99999-9999" data-testid="input-telefone" />
               </div>
 
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="adDataConsent"
+                  checked={form.adDataConsent}
+                  onChange={handleChange}
+                  className="mt-1 h-4 w-4 rounded border-slate-300"
+                  data-testid="input-ad-data-consent"
+                />
+                <span>
+                  <strong className="font-medium text-slate-800">Opcional:</strong> autorizo o VendorAI a usar dados de conversão e identificadores protegidos para medir e otimizar campanhas em plataformas de anúncios, como Meta e Google. A autorização pode ser revogada conforme a{" "}
+                  <Link href="/privacy" className="underline hover:text-slate-900">Política de Privacidade</Link>.
+                </span>
+              </label>
+
               <Button type="submit" className="w-full h-12 text-base font-bold" disabled={loading} data-testid="btn-criar-demo">
                 {loading ? "Criando seu teste..." : "Começar meus 5 dias grátis"}
                 <ArrowRight className="ml-2 w-5 h-5" />
@@ -129,7 +155,7 @@ export default function Demo() {
               <p className="text-xs text-slate-400 text-center">
                 Ao criar a conta, você concorda com os{" "}
                 <Link href="/terms" className="underline hover:text-slate-600">Termos de Uso</Link>{" "}
-                e{" "}
+                e reconhece a{" "}
                 <Link href="/privacy" className="underline hover:text-slate-600">Política de Privacidade</Link>.
               </p>
             </form>

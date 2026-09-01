@@ -1,11 +1,14 @@
-import { pgTable, text, timestamp, numeric, unique, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, unique, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { dealsTable } from "./deals";
 
 export const subscriptionPlanoEnum = pgEnum("subscription_plano", [
+  "start",
   "starter",
   "growth",
+  "pme_plus",
   "enterprise",
 ]);
 
@@ -37,6 +40,7 @@ export const subscriptionsTable = pgTable(
     // Commercial acquisition snapshot. Keeps the exact campaign accepted
     // by this tenant even when the public offer changes later.
     campaignCode: text("campaign_code"),
+    sourceDealId: text("source_deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
     billingPhase: text("billing_phase").notNull().default("trial"),
     trialEndsAt: timestamp("trial_ends_at"),
     promoPhase1Price: numeric("promo_phase_1_price", { precision: 12, scale: 2 }),
@@ -44,10 +48,15 @@ export const subscriptionsTable = pgTable(
     promoPhase2Price: numeric("promo_phase_2_price", { precision: 12, scale: 2 }),
     promoPhase2EndsAt: timestamp("promo_phase_2_ends_at"),
     regularPriceAtTransition: numeric("regular_price_at_transition", { precision: 12, scale: 2 }),
+    // Monthly-equivalent catalog price frozen when the customer first enters
+    // annual billing. The actual annual charge is this snapshot × 12.
+    annualPriceAtTransition: numeric("annual_price_at_transition", { precision: 12, scale: 2 }),
     acceptedOfferAt: timestamp("accepted_offer_at"),
     acceptedTermsAt: timestamp("accepted_terms_at"),
     acceptedTermsVersion: text("accepted_terms_version"),
 
+    // VendorAI launch subscriptions use application-managed charges in Asaas
+    // so pricing/cadence can evolve from promo monthly cycles to regular annual.
     billingProvider: text("billing_provider").default("asaas"),
     asaasCustomerId: text("asaas_customer_id"),
     asaasSubscriptionId: text("asaas_subscription_id"),
@@ -56,7 +65,10 @@ export const subscriptionsTable = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (t) => [unique("subscriptions_tenant_id_unique").on(t.tenantId)]
+  (t) => [
+    unique("subscriptions_tenant_id_unique").on(t.tenantId),
+    index("subscriptions_source_deal_idx").on(t.sourceDealId),
+  ]
 );
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable, {
@@ -64,6 +76,7 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable, {
   promoPhase1Price: decimalField.optional(),
   promoPhase2Price: decimalField.optional(),
   regularPriceAtTransition: decimalField.optional(),
+  annualPriceAtTransition: decimalField.optional(),
   dataInicio: z.coerce.date(),
   proximaCobranca: z.coerce.date().optional(),
   trialEndsAt: z.coerce.date().optional(),
@@ -78,6 +91,7 @@ export const updateSubscriptionSchema = createSelectSchema(subscriptionsTable, {
   promoPhase1Price: decimalField.optional(),
   promoPhase2Price: decimalField.optional(),
   regularPriceAtTransition: decimalField.optional(),
+  annualPriceAtTransition: decimalField.optional(),
   dataInicio: z.coerce.date().optional(),
   proximaCobranca: z.coerce.date().optional(),
   trialEndsAt: z.coerce.date().optional(),

@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "composite": false,
+    "noEmit": true,
+    "types": ["node", "pino-http"]
+  },
+  "include": [],
+  "files": [
+    "src/jobs/behaviorIntentSync.ts",
+    "src/jobs/commercialLifecycleSync.ts",
+    "src/jobs/trialJourney.ts",
+    "src/jobs/vendorAiSubscriptionBilling.ts",
+    "src/jobs/vendorAiSubscriptionPaymentSync.ts",
+    "src/lib/commercialOffer.ts",
+    "src/lib/deal-closure-commission.ts",
+    "src/lib/trial-email.ts",
+    "src/lib/trial-tenant-resolution.ts",
+    "src/lib/vendorai-subscription-lifecycle.ts",
+    "src/lib/vendorai-subscription-rules.ts",
+    "src/routes/launch_command_center.ts",
+    "src/routes/vendorai_subscription_webhook.ts",
+    "src/services/launchCommandCenter.ts",
+    "src/services/launchRevenueScout.ts"
+  ],
+  "references": []
+}

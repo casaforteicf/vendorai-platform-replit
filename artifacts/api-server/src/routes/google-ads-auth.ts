@@ -12,6 +12,7 @@ import {
   disconnectGoogleAds,
   getGoogleAdsConnectionByTenantId,
 } from "../services/google-ads-oauth.js";
+import { configureGoogleDataManagerActions } from "../services/google-data-manager-config.js";
 
 const router: IRouter = Router();
 
@@ -19,9 +20,6 @@ function getAppUrl(): string {
   const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
   if (configuredFrontend) return configuredFrontend.replace(/\/$/, "");
 
-  // Mesmo raciocínio do callback do WhatsApp: o callback OAuth roda na API
-  // (Railway), mas a tela de configurações é o CRM em app.appvendorai.com.
-  // Nunca usar REPLIT_DOMAINS ou o host do request como destino em produção.
   if (process.env["NODE_ENV"] === "production") {
     return "https://app.appvendorai.com";
   }
@@ -42,10 +40,10 @@ router.get("/auth/google-ads", authenticate, async (req, res) => {
     const returnTo = requestedReturnTo === "/onboarding/integracoes" ? requestedReturnTo : "/configuracoes";
     const state = createOAuthState(tenantId, userId, "google-ads", returnTo);
     const url = buildGoogleAdsOAuthUrl(tenantId, state);
-    logger.info({ tenantId, userId }, "Retornando URL OAuth Google Ads");
+    logger.info({ tenantId, userId }, "Retornando URL OAuth Google Ads/Data Manager");
     return res.json({ url });
   } catch (err) {
-    logger.error({ err }, "Erro ao iniciar OAuth Google Ads");
+    logger.error({ err }, "Erro ao iniciar OAuth Google Ads/Data Manager");
     return res.status(500).json({ error: "Internal error" });
   }
 });
@@ -71,21 +69,16 @@ router.get("/auth/google-ads/callback", async (req, res) => {
   }
 
   try {
-    logger.info({ tenantId }, "Processando callback Google Ads");
+    logger.info({ tenantId }, "Processando callback Google Ads/Data Manager");
     let tokens;
     try {
       tokens = await exchangeCodeForTokens(code);
     } catch (err) {
-      logger.error({ err, tenantId }, "Erro ao trocar codigo OAuth do Google Ads");
+      logger.error({ err, tenantId }, "Erro ao trocar código OAuth do Google Ads/Data Manager");
       return res.redirect(`${appUrl}${returnTo}?googleAdsError=token_exchange`);
     }
 
     if (!tokens.refresh_token) {
-      // Acontece quando o usuário já tinha autorizado o app e o Google não
-      // reemite um refresh_token sem prompt=consent. Como sempre mandamos
-      // prompt=consent, isso não deveria ocorrer — mas falhar explicitamente
-      // é melhor que salvar uma conexão que não sobrevive à expiração do
-      // access token.
       logger.error({ tenantId }, "Google não retornou refresh_token no callback");
       return res.redirect(`${appUrl}${returnTo}?googleAdsError=no_refresh_token`);
     }
@@ -106,11 +99,9 @@ router.get("/auth/google-ads/callback", async (req, res) => {
     }
 
     if (accounts.length === 1 && accounts[0]) {
-      // Só uma conta acessível — seleciona automaticamente, mesma lógica de
-      // conveniência usada no WhatsApp (que auto-seleciona phones[0]).
       try {
         await selectGoogleAdsAccount(tenantId, accounts[0].customerId);
-        logger.info({ tenantId, customerId: accounts[0].customerId }, "Google Ads conectado com sucesso");
+        logger.info({ tenantId, customerId: accounts[0].customerId }, "Google Ads/Data Manager conectado com sucesso");
         return res.redirect(`${appUrl}${returnTo}?googleAdsConnected=1`);
       } catch (err) {
         logger.error({ err, tenantId }, "Erro ao selecionar automaticamente a única conta Google Ads");
@@ -118,12 +109,10 @@ router.get("/auth/google-ads/callback", async (req, res) => {
       }
     }
 
-    // Mais de uma conta acessível: fica pendente até o usuário escolher em
-    // /tenants/:tenantId/google-ads-connection/select-account.
     logger.info({ tenantId, count: accounts.length }, "Múltiplas contas Google Ads encontradas, aguardando seleção");
     return res.redirect(`${appUrl}${returnTo}?googleAdsConnected=pending`);
   } catch (err) {
-    logger.error({ err, tenantId }, "Erro no callback Google Ads");
+    logger.error({ err, tenantId }, "Erro no callback Google Ads/Data Manager");
     return res.redirect(`${appUrl}${returnTo}?googleAdsError=exchange_failed`);
   }
 });
@@ -155,6 +144,12 @@ router.get("/tenants/:tenantId/google-ads-connection", authenticate, async (req,
       timeZone: conn.timeZone,
       tokenExpiresAt: conn.tokenExpiresAt?.toISOString() ?? null,
       connectedAt: conn.connectedAt?.toISOString() ?? null,
+      dataManager: {
+        leadConversionActionId: conn.dataManagerLeadConversionActionId,
+        trialConversionActionId: conn.dataManagerTrialConversionActionId,
+        saleConversionActionId: conn.dataManagerSaleConversionActionId,
+        configuredAt: conn.dataManagerConfiguredAt?.toISOString() ?? null,
+      },
     });
   } catch (err) {
     logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao buscar status da conexão Google Ads");
@@ -162,9 +157,42 @@ router.get("/tenants/:tenantId/google-ads-connection", authenticate, async (req,
   }
 });
 
-// Lista as contas Google Ads acessíveis pelo refresh token já salvo — usada
-// pelo frontend quando a conexão fica "pending_account_selection" (mais de
-// uma conta disponível). O WhatsApp não precisa de um endpoint equivalente.
+router.put("/tenants/:tenantId/google-ads-connection/data-manager", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    if (!assertTenantAccess(req, tenantId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const body = req.body as Record<string, unknown>;
+    const normalizeInput = (key: string): string | null | undefined => {
+      const value = body[key];
+      if (value === null || value === undefined) return value as null | undefined;
+      if (typeof value !== "string") throw new Error(`${key} deve ser string`);
+      return value;
+    };
+
+    const configured = await configureGoogleDataManagerActions(tenantId, {
+      leadConversionActionId: normalizeInput("leadConversionActionId"),
+      trialConversionActionId: normalizeInput("trialConversionActionId"),
+      saleConversionActionId: normalizeInput("saleConversionActionId"),
+    });
+
+    return res.json({
+      success: true,
+      dataManager: {
+        ...configured,
+        configuredAt: configured?.configuredAt?.toISOString() ?? null,
+      },
+      reconnectRequiredForExistingTokens: true,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid configuration";
+    logger.warn({ err, tenantId: String(req.params.tenantId) }, "Erro ao configurar destinos Google Data Manager");
+    return res.status(400).json({ error: message });
+  }
+});
+
 router.get("/tenants/:tenantId/google-ads-connection/accounts", authenticate, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);
@@ -231,7 +259,7 @@ router.post("/tenants/:tenantId/google-ads-connection/refresh", authenticate, as
       updatedAt: updated?.updatedAt?.toISOString() ?? null,
     });
   } catch (err) {
-    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao renovar token Google Ads");
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao renovar token Google Ads/Data Manager");
     return res.status(500).json({ error: "Internal error" });
   }
 });

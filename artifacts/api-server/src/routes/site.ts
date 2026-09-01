@@ -1,26 +1,25 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
-import { siteVerticaisTable, siteContatosTable, leadsTable, dealsTable } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { siteVerticaisTable, siteContatosTable, leadsTable, dealsTable, webBehaviorEventsTable } from "@workspace/db";
+import { eq, and, asc, isNull } from "drizzle-orm";
 import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
 import { storePhone, findLeadByDedup } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
+import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
 
-// Tenant real do Vendor.ai institucional (slug "vendorai") — não é o literal
-// "vendorai-institucional" (esse id não existe na tabela tenants; usá-lo
-// quebrava a FK e fazia todo lead do site cair silenciosamente).
 const INSTITUTIONAL_TENANT_ID = "1d4ea673-58d0-413a-a554-c9aca72a3121";
+const AD_DATA_CONSENT_TEXT_VERSION = "ad-data-measurement-v1-2026-09-01";
 
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-// ─── GET /site/verticais ────────────────────────────────────────────────────
 router.get("/site/verticais", async (_req, res) => {
   const rows = await db
     .select()
@@ -31,7 +30,6 @@ router.get("/site/verticais", async (_req, res) => {
   return res.json(rows);
 });
 
-// ─── GET /site/verticais/:slug ──────────────────────────────────────────────
 router.get("/site/verticais/:slug", async (req, res) => {
   const [row] = await db
     .select()
@@ -51,8 +49,155 @@ router.get("/site/verticais/:slug", async (req, res) => {
   return res.json(row);
 });
 
-// ─── POST /site/contato ─────────────────────────────────────────────────────
-// origem: aceita qualquer slug legível (ex: "formulario_contato", "lp_auto-pecas", "cta_final")
+const optionalTrackingString = z.string().trim().max(500).optional();
+const optionalBehaviorSession = z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/).optional();
+
+type SiteAttribution = {
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  utmTerm?: string;
+  gclid?: string;
+  fbclid?: string;
+  pageUrl?: string;
+  referrer?: string;
+  landingPageSlug?: string;
+  adDataConsent?: boolean;
+};
+
+function recoverSiteAttribution(
+  body: SiteAttribution,
+  rawReferer?: string,
+): SiteAttribution {
+  let recovered: SiteAttribution = {};
+  if (rawReferer) {
+    try {
+      const url = new URL(rawReferer);
+      const lpMatch = url.pathname.match(/^\/lp\/([^/?#]+)/);
+      recovered = {
+        utmSource: url.searchParams.get("utm_source") ?? undefined,
+        utmMedium: url.searchParams.get("utm_medium") ?? undefined,
+        utmCampaign: url.searchParams.get("utm_campaign") ?? undefined,
+        utmContent: url.searchParams.get("utm_content") ?? undefined,
+        utmTerm: url.searchParams.get("utm_term") ?? undefined,
+        gclid: url.searchParams.get("gclid") ?? undefined,
+        fbclid: url.searchParams.get("fbclid") ?? undefined,
+        pageUrl: rawReferer,
+        landingPageSlug: lpMatch?.[1],
+      };
+    } catch {
+      recovered = { pageUrl: rawReferer.slice(0, 2000) };
+    }
+  }
+
+  return {
+    utmSource: body.utmSource || recovered.utmSource,
+    utmMedium: body.utmMedium || recovered.utmMedium,
+    utmCampaign: body.utmCampaign || recovered.utmCampaign,
+    utmContent: body.utmContent || recovered.utmContent,
+    utmTerm: body.utmTerm || recovered.utmTerm,
+    gclid: body.gclid || recovered.gclid,
+    fbclid: body.fbclid || recovered.fbclid,
+    pageUrl: body.pageUrl || recovered.pageUrl,
+    referrer: body.referrer || rawReferer,
+    landingPageSlug: body.landingPageSlug || recovered.landingPageSlug,
+    adDataConsent: typeof body.adDataConsent === "boolean" ? body.adDataConsent : undefined,
+  };
+}
+
+function consentRecord(granted: boolean) {
+  return {
+    granted,
+    capturedAt: new Date().toISOString(),
+    textVersion: AD_DATA_CONSENT_TEXT_VERSION,
+  };
+}
+
+function attributionRecord(data: SiteAttribution) {
+  const capturedAt = new Date().toISOString();
+  return {
+    utmSource: data.utmSource || null,
+    utmMedium: data.utmMedium || null,
+    utmCampaign: data.utmCampaign || null,
+    utmContent: data.utmContent || null,
+    utmTerm: data.utmTerm || null,
+    gclid: data.gclid || null,
+    fbclid: data.fbclid || null,
+    pageUrl: data.pageUrl || null,
+    referrer: data.referrer || null,
+    landingPageSlug: data.landingPageSlug || null,
+    capturedAt,
+    adDataConsent: consentRecord(data.adDataConsent === true),
+  };
+}
+
+function updateConsentOnly(
+  discoveryData: Record<string, unknown> | null | undefined,
+  granted: boolean,
+): Record<string, unknown> {
+  const current = discoveryData ?? {};
+  const rawAttribution = current["attribution"];
+  const currentAttribution = rawAttribution && typeof rawAttribution === "object"
+    ? rawAttribution as Record<string, unknown>
+    : {};
+  return {
+    ...current,
+    attribution: {
+      ...currentAttribution,
+      adDataConsent: consentRecord(granted),
+    },
+  };
+}
+
+const behaviorEventSchema = z.object({
+  anonymousSessionId: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
+  eventType: z.enum(["page_view", "cta_click", "form_start", "form_submit", "engagement"]),
+  pageUrl: z.string().trim().max(2000).optional(),
+  path: z.string().trim().max(1000).optional(),
+  referrer: z.string().trim().max(2000).optional(),
+  landingPageSlug: z.string().trim().max(180).optional(),
+  utmCampaign: z.string().trim().max(500).optional(),
+  engagedMs: z.number().int().min(0).max(86_400_000).optional(),
+  scrollDepth: z.number().int().min(0).max(100).optional(),
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+});
+
+router.post("/site/behavior-event", async (req, res) => {
+  const parsed = behaviorEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Evento comportamental inválido" });
+  }
+
+  const d = parsed.data;
+  try {
+    const adCampaignId = await resolveAdCampaignFromUtm(
+      INSTITUTIONAL_TENANT_ID,
+      d.utmCampaign,
+      logger,
+    );
+
+    await db.insert(webBehaviorEventsTable).values({
+      anonymousSessionId: d.anonymousSessionId,
+      tenantId: INSTITUTIONAL_TENANT_ID,
+      adCampaignId,
+      eventType: d.eventType,
+      pageUrl: d.pageUrl ?? null,
+      path: d.path ?? null,
+      referrer: d.referrer ?? null,
+      landingPageSlug: d.landingPageSlug ?? null,
+      engagedMs: d.engagedMs ?? null,
+      scrollDepth: d.scrollDepth ?? null,
+      metadata: d.metadata ?? {},
+    });
+
+    return res.status(202).json({ accepted: true });
+  } catch (err) {
+    logger.warn({ err, eventType: d.eventType }, "site/behavior-event: ingest failed");
+    return res.status(202).json({ accepted: false });
+  }
+});
+
 const contatoSchema = z.object({
   nome: z.string().min(2, "Nome obrigatório"),
   email: z.string().email("E-mail inválido"),
@@ -64,6 +209,18 @@ const contatoSchema = z.object({
     .regex(/^[a-z0-9_-]+$/, "Origem inválida")
     .max(64)
     .optional(),
+  utmSource: optionalTrackingString,
+  utmMedium: optionalTrackingString,
+  utmCampaign: optionalTrackingString,
+  utmContent: optionalTrackingString,
+  utmTerm: optionalTrackingString,
+  gclid: optionalTrackingString,
+  fbclid: optionalTrackingString,
+  pageUrl: z.string().trim().max(2000).optional(),
+  referrer: z.string().trim().max(2000).optional(),
+  landingPageSlug: optionalTrackingString,
+  adDataConsent: z.boolean().optional(),
+  behaviorSessionId: optionalBehaviorSession,
 });
 
 router.post("/site/contato", async (req, res) => {
@@ -75,11 +232,20 @@ router.post("/site/contato", async (req, res) => {
     });
   }
 
-  const { nome, email, mensagem, telefone, empresa, origem } = parsed.data;
+  const {
+    nome,
+    email,
+    mensagem,
+    telefone,
+    empresa,
+    origem,
+    behaviorSessionId,
+    ...trackingBody
+  } = parsed.data;
+  const attribution = recoverSiteAttribution(trackingBody, req.get("referer"));
   const telefoneSanitizado = telefone ? storePhone(telefone) : null;
   const sourceLabel = origem ? `site_${origem}` : "site_institucional";
 
-  // 1 — Gravar em site_contatos (log bruto, sempre)
   await db.insert(siteContatosTable).values({
     nome,
     email,
@@ -90,10 +256,14 @@ router.post("/site/contato", async (req, res) => {
     status: "novo",
   });
 
-  // 2 — Gravar lead + deal no pipeline institucional e disparar SDR (background, não bloqueia resposta)
   void (async () => {
     try {
-      // 2a — Dedup: se já existe, não duplicar
+      const adCampaignId = await resolveAdCampaignFromUtm(
+        INSTITUTIONAL_TENANT_ID,
+        attribution.utmCampaign,
+        logger,
+      );
+
       const dedup = await findLeadByDedup(
         INSTITUTIONAL_TENANT_ID,
         telefoneSanitizado,
@@ -102,15 +272,46 @@ router.post("/site/contato", async (req, res) => {
       );
 
       let leadId: string;
+      let attributedNow = false;
 
       if (dedup.found && dedup.lead) {
         leadId = dedup.lead.id;
+
+        if (typeof attribution.adDataConsent === "boolean") {
+          await db
+            .update(leadsTable)
+            .set({
+              discoveryData: updateConsentOnly(
+                dedup.lead.discoveryData ?? {},
+                attribution.adDataConsent,
+              ),
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(leadsTable.id, leadId),
+              eq(leadsTable.tenantId, INSTITUTIONAL_TENANT_ID),
+            ));
+        }
+
+        if (adCampaignId) {
+          const updated = await db
+            .update(leadsTable)
+            .set({
+              adCampaignId,
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(leadsTable.id, leadId),
+              eq(leadsTable.tenantId, INSTITUTIONAL_TENANT_ID),
+              isNull(leadsTable.adCampaignId),
+            ))
+            .returning({ id: leadsTable.id });
+          attributedNow = updated.length > 0;
+        }
         logger.info({ leadId, nome }, "site/contato: lead já existe — usando existente");
       } else {
-        // 2b — Resolver vendedor responsável via round-robin
         const assignedTo = await pickNextVendedor(INSTITUTIONAL_TENANT_ID).catch(() => null);
 
-        // Contexto da mensagem e origem no campo notasNutricao para o SDR
         const notasNutricao = [
           origem ? `Origem: ${origem}` : null,
           `Mensagem do site: "${mensagem}"`,
@@ -130,12 +331,18 @@ router.post("/site/contato", async (req, res) => {
             source: sourceLabel,
             status: "novo",
             assignedTo: assignedTo ?? null,
+            adCampaignId,
+            discoveryData: {
+              attribution: attributionRecord(attribution),
+              siteOrigin: origem ?? null,
+              behaviorSessionId: behaviorSessionId ?? null,
+            },
           })
           .returning({ id: leadsTable.id });
 
         leadId = createdLead.id;
+        attributedNow = Boolean(adCampaignId);
 
-        // 2c — Criar deal no pipeline em "aquecimento"
         const [createdDeal] = await db
           .insert(dealsTable)
           .values({
@@ -152,10 +359,7 @@ router.post("/site/contato", async (req, res) => {
           "site/contato: lead e deal criados no pipeline institucional",
         );
 
-        // 2d — Disparar Recepção (primeira resposta via WhatsApp — ignora se não configurado)
         if (telefoneSanitizado) {
-          // dispatchAgentBackground é fire-and-forget (void) — já loga erro
-          // internamente via o `log` passado, não retorna Promise pra encadear.
           dispatchAgentBackground({
             tenantId: INSTITUTIONAL_TENANT_ID,
             leadId,
@@ -173,12 +377,45 @@ router.post("/site/contato", async (req, res) => {
           logger.info({ leadId }, "site/contato: sem telefone — recepção via WhatsApp não disparada");
         }
       }
+
+      if (behaviorSessionId) {
+        await db
+          .update(webBehaviorEventsTable)
+          .set({ leadId })
+          .where(and(
+            eq(webBehaviorEventsTable.tenantId, INSTITUTIONAL_TENANT_ID),
+            eq(webBehaviorEventsTable.anonymousSessionId, behaviorSessionId),
+            isNull(webBehaviorEventsTable.leadId),
+          ));
+      }
+
+      if (adCampaignId && attributedNow) {
+        await recordAdCampaignEvent({
+          tenantId: INSTITUTIONAL_TENANT_ID,
+          campaignId: adCampaignId,
+          eventType: "lead_attributed",
+          severity: "success",
+          message: "Pedido de demonstração atribuído à campanha pelo site institucional.",
+          dedupeKey: `lead:${leadId}`,
+          metadata: {
+            leadId,
+            channel: "website_demo_request",
+            attribution: "utm_campaign",
+            siteOrigin: origem ?? null,
+            landingPageSlug: attribution.landingPageSlug ?? null,
+            utmSource: attribution.utmSource ?? null,
+            utmMedium: attribution.utmMedium ?? null,
+            adDataConsent: attribution.adDataConsent === true,
+            adDataConsentTextVersion: AD_DATA_CONSENT_TEXT_VERSION,
+            behaviorSessionId: behaviorSessionId ?? null,
+          },
+        });
+      }
     } catch (err) {
       logger.warn({ err }, "site/contato: falha ao criar lead/deal institucional (não bloqueia resposta)");
     }
   })();
 
-  // 3 — Notificar por e-mail
   if (resend) {
     resend.emails
       .send({

@@ -1,14 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  useGetBusinessProfileByTenant,
-  getGetBusinessProfileByTenantQueryKey,
-  useGetSiteConfigByTenant,
-  getGetSiteConfigByTenantQueryKey,
-  useGetTenant,
-  getGetTenantQueryKey,
-  useRequestUploadUrl,
-} from "@workspace/api-client-react";
+import { useGetBusinessProfileByTenant, getGetBusinessProfileByTenantQueryKey, useRequestUploadUrl } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -498,8 +490,6 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   // produto de uma vez (fluxo em massa).
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [marketingContext, setMarketingContext] = useState<MarketingContextValue>({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
-  const profileDefaultsApplied = useRef(false);
-  const brandColorApplied = useRef(false);
 
   const requestUploadUrl = useRequestUploadUrl();
   const { toast } = useToast();
@@ -518,58 +508,13 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   const { data: bp } = useGetBusinessProfileByTenant(tenantId, {
     query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId },
   });
-  const { data: savedSiteConfig } = useGetSiteConfigByTenant(tenantId, {
-    query: { queryKey: getGetSiteConfigByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false },
-  });
-  const { data: tenant } = useGetTenant(tenantId, {
-    query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId },
-  });
 
-  const nomeNegocio = bp?.nomeFantasia ?? bp?.razaoSocial ?? tenant?.name ?? "";
-  const setor = bp?.vertical ?? tenant?.vertical ?? "";
-  const descNegocio = savedSiteConfig?.sobreEmpresa || bp?.diferenciais || bp?.publicoAlvo || "";
-  const telefone = savedSiteConfig?.whatsappContato || bp?.telefone || "";
-  const instagram = bp?.instagramUrl ?? "";
-  const logoUrl = bp?.logoUrl ?? tenant?.logoUrl ?? "";
-  const produtosPerfil = bp?.produtos ?? [];
-  const servicosPerfil = produtosPerfil
-    .map((produto) => [produto.nome, produto.descricao].filter(Boolean).join(": "))
-    .filter(Boolean)
-    .join("\n");
+  const nomeNegocio = bp?.nomeFantasia ?? bp?.razaoSocial ?? "";
+  const setor = bp?.vertical ?? "";
+  const descNegocio = bp?.diferenciais || bp?.publicoAlvo || "";
+  const telefone = bp?.telefone ?? "";
+  const logoUrl = bp?.logoUrl ?? "";
 
-  useEffect(() => {
-    if (brandColorApplied.current) return;
-    const savedColor = savedSiteConfig?.corPrimaria || (tenant as { corPrimaria?: string | null } | undefined)?.corPrimaria;
-    if (savedColor) {
-      setColor(savedColor);
-      brandColorApplied.current = true;
-    }
-  }, [savedSiteConfig?.corPrimaria, tenant]);
-
-  useEffect(() => {
-    if (!bp || profileDefaultsApplied.current) return;
-    const savedProducts = (bp.produtos ?? []).filter((produto) => produto.nome.trim());
-    if (savedProducts.length > 0) {
-      setProducts(savedProducts.map((produto) => ({
-        name: produto.nome,
-        price: produto.preco == null ? "" : String(produto.preco),
-      })));
-    }
-
-    const productNames = savedProducts.map((produto) => produto.nome);
-    const profileOffers = productNames.map((_, index) => "profile:" + index);
-    setMarketingContext((current) => ({
-      ...current,
-      nicheId: current.nicheId || (setor ? "profile:" + setor : ""),
-      nicheName: current.nicheName || setor,
-      audienceSegment: current.audienceSegment || (bp.publicoAlvo ? "Outro público" : ""),
-      audienceNiche: current.audienceNiche || bp.publicoAlvo || "",
-      productIds: current.productIds.length > 0 ? current.productIds : profileOffers,
-      productNames: current.productNames.length > 0 ? current.productNames : productNames,
-    }));
-    setSelectedProductIds((current) => current.length > 0 ? current : profileOffers);
-    profileDefaultsApplied.current = true;
-  }, [bp, setor]);
   async function uploadOneImage(file: File): Promise<void> {
   try {
     const result = await requestUploadUrl.mutateAsync({
@@ -696,10 +641,10 @@ async function handleTopicImagesUpload(topicId: string, files: File[]) {
       color,
       products: products.filter((p) => p.name.trim()),
       whatsapp: telefone || (fd.get("whatsapp") as string) || "",
-      instagram: instagram || (fd.get("instagram") as string) || "",
+      instagram: (fd.get("instagram") as string) || "",
       images: images.filter(Boolean),
       videos: videos.filter(Boolean),
-      servicos: servicosPerfil || (fd.get("servicos") as string) || "",
+      servicos: (fd.get("servicos") as string) || "",
       nicheId: marketingContext.nicheId,
       nicheName: marketingContext.nicheName,
       productIds: marketingContext.productIds,
@@ -765,9 +710,6 @@ async function handleTopicImagesUpload(topicId: string, files: File[]) {
     setor && { label: "Setor", value: setor },
     descNegocio && { label: "Descrição", value: descNegocio.length > 80 ? descNegocio.slice(0, 80) + "…" : descNegocio },
     telefone && { label: "WhatsApp", value: telefone },
-    instagram && { label: "Instagram", value: instagram },
-    produtosPerfil.length > 0 && { label: "Produtos", value: produtosPerfil.map((produto) => produto.nome).join(", ") },
-    savedSiteConfig?.corPrimaria && { label: "Cor da marca", value: savedSiteConfig.corPrimaria },
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (
@@ -888,8 +830,7 @@ async function handleTopicImagesUpload(topicId: string, files: File[]) {
           </div>
         )}
 
-        {!instagram && (
-          <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="sg-instagram" className="text-sm font-medium">
             Instagram{" "}
             <span className="font-normal text-muted-foreground">(opcional)</span>
@@ -906,10 +847,7 @@ async function handleTopicImagesUpload(topicId: string, files: File[]) {
           <p className="text-[10px] text-muted-foreground">Aparece no rodapé do site com link direto para o perfil</p>
         </div>
 
-        )}
-
-        {!servicosPerfil && (
-          <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="sg-servicos" className="text-sm font-medium">
             Principais serviços / produtos{" "}
             <span className="font-normal text-muted-foreground">(opcional)</span>
@@ -922,7 +860,6 @@ async function handleTopicImagesUpload(topicId: string, files: File[]) {
           />
           <p className="text-[10px] text-muted-foreground">Liste o que aparece no site — o mais completo, melhor o resultado</p>
         </div>
-        )}
       </div>
 
       {/* ── Fotos da empresa/serviços ── */}

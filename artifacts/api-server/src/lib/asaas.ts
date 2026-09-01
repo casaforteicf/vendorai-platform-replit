@@ -131,6 +131,7 @@ export interface AsaasChargeOutput {
   invoiceUrl: string;
   bankSlipUrl: string | null;
   pixQrCodeId: string | null;
+  externalReference?: string | null;
 }
 
 export async function createCharge(
@@ -138,6 +139,42 @@ export async function createCharge(
   apiKey?: string | null,
 ): Promise<AsaasChargeOutput> {
   return asaasRequest<AsaasChargeOutput>("POST", "/payments", data, apiKey);
+}
+
+/**
+ * Removes an unpaid charge from the active Asaas flow. This is not a refund:
+ * callers must only use it for pending/overdue local cycles. Asaas documents
+ * DELETE /payments/{id} for this purpose and returns { deleted, id }.
+ */
+export async function deleteCharge(
+  chargeId: string,
+  apiKey?: string | null,
+): Promise<{ deleted: boolean; id: string }> {
+  return asaasRequest<{ deleted: boolean; id: string }>(
+    "DELETE",
+    `/payments/${encodeURIComponent(chargeId)}`,
+    undefined,
+    apiKey,
+  );
+}
+
+/**
+ * Recovery path for application-managed idempotency. Asaas recommends that
+ * integrations reconcile an inconclusive request before retrying. The launch
+ * subscription worker uses its stable externalReference to recover a charge
+ * that may have been created remotely before the local process persisted it.
+ */
+export async function findChargeByExternalReference(
+  externalReference: string,
+  apiKey?: string | null,
+): Promise<AsaasChargeOutput | null> {
+  const result = await asaasRequest<{ data?: AsaasChargeOutput[] }>(
+    "GET",
+    `/payments?externalReference=${encodeURIComponent(externalReference)}&limit=1`,
+    undefined,
+    apiKey,
+  );
+  return result.data?.[0] ?? null;
 }
 
 export interface AsaasCustomerInput {

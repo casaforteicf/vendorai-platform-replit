@@ -7,7 +7,10 @@ import rateLimit from "express-rate-limit";
 import { and, desc, eq } from "drizzle-orm";
 import { db, tenantsTable, generatedSitesTable, tenantDomainsTable } from "@workspace/db";
 import router from "./routes";
+import vendorAiSubscriptionWebhookRouter from "./routes/vendorai_subscription_webhook.js";
+import generatedSiteTouchpointRouter from "./routes/generated_site_touchpoints.js";
 import { logger } from "./lib/logger";
+import { injectGeneratedSiteTouchpointTracking } from "./lib/generated-site-attribution.js";
 import { enforceTenantPath } from "./middlewares/tenant-path-guard.js";
 import { getPendingVerificationMetaToken } from "./services/search-console-oauth.js";
 
@@ -144,7 +147,6 @@ function hostnameFromUrlHeader(value: string | undefined): string | null {
     return null;
   }
 }
-
 function isCrmHostname(hostname: string | null): boolean {
   if (!hostname) return false;
   return MAIN_HOSTNAMES.has(hostname) || hostname.endsWith(`.app.${ROOT_DOMAIN}`);
@@ -374,8 +376,12 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
           `<meta name="google-site-verification" content="${verificationToken}"></head>`,
         )
       : site.html;
+    const trackedHtml = injectGeneratedSiteTouchpointTracking(
+      html,
+      identifier || displayAddress,
+    );
 
-    return res.send(html);
+    return res.send(trackedHtml);
   } catch (err) {
     logger.error({ err, hostname }, "subdomain-middleware: error resolving tenant");
     return next(err);
@@ -386,6 +392,16 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 // must agree before the request reaches any API route.
 app.use(enforceTenantPath);
 
+// Public generated-site telemetry is resolved by the tenant-domain middleware
+// above and intentionally mounted before the authenticated application router.
+app.use("/api", generatedSiteTouchpointRouter);
+app.use("/api/v1", generatedSiteTouchpointRouter);
+
+// New VendorAI commercial subscriptions have their own Asaas lifecycle and
+// delinquency policy. Mount this before the legacy router so subscription:*
+// events are consumed here, while every other webhook falls through unchanged.
+app.use("/api", vendorAiSubscriptionWebhookRouter);
+app.use("/api/v1", vendorAiSubscriptionWebhookRouter);
 app.use("/api", router);
 app.use("/api/v1", router);
 

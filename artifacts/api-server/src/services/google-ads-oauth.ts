@@ -10,8 +10,6 @@ function getRedirectUri(): string {
   const configured = process.env["GOOGLE_ADS_REDIRECT_URI"]?.trim();
   if (configured) return configured;
 
-  // Mesmo raciocínio do WhatsApp: em produção a URL pública canônica
-  // precisa bater exatamente com a cadastrada no Google Cloud Console.
   if (process.env["NODE_ENV"] === "production") {
     return "https://appvendorai.com/api/auth/google-ads/callback";
   }
@@ -23,25 +21,21 @@ function getRedirectUri(): string {
 
 const GOOGLE_OAUTH_BASE = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_BASE = "https://oauth2.googleapis.com/token";
-// v17 sunset em fev/2026 — trocado pra v25 (atual em ago/2026, sunset
-// previsto ago/2027). A API do Google Ads costuma dar sunset ~1 ano
-// depois do lançamento; revisar esse número periodicamente em
-// developers.google.com/google-ads/api/docs/sunset-dates.
 const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v25";
 const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
+const GOOGLE_DATA_MANAGER_SCOPE = "https://www.googleapis.com/auth/datamanager";
+const GOOGLE_COMBINED_SCOPES = `${GOOGLE_ADS_SCOPE} ${GOOGLE_DATA_MANAGER_SCOPE}`;
 
 export function buildGoogleAdsOAuthUrl(_tenantId: string, state: string): string {
   const redirectUri = getRedirectUri();
   const params = new URLSearchParams({
     client_id: GOOGLE_ADS_CLIENT_ID ?? "",
     redirect_uri: redirectUri,
-    scope: GOOGLE_ADS_SCOPE,
+    scope: GOOGLE_COMBINED_SCOPES,
     state,
     response_type: "code",
     access_type: "offline",
-    // Garante que o Google devolva um refresh_token mesmo se o usuário já
-    // tiver autorizado o app antes (sem isso, reconexões não trazem um
-    // refresh token novo).
+    include_granted_scopes: "true",
     prompt: "consent",
   });
   return `${GOOGLE_OAUTH_BASE}?${params.toString()}`;
@@ -71,7 +65,7 @@ export async function exchangeCodeForTokens(code: string): Promise<GoogleTokenRe
   });
   if (!res.ok) {
     const text = await res.text();
-    logger.error({ status: res.status, body: text }, "Falha ao trocar code por token Google Ads");
+    logger.error({ status: res.status, body: text }, "Falha ao trocar code por token Google Ads/Data Manager");
     throw new Error(`Token exchange failed: ${res.status}`);
   }
   return res.json() as Promise<GoogleTokenResponse>;
@@ -92,7 +86,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<GoogleTo
   });
   if (!res.ok) {
     const text = await res.text();
-    logger.error({ status: res.status, body: text }, "Falha ao renovar access token Google Ads");
+    logger.error({ status: res.status, body: text }, "Falha ao renovar access token Google Ads/Data Manager");
     throw new Error(`Token refresh failed: ${res.status}`);
   }
   return res.json() as Promise<GoogleTokenResponse>;
@@ -102,10 +96,6 @@ export interface AccessibleCustomer {
   customerId: string;
 }
 
-// Lista as contas Google Ads que o refresh token consegue acessar
-// diretamente (contas próprias ou onde o usuário tem acesso direto —
-// não percorre a hierarquia de uma MCC, o que não é necessário no
-// modelo "cada lojista com a própria conta").
 export async function listAccessibleCustomers(accessToken: string): Promise<AccessibleCustomer[]> {
   const res = await fetch(`${GOOGLE_ADS_API_BASE}/customers:listAccessibleCustomers`, {
     headers: {
@@ -120,7 +110,6 @@ export async function listAccessibleCustomers(accessToken: string): Promise<Acce
   }
   const data = (await res.json()) as { resourceNames?: string[] };
   return (data.resourceNames ?? []).map((resourceName) => ({
-    // resourceName vem no formato "customers/1234567890"
     customerId: resourceName.split("/")[1] ?? resourceName,
   }));
 }
@@ -132,10 +121,6 @@ export interface GoogleAdsCustomerInfo {
   timeZone: string | null;
 }
 
-// Busca os dados básicos da conta via GAQL (Google Ads Query Language).
-// loginCustomerId só é necessário quando a conta é acessada através de
-// uma MCC (não é o caso padrão aqui, mas fica disponível se precisarmos
-// no futuro).
 export async function fetchCustomerInfo(
   customerId: string,
   accessToken: string,
@@ -176,9 +161,6 @@ export async function fetchCustomerInfo(
   };
 }
 
-// Cria/atualiza a conexão logo após o callback OAuth, antes da conta ser
-// escolhida. Se o tenant já tinha uma conexão anterior, ela é sobrescrita
-// (mesmo comportamento do WhatsApp: uma conexão ativa por tenant).
 export async function saveGoogleAdsPendingConnection(
   tenantId: string,
   refreshToken: string,
@@ -210,7 +192,7 @@ export async function saveGoogleAdsPendingConnection(
       })
       .where(eq(googleAdsConnectionsTable.id, existing.id));
 
-    logger.info({ tenantId }, "Google Ads connection (pending) atualizada");
+    logger.info({ tenantId }, "Google Ads/Data Manager connection (pending) atualizada");
     return existing.id;
   }
 
@@ -227,12 +209,10 @@ export async function saveGoogleAdsPendingConnection(
     })
     .returning();
 
-  logger.info({ tenantId, id: inserted.id }, "Google Ads connection (pending) criada");
+  logger.info({ tenantId, id: inserted.id }, "Google Ads/Data Manager connection (pending) criada");
   return inserted.id;
 }
 
-// Impede que a mesma conta Google Ads seja conectada a dois tenants
-// diferentes ao mesmo tempo — mesma checagem já usada para o WhatsApp.
 async function assertCustomerNotOwnedByAnotherTenant(customerId: string, tenantId: string): Promise<void> {
   const [owner] = await db
     .select({ tenantId: googleAdsConnectionsTable.tenantId })
@@ -251,8 +231,6 @@ async function assertCustomerNotOwnedByAnotherTenant(customerId: string, tenantI
   }
 }
 
-// Finaliza a conexão depois que o usuário escolhe qual conta Google Ads
-// usar (etapa que o WhatsApp não precisa, pois lá o número é auto-selecionado).
 export async function selectGoogleAdsAccount(tenantId: string, customerId: string): Promise<void> {
   const conn = await getGoogleAdsConnectionByTenantId(tenantId);
   if (!conn || !conn.accessToken) {
@@ -260,7 +238,6 @@ export async function selectGoogleAdsAccount(tenantId: string, customerId: strin
   }
 
   await assertCustomerNotOwnedByAnotherTenant(customerId, tenantId);
-
   const info = await fetchCustomerInfo(customerId, conn.accessToken);
 
   await db
@@ -275,7 +252,7 @@ export async function selectGoogleAdsAccount(tenantId: string, customerId: strin
     })
     .where(eq(googleAdsConnectionsTable.id, conn.id));
 
-  logger.info({ tenantId, customerId }, "Conta Google Ads selecionada e conexão ativada");
+  logger.info({ tenantId, customerId }, "Conta Google Ads/Data Manager selecionada e conexão ativada");
 }
 
 export async function getGoogleAdsConnectionByTenantId(tenantId: string) {
@@ -309,7 +286,7 @@ export async function refreshGoogleAdsToken(connectionId: string): Promise<void>
     })
     .where(eq(googleAdsConnectionsTable.id, connectionId));
 
-  logger.info({ connectionId }, "Google Ads access token renovado");
+  logger.info({ connectionId }, "Google Ads/Data Manager access token renovado");
 }
 
 export async function disconnectGoogleAds(tenantId: string): Promise<void> {
@@ -325,10 +302,8 @@ export async function disconnectGoogleAds(tenantId: string): Promise<void> {
       status: "disconnected",
       disconnectedAt: new Date(),
       updatedAt: new Date(),
-      // Não apagamos o refresh_token para manter histórico de auditoria,
-      // mas o status "disconnected" já é checado em toda leitura da conexão.
     })
     .where(eq(googleAdsConnectionsTable.id, conn.id));
 
-  logger.info({ tenantId, connectionId: conn.id }, "Google Ads desconectado");
+  logger.info({ tenantId, connectionId: conn.id }, "Google Ads/Data Manager desconectado");
 }
