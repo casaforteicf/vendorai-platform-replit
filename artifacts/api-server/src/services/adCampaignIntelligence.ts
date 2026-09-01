@@ -83,7 +83,13 @@ export async function getAdsOverview(tenantId: string) {
 
     const spend = Number(platform?.spend ?? 0);
     const leads = Number(leadStats?.total ?? 0);
+    const salesCount = Number(sales?.total ?? 0);
     const revenue = Number(sales?.revenue ?? 0);
+    const roas = spend > 0 ? Number((revenue / spend).toFixed(2)) : null;
+    const costPerLead = leads > 0 ? Number((spend / leads).toFixed(2)) : null;
+    const costPerSale = salesCount > 0 ? Number((spend / salesCount).toFixed(2)) : null;
+    const leadToSaleRate = leads > 0 ? Number(((salesCount / leads) * 100).toFixed(2)) : null;
+    const revenuePerLead = leads > 0 ? Number((revenue / leads).toFixed(2)) : null;
     const control = campaign.segmentacao?.campaignControl;
     const remaining = daysRemaining(control?.endDate);
     const alerts = [...(alertsByCampaign.get(campaign.id) ?? [])];
@@ -109,6 +115,20 @@ export async function getAdsOverview(tenantId: string) {
       recommendation = { title: "Corrigir o criativo", reason: campaign.segmentacao.platformReview.reason ?? "A plataforma reprovou o anúncio.", action: "correct_creative", requiresApproval: false };
     } else if (spend > 0 && leads === 0) {
       recommendation = { title: "Revisar público e oferta", reason: `Já foram gastos R$ ${spend.toFixed(2)} sem lead atribuído.`, action: "review_targeting", requiresApproval: false };
+    } else if (leads >= 5 && salesCount === 0) {
+      recommendation = {
+        title: "Otimizar para venda, não só para lead",
+        reason: `${leads} leads atribuídos, mas nenhuma venda fechada. Revise qualidade do público, promessa da LP, qualificação e follow-up antes de aumentar verba.`,
+        action: "review_lead_quality",
+        requiresApproval: false,
+      };
+    } else if (salesCount >= 2 && roas !== null && roas >= 3) {
+      recommendation = {
+        title: "Campanha vencedora — considerar escala",
+        reason: `${salesCount} venda(s), CAC de ${costPerSale !== null ? `R$ ${costPerSale.toFixed(2)}` : "n/d"} e ROAS ${roas.toFixed(2)}x. Aumente verba somente dentro dos limites aprovados.`,
+        action: "scale_winner",
+        requiresApproval: true,
+      };
     } else if (leads >= 3 && revenue > spend && remaining !== null && remaining <= 2) {
       recommendation = { title: "Considerar prolongar a campanha", reason: `${leads} leads e R$ ${revenue.toFixed(2)} em receita atribuída.`, action: "extend_campaign", requiresApproval: true };
     } else if (Number(platform?.clicks ?? 0) >= 30 && leads === 0) {
@@ -131,10 +151,13 @@ export async function getAdsOverview(tenantId: string) {
       clicks: Number(platform?.clicks ?? 0),
       platformConversions: Number(platform?.platformConversions ?? 0),
       leads,
-      sales: Number(sales?.total ?? 0),
+      sales: salesCount,
       revenue,
-      costPerLead: leads > 0 ? Number((spend / leads).toFixed(2)) : null,
-      roas: spend > 0 ? Number((revenue / spend).toFixed(2)) : null,
+      costPerLead,
+      costPerSale,
+      leadToSaleRate,
+      revenuePerLead,
+      roas,
       alerts,
       recommendation,
     });
