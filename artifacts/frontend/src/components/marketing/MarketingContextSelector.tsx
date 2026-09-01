@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { MARKETING_VERTICALS } from "@workspace/vendor-brain/marketing-verticals";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, PackageSearch, Plus, Target } from "lucide-react";
+import { Building2, CheckCircle2, PackageSearch, Plus, Target } from "lucide-react";
 
 type Product = { id: string; nome: string; ativo?: boolean };
 
@@ -13,6 +15,8 @@ export type MarketingContextValue = {
   nicheName: string;
   productIds: string[];
   productNames: string[];
+  businessVertical?: string;
+  businessVerticalSlug?: string;
   audienceSegment?: string;
   audienceNiche?: string;
   campaignGoal?: string;
@@ -33,8 +37,19 @@ function headers() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-function buildNicheName(segment: string, niche: string, goal: string) {
+/**
+ * `nicheName` é um campo legado consumido por geração de copy/imagem e Ads.
+ * Mantemos compatibilidade, mas agora o texto deixa explícita a separação entre:
+ * negócio que anuncia → público desejado → nicho do público → objetivo.
+ */
+function buildContextSummary(
+  businessVertical: string,
+  segment: string,
+  niche: string,
+  goal: string,
+) {
   return [
+    businessVertical && `Negócio: ${businessVertical}`,
     segment && `Público: ${segment}`,
     niche && `Nicho do público: ${niche}`,
     goal && `Objetivo: ${goal}`,
@@ -52,6 +67,7 @@ export function MarketingContextSelector({
   onChange: (value: MarketingContextValue) => void;
   required?: boolean;
 }) {
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [customOffer, setCustomOffer] = useState("");
@@ -59,6 +75,18 @@ export function MarketingContextSelector({
   const audienceSegment = value.audienceSegment ?? "";
   const audienceNiche = value.audienceNiche ?? "";
   const campaignGoal = value.campaignGoal ?? "";
+
+  const requestedVerticalSlug = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("vertical")?.trim() || ""
+    : "";
+  const requestedProfile = requestedVerticalSlug
+    ? MARKETING_VERTICALS.find(
+        (profile) => profile.slug === requestedVerticalSlug || profile.id === requestedVerticalSlug,
+      )
+    : undefined;
+  const tenantVertical = ((user as any)?.tenantVertical as string | undefined)?.trim() || "";
+  const businessVertical = requestedProfile?.name || value.businessVertical || tenantVertical;
+  const businessVerticalSlug = requestedProfile?.slug || value.businessVerticalSlug || "";
 
   useEffect(() => {
     if (!tenantId) return;
@@ -69,15 +97,48 @@ export function MarketingContextSelector({
       .finally(() => setLoading(false));
   }, [tenantId]);
 
+  useEffect(() => {
+    if (!businessVertical) return;
+    const summary = buildContextSummary(
+      businessVertical,
+      audienceSegment,
+      audienceNiche,
+      campaignGoal,
+    );
+    if (
+      value.businessVertical === businessVertical &&
+      value.businessVerticalSlug === businessVerticalSlug &&
+      value.nicheName === summary
+    ) return;
+
+    onChange({
+      ...value,
+      businessVertical,
+      businessVerticalSlug: businessVerticalSlug || undefined,
+      nicheName: summary,
+    });
+  }, [
+    businessVertical,
+    businessVerticalSlug,
+    audienceSegment,
+    audienceNiche,
+    campaignGoal,
+    value,
+    onChange,
+  ]);
+
   function emit(patch: Partial<MarketingContextValue>) {
     const next = { ...value, ...patch };
+    const nextBusinessVertical = next.businessVertical || businessVertical || "";
     const segment = next.audienceSegment ?? "";
     const niche = next.audienceNiche ?? "";
     const goal = next.campaignGoal ?? "";
     onChange({
       ...next,
+      businessVertical: nextBusinessVertical || undefined,
+      businessVerticalSlug: next.businessVerticalSlug || businessVerticalSlug || undefined,
       nicheId: segment && niche.trim() ? `${segment}:${niche.trim()}` : "",
-      nicheName: buildNicheName(segment, niche, goal),
+      nicheName: buildContextSummary(nextBusinessVertical, segment, niche, goal),
     });
   }
 
@@ -122,12 +183,36 @@ export function MarketingContextSelector({
           Para quem e o que você quer divulgar?
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Primeiro defina o público que deseja atingir. Depois escolha ou descreva a oferta.
+          O contexto do seu negócio fica separado do público que receberá a campanha e da oferta que será divulgada.
         </p>
       </div>
 
       <div className="space-y-3 rounded-lg border bg-background/70 p-3">
-        <p className="text-sm font-semibold">1. Público que você quer atingir</p>
+        <div className="flex items-start gap-3">
+          <div className="rounded-md bg-primary/10 p-2 text-primary">
+            <Building2 className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">1. Seu negócio</p>
+            {businessVertical ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">{businessVertical}</Badge>
+                {requestedProfile && <Badge variant="outline">Vertical oficial VendorAI</Badge>}
+              </div>
+            ) : (
+              <p className="mt-1 text-xs text-amber-700">
+                A vertical do negócio ainda não foi identificada. Complete o perfil da empresa para melhorar o contexto da IA.
+              </p>
+            )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              Esta é a empresa que está anunciando. Ela não define quem receberá a campanha.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-lg border bg-background/70 p-3">
+        <p className="text-sm font-semibold">2. Público que você quer atingir</p>
         <div className="space-y-2">
           <Label>Tipo de público {required ? "*" : ""}</Label>
           <Select value={audienceSegment} onValueChange={(item) => emit({ audienceSegment: item })}>
@@ -165,7 +250,7 @@ export function MarketingContextSelector({
         <div>
           <p className="text-sm font-semibold flex items-center gap-2">
             <PackageSearch className="h-4 w-4 text-primary" />
-            2. Produto, serviço ou oferta
+            3. Produto, serviço ou oferta
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Selecione algo do catálogo ou escreva uma oferta que ainda não esteja cadastrada.
