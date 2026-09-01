@@ -19,6 +19,7 @@ import BlogPost from "@/pages/blog/BlogPost";
 import LpRouter from "@/pages/lp/LpPage";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { captureLaunchAttribution } from "@/lib/launchAttribution";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,10 @@ function Router() {
 }
 
 function App() {
+  // Captura first-touch antes que a navegação client-side remova UTMs da URL.
+  // É best-effort e não bloqueia renderização caso sessionStorage esteja indisponível.
+  captureLaunchAttribution();
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
