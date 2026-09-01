@@ -13,9 +13,6 @@ import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
 
-// Tenant real do Vendor.ai institucional (slug "vendorai") — não é o literal
-// "vendorai-institucional" (esse id não existe na tabela tenants; usá-lo
-// quebrava a FK e fazia todo lead do site cair silenciosamente).
 const INSTITUTIONAL_TENANT_ID = "1d4ea673-58d0-413a-a554-c9aca72a3121";
 const AD_DATA_CONSENT_TEXT_VERSION = "ad-data-measurement-v1-2026-09-01";
 
@@ -23,7 +20,6 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-// ─── GET /site/verticais ────────────────────────────────────────────────────
 router.get("/site/verticais", async (_req, res) => {
   const rows = await db
     .select()
@@ -34,7 +30,6 @@ router.get("/site/verticais", async (_req, res) => {
   return res.json(rows);
 });
 
-// ─── GET /site/verticais/:slug ──────────────────────────────────────────────
 router.get("/site/verticais/:slug", async (req, res) => {
   const [row] = await db
     .select()
@@ -106,7 +101,15 @@ function recoverSiteAttribution(
     pageUrl: body.pageUrl || recovered.pageUrl,
     referrer: body.referrer || rawReferer,
     landingPageSlug: body.landingPageSlug || recovered.landingPageSlug,
-    adDataConsent: body.adDataConsent === true,
+    adDataConsent: typeof body.adDataConsent === "boolean" ? body.adDataConsent : undefined,
+  };
+}
+
+function consentRecord(granted: boolean) {
+  return {
+    granted,
+    capturedAt: new Date().toISOString(),
+    textVersion: AD_DATA_CONSENT_TEXT_VERSION,
   };
 }
 
@@ -124,16 +127,28 @@ function attributionRecord(data: SiteAttribution) {
     referrer: data.referrer || null,
     landingPageSlug: data.landingPageSlug || null,
     capturedAt,
-    adDataConsent: {
-      granted: data.adDataConsent === true,
-      capturedAt,
-      textVersion: AD_DATA_CONSENT_TEXT_VERSION,
+    adDataConsent: consentRecord(data.adDataConsent === true),
+  };
+}
+
+function updateConsentOnly(
+  discoveryData: Record<string, unknown> | null | undefined,
+  granted: boolean,
+): Record<string, unknown> {
+  const current = discoveryData ?? {};
+  const rawAttribution = current["attribution"];
+  const currentAttribution = rawAttribution && typeof rawAttribution === "object"
+    ? rawAttribution as Record<string, unknown>
+    : {};
+  return {
+    ...current,
+    attribution: {
+      ...currentAttribution,
+      adDataConsent: consentRecord(granted),
     },
   };
 }
 
-// ─── POST /site/contato ─────────────────────────────────────────────────────
-// origem: aceita qualquer slug legível (ex: "formulario_contato", "lp_auto-pecas", "cta_final")
 const contatoSchema = z.object({
   nome: z.string().min(2, "Nome obrigatório"),
   email: z.string().email("E-mail inválido"),
@@ -180,7 +195,6 @@ router.post("/site/contato", async (req, res) => {
   const telefoneSanitizado = telefone ? storePhone(telefone) : null;
   const sourceLabel = origem ? `site_${origem}` : "site_institucional";
 
-  // 1 — Gravar em site_contatos (log bruto, sempre)
   await db.insert(siteContatosTable).values({
     nome,
     email,
@@ -191,7 +205,6 @@ router.post("/site/contato", async (req, res) => {
     status: "novo",
   });
 
-  // 2 — Gravar lead + deal no pipeline institucional e disparar SDR (background, não bloqueia resposta)
   void (async () => {
     try {
       const adCampaignId = await resolveAdCampaignFromUtm(
@@ -200,7 +213,6 @@ router.post("/site/contato", async (req, res) => {
         logger,
       );
 
-      // 2a — Dedup: se já existe, não duplicar
       const dedup = await findLeadByDedup(
         INSTITUTIONAL_TENANT_ID,
         telefoneSanitizado,
@@ -213,15 +225,30 @@ router.post("/site/contato", async (req, res) => {
 
       if (dedup.found && dedup.lead) {
         leadId = dedup.lead.id;
+
+        // Consentimento é mutável; atribuição first-touch não é. Uma nova
+        // escolha atualiza somente a evidência de consentimento no lead.
+        if (typeof attribution.adDataConsent === "boolean") {
+          await db
+            .update(leadsTable)
+            .set({
+              discoveryData: updateConsentOnly(
+                dedup.lead.discoveryData ?? {},
+                attribution.adDataConsent,
+              ),
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(leadsTable.id, leadId),
+              eq(leadsTable.tenantId, INSTITUTIONAL_TENANT_ID),
+            ));
+        }
+
         if (adCampaignId) {
           const updated = await db
             .update(leadsTable)
             .set({
               adCampaignId,
-              discoveryData: {
-                ...(dedup.lead.discoveryData ?? {}),
-                attribution: attributionRecord(attribution),
-              },
               updatedAt: new Date(),
             })
             .where(and(
@@ -234,10 +261,8 @@ router.post("/site/contato", async (req, res) => {
         }
         logger.info({ leadId, nome }, "site/contato: lead já existe — usando existente");
       } else {
-        // 2b — Resolver vendedor responsável via round-robin
         const assignedTo = await pickNextVendedor(INSTITUTIONAL_TENANT_ID).catch(() => null);
 
-        // Contexto da mensagem e origem no campo notasNutricao para o SDR
         const notasNutricao = [
           origem ? `Origem: ${origem}` : null,
           `Mensagem do site: "${mensagem}"`,
@@ -268,7 +293,6 @@ router.post("/site/contato", async (req, res) => {
         leadId = createdLead.id;
         attributedNow = Boolean(adCampaignId);
 
-        // 2c — Criar deal no pipeline em "aquecimento"
         const [createdDeal] = await db
           .insert(dealsTable)
           .values({
@@ -285,10 +309,7 @@ router.post("/site/contato", async (req, res) => {
           "site/contato: lead e deal criados no pipeline institucional",
         );
 
-        // 2d — Disparar Recepção (primeira resposta via WhatsApp — ignora se não configurado)
         if (telefoneSanitizado) {
-          // dispatchAgentBackground é fire-and-forget (void) — já loga erro
-          // internamente via o `log` passado, não retorna Promise pra encadear.
           dispatchAgentBackground({
             tenantId: INSTITUTIONAL_TENANT_ID,
             leadId,
@@ -333,7 +354,6 @@ router.post("/site/contato", async (req, res) => {
     }
   })();
 
-  // 3 — Notificar por e-mail
   if (resend) {
     resend.emails
       .send({
