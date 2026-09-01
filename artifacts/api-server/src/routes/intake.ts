@@ -9,16 +9,25 @@ import {
   leadsTable,
   dealsTable,
   funisTable,
+  webBehaviorEventsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone, storeDocument } from "../lib/dedup.js";
 import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
 import { signToken } from "../lib/jwt.js";
 
 export const intakeRouter: IRouter = Router();
 
 const AD_DATA_CONSENT_TEXT_VERSION = "ad-data-measurement-v1-2026-09-01";
 const optionalTrackingString = z.string().trim().max(500).optional();
+const optionalBehaviorSessionId = z
+  .string()
+  .trim()
+  .min(8)
+  .max(120)
+  .regex(/^[a-zA-Z0-9_-]+$/)
+  .optional();
 
 const trackingFields = {
   utmSource: optionalTrackingString,
@@ -31,6 +40,7 @@ const trackingFields = {
   pageUrl: z.string().trim().max(2000).optional(),
   referrer: z.string().trim().max(2000).optional(),
   landingPageSlug: optionalTrackingString,
+  behaviorSessionId: optionalBehaviorSessionId,
   // Opt-in separado do aceite dos Termos. Ausência = denied/unspecified para
   // fins de compartilhamento server-side com plataformas de anúncios.
   adDataConsent: z.boolean().optional(),
@@ -80,6 +90,7 @@ type TrackingData = Pick<
   | "pageUrl"
   | "referrer"
   | "landingPageSlug"
+  | "behaviorSessionId"
   | "adDataConsent"
 >;
 
@@ -154,6 +165,35 @@ function attributionRecord(data: TrackingData) {
       textVersion: AD_DATA_CONSENT_TEXT_VERSION,
     },
   };
+}
+
+async function linkBehaviorSessionToLead(params: {
+  behaviorSessionId?: string;
+  tenantId: string;
+  leadId?: string | null;
+  log: { warn: (obj: unknown, msg?: string) => void };
+  context: string;
+}): Promise<void> {
+  const { behaviorSessionId, tenantId, leadId, log, context } = params;
+  if (!behaviorSessionId || !leadId) return;
+
+  try {
+    const linked = await db
+      .update(webBehaviorEventsTable)
+      .set({ leadId })
+      .where(and(
+        eq(webBehaviorEventsTable.tenantId, tenantId),
+        eq(webBehaviorEventsTable.anonymousSessionId, behaviorSessionId),
+      ))
+      .returning({ id: webBehaviorEventsTable.id });
+
+    if (linked.length > 0) {
+      await syncBehaviorIntentForLead(leadId, tenantId);
+    }
+  } catch (err) {
+    // O vínculo comportamental é best-effort: nunca bloqueia intake ou trial.
+    log.warn({ err, tenantId, leadId, context }, `${context}: behavior session link failed`);
+  }
 }
 
 function slugBase(value: string): string {
@@ -278,6 +318,14 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
     leadId = lead?.id;
     attributedNow = Boolean(adCampaignId && leadId);
   }
+
+  await linkBehaviorSessionToLead({
+    behaviorSessionId: d.behaviorSessionId,
+    tenantId: tenant.id,
+    leadId,
+    log: req.log,
+    context: "intake",
+  });
 
   if (adCampaignId && leadId && attributedNow) {
     try {
@@ -427,6 +475,14 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
             etapa: "novo",
             funilId: funil?.id ?? null,
             probabilidade: 30,
+          });
+
+          await linkBehaviorSessionToLead({
+            behaviorSessionId: d.behaviorSessionId,
+            tenantId: vendorai.id,
+            leadId: salesLeadId,
+            log: req.log,
+            context: "trial-signup",
           });
         }
 
