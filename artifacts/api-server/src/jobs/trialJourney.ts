@@ -10,7 +10,7 @@ import {
   tenantsTable,
   usersTable,
 } from "@workspace/db";
-import { sendTrialJourneyEmail } from "../lib/email.js";
+import { sendTrialJourneyEmail } from "../lib/trial-email.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_TRIALS_PER_RUN = 300;
