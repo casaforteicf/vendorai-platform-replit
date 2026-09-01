@@ -11,7 +11,6 @@ import { CheckCircle2, Loader2, ArrowRight, ChevronRight, ShieldCheck } from "lu
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
-// ─── Google Ads conversion tracking ───────────────────────────────────────────
 function trackConversion(label: string) {
   try {
     const w = window as unknown as { gtag?: (...args: unknown[]) => void };
@@ -25,11 +24,10 @@ function trackConversion(label: string) {
       });
     }
   } catch {
-    // gtag not loaded — fine in dev
+    // Tracking externo nunca pode afetar o formulário.
   }
 }
 
-// ─── Router ──────────────────────────────────────────────────────────────────
 export default function LpRouter() {
   const params = useParams<{ slug: string }>();
   const config = getLpConfig(params.slug ?? "");
@@ -47,23 +45,21 @@ export default function LpRouter() {
   return <LandingPage config={config} />;
 }
 
-// ─── Main Landing Page template ───────────────────────────────────────────────
 function LandingPage({ config }: { config: LpConfig }) {
   const [modalOpen, setModalOpen] = useState(false);
 
   const openModal = () => {
-    trackConversion(config.gtagConversionLabel);
+    // Abrir o formulário é CTA/intenção, não conversão. O evento de conversão
+    // externa só dispara depois que /site/contato confirma o lead.
     setModalOpen(true);
   };
 
-  // Update document title per vertical
   useEffect(() => {
     document.title = `VendorAI para ${config.vertical} — Agendar demonstração`;
   }, [config.vertical]);
 
   return (
     <div className="min-h-screen bg-[#08070F] text-white font-sans antialiased">
-      {/* ── Minimal header ── */}
       <header className="sticky top-0 z-50 border-b border-white/5 bg-[#08070F]/90 backdrop-blur">
         <div className="container mx-auto px-4 h-14 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2 group">
@@ -82,21 +78,17 @@ function LandingPage({ config }: { config: LpConfig }) {
         </div>
       </header>
 
-      {/* ══ SITUATION — Hero ══════════════════════════════════════════════════ */}
       <section className="relative overflow-hidden pt-20 pb-28 px-4">
-        {/* Background glow */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#1B1438] via-[#100d2a] to-[#08070F] pointer-events-none" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-violet-600/20 blur-[120px] rounded-full pointer-events-none" />
         <div className="absolute top-20 right-0 w-[400px] h-[300px] bg-cyan-500/10 blur-[100px] rounded-full pointer-events-none" />
 
         <div className="container mx-auto max-w-4xl relative z-10 text-center">
-          {/* Tag */}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300 text-xs font-medium mb-8 tracking-wide uppercase">
             <span className="text-base leading-none">{config.emoji}</span>
             {config.situation.tag}
           </div>
 
-          {/* Headline */}
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold leading-tight mb-6 tracking-tight">
             {config.situation.headline.split("\n").map((line, i) => (
               <span key={i} className={i > 0 ? "block bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent" : "block"}>
@@ -105,12 +97,10 @@ function LandingPage({ config }: { config: LpConfig }) {
             ))}
           </h1>
 
-          {/* Subheadline */}
           <p className="text-lg sm:text-xl text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed">
             {config.situation.subheadline}
           </p>
 
-          {/* CTA */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={openModal}
@@ -122,12 +112,11 @@ function LandingPage({ config }: { config: LpConfig }) {
             <p className="text-xs text-slate-500">Sem cartão de crédito · Sem compromisso</p>
           </div>
 
-          {/* Trust bar */}
           <div className="mt-14 grid grid-cols-3 gap-4 max-w-lg mx-auto">
             {[
-              { v: "+500", l: "empresas atendidas" },
-              { v: "24/7", l: "disponibilidade" },
-              { v: "<60s", l: "tempo de resposta" },
+              { v: "5 dias", l: "de teste gratuito" },
+              { v: "IA + CRM", l: "na mesma operação" },
+              { v: "Sem cartão", l: "para começar" },
             ].map((item) => (
               <div key={item.l} className="flex flex-col items-center">
                 <span className="font-bold text-xl text-white">{item.v}</span>
@@ -138,7 +127,6 @@ function LandingPage({ config }: { config: LpConfig }) {
         </div>
       </section>
 
-      {/* ══ PROBLEM ══════════════════════════════════════════════════════════ */}
       <section className="py-20 px-4 relative">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-14">
@@ -164,7 +152,6 @@ function LandingPage({ config }: { config: LpConfig }) {
         </div>
       </section>
 
-      {/* ══ IMPLICATION — Stats ═══════════════════════════════════════════════ */}
       <section className="py-20 px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-violet-950/30 to-cyan-950/20 pointer-events-none" />
         <div className="container mx-auto max-w-5xl relative z-10">
@@ -190,7 +177,6 @@ function LandingPage({ config }: { config: LpConfig }) {
         </div>
       </section>
 
-      {/* ══ NEED-PAYOFF — Agents ═════════════════════════════════════════════ */}
       <section className="py-20 px-4">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-14">
@@ -214,7 +200,6 @@ function LandingPage({ config }: { config: LpConfig }) {
             ))}
           </div>
 
-          {/* Inline CTA below agents */}
           <div className="mt-14 text-center">
             <button
               onClick={openModal}
@@ -227,14 +212,12 @@ function LandingPage({ config }: { config: LpConfig }) {
         </div>
       </section>
 
-      {/* ══ OBRAS HUB — conditional, construcao-civil only ═══════════════════ */}
       {config.obrasHub && (
         <section className="py-20 px-4 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-[#08070F] via-[#0d1a12] to-[#08070F] pointer-events-none" />
           <div className="absolute top-0 left-1/4 w-[500px] h-[400px] bg-emerald-600/8 blur-[120px] rounded-full pointer-events-none" />
 
           <div className="container mx-auto max-w-5xl relative z-10">
-            {/* Header */}
             <div className="text-center mb-14">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-semibold mb-6 tracking-wide uppercase">
                 {config.obrasHub.badge}
@@ -247,7 +230,6 @@ function LandingPage({ config }: { config: LpConfig }) {
               </p>
             </div>
 
-            {/* Feature cards — 3-col grid */}
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-12">
               {config.obrasHub.features.map((feat, i) => (
                 <div
@@ -259,15 +241,10 @@ function LandingPage({ config }: { config: LpConfig }) {
                       {feat.badge}
                     </span>
                   )}
-
                   <h3 className="font-bold text-white leading-snug">{feat.title}</h3>
-
-                  {/* Problem */}
                   <div className="text-xs text-slate-500 leading-relaxed border-l-2 border-slate-700 pl-3">
                     {feat.problem}
                   </div>
-
-                  {/* Solution */}
                   <div className="text-xs text-emerald-300/80 leading-relaxed border-l-2 border-emerald-700/50 pl-3">
                     {feat.solution}
                   </div>
@@ -275,7 +252,6 @@ function LandingPage({ config }: { config: LpConfig }) {
               ))}
             </div>
 
-            {/* vs. callout */}
             <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8 flex flex-col sm:flex-row gap-6 items-start">
               <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-6 h-6 text-amber-400" />
@@ -286,7 +262,6 @@ function LandingPage({ config }: { config: LpConfig }) {
               </div>
             </div>
 
-            {/* Inline CTA */}
             <div className="mt-12 text-center">
               <button
                 onClick={openModal}
@@ -300,7 +275,6 @@ function LandingPage({ config }: { config: LpConfig }) {
         </section>
       )}
 
-      {/* ══ AD CREATIVES — conditional ════════════════════════════════════════ */}
       {config.adCreatives && (
         <section className="py-16 px-4">
           <div className="container mx-auto max-w-4xl">
@@ -333,7 +307,6 @@ function LandingPage({ config }: { config: LpConfig }) {
         </section>
       )}
 
-      {/* ══ Final CTA ═════════════════════════════════════════════════════════ */}
       <section className="py-24 px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-[#08070F] via-[#1B1438] to-[#08070F] pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-violet-600/20 blur-[100px] rounded-full pointer-events-none" />
@@ -353,7 +326,6 @@ function LandingPage({ config }: { config: LpConfig }) {
         </div>
       </section>
 
-      {/* ── Minimal footer ── */}
       <footer className="border-t border-white/5 py-6 px-4 text-center text-xs text-slate-600">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <span>&copy; 2026 VendorAI. Todos os direitos reservados.</span>
@@ -365,7 +337,6 @@ function LandingPage({ config }: { config: LpConfig }) {
         <p className="mt-1 text-slate-700">Windoor Serviços de Gerenciamento de Obras Ltda · CNPJ 59.623.589/0001-27</p>
       </footer>
 
-      {/* ── Contact modal ── */}
       <LpModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -375,7 +346,6 @@ function LandingPage({ config }: { config: LpConfig }) {
   );
 }
 
-// ─── Contact Modal ─────────────────────────────────────────────────────────
 interface LpModalProps {
   open: boolean;
   onClose: () => void;
@@ -426,6 +396,9 @@ function LpModal({ open, onClose, config }: LpModalProps) {
         });
         return;
       }
+
+      // Agora sim existe conversão: o backend confirmou o lead.
+      trackConversion(config.gtagConversionLabel);
       setSent(true);
     } catch {
       toast({
