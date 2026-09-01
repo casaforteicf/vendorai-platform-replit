@@ -186,6 +186,10 @@ router.use(accessLicensePublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
+
+// Session endpoints must be mounted immediately after JWT validation. The
+// frontend needs /auth/me before tenant, onboarding or license checks.
+router.use(authProtectedRouter);
 router.use(blockPartnerFromCRM);
 router.use(blockSuspendedTenants);
 
@@ -208,8 +212,7 @@ router.use(async (req, res, next) => {
   next();
 });
 
-// Auth and license endpoints must remain reachable in read-only mode.
-router.use(authProtectedRouter);
+// License endpoints must remain reachable in read-only mode.
 router.use(accessLicenseRouter);
 router.use(enforceAccessLicense);
 
