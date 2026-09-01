@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   billingEventsTable,
@@ -14,14 +14,13 @@ import {
   createOrGetCustomer,
   findChargeByExternalReference,
   isAsaasConfigured,
+  type AsaasChargeOutput,
 } from "../lib/asaas.js";
 import {
   resolveCommercialBillingPhase,
   VENDORAI_LAUNCH_CAMPAIGN,
 } from "../lib/commercialOffer.js";
-import {
-  resolveVendorAiSubscriptionPrice,
-} from "../lib/vendorai-subscription-lifecycle.js";
+import { resolveVendorAiSubscriptionPrice } from "../lib/vendorai-subscription-lifecycle.js";
 import { sendVendorAiSubscriptionChargeEmail } from "../lib/trial-email.js";
 
 const MAX_SUBSCRIPTIONS_PER_RUN = 100;
@@ -50,6 +49,12 @@ function phaseLabel(phase: string): string {
   return phase;
 }
 
+function localStatusFromAsaas(charge: AsaasChargeOutput): "pending" | "paid" | "overdue" {
+  if (["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(charge.status)) return "paid";
+  if (charge.status === "OVERDUE") return "overdue";
+  return "pending";
+}
+
 /**
  * Application-managed recurring billing for the VendorAI launch offer.
  *
@@ -62,7 +67,7 @@ function phaseLabel(phase: string): string {
  * - platform Asaas key only (tenant paying VendorAI);
  * - one stable cycle key per subscription due date;
  * - recovers remote charge by externalReference before creating another;
- * - next due date advances only after a confirmed payment webhook.
+ * - next due date advances only after a confirmed payment event/sync.
  */
 export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void> {
   if (process.env["VENDORAI_SUBSCRIPTION_BILLING_ENABLED"] !== "true") {
@@ -94,7 +99,7 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
     })
     .from(subscriptionsTable)
     .innerJoin(tenantsTable, eq(tenantsTable.id, subscriptionsTable.tenantId))
-    .innerJoin(plansTable, eq(plansTable.slug, subscriptionsTable.plano))
+    .innerJoin(plansTable, sql`${plansTable.slug} = ${subscriptionsTable.plano}`)
     .where(and(
       eq(subscriptionsTable.campaignCode, VENDORAI_LAUNCH_CAMPAIGN),
       inArray(subscriptionsTable.status, ["trial", "ativa"]),
@@ -124,8 +129,6 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
       }, logicalDue);
 
       if (phase === "trial") {
-        // Defensive correction: the first bill cannot be generated before the
-        // exact trial end even if a malformed row has an earlier due date.
         await db.update(subscriptionsTable).set({
           proximaCobranca: sub.trialEndsAt,
           updatedAt: now,
@@ -146,6 +149,7 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
 
       const chargeDue = maxToday(logicalDue);
       const cycleKey = vendorAiSubscriptionCycleKey(sub.id, logicalDue);
+      let claimedByThisRun = false;
 
       let [billingEvent] = await db
         .select()
@@ -166,8 +170,10 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
           })
           .onConflictDoNothing()
           .returning();
-        billingEvent = claimed;
-        if (!billingEvent) {
+        if (claimed) {
+          billingEvent = claimed;
+          claimedByThisRun = true;
+        } else {
           [billingEvent] = await db
             .select()
             .from(billingEventsTable)
@@ -182,20 +188,22 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         continue;
       }
 
-      // Another replica may still be creating the same remote charge.
-      const isFreshClaim = now.getTime() - billingEvent.createdAt.getTime() < STALE_CLAIM_MS;
       const remotelyExisting = await findChargeByExternalReference(cycleKey);
       if (remotelyExisting) {
+        const recoveredStatus = localStatusFromAsaas(remotelyExisting);
         await db.update(billingEventsTable).set({
           asaasChargeId: remotelyExisting.id,
-          status: "pending",
+          status: recoveredStatus,
+          ...(recoveredStatus === "paid" ? { paidAt: new Date() } : {}),
         }).where(eq(billingEventsTable.id, billingEvent.id));
         recovered++;
         continue;
       }
-      if (isFreshClaim && billingEvent.createdAt.getTime() < now.getTime() - 2_000) {
-        // Fresh row from another worker with no remote result yet: let that
-        // worker finish rather than racing a duplicate create.
+
+      // A fresh claim owned by another replica must not be raced. A stale claim
+      // is safe to recover because we already queried Asaas by externalReference.
+      const isFreshClaim = now.getTime() - billingEvent.createdAt.getTime() < STALE_CLAIM_MS;
+      if (!claimedByThisRun && isFreshClaim) {
         skipped++;
         continue;
       }
@@ -217,9 +225,6 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         phone: admin.telefone ?? undefined,
       })).id;
 
-      // Reconcile once more immediately before POST. This is deliberately
-      // redundant: Asaas creation is a financial side effect and must be safer
-      // than an ordinary application request.
       const beforeCreate = await findChargeByExternalReference(cycleKey);
       const charge = beforeCreate ?? await createCharge({
         customer: customerId,
@@ -229,13 +234,15 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         description: `VendorAI — ${sub.plano} — ${phaseLabel(phase)}`,
         externalReference: cycleKey,
       });
+      const chargeStatus = localStatusFromAsaas(charge);
 
       await db.update(billingEventsTable).set({
         asaasChargeId: charge.id,
         asaasCustomerId: customerId,
         valor: pricing.price,
-        status: "pending",
+        status: chargeStatus,
         dueDate: chargeDue,
+        ...(chargeStatus === "paid" ? { paidAt: new Date() } : {}),
       }).where(eq(billingEventsTable.id, billingEvent.id));
 
       await db.update(subscriptionsTable).set({
@@ -249,7 +256,7 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
       }).where(eq(subscriptionsTable.id, sub.id));
 
       const invoiceUrl = charge.invoiceUrl || charge.bankSlipUrl;
-      if (invoiceUrl) {
+      if (invoiceUrl && chargeStatus !== "paid") {
         await sendVendorAiSubscriptionChargeEmail({
           to: admin.email,
           name: admin.name,
@@ -265,8 +272,8 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         tenantId: sub.tenantId,
         type: "info",
         category: "billing",
-        title: "Mensalidade VendorAI disponível",
-        message: `Cobrança de ${Number(pricing.price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} gerada para a fase ${phaseLabel(phase)}.`,
+        title: chargeStatus === "paid" ? "Mensalidade VendorAI confirmada" : "Mensalidade VendorAI disponível",
+        message: `Cobrança de ${Number(pricing.price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} processada para a fase ${phaseLabel(phase)}.`,
       });
 
       if (beforeCreate) recovered++;
