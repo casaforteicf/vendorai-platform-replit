@@ -3,10 +3,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, Megaphone, ArrowRight } from "lucide-react";
 import { LaunchCommandCenter } from "@/components/marketing/LaunchCommandCenter";
+import { AssistedMarketingManager } from "@/components/marketing/AssistedMarketingManager";
 
 // Ponto de entrada único para campanhas: primeiro mostra o estado real do
-// lançamento e o principal gargalo; depois o usuário escolhe criar campanha
-// orgânica ou paga. A medição continua vindo do mesmo overview de Ads.
+// lançamento e o principal gargalo; depois oferece ações assistidas em modo
+// rascunho e só então os fluxos existentes de campanha orgânica ou paga.
 export default function CampanhasHub() {
   const [, setLocation] = useLocation();
 
@@ -21,6 +22,7 @@ export default function CampanhasHub() {
       </p>
 
       <LaunchCommandCenter />
+      <AssistedMarketingManager />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card
