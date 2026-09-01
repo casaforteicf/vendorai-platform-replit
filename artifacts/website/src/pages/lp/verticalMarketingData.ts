@@ -1,164 +1,181 @@
-import { MACRO_BLUEPRINTS, type LaunchPack, type VerticalSeed } from "./verticalTypes";
-import { RETAIL_VERTICALS } from "./verticals/retail";
-import { CLINIC_VERTICALS } from "./verticals/clinics";
-import { DEALERSHIP_VERTICALS } from "./verticals/dealerships";
-import { DISTRIBUTOR_VERTICALS } from "./verticals/distributors";
-import { SERVICE_VERTICALS } from "./verticals/services";
-import { INDUSTRY_VERTICALS } from "./verticals/industries";
+import {
+  MARKETING_MACROSEGMENTS,
+  MARKETING_VERTICALS,
+  OFFICIAL_TRIAL_5_DAYS,
+  assertOfficialMarketingArchitecture,
+  type MarketingMacrosegmentKey,
+  type MarketingVerticalProfile,
+} from "@workspace/vendor-brain/marketing-verticals";
+import { MACRO_BLUEPRINTS, type LaunchPack, type MacrosegmentKey } from "./verticalTypes";
 
-const ALL_SEEDS: VerticalSeed[] = [
-  ...RETAIL_VERTICALS,
-  ...CLINIC_VERTICALS,
-  ...DEALERSHIP_VERTICALS,
-  ...DISTRIBUTOR_VERTICALS,
-  ...SERVICE_VERTICALS,
-  ...INDUSTRY_VERTICALS,
-];
+assertOfficialMarketingArchitecture();
 
-if (ALL_SEEDS.length !== 50) {
-  throw new Error(`Plano Mestre VendorAI exige exatamente 50 subnichos; encontrados ${ALL_SEEDS.length}.`);
+const MACRO_MAP: Record<MarketingMacrosegmentKey, MacrosegmentKey> = {
+  retail: "varejo",
+  clinics: "clinicas",
+  dealerships: "concessionarias",
+  distributors: "distribuidoras",
+  services: "servicos",
+  industries: "industrias",
+};
+
+const OFFICIAL_MACRO_BY_ID = Object.fromEntries(MARKETING_MACROSEGMENTS.map((macro) => [macro.id, macro]));
+
+// A URL pública precisa ser única. O Vendor Brain pode reutilizar um slug semântico
+// entre macrosegmentos; nesses casos, somente a URL recebe um namespace mais específico.
+const SITE_SLUG_OVERRIDES: Record<string, string> = {
+  "retail-building": "materiais-construcao-acabamentos",
+  "industry-building": "industria-materiais-construcao",
+};
+
+function siteSlug(profile: MarketingVerticalProfile): string {
+  return SITE_SLUG_OVERRIDES[profile.id] ?? profile.slug;
 }
 
-function agentDetail(name: string, vertical: string): string {
+const SITE_SLUGS = MARKETING_VERTICALS.map(siteSlug);
+if (new Set(SITE_SLUGS).size !== 50) {
+  throw new Error("As 50 verticais oficiais precisam possuir 50 URLs públicas únicas.");
+}
+
+function compliance(profile: MarketingVerticalProfile): LaunchPack["compliance"] {
+  if (profile.compliance === "health") return "healthcare";
+  if (profile.compliance === "legal") return "legal";
+  return "standard";
+}
+
+function emoji(profile: MarketingVerticalProfile): string {
+  const byId: Record<string, string> = {
+    "retail-fashion": "👗", "retail-home": "🛋️", "retail-building": "🧱", "retail-electronics": "📺",
+    "retail-grocery": "🛒", "retail-pet": "🐾", "retail-optical": "👓", "retail-autoparts": "🔧",
+    "retail-beauty": "💄", "retail-jewelry": "💎", "clinics-medical": "🩺", "clinics-dental": "🦷",
+    "clinics-aesthetic": "✨", "clinics-dermatology": "🧴", "clinics-physio": "🧘", "clinics-psychology": "🧠",
+    "clinics-nutrition": "🥗", "clinics-ophthalmology": "👁️", "clinics-orthopedics": "🦴", "clinics-vet": "🐶",
+    "dealership-new": "🚗", "dealership-used": "🚙", "dealership-motorcycles": "🏍️", "dealership-commercial": "🚛",
+    "dealership-machinery": "🚜", "dist-building": "🏗️", "dist-autoparts": "⚙️", "dist-food": "🥫",
+    "dist-pharma": "🧴", "dist-agro": "🌱", "dist-mro": "🛠️", "dist-furniture-components": "🪵",
+    "services-accounting": "🧾", "services-legal": "⚖️", "services-agency": "💼", "services-tech": "💻",
+    "services-maintenance": "🧰", "services-insurance": "🛡️", "industry-food": "🏭", "industry-building": "🏢",
+    "industry-metal": "⚙️", "industry-plastics": "🧪", "industry-furniture": "🪑", "industry-textile": "🧵",
+    "industry-machinery": "🏗️", "industry-chemicals": "🧼", "industry-packaging": "📦", "industry-agro": "🌾",
+    "industry-pvc-windows": "🪟", "industry-custom-furniture": "🪚",
+  };
+  return byId[profile.id] ?? "✦";
+}
+
+function agentDetail(name: string, profile: MarketingVerticalProfile): string {
   const normalized = name.toLowerCase();
-  if (normalized.includes("revenue scout")) return `Analisa sinais da carteira de ${vertical} para sugerir recompra, expansão, renovação ou cross-sell com motivo e próxima ação.`;
-  if (normalized.includes("closer")) return `Mantém negociação, objeções e próximos passos comerciais de ${vertical} visíveis até existir uma decisão.`;
-  if (normalized.includes("follow-up")) return `Executa ou recomenda cadências de acompanhamento com contexto do estágio, evitando oportunidades esquecidas.`;
-  if (normalized.includes("agend")) return `Organiza disponibilidade, compromissos, confirmações e lembretes associados à jornada comercial.`;
-  if (normalized.includes("pós")) return `Mantém a jornada ativa depois da entrega para satisfação, retenção, indicação e próxima oportunidade.`;
-  if (normalized.includes("cobran")) return `Organiza rotinas financeiras e avisos conforme as regras autorizadas da operação.`;
-  if (normalized.includes("técnic") || normalized.includes("tecnico")) return `Preserva especificações e contexto técnico-comercial para reduzir retrabalho entre atendimento, proposta e revisão.`;
-  if (normalized.includes("customer success")) return `Acompanha ativação, uso, risco e expansão da conta ao longo do relacionamento.`;
-  if (normalized.includes("recomend")) return `Usa contexto comercial e preferências disponíveis para apoiar recomendações aderentes ao cliente.`;
-  return `Atua no contexto de ${vertical}, registrando dados, qualificando intenção e garantindo uma próxima ação clara.`;
+  if (normalized.includes("revenue scout")) return `Analisa ${profile.revenueScout.signals.slice(0, 4).join(", ")} e transforma sinais da carteira em oportunidade explicável.`;
+  if (normalized.includes("closer")) return `Mantém negociação, objeções e próximos passos de ${profile.name} visíveis até existir uma decisão.`;
+  if (normalized.includes("follow")) return "Organiza cadências com contexto do estágio para evitar oportunidades sem próxima ação.";
+  if (normalized.includes("agenda")) return "Organiza compromissos, disponibilidade, confirmações e lembretes ligados à jornada.";
+  if (normalized.includes("pós") || normalized.includes("customer success")) return "Mantém o relacionamento ativo após a entrega para retenção, satisfação e expansão.";
+  if (normalized.includes("técn") || normalized.includes("tecn")) return "Preserva especificações e contexto técnico-comercial para reduzir retrabalho entre atendimento, proposta e revisão.";
+  return `Atua na jornada de ${profile.name}, registrando contexto e garantindo uma Next Best Action clara.`;
 }
 
-function buildTimeline(seed: VerticalSeed) {
-  return seed.journey.map((stage, index) => ({
+function buildTimeline(profile: MarketingVerticalProfile) {
+  return profile.journey.map((stage, index) => ({
     stage,
     detail:
       index === 0
-        ? `Entrada registrada com origem, campanha e contexto de ${seed.vertical}.`
-        : index === seed.journey.length - 1
-          ? `A jornada continua com histórico preservado e possibilidade de nova oportunidade.`
-          : `VendorAI registra o estágio “${stage}”, contexto e Next Best Action antes de avançar.`,
+        ? `Entrada registrada com origem, campanha e contexto da vertical ${profile.name}.`
+        : index === profile.journey.length - 1
+          ? "O histórico permanece ativo para retenção, atribuição e próxima oportunidade."
+          : `O estágio “${stage}” registra contexto, responsável e Next Best Action antes do avanço.`,
   }));
 }
 
-function buildCreatives(seed: VerticalSeed) {
-  const pain = seed.pains.slice(0, 3).map(([title]) => title);
-  const journeyShort = seed.journey.slice(0, 5).join(" → ");
-  const scout = seed.revenueSignals.slice(0, 3).join(", ");
+function buildCreatives(profile: MarketingVerticalProfile): LaunchPack["creatives"] {
+  const painSeeds = profile.lp.painMap.slice(0, 3);
+  const journeyShort = profile.journey.slice(0, 5).join(" → ");
   return {
-    pain,
+    pain: painSeeds.map((pain) => `${pain}: quanto isso custa hoje em ${profile.name}?`),
     demonstration: [
       `Veja o VendorAI acompanhar ${journeyShort}.`,
-      `A oportunidade parou no meio da jornada. Veja a IA identificar a próxima ação em ${seed.vertical}.`,
-      `Venda concluída não encerra a inteligência: veja o Revenue Scout procurar ${scout}.`,
+      `A oportunidade parou no meio da jornada. Veja a IA identificar a próxima ação.`,
+      `Venda concluída não encerra a inteligência: veja o Revenue Scout procurar ${profile.revenueScout.signals.slice(0, 3).join(", ")}.`,
     ],
     result: [
-      `Aproveite melhor as oportunidades que sua operação de ${seed.vertical} já gera.`,
-      `Otimize marketing e vendas pela receita gerada — não apenas por clique ou lead.`,
+      `Aproveite melhor as oportunidades que sua operação de ${profile.name} já gera.`,
+      "Otimize marketing e vendas pela receita gerada — não apenas por clique ou lead.",
     ],
     comparison: [
-      `Operação reativa e memória individual × histórico central + Next Best Action + IA.`,
-      `Venda isolada × jornada contínua com atribuição, pós-venda e Revenue Scout.`,
+      "Operação reativa e memória individual × histórico central + Next Best Action + IA.",
+      "Venda isolada × jornada contínua com atribuição, pós-venda e Revenue Scout.",
     ],
   };
 }
 
-function buildFaq(seed: VerticalSeed) {
-  const complianceAnswer = seed.compliance === "healthcare"
-    ? "A IA fica limitada à jornada administrativa e comercial permitida, sem diagnóstico, prescrição ou promessa clínica. Campanhas devem respeitar legislação, consentimento, plataforma e normas profissionais aplicáveis."
-    : seed.compliance === "legal"
-      ? "A IA organiza atendimento administrativo e comercial permitido, sem aconselhamento jurídico automático nem promessa de resultado. A operação deve respeitar as normas profissionais aplicáveis."
-      : "Sim. O perfil vertical define jornada, eventos, linguagem e limites, e depois o VendorAI aprende o comportamento específico do tenant.";
+function buildFaq(profile: MarketingVerticalProfile): LaunchPack["faq"] {
+  const complianceAnswer = profile.compliance === "health"
+    ? "A IA fica limitada à jornada administrativa e comercial permitida, sem diagnóstico, prescrição ou promessa clínica. Campanhas e comunicações devem respeitar consentimento, legislação, regras das plataformas e normas profissionais aplicáveis."
+    : profile.compliance === "legal"
+      ? "A IA organiza atendimento administrativo e comercial permitido, sem aconselhamento jurídico automático nem promessa de resultado, respeitando as normas profissionais aplicáveis."
+      : "O modo de automação pode operar como Observador, Assistido ou Autônomo dentro dos limites previamente autorizados pelo usuário.";
 
   return [
-    {
-      question: `O VendorAI foi configurado especificamente para ${seed.vertical}?`,
-      answer: "Sim. Esta vertical possui dor, jornada, pipeline, agentes prioritários, palavras-chave, criativos, KPIs e sinais de Revenue Scout próprios.",
-    },
-    {
-      question: "Preciso trocar meu processo atual?",
-      answer: "Não necessariamente. A arquitetura foi desenhada para mapear o processo real, registrar estágios e automatizar próximas ações sem obrigar a empresa a adotar um funil genérico.",
-    },
-    {
-      question: "Consigo saber qual anúncio gerou uma venda?",
-      answer: "A arquitetura preserva origem, campanha, criativo, UTM e click ID para ligar aquisição a lead, trial, oportunidade, venda e receita quando os dados estiverem disponíveis.",
-    },
-    {
-      question: "Como funciona o Revenue Scout?",
-      answer: `Ele procura sinais como ${seed.revenueSignals.slice(0, 4).join(", ")} e transforma o achado em oportunidade explicável: quem abordar, por quê, quando e com qual próxima ação.`,
-    },
-    {
-      question: "Existem limites de automação?",
-      answer: complianceAnswer,
-    },
+    { question: profile.lp.faq[0] ?? `O VendorAI funciona para ${profile.name}?`, answer: `Sim. O Vendor Brain mantém um perfil oficial para ${profile.name}, com jornada, pipeline, agentes, LP, Revenue Scout, intenção Google, criativos e KPIs próprios.` },
+    { question: profile.lp.faq[1] ?? "Preciso trocar meus canais atuais?", answer: "Não necessariamente. O objetivo é preservar a origem e conectar os canais existentes ao histórico comercial e às próximas ações." },
+    { question: profile.lp.faq[2] ?? "A IA pode acompanhar oportunidades automaticamente?", answer: `Sim, conforme o modo de automação autorizado e os guardrails. As próximas ações oficiais desta vertical incluem ${profile.revenueScout.nextBestActions.slice(0, 3).join(", ")}.` },
+    { question: profile.lp.faq[3] ?? "Consigo medir qual campanha gerou a venda?", answer: "A arquitetura preserva origem, campanha, criativo, UTM e click ID para ligar aquisição a lead, trial, oportunidade, venda e receita quando esses dados estiverem disponíveis." },
+    { question: "Existem limites de automação?", answer: complianceAnswer },
   ];
 }
 
-function buildTrial(seed: VerticalSeed) {
-  const firstAction = seed.journey.slice(0, 3).join(" → ");
-  return [
-    { day: 1, title: "Primeiro valor", detail: `Simular ou receber uma oportunidade real e visualizar ${firstAction}.` },
-    { day: 2, title: "Automação", detail: "Ativar atendimento, qualificação, agenda ou follow-up prioritário desta vertical." },
-    { day: 3, title: "Comercial", detail: `Visualizar pipeline, estágio atual e Next Best Action de ${seed.vertical}.` },
-    { day: 4, title: "Inteligência", detail: `Analisar oportunidades paradas, Revenue Recovered by AI e sinais de Revenue Scout.` },
-    { day: 5, title: "Resultado", detail: "Receber resumo de leads, interações, follow-ups, oportunidades e receita potencial/atribuída disponível." },
-  ];
-}
-
-function buildPack(seed: VerticalSeed): LaunchPack {
-  const macro = MACRO_BLUEPRINTS[seed.macrosegment];
-  const mode = seed.calculatorMode ?? macro.calculatorMode;
-  const agents = seed.agents ?? macro.agents;
+function buildPack(profile: MarketingVerticalProfile): LaunchPack {
+  const macrosegment = MACRO_MAP[profile.macrosegment];
+  const blueprint = MACRO_BLUEPRINTS[macrosegment];
+  const officialMacro = OFFICIAL_MACRO_BY_ID[profile.macrosegment];
+  const recurrence = profile.macrosegment === "retail" || profile.macrosegment === "distributors" || profile.id === "clinics-vet";
   return {
-    slug: seed.slug,
-    macrosegment: seed.macrosegment,
-    macrosegmentLabel: macro.label,
-    vertical: seed.vertical,
-    audience: seed.audience,
-    emoji: seed.emoji,
-    headline: seed.headline,
-    subheadline: seed.subheadline,
-    compliance: seed.compliance ?? "standard",
-    pains: seed.pains.map(([title, detail]) => ({ title, detail })),
-    journey: [...seed.journey],
-    timeline: buildTimeline(seed),
-    outcomes: macro.outcomes.map((title, index) => ({
+    slug: siteSlug(profile),
+    macrosegment,
+    macrosegmentLabel: officialMacro?.name ?? blueprint.label,
+    vertical: profile.name,
+    audience: profile.decisionMakers.length ? `${profile.name} · decisores: ${profile.decisionMakers.join(", ")}` : profile.name,
+    emoji: emoji(profile),
+    headline: profile.lp.headline,
+    subheadline: profile.lp.subheadline,
+    compliance: compliance(profile),
+    pains: profile.lp.painMap.slice(0, 3).map((title, index) => ({
       title,
-      detail:
-        index === 0
-          ? `O contexto de ${seed.vertical} permanece ligado à origem, estágio e próxima ação.`
-          : index === 1
-            ? "Leads, propostas, pedidos ou contas paradas podem ser identificados antes de desaparecerem da operação."
-            : `Revenue Scout usa sinais da carteira para procurar receita adicional de forma explicável e controlada.`,
+      detail: index === 0 ? profile.corePain : index === 1 ? profile.promise : `Sem inteligência contínua, “${title.toLowerCase()}” pode permanecer invisível até virar perda ou oportunidade esquecida.`,
     })),
-    agents: agents.map((name) => ({ name, detail: agentDetail(name, seed.vertical) })),
+    journey: [...profile.journey],
+    timeline: buildTimeline(profile),
+    outcomes: [
+      { title: "Contexto comercial preservado", detail: `A jornada oficial de ${profile.name} permanece ligada à origem, estágio, pipeline e próxima ação.` },
+      { title: "Oportunidades recuperáveis visíveis", detail: "Leads, propostas, pedidos ou contas paradas podem ser identificados antes de desaparecerem da operação." },
+      { title: "Receita da carteira", detail: `Revenue Scout usa sinais como ${profile.revenueScout.signals.slice(0, 4).join(", ")} para procurar expansão de forma explicável.` },
+    ],
+    agents: profile.priorityAgents.map((name) => ({ name, detail: agentDetail(name, profile) })),
     calculator: {
-      mode,
-      title: mode === "recurrence" ? "Diagnóstico de receita da carteira" : "Calculadora de oportunidades sem acompanhamento",
-      volumeLabel: mode === "recurrence" ? "Clientes/contas ativos na base" : "Oportunidades geradas por mês",
-      ticketLabel: mode === "recurrence" ? "Ticket médio por compra/conta (R$)" : "Ticket médio da venda (R$)",
-      conversionLabel: mode === "recurrence" ? "Taxa atual de recompra/renovação (%)" : "Taxa atual de fechamento (%)",
+      mode: recurrence ? "recurrence" : "pipeline",
+      title: recurrence ? "Diagnóstico de receita da carteira" : "Calculadora de oportunidades sem acompanhamento",
+      volumeLabel: recurrence ? "Clientes/contas ativos na base" : "Oportunidades geradas por mês",
+      ticketLabel: recurrence ? "Ticket médio por compra/conta (R$)" : "Ticket médio da venda (R$)",
+      conversionLabel: recurrence ? "Taxa atual de recompra/renovação (%)" : "Taxa atual de fechamento (%)",
       coverageLabel: "Percentual com acompanhamento estruturado (%)",
       resultLabel: "Volume financeiro que merece análise por falta de acompanhamento consistente",
     },
     revenueScout: {
       title: "Sua próxima venda pode já estar nos dados",
-      signals: [...seed.revenueSignals],
-      example: seed.revenueExample,
+      signals: [...profile.revenueScout.signals],
+      example: `${profile.promise} Próximas ações possíveis: ${profile.revenueScout.nextBestActions.join(", ")}.`,
     },
-    creatives: buildCreatives(seed),
-    googleKeywords: [...seed.keywords],
-    faq: buildFaq(seed),
-    kpis: [macro.primaryMetric, ...seed.kpis.filter((k) => k !== macro.primaryMetric)],
-    trial: buildTrial(seed),
+    creatives: buildCreatives(profile),
+    googleKeywords: [...profile.googleIntentSeeds],
+    faq: buildFaq(profile),
+    kpis: [...new Set(profile.kpis)],
+    trial: OFFICIAL_TRIAL_5_DAYS.map((day) => ({ day: day.day, title: day.label, detail: day.description })),
   };
 }
 
-export const CANONICAL_LAUNCH_PACKS: LaunchPack[] = ALL_SEEDS.map(buildPack);
+export const CANONICAL_LAUNCH_PACKS: LaunchPack[] = MARKETING_VERTICALS.map(buildPack);
+
+if (CANONICAL_LAUNCH_PACKS.length !== 50) {
+  throw new Error(`Plano Mestre VendorAI exige exatamente 50 LPs oficiais; encontradas ${CANONICAL_LAUNCH_PACKS.length}.`);
+}
 
 export const MACROSEGMENT_COUNTS = CANONICAL_LAUNCH_PACKS.reduce<Record<string, number>>((acc, pack) => {
   acc[pack.macrosegment] = (acc[pack.macrosegment] ?? 0) + 1;
@@ -166,18 +183,25 @@ export const MACROSEGMENT_COUNTS = CANONICAL_LAUNCH_PACKS.reduce<Record<string, 
 }, {});
 
 const LEGACY_ALIASES: Record<string, string> = {
-  moda: "moda-roupas-calcados",
-  varejo: "moda-roupas-calcados",
+  // Compatibilidade com rotas de campanha anteriores e com a primeira implementação das 50 LPs.
+  "moda-roupas-calcados": "moda",
+  varejo: "moda",
   clinicas: "clinica-medica",
   automotivo: "automoveis-novos",
   distribuidoras: "distribuidora-materiais-construcao",
-  "industrias-b2b": "industria-materiais-construcao",
+  "industrias-b2b": "alimentos-bebidas",
   "servicos-profissionais": "agencias-consultorias",
   "tecnologia-saas": "tecnologia-ti-software",
   "auto-pecas": "distribuidora-autopecas",
   "distribuidoras-alimentos": "distribuidora-alimentos-bebidas",
-  "materiais-construcao": "materiais-construcao-acabamentos",
   "saude-beleza": "estetica",
+  "moveis-decoracao-casa": "moveis-decoracao",
+  "eletronicos-eletrodomesticos": "eletronicos",
+  "supermercados-mercados-emporios": "supermercados",
+  "autopecas-acessorios": "autopecas",
+  "cosmeticos-perfumaria-beleza": "cosmeticos-perfumaria",
+  "joias-presentes": "joias-presentes",
+  "fabrica-esquadrias-pvc": "esquadrias-pvc",
 };
 
 export function getCanonicalLaunchPack(slug: string): LaunchPack | undefined {
