@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, BarChart3, BrainCircuit, CircleDollarSign, Filter, MousePointerClick, RefreshCcw, Target, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, BrainCircuit, CircleDollarSign, Filter, MousePointerClick, Radar, RefreshCcw, Target, Users } from "lucide-react";
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -108,6 +108,33 @@ type CommandCenterResponse = {
   financialNote: string;
 };
 
+type RevenueScoutResponse = {
+  attributed: boolean;
+  opportunities: number;
+  open: number;
+  highPriority: number;
+  converted: number;
+  openEstimatedValue: number;
+  convertedEstimatedValue: number;
+  avgPriority: number | null;
+  conversionRate: number | null;
+  topOpportunities: Array<{
+    id: string;
+    leadId: string;
+    campaignId: string | null;
+    campaignLabel: string;
+    tipo: string | null;
+    descricao: string | null;
+    status: string | null;
+    pipelineStage: string;
+    score: number;
+    estimatedValue: number;
+    humanRequired: boolean;
+    createdAt: string;
+  }>;
+  note: string;
+};
+
 type FilterState = {
   period: Period;
   platform: string;
@@ -128,6 +155,16 @@ const EMPTY_FILTERS: FilterState = {
 
 const money = (value: number | null | undefined) => value == null ? "—" : value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const pct = (value: number | null | undefined) => value == null ? "—" : `${value.toFixed(1)}%`;
+
+function paramsFromFilters(filters: FilterState) {
+  const params = new URLSearchParams({ period: filters.period });
+  if (filters.platform !== "all") params.set("platform", filters.platform);
+  if (filters.campaignId !== "all") params.set("campaignId", filters.campaignId);
+  if (filters.landingPageId !== "all") params.set("landingPageId", filters.landingPageId);
+  if (filters.vertical !== "all") params.set("vertical", filters.vertical);
+  if (filters.intentTier !== "all") params.set("intentTier", filters.intentTier);
+  return params;
+}
 
 function Metric({ label, value, hint, icon: Icon }: { label: string; value: string; hint?: string; icon: typeof Users }) {
   return (
@@ -158,14 +195,19 @@ export function LaunchCommandCenter() {
   const { data, isLoading, isFetching } = useQuery<CommandCenterResponse>({
     queryKey: ["launch-command-center", tenantId, filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ period: filters.period });
-      if (filters.platform !== "all") params.set("platform", filters.platform);
-      if (filters.campaignId !== "all") params.set("campaignId", filters.campaignId);
-      if (filters.landingPageId !== "all") params.set("landingPageId", filters.landingPageId);
-      if (filters.vertical !== "all") params.set("vertical", filters.vertical);
-      if (filters.intentTier !== "all") params.set("intentTier", filters.intentTier);
-      const response = await fetch(`/api/tenants/${tenantId}/marketing/launch-command-center?${params.toString()}`, { headers: authHeaders() });
+      const response = await fetch(`/api/tenants/${tenantId}/marketing/launch-command-center?${paramsFromFilters(filters).toString()}`, { headers: authHeaders() });
       if (!response.ok) throw new Error("Não foi possível carregar o Command Center");
+      return response.json();
+    },
+    enabled: !!tenantId,
+    refetchInterval: 60_000,
+  });
+
+  const { data: revenueScout, isFetching: isFetchingScout } = useQuery<RevenueScoutResponse>({
+    queryKey: ["launch-command-center-revenue-scout", tenantId, filters],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/marketing/launch-command-center/revenue-scout?${paramsFromFilters(filters).toString()}`, { headers: authHeaders() });
+      if (!response.ok) throw new Error("Não foi possível carregar o Revenue Scout do lançamento");
       return response.json();
     },
     enabled: !!tenantId,
@@ -195,10 +237,10 @@ export function LaunchCommandCenter() {
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-5 w-5 text-primary" />Launch Command Center</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">Do investimento à receita recorrente. Aquisição, intenção, fit comercial, assinatura, renovação e churn na mesma visão.</p>
+            <p className="text-xs text-muted-foreground mt-1">Do investimento à receita recorrente. Aquisição, intenção, fit comercial, Revenue Scout, assinatura, renovação e churn na mesma visão.</p>
           </div>
           <div className="flex items-center gap-2">
-            {isFetching && <RefreshCcw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            {(isFetching || isFetchingScout) && <RefreshCcw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             <Badge variant="outline">{totals.activeCampaigns} campanha(s) ativa(s)</Badge>
           </div>
         </div>
@@ -350,6 +392,49 @@ export function LaunchCommandCenter() {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="rounded-lg border p-4">
+          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold"><Radar className="h-4 w-4 text-primary" />Revenue Scout atribuível</h3>
+              <p className="text-[11px] text-muted-foreground">{revenueScout?.note ?? "Carregando oportunidades atribuídas aos leads das campanhas..."}</p>
+            </div>
+            <Badge variant="outline">separado de Intent e Commercial Fit</Badge>
+          </div>
+          {revenueScout ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
+                <Metric label="Oportunidades" value={revenueScout.opportunities.toLocaleString("pt-BR")} icon={Radar} />
+                <Metric label="Abertas" value={revenueScout.open.toLocaleString("pt-BR")} icon={Target} />
+                <Metric label="Alta prioridade" value={revenueScout.highPriority.toLocaleString("pt-BR")} hint="score ≥ 70" icon={AlertTriangle} />
+                <Metric label="Potencial aberto" value={money(revenueScout.openEstimatedValue)} icon={CircleDollarSign} />
+                <Metric label="Convertidas" value={revenueScout.converted.toLocaleString("pt-BR")} hint={pct(revenueScout.conversionRate)} icon={RefreshCcw} />
+                <Metric label="Valor convertido" value={money(revenueScout.convertedEstimatedValue)} icon={CircleDollarSign} />
+                <Metric label="Prioridade média" value={revenueScout.avgPriority == null ? "—" : `${revenueScout.avgPriority}/100`} icon={BrainCircuit} />
+                <Metric label="Atribuição" value={revenueScout.attributed ? "Lead → campanha" : "—"} icon={Target} />
+              </div>
+              {revenueScout.topOpportunities.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Top oportunidades abertas</div>
+                  {revenueScout.topOpportunities.map((row) => (
+                    <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md border px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium truncate">{row.tipo || "Oportunidade"} · {row.campaignLabel}</div>
+                        <div className="text-[10px] text-muted-foreground truncate">{row.descricao || row.pipelineStage}{row.humanRequired ? " · requer humano" : ""}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs font-semibold">{money(row.estimatedValue)}</div>
+                        <div className="text-[10px] text-muted-foreground">prioridade {row.score || "—"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-xs text-muted-foreground">Carregando Revenue Scout...</div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
