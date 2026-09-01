@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startScheduler } from "./jobs/scheduler.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
+import { runBehaviorIntentSync } from "./jobs/behaviorIntentSync.js";
 import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
 import { applyPendingMigrations } from "@workspace/db";
@@ -42,12 +43,13 @@ async function start() {
     logger.info({ port }, "Server listening");
     startScheduler(logger);
 
-    // Lifecycle de marketing: converge o estado real do CRM e depois oferece
-    // os eventos elegíveis aos conectores server-side. Meta e Google têm flags
-    // independentes; Google ainda usa validateOnly=true por padrão.
+    // Lifecycle de marketing: converge CRM, comportamento first-party e depois
+    // encaminha os eventos elegíveis às plataformas. Behavior Intent permanece
+    // separado do intentScore do Revenue Scout e do fit comercial.
     const syncMarketingLifecycle = async () => {
       try {
         await runCommercialLifecycleSync(logger);
+        await runBehaviorIntentSync(logger);
         await runServerConversionSync(logger);
         await runGoogleDataManagerConversionSync(logger);
       } catch (syncErr) {
