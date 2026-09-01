@@ -1,3 +1,5 @@
+import { resolveMarketingVertical } from './marketing-verticals'
+
 export interface BrainVerticalProfile {
   key: string
   label: string
@@ -28,8 +30,38 @@ function normalized(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
+function fromOfficialMarketingVertical(vertical: string): BrainVerticalProfile | undefined {
+  const marketing = resolveMarketingVertical(vertical)
+  if (!marketing) return undefined
+  return {
+    key: marketing.id,
+    label: marketing.name,
+    icon: marketing.macrosegment === 'clinics' ? '🩺'
+      : marketing.macrosegment === 'dealerships' ? '🚗'
+      : marketing.macrosegment === 'distributors' ? '📦'
+      : marketing.macrosegment === 'industries' ? '🏭'
+      : marketing.macrosegment === 'services' ? '💼'
+      : '🛍️',
+    focus: marketing.corePain,
+    customer: marketing.audience === 'B2B' ? 'conta ou empresa cliente' : 'cliente',
+    operation: marketing.journey.join(' → '),
+    offer: marketing.promise,
+    goals: [
+      `Executar jornada: ${marketing.journey.join(' → ')}`,
+      `Criar campanha orientada à receita para ${marketing.name}`,
+      `Acompanhar KPIs: ${marketing.kpis.join(', ')}`,
+      `Executar Revenue Scout com sinais: ${marketing.revenueScout.signals.join(', ')}`,
+      'Relacionar campanha, oportunidade, venda e receita',
+    ],
+  }
+}
+
 export function resolveBrainVerticalProfile(vertical?: string | null): BrainVerticalProfile {
-  const value = normalized(vertical ?? '')
+  const raw = vertical ?? ''
+  const official = fromOfficialMarketingVertical(raw)
+  if (official) return official
+
+  const value = normalized(raw)
   if (/construcao|reforma|arquitet|engenharia/.test(value)) return PROFILES[0]
   if (/supermercado|mercado|mercearia/.test(value)) return PROFILES[2]
   if (/salao|barbearia|beleza|estetica/.test(value)) return PROFILES[3]
