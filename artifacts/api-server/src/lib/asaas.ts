@@ -131,6 +131,7 @@ export interface AsaasChargeOutput {
   invoiceUrl: string;
   bankSlipUrl: string | null;
   pixQrCodeId: string | null;
+  externalReference?: string | null;
 }
 
 export async function createCharge(
@@ -138,6 +139,25 @@ export async function createCharge(
   apiKey?: string | null,
 ): Promise<AsaasChargeOutput> {
   return asaasRequest<AsaasChargeOutput>("POST", "/payments", data, apiKey);
+}
+
+/**
+ * Recovery path for application-managed idempotency. Asaas recommends that
+ * integrations reconcile an inconclusive request before retrying. The launch
+ * subscription worker uses its stable externalReference to recover a charge
+ * that may have been created remotely before the local process persisted it.
+ */
+export async function findChargeByExternalReference(
+  externalReference: string,
+  apiKey?: string | null,
+): Promise<AsaasChargeOutput | null> {
+  const result = await asaasRequest<{ data?: AsaasChargeOutput[] }>(
+    "GET",
+    `/payments?externalReference=${encodeURIComponent(externalReference)}&limit=1`,
+    undefined,
+    apiKey,
+  );
+  return result.data?.[0] ?? null;
 }
 
 export interface AsaasCustomerInput {
