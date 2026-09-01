@@ -2,11 +2,17 @@ import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, Megaphone, ArrowRight, Layers3 } from "lucide-react";
+import MarketingVerticals from "@/pages/MarketingVerticals";
 
 // Ponto de entrada único para marketing: o usuário pode iniciar campanha
 // orgânica, mídia paga ou escolher primeiro a arquitetura de mercado.
 export default function CampanhasHub() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
+  const showMarkets = location.includes("view=mercados") || new URLSearchParams(window.location.search).get("view") === "mercados";
+
+  if (showMarkets) {
+    return <MarketingVerticals />;
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-6xl mx-auto">
@@ -74,8 +80,8 @@ export default function CampanhasHub() {
         <Card
           role="button"
           tabIndex={0}
-          onClick={() => setLocation("/marketing/mercados")}
-          onKeyDown={(e) => e.key === "Enter" && setLocation("/marketing/mercados")}
+          onClick={() => setLocation("/campanhas-nova?view=mercados")}
+          onKeyDown={(e) => e.key === "Enter" && setLocation("/campanhas-nova?view=mercados")}
           className="cursor-pointer border-primary/20 bg-primary/[0.02] transition-colors hover:border-primary/50 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CardContent className="pt-6 space-y-3 h-full flex flex-col">
