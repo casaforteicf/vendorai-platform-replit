@@ -5,8 +5,13 @@ import { db, leadsTable, webBehaviorEventsTable } from "@workspace/db";
 const LOOKBACK_DAYS = 30;
 const MAX_LEADS_PER_RUN = 250;
 
+export type BehaviorIntentTier = "baixo" | "medio" | "alto" | "muito_alto";
+
 export type BehaviorIntentSummary = {
   score: number;
+  tier: BehaviorIntentTier;
+  tierLabel: string;
+  recommendedAction: string;
   reasons: string[];
   signals: {
     pageViews: number;
@@ -19,6 +24,35 @@ export type BehaviorIntentSummary = {
   };
   computedAt: string;
 };
+
+function classifyIntent(score: number): Pick<BehaviorIntentSummary, "tier" | "tierLabel" | "recommendedAction"> {
+  if (score >= 80) {
+    return {
+      tier: "muito_alto",
+      tierLabel: "Intenção muito alta",
+      recommendedAction: "Contato comercial imediato. Priorizar este lead na fila de atendimento e abordar com contexto da navegação.",
+    };
+  }
+  if (score >= 60) {
+    return {
+      tier: "alto",
+      tierLabel: "Intenção alta",
+      recommendedAction: "Priorizar contato comercial hoje. Usar os sinais de interesse para personalizar a abordagem.",
+    };
+  }
+  if (score >= 35) {
+    return {
+      tier: "medio",
+      tierLabel: "Intenção média",
+      recommendedAction: "Realizar abordagem consultiva e manter follow-up ativo. Ainda há sinais de interesse sem urgência máxima.",
+    };
+  }
+  return {
+    tier: "baixo",
+    tierLabel: "Intenção baixa",
+    recommendedAction: "Nutrir antes de pressionar a venda. Acompanhar novos sinais de comportamento e reavaliar automaticamente.",
+  };
+}
 
 function buildSummary(events: Array<{
   eventType: string;
@@ -54,48 +88,52 @@ function buildSummary(events: Array<{
     }
   }
 
-  let score = 0;
+  let rawScore = 0;
   const reasons: string[] = [];
 
   if (signals.pageViews > 0) {
     const points = Math.min(10, signals.pageViews * 2);
-    score += points;
+    rawScore += points;
     reasons.push(`${signals.pageViews} página(s) visitada(s) (+${points})`);
   }
   if (signals.pricingViews > 0) {
-    score += 15;
+    rawScore += 15;
     reasons.push("Visitou página de planos/preços (+15)");
   }
   if (signals.ctaClicks > 0) {
     const points = Math.min(20, signals.ctaClicks * 10);
-    score += points;
+    rawScore += points;
     reasons.push(`${signals.ctaClicks} clique(s) em CTA (+${points})`);
   }
   if (signals.formStarts > 0) {
-    score += 15;
+    rawScore += 15;
     reasons.push("Iniciou formulário (+15)");
   }
   if (signals.formSubmits > 0) {
-    score += 25;
+    rawScore += 25;
     reasons.push("Enviou formulário (+25)");
   }
   if (signals.maxEngagedMs >= 60_000) {
-    score += 10;
+    rawScore += 10;
     reasons.push("Engajamento de pelo menos 60s (+10)");
   } else if (signals.maxEngagedMs >= 30_000) {
-    score += 5;
+    rawScore += 5;
     reasons.push("Engajamento de pelo menos 30s (+5)");
   }
   if (signals.maxScrollDepth >= 75) {
-    score += 8;
+    rawScore += 8;
     reasons.push("Atingiu 75%+ de profundidade (+8)");
   } else if (signals.maxScrollDepth >= 50) {
-    score += 4;
+    rawScore += 4;
     reasons.push("Atingiu 50%+ de profundidade (+4)");
   }
 
+  const score = Math.min(100, rawScore);
+  const classification = classifyIntent(score);
+
   return {
-    score: Math.min(100, score),
+    score,
+    ...classification,
     reasons,
     signals,
     computedAt: new Date().toISOString(),
