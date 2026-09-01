@@ -17,6 +17,7 @@ const router: IRouter = Router();
 // "vendorai-institucional" (esse id não existe na tabela tenants; usá-lo
 // quebrava a FK e fazia todo lead do site cair silenciosamente).
 const INSTITUTIONAL_TENANT_ID = "1d4ea673-58d0-413a-a554-c9aca72a3121";
+const AD_DATA_CONSENT_TEXT_VERSION = "ad-data-measurement-v1-2026-09-01";
 
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
@@ -66,6 +67,7 @@ type SiteAttribution = {
   pageUrl?: string;
   referrer?: string;
   landingPageSlug?: string;
+  adDataConsent?: boolean;
 };
 
 function recoverSiteAttribution(
@@ -104,10 +106,12 @@ function recoverSiteAttribution(
     pageUrl: body.pageUrl || recovered.pageUrl,
     referrer: body.referrer || rawReferer,
     landingPageSlug: body.landingPageSlug || recovered.landingPageSlug,
+    adDataConsent: body.adDataConsent === true,
   };
 }
 
 function attributionRecord(data: SiteAttribution) {
+  const capturedAt = new Date().toISOString();
   return {
     utmSource: data.utmSource || null,
     utmMedium: data.utmMedium || null,
@@ -119,7 +123,12 @@ function attributionRecord(data: SiteAttribution) {
     pageUrl: data.pageUrl || null,
     referrer: data.referrer || null,
     landingPageSlug: data.landingPageSlug || null,
-    capturedAt: new Date().toISOString(),
+    capturedAt,
+    adDataConsent: {
+      granted: data.adDataConsent === true,
+      capturedAt,
+      textVersion: AD_DATA_CONSENT_TEXT_VERSION,
+    },
   };
 }
 
@@ -146,6 +155,7 @@ const contatoSchema = z.object({
   pageUrl: z.string().trim().max(2000).optional(),
   referrer: z.string().trim().max(2000).optional(),
   landingPageSlug: optionalTrackingString,
+  adDataConsent: z.boolean().optional(),
 });
 
 router.post("/site/contato", async (req, res) => {
@@ -313,6 +323,8 @@ router.post("/site/contato", async (req, res) => {
             landingPageSlug: attribution.landingPageSlug ?? null,
             utmSource: attribution.utmSource ?? null,
             utmMedium: attribution.utmMedium ?? null,
+            adDataConsent: attribution.adDataConsent === true,
+            adDataConsentTextVersion: AD_DATA_CONSENT_TEXT_VERSION,
           },
         });
       }
