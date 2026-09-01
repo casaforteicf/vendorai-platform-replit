@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startScheduler } from "./jobs/scheduler.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
+import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { applyPendingMigrations } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
@@ -57,16 +58,20 @@ async function start() {
     // Start background scheduler after server is ready
     startScheduler(logger);
 
-    // Marketing lifecycle: converge estados reais do CRM em eventos first-party
-    // (trial_activated / sale_closed). Dedupe no banco torna seguro rodar no
-    // boot e repetir periodicamente, inclusive com mais de uma réplica da API.
-    const syncCommercialLifecycle = () => {
-      runCommercialLifecycleSync(logger).catch((syncErr) => {
-        logger.error({ err: syncErr }, "commercial-lifecycle: unhandled sync error");
-      });
+    // Marketing lifecycle: primeiro converge estados reais do CRM em eventos
+    // first-party; depois, se a feature flag estiver habilitada, encaminha os
+    // eventos elegíveis para as plataformas de mídia. Dedupe no banco torna o
+    // processo seguro mesmo com retries e mais de uma réplica da API.
+    const syncMarketingLifecycle = async () => {
+      try {
+        await runCommercialLifecycleSync(logger);
+        await runServerConversionSync(logger);
+      } catch (syncErr) {
+        logger.error({ err: syncErr }, "marketing-lifecycle: unhandled sync error");
+      }
     };
-    syncCommercialLifecycle();
-    setInterval(syncCommercialLifecycle, 10 * 60 * 1000).unref();
+    void syncMarketingLifecycle();
+    setInterval(() => { void syncMarketingLifecycle(); }, 10 * 60 * 1000).unref();
   });
 }
 
