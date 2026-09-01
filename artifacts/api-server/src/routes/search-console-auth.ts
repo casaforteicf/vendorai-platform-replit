@@ -1,0 +1,163 @@
+import { Router, type IRouter, type Request } from "express";
+import { logger } from "../lib/logger.js";
+import { authenticate } from "../middlewares/auth.js";
+import { createOAuthState, consumeOAuthState } from "../lib/oauth-state.js";
+import {
+  buildSearchConsoleOAuthUrl,
+  exchangeCodeForTokens,
+  saveSearchConsolePendingConnection,
+  verifyAndActivateSearchConsole,
+  refreshSearchConsoleToken,
+  disconnectSearchConsole,
+  getSearchConsoleConnectionByTenantId,
+} from "../services/search-console-oauth.js";
+
+const router: IRouter = Router();
+
+function getAppUrl(): string {
+  const configuredFrontend = process.env["FRONTEND_APP_URL"]?.trim();
+  if (configuredFrontend) return configuredFrontend.replace(/\/$/, "");
+  if (process.env["NODE_ENV"] === "production") {
+    return "https://app.appvendorai.com";
+  }
+  return process.env["APP_URL"]?.replace(/\/$/, "") || "http://localhost:3000";
+}
+
+router.get("/auth/search-console", authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.sub;
+    const tenantId = req.user?.tenantId;
+    if (!userId || !tenantId) {
+      logger.warn("OAuth Search Console: usuário não autenticado");
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const state = createOAuthState(tenantId, userId, "search-console", "/configuracoes");
+    const url = buildSearchConsoleOAuthUrl(state);
+    logger.info({ tenantId, userId }, "Retornando URL OAuth Search Console");
+    return res.json({ url });
+  } catch (err) {
+    logger.error({ err }, "Erro ao iniciar OAuth Search Console");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+router.get("/auth/search-console/callback", async (req, res) => {
+  const { code, state, error } = req.query as Record<string, string>;
+  const appUrl = getAppUrl();
+  const returnTo = "/configuracoes";
+
+  if (error || !code || !state) {
+    logger.warn({ error, hasCode: !!code, hasState: !!state }, "Callback Search Console: parâmetros inválidos");
+    return res.redirect(`${appUrl}${returnTo}?searchConsoleError=access_denied`);
+  }
+
+  let tenantId: string;
+  try {
+    const decoded = consumeOAuthState(state, "search-console");
+    tenantId = decoded.tenantId;
+  } catch (err) {
+    logger.warn({ err }, "Callback Search Console: state inválido, expirado ou reutilizado");
+    return res.redirect(`${appUrl}${returnTo}?searchConsoleError=invalid_state`);
+  }
+
+  try {
+    let tokens;
+    try {
+      tokens = await exchangeCodeForTokens(code);
+    } catch (err) {
+      logger.error({ err, tenantId }, "Erro ao trocar codigo OAuth do Search Console");
+      return res.redirect(`${appUrl}${returnTo}?searchConsoleError=token_exchange`);
+    }
+
+    if (!tokens.refresh_token) {
+      logger.error({ tenantId }, "Google não retornou refresh_token no callback do Search Console");
+      return res.redirect(`${appUrl}${returnTo}?searchConsoleError=no_refresh_token`);
+    }
+
+    await saveSearchConsolePendingConnection(tenantId, tokens.refresh_token, tokens.access_token, tokens.expires_in);
+    logger.info({ tenantId }, "Search Console conectado, aguardando verificação da meta tag");
+    return res.redirect(`${appUrl}${returnTo}?searchConsoleConnected=pending`);
+  } catch (err) {
+    logger.error({ err, tenantId }, "Erro no callback Search Console");
+    return res.redirect(`${appUrl}${returnTo}?searchConsoleError=exchange_failed`);
+  }
+});
+
+function assertTenantAccess(req: Request, tenantId: string): boolean {
+  const userTenantId = req.user?.tenantId;
+  return req.user?.platformRole === "super_admin" || tenantId === userTenantId;
+}
+
+router.get("/tenants/:tenantId/search-console-connection", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    if (!assertTenantAccess(req, tenantId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const conn = await getSearchConsoleConnectionByTenantId(tenantId);
+    if (!conn || conn.status === "disconnected" || conn.disconnectedAt) {
+      return res.json({ connected: false });
+    }
+    return res.json({
+      connected: true,
+      verified: conn.verified,
+      siteUrl: conn.siteUrl,
+      sitemapSubmittedAt: conn.sitemapSubmittedAt?.toISOString() ?? null,
+      connectedAt: conn.connectedAt?.toISOString() ?? null,
+    });
+  } catch (err) {
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao buscar status da conexão Search Console");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+// Chamado pelo usuário depois de esperar a meta tag propagar no site
+// (ela é injetada automaticamente, sem precisar regenerar o site).
+router.post("/tenants/:tenantId/search-console-connection/verify", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    if (!assertTenantAccess(req, tenantId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const result = await verifyAndActivateSearchConsole(tenantId);
+    return res.json(result);
+  } catch (err) {
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao verificar Search Console");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+router.post("/tenants/:tenantId/search-console-connection/refresh", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    if (!assertTenantAccess(req, tenantId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const conn = await getSearchConsoleConnectionByTenantId(tenantId);
+    if (!conn) {
+      return res.status(404).json({ error: "Connection not found" });
+    }
+    await refreshSearchConsoleToken(conn.id);
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao renovar token Search Console");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+router.delete("/tenants/:tenantId/search-console-connection", authenticate, async (req, res) => {
+  try {
+    const tenantId = String(req.params.tenantId);
+    if (!assertTenantAccess(req, tenantId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    await disconnectSearchConsole(tenantId);
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error({ err, tenantId: String(req.params.tenantId) }, "Erro ao desconectar Search Console");
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+export default router;
+export const searchConsoleCallbackRouter: IRouter = router;

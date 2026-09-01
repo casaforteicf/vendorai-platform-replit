@@ -86,6 +86,7 @@ export * from "./whatsapp_connections";
 export * from "./whatsapp_contacts";
 export * from "./whatsapp_messages";
 export * from "./google_ads_connections";
+export * from "./search_console_connections";
 export * from "./social_connections";
 export * from "./social_publications";
 export * from "./tenant_domains";

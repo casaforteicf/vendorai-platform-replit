@@ -9,6 +9,7 @@ import { db, tenantsTable, generatedSitesTable, tenantDomainsTable } from "@work
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { enforceTenantPath } from "./middlewares/tenant-path-guard.js";
+import { getPendingVerificationMetaToken } from "./services/search-console-oauth.js";
 
 const app: Express = express();
 
@@ -349,7 +350,20 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       "Content-Security-Policy",
       "default-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https: data:; script-src 'self' 'unsafe-inline' https:; img-src 'self' https: data: blob:; font-src 'self' https: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     );
-    return res.send(site.html);
+
+    // Meta tag de verificação de propriedade do Search Console, quando o
+    // tenant tem uma conexão pendente — injetada aqui (e não regenerando o
+    // site) pra sobreviver a qualquer edição feita antes da verificação
+    // ser concluída.
+    const verificationToken = await getPendingVerificationMetaToken(tenant.id);
+    const html = verificationToken
+      ? site.html.replace(
+          "</head>",
+          `<meta name="google-site-verification" content="${verificationToken}"></head>`,
+        )
+      : site.html;
+
+    return res.send(html);
   } catch (err) {
     logger.error({ err, hostname }, "subdomain-middleware: error resolving tenant");
     return next(err);

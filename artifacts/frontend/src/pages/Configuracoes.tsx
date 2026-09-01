@@ -1916,6 +1916,127 @@ export default function Configuracoes() {
     }
   }
 
+  // ── Search Console OAuth connection state ──────────────────────────────────
+  // Mesmo padrão do Google Ads acima (fetch direto, rotas ainda fora do
+  // cliente de API gerado). Não tem etapa de seleção de conta — uma
+  // propriedade por tenant, resolvida automaticamente pelo backend.
+  type SearchConsoleConnectionData = {
+    connected: boolean;
+    verified?: boolean;
+    siteUrl?: string | null;
+    sitemapSubmittedAt?: string | null;
+    connectedAt?: string | null;
+  };
+  const [searchConsoleConnection, setSearchConsoleConnection] = useState<SearchConsoleConnectionData | null>(null);
+  const [searchConsoleLoading, setSearchConsoleLoading] = useState(false);
+  const [searchConsoleConnecting, setSearchConsoleConnecting] = useState(false);
+  const [searchConsoleVerifying, setSearchConsoleVerifying] = useState(false);
+  const [searchConsoleDisconnecting, setSearchConsoleDisconnecting] = useState(false);
+
+  async function loadSearchConsoleConnection() {
+    if (!tenantId) return;
+    setSearchConsoleLoading(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/search-console-connection`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = (await res.json()) as SearchConsoleConnectionData;
+        setSearchConsoleConnection(data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setSearchConsoleLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (tenantId) loadSearchConsoleConnection();
+  }, [tenantId]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("searchConsoleConnected");
+    const error = url.searchParams.get("searchConsoleError");
+    if (connected === "pending") {
+      toast({ title: "Search Console autorizado — clique em \"Verificar propriedade\" em alguns instantes." });
+      loadSearchConsoleConnection();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (error) {
+      const messages: Record<string, string> = {
+        access_denied: "Permissão negada. Tente novamente.",
+        invalid_state: "Sessão inválida. Tente novamente.",
+        token_exchange: "O Google não autorizou a troca do código de acesso.",
+        no_refresh_token: "O Google não retornou permissão duradoura. Tente reconectar.",
+        exchange_failed: "Erro ao conectar. Tente novamente.",
+      };
+      toast({ title: messages[error] ?? "Erro ao conectar Search Console.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location]);
+
+  async function onConnectSearchConsole() {
+    if (!tenantId) return;
+    setSearchConsoleConnecting(true);
+    try {
+      const res = await fetch("/api/auth/search-console", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    } catch {
+      toast({ title: "Erro ao iniciar conexão com Search Console.", variant: "destructive" });
+      setSearchConsoleConnecting(false);
+    }
+  }
+
+  async function onVerifySearchConsole() {
+    if (!tenantId) return;
+    setSearchConsoleVerifying(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/search-console-connection/verify`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { verified: boolean };
+      if (data.verified) {
+        toast({ title: "Propriedade verificada e sitemap enviado ao Search Console!" });
+      } else {
+        toast({
+          title: "Ainda não verificado — aguarde alguns minutos após conectar e tente de novo.",
+          variant: "destructive",
+        });
+      }
+      await loadSearchConsoleConnection();
+    } catch {
+      toast({ title: "Erro ao verificar propriedade.", variant: "destructive" });
+    } finally {
+      setSearchConsoleVerifying(false);
+    }
+  }
+
+  async function onDisconnectSearchConsole() {
+    if (!tenantId) return;
+    setSearchConsoleDisconnecting(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/search-console-connection`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Search Console desconectado." });
+      await loadSearchConsoleConnection();
+    } catch {
+      toast({ title: "Erro ao desconectar Search Console.", variant: "destructive" });
+    } finally {
+      setSearchConsoleDisconnecting(false);
+    }
+  }
+
   // ── Meta Ads OAuth connection state ────────────────────────────────────────
   // Mesmo padrão do Google Ads acima (fetch direto, rotas ainda fora do
   // cliente de API gerado) — só troca account por adAccount/adAccountName.
@@ -3336,6 +3457,68 @@ export default function Configuracoes() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* ── Google Search Console ──────────────────────────────────────── */}
+          <div className="rounded-xl border bg-card p-6 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <Link className="h-4 w-4 text-primary" />
+                  Google Search Console
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Conecta o site gerado pelo Vendor.ai ao Search Console: verifica a propriedade automaticamente e envia o sitemap, sem precisar mexer em DNS.
+                </p>
+              </div>
+              {searchConsoleConnection?.connected && (
+                <span
+                  className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${
+                    searchConsoleConnection.verified
+                      ? "bg-green-100 text-green-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {searchConsoleConnection.verified ? "Verificado" : "Aguardando verificação"}
+                </span>
+              )}
+            </div>
+
+            {!searchConsoleConnection?.connected ? (
+              <Button onClick={onConnectSearchConsole} disabled={searchConsoleConnecting || searchConsoleLoading}>
+                {searchConsoleConnecting ? "Conectando..." : "Conectar Search Console"}
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Propriedade: <span className="font-medium text-foreground">{searchConsoleConnection.siteUrl}</span>
+                </p>
+                {searchConsoleConnection.verified ? (
+                  <p className="text-sm text-muted-foreground">
+                    Sitemap enviado{searchConsoleConnection.sitemapSubmittedAt ? ` em ${new Date(searchConsoleConnection.sitemapSubmittedAt).toLocaleDateString("pt-BR")}` : ""}.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    A verificação leva alguns minutos pra propagar no site. Clique abaixo pra confirmar.
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  {!searchConsoleConnection.verified && (
+                    <Button size="sm" onClick={onVerifySearchConsole} disabled={searchConsoleVerifying}>
+                      {searchConsoleVerifying ? "Verificando..." : "Verificar propriedade"}
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onDisconnectSearchConsole}
+                    disabled={searchConsoleDisconnecting}
+                  >
+                    {searchConsoleDisconnecting ? "Desconectando..." : "Desconectar"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
