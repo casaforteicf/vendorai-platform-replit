@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  ArrowLeft,
   ArrowRight,
   Bot,
   ExternalLink,
@@ -70,7 +71,7 @@ function normalize(value: string) {
 
 function publicLpUrl(slug: string) {
   const configured = (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined)?.replace(/\/$/, "");
-  const base = configured || window.location.origin;
+  const base = configured || "https://appvendorai.com";
   return `${base}/lp/${slug}`;
 }
 
@@ -196,6 +197,7 @@ function ProfileDialog({
 }
 
 export default function MarketingVerticals() {
+  const [, setLocation] = useLocation();
   const [query, setQuery] = useState("");
   const [macrosegment, setMacrosegment] = useState<string>(ALL);
   const [selected, setSelected] = useState<MarketingVerticalProfile | null>(null);
@@ -231,6 +233,15 @@ export default function MarketingVerticals() {
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 mb-3"
+            onClick={() => setLocation("/campanhas-nova")}
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Voltar para Campanhas
+          </Button>
           <div className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-semibold">Mercados & LPs</h1>
