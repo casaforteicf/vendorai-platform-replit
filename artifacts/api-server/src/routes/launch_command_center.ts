@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { getFilteredLaunchCommandCenter } from "../services/launchCommandCenter.js";
+import { getLaunchRevenueScout } from "../services/launchRevenueScout.js";
 
 const router: IRouter = Router();
 
@@ -32,6 +33,23 @@ router.get("/tenants/:tenantId/marketing/launch-command-center", async (req, res
   }
 
   const result = await getFilteredLaunchCommandCenter(tenantId, parsed.data);
+  res.json(result);
+});
+
+router.get("/tenants/:tenantId/marketing/launch-command-center/revenue-scout", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const parsed = querySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Filtros inválidos", details: parsed.error.issues });
+    return;
+  }
+
+  const result = await getLaunchRevenueScout(tenantId, parsed.data);
   res.json(result);
 });
 
