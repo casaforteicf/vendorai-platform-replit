@@ -78,10 +78,11 @@ router.post("/webhooks/asaas", async (req, res, next) => {
     next();
     return;
   }
+  const resolvedBillingEvent = billingEvent;
 
-  const subscriptionId = subscriptionIdFromCycleKey(billingEvent.mes);
+  const subscriptionId = subscriptionIdFromCycleKey(resolvedBillingEvent.mes);
   if (!subscriptionId) {
-    req.log.error({ billingEventId: billingEvent.id, cycleKey: billingEvent.mes }, "vendorai-subscription-webhook: invalid cycle key");
+    req.log.error({ billingEventId: resolvedBillingEvent.id, cycleKey: resolvedBillingEvent.mes }, "vendorai-subscription-webhook: invalid cycle key");
     res.status(200).json({ ok: true, ignored: true, reason: "invalid_subscription_cycle" });
     return;
   }
@@ -96,7 +97,7 @@ router.post("/webhooks/asaas", async (req, res, next) => {
     .from(subscriptionsTable)
     .where(and(
       eq(subscriptionsTable.id, subscriptionId),
-      eq(subscriptionsTable.tenantId, billingEvent.tenantId),
+      eq(subscriptionsTable.tenantId, resolvedBillingEvent.tenantId),
       eq(subscriptionsTable.campaignCode, VENDORAI_LAUNCH_CAMPAIGN),
     ))
     .limit(1);
@@ -104,7 +105,7 @@ router.post("/webhooks/asaas", async (req, res, next) => {
   if (!subscription) {
     // Fail safe: this is explicitly a subscription:* event, so never fall
     // through to legacy suspension logic if its subscription cannot be found.
-    req.log.error({ billingEventId: billingEvent.id, subscriptionId }, "vendorai-subscription-webhook: subscription not found");
+    req.log.error({ billingEventId: resolvedBillingEvent.id, subscriptionId }, "vendorai-subscription-webhook: subscription not found");
     res.status(200).json({ ok: true, ignored: true, reason: "subscription_not_found" });
     return;
   }
@@ -125,7 +126,7 @@ router.post("/webhooks/asaas", async (req, res, next) => {
           status: "paid",
           paidAt: new Date(),
         })
-        .where(eq(billingEventsTable.id, billingEvent.id));
+        .where(eq(billingEventsTable.id, resolvedBillingEvent.id));
 
       if (subscription.sourceDealId) {
         await tx
@@ -145,12 +146,12 @@ router.post("/webhooks/asaas", async (req, res, next) => {
   if (event === "PAYMENT_OVERDUE") {
     // Never downgrade a payment that was already confirmed if provider events
     // arrive out of order.
-    if (billingEvent.status !== "paid") {
+    if (resolvedBillingEvent.status !== "paid") {
       await db.transaction(async (tx) => {
         await tx
           .update(billingEventsTable)
           .set({ status: "overdue" })
-          .where(eq(billingEventsTable.id, billingEvent.id));
+          .where(eq(billingEventsTable.id, resolvedBillingEvent.id));
 
         await tx
           .update(subscriptionsTable)
@@ -177,11 +178,11 @@ router.post("/webhooks/asaas", async (req, res, next) => {
   }
 
   if (event === "PAYMENT_DELETED" || event === "PAYMENT_CANCELLED") {
-    if (billingEvent.status !== "paid") {
+    if (resolvedBillingEvent.status !== "paid") {
       await db
         .update(billingEventsTable)
         .set({ status: "cancelled" })
-        .where(eq(billingEventsTable.id, billingEvent.id));
+        .where(eq(billingEventsTable.id, resolvedBillingEvent.id));
     }
     res.status(200).json({ ok: true, lifecycle: "subscription", status: "cancelled" });
     return;
