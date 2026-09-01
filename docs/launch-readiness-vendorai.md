@@ -321,6 +321,16 @@ Status atual:
 - [ ] oportunidades e receita do Revenue Scout no mesmo painel;
 - [ ] comparação automática entre LPs/criativos/verticais com ranking de vencedores por receita/CAC.
 
+## Próximos blocos em ordem de lançamento
+
+1. **Produção de mídia:** validar Meta CAPI e Google Data Manager com contas reais/controladas.
+2. **Trial que converte:** jornada guiada dias 1–5, high-intent alert, resumo de valor, assinatura/upgrade/churn.
+3. **10 packs/LPs iniciais:** fechar copy, demo, agentes, targeting, follow-up, pós-venda e Revenue Scout por nicho.
+4. **Atribuição dos canais restantes:** WhatsApp dos sites gerados, Instagram/Messenger e touchpoints posteriores.
+5. **Command Center avançado:** MRR/ARR, churn, receita recuperada, Revenue Scout e ranking automático de vencedores.
+6. **AI Marketing Manager:** passar do diagnóstico para ações assistidas e, depois, automação dentro de limites autorizados.
+7. **Commercial Fit:** segunda dimensão de scoring separada do Behavior Intent.
+
 ## Regra de produto
 
 O sistema não deve concluir que um anúncio é vencedor apenas porque tem melhor CTR/CPL. A recomendação de escala deve considerar conversões comerciais e receita. Toda alteração de orçamento no modo assistido exige aprovação; o modo autônomo só poderá operar dentro de limites autorizados e auditáveis.
