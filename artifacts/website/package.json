@@ -51,7 +51,7 @@
     "@workspace/api-client-react": "workspace:*",
     "@workspace/vendor-brain": "workspace:*",
     "class-variance-authority": "catalog:",
-    "clsx": "^2.1.1",
+    "clsx": "catalog:",
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
