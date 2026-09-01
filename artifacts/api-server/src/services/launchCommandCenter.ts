@@ -6,6 +6,7 @@ import {
   db,
   dealsTable,
   leadsTable,
+  subscriptionsTable,
   tenantsTable,
   webBehaviorEventsTable,
 } from "@workspace/db";
@@ -40,6 +41,59 @@ function behaviorIntentFromDiscovery(discoveryData: Record<string, unknown> | nu
     ? value["tier"]
     : score >= 80 ? "muito_alto" : score >= 60 ? "alto" : score >= 35 ? "medio" : "baixo";
   return { score, tier };
+}
+
+type FitLead = {
+  empresa: string | null;
+  tipoPessoa: string;
+  dadosPj: {
+    segmento?: string | null;
+    numFuncionarios?: string | null;
+    faturamentoEstimado?: string | null;
+  } | null;
+  mercadoSegmento: string | null;
+  businessActivity: string | null;
+  tamanhoEquipe: string | null;
+  orcamento: string | null;
+  urgencia: string | null;
+  objetivo: string | null;
+  dorPrincipal: string | null;
+};
+
+/**
+ * Commercial Fit is deliberately rule-based and auditable. It does not reuse
+ * Behavior Intent, Revenue Scout or propensity models. The score only reflects
+ * explicit B2B qualification evidence already captured in CRM, never inferred
+ * firmographic facts.
+ */
+function commercialFitFromLead(lead: FitLead) {
+  const reasons: Array<{ key: string; label: string; points: number }> = [];
+  const add = (key: string, label: string, points: number, present: boolean) => {
+    if (present) reasons.push({ key, label, points });
+  };
+  const isBusiness = Boolean(lead.empresa?.trim()) || lead.tipoPessoa === "juridica" || Boolean(lead.dadosPj);
+  const hasSegment = Boolean(
+    lead.mercadoSegmento?.trim() || lead.businessActivity?.trim() || lead.dadosPj?.segmento?.trim(),
+  );
+  const hasTeam = Boolean(lead.tamanhoEquipe?.trim() || lead.dadosPj?.numFuncionarios?.trim());
+  const hasBudget = Boolean(lead.orcamento?.trim() || lead.dadosPj?.faturamentoEstimado?.trim());
+
+  add("business", "Empresa/PJ identificada", 20, isBusiness);
+  add("segment", "Segmento/atividade identificado", 15, hasSegment);
+  add("team", "Porte/equipe informado", 15, hasTeam);
+  add("budget", "Orçamento/capacidade informado", 20, hasBudget);
+  add("urgency", "Urgência declarada", 10, Boolean(lead.urgencia?.trim()));
+  add("objective", "Objetivo declarado", 10, Boolean(lead.objetivo?.trim()));
+  add("pain", "Dor principal declarada", 10, Boolean(lead.dorPrincipal?.trim()));
+
+  const score = reasons.reduce((sum, item) => sum + item.points, 0);
+  const tier = score >= 75 ? "alto" : score >= 50 ? "medio" : "baixo";
+  return { score, tier, reasons };
+}
+
+function eventNumber(metadata: Record<string, unknown> | null | undefined, key: string) {
+  const value = Number(metadata?.[key] ?? 0);
+  return Number.isFinite(value) ? value : 0;
 }
 
 function dateScope(period: LaunchPeriod) {
@@ -113,21 +167,32 @@ function zeroCenter(input: {
   const scope = dateScope(filters.period);
   const filterOptions = buildFilterOptions(allCampaigns);
   const intentDistribution = { baixo: 0, medio: 0, alto: 0, muito_alto: 0 };
+  const commercialFitDistribution = { baixo: 0, medio: 0, alto: 0 };
   return {
-    totals: { spend: 0, impressions: 0, clicks: 0, leads: 0, trials: 0, activatedTrials: 0, coolingLeads: 0, recoveredLeads: 0, sales: 0, revenue: 0, activeCampaigns: 0 },
+    totals: {
+      spend: 0, impressions: 0, clicks: 0, leads: 0, trials: 0, activatedTrials: 0,
+      coolingLeads: 0, recoveredLeads: 0, sales: 0, revenue: 0, activeCampaigns: 0,
+      activeSubscriptions: 0, delinquentSubscriptions: 0, renewals: 0, annualUpgrades: 0,
+      churns: 0, renewalRevenue: 0, recoveredRevenue: 0, churnedMrr: 0,
+    },
     metrics: {
       visitors: 0, pageViews: 0, ctaClicks: 0, formStarts: 0, formSubmits: 0,
       avgBehaviorIntent: null, measuredIntentLeads: 0, intentDistribution,
+      avgCommercialFit: null, measuredCommercialFitLeads: 0, commercialFitDistribution,
+      commercialFitDefinition: "Score 0–100 baseado somente em empresa/PJ, segmento, porte, orçamento, urgência, objetivo e dor explicitamente registrados no CRM.",
       visitorToLeadRate: null, leadToTrialRate: null, trialActivationRate: null,
       activatedTrialToSaleRate: null, leadToSaleRate: null, costPerLead: null,
       costPerActivatedTrial: null, cac: null, revenuePerLead: null, roas: null,
+      mrr: 0, arr: 0, delinquentMrr: 0,
     },
+    rankings: [],
     diagnosis: { stage: "sem_dados", title: "Nenhum dado neste recorte", evidence: "Os filtros atuais não encontraram campanhas ou eventos mensuráveis.", impact: "Não há base suficiente para comparar desempenho neste recorte.", action: "Amplie o período ou remova um dos filtros para recuperar volume de análise." },
     funnel: ["Visitantes", "Leads", "Trials", "Trials ativados", "Vendas"].map((stage) => ({ stage, value: 0 })),
     filterOptions,
     appliedFilters: filters,
     period: { label: scope.label, from: scope.from?.toISOString() ?? null, to: scope.to.toISOString() },
     intentCohortNote: filters.intentTier ? "O filtro de intenção recorta leads e etapas posteriores; investimento permanece no escopo de mídia selecionado." : null,
+    financialNote: "MRR/ARR são posição atual das assinaturas ativas atribuídas ao recorte de campanha; renovações, churn e receita recuperada respeitam o período selecionado.",
   };
 }
 
@@ -197,6 +262,13 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
     clicks: sql<number>`coalesce(sum(${adPerformanceSnapshotsTable.cliques}), 0)`,
     spend: sql<string>`coalesce(sum(${adPerformanceSnapshotsTable.custo}), 0)`,
   }).from(adPerformanceSnapshotsTable).where(and(...performanceConditions));
+  const campaignPerformanceRows = await db.select({
+    campaignId: adPerformanceSnapshotsTable.campaignId,
+    spend: sql<string>`coalesce(sum(${adPerformanceSnapshotsTable.custo}), 0)`,
+    clicks: sql<number>`coalesce(sum(${adPerformanceSnapshotsTable.cliques}), 0)`,
+  }).from(adPerformanceSnapshotsTable)
+    .where(and(...performanceConditions))
+    .groupBy(adPerformanceSnapshotsTable.campaignId);
 
   const leadConditions = [
     eq(leadsTable.tenantId, tenantId),
@@ -210,6 +282,16 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
     id: leadsTable.id,
     adCampaignId: leadsTable.adCampaignId,
     discoveryData: leadsTable.discoveryData,
+    empresa: leadsTable.empresa,
+    tipoPessoa: leadsTable.tipoPessoa,
+    dadosPj: leadsTable.dadosPj,
+    mercadoSegmento: leadsTable.mercadoSegmento,
+    businessActivity: leadsTable.businessActivity,
+    tamanhoEquipe: leadsTable.tamanhoEquipe,
+    orcamento: leadsTable.orcamento,
+    urgencia: leadsTable.urgencia,
+    objetivo: leadsTable.objetivo,
+    dorPrincipal: leadsTable.dorPrincipal,
   }).from(leadsTable).where(and(...leadConditions));
 
   const cohortLeads = filters.intentTier
@@ -217,6 +299,8 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
     : leadRows;
   const cohortLeadIds = cohortLeads.map((row) => row.id);
   const cohortLeadIdSet = new Set(cohortLeadIds);
+  if (filters.intentTier && cohortLeadIds.length === 0) return zeroCenter({ filters, allCampaigns });
+
   const leadIntents = cohortLeads
     .map((row) => behaviorIntentFromDiscovery(row.discoveryData))
     .filter((value): value is { score: number; tier: string } => Boolean(value));
@@ -228,15 +312,27 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
     ? Number((leadIntents.reduce((sum, item) => sum + item.score, 0) / leadIntents.length).toFixed(1))
     : null;
 
+  const commercialFits = cohortLeads.map((row) => commercialFitFromLead(row));
+  const commercialFitDistribution = { baixo: 0, medio: 0, alto: 0 };
+  for (const fit of commercialFits) commercialFitDistribution[fit.tier as keyof typeof commercialFitDistribution]++;
+  const avgCommercialFit = commercialFits.length
+    ? Number((commercialFits.reduce((sum, item) => sum + item.score, 0) / commercialFits.length).toFixed(1))
+    : null;
+
+  const lifecycleEventTypes = [
+    "trial_started", "lead_cooling", "lead_recovered", "subscription_renewed",
+    "annual_upgrade", "churn", "subscription_recovered",
+  ];
   const lifecycleConditions = [
     eq(adCampaignEventsTable.tenantId, tenantId),
     inArray(adCampaignEventsTable.campaignId, campaignIds),
-    inArray(adCampaignEventsTable.eventType, ["trial_started", "lead_cooling", "lead_recovered"]),
+    inArray(adCampaignEventsTable.eventType, lifecycleEventTypes),
   ];
   if (scope.from) lifecycleConditions.push(gte(adCampaignEventsTable.createdAt, scope.from));
   lifecycleConditions.push(lte(adCampaignEventsTable.createdAt, scope.to));
   const lifecycleRows = await db.select({
     eventType: adCampaignEventsTable.eventType,
+    campaignId: adCampaignEventsTable.campaignId,
     metadata: adCampaignEventsTable.metadata,
   }).from(adCampaignEventsTable).where(and(...lifecycleConditions));
   const cohortLifecycle = filters.intentTier
@@ -248,6 +344,13 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
   const trialRows = cohortLifecycle.filter((row) => row.eventType === "trial_started");
   const coolingLeads = cohortLifecycle.filter((row) => row.eventType === "lead_cooling").length;
   const recoveredLeads = cohortLifecycle.filter((row) => row.eventType === "lead_recovered").length;
+  const renewalRows = cohortLifecycle.filter((row) => row.eventType === "subscription_renewed");
+  const annualUpgradeRows = cohortLifecycle.filter((row) => row.eventType === "annual_upgrade");
+  const churnRows = cohortLifecycle.filter((row) => row.eventType === "churn");
+  const subscriptionRecoveredRows = cohortLifecycle.filter((row) => row.eventType === "subscription_recovered");
+  const renewalRevenue = renewalRows.reduce((sum, row) => sum + eventNumber(row.metadata, "value"), 0);
+  const recoveredRevenue = subscriptionRecoveredRows.reduce((sum, row) => sum + eventNumber(row.metadata, "value"), 0);
+  const churnedMrr = churnRows.reduce((sum, row) => sum + eventNumber(row.metadata, "monthlyValue"), 0);
 
   const trialTenantIds = Array.from(new Set(trialRows.map((row) => eventTrialTenantId(row.metadata)).filter((value): value is string => Boolean(value))));
   let activatedTrials = 0;
@@ -276,6 +379,7 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
 
   const wonDeals = await db.select({
     leadId: dealsTable.leadId,
+    campaignId: leadsTable.adCampaignId,
     valor: dealsTable.valor,
     wonAt: dealsTable.wonAt,
     dataFechamento: dealsTable.dataFechamento,
@@ -295,16 +399,42 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
   });
   const revenue = salesRows.reduce((sum, deal) => sum + Number(deal.valor ?? 0), 0);
 
+  const subscriptionRows = await db.select({
+    subscriptionId: subscriptionsTable.id,
+    status: subscriptionsTable.status,
+    billingPhase: subscriptionsTable.billingPhase,
+    valorMensal: subscriptionsTable.valorMensal,
+    annualPriceAtTransition: subscriptionsTable.annualPriceAtTransition,
+    billingCycle: tenantsTable.billingCycle,
+    leadId: dealsTable.leadId,
+    campaignId: leadsTable.adCampaignId,
+  }).from(subscriptionsTable)
+    .innerJoin(dealsTable, eq(dealsTable.id, subscriptionsTable.sourceDealId))
+    .innerJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+    .innerJoin(tenantsTable, eq(tenantsTable.id, subscriptionsTable.tenantId))
+    .where(inArray(leadsTable.adCampaignId, campaignIds));
+  const cohortSubscriptions = filters.intentTier
+    ? subscriptionRows.filter((row) => Boolean(row.leadId && cohortLeadIdSet.has(row.leadId)))
+    : subscriptionRows;
+  const monthlyEquivalent = (row: typeof cohortSubscriptions[number]) => {
+    if (row.billingCycle === "annual" && row.billingPhase === "regular" && Number(row.annualPriceAtTransition ?? 0) > 0) {
+      return Number(row.annualPriceAtTransition);
+    }
+    return Number(row.valorMensal ?? 0);
+  };
+  const activeSubscriptions = cohortSubscriptions.filter((row) => row.status === "ativa");
+  const delinquentSubscriptions = cohortSubscriptions.filter((row) => row.status === "inadimplente");
+  const mrr = activeSubscriptions.reduce((sum, row) => sum + monthlyEquivalent(row), 0);
+  const delinquentMrr = delinquentSubscriptions.reduce((sum, row) => sum + monthlyEquivalent(row), 0);
+  const arr = mrr * 12;
+
   const behaviorConditions = [eq(webBehaviorEventsTable.tenantId, tenantId)];
   if (filters.platform || filters.campaignId || filters.landingPageId || filters.vertical) {
     behaviorConditions.push(inArray(webBehaviorEventsTable.adCampaignId, campaignIds));
   }
   if (scope.from) behaviorConditions.push(gte(webBehaviorEventsTable.createdAt, scope.from));
   behaviorConditions.push(lte(webBehaviorEventsTable.createdAt, scope.to));
-  if (filters.intentTier) {
-    if (cohortLeadIds.length === 0) return zeroCenter({ filters, allCampaigns });
-    behaviorConditions.push(inArray(webBehaviorEventsTable.leadId, cohortLeadIds));
-  }
+  if (filters.intentTier) behaviorConditions.push(inArray(webBehaviorEventsTable.leadId, cohortLeadIds));
   const [behavior] = await db.select({
     visitors: sql<number>`count(distinct ${webBehaviorEventsTable.anonymousSessionId})`,
     pageViews: sql<number>`count(*) filter (where ${webBehaviorEventsTable.eventType} = 'page_view')`,
@@ -320,6 +450,43 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
   const leads = cohortLeads.length;
   const trials = trialRows.length;
   const sales = salesRows.length;
+
+  const perfByCampaign = new Map(campaignPerformanceRows.map((row) => [row.campaignId, {
+    spend: Number(row.spend ?? 0),
+    clicks: Number(row.clicks ?? 0),
+  }]));
+  const leadsByCampaign = new Map<string, number>();
+  for (const lead of cohortLeads) {
+    if (!lead.adCampaignId) continue;
+    leadsByCampaign.set(lead.adCampaignId, (leadsByCampaign.get(lead.adCampaignId) ?? 0) + 1);
+  }
+  const salesByCampaign = new Map<string, { sales: number; revenue: number }>();
+  for (const sale of salesRows) {
+    if (!sale.campaignId) continue;
+    const current = salesByCampaign.get(sale.campaignId) ?? { sales: 0, revenue: 0 };
+    current.sales += 1;
+    current.revenue += Number(sale.valor ?? 0);
+    salesByCampaign.set(sale.campaignId, current);
+  }
+  const rankings = selectedCampaigns.map((campaign) => {
+    const perf = perfByCampaign.get(campaign.id) ?? { spend: 0, clicks: 0 };
+    const salesData = salesByCampaign.get(campaign.id) ?? { sales: 0, revenue: 0 };
+    const campaignLeads = leadsByCampaign.get(campaign.id) ?? 0;
+    return {
+      campaignId: campaign.id,
+      label: campaign.itemLabel || campaign.vertical || campaign.id,
+      platform: campaign.plataforma,
+      vertical: campaign.vertical,
+      spend: perf.spend,
+      clicks: perf.clicks,
+      leads: campaignLeads,
+      sales: salesData.sales,
+      revenue: salesData.revenue,
+      cac: ratio(perf.spend, salesData.sales),
+      roas: ratio(salesData.revenue, perf.spend),
+    };
+  }).sort((a, b) => b.revenue - a.revenue || (b.roas ?? -1) - (a.roas ?? -1)).slice(0, 10);
+
   const totals = {
     spend,
     impressions,
@@ -332,6 +499,14 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
     sales,
     revenue,
     activeCampaigns: selectedCampaigns.filter((campaign) => campaign.status === "ativo").length,
+    activeSubscriptions: activeSubscriptions.length,
+    delinquentSubscriptions: delinquentSubscriptions.length,
+    renewals: renewalRows.length,
+    annualUpgrades: annualUpgradeRows.length,
+    churns: churnRows.length,
+    renewalRevenue,
+    recoveredRevenue,
+    churnedMrr,
   };
   const metrics = {
     visitors,
@@ -342,6 +517,10 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
     avgBehaviorIntent,
     measuredIntentLeads: leadIntents.length,
     intentDistribution,
+    avgCommercialFit,
+    measuredCommercialFitLeads: commercialFits.length,
+    commercialFitDistribution,
+    commercialFitDefinition: "Score 0–100 baseado somente em empresa/PJ, segmento, porte, orçamento, urgência, objetivo e dor explicitamente registrados no CRM.",
     visitorToLeadRate: percent(leads, visitors),
     leadToTrialRate: percent(trials, leads),
     trialActivationRate: percent(activatedTrials, trials),
@@ -352,11 +531,15 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
     cac: ratio(spend, sales),
     revenuePerLead: ratio(revenue, leads),
     roas: ratio(revenue, spend),
+    mrr,
+    arr,
+    delinquentMrr,
   };
 
   return {
     totals,
     metrics,
+    rankings,
     diagnosis: launchDiagnosis({ spend, clicks, visitors, leads, avgBehaviorIntent, trials, activatedTrials, sales, revenue, recoveredLeads }),
     funnel: [
       { stage: "Visitantes", value: visitors },
@@ -369,5 +552,6 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
     appliedFilters: filters,
     period: { label: scope.label, from: scope.from?.toISOString() ?? null, to: scope.to.toISOString() },
     intentCohortNote: filters.intentTier ? "O filtro de intenção recorta leads e etapas posteriores; investimento permanece no escopo de mídia selecionado." : null,
+    financialNote: "MRR/ARR são posição atual das assinaturas ativas atribuídas ao recorte de campanha; renovações, churn e receita recuperada respeitam o período selecionado.",
   };
 }
