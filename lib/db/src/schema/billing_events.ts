@@ -7,6 +7,7 @@ import { tenantsTable } from "./tenants";
 export const billingEventTypeEnum = pgEnum("billing_event_type", [
   "initial",
   "monthly",
+  "annual",
 ]);
 
 export const billingEventStatusEnum = pgEnum("billing_event_status", [
