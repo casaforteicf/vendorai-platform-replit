@@ -212,7 +212,7 @@ export async function runBehaviorIntentSync(log: Logger): Promise<void> {
 
   let updated = 0;
   for (const row of leadRows) {
-    if (!row.leadId) continue;
+    if (!row.leadId || !row.tenantId) continue;
     try {
       const result = await syncBehaviorIntentForLead(row.leadId, row.tenantId);
       if (result) updated++;
