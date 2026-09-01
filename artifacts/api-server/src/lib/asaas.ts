@@ -142,6 +142,23 @@ export async function createCharge(
 }
 
 /**
+ * Removes an unpaid charge from the active Asaas flow. This is not a refund:
+ * callers must only use it for pending/overdue local cycles. Asaas documents
+ * DELETE /payments/{id} for this purpose and returns { deleted, id }.
+ */
+export async function deleteCharge(
+  chargeId: string,
+  apiKey?: string | null,
+): Promise<{ deleted: boolean; id: string }> {
+  return asaasRequest<{ deleted: boolean; id: string }>(
+    "DELETE",
+    `/payments/${encodeURIComponent(chargeId)}`,
+    undefined,
+    apiKey,
+  );
+}
+
+/**
  * Recovery path for application-managed idempotency. Asaas recommends that
  * integrations reconcile an inconclusive request before retrying. The launch
  * subscription worker uses its stable externalReference to recover a charge
