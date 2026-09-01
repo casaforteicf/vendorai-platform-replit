@@ -10,6 +10,7 @@ import {
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
 import {
   addCalendarMonth,
+  addCalendarYear,
   logicalDueFromVendorAiCycleKey,
 } from "../lib/vendorai-subscription-rules.js";
 import { ensureTenantPlanAndCommission } from "../lib/deal-closure-commission.js";
@@ -78,9 +79,11 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
       // Preserve the contractual billing calendar. A late payment settles the
       // overdue cycle, but does not silently move every future due date. The
       // trial-end day is the anchor so Jan-31 → Feb-28/29 → Mar-31 instead of
-      // drifting permanently to the 28th.
+      // drifting permanently to the 28th. Annual cycles advance twelve months.
       const anchorDay = sub.trialEndsAt?.getUTCDate() ?? logicalDue.getUTCDate();
-      const computedNextDue = addCalendarMonth(logicalDue, anchorDay);
+      const computedNextDue = event.tipo === "annual"
+        ? addCalendarYear(logicalDue, anchorDay)
+        : addCalendarMonth(logicalDue, anchorDay);
       const shouldAdvance = !sub.proximaCobranca || sub.proximaCobranca.getTime() <= logicalDue.getTime();
       const needsTrialActivation = Boolean(sub.sourceDealId && sub.tenantIsDemo);
       const isRecovery = sub.status === "inadimplente";
