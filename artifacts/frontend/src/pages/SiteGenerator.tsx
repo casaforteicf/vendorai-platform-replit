@@ -136,6 +136,26 @@ function absolutizeStorageUrls(html: string): string {
   );
 }
 
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= items.length) return;
+        await task(items[index]!);
+      }
+    }),
+  );
+}
+
 function useSiteGenerator(tenantId: string, token: string | null) {
   const [status, setStatus] = useState<GeneratorStatus>("idle");
   const [html, setHtml] = useState("");
@@ -192,34 +212,23 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   }, [tenantId, token]);
 
   const loadLatest = useCallback(async () => {
-    if (!tenantId) return;
-    try {
-      const res = await fetch(`/api/tenants/${tenantId}/site-generator/latest`, { headers: authHeaders });
-      if (!res.ok) return;
-      const site = await res.json();
-      const originalHtml = site.html ?? "";
-      const repairedHtml = absolutizeStorageUrls(originalHtml);
-      if (repairedHtml !== originalHtml) {
-        const repairRes = await fetch(`/api/tenants/${tenantId}/site-generator/${site.id}/html`, {
-          method: "PATCH",
-          headers: authHeaders,
-          body: JSON.stringify({ html: repairedHtml }),
-        });
-        if (!repairRes.ok) throw new Error("Não foi possível corrigir as URLs das imagens");
-      }
-      setHtml(repairedHtml);
-      setSiteId(site.id);
-      setSiteSlug(site.siteSlug ?? null);
-      setIsPublished(site.published ?? false);
-      setCurrentSiteType(site.siteType ?? null);
-      setCurrentConfig(site.config ?? null);
-      setSeoScore(site.seoScore ?? null);
-      setSeoChecklist(site.seoChecklist ?? null);
-      setStatus("ready");
-    } catch {
-      // No existing site — keep idle state
-    }
-  }, [tenantId, token]);
+  if (!tenantId) return;
+  try {
+    // A lista retorna [] quando o tenant ainda não tem site e evita o 404
+    // esperado de /latest na primeira abertura do gerador.
+    const res = await fetch(`/api/tenants/${tenantId}/site-generator`, { headers: authHeaders });
+    if (!res.ok) return;
+    const rows = await res.json();
+    const sites = Array.isArray(rows) ? (rows as SiteSummary[]) : [];
+    setSitesList(sites);
+    const latest = [...sites].sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )[0];
+    if (latest) await loadSite(latest.id);
+  } catch {
+    // Sem site existente: mantém o formulário em estado inicial.
+  }
+}, [tenantId, token, loadSite]);
 
   const publish = useCallback(async () => {
     if (!siteId) return;
@@ -507,33 +516,29 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   const logoUrl = bp?.logoUrl ?? "";
 
   async function uploadOneImage(file: File): Promise<void> {
-    setUploadingCount((n) => n + 1);
-    try {
-      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
-        requestUploadUrl.mutate(
-          { data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" } },
-          { onSuccess: resolve, onError: reject },
-        );
-      });
-      const putRes = await fetch(result.uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type || "image/jpeg" },
-      });
-      if (!putRes.ok) throw new Error("Upload falhou");
-      setImages((prev) => [...prev, `${window.location.origin}/api/storage${result.objectPath}`]);
-    } catch {
-      toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
-    } finally {
-      setUploadingCount((n) => n - 1);
-    }
+  try {
+    const result = await requestUploadUrl.mutateAsync({
+      data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" },
+    }) as { uploadURL: string; objectPath: string };
+    const putRes = await fetch(result.uploadURL, {
+      method: "PUT",
+      body: file,
+      headers: { "Content-Type": file.type || "image/jpeg" },
+    });
+    if (!putRes.ok) throw new Error("Upload falhou");
+    setImages((prev) => [...prev, `${window.location.origin}/api/storage${result.objectPath}`]);
+  } catch {
+    toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
+  } finally {
+    setUploadingCount((n) => Math.max(0, n - 1));
   }
+}
 
-  async function handleImagesUpload(files: File[]) {
-    for (const file of files) {
-      await uploadOneImage(file);
-    }
-  }
+async function handleImagesUpload(files: File[]) {
+  if (files.length === 0) return;
+  setUploadingCount((n) => n + files.length);
+  await runWithConcurrency(files, 3, uploadOneImage);
+}
 
   // ── Lote por nicho/produto/serviço — várias LPs de uma vez, cada uma com
   // seu próprio título/descrição/fotos, reaproveitando o resto do formulário
@@ -577,34 +582,38 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
   }
 
   async function uploadOneTopicImage(topicId: string, file: File): Promise<void> {
-    setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, uploadingCount: t.uploadingCount + 1 } : t)));
-    try {
-      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
-        requestUploadUrl.mutate(
-          { data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" } },
-          { onSuccess: resolve, onError: reject },
-        );
-      });
-      const putRes = await fetch(result.uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type || "image/jpeg" },
-      });
-      if (!putRes.ok) throw new Error("Upload falhou");
-      const url = `${window.location.origin}/api/storage${result.objectPath}`;
-      setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, images: [...t.images, url] } : t)));
-    } catch {
-      toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
-    } finally {
-      setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, uploadingCount: Math.max(0, t.uploadingCount - 1) } : t)));
-    }
+  try {
+    const result = await requestUploadUrl.mutateAsync({
+      data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" },
+    }) as { uploadURL: string; objectPath: string };
+    const putRes = await fetch(result.uploadURL, {
+      method: "PUT",
+      body: file,
+      headers: { "Content-Type": file.type || "image/jpeg" },
+    });
+    if (!putRes.ok) throw new Error("Upload falhou");
+    const url = `${window.location.origin}/api/storage${result.objectPath}`;
+    setBulkTopics((prev) => prev.map((t) => (t.id === topicId ? { ...t, images: [...t.images, url] } : t)));
+  } catch {
+    toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
+  } finally {
+    setBulkTopics((prev) => prev.map((t) => (
+      t.id === topicId
+        ? { ...t, uploadingCount: Math.max(0, t.uploadingCount - 1) }
+        : t
+    )));
   }
+}
 
-  async function handleTopicImagesUpload(topicId: string, files: File[]) {
-    for (const file of files) {
-      await uploadOneTopicImage(topicId, file);
-    }
-  }
+async function handleTopicImagesUpload(topicId: string, files: File[]) {
+  if (files.length === 0) return;
+  setBulkTopics((prev) => prev.map((t) => (
+    t.id === topicId
+      ? { ...t, uploadingCount: t.uploadingCount + files.length }
+      : t
+  )));
+  await runWithConcurrency(files, 3, (file) => uploadOneTopicImage(topicId, file));
+}
 
   function addProduct() { setProducts((p) => [...p, { name: "", price: "" }]); }
   function removeProduct(i: number) { setProducts((p) => p.filter((_, idx) => idx !== i)); }
@@ -887,13 +896,13 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
             className="sr-only"
             onChange={(e) => {
               const files = Array.from(e.target.files ?? []);
-              handleImagesUpload(files);
+              void handleImagesUpload(files);
               e.target.value = "";
             }}
           />
           <div className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
             {uploadingCount > 0
-              ? <><Loader2 className="h-4 w-4 animate-spin shrink-0" />Enviando foto {uploadingCount > 1 ? `(${uploadingCount} restantes)` : ""}…</>
+              ? <><Loader2 className="h-4 w-4 animate-spin shrink-0" />Enviando fotos ({uploadingCount} restante{uploadingCount === 1 ? "" : "s"})…</>
               : <><Upload className="h-4 w-4 shrink-0" />+ Adicionar fotos do local, produto ou serviço</>
             }
           </div>
@@ -1087,13 +1096,13 @@ function ConfigForm({ tenantId, token, onGenerate, onGenerateBulk }: {
                   className="sr-only"
                   onChange={(e) => {
                     const files = Array.from(e.target.files ?? []);
-                    handleTopicImagesUpload(t.id, files);
+                    void handleTopicImagesUpload(t.id, files);
                     e.target.value = "";
                   }}
                 />
                 <div className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                   {t.uploadingCount > 0
-                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />Enviando…</>
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />Enviando fotos ({t.uploadingCount} restante{t.uploadingCount === 1 ? "" : "s"})…</>
                     : <><Upload className="h-3.5 w-3.5 shrink-0" />+ Foto específica desta página (opcional)</>
                   }
                 </div>
@@ -2985,13 +2994,10 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
     loadLatest, loadAll, loadSite, saveHtml, publish, renameSite, deleteSite,
   } = useSiteGenerator(tenantId, token);
 
-  // Auto-load latest site + list on mount
-  useEffect(() => {
-    if (tenantId) {
-      loadLatest();
-      loadAll();
-    }
-  }, [tenantId]);
+  // Carrega a lista e abre o site mais recente, quando existir.
+useEffect(() => {
+  if (tenantId) void loadLatest();
+}, [tenantId, loadLatest]);
 
   async function handleGenerate(config: SiteConfig) {
     setActiveTab("preview");
