@@ -4,14 +4,13 @@ import "./index.css";
 import { AdDataConsentControl } from "./components/AdDataConsentControl";
 import {
   captureLaunchAttribution,
+  installFirstPartyBehaviorTracking,
   installPublicFormConsentBridge,
 } from "./lib/launchAttribution";
 
-// Captura first-touch assim que o site carrega e instala uma ponte única para
-// todos os formulários públicos conhecidos. A escolha de ad-data é separada da
-// atribuição: pode mudar/revogar sem alterar a campanha original do lead.
 captureLaunchAttribution();
 installPublicFormConsentBridge();
+installFirstPartyBehaviorTracking();
 
 createRoot(document.getElementById("root")!).render(
   <>
