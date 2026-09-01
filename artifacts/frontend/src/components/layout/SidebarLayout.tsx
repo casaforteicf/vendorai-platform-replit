@@ -249,7 +249,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas", "/campanhas-nova",
     "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes", "/faq",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
-    "/praca-perguntas", "/erp", "/ads", "/marketing/plano-de-midia",
+    "/praca-perguntas", "/erp", "/ads", "/marketing/sites", "/marketing/plano-de-midia",
   ];
 
   const verticalHrefAllowlists: Record<string, Set<string>> = {
@@ -633,7 +633,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     const [relatoriosOpen, setRelatoriosOpen] = useState(false);
     const [conteudoOpen, setConteudoOpen] = useState(false);
     const isRelatorio = location.startsWith("/relatorios/");
-    const isConteudo = location === "/content" || location === "/content-autopilot";
+    const isConteudo = location === "/content" || location === "/content-autopilot" || location === "/marketing/sites";
     return (
       <>
         {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
@@ -699,6 +699,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Target className="h-3.5 w-3.5" /> Anúncios Patrocinados
+              </Link>
+              <Link
+                href="/marketing/sites"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/marketing/sites"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Globe className="h-3.5 w-3.5" /> Sites e Landing Pages
               </Link>
               <Link
                 href="/marketing/plano-de-midia"
