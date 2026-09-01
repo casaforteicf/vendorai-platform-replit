@@ -2,23 +2,25 @@ import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, Megaphone, ArrowRight } from "lucide-react";
+import { LaunchCommandCenter } from "@/components/marketing/LaunchCommandCenter";
 
-// Ponto de entrada único para campanhas: o lojista escolhe o canal aqui,
-// e cada opção segue seu próprio fluxo já existente (orgânico em
-// /campanhas, pago em /ads) — nada muda nesses dois fluxos, essa tela
-// só junta o ponto de partida dos dois num lugar só.
+// Ponto de entrada único para campanhas: primeiro mostra o estado real do
+// lançamento e o principal gargalo; depois o usuário escolhe criar campanha
+// orgânica ou paga. A medição continua vindo do mesmo overview de Ads.
 export default function CampanhasHub() {
   const [, setLocation] = useLocation();
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center gap-2">
         <Megaphone className="h-6 w-6 text-primary" />
         <h1 className="text-xl font-semibold">Campanhas</h1>
       </div>
-      <p className="text-sm text-muted-foreground max-w-2xl">
-        Escolha o tipo de campanha que você quer criar. Depois dessa escolha, cada uma segue seu próprio fluxo.
+      <p className="text-sm text-muted-foreground max-w-3xl">
+        Acompanhe primeiro o que está virando intenção, trial, venda e receita. Depois crie ou ajuste campanhas com base no gargalo real do funil.
       </p>
+
+      <LaunchCommandCenter />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card
