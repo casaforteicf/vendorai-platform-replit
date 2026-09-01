@@ -16,8 +16,8 @@ import VerticalPage from "@/pages/site/VerticalPage";
 import ParceirosPage from "@/pages/site/ParceirosPage";
 import BlogList from "@/pages/blog/BlogList";
 import BlogPost from "@/pages/blog/BlogPost";
-import LaunchLpRouter from "@/pages/lp/LaunchLpRouter";
-import MarketingVerticalsHub from "@/pages/MarketingVerticalsHub";
+import UnifiedLpRouter from "@/pages/lp/UnifiedLpRouter";
+import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import AdDataConsentBanner from "@/components/AdDataConsentBanner";
@@ -34,7 +34,8 @@ function Router() {
       {/* Standalone pages — own layout, no global Navbar/Footer */}
       <Route path="/verticais/:slug" component={VerticalPage} />
       <Route path="/parceiros" component={ParceirosPage} />
-      <Route path="/lp/:slug" component={LaunchLpRouter} />
+      <Route path="/segmentos/:slug" component={MacrosegmentHub} />
+      <Route path="/lp/:slug" component={UnifiedLpRouter} />
 
       {/* Standard layout — Navbar + Footer */}
       <Route>
@@ -53,8 +54,6 @@ function Router() {
               <Route path="/terms" component={Terms} />
               <Route path="/blog/:slug" component={BlogPost} />
               <Route path="/blog" component={BlogList} />
-              <Route path="/segmentos/:macro" component={MarketingVerticalsHub} />
-              <Route path="/segmentos" component={MarketingVerticalsHub} />
               <Route component={NotFound} />
             </Switch>
           </main>
