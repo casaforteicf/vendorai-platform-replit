@@ -504,10 +504,10 @@ TIPOGRAFIA (Google Fonts do par escolhido no seu plano):
   h3: 1.25rem;
   p: 1rem; line-height 1.6-1.8; cor --text-muted;
 
-BOTÕES:
-  .btn-primary → background: var(--primary); color: ${btnTextColor}; padding: 14px 28px; border-radius: 100px; font-weight: 700; font-size: 0.95rem; border: none; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.35);
+BOTÕES (raio segue --radius do SEU plano -- NÃO force pílula/100px se o plano pediu algo mais reto):
+  .btn-primary → background: var(--primary); color: ${btnTextColor}; padding: 14px 28px; border-radius: var(--radius); font-weight: 700; font-size: 0.95rem; border: none; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.35);
   .btn-primary:hover → transform: translateY(-2px); box-shadow: 0 8px 28px rgba(var(--primary-rgb), 0.45);
-  .btn-outline → background: transparent; color: var(--text); border: 2px solid var(--border); padding: 12px 26px; border-radius: 100px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  .btn-outline → background: transparent; color: var(--text); border: 2px solid var(--border); padding: 12px 26px; border-radius: var(--radius); font-weight: 600; cursor: pointer; transition: all 0.2s;
   .btn-outline:hover → border-color: var(--primary); color: var(--primary);
 
 CARDS:
@@ -663,26 +663,52 @@ async function callAI(
 
   log.info({ provider: "openai", model: AI_MODEL }, "Calling OpenAI for site generation");
   const openai = await getOpenAIForTenant(tenantId);
+  const openaiMessages = [
+    { role: "system" as const, content: systemPrompt },
+    ...messages.map((message) => ({ role: message.role, content: message.content })),
+  ];
+  // gpt-5.6-terra é a geração atual da OpenAI (gpt-4o-mini foi aposentado
+  // em fev/2026) -- "terra" é o nível equilibrado (não o "sol", que é modelo
+  // de raciocínio pesado, minutos de latência, arriscado demais pra essa
+  // troca sem poder testar direto). reasoning_effort baixo porque gerar
+  // HTML/CSS é trabalho criativo, não uma cadeia de raciocínio lógico --
+  // não faz sentido gastar tempo/token "pensando" fundo nisso.
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 16000,
-      messages: [
-        { role: "system" as const, content: systemPrompt },
-        ...messages.map((message) => ({ role: message.role, content: message.content })),
-      ],
-    });
-    return {
-      content: response.choices[0]?.message?.content ?? "",
-      provider: "openai",
-      model: "gpt-4o-mini",
-    };
-  } catch (err) {
-    // Anthropic já falhou antes (billing) e o OpenAI também falhou aqui —
-    // sem isso, o erro cru do SDK da OpenAI (ex: "429 Rate limit
-    // reached...") vazava direto pra tela sem nenhuma tradução.
-    log.info({ err, provider: "openai" }, "OpenAI também falhou — nenhum provedor de IA disponível");
-    throw new Error("Nenhum provedor de IA disponível no momento (Anthropic e OpenAI falharam). Tente novamente em alguns minutos — se persistir, pode ser limite de uso da conta.");
+      model: "gpt-5.6-terra",
+      max_completion_tokens: 32000,
+      reasoning_effort: "low",
+      messages: openaiMessages,
+    } as any);
+    const finishReason = response.choices[0]?.finish_reason;
+    const content = response.choices[0]?.message?.content ?? "";
+    if (finishReason === "length" && content.length < 500) {
+      // Sinal do problema que a doc da OpenAI avisa: tokens todos gastos em
+      // raciocínio interno, resposta final vazia/truncada demais pra ser
+      // um HTML válido -- cai pro modelo antigo, que não tem esse risco.
+      throw new Error(`gpt-5.6-terra: resposta vazia/truncada (finish_reason=length, ${content.length} chars) -- provável esgotamento de tokens em raciocínio interno`);
+    }
+    return { content, provider: "openai", model: "gpt-5.6-terra" };
+  } catch (newModelErr) {
+    log.info({ err: newModelErr, provider: "openai" }, "gpt-5.6-terra falhou — caindo pro gpt-4o-mini (modelo anterior, já validado)");
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_tokens: 16000,
+        messages: openaiMessages,
+      });
+      return {
+        content: response.choices[0]?.message?.content ?? "",
+        provider: "openai",
+        model: "gpt-4o-mini",
+      };
+    } catch (err) {
+      // Anthropic já falhou antes (billing) e o OpenAI também falhou aqui —
+      // sem isso, o erro cru do SDK da OpenAI (ex: "429 Rate limit
+      // reached...") vazava direto pra tela sem nenhuma tradução.
+      log.info({ err, provider: "openai" }, "OpenAI também falhou — nenhum provedor de IA disponível");
+      throw new Error("Nenhum provedor de IA disponível no momento (Anthropic e OpenAI falharam). Tente novamente em alguns minutos — se persistir, pode ser limite de uso da conta.");
+    }
   }
 }
 

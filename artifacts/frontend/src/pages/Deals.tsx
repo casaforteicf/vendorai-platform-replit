@@ -2017,6 +2017,16 @@ export default function Deals() {
     deal: null,
     novaProb: 0,
   });
+  // Pra quem vai o negócio quando o card é movido -- sempre pergunta,
+  // mesmo que a resposta seja "comigo mesmo". Guarda os dados da
+  // movimentação (etapa/prob/etc já calculados) pra aplicar junto com
+  // o responsável escolhido, num só PATCH.
+  const [assignDialog, setAssignDialog] = useState<{
+    open: boolean;
+    deal: Deal | null;
+    updateData: Record<string, unknown> | null;
+    onGanho: boolean;
+  }>({ open: false, deal: null, updateData: null, onGanho: false });
   // SaaS pipeline state
   const [saasActiveId, setSaasActiveId] = useState<string | null>(null);
   const [saasOverColumn, setSaasOverColumn] = useState<DealEtapaSaas | null>(null);
@@ -2437,40 +2447,58 @@ export default function Deals() {
         updateData.aquecimentoTipo = targetCol.onDrop.aquecimentoTipo;
       }
 
-      updateDeal.mutate(
-        { id: draggedDeal.id, data: updateData as Parameters<typeof updateDeal.mutate>[0]["data"] },
-        {
-          onSuccess: (data) => {
-            if (targetCol.onDrop.etapa === "ganho") {
-              if ((data as any).inviteSent && (data as any).inviteEmail) {
-                toast({ title: `Convite de onboarding enviado para ${(data as any).inviteEmail}` });
-              } else if ((data as any).inviteSkipReason === "no_email") {
-                toast({
-                  title: "Negócio ganho — sem e-mail cadastrado",
-                  description: "Envie o convite manualmente após adicionar o e-mail do lead.",
-                  variant: "default",
-                });
-              }
-              if ((data as any).whatsappSent) {
-                toast({ title: "WhatsApp enviado ao lead." });
-              } else if ((data as any).whatsappSkipReason === "no_phone") {
-                toast({ title: "WhatsApp não enviado — lead sem telefone.", variant: "destructive" });
-              } else if ((data as any).whatsappSkipReason === "zapi_not_configured") {
-                toast({ title: "WhatsApp não enviado — Meta Cloud API não configurada.", variant: "destructive" });
-              } else if ((data as any).whatsappSkipReason === "send_error") {
-                toast({ title: "WhatsApp não enviado — erro ao enviar mensagem.", description: "Verifique as credenciais Meta Cloud API em Configurações.", variant: "destructive" });
-              }
-            }
-          },
-          onError: () => {
-            toast({ title: "Erro ao mover negócio", variant: "destructive" });
-            queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
-          },
-        }
-      );
+      // Pedido real: toda movimentação de card sempre pergunta "pra quem
+      // vai" (mesmo mim mesmo) -- abre o modal em vez de mandar direto.
+      setAssignDialog({ open: true, deal: draggedDeal, updateData, onGanho: targetCol.onDrop.etapa === "ganho" });
     },
     [deals, kanbanColumns, queryClient, tenantId, updateDeal, toast]
   );
+
+  function confirmarAtribuicao(assignedTo: string) {
+    const { deal, updateData, onGanho } = assignDialog;
+    if (!deal || !updateData) return;
+    setAssignDialog({ open: false, deal: null, updateData: null, onGanho: false });
+
+    queryClient.setQueryData(
+      getListDealsQueryKey(tenantId),
+      (old: Deal[] | undefined) =>
+        (old ?? []).map((d) =>
+          d.id === deal.id ? { ...d, ...updateData, assignedTo } as Deal : d
+        )
+    );
+
+    updateDeal.mutate(
+      { id: deal.id, data: { ...updateData, assignedTo } as Parameters<typeof updateDeal.mutate>[0]["data"] },
+      {
+        onSuccess: (data) => {
+          if (onGanho) {
+            if ((data as any).inviteSent && (data as any).inviteEmail) {
+              toast({ title: `Convite de onboarding enviado para ${(data as any).inviteEmail}` });
+            } else if ((data as any).inviteSkipReason === "no_email") {
+              toast({
+                title: "Negócio ganho — sem e-mail cadastrado",
+                description: "Envie o convite manualmente após adicionar o e-mail do lead.",
+                variant: "default",
+              });
+            }
+            if ((data as any).whatsappSent) {
+              toast({ title: "WhatsApp enviado ao lead." });
+            } else if ((data as any).whatsappSkipReason === "no_phone") {
+              toast({ title: "WhatsApp não enviado — lead sem telefone.", variant: "destructive" });
+            } else if ((data as any).whatsappSkipReason === "zapi_not_configured") {
+              toast({ title: "WhatsApp não enviado — Meta Cloud API não configurada.", variant: "destructive" });
+            } else if ((data as any).whatsappSkipReason === "send_error") {
+              toast({ title: "WhatsApp não enviado — erro ao enviar mensagem.", description: "Verifique as credenciais Meta Cloud API em Configurações.", variant: "destructive" });
+            }
+          }
+        },
+        onError: () => {
+          toast({ title: "Erro ao mover negócio", variant: "destructive" });
+          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+        },
+      }
+    );
+  }
 
   function confirmarPerdido(categoria: string, detalhe: string) {
     const { deal, novaProb } = perdidoDialog;
@@ -3095,6 +3123,46 @@ export default function Deals() {
         onConfirm={confirmarPerdido}
         onCancel={cancelarPerdido}
       />
+
+      {/* ── Pra quem vai o negócio (sempre pergunta ao mover o card) ──────── */}
+      <Dialog
+        open={assignDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setAssignDialog({ open: false, deal: null, updateData: null, onGanho: false });
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Pra quem vai esse negócio?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {assignDialog.deal?.titulo} — o prazo de resposta reinicia a partir de agora pra quem for escolhido.
+          </p>
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => confirmarAtribuicao(user?.id ?? "")}
+            >
+              Comigo mesmo
+            </Button>
+            {tenantUsers
+              .filter((u) => u.id !== user?.id)
+              .map((u) => (
+                <Button
+                  key={u.id}
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => confirmarAtribuicao(u.id)}
+                >
+                  {u.name || u.email || u.id}
+                </Button>
+              ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Agendar Reunião (ação rápida da pipeline) ─────────────────────── */}
       {agendarDeal && (

@@ -416,9 +416,26 @@ router.patch("/deals/:id", async (req, res) => {
     }
   }
 
+  // Achado real (Marcos): reatribuição travada -- essa linha SEMPRE
+  // sobrescrevia assignedTo de volta pro valor antigo, mesmo quando o
+  // cliente mandava um responsável novo de propósito (ex: "enviar pro
+  // fulano" ao mover o card). Só cai pro fallback (self/existing) quando
+  // o cliente não mandou nada -- reatribuição explícita agora funciona.
+  const assignedToChanged = "assignedTo" in parsed.data && parsed.data.assignedTo !== existing.assignedTo;
+  const etapaChanged = Boolean(parsed.data.etapa && parsed.data.etapa !== existing.etapa);
+
   const [deal] = await db
     .update(dealsTable)
-    .set({ ...parsed.data, assignedTo: existing.assignedTo ?? req.user?.sub ?? null, updatedAt: new Date() })
+    .set({
+      ...parsed.data,
+      assignedTo: "assignedTo" in parsed.data ? parsed.data.assignedTo : (existing.assignedTo ?? req.user?.sub ?? null),
+      // O "tempo" (quanto tempo esse negócio está com o responsável atual
+      // na etapa atual) reinicia sempre que a etapa OU o responsável muda
+      // -- mover o card ou repassar pra outra pessoa é sempre um "relógio
+      // novo" pra essa negociação.
+      ...((etapaChanged || assignedToChanged) ? { etapaAlteradaEm: new Date() } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(dealsTable.id, existing.id))
     .returning();
 
@@ -428,6 +445,21 @@ router.patch("/deals/:id", async (req, res) => {
       title: `Negócio avançou para ${DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa}`,
       description: `Etapa anterior: ${DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa}.`,
       responsavelId: req.user?.sub,
+    });
+  }
+
+  // Notifica quando o negócio é repassado pra OUTRA pessoa (não pra si
+  // mesmo) -- quem recebeu precisa saber que esse card entrou na conta
+  // dele. Notificação é de tenant inteiro (não existe alvo por usuário
+  // ainda), mas já deixa claro pra quem foi.
+  if (assignedToChanged && deal.assignedTo && deal.assignedTo !== req.user?.sub) {
+    const [novoResponsavel] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, deal.assignedTo));
+    await db.insert(notificationsTable).values({
+      tenantId: existing.tenantId,
+      title: "Negócio repassado pra você",
+      message: `"${deal.titulo}" foi enviado pra ${novoResponsavel?.name ?? "você"}${etapaChanged ? ` na etapa ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}` : ""}.`,
+      type: "info",
+      category: "deal_reassigned",
     });
   }
 
