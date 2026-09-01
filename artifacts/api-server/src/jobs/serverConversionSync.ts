@@ -28,6 +28,15 @@ function enabled(): boolean {
   return process.env["MARKETING_SERVER_CONVERSIONS_ENABLED"] === "true";
 }
 
+function allowedTenantIds(): Set<string> {
+  return new Set(
+    (process.env["MARKETING_SERVER_CONVERSIONS_TENANT_IDS"] ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }
@@ -51,9 +60,6 @@ function hashPhone(phone?: string | null): string | null {
 }
 
 function hasAdDataConsent(metadata: Record<string, unknown>, attribution: Record<string, unknown>): boolean {
-  // O evento pode carregar o snapshot do opt-in e o lead mantém a evidência
-  // completa (granted/capturedAt/textVersion). Basta uma evidência explícita
-  // positiva; ausência nunca é interpretada como consentimento.
   if (metadata["adDataConsent"] === true) return true;
   const consent = asRecord(attribution["adDataConsent"]);
   return consent["granted"] === true;
@@ -106,15 +112,24 @@ async function markMetaResult(
 
 /**
  * Envia conversões first-party para Meta CAPI somente quando:
- * 1) a feature flag global está explicitamente ligada; e
- * 2) o titular concedeu opt-in específico para medição/otimização de anúncios.
+ * 1) a feature flag global está explicitamente ligada;
+ * 2) o tenant está na allowlist de ativação; e
+ * 3) o titular concedeu opt-in específico para medição/otimização de anúncios.
  *
- * event_id usa o ID estável do evento no VendorAI; se houver retry após uma
- * resposta já processada, a Meta consegue deduplicar o mesmo evento.
+ * META_CAPI_TEST_EVENT_CODE ativa o modo Test Events sem consumir o marcador de
+ * envio de produção, permitindo validar um tenant controlado antes do go-live.
  */
 export async function runServerConversionSync(log: Logger): Promise<void> {
   if (!enabled()) return;
 
+  const allowlist = allowedTenantIds();
+  if (allowlist.size === 0) {
+    log.warn("server-conversions/meta: feature flag ativa, mas nenhum tenant está na allowlist; nenhum evento será enviado");
+    return;
+  }
+
+  const testEventCode = process.env["META_CAPI_TEST_EVENT_CODE"]?.trim() || null;
+  const testMode = Boolean(testEventCode);
   const since = new Date(Date.now() - META_EVENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const events = await db
     .select({
@@ -141,7 +156,11 @@ export async function runServerConversionSync(log: Logger): Promise<void> {
 
   for (const event of events) {
     const metadata = asRecord(event.metadata);
-    if (text(metadata["metaCapiSentAt"])) {
+    if (!allowlist.has(event.tenantId)) {
+      skipped++;
+      continue;
+    }
+    if (testMode ? text(metadata["metaCapiTestSentAt"]) : text(metadata["metaCapiSentAt"])) {
       skipped++;
       continue;
     }
@@ -195,6 +214,7 @@ export async function runServerConversionSync(log: Logger): Promise<void> {
       const emailHash = hashEmail(lead?.email);
       const phoneHash = hashPhone(lead?.telefone);
       const fbc = buildFbc(metadata, attribution, event.createdAt);
+      const eventId = testMode ? `vendorai:test:${event.id}` : `vendorai:${event.id}`;
 
       const userData: Record<string, unknown> = {
         external_id: [sha256(lead?.id ?? `${event.tenantId}:${event.id}`)],
@@ -219,7 +239,7 @@ export async function runServerConversionSync(log: Logger): Promise<void> {
         data: [{
           event_name: META_EVENT_NAMES[event.eventType],
           event_time: eventTimeSeconds(event.createdAt, metadata),
-          event_id: `vendorai:${event.id}`,
+          event_id: eventId,
           action_source: event.eventType === "lead_attributed" || event.eventType === "trial_started"
             ? "website"
             : "system_generated",
@@ -227,6 +247,7 @@ export async function runServerConversionSync(log: Logger): Promise<void> {
           user_data: userData,
           ...(Object.keys(customData).length ? { custom_data: customData } : {}),
         }],
+        ...(testEventCode ? { test_event_code: testEventCode } : {}),
       };
 
       const url = new URL(`${META_GRAPH_BASE}/${pixelId}/events`);
@@ -242,27 +263,36 @@ export async function runServerConversionSync(log: Logger): Promise<void> {
         throw new Error(`Meta CAPI ${response.status}: ${responseText.slice(0, 300)}`);
       }
 
-      await markMetaResult(event.id, metadata, {
-        metaCapiSentAt: new Date().toISOString(),
-        metaCapiEventId: `vendorai:${event.id}`,
-        metaCapiSkippedReason: null,
-        metaCapiLastError: null,
-      });
+      const sentAt = new Date().toISOString();
+      await markMetaResult(event.id, metadata, testMode
+        ? {
+            metaCapiTestSentAt: sentAt,
+            metaCapiTestEventId: eventId,
+            metaCapiTestCodeUsed: true,
+            metaCapiLastError: null,
+          }
+        : {
+            metaCapiSentAt: sentAt,
+            metaCapiEventId: eventId,
+            metaCapiSkippedReason: null,
+            metaCapiLastError: null,
+          });
       sent++;
     } catch (err) {
       failed++;
       const message = err instanceof Error ? err.message : String(err);
-      const attempts = Number(metadata["metaCapiAttempts"] ?? 0) + 1;
+      const attemptsKey = testMode ? "metaCapiTestAttempts" : "metaCapiAttempts";
+      const attempts = Number(metadata[attemptsKey] ?? 0) + 1;
       await markMetaResult(event.id, metadata, {
-        metaCapiAttempts: attempts,
+        [attemptsKey]: attempts,
         metaCapiLastAttemptAt: new Date().toISOString(),
         metaCapiLastError: message.slice(0, 500),
       }).catch(() => {});
-      log.warn({ eventId: event.id, eventType: event.eventType, campaignId: event.campaignId, err: message }, "server-conversions/meta: event failed");
+      log.warn({ eventId: event.id, eventType: event.eventType, campaignId: event.campaignId, testMode, err: message }, "server-conversions/meta: event failed");
     }
   }
 
   if (sent > 0 || failed > 0) {
-    log.info({ sent, skipped, failed }, "server-conversions/meta: sync complete");
+    log.info({ sent, skipped, failed, testMode, allowlistedTenants: allowlist.size }, "server-conversions/meta: sync complete");
   }
 }
