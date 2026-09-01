@@ -2,12 +2,14 @@ import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
 import { siteVerticaisTable, siteContatosTable, leadsTable, dealsTable } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, isNull } from "drizzle-orm";
 import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
 import { storePhone, findLeadByDedup } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
+import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
 
@@ -51,6 +53,76 @@ router.get("/site/verticais/:slug", async (req, res) => {
   return res.json(row);
 });
 
+const optionalTrackingString = z.string().trim().max(500).optional();
+
+type SiteAttribution = {
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  utmTerm?: string;
+  gclid?: string;
+  fbclid?: string;
+  pageUrl?: string;
+  referrer?: string;
+  landingPageSlug?: string;
+};
+
+function recoverSiteAttribution(
+  body: SiteAttribution,
+  rawReferer?: string,
+): SiteAttribution {
+  let recovered: SiteAttribution = {};
+  if (rawReferer) {
+    try {
+      const url = new URL(rawReferer);
+      const lpMatch = url.pathname.match(/^\/lp\/([^/?#]+)/);
+      recovered = {
+        utmSource: url.searchParams.get("utm_source") ?? undefined,
+        utmMedium: url.searchParams.get("utm_medium") ?? undefined,
+        utmCampaign: url.searchParams.get("utm_campaign") ?? undefined,
+        utmContent: url.searchParams.get("utm_content") ?? undefined,
+        utmTerm: url.searchParams.get("utm_term") ?? undefined,
+        gclid: url.searchParams.get("gclid") ?? undefined,
+        fbclid: url.searchParams.get("fbclid") ?? undefined,
+        pageUrl: rawReferer,
+        landingPageSlug: lpMatch?.[1],
+      };
+    } catch {
+      recovered = { pageUrl: rawReferer.slice(0, 2000) };
+    }
+  }
+
+  return {
+    utmSource: body.utmSource || recovered.utmSource,
+    utmMedium: body.utmMedium || recovered.utmMedium,
+    utmCampaign: body.utmCampaign || recovered.utmCampaign,
+    utmContent: body.utmContent || recovered.utmContent,
+    utmTerm: body.utmTerm || recovered.utmTerm,
+    gclid: body.gclid || recovered.gclid,
+    fbclid: body.fbclid || recovered.fbclid,
+    pageUrl: body.pageUrl || recovered.pageUrl,
+    referrer: body.referrer || rawReferer,
+    landingPageSlug: body.landingPageSlug || recovered.landingPageSlug,
+  };
+}
+
+function attributionRecord(data: SiteAttribution) {
+  return {
+    utmSource: data.utmSource || null,
+    utmMedium: data.utmMedium || null,
+    utmCampaign: data.utmCampaign || null,
+    utmContent: data.utmContent || null,
+    utmTerm: data.utmTerm || null,
+    gclid: data.gclid || null,
+    fbclid: data.fbclid || null,
+    pageUrl: data.pageUrl || null,
+    referrer: data.referrer || null,
+    landingPageSlug: data.landingPageSlug || null,
+    capturedAt: new Date().toISOString(),
+  };
+}
+
 // ─── POST /site/contato ─────────────────────────────────────────────────────
 // origem: aceita qualquer slug legível (ex: "formulario_contato", "lp_auto-pecas", "cta_final")
 const contatoSchema = z.object({
@@ -64,6 +136,16 @@ const contatoSchema = z.object({
     .regex(/^[a-z0-9_-]+$/, "Origem inválida")
     .max(64)
     .optional(),
+  utmSource: optionalTrackingString,
+  utmMedium: optionalTrackingString,
+  utmCampaign: optionalTrackingString,
+  utmContent: optionalTrackingString,
+  utmTerm: optionalTrackingString,
+  gclid: optionalTrackingString,
+  fbclid: optionalTrackingString,
+  pageUrl: z.string().trim().max(2000).optional(),
+  referrer: z.string().trim().max(2000).optional(),
+  landingPageSlug: optionalTrackingString,
 });
 
 router.post("/site/contato", async (req, res) => {
@@ -75,7 +157,16 @@ router.post("/site/contato", async (req, res) => {
     });
   }
 
-  const { nome, email, mensagem, telefone, empresa, origem } = parsed.data;
+  const {
+    nome,
+    email,
+    mensagem,
+    telefone,
+    empresa,
+    origem,
+    ...trackingBody
+  } = parsed.data;
+  const attribution = recoverSiteAttribution(trackingBody, req.get("referer"));
   const telefoneSanitizado = telefone ? storePhone(telefone) : null;
   const sourceLabel = origem ? `site_${origem}` : "site_institucional";
 
@@ -93,6 +184,12 @@ router.post("/site/contato", async (req, res) => {
   // 2 — Gravar lead + deal no pipeline institucional e disparar SDR (background, não bloqueia resposta)
   void (async () => {
     try {
+      const adCampaignId = await resolveAdCampaignFromUtm(
+        INSTITUTIONAL_TENANT_ID,
+        attribution.utmCampaign,
+        logger,
+      );
+
       // 2a — Dedup: se já existe, não duplicar
       const dedup = await findLeadByDedup(
         INSTITUTIONAL_TENANT_ID,
@@ -102,9 +199,29 @@ router.post("/site/contato", async (req, res) => {
       );
 
       let leadId: string;
+      let attributedNow = false;
 
       if (dedup.found && dedup.lead) {
         leadId = dedup.lead.id;
+        if (adCampaignId) {
+          const updated = await db
+            .update(leadsTable)
+            .set({
+              adCampaignId,
+              discoveryData: {
+                ...(dedup.lead.discoveryData ?? {}),
+                attribution: attributionRecord(attribution),
+              },
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(leadsTable.id, leadId),
+              eq(leadsTable.tenantId, INSTITUTIONAL_TENANT_ID),
+              isNull(leadsTable.adCampaignId),
+            ))
+            .returning({ id: leadsTable.id });
+          attributedNow = updated.length > 0;
+        }
         logger.info({ leadId, nome }, "site/contato: lead já existe — usando existente");
       } else {
         // 2b — Resolver vendedor responsável via round-robin
@@ -130,10 +247,16 @@ router.post("/site/contato", async (req, res) => {
             source: sourceLabel,
             status: "novo",
             assignedTo: assignedTo ?? null,
+            adCampaignId,
+            discoveryData: {
+              attribution: attributionRecord(attribution),
+              siteOrigin: origem ?? null,
+            },
           })
           .returning({ id: leadsTable.id });
 
         leadId = createdLead.id;
+        attributedNow = Boolean(adCampaignId);
 
         // 2c — Criar deal no pipeline em "aquecimento"
         const [createdDeal] = await db
@@ -172,6 +295,26 @@ router.post("/site/contato", async (req, res) => {
         } else {
           logger.info({ leadId }, "site/contato: sem telefone — recepção via WhatsApp não disparada");
         }
+      }
+
+      if (adCampaignId && attributedNow) {
+        await recordAdCampaignEvent({
+          tenantId: INSTITUTIONAL_TENANT_ID,
+          campaignId: adCampaignId,
+          eventType: "lead_attributed",
+          severity: "success",
+          message: "Pedido de demonstração atribuído à campanha pelo site institucional.",
+          dedupeKey: `lead:${leadId}`,
+          metadata: {
+            leadId,
+            channel: "website_demo_request",
+            attribution: "utm_campaign",
+            siteOrigin: origem ?? null,
+            landingPageSlug: attribution.landingPageSlug ?? null,
+            utmSource: attribution.utmSource ?? null,
+            utmMedium: attribution.utmMedium ?? null,
+          },
+        });
       }
     } catch (err) {
       logger.warn({ err }, "site/contato: falha ao criar lead/deal institucional (não bloqueia resposta)");
