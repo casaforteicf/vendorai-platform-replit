@@ -50,20 +50,16 @@ Status desta branch:
 - [x] resolve `utm_campaign` para `ad_campaign_id`;
 - [x] usa first-touch: não sobrescreve uma campanha já atribuída;
 - [x] registra evento `lead_attributed`;
-- [x] adiciona teste unitário do parser de atribuição;
 - [x] captura first-touch no site institucional via sessionStorage;
 - [x] trial `/auth/trial-signup` recebe atribuição e registra `trial_started`;
 - [x] pedidos de demonstração em `/site/contato` recuperam UTM/click IDs e atribuem o lead à campanha;
 - [x] follow-up registra `lead_cooling` e `lead_recovered` quando há campanha atribuída;
+- [x] `behaviorSessionId` é propagado para demo, trial e intake público;
 - [ ] garantir propagação explícita da origem em todo formulário/WhatsApp de sites gerados;
 - [ ] garantir atribuição em Instagram/Messenger e demais entradas quando houver identificador de campanha;
 - [ ] persistir touchpoints posteriores sem perder o first-touch para futura atribuição multi-touch.
 
-**Aceite:** um lead ou trial originado de anúncio deve aparecer no CRM com a campanha correta, e uma venda ganha deve retornar no overview daquela campanha.
-
 ### L2. Lifecycle comercial first-party
-
-Status desta branch:
 
 - [x] `trial_started`;
 - [x] `lead_cooling`;
@@ -71,13 +67,11 @@ Status desta branch:
 - [x] sincronizador idempotente de `trial_activated`;
 - [x] sincronizador idempotente de `sale_closed`;
 - [x] eventos não críticos deixam de inflar o contador de alertas;
-- [x] estado final do CRM é a fonte de verdade, independentemente do caminho de fechamento.
+- [x] estado final do CRM é a fonte de verdade.
 
 **Definição atual de trial ativado:** onboarding concluído + (integrações concluídas OU primeiro lead real criado no tenant).
 
 ### L3. Métricas orientadas a receita
-
-Status desta branch:
 
 - [x] CPL;
 - [x] custo por trial;
@@ -96,37 +90,30 @@ Status desta branch:
 
 #### Meta Conversions API
 
-Status desta branch:
-
-- [x] worker de server-side conversions criado;
+- [x] worker server-side criado;
 - [x] reutiliza `metaPixelId` + conexão Meta Ads existente;
-- [x] eventos elegíveis: Lead, StartTrial, TrialActivated e Purchase;
+- [x] eventos Lead, StartTrial, TrialActivated e Purchase;
 - [x] PII normalizada e SHA-256 antes do envio;
 - [x] `event_id` estável para deduplicação/retry;
-- [x] status/erro de envio persistido no metadata do evento;
-- [x] limitado a eventos Meta recentes e campanhas Meta;
+- [x] consentimento explícito obrigatório;
 - [x] protegido por `MARKETING_SERVER_CONVERSIONS_ENABLED`, desligado por padrão;
-- [ ] validar base legal/consentimento e texto de privacidade antes de habilitar produção;
-- [ ] validar Pixel e permissão da conexão Meta no tenant VendorAI em ambiente real.
+- [ ] validar Pixel, token e evento de teste em tenant controlado antes de produção.
 
 #### Google Ads / Data Manager
 
-Em setembro/2026, a implementação nova deve preferir a **Google Data Manager API** para conversões offline/enhanced leads. O fluxo legado `UploadClickConversion` não deve ser adotado como padrão para novos developer tokens, pois o Google passou a restringi-lo em 15/06/2026.
-
-Necessário:
-
-- [ ] validar/obter Conversion Action do Google Ads por tenant;
-- [ ] configurar destino de evento na Data Manager API;
-- [ ] usar GCLID e dados first-party normalizados/hasheados quando permitido;
-- [ ] informar consentimento de ad user data;
-- [ ] retries/idempotência e diagnóstico;
-- [ ] eventos mínimos: lead, trial ativado e venda com valor.
+- [x] OAuth preparado com `adwords` + `datamanager`;
+- [x] campos de Conversion Action separados para Lead, Trial ativado e Venda;
+- [x] worker Data Manager criado;
+- [x] GCLID e dados first-party normalizados/hasheados;
+- [x] consentimento obrigatório;
+- [x] valor/moeda em venda;
+- [x] `validateOnly=true` por padrão;
+- [ ] habilitar Data Manager API no projeto Google Cloud;
+- [ ] reconectar conta Google concedendo novo escopo;
+- [ ] configurar Conversion Action IDs reais;
+- [ ] validar payload em `validateOnly` e somente então contabilizar conversões reais.
 
 ### L5. Trial individual de 5 dias
-
-Já existe e foi conectado ao lançamento.
-
-Status:
 
 - [x] endpoint/CTA de criação de trial;
 - [x] `provisioningMethod = trial`;
@@ -136,6 +123,7 @@ Status:
 - [x] atribuição à campanha de origem;
 - [x] evento `trial_started`;
 - [x] definição e medição de ativação operacional;
+- [x] comportamento pré-trial vinculado ao lead comercial;
 - [ ] activation score progressivo, além do critério binário atual;
 - [ ] resumo de valor nos dias 1–5;
 - [ ] alerta comercial quando houver alta intenção;
@@ -145,20 +133,21 @@ Status:
 
 ### L6. Tracking comportamental first-party
 
-Criar tabela/serviço de eventos web para LPs e site:
-
-- `page_view`;
-- `cta_click`;
-- `form_start`;
-- `form_submit`;
-- `demo_started` / `demo_completed`;
-- `pricing_viewed`;
-- tempo engajado;
-- profundidade de scroll;
-- retorno à página;
-- identificação anônima → lead quando o formulário for enviado.
-
-Esses sinais alimentam lead score sem substituir eventos comerciais do CRM.
+- [x] `page_view`;
+- [x] `cta_click`;
+- [x] `form_start`;
+- [x] `form_submit`;
+- [x] tempo engajado;
+- [x] profundidade de scroll;
+- [x] identificação anônima → lead após formulário;
+- [x] eventos sem e-mail, telefone ou IP;
+- [x] Behavior Intent Score explicável;
+- [x] score separado do `intentScore` do Revenue Scout;
+- [x] faixas baixo / médio / alto / muito alto;
+- [x] próxima ação recomendada por faixa;
+- [x] score, sinais, motivos e ação visíveis na ficha do lead;
+- [ ] `demo_started` / `demo_completed` dedicados;
+- [ ] retorno à página / múltiplas sessões do mesmo usuário com abordagem privacy-safe.
 
 ## Onda 2 — AI Marketing Manager
 
@@ -192,7 +181,6 @@ Somente com autorização e guardrails:
 Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reutilizando a arquitetura `LP_CONFIGS` existente.
 
 ### Lojas / Varejo — 10
-
 1. Moda, roupas, calçados e acessórios
 2. Móveis, decoração e casa
 3. Materiais de construção e acabamentos
@@ -205,7 +193,6 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 10. Joias, presentes e varejo especializado
 
 ### Clínicas — 10
-
 1. Clínica médica
 2. Odontologia
 3. Estética
@@ -218,7 +205,6 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 10. Clínica veterinária
 
 ### Concessionárias — 5
-
 1. Automóveis novos
 2. Seminovos / multimarcas
 3. Motocicletas
@@ -226,7 +212,6 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 5. Máquinas agrícolas / pesadas
 
 ### Distribuidoras — 7
-
 1. Materiais de construção
 2. Autopeças
 3. Alimentos e bebidas
@@ -236,7 +221,6 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 7. Componentes para móveis / marcenaria
 
 ### Empresas de Serviços — 6
-
 1. Contabilidade / BPO
 2. Advocacia
 3. Agências / consultorias
@@ -245,7 +229,6 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 6. Seguros / corretoras
 
 ### Indústrias — 12
-
 1. Alimentos e bebidas
 2. Materiais de construção
 3. Metalúrgica / metalmecânica
@@ -271,14 +254,14 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 - agentes relevantes;
 - palavras-chave Google iniciais;
 - interesses/hipóteses Meta;
-- 10 conceitos de criativo (dor, demo, resultado, comparação);
+- conceitos de criativo;
 - objeções e respostas;
 - lead scoring inicial;
 - follow-ups;
 - gatilhos de pós-venda;
 - playbook Revenue Scout;
 - compliance/restrições do nicho;
-- KPIs e benchmarks aprendidos pelo tenant, não hardcoded como verdade universal.
+- KPIs e benchmarks aprendidos pelo tenant.
 
 ## Onda 4 — Landing Pages adaptativas
 
@@ -290,19 +273,7 @@ Arquitetura:
 - 1 página de demonstração;
 - páginas de funcionalidades e planos.
 
-LP deve receber contexto de campanha e preservar tracking.
-
-Testes:
-
-- headline;
-- subheadline;
-- CTA;
-- prova;
-- formulário;
-- demo;
-- criativo ↔ mensagem da LP.
-
-A IA promove uma variante somente por resultado relevante (trial/venda/receita) quando houver dados suficientes.
+A IA só promove variante quando houver dados suficientes e resultado relevante — trial, ativação, venda ou receita — não por CTR isolado.
 
 ## Onda 5 — Eventos críticos do ciclo comercial
 
@@ -324,23 +295,23 @@ Vocabulário alvo:
 - `revenue_scout_opportunity`;
 - `revenue_scout_sale`.
 
-Eventos comerciais devem ser first-party e idempotentes.
-
 ## Onda 6 — Lead scoring
 
-Usar duas dimensões, não um único número opaco:
+Duas dimensões, não um único número opaco:
 
 ### Intent/behavior score
 
-Ex.: página de preço, demo, retornos, tempo engajado, CTA, formulário.
+Implementado para comportamento web com explicação dos pontos, faixa e ação recomendada.
 
 ### Commercial fit score
 
-Ex.: segmento, tamanho, volume de leads, ticket, problema, urgência, qualificação do agente.
+Próxima evolução: segmento, tamanho, volume de leads, ticket, problema, urgência e qualificação do agente.
 
-Derivar uma prioridade comercial explicável e registrar os motivos.
+A prioridade final deve combinar intenção + fit, mantendo ambos visíveis e auditáveis.
 
 ## Onda 7 — Launch Command Center
+
+Próxima frente de desenvolvimento.
 
 Visões por canal, macrosegmento, vertical, LP, campanha e criativo:
 
@@ -350,6 +321,7 @@ Visões por canal, macrosegmento, vertical, LP, campanha e criativo:
 - visitantes;
 - leads;
 - CPL;
+- behavior intent médio e distribuição por faixa;
 - leads qualificados;
 - demos;
 - trials;
@@ -369,4 +341,4 @@ Visões por canal, macrosegmento, vertical, LP, campanha e criativo:
 
 ## Regra de produto
 
-O sistema não deve concluir que um anúncio é vencedor apenas porque tem melhor CTR/CPL. A recomendação de escala deve considerar conversões comerciais e receita. Toda alteração de orçamento no modo assistido exige aprovação; o modo autônomo só poderá operar dentro de limites autorizados e auditáveis.
+O sistema não conclui que um anúncio é vencedor apenas porque tem melhor CTR/CPL. A recomendação de escala considera conversões comerciais, ativação, qualidade e receita. Toda alteração de orçamento no modo assistido exige aprovação; o modo autônomo só opera dentro de limites autorizados e auditáveis.
