@@ -17,6 +17,9 @@ jobs:
       # unit tests do not execute queries, so a syntactically valid local URL is
       # enough and avoids depending on production/staging secrets in CI.
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/vendorai_ci
+      # The API type graph is large enough to exceed V8's ~2 GB default heap
+      # on GitHub-hosted runners. Keep typecheck strict; only raise the heap.
+      NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - name: Checkout
         uses: actions/checkout@v4
