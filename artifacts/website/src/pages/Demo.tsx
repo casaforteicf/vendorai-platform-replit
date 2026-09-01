@@ -5,7 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Sparkles, Clock, Users, Zap } from "lucide-react";
 import { Link } from "wouter";
-import { getLaunchAttribution } from "@/lib/launchAttribution";
+import {
+  getAdDataConsentState,
+  getLaunchAttribution,
+  setAdDataConsent,
+} from "@/lib/launchAttribution";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com").replace(/\/$/, "");
@@ -13,17 +17,20 @@ const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com")
 export default function Demo() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     nomeEmpresa: "",
     nomePessoa: "",
     email: "",
     senha: "",
     telefone: "",
-    adDataConsent: false,
-  });
+    adDataConsent: getAdDataConsentState()?.granted ?? false,
+  }));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, type, value, checked } = e.target;
+    if (name === "adDataConsent" && type === "checkbox") {
+      setAdDataConsent(checked);
+    }
     setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
@@ -44,7 +51,7 @@ export default function Demo() {
       const res = await fetch(`${API_BASE}/auth/trial-signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, ...attribution }),
+        body: JSON.stringify({ ...form, ...attribution, adDataConsent: form.adDataConsent }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -135,7 +142,7 @@ export default function Demo() {
                   data-testid="input-ad-data-consent"
                 />
                 <span>
-                  <strong className="font-medium text-slate-800">Opcional:</strong> autorizo o VendorAI a usar dados de conversão e identificadores protegidos para medir e otimizar campanhas em plataformas de anúncios, como Meta e Google. Posso revogar esta autorização posteriormente. Consulte a{" "}
+                  <strong className="font-medium text-slate-800">Opcional:</strong> autorizo o VendorAI a usar dados de conversão e identificadores protegidos para medir e otimizar campanhas em plataformas de anúncios, como Meta e Google. A autorização pode ser revogada conforme a{" "}
                   <Link href="/privacy" className="underline hover:text-slate-900">Política de Privacidade</Link>.
                 </span>
               </label>
