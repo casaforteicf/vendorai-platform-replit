@@ -193,77 +193,22 @@ Somente com autorização e guardrails:
 - exigir volume mínimo e janela mínima de dados;
 - considerar atraso entre lead e fechamento.
 
-## Onda 3 — 50 verticais de lançamento
+## Onda 3 — Verticais de lançamento
 
-Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reutilizando a arquitetura `LP_CONFIGS` existente.
+A expansão pode chegar a dezenas de verticais, mas o **lançamento inicial prioriza 10 LPs/nichos**, em vez de tentar lançar todas de uma vez.
 
-### Lojas / Varejo — 10
+### Primeiras 10 LPs prioritárias
 
-1. Moda, roupas, calçados e acessórios
-2. Móveis, decoração e casa
-3. Materiais de construção e acabamentos
-4. Eletrônicos e eletrodomésticos
-5. Supermercados, mercados e empórios
-6. Pet shops
-7. Óticas
-8. Autopeças e acessórios
-9. Cosméticos, perfumaria e beleza
-10. Joias, presentes e varejo especializado
-
-### Clínicas — 10
-
-1. Clínica médica
-2. Odontologia
-3. Estética
-4. Dermatologia
-5. Fisioterapia
-6. Psicologia
-7. Nutrição
-8. Oftalmologia
-9. Ortopedia
-10. Clínica veterinária
-
-### Concessionárias — 5
-
-1. Automóveis novos
-2. Seminovos / multimarcas
-3. Motocicletas
-4. Caminhões / comerciais
-5. Máquinas agrícolas / pesadas
-
-### Distribuidoras — 7
-
-1. Materiais de construção
-2. Autopeças
-3. Alimentos e bebidas
-4. Farmacêutica / cosméticos / higiene
-5. Insumos agrícolas
-6. Insumos industriais / MRO
-7. Componentes para móveis / marcenaria
-
-### Empresas de Serviços — 6
-
-1. Contabilidade / BPO
-2. Advocacia
-3. Agências / consultorias
-4. Tecnologia / TI / software
-5. Manutenção / instalação / facilities
-6. Seguros / corretoras
-
-### Indústrias — 12
-
-1. Alimentos e bebidas
-2. Materiais de construção
-3. Metalúrgica / metalmecânica
-4. Plástico / borracha
-5. Móveis em escala industrial
-6. Têxtil / confecção
-7. Máquinas / equipamentos
-8. Química / higiene / limpeza
-9. Embalagens
-10. Agroindústria
-11. Fábrica de esquadrias de PVC
-12. Marcenaria / móveis sob medida
+1. Construtoras
+2. Imobiliárias
+3. Clínicas
+4. Concessionárias / Automotivo
+5. Distribuidoras
+6. Farmácias
+7. Escolas / Cursos
+8. Empresas de serviços
+9. Lojas / Varejo
+10. Indústrias / B2B
 
 ### Cada pack vertical precisa conter
 
@@ -277,7 +222,7 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 - agentes relevantes;
 - palavras-chave Google iniciais;
 - interesses/hipóteses Meta;
-- 10 conceitos de criativo (dor, demo, resultado, comparação);
+- conceitos de criativo (dor, demo, resultado, comparação);
 - objeções e respostas;
 - lead scoring inicial;
 - follow-ups;
@@ -288,13 +233,14 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 
 ## Onda 4 — Landing Pages adaptativas
 
-Arquitetura:
+Arquitetura inicial:
 
 - 1 institucional VendorAI;
-- 6 hubs de macrosegmento;
-- 50 LPs verticais;
+- 10 LPs prioritárias de lançamento;
 - 1 página de demonstração;
 - páginas de funcionalidades e planos.
+
+Depois do lançamento e validação dos primeiros nichos, a engine pode expandir para mais verticais sem criar sistemas separados.
 
 LP deve receber contexto de campanha e preservar tracking.
 
