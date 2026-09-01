@@ -1560,6 +1560,9 @@ export interface PropostaItem {
   nome: string;
   quantidade: number;
   valorUnitario: number;
+  sku?: string;
+  descricao?: string;
+  produtoId?: string;
 }
 
 export interface Proposta {

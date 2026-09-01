@@ -12306,6 +12306,12 @@ components:
           type: number
         valorUnitario:
           type: number
+        sku:
+          type: string
+        descricao:
+          type: string
+        produtoId:
+          type: string
       required: [nome, quantidade, valorUnitario]
 
     Proposta:
