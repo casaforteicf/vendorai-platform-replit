@@ -20,7 +20,11 @@ import {
   resolveCommercialBillingPhase,
   VENDORAI_LAUNCH_CAMPAIGN,
 } from "../lib/commercialOffer.js";
-import { resolveVendorAiSubscriptionPrice } from "../lib/vendorai-subscription-lifecycle.js";
+import {
+  resolveVendorAiAnnualPrice,
+  resolveVendorAiSubscriptionPrice,
+  vendorAiSubscriptionCycleKey,
+} from "../lib/vendorai-subscription-rules.js";
 import { sendVendorAiSubscriptionChargeEmail } from "../lib/trial-email.js";
 
 const MAX_SUBSCRIPTIONS_PER_RUN = 100;
@@ -28,10 +32,6 @@ const STALE_CLAIM_MS = 10 * 60 * 1000;
 
 function dateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-export function vendorAiSubscriptionCycleKey(subscriptionId: string, dueDate: Date): string {
-  return `subscription:${subscriptionId}:${dateKey(dueDate)}`;
 }
 
 function maxToday(date: Date): Date {
@@ -42,9 +42,10 @@ function maxToday(date: Date): Date {
   return requested < today ? today : requested;
 }
 
-function phaseLabel(phase: string): string {
+function phaseLabel(phase: string, annual: boolean): string {
   if (phase === "promo_1") return "promocional 1 (R$ 497)";
   if (phase === "promo_2") return "promocional 2 (R$ 990)";
+  if (phase === "regular" && annual) return "plano anual (preço regular anual do catálogo)";
   if (phase === "regular") return "preço regular do plano";
   return phase;
 }
@@ -61,6 +62,10 @@ function localStatusFromAsaas(charge: AsaasChargeOutput): "pending" | "paid" | "
  * It intentionally does NOT replace legacy `runMonthlyBilling()`: old tenant
  * contracts keep using tenant.mensalidadeValor. Only subscriptions carrying the
  * launch campaign code enter this worker.
+ *
+ * Annual is explicit opt-in through tenant.billingCycle and never interrupts
+ * promo_1/promo_2. It starts only at the regular phase, snapshots the catalog's
+ * monthly-equivalent annual price, and charges exactly 12 equivalents at once.
  *
  * Safety:
  * - disabled by default (`VENDORAI_SUBSCRIPTION_BILLING_ENABLED=true` to enable);
@@ -93,9 +98,12 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
       promoPhase2Price: subscriptionsTable.promoPhase2Price,
       promoPhase2EndsAt: subscriptionsTable.promoPhase2EndsAt,
       regularPriceAtTransition: subscriptionsTable.regularPriceAtTransition,
+      annualPriceAtTransition: subscriptionsTable.annualPriceAtTransition,
       asaasCustomerId: subscriptionsTable.asaasCustomerId,
       tenantName: tenantsTable.name,
+      billingCycle: tenantsTable.billingCycle,
       catalogMonthlyPriceCents: plansTable.monthlyPriceCents,
+      catalogMonthlyAnnualPriceCents: plansTable.monthlyPriceAnnualCents,
     })
     .from(subscriptionsTable)
     .innerJoin(tenantsTable, eq(tenantsTable.id, subscriptionsTable.tenantId))
@@ -137,18 +145,27 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         continue;
       }
 
-      const pricing = resolveVendorAiSubscriptionPrice({
+      const annualRegular = phase === "regular" && sub.billingCycle === "annual";
+      const monthlyPricing = annualRegular ? null : resolveVendorAiSubscriptionPrice({
         phase,
         promoPhase1Price: sub.promoPhase1Price,
         promoPhase2Price: sub.promoPhase2Price,
         regularPriceAtTransition: sub.regularPriceAtTransition,
         catalogMonthlyPriceCents: sub.catalogMonthlyPriceCents,
       });
-      const amount = Number(pricing.price);
+      const annualPricing = annualRegular ? resolveVendorAiAnnualPrice({
+        annualPriceAtTransition: sub.annualPriceAtTransition,
+        catalogMonthlyAnnualPriceCents: sub.catalogMonthlyAnnualPriceCents,
+      }) : null;
+
+      const chargeValue = annualPricing?.annualTotal ?? monthlyPricing!.price;
+      const monthlyEquivalent = annualPricing?.monthlyEquivalent ?? monthlyPricing!.price;
+      const amount = Number(chargeValue);
       if (!(amount > 0)) throw new Error(`Preço inválido para ${phase}`);
 
       const chargeDue = maxToday(logicalDue);
       const cycleKey = vendorAiSubscriptionCycleKey(sub.id, logicalDue);
+      const eventType = annualRegular ? "annual" : sub.status === "trial" ? "initial" : "monthly";
       let claimedByThisRun = false;
 
       let [billingEvent] = await db
@@ -163,8 +180,8 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
           .values({
             tenantId: sub.tenantId,
             mes: cycleKey,
-            tipo: sub.status === "trial" ? "initial" : "monthly",
-            valor: pricing.price,
+            tipo: eventType,
+            valor: chargeValue,
             status: "pending",
             dueDate: chargeDue,
           })
@@ -188,30 +205,33 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         continue;
       }
 
+      const subscriptionPatch = {
+        billingPhase: phase,
+        valorMensal: monthlyEquivalent,
+        ...(monthlyPricing?.regularSnapshot && !sub.regularPriceAtTransition
+          ? { regularPriceAtTransition: monthlyPricing.regularSnapshot }
+          : {}),
+        ...(annualPricing?.annualSnapshot && !sub.annualPriceAtTransition
+          ? { annualPriceAtTransition: annualPricing.annualSnapshot }
+          : {}),
+        updatedAt: now,
+      };
+
       const remotelyExisting = await findChargeByExternalReference(cycleKey);
       if (remotelyExisting) {
         const recoveredStatus = localStatusFromAsaas(remotelyExisting);
         await db.update(billingEventsTable).set({
           asaasChargeId: remotelyExisting.id,
-          valor: pricing.price,
+          valor: chargeValue,
           status: recoveredStatus,
           dueDate: chargeDue,
           ...(recoveredStatus === "paid" ? { paidAt: new Date() } : {}),
         }).where(eq(billingEventsTable.id, billingEvent.id));
 
-        // Critical crash-recovery path: the remote payment may have been
-        // created before the previous process persisted the subscription phase
-        // and regular-price snapshot. Reconcile those fields here as well so a
-        // later catalog price change can never rewrite an agreement already in
-        // the regular phase.
-        await db.update(subscriptionsTable).set({
-          billingPhase: phase,
-          valorMensal: pricing.price,
-          ...(pricing.regularSnapshot && !sub.regularPriceAtTransition
-            ? { regularPriceAtTransition: pricing.regularSnapshot }
-            : {}),
-          updatedAt: now,
-        }).where(eq(subscriptionsTable.id, sub.id));
+        // Critical crash-recovery path: reconcile phase and whichever catalog
+        // snapshot governed the remote charge before any future catalog change.
+        await db.update(subscriptionsTable).set(subscriptionPatch)
+          .where(eq(subscriptionsTable.id, sub.id));
 
         recovered++;
         continue;
@@ -251,7 +271,7 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         billingType: "UNDEFINED",
         value: amount,
         dueDate: dateKey(chargeDue),
-        description: `VendorAI — ${sub.plano} — ${phaseLabel(phase)}`,
+        description: `VendorAI — ${sub.plano} — ${phaseLabel(phase, annualRegular)}`,
         externalReference: cycleKey,
       });
       const chargeStatus = localStatusFromAsaas(charge);
@@ -259,7 +279,7 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
       await db.update(billingEventsTable).set({
         asaasChargeId: charge.id,
         asaasCustomerId: customerId,
-        valor: pricing.price,
+        valor: chargeValue,
         status: chargeStatus,
         dueDate: chargeDue,
         ...(chargeStatus === "paid" ? { paidAt: new Date() } : {}),
@@ -267,12 +287,7 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
 
       await db.update(subscriptionsTable).set({
         asaasCustomerId: customerId,
-        billingPhase: phase,
-        valorMensal: pricing.price,
-        ...(pricing.regularSnapshot && !sub.regularPriceAtTransition
-          ? { regularPriceAtTransition: pricing.regularSnapshot }
-          : {}),
-        updatedAt: now,
+        ...subscriptionPatch,
       }).where(eq(subscriptionsTable.id, sub.id));
 
       const invoiceUrl = charge.invoiceUrl || charge.bankSlipUrl;
@@ -281,10 +296,10 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
           to: admin.email,
           name: admin.name,
           companyName: sub.tenantName,
-          amount: pricing.price,
+          amount: chargeValue,
           dueDate: chargeDue,
           invoiceUrl,
-          phaseLabel: phaseLabel(phase),
+          phaseLabel: phaseLabel(phase, annualRegular),
         }).catch((err) => log.warn({ err, subscriptionId: sub.id }, "vendorai-subscription-billing: e-mail falhou"));
       }
 
@@ -292,8 +307,10 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         tenantId: sub.tenantId,
         type: "info",
         category: "billing",
-        title: chargeStatus === "paid" ? "Mensalidade VendorAI confirmada" : "Mensalidade VendorAI disponível",
-        message: `Cobrança de ${Number(pricing.price).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} processada para a fase ${phaseLabel(phase)}.`,
+        title: chargeStatus === "paid"
+          ? annualRegular ? "Anuidade VendorAI confirmada" : "Mensalidade VendorAI confirmada"
+          : annualRegular ? "Anuidade VendorAI disponível" : "Mensalidade VendorAI disponível",
+        message: `Cobrança de ${Number(chargeValue).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} processada para a fase ${phaseLabel(phase, annualRegular)}.`,
       });
 
       if (beforeCreate) recovered++;
