@@ -7,6 +7,7 @@ import {
   dealsTable,
   leadsTable,
   notificationsTable,
+  tenantsTable,
 } from "@workspace/db";
 
 export async function recordAdCampaignEvent(input: {
@@ -84,6 +85,25 @@ export async function getAdsOverview(tenantId: string) {
 
     const [lifecycleStats] = await db.select({
       trials: sql<number>`count(*) filter (where ${adCampaignEventsTable.eventType} = 'trial_started')`,
+      activatedTrials: sql<number>`coalesce(sum(case
+        when ${adCampaignEventsTable.eventType} = 'trial_started'
+          and exists (
+            select 1
+            from ${tenantsTable} as trial_tenant
+            where trial_tenant.id = (${adCampaignEventsTable.metadata}->>'trialTenantId')
+              and trial_tenant.onboarding_concluido = true
+              and (
+                trial_tenant.integracoes_concluido = true
+                or exists (
+                  select 1
+                  from ${leadsTable} as trial_lead
+                  where trial_lead.tenant_id = trial_tenant.id
+                    and trial_lead.excluido_em is null
+                    and trial_lead.nao_lead_tipo is null
+                )
+              )
+          )
+        then 1 else 0 end), 0)`,
       recoveredLeads: sql<number>`count(*) filter (where ${adCampaignEventsTable.eventType} = 'lead_recovered')`,
       coolingLeads: sql<number>`count(*) filter (where ${adCampaignEventsTable.eventType} = 'lead_cooling')`,
     }).from(adCampaignEventsTable)
@@ -102,6 +122,7 @@ export async function getAdsOverview(tenantId: string) {
     const spend = Number(platform?.spend ?? 0);
     const leads = Number(leadStats?.total ?? 0);
     const trials = Number(lifecycleStats?.trials ?? 0);
+    const activatedTrials = Number(lifecycleStats?.activatedTrials ?? 0);
     const recoveredLeads = Number(lifecycleStats?.recoveredLeads ?? 0);
     const coolingLeads = Number(lifecycleStats?.coolingLeads ?? 0);
     const salesCount = Number(sales?.total ?? 0);
@@ -109,8 +130,11 @@ export async function getAdsOverview(tenantId: string) {
     const roas = spend > 0 ? Number((revenue / spend).toFixed(2)) : null;
     const costPerLead = leads > 0 ? Number((spend / leads).toFixed(2)) : null;
     const costPerTrial = trials > 0 ? Number((spend / trials).toFixed(2)) : null;
+    const costPerActivatedTrial = activatedTrials > 0 ? Number((spend / activatedTrials).toFixed(2)) : null;
     const costPerSale = salesCount > 0 ? Number((spend / salesCount).toFixed(2)) : null;
     const leadToTrialRate = leads > 0 ? Number(((trials / leads) * 100).toFixed(2)) : null;
+    const trialActivationRate = trials > 0 ? Number(((activatedTrials / trials) * 100).toFixed(2)) : null;
+    const activatedTrialToSaleRate = activatedTrials > 0 ? Number(((salesCount / activatedTrials) * 100).toFixed(2)) : null;
     const trialToSaleRate = trials > 0 ? Number(((salesCount / trials) * 100).toFixed(2)) : null;
     const leadToSaleRate = leads > 0 ? Number(((salesCount / leads) * 100).toFixed(2)) : null;
     const revenuePerLead = leads > 0 ? Number((revenue / leads).toFixed(2)) : null;
@@ -139,11 +163,18 @@ export async function getAdsOverview(tenantId: string) {
       recommendation = { title: "Corrigir o criativo", reason: campaign.segmentacao.platformReview.reason ?? "A plataforma reprovou o anúncio.", action: "correct_creative", requiresApproval: false };
     } else if (spend > 0 && leads === 0) {
       recommendation = { title: "Revisar público e oferta", reason: `Já foram gastos R$ ${spend.toFixed(2)} sem lead atribuído.`, action: "review_targeting", requiresApproval: false };
-    } else if (trials >= 3 && salesCount === 0) {
+    } else if (trials >= 3 && activatedTrials === 0) {
       recommendation = {
-        title: "Melhorar ativação e conversão do trial",
-        reason: `${trials} trial(s) atribuídos, mas nenhuma venda fechada. O gargalo está depois da aquisição: onboarding, ativação, demonstração de valor ou abordagem comercial.`,
+        title: "Melhorar ativação do trial",
+        reason: `${trials} trial(s) atribuídos, mas nenhum chegou à ativação operacional. Revise onboarding, primeira configuração e a orientação dos primeiros minutos de uso.`,
         action: "review_trial_activation",
+        requiresApproval: false,
+      };
+    } else if (activatedTrials >= 3 && salesCount === 0) {
+      recommendation = {
+        title: "Trials ativam, mas não convertem",
+        reason: `${activatedTrials} trial(s) já chegaram ao uso operacional, mas nenhuma venda foi fechada. O gargalo provável está em demonstração de valor, abordagem comercial, oferta ou fechamento.`,
+        action: "review_trial_conversion",
         requiresApproval: false,
       };
     } else if (leads >= 5 && salesCount === 0) {
@@ -183,20 +214,25 @@ export async function getAdsOverview(tenantId: string) {
       platformConversions: Number(platform?.platformConversions ?? 0),
       leads,
       trials,
+      activatedTrials,
       recoveredLeads,
       coolingLeads,
       sales: salesCount,
       revenue,
       costPerLead,
       costPerTrial,
+      costPerActivatedTrial,
       costPerSale,
       leadToTrialRate,
+      trialActivationRate,
+      activatedTrialToSaleRate,
       trialToSaleRate,
       leadToSaleRate,
       revenuePerLead,
       roas,
       alerts,
       recommendation,
+      activationDefinition: "onboarding_complete_and_(integration_complete_or_first_real_lead)",
     });
   }
 
@@ -206,12 +242,13 @@ export async function getAdsOverview(tenantId: string) {
       spend: total.spend + row.spend,
       leads: total.leads + row.leads,
       trials: total.trials + row.trials,
+      activatedTrials: total.activatedTrials + row.activatedTrials,
       recoveredLeads: total.recoveredLeads + row.recoveredLeads,
       sales: total.sales + row.sales,
       revenue: total.revenue + row.revenue,
       activeCampaigns: total.activeCampaigns + (row.status === "ativo" ? 1 : 0),
       unresolvedAlerts: total.unresolvedAlerts + row.alerts.length,
-    }), { plannedBudget: 0, spend: 0, leads: 0, trials: 0, recoveredLeads: 0, sales: 0, revenue: 0, activeCampaigns: 0, unresolvedAlerts: 0 }),
+    }), { plannedBudget: 0, spend: 0, leads: 0, trials: 0, activatedTrials: 0, recoveredLeads: 0, sales: 0, revenue: 0, activeCampaigns: 0, unresolvedAlerts: 0 }),
     campaigns: rows,
   };
 }
