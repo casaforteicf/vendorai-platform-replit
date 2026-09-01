@@ -1,18 +1,30 @@
 import type { CommercialBillingPhase } from "./commercialOffer.js";
 
 /**
- * Advances one calendar month while optionally preserving a contractual anchor
- * day. Example with anchor 31: Jan 31 → Feb 28/29 → Mar 31, instead of drifting
- * permanently to the 28th after February.
+ * Advances an exact number of calendar months while optionally preserving a
+ * contractual anchor day. Example with anchor 31: Jan 31 → Feb 28/29 → Mar 31,
+ * instead of drifting permanently to the 28th after February.
  */
-export function addCalendarMonth(date: Date, anchorDay = date.getUTCDate()): Date {
+export function addCalendarMonths(
+  date: Date,
+  months: number,
+  anchorDay = date.getUTCDate(),
+): Date {
   const result = new Date(date);
   result.setUTCDate(1);
-  result.setUTCMonth(result.getUTCMonth() + 1);
+  result.setUTCMonth(result.getUTCMonth() + Math.trunc(months));
   const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
   const normalizedAnchor = Math.min(31, Math.max(1, Math.trunc(anchorDay)));
   result.setUTCDate(Math.min(normalizedAnchor, lastDay));
   return result;
+}
+
+export function addCalendarMonth(date: Date, anchorDay = date.getUTCDate()): Date {
+  return addCalendarMonths(date, 1, anchorDay);
+}
+
+export function addCalendarYear(date: Date, anchorDay = date.getUTCDate()): Date {
+  return addCalendarMonths(date, 12, anchorDay);
 }
 
 export function resolveVendorAiSubscriptionPrice(input: {
@@ -41,6 +53,31 @@ export function resolveVendorAiSubscriptionPrice(input: {
   if (!(cents > 0)) throw new Error("VendorAI subscription regular catalog price is unavailable");
   const snapshot = (cents / 100).toFixed(2);
   return { price: snapshot, regularSnapshot: snapshot };
+}
+
+export function resolveVendorAiAnnualPrice(input: {
+  annualPriceAtTransition: string | number | null;
+  catalogMonthlyAnnualPriceCents?: number | null;
+}): { monthlyEquivalent: string; annualTotal: string; annualSnapshot: string } {
+  const persisted = Number(input.annualPriceAtTransition ?? 0);
+  if (persisted > 0) {
+    const monthlyEquivalent = persisted.toFixed(2);
+    return {
+      monthlyEquivalent,
+      annualTotal: (persisted * 12).toFixed(2),
+      annualSnapshot: monthlyEquivalent,
+    };
+  }
+
+  const cents = Number(input.catalogMonthlyAnnualPriceCents ?? 0);
+  if (!(cents > 0)) throw new Error("VendorAI subscription annual catalog price is unavailable");
+  const monthly = cents / 100;
+  const monthlyEquivalent = monthly.toFixed(2);
+  return {
+    monthlyEquivalent,
+    annualTotal: (monthly * 12).toFixed(2),
+    annualSnapshot: monthlyEquivalent,
+  };
 }
 
 function dateKey(date: Date): string {
