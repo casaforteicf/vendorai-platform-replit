@@ -5,7 +5,9 @@ import {
 } from "./commercialOffer.js";
 import {
   addCalendarMonth,
+  addCalendarYear,
   logicalDueFromVendorAiCycleKey,
+  resolveVendorAiAnnualPrice,
   resolveVendorAiSubscriptionPrice,
   vendorAiSubscriptionCycleKey,
 } from "./vendorai-subscription-rules.js";
@@ -79,10 +81,34 @@ describe("VendorAI subscription pricing", () => {
       catalogMonthlyPriceCents: null,
     })).toThrow(/regular catalog price is unavailable/);
   });
+
+  it("freezes the annual catalog price and charges twelve monthly-equivalents", () => {
+    const firstAnnual = resolveVendorAiAnnualPrice({
+      annualPriceAtTransition: null,
+      catalogMonthlyAnnualPriceCents: 79_700,
+    });
+    expect(firstAnnual).toEqual({
+      monthlyEquivalent: "797.00",
+      annualTotal: "9564.00",
+      annualSnapshot: "797.00",
+    });
+
+    expect(resolveVendorAiAnnualPrice({
+      annualPriceAtTransition: firstAnnual.annualSnapshot,
+      catalogMonthlyAnnualPriceCents: 99_900,
+    })).toEqual(firstAnnual);
+  });
+
+  it("fails closed when annual price is unavailable", () => {
+    expect(() => resolveVendorAiAnnualPrice({
+      annualPriceAtTransition: null,
+      catalogMonthlyAnnualPriceCents: null,
+    })).toThrow(/annual catalog price is unavailable/);
+  });
 });
 
-describe("VendorAI monthly billing calendar", () => {
-  it("preserves day 31 through February without permanent drift", () => {
+describe("VendorAI billing calendar", () => {
+  it("preserves day 31 through February without permanent monthly drift", () => {
     const jan31 = new Date("2026-01-31T12:00:00.000Z");
     const feb = addCalendarMonth(jan31, 31);
     const mar = addCalendarMonth(feb, 31);
@@ -100,9 +126,16 @@ describe("VendorAI monthly billing calendar", () => {
       .toBe("2026-05-30T08:30:00.000Z");
   });
 
-  it("handles year rollover", () => {
+  it("handles monthly year rollover", () => {
     expect(addCalendarMonth(new Date("2026-12-31T08:30:00.000Z"), 31).toISOString())
       .toBe("2027-01-31T08:30:00.000Z");
+  });
+
+  it("advances annual billing by twelve months and preserves leap-day contract anchor", () => {
+    expect(addCalendarYear(new Date("2028-02-29T08:30:00.000Z"), 29).toISOString())
+      .toBe("2029-02-28T08:30:00.000Z");
+    expect(addCalendarYear(new Date("2029-02-28T08:30:00.000Z"), 29).toISOString())
+      .toBe("2030-02-28T08:30:00.000Z");
   });
 });
 
