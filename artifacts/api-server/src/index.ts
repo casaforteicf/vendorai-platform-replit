@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { startScheduler } from "./jobs/scheduler.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
 import { runBehaviorIntentSync } from "./jobs/behaviorIntentSync.js";
+import { runTrialJourney } from "./jobs/trialJourney.js";
 import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
 import { applyPendingMigrations } from "@workspace/db";
@@ -43,13 +44,14 @@ async function start() {
     logger.info({ port }, "Server listening");
     startScheduler(logger);
 
-    // Lifecycle de marketing: converge CRM, comportamento first-party e depois
-    // encaminha os eventos elegíveis às plataformas. Behavior Intent permanece
-    // separado do intentScore do Revenue Scout e do fit comercial.
+    // Lifecycle de aquisição e trial: converge CRM, comportamento first-party,
+    // calcula Activation Score/jornada dos 5 dias e depois encaminha apenas os
+    // eventos elegíveis às plataformas. Cada etapa é idempotente no banco.
     const syncMarketingLifecycle = async () => {
       try {
         await runCommercialLifecycleSync(logger);
         await runBehaviorIntentSync(logger);
+        await runTrialJourney(logger);
         await runServerConversionSync(logger);
         await runGoogleDataManagerConversionSync(logger);
       } catch (syncErr) {
