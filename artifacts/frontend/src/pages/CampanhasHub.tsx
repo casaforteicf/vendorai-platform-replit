@@ -1,15 +1,19 @@
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, Megaphone, ArrowRight } from "lucide-react";
+import { MessageCircle, Megaphone, ArrowRight, Layers3 } from "lucide-react";
+import MarketingVerticals from "@/pages/MarketingVerticals";
 import { LaunchCommandCenter } from "@/components/marketing/LaunchCommandCenter";
 import { AssistedMarketingManager } from "@/components/marketing/AssistedMarketingManager";
 
-// Ponto de entrada único para campanhas: primeiro mostra o estado real do
-// lançamento e o principal gargalo; depois oferece ações assistidas em modo
-// rascunho e só então os fluxos existentes de campanha orgânica ou paga.
+// Ponto de entrada único para marketing: primeiro mostra resultado financeiro
+// e gargalo real, oferece rascunhos assistidos, e preserva a arquitetura oficial
+// de mercados/LPs junto aos fluxos orgânico e pago existentes.
 export default function CampanhasHub() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
+  const showMarkets = location.includes("view=mercados") || new URLSearchParams(window.location.search).get("view") === "mercados";
+
+  if (showMarkets) return <MarketingVerticals />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
@@ -18,62 +22,37 @@ export default function CampanhasHub() {
         <h1 className="text-xl font-semibold">Campanhas</h1>
       </div>
       <p className="text-sm text-muted-foreground max-w-3xl">
-        Acompanhe primeiro o que está virando intenção, trial, venda e receita. Depois crie ou ajuste campanhas com base no gargalo real do funil.
+        Acompanhe intenção, trial, venda, receita e retenção. Depois gere uma ação assistida, escolha o canal ou selecione o mercado oficial para usar a jornada, os agentes e a LP daquela vertical.
       </p>
 
       <LaunchCommandCenter />
       <AssistedMarketingManager />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card
-          role="button"
-          tabIndex={0}
-          onClick={() => setLocation("/campanhas")}
-          onKeyDown={(e) => e.key === "Enter" && setLocation("/campanhas")}
-          className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <CardContent className="pt-6 space-y-3">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5 text-primary" />
-              <h2 className="font-semibold">Campanha orgânica</h2>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              WhatsApp, e-mail ou Instagram. Mensagem direta pro seu público — sem custo de mídia, sem aprovação de plataforma.
-            </p>
-            <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5">
-              <li>Segmenta por risco de abandono, estágio do cliente ou etapa do funil</li>
-              <li>Gera a imagem e o texto da mensagem com IA</li>
-              <li>Envio direto, sem gasto de anúncio</li>
-            </ul>
-            <Button variant="secondary" className="w-full mt-2">
-              Criar campanha orgânica <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/campanhas")} onKeyDown={(e) => e.key === "Enter" && setLocation("/campanhas")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <CardContent className="pt-6 space-y-3 h-full flex flex-col">
+            <div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-primary" /><h2 className="font-semibold">Campanha orgânica</h2></div>
+            <p className="text-sm text-muted-foreground">WhatsApp, e-mail ou Instagram. Mensagem direta para o público — sem custo de mídia e sem aprovação de plataforma.</p>
+            <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5"><li>Segmenta por risco, estágio do cliente ou etapa do funil</li><li>Gera imagem e texto com IA</li><li>Envio direto, sem gasto de anúncio</li></ul>
+            <Button variant="secondary" className="w-full mt-auto">Criar campanha orgânica <ArrowRight className="h-4 w-4 ml-1" /></Button>
           </CardContent>
         </Card>
 
-        <Card
-          role="button"
-          tabIndex={0}
-          onClick={() => setLocation("/ads")}
-          onKeyDown={(e) => e.key === "Enter" && setLocation("/ads")}
-          className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <CardContent className="pt-6 space-y-3">
-            <div className="flex items-center gap-2">
-              <Megaphone className="h-5 w-5 text-primary" />
-              <h2 className="font-semibold">Anúncio pago</h2>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Google Ads ou Meta (Facebook/Instagram). Alcança gente nova, com investimento real em mídia.
-            </p>
-            <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5">
-              <li>Gera o criativo (texto ou imagem) com IA</li>
-              <li>Passa por aprovação antes de publicar</li>
-              <li>Você decide quando ativar o gasto real</li>
-            </ul>
-            <Button variant="secondary" className="w-full mt-2">
-              Criar anúncio pago <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/ads")} onKeyDown={(e) => e.key === "Enter" && setLocation("/ads")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <CardContent className="pt-6 space-y-3 h-full flex flex-col">
+            <div className="flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" /><h2 className="font-semibold">Anúncio pago</h2></div>
+            <p className="text-sm text-muted-foreground">Google Ads ou Meta (Facebook/Instagram). Alcance gente nova com investimento real em mídia.</p>
+            <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5"><li>Gera o criativo com IA</li><li>Usa intenção e contexto comercial</li><li>Você controla quando ativar gasto real</li></ul>
+            <Button variant="secondary" className="w-full mt-auto">Criar anúncio pago <ArrowRight className="h-4 w-4 ml-1" /></Button>
+          </CardContent>
+        </Card>
+
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/campanhas-nova?view=mercados")} onKeyDown={(e) => e.key === "Enter" && setLocation("/campanhas-nova?view=mercados")} className="cursor-pointer border-primary/20 bg-primary/[0.02] transition-colors hover:border-primary/50 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <CardContent className="pt-6 space-y-3 h-full flex flex-col">
+            <div className="flex items-center gap-2"><Layers3 className="h-5 w-5 text-primary" /><h2 className="font-semibold">Mercados & LPs</h2></div>
+            <p className="text-sm text-muted-foreground">Escolha uma das 50 verticais oficiais antes de criar a campanha e veja a arquitetura comercial daquele mercado.</p>
+            <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5"><li>6 macrosegmentos e 50 mercados</li><li>Jornada, pipeline e agentes específicos</li><li>LP, Revenue Scout e intenção Google por vertical</li></ul>
+            <Button className="w-full mt-auto">Escolher mercado <ArrowRight className="h-4 w-4 ml-1" /></Button>
           </CardContent>
         </Card>
       </div>
