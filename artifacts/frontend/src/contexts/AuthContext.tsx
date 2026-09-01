@@ -33,9 +33,11 @@ interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | null>(null);
 
 const TOKEN_KEY = "vendorai_token";
+const USER_CACHE_KEY = "vendorai_user_cache";
 const DEMO_SESSION_KEY = "vendorai_demo_session";
 const DEMO_EXPIRES_KEY = "vendorai_demo_expires_at";
 const DEMO_EMAIL = "demo@demo.com";
+const TRANSIENT_SESSION_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 function decodeTokenEmail(token: string): string | null {
   try {
@@ -60,10 +62,46 @@ function readInitialToken(): string | null {
   const sameSession = sessionStorage.getItem(DEMO_SESSION_KEY) === "active";
   if (isDemoToken(token) && !sameSession) {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_CACHE_KEY);
     localStorage.removeItem(DEMO_EXPIRES_KEY);
     return null;
   }
   return token;
+}
+
+function readCachedUser(token: string | null): User | null {
+  if (!token) return null;
+
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return null;
+
+    const cached = JSON.parse(raw) as User;
+    const tokenEmail = decodeTokenEmail(token);
+    if (tokenEmail && cached?.email && cached.email !== tokenEmail) {
+      localStorage.removeItem(USER_CACHE_KEY);
+      return null;
+    }
+
+    return cached ?? null;
+  } catch {
+    localStorage.removeItem(USER_CACHE_KEY);
+    return null;
+  }
+}
+
+function persistCachedUser(user: User | null) {
+  if (user) {
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(USER_CACHE_KEY);
+  }
+}
+
+function getErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : null;
 }
 
 function readInitialOverride(): TenantOverride | null {
@@ -77,7 +115,7 @@ function readInitialOverride(): TenantOverride | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(readInitialToken);
-  const [rawUser, setRawUser] = useState<User | null>(null);
+  const [rawUser, setRawUser] = useState<User | null>(() => readCachedUser(readInitialToken()));
   const [tenantOverride, setTenantOverrideState] = useState<TenantOverride | null>(readInitialOverride);
   const [location, setLocation] = useLocation();
   const passwordRedirectedUserRef = useRef<string | null>(null);
@@ -125,17 +163,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const { data: meData, isLoading, isError } = useGetMe({
+  const {
+    data: meData,
+    isLoading,
+    isError,
+    error: meError,
+  } = useGetMe({
     query: {
       enabled: !!token,
       queryKey: getGetMeQueryKey(),
-      retry: false,
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error) => {
+        const status = getErrorStatus(error);
+        return failureCount < 2 && status !== null && TRANSIENT_SESSION_STATUSES.has(status);
+      },
+      retryDelay: (attemptIndex) => Math.min(750 * 2 ** attemptIndex, 3_000),
     }
   });
 
   useEffect(() => {
     if (meData) {
       setRawUser(meData);
+      persistCachedUser(meData);
       const isPasswordRoute = location === "/trocar-senha" || location.endsWith("/trocar-senha");
       if (meData.forcePasswordReset && !isPasswordRoute && passwordRedirectedUserRef.current !== meData.id) {
         passwordRedirectedUserRef.current = meData.id;
@@ -151,10 +201,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [meData, location, setLocation]);
 
   useEffect(() => {
-    if (isError) {
+    if (!isError) return;
+
+    // Only an explicit 401 proves the JWT is no longer valid. Transient
+    // failures (especially 429/5xx from proxy/edge) must never destroy a valid
+    // local session and bounce the user back to /login.
+    if (getErrorStatus(meError) === 401) {
       logout();
     }
-  }, [isError]);
+  }, [isError, meError]);
 
   const effectiveUser: User | null = rawUser
     ? rawUser.platformRole === "super_admin" && tenantOverride
@@ -164,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (newToken: string, newUser: User, options?: { isDemo?: boolean }) => {
     localStorage.setItem(TOKEN_KEY, newToken);
+    persistCachedUser(newUser);
     if (options?.isDemo) {
       sessionStorage.setItem(DEMO_SESSION_KEY, "active");
     } else {
@@ -185,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_CACHE_KEY);
     localStorage.removeItem(DEMO_EXPIRES_KEY);
     localStorage.removeItem(OVERRIDE_KEY);
     localStorage.removeItem("arqdor_saved_prompt_variations");
@@ -220,7 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       login,
       logout,
-      isLoading: isLoading && !!token,
+      isLoading: isLoading && !!token && !rawUser,
       tenantOverride,
       setTenantOverride,
       clearTenantOverride,
