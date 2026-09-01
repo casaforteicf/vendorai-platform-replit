@@ -175,7 +175,15 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   );
   const hasBearerAuth = req.headers.authorization?.startsWith("Bearer ") === true;
 
-  if (!subdomainFromHeader && (isAuthApiRequest || (isApiRequest && hasBearerAuth))) {
+  // Auth endpoints must never be tenant-domain resolved. Some edge/Worker
+  // paths inject x-tenant-subdomain even for app.appvendorai.com; keeping
+  // this bypass independent of that header prevents /auth/me from becoming
+  // a false "Tenant não encontrado".
+  if (isAuthApiRequest) {
+    return next();
+  }
+
+  if (!subdomainFromHeader && isApiRequest && hasBearerAuth) {
     return next();
   }
 
@@ -195,7 +203,9 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   const refererHost = hostnameFromUrlHeader(typeof req.headers.referer === "string" ? req.headers.referer : undefined);
   const isCrmRequest = [hostname, forwardedHost, originalHost, originHost, refererHost].some(isCrmHostname);
 
-  if (!subdomainFromHeader && isCrmRequest) return next();
+  // A CRM host is authoritative even if an upstream edge accidentally adds
+  // x-tenant-subdomain. Public tenant hosts are not matched by isCrmHostname.
+  if (isCrmRequest) return next();
 
   const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
   const isApi = isApiRequest;
