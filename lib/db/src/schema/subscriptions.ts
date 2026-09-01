@@ -1,11 +1,14 @@
-import { pgTable, text, timestamp, numeric, unique, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, unique, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { dealsTable } from "./deals";
 
 export const subscriptionPlanoEnum = pgEnum("subscription_plano", [
+  "start",
   "starter",
   "growth",
+  "pme_plus",
   "enterprise",
 ]);
 
@@ -37,6 +40,7 @@ export const subscriptionsTable = pgTable(
     // Commercial acquisition snapshot. Keeps the exact campaign accepted
     // by this tenant even when the public offer changes later.
     campaignCode: text("campaign_code"),
+    sourceDealId: text("source_deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
     billingPhase: text("billing_phase").notNull().default("trial"),
     trialEndsAt: timestamp("trial_ends_at"),
     promoPhase1Price: numeric("promo_phase_1_price", { precision: 12, scale: 2 }),
@@ -48,6 +52,8 @@ export const subscriptionsTable = pgTable(
     acceptedTermsAt: timestamp("accepted_terms_at"),
     acceptedTermsVersion: text("accepted_terms_version"),
 
+    // VendorAI launch subscriptions use application-managed monthly charges in
+    // Asaas so the price can change across promo_1 → promo_2 → regular.
     billingProvider: text("billing_provider").default("asaas"),
     asaasCustomerId: text("asaas_customer_id"),
     asaasSubscriptionId: text("asaas_subscription_id"),
@@ -56,7 +62,10 @@ export const subscriptionsTable = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (t) => [unique("subscriptions_tenant_id_unique").on(t.tenantId)]
+  (t) => [
+    unique("subscriptions_tenant_id_unique").on(t.tenantId),
+    index("subscriptions_source_deal_idx").on(t.sourceDealId),
+  ]
 );
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable, {
