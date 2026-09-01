@@ -16,7 +16,7 @@ import VerticalPage from "@/pages/site/VerticalPage";
 import ParceirosPage from "@/pages/site/ParceirosPage";
 import BlogList from "@/pages/blog/BlogList";
 import BlogPost from "@/pages/blog/BlogPost";
-import LpRouter from "@/pages/lp/LpPage";
+import LaunchLpRouter from "@/pages/lp/LaunchLpRouter";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import AdDataConsentBanner from "@/components/AdDataConsentBanner";
@@ -33,7 +33,7 @@ function Router() {
       {/* Standalone pages — own layout, no global Navbar/Footer */}
       <Route path="/verticais/:slug" component={VerticalPage} />
       <Route path="/parceiros" component={ParceirosPage} />
-      <Route path="/lp/:slug" component={LpRouter} />
+      <Route path="/lp/:slug" component={LaunchLpRouter} />
 
       {/* Standard layout — Navbar + Footer */}
       <Route>
