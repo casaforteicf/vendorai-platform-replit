@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
-import { siteVerticaisTable, siteContatosTable, leadsTable, dealsTable } from "@workspace/db";
+import { siteVerticaisTable, siteContatosTable, leadsTable, dealsTable, webBehaviorEventsTable } from "@workspace/db";
 import { eq, and, asc, isNull } from "drizzle-orm";
 import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
@@ -149,6 +149,57 @@ function updateConsentOnly(
   };
 }
 
+// Eventos comportamentais first-party: não recebem PII. O objetivo é medir a
+// jornada anônima antes do formulário e, depois, vincular a sessão ao lead.
+const behaviorEventSchema = z.object({
+  anonymousSessionId: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
+  eventType: z.enum(["page_view", "cta_click", "form_start", "form_submit", "engagement"]),
+  pageUrl: z.string().trim().max(2000).optional(),
+  path: z.string().trim().max(1000).optional(),
+  referrer: z.string().trim().max(2000).optional(),
+  landingPageSlug: z.string().trim().max(180).optional(),
+  utmCampaign: z.string().trim().max(500).optional(),
+  engagedMs: z.number().int().min(0).max(86_400_000).optional(),
+  scrollDepth: z.number().int().min(0).max(100).optional(),
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+});
+
+router.post("/site/behavior-event", async (req, res) => {
+  const parsed = behaviorEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Evento comportamental inválido" });
+  }
+
+  const d = parsed.data;
+  try {
+    const adCampaignId = await resolveAdCampaignFromUtm(
+      INSTITUTIONAL_TENANT_ID,
+      d.utmCampaign,
+      logger,
+    );
+
+    await db.insert(webBehaviorEventsTable).values({
+      anonymousSessionId: d.anonymousSessionId,
+      tenantId: INSTITUTIONAL_TENANT_ID,
+      adCampaignId,
+      eventType: d.eventType,
+      pageUrl: d.pageUrl ?? null,
+      path: d.path ?? null,
+      referrer: d.referrer ?? null,
+      landingPageSlug: d.landingPageSlug ?? null,
+      engagedMs: d.engagedMs ?? null,
+      scrollDepth: d.scrollDepth ?? null,
+      metadata: d.metadata ?? {},
+    });
+
+    return res.status(202).json({ accepted: true });
+  } catch (err) {
+    logger.warn({ err, eventType: d.eventType }, "site/behavior-event: ingest failed");
+    // Tracking nunca deve interferir na experiência do visitante.
+    return res.status(202).json({ accepted: false });
+  }
+});
+
 const contatoSchema = z.object({
   nome: z.string().min(2, "Nome obrigatório"),
   email: z.string().email("E-mail inválido"),
@@ -226,8 +277,6 @@ router.post("/site/contato", async (req, res) => {
       if (dedup.found && dedup.lead) {
         leadId = dedup.lead.id;
 
-        // Consentimento é mutável; atribuição first-touch não é. Uma nova
-        // escolha atualiza somente a evidência de consentimento no lead.
         if (typeof attribution.adDataConsent === "boolean") {
           await db
             .update(leadsTable)
