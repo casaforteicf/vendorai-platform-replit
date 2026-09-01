@@ -41,144 +41,163 @@ A métrica de marketing não termina no clique nem no lead. A hierarquia de deci
 
 ### L1. Atribuição first-party ponta a ponta
 
-**Objetivo:** saber exatamente qual campanha gerou cada lead, trial e venda.
-
-Status desta branch:
-
-- [x] intake público aceita UTM, `gclid`, `fbclid`, URL e referrer;
-- [x] recupera UTM do Referer atual sem exigir mudança imediata no formulário;
-- [x] resolve `utm_campaign` para `ad_campaign_id`;
-- [x] usa first-touch: não sobrescreve uma campanha já atribuída;
-- [x] registra evento `lead_attributed`;
-- [x] captura first-touch no site institucional via sessionStorage;
-- [x] trial `/auth/trial-signup` recebe atribuição e registra `trial_started`;
-- [x] pedidos de demonstração em `/site/contato` recuperam UTM/click IDs e atribuem o lead à campanha;
-- [x] follow-up registra `lead_cooling` e `lead_recovered` quando há campanha atribuída;
-- [x] `behaviorSessionId` é propagado para demo, trial e intake público;
-- [ ] garantir propagação explícita da origem em todo formulário/WhatsApp de sites gerados;
-- [ ] garantir atribuição em Instagram/Messenger e demais entradas quando houver identificador de campanha;
-- [ ] persistir touchpoints posteriores sem perder o first-touch para futura atribuição multi-touch.
+- [x] UTM, `gclid`, `fbclid`, URL e referrer;
+- [x] first-touch preservado;
+- [x] demo, trial e intake público associados à campanha quando conhecida;
+- [x] `behaviorSessionId` propagado para demo, trial e intake;
+- [x] sessão anônima vinculada ao lead após conversão;
+- [ ] garantir propagação explícita em todo formulário/WhatsApp de sites gerados;
+- [ ] atribuição Instagram/Messenger quando houver identificador de campanha;
+- [ ] multi-touch posterior sem perder o first-touch.
 
 ### L2. Lifecycle comercial first-party
 
-- [x] `trial_started`;
+- [x] `lead_attributed`;
 - [x] `lead_cooling`;
 - [x] `lead_recovered`;
-- [x] sincronizador idempotente de `trial_activated`;
-- [x] sincronizador idempotente de `sale_closed`;
-- [x] eventos não críticos deixam de inflar o contador de alertas;
-- [x] estado final do CRM é a fonte de verdade.
-
-**Definição atual de trial ativado:** onboarding concluído + (integrações concluídas OU primeiro lead real criado no tenant).
+- [x] `trial_started`;
+- [x] `trial_activated`;
+- [x] `sale_closed`;
+- [x] estado real do CRM como fonte de verdade.
 
 ### L3. Métricas orientadas a receita
 
 - [x] CPL;
 - [x] custo por trial;
 - [x] custo por trial ativado;
-- [x] CAC/custo por venda;
-- [x] lead → trial;
-- [x] taxa de ativação do trial;
-- [x] trial ativado → venda;
-- [x] lead → venda;
-- [x] receita por lead;
+- [x] CAC;
+- [x] Lead→Trial;
+- [x] Trial→Ativação;
+- [x] Trial ativado→Venda;
+- [x] Lead→Venda;
+- [x] Receita/Lead;
 - [x] ROAS;
-- [x] leads esfriando/recuperados por campanha;
-- [x] recomendação distingue problema de aquisição, ativação e fechamento.
+- [x] leads esfriando/recuperados por campanha.
 
-### L4. Conversões server-side / feedback para plataformas
+### L4. Conversões server-side
 
-#### Meta Conversions API
+#### Meta
 
-- [x] worker server-side criado;
-- [x] reutiliza `metaPixelId` + conexão Meta Ads existente;
-- [x] eventos Lead, StartTrial, TrialActivated e Purchase;
-- [x] PII normalizada e SHA-256 antes do envio;
-- [x] `event_id` estável para deduplicação/retry;
-- [x] consentimento explícito obrigatório;
-- [x] protegido por `MARKETING_SERVER_CONVERSIONS_ENABLED`, desligado por padrão;
-- [ ] validar Pixel, token e evento de teste em tenant controlado antes de produção.
+- [x] Lead / StartTrial / TrialActivated / Purchase;
+- [x] hashing e event id estável;
+- [x] opt-in obrigatório;
+- [x] desligado por padrão;
+- [ ] validar em tenant controlado.
 
-#### Google Ads / Data Manager
+#### Google Data Manager
 
-- [x] OAuth preparado com `adwords` + `datamanager`;
-- [x] campos de Conversion Action separados para Lead, Trial ativado e Venda;
-- [x] worker Data Manager criado;
-- [x] GCLID e dados first-party normalizados/hasheados;
+- [x] OAuth Google Ads + Data Manager preparado;
+- [x] Conversion Actions separadas para Lead / Trial ativado / Venda;
+- [x] worker Data Manager preparado;
+- [x] GCLID e user data hasheado;
 - [x] consentimento obrigatório;
-- [x] valor/moeda em venda;
 - [x] `validateOnly=true` por padrão;
-- [ ] habilitar Data Manager API no projeto Google Cloud;
-- [ ] reconectar conta Google concedendo novo escopo;
-- [ ] configurar Conversion Action IDs reais;
-- [ ] validar payload em `validateOnly` e somente então contabilizar conversões reais.
+- [ ] habilitar API no Google Cloud;
+- [ ] reconectar conta;
+- [ ] configurar IDs reais;
+- [ ] validar antes de contabilizar conversões.
 
-### L5. Trial individual de 5 dias
+### L5. Trial de 5 dias
 
-- [x] endpoint/CTA de criação de trial;
-- [x] `provisioningMethod = trial`;
-- [x] expiração = +5 dias;
 - [x] tenant e usuário próprios;
-- [x] lead + negócio no CRM comercial da VendorAI;
-- [x] atribuição à campanha de origem;
-- [x] evento `trial_started`;
-- [x] definição e medição de ativação operacional;
-- [x] comportamento pré-trial vinculado ao lead comercial;
-- [ ] activation score progressivo, além do critério binário atual;
-- [ ] resumo de valor nos dias 1–5;
-- [ ] alerta comercial quando houver alta intenção;
-- [ ] conversão trial → plano sem perder dados;
-- [ ] expiração/grace period e recuperação;
-- [ ] eventos de assinatura, upgrade anual e churn.
+- [x] expiração +5 dias;
+- [x] lead e deal no CRM VendorAI;
+- [x] atribuição e `trial_started`;
+- [x] critério de ativação operacional;
+- [x] comportamento pré-trial vinculado ao lead;
+- [ ] activation score progressivo;
+- [ ] resumo de valor dias 1–5;
+- [ ] alerta de alta intenção;
+- [ ] assinatura / anual / churn.
 
-### L6. Tracking comportamental first-party
+### L6. Behavior Intent
 
-- [x] `page_view`;
-- [x] `cta_click`;
-- [x] `form_start`;
-- [x] `form_submit`;
-- [x] tempo engajado;
-- [x] profundidade de scroll;
-- [x] identificação anônima → lead após formulário;
-- [x] eventos sem e-mail, telefone ou IP;
-- [x] Behavior Intent Score explicável;
-- [x] score separado do `intentScore` do Revenue Scout;
+- [x] page view;
+- [x] CTA click;
+- [x] form start;
+- [x] form submit;
+- [x] engajamento;
+- [x] scroll depth;
+- [x] anonimato antes da conversão;
+- [x] vínculo posterior ao lead;
+- [x] score explicável 0–100;
 - [x] faixas baixo / médio / alto / muito alto;
-- [x] próxima ação recomendada por faixa;
-- [x] score, sinais, motivos e ação visíveis na ficha do lead;
-- [ ] `demo_started` / `demo_completed` dedicados;
-- [ ] retorno à página / múltiplas sessões do mesmo usuário com abordagem privacy-safe.
+- [x] ação comercial recomendada;
+- [x] motivos do score;
+- [x] score visível na ficha do lead com sinais e ação;
+- [x] separado de Revenue Scout e churn.
 
-## Onda 2 — AI Marketing Manager
+## Próxima frente — Launch Command Center
 
-### Modo Observador
+O Command Center será a visão executiva única do lançamento e deve responder:
 
-- lê performance + CRM;
-- calcula CPL, CAC, lead→venda, receita/lead, ROAS;
-- identifica gargalo: anúncio, LP, qualidade, follow-up ou fechamento;
-- recomenda ação, sem alterar mídia.
+1. onde estamos investindo;
+2. de onde vêm os visitantes e leads;
+3. quais LPs/campanhas geram intenção real;
+4. quantos chegam ao trial;
+5. quantos ativam;
+6. quantos compram;
+7. qual o CAC e o ROAS;
+8. onde o funil está vazando;
+9. o que a IA recomenda fazer agora.
 
-### Modo Assistido
+### KPIs obrigatórios
 
-- gera novo criativo/LP/público/keyword;
-- prepara rascunho;
-- usuário aprova antes de publicar ou alterar orçamento.
+- investimento;
+- impressões;
+- cliques;
+- visitantes;
+- leads;
+- CPL;
+- Behavior Intent médio;
+- distribuição por faixa de intenção;
+- demos;
+- trials;
+- trials ativados;
+- custo por trial ativado;
+- vendas;
+- CAC;
+- receita;
+- MRR;
+- ARR quando aplicável;
+- ROAS;
+- Lead→Venda;
+- Trial→Ativação;
+- Trial ativado→Venda;
+- leads esfriando;
+- leads recuperados;
+- receita recuperada;
+- Revenue Scout: oportunidades e receita.
 
-### Modo Autônomo
+### Cortes de análise
 
-Somente com autorização e guardrails:
+- período;
+- canal;
+- plataforma;
+- campanha;
+- criativo;
+- LP;
+- macrosegmento;
+- vertical;
+- origem orgânica/paga;
+- faixa de Behavior Intent.
 
-- pausar desperdício;
-- substituir criativo perdedor;
-- promover variações vencedoras;
-- redistribuir verba dentro de limites definidos;
-- nunca ultrapassar teto diário/mensal;
-- exigir volume mínimo e janela mínima de dados;
-- considerar atraso entre lead e fechamento.
+### Diagnóstico de IA
 
-## Onda 3 — 50 verticais de lançamento
+O painel deve classificar o principal gargalo como:
 
-Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reutilizando a arquitetura `LP_CONFIGS` existente.
+- aquisição;
+- anúncio/criativo;
+- LP;
+- qualidade/intenção;
+- ativação do trial;
+- follow-up;
+- fechamento;
+- retenção.
+
+Cada diagnóstico deve indicar evidências, impacto e ação recomendada. CTR/CPL nunca bastam sozinhos para promover campanha vencedora.
+
+## Verticais de lançamento
 
 ### Lojas / Varejo — 10
 1. Moda, roupas, calçados e acessórios
@@ -242,103 +261,6 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**, reu
 11. Fábrica de esquadrias de PVC
 12. Marcenaria / móveis sob medida
 
-### Cada pack vertical precisa conter
-
-- `macroSegment` e `verticalId` estáveis;
-- dor principal;
-- promessa;
-- hero e subheadline;
-- CTA;
-- jornada comercial / Linha do Tempo Comercial;
-- produtos/serviços mais comuns;
-- agentes relevantes;
-- palavras-chave Google iniciais;
-- interesses/hipóteses Meta;
-- conceitos de criativo;
-- objeções e respostas;
-- lead scoring inicial;
-- follow-ups;
-- gatilhos de pós-venda;
-- playbook Revenue Scout;
-- compliance/restrições do nicho;
-- KPIs e benchmarks aprendidos pelo tenant.
-
-## Onda 4 — Landing Pages adaptativas
-
-Arquitetura:
-
-- 1 institucional VendorAI;
-- 6 hubs de macrosegmento;
-- 50 LPs verticais;
-- 1 página de demonstração;
-- páginas de funcionalidades e planos.
-
-A IA só promove variante quando houver dados suficientes e resultado relevante — trial, ativação, venda ou receita — não por CTR isolado.
-
-## Onda 5 — Eventos críticos do ciclo comercial
-
-Vocabulário alvo:
-
-- `lead_created`;
-- `lead_cooling`;
-- `lead_recovered`;
-- `lead_qualified`;
-- `lead_lost`;
-- `sale_closed`;
-- `trial_started`;
-- `trial_activated`;
-- `subscription_started`;
-- `annual_upgrade`;
-- `churn`;
-- `review_requested`;
-- `review_recovery_started`;
-- `revenue_scout_opportunity`;
-- `revenue_scout_sale`.
-
-## Onda 6 — Lead scoring
-
-Duas dimensões, não um único número opaco:
-
-### Intent/behavior score
-
-Implementado para comportamento web com explicação dos pontos, faixa e ação recomendada.
-
-### Commercial fit score
-
-Próxima evolução: segmento, tamanho, volume de leads, ticket, problema, urgência e qualificação do agente.
-
-A prioridade final deve combinar intenção + fit, mantendo ambos visíveis e auditáveis.
-
-## Onda 7 — Launch Command Center
-
-Próxima frente de desenvolvimento.
-
-Visões por canal, macrosegmento, vertical, LP, campanha e criativo:
-
-- investimento;
-- impressões;
-- cliques;
-- visitantes;
-- leads;
-- CPL;
-- behavior intent médio e distribuição por faixa;
-- leads qualificados;
-- demos;
-- trials;
-- trials ativados;
-- custo por trial ativado;
-- vendas;
-- lead→venda;
-- trial→ativação;
-- trial ativado→venda;
-- CAC;
-- receita;
-- MRR/ARR;
-- ROAS;
-- churn;
-- receita recuperada por follow-up;
-- oportunidades e receita do Revenue Scout.
-
 ## Regra de produto
 
-O sistema não conclui que um anúncio é vencedor apenas porque tem melhor CTR/CPL. A recomendação de escala considera conversões comerciais, ativação, qualidade e receita. Toda alteração de orçamento no modo assistido exige aprovação; o modo autônomo só opera dentro de limites autorizados e auditáveis.
+O sistema não conclui que um anúncio é vencedor apenas por CTR/CPL. A recomendação de escala considera ativação, venda, CAC e receita. Alteração de orçamento no modo assistido exige aprovação; modo autônomo só pode operar dentro de limites autorizados e auditáveis.
