@@ -504,10 +504,10 @@ TIPOGRAFIA (Google Fonts do par escolhido no seu plano):
   h3: 1.25rem;
   p: 1rem; line-height 1.6-1.8; cor --text-muted;
 
-BOTÕES:
-  .btn-primary → background: var(--primary); color: ${btnTextColor}; padding: 14px 28px; border-radius: 100px; font-weight: 700; font-size: 0.95rem; border: none; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.35);
+BOTÕES (raio segue --radius do SEU plano -- NÃO force pílula/100px se o plano pediu algo mais reto):
+  .btn-primary → background: var(--primary); color: ${btnTextColor}; padding: 14px 28px; border-radius: var(--radius); font-weight: 700; font-size: 0.95rem; border: none; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.35);
   .btn-primary:hover → transform: translateY(-2px); box-shadow: 0 8px 28px rgba(var(--primary-rgb), 0.45);
-  .btn-outline → background: transparent; color: var(--text); border: 2px solid var(--border); padding: 12px 26px; border-radius: 100px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  .btn-outline → background: transparent; color: var(--text); border: 2px solid var(--border); padding: 12px 26px; border-radius: var(--radius); font-weight: 600; cursor: pointer; transition: all 0.2s;
   .btn-outline:hover → border-color: var(--primary); color: var(--primary);
 
 CARDS:
