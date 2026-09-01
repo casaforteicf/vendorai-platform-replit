@@ -55,7 +55,7 @@ const intakeSchema = z.object({
 
 type IntakeData = z.infer<typeof intakeSchema>;
 
-function attributionFromReferer(rawReferer?: string): Partial<IntakeData> {
+export function attributionFromReferer(rawReferer?: string): Partial<IntakeData> {
   if (!rawReferer) return {};
   try {
     const url = new URL(rawReferer);
