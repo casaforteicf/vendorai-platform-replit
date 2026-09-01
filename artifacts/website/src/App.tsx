@@ -17,6 +17,7 @@ import ParceirosPage from "@/pages/site/ParceirosPage";
 import BlogList from "@/pages/blog/BlogList";
 import BlogPost from "@/pages/blog/BlogPost";
 import LaunchLpRouter from "@/pages/lp/LaunchLpRouter";
+import MarketingVerticalsHub from "@/pages/MarketingVerticalsHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import AdDataConsentBanner from "@/components/AdDataConsentBanner";
@@ -52,6 +53,8 @@ function Router() {
               <Route path="/terms" component={Terms} />
               <Route path="/blog/:slug" component={BlogPost} />
               <Route path="/blog" component={BlogList} />
+              <Route path="/segmentos/:macro" component={MarketingVerticalsHub} />
+              <Route path="/segmentos" component={MarketingVerticalsHub} />
               <Route component={NotFound} />
             </Switch>
           </main>
