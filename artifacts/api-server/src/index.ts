@@ -4,6 +4,8 @@ import { startScheduler } from "./jobs/scheduler.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
 import { runBehaviorIntentSync } from "./jobs/behaviorIntentSync.js";
 import { runTrialJourney } from "./jobs/trialJourney.js";
+import { runVendorAiSubscriptionBilling } from "./jobs/vendorAiSubscriptionBilling.js";
+import { runVendorAiSubscriptionPaymentSync } from "./jobs/vendorAiSubscriptionPaymentSync.js";
 import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
 import { applyPendingMigrations } from "@workspace/db";
@@ -44,12 +46,15 @@ async function start() {
     logger.info({ port }, "Server listening");
     startScheduler(logger);
 
-    // Lifecycle de aquisição e trial: converge CRM, comportamento first-party,
-    // calcula Activation Score/jornada dos 5 dias e depois encaminha apenas os
-    // eventos elegíveis às plataformas. Cada etapa é idempotente no banco.
+    // Lifecycle de aquisição, trial e assinatura: primeiro reconcilia sinais
+    // financeiros já persistidos, depois converge CRM/assinatura e só então
+    // gera novas cobranças vencidas. Isso garante que um pagamento recebido
+    // nunca espere uma nova rodada de cobrança para reativar o cliente.
     const syncMarketingLifecycle = async () => {
       try {
+        await runVendorAiSubscriptionPaymentSync(logger);
         await runCommercialLifecycleSync(logger);
+        await runVendorAiSubscriptionBilling(logger);
         await runBehaviorIntentSync(logger);
         await runTrialJourney(logger);
         await runServerConversionSync(logger);
