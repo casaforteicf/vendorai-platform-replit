@@ -113,7 +113,7 @@ function Metric({ label, value, hint, icon: Icon }: { label: string; value: stri
 function FilterSelect({ value, onChange, placeholder, children }: { value: string; onChange: (value: string) => void; placeholder: string; children: React.ReactNode }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-8 min-w-[140px] text-xs">
+      <SelectTrigger className="h-8 min-w-[132px] max-w-[210px] text-xs">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>{children}</SelectContent>
