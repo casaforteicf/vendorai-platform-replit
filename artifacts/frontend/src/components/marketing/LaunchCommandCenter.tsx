@@ -30,6 +30,14 @@ type CommandCenterResponse = {
     sales: number;
     revenue: number;
     activeCampaigns: number;
+    activeSubscriptions: number;
+    delinquentSubscriptions: number;
+    renewals: number;
+    annualUpgrades: number;
+    churns: number;
+    renewalRevenue: number;
+    recoveredRevenue: number;
+    churnedMrr: number;
   };
   metrics: {
     visitors: number;
@@ -40,6 +48,10 @@ type CommandCenterResponse = {
     avgBehaviorIntent: number | null;
     measuredIntentLeads: number;
     intentDistribution: { baixo: number; medio: number; alto: number; muito_alto: number };
+    avgCommercialFit: number | null;
+    measuredCommercialFitLeads: number;
+    commercialFitDistribution: { baixo: number; medio: number; alto: number };
+    commercialFitDefinition: string;
     visitorToLeadRate: number | null;
     leadToTrialRate: number | null;
     trialActivationRate: number | null;
@@ -50,7 +62,23 @@ type CommandCenterResponse = {
     cac: number | null;
     revenuePerLead: number | null;
     roas: number | null;
+    mrr: number;
+    arr: number;
+    delinquentMrr: number;
   };
+  rankings: Array<{
+    campaignId: string;
+    label: string;
+    platform: string;
+    vertical: string;
+    spend: number;
+    clicks: number;
+    leads: number;
+    sales: number;
+    revenue: number;
+    cac: number | null;
+    roas: number | null;
+  }>;
   diagnosis: {
     stage: string;
     title: string;
@@ -77,6 +105,7 @@ type CommandCenterResponse = {
   };
   period: { label: string; from: string | null; to: string };
   intentCohortNote: string | null;
+  financialNote: string;
 };
 
 type FilterState = {
@@ -148,7 +177,7 @@ export function LaunchCommandCenter() {
   }
   if (!data) return null;
 
-  const { metrics, diagnosis, funnel, totals, filterOptions } = data;
+  const { metrics, diagnosis, funnel, totals, filterOptions, rankings } = data;
   const maxFunnel = Math.max(1, ...funnel.map((item) => item.value));
   const activeFilterCount = [filters.platform, filters.campaignId, filters.landingPageId, filters.vertical, filters.intentTier].filter((value) => value !== "all").length + (filters.period !== "30d" ? 1 : 0);
 
@@ -166,7 +195,7 @@ export function LaunchCommandCenter() {
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-5 w-5 text-primary" />Launch Command Center</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">Do investimento à receita. Os filtros recalculam o funil na fonte, inclusive período, comportamento e vendas.</p>
+            <p className="text-xs text-muted-foreground mt-1">Do investimento à receita recorrente. Aquisição, intenção, fit comercial, assinatura, renovação e churn na mesma visão.</p>
           </div>
           <div className="flex items-center gap-2">
             {isFetching && <RefreshCcw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
@@ -228,6 +257,28 @@ export function LaunchCommandCenter() {
           <Metric label="ROAS" value={metrics.roas == null ? "—" : `${metrics.roas.toFixed(2)}x`} hint={money(totals.revenue)} icon={BarChart3} />
         </div>
 
+        <div className="rounded-lg border p-4 space-y-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Receita recorrente e retenção</h3>
+              <p className="text-[11px] text-muted-foreground">{data.financialNote}</p>
+            </div>
+            <Badge variant={totals.delinquentSubscriptions > 0 ? "destructive" : "outline"}>
+              {totals.delinquentSubscriptions} inadimplente(s)
+            </Badge>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
+            <Metric label="MRR" value={money(metrics.mrr)} hint={`${totals.activeSubscriptions} assinatura(s)`} icon={CircleDollarSign} />
+            <Metric label="ARR" value={money(metrics.arr)} icon={BarChart3} />
+            <Metric label="MRR em risco" value={money(metrics.delinquentMrr)} hint={`${totals.delinquentSubscriptions} inadimplente(s)`} icon={AlertTriangle} />
+            <Metric label="Renovações" value={totals.renewals.toLocaleString("pt-BR")} hint={money(totals.renewalRevenue)} icon={RefreshCcw} />
+            <Metric label="Upgrade anual" value={totals.annualUpgrades.toLocaleString("pt-BR")} icon={CircleDollarSign} />
+            <Metric label="Receita recuperada" value={money(totals.recoveredRevenue)} icon={RefreshCcw} />
+            <Metric label="Churn" value={totals.churns.toLocaleString("pt-BR")} hint={`MRR perdido ${money(totals.churnedMrr)}`} icon={AlertTriangle} />
+            <Metric label="Receita renovada" value={money(totals.renewalRevenue)} icon={BarChart3} />
+          </div>
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-[1.25fr_.75fr]">
           <div className="rounded-lg border p-4">
             <div className="flex items-center justify-between mb-4">
@@ -257,13 +308,57 @@ export function LaunchCommandCenter() {
           </div>
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">Commercial Fit</h3>
+                <p className="text-[11px] text-muted-foreground">{metrics.commercialFitDefinition}</p>
+              </div>
+              <Badge variant="outline">{metrics.avgCommercialFit == null ? "—" : `${metrics.avgCommercialFit}/100`}</Badge>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-md bg-muted/40 p-3"><div className="text-lg font-semibold">{metrics.commercialFitDistribution.baixo}</div><div className="text-[11px] text-muted-foreground">Baixo</div></div>
+              <div className="rounded-md bg-muted/40 p-3"><div className="text-lg font-semibold">{metrics.commercialFitDistribution.medio}</div><div className="text-[11px] text-muted-foreground">Médio</div></div>
+              <div className="rounded-md bg-muted/40 p-3"><div className="text-lg font-semibold">{metrics.commercialFitDistribution.alto}</div><div className="text-[11px] text-muted-foreground">Alto</div></div>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">{metrics.measuredCommercialFitLeads} lead(s) avaliados. Este score mede qualificação comercial registrada; não substitui intenção comportamental nem Revenue Scout.</p>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Ranking por receita / ROAS</h3>
+              <span className="text-[11px] text-muted-foreground">Top {Math.min(10, rankings.length)}</span>
+            </div>
+            {rankings.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Sem campanha com dados no recorte.</p>
+            ) : (
+              <div className="space-y-2">
+                {rankings.map((row, index) => (
+                  <div key={row.campaignId} className="grid grid-cols-[24px_minmax(0,1fr)_auto] gap-2 items-center rounded-md border px-2.5 py-2">
+                    <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium truncate">{row.label}</div>
+                      <div className="text-[10px] text-muted-foreground">{row.platform} · {row.leads} leads · {row.sales} vendas · CAC {money(row.cac)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-semibold">{money(row.revenue)}</div>
+                      <div className="text-[10px] text-muted-foreground">ROAS {row.roas == null ? "—" : `${row.roas.toFixed(2)}x`}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span>Intent:</span>
+          <span>Behavior Intent:</span>
           <Badge variant="secondary">Baixo {metrics.intentDistribution.baixo}</Badge>
           <Badge variant="secondary">Médio {metrics.intentDistribution.medio}</Badge>
           <Badge variant="secondary">Alto {metrics.intentDistribution.alto}</Badge>
           <Badge variant="secondary">Muito alto {metrics.intentDistribution.muito_alto}</Badge>
-          <span className="ml-auto">Esfriando {totals.coolingLeads} · Recuperados {totals.recoveredLeads}</span>
+          <span className="ml-auto">Leads esfriando {totals.coolingLeads} · Leads recuperados {totals.recoveredLeads}</span>
         </div>
       </CardContent>
     </Card>
