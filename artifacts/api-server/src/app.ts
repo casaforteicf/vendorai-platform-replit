@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import { and, desc, eq } from "drizzle-orm";
 import { db, tenantsTable, generatedSitesTable, tenantDomainsTable } from "@workspace/db";
 import router from "./routes";
+import vendorAiSubscriptionWebhookRouter from "./routes/vendorai_subscription_webhook.js";
 import { logger } from "./lib/logger";
 import { enforceTenantPath } from "./middlewares/tenant-path-guard.js";
 import { getPendingVerificationMetaToken } from "./services/search-console-oauth.js";
@@ -384,6 +385,11 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 // must agree before the request reaches any API route.
 app.use(enforceTenantPath);
 
+// New VendorAI commercial subscriptions have their own Asaas lifecycle and
+// delinquency policy. Mount this before the legacy router so subscription:*
+// events are consumed here, while every other webhook falls through unchanged.
+app.use("/api", vendorAiSubscriptionWebhookRouter);
+app.use("/api/v1", vendorAiSubscriptionWebhookRouter);
 app.use("/api", router);
 app.use("/api/v1", router);
 
