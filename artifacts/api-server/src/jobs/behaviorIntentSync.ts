@@ -103,13 +103,68 @@ function buildSummary(events: Array<{
 }
 
 /**
- * Atualiza somente discoveryData.behaviorIntent. Não toca em leads.intentScore,
- * que pertence ao Revenue Scout, nem em propensityScore/fit comercial.
+ * Recalcula o Behavior Intent de um único lead logo após uma sessão anônima
+ * ser identificada. O tenant faz parte da condição para impedir qualquer
+ * associação cruzada entre empresas.
+ *
+ * Atualiza somente discoveryData.behaviorIntent. Não toca em intentScore
+ * (Revenue Scout), propensityScore ou fit comercial.
+ */
+export async function syncBehaviorIntentForLead(
+  leadId: string,
+  tenantId: string,
+): Promise<BehaviorIntentSummary | null> {
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, discoveryData: leadsTable.discoveryData })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!lead) return null;
+
+  const events = await db
+    .select({
+      eventType: webBehaviorEventsTable.eventType,
+      path: webBehaviorEventsTable.path,
+      engagedMs: webBehaviorEventsTable.engagedMs,
+      scrollDepth: webBehaviorEventsTable.scrollDepth,
+    })
+    .from(webBehaviorEventsTable)
+    .where(and(
+      eq(webBehaviorEventsTable.leadId, lead.id),
+      eq(webBehaviorEventsTable.tenantId, lead.tenantId),
+      gte(webBehaviorEventsTable.createdAt, since),
+    ))
+    .orderBy(desc(webBehaviorEventsTable.createdAt))
+    .limit(500);
+
+  if (events.length === 0) return null;
+  const behaviorIntent = buildSummary(events);
+  await db
+    .update(leadsTable)
+    .set({
+      discoveryData: {
+        ...(lead.discoveryData ?? {}),
+        behaviorIntent,
+      },
+      updatedAt: new Date(),
+    })
+    .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, lead.tenantId)));
+
+  return behaviorIntent;
+}
+
+/**
+ * Varredura de segurança para manter scores sincronizados caso um evento seja
+ * vinculado fora do caminho síncrono. Continua separada do Revenue Scout.
  */
 export async function runBehaviorIntentSync(log: Logger): Promise<void> {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const leadRows = await db
-    .selectDistinct({ leadId: webBehaviorEventsTable.leadId })
+    .selectDistinct({
+      leadId: webBehaviorEventsTable.leadId,
+      tenantId: webBehaviorEventsTable.tenantId,
+    })
     .from(webBehaviorEventsTable)
     .where(and(
       isNotNull(webBehaviorEventsTable.leadId),
@@ -121,44 +176,10 @@ export async function runBehaviorIntentSync(log: Logger): Promise<void> {
   for (const row of leadRows) {
     if (!row.leadId) continue;
     try {
-      const [lead] = await db
-        .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, discoveryData: leadsTable.discoveryData })
-        .from(leadsTable)
-        .where(eq(leadsTable.id, row.leadId))
-        .limit(1);
-      if (!lead) continue;
-
-      const events = await db
-        .select({
-          eventType: webBehaviorEventsTable.eventType,
-          path: webBehaviorEventsTable.path,
-          engagedMs: webBehaviorEventsTable.engagedMs,
-          scrollDepth: webBehaviorEventsTable.scrollDepth,
-        })
-        .from(webBehaviorEventsTable)
-        .where(and(
-          eq(webBehaviorEventsTable.leadId, lead.id),
-          eq(webBehaviorEventsTable.tenantId, lead.tenantId),
-          gte(webBehaviorEventsTable.createdAt, since),
-        ))
-        .orderBy(desc(webBehaviorEventsTable.createdAt))
-        .limit(500);
-
-      if (events.length === 0) continue;
-      const behaviorIntent = buildSummary(events);
-      await db
-        .update(leadsTable)
-        .set({
-          discoveryData: {
-            ...(lead.discoveryData ?? {}),
-            behaviorIntent,
-          },
-          updatedAt: new Date(),
-        })
-        .where(eq(leadsTable.id, lead.id));
-      updated++;
+      const result = await syncBehaviorIntentForLead(row.leadId, row.tenantId);
+      if (result) updated++;
     } catch (err) {
-      log.warn({ err, leadId: row.leadId }, "behavior-intent: lead sync failed");
+      log.warn({ err, leadId: row.leadId, tenantId: row.tenantId }, "behavior-intent: lead sync failed");
     }
   }
 
