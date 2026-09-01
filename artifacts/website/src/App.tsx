@@ -19,7 +19,11 @@ import BlogPost from "@/pages/blog/BlogPost";
 import LpRouter from "@/pages/lp/LpPage";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { captureLaunchAttribution } from "@/lib/launchAttribution";
+import AdDataConsentBanner from "@/components/AdDataConsentBanner";
+import {
+  captureLaunchAttribution,
+  installPublicFormConsentBridge,
+} from "@/lib/launchAttribution";
 
 const queryClient = new QueryClient();
 
@@ -62,12 +66,16 @@ function App() {
   // Captura first-touch antes que a navegação client-side remova UTMs da URL.
   // É best-effort e não bloqueia renderização caso sessionStorage esteja indisponível.
   captureLaunchAttribution();
+  // Injeta a escolha atual somente em payloads públicos de conversão conhecidos.
+  // A instalação é idempotente e não altera requests internos do produto.
+  installPublicFormConsentBridge();
 
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
+          <AdDataConsentBanner />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
