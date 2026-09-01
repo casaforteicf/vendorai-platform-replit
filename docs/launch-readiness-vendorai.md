@@ -1,14 +1,14 @@
 # VendorAI — Launch Readiness & Product Adjustment Map
 
-> Documento operacional para o lançamento. Objetivo: reutilizar o que já existe, fechar os gaps de medição/conversão e evoluir o Marketing para otimização por receita real.
+> Documento operacional do lançamento. Regra: preservar o que já funciona, conectar os módulos existentes e só criar o que realmente falta.
 
-## Princípio
+## Princípio do lançamento
 
-O VendorAI deve operar o próprio lançamento como demonstração do produto:
+O VendorAI deve demonstrar sua própria proposta no próprio processo comercial:
 
 **Atrair → Captar → Converter → Fechar → Entregar → Fidelizar → Expandir → Aprender → Melhorar**
 
-A métrica de marketing não termina no clique nem no lead. A hierarquia de decisão é:
+A decisão de marketing não termina no clique nem no lead. A hierarquia de otimização é:
 
 1. receita / margem quando disponível;
 2. ROAS;
@@ -19,78 +19,100 @@ A métrica de marketing não termina no clique nem no lead. A hierarquia de deci
 7. leads;
 8. cliques / CTR.
 
-## Estado atual auditado
-
-### Já existe — preservar e integrar
+## O que já existe e deve ser reaproveitado
 
 - Publicação real em Google Ads e Meta Ads.
 - Campanhas com `utm_code` próprio.
-- Vínculo `leads.ad_campaign_id` para atribuição CRM ↔ mídia.
+- `leads.ad_campaign_id` para atribuição mídia ↔ CRM.
 - Métricas de leads, vendas, receita e ROAS por campanha.
 - Geração de criativos com IA e correção de criativos reprovados.
-- Guardião de desperdício que pode pausar campanha sem conversão dentro do limite autorizado.
-- Landing pages/sites gerados por tenant, com Meta Pixel e Google Ads tag configuráveis.
-- Contexto de Marketing separado em público/nicho/oferta/objetivo e catálogo do tenant.
-- CRM, negócios e agentes de atendimento/follow-up.
-- Pós-venda automático por entrega, classificação de satisfação e pedido de avaliação Google quando adequado.
+- Guardião de desperdício que pausa campanhas sem conversão dentro de limite autorizado.
+- Sites/LPs por tenant com Meta Pixel e Google Ads tag configuráveis.
+- Site institucional com hero de lançamento e Linha do Tempo Comercial.
+- Arquitetura de LPs verticais em `artifacts/website/src/pages/lp/lpData.ts`.
+- Contexto de Marketing separado em público, nicho, oferta/produto e objetivo.
+- CRM, negócios e agentes de SDR/follow-up/reativação.
+- Job de follow-up que trata leads sem resposta e encaminha para reativação.
+- Trial individual de 5 dias em `/demo` + `/auth/demo-signup`.
+- Pipeline comercial do VendorAI criado automaticamente quando um trial é aberto.
+- Pós-venda automático por entrega, classificação de satisfação e avaliação Google.
 - Revenue Scout com regras, pipeline, sequência de produtos, intent score e base de ML.
-- Campos de demo/provisionamento de tenant que podem ser reaproveitados para o trial.
 
-## Onda 1 — bloqueadores de lançamento
+# Onda 1 — bloqueadores reais de lançamento
 
-### L1. Atribuição first-party ponta a ponta
+## L1. Atribuição first-party ponta a ponta
 
-**Objetivo:** saber exatamente qual campanha gerou cada lead e venda.
+**Objetivo:** saber qual campanha gerou o lead, a oportunidade e a venda.
 
 Status desta branch:
 
 - [x] intake público aceita UTM, `gclid`, `fbclid`, URL e referrer;
-- [x] recupera UTM do Referer atual sem exigir mudança imediata no formulário;
+- [x] recupera UTM do Referer para funcionar com o formulário atual;
 - [x] resolve `utm_campaign` para `ad_campaign_id`;
-- [x] usa first-touch: não sobrescreve uma campanha já atribuída;
-- [x] registra evento `lead_attributed`;
-- [x] adiciona teste unitário do parser de atribuição;
-- [ ] garantir que toda LP gerada propague a origem para formulário e WhatsApp;
-- [ ] garantir atribuição em Instagram/Messenger e demais entradas quando houver identificador de campanha;
-- [ ] persistir touchpoints posteriores sem perder o first-touch (para futura atribuição multi-touch).
+- [x] preserva first-touch — não sobrescreve campanha já atribuída;
+- [x] registra `lead_attributed`;
+- [x] teste unitário do parser de atribuição;
+- [ ] LP gerada deve sempre propagar origem para formulário e WhatsApp;
+- [ ] trial `/demo` deve preservar UTM/click IDs e atribuir o lead comercial à campanha;
+- [ ] Instagram/Messenger e demais entradas devem receber atribuição quando houver identificador confiável;
+- [ ] preparar touchpoints posteriores para futura atribuição multi-touch.
 
-**Aceite:** um lead originado de um anúncio deve aparecer no CRM com a campanha correta e uma venda ganha deve retornar no overview daquela campanha.
+**Aceite:** anúncio → LP/demo → lead → negócio ganho → receita deve ser rastreável de ponta a ponta.
 
-### L2. Conversões server-side / feedback para plataformas
+## L2. Feedback de conversão para Meta e Google
 
-Criar um serviço único de conversões para:
+Não foi localizada uma camada clara de Meta Conversions API / conversões CRM-offline do Google.
+
+Criar um serviço único, idempotente, para enviar:
+
+- lead criado;
+- lead qualificado;
+- trial iniciado;
+- trial ativado;
+- venda fechada + valor;
+- upgrade quando relevante.
+
+Requisitos:
 
 - Meta Conversions API;
-- Google Ads conversões de lead/venda (offline/enhanced quando aplicável);
-- deduplicação de eventos;
-- consentimento e hashing quando exigido;
-- retries/idempotência;
-- eventos mínimos: lead, lead qualificado, trial, venda, valor da venda.
+- Google Ads CRM/offline/enhanced conversion quando aplicável;
+- hashing/consentimento quando exigido;
+- deduplicação browser/server;
+- retry e auditoria de envio.
 
-**Aceite:** Meta/Google recebem sinais de conversão do CRM sem depender somente do navegador.
+**Aceite:** plataformas recebem sinais de qualidade e receita do CRM, não apenas eventos de navegador.
 
-### L3. Trial individual de 5 dias
+## L3. Completar o trial de 5 dias — não recriar
 
-Reaproveitar `isDemo`, `demoExpiresAt` e `provisioningMethod`, mas criar fluxo de trial individual (não confundir com a conta demo compartilhada).
+O trial já existe:
 
-Necessário:
+- `/demo` tem formulário de criação;
+- `/auth/demo-signup` cria tenant e usuário próprios;
+- `isDemo=true`;
+- `demoExpiresAt=+5 dias`;
+- cria lead + deal no funil de vendas VendorAI.
 
-- endpoint/CTA de criação de trial;
-- `provisioningMethod = trial`;
-- expiração = +5 dias;
-- tenant e usuário próprios;
-- configuração inicial por segmento;
-- evento `trial_started`;
-- activation score;
-- resumo de valor nos dias 1–5;
-- alerta comercial quando houver alta intenção;
-- conversão trial → plano sem perder dados;
-- expiração/grace period e recuperação;
-- eventos `trial_activated`, `subscription_started`, `annual_upgrade`, `churn`.
+Ajustes necessários:
 
-### L4. Tracking comportamental first-party
+- [ ] definir `provisioningMethod="trial"` no signup;
+- [ ] capturar UTM/click IDs no `/demo` e transportar ao backend;
+- [ ] atribuir o lead/deal de trial à campanha correta;
+- [ ] registrar evento `trial_started`;
+- [ ] capturar segmento/subnicho na entrada ou logo no onboarding;
+- [ ] activation score do trial;
+- [ ] identificar `trial_activated` (ex.: integrou canal/importou lead/rodou automação);
+- [ ] jornada Dia 0–5 com Next Best Action;
+- [ ] alerta comercial para trial de alta intenção;
+- [ ] resumo de valor no Dia 5;
+- [ ] conversão trial → plano sem perder tenant/dados;
+- [ ] expiração/grace period/recuperação;
+- [ ] eventos `subscription_started`, `annual_upgrade`, `churn`.
 
-Criar tabela/serviço de eventos web para LPs e site:
+## L4. Tracking comportamental first-party
+
+Não foi localizado motor claro de comportamento web para página/tempo/scroll.
+
+Criar eventos first-party:
 
 - `page_view`;
 - `cta_click`;
@@ -101,42 +123,55 @@ Criar tabela/serviço de eventos web para LPs e site:
 - tempo engajado;
 - profundidade de scroll;
 - retorno à página;
-- identificação anônima → lead quando o formulário for enviado.
+- anonymous visitor → lead quando houver identificação.
 
-Esses sinais alimentam lead score sem substituir eventos comerciais do CRM.
+Esses sinais alimentam intenção, mas nunca substituem dados comerciais do CRM.
 
-## Onda 2 — AI Marketing Manager
+# Onda 2 — AI Marketing Manager
 
-### Modo Observador
+## Observador — base já existe, ampliar
 
-- lê performance + CRM;
-- calcula CPL, CAC, lead→venda, receita/lead, ROAS;
-- identifica gargalo: anúncio, LP, qualidade, follow-up ou fechamento;
-- recomenda ação, sem alterar mídia.
+Já há Ads Intelligence e recomendações. Completar para mostrar/usar:
 
-### Modo Assistido
+- CPL;
+- CAC;
+- Lead → Venda;
+- Receita/Lead;
+- ROAS;
+- qualidade do lead;
+- gargalo provável: anúncio, LP, qualificação, follow-up ou fechamento.
 
-- gera novo criativo/LP/público/keyword;
-- prepara rascunho;
-- usuário aprova antes de publicar ou alterar orçamento.
+Nesta branch o backend já passa a calcular CAC, Lead→Venda e Receita/Lead e a tratar campanha que gera lead mas não venda de forma diferente de uma campanha realmente vencedora.
 
-### Modo Autônomo
+## Assistido
 
-Somente com autorização e guardrails:
+IA prepara, humano aprova:
 
-- pausar desperdício;
-- substituir criativo perdedor;
-- promover variações vencedoras;
-- redistribuir verba dentro de limites definidos;
-- nunca ultrapassar teto diário/mensal;
-- exigir volume mínimo e janela mínima de dados;
-- considerar atraso entre lead e fechamento.
+- novo criativo;
+- headline/LP;
+- público;
+- keywords;
+- extensão de campanha;
+- aumento de orçamento.
 
-## Onda 3 — 50 verticais de lançamento
+## Autônomo — fase posterior
 
-Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**.
+O guardião de desperdício já pode pausar sem conversão. Evoluir somente com volume e autorização:
 
-### Lojas / Varejo — 10
+- promover variação vencedora;
+- substituir perdedora;
+- redistribuir verba dentro de teto;
+- respeitar limite diário/mensal;
+- considerar janela mínima, volume e atraso entre lead e venda;
+- trilha de auditoria de toda decisão.
+
+# Onda 3 — 50 verticais
+
+Não criar 50 sistemas e não descartar `lpData.ts`.
+
+Evoluir a arquitetura existente para **1 engine + packs verticais configuráveis**.
+
+## Lojas / Varejo — 10
 
 1. Moda, roupas, calçados e acessórios
 2. Móveis, decoração e casa
@@ -149,7 +184,7 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**.
 9. Cosméticos, perfumaria e beleza
 10. Joias, presentes e varejo especializado
 
-### Clínicas — 10
+## Clínicas — 10
 
 1. Clínica médica
 2. Odontologia
@@ -162,7 +197,7 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**.
 9. Ortopedia
 10. Clínica veterinária
 
-### Concessionárias — 5
+## Concessionárias — 5
 
 1. Automóveis novos
 2. Seminovos / multimarcas
@@ -170,7 +205,7 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**.
 4. Caminhões / comerciais
 5. Máquinas agrícolas / pesadas
 
-### Distribuidoras — 7
+## Distribuidoras — 7
 
 1. Materiais de construção
 2. Autopeças
@@ -180,7 +215,7 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**.
 6. Insumos industriais / MRO
 7. Componentes para móveis / marcenaria
 
-### Empresas de Serviços — 6
+## Empresas de Serviços — 6
 
 1. Contabilidade / BPO
 2. Advocacia
@@ -189,7 +224,7 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**.
 5. Manutenção / instalação / facilities
 6. Seguros / corretoras
 
-### Indústrias — 12
+## Indústrias — 12
 
 1. Alimentos e bebidas
 2. Materiais de construção
@@ -204,54 +239,63 @@ Não criar 50 sistemas. Criar **1 engine + packs verticais configuráveis**.
 11. Fábrica de esquadrias de PVC
 12. Marcenaria / móveis sob medida
 
-### Cada pack vertical precisa conter
+## Contrato de cada pack vertical
 
-- `macroSegment` e `verticalId` estáveis;
+Cada vertical deve fornecer para site + Ads + IA:
+
+- `macroSegment`;
+- `verticalId` estável;
+- aliases de segmento;
 - dor principal;
 - promessa;
-- hero e subheadline;
+- hero/subheadline;
 - CTA;
-- jornada comercial / Linha do Tempo Comercial;
-- produtos/serviços mais comuns;
-- agentes relevantes;
-- palavras-chave Google iniciais;
-- interesses/hipóteses Meta;
-- 10 conceitos de criativo (dor, demo, resultado, comparação);
+- Linha do Tempo Comercial específica;
+- produtos/serviços típicos;
+- agentes mais relevantes;
+- keywords iniciais Google;
+- hipóteses de público Meta;
+- conceitos de criativos: dor, demo, resultado, comparação;
 - objeções e respostas;
-- lead scoring inicial;
+- sinais de lead scoring;
 - follow-ups;
-- gatilhos de pós-venda;
+- pós-venda;
 - playbook Revenue Scout;
-- compliance/restrições do nicho;
-- KPIs e benchmarks aprendidos pelo tenant (não hardcoded como verdade universal).
+- compliance/restrições;
+- KPIs aprendidos por tenant.
 
-## Onda 4 — Landing Pages adaptativas
+# Onda 4 — LPs adaptativas
 
-Arquitetura:
+A infraestrutura vertical já existe; completar os 50 packs e padronizar tracking.
+
+Arquitetura desejada:
 
 - 1 institucional VendorAI;
 - 6 hubs de macrosegmento;
 - 50 LPs verticais;
-- 1 página de demonstração;
-- páginas de funcionalidades e planos.
+- `/demo` como entrada do trial;
+- funcionalidades;
+- preços.
 
-LP deve receber contexto de campanha e preservar tracking.
+Cada LP deve manter consistência:
 
-Testes:
+**Anúncio → mensagem da LP → demonstração → trial**.
+
+Testar:
 
 - headline;
 - subheadline;
 - CTA;
 - prova;
 - formulário;
-- demo;
-- criativo ↔ mensagem da LP.
+- Linha do Tempo;
+- criativo ↔ mensagem.
 
-A IA promove uma variante somente por resultado relevante (trial/venda/receita) quando houver dados suficientes.
+A IA só promove vencedora quando houver dados suficientes e o resultado relevante for trial/venda/receita.
 
-## Onda 5 — Eventos críticos do ciclo comercial
+# Onda 5 — eventos comerciais padronizados
 
-Padronizar eventos próprios do VendorAI:
+Follow-up/reativação já existem operacionalmente. Falta transformar estados importantes em eventos de marketing/analytics consistentes:
 
 - `lead_created`;
 - `lead_cooling`;
@@ -269,23 +313,50 @@ Padronizar eventos próprios do VendorAI:
 - `revenue_scout_opportunity`;
 - `revenue_scout_sale`.
 
-Eventos comerciais devem ser first-party e idempotentes.
+Todos os eventos devem ser first-party, idempotentes e auditáveis.
 
-## Onda 6 — Lead scoring
+# Onda 6 — Lead Scoring
 
-Usar duas dimensões, não um único número opaco:
+O banco já tem `propensityScore` e `intentScore`, mas para o lançamento precisamos separar claramente:
 
-### Intent/behavior score
+## Intent / behavior
 
-Ex.: página de preço, demo, retornos, tempo engajado, CTA, formulário.
+- pricing;
+- demo;
+- retornos ao site;
+- tempo engajado;
+- CTA;
+- trial;
+- integrações ativadas.
 
-### Commercial fit score
+## Commercial fit
 
-Ex.: segmento, tamanho, volume de leads, ticket, problema, urgência, qualificação do agente.
+- segmento;
+- porte;
+- volume de leads;
+- ticket;
+- urgência;
+- problema;
+- qualidade capturada pela IA.
 
-Derivar uma prioridade comercial explicável e registrar os motivos.
+A prioridade final deve ser explicável: mostrar **por que** aquele lead está quente.
 
-## Onda 7 — Launch Command Center
+# Onda 7 — Pós-venda + Revenue Scout
+
+Pós-venda e solicitação de avaliação Google já existem. Revenue Scout também.
+
+Conectar os dois à atribuição de receita:
+
+- receita da primeira venda;
+- receita recuperada por follow-up;
+- receita de recompra;
+- receita de upsell/cross-sell;
+- receita originada pelo Revenue Scout;
+- LTV por campanha/vertical quando houver volume.
+
+Assim a IA pode descobrir que uma campanha com CAC maior gera clientes muito melhores no longo prazo.
+
+# Onda 8 — Launch Command Center
 
 Visões por canal, macrosegmento, vertical, LP, campanha e criativo:
 
@@ -295,20 +366,20 @@ Visões por canal, macrosegmento, vertical, LP, campanha e criativo:
 - visitantes;
 - leads;
 - CPL;
-- leads qualificados;
+- qualificados;
 - demos;
 - trials;
 - trials ativados;
 - vendas;
-- lead→venda;
+- Lead→Venda;
 - CAC;
 - receita;
 - MRR/ARR;
 - ROAS;
 - churn;
-- receita recuperada por follow-up;
-- oportunidades e receita do Revenue Scout.
+- receita recuperada pela IA;
+- oportunidades/receita do Revenue Scout.
 
-## Regra de produto
+# Regra de decisão
 
-O sistema não deve concluir que um anúncio é vencedor apenas porque tem melhor CTR/CPL. A recomendação de escala deve considerar conversões comerciais e receita. Toda alteração de orçamento no modo assistido exige aprovação; o modo autônomo só poderá operar dentro de limites autorizados e auditáveis.
+O VendorAI não deve declarar um anúncio vencedor apenas porque tem CTR ou CPL melhor. A recomendação de escala deve considerar venda e receita. Alterações de orçamento no modo assistido exigem aprovação; autonomia financeira só pode existir dentro de limites previamente autorizados e auditáveis.
