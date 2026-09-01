@@ -1,8 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import {
   db,
+  dealsTable,
+  leadsTable,
   plansTable,
   subscriptionsTable,
+  tenantsTable,
 } from "@workspace/db";
 import {
   buildVendorAiLaunchOffer,
@@ -10,6 +13,7 @@ import {
   VENDORAI_LAUNCH_CAMPAIGN,
   type CommercialBillingPhase,
 } from "./commercialOffer.js";
+import { resolveClientTenantForDeal } from "./trial-tenant-resolution.js";
 
 export const SUBSCRIPTION_PLAN_SLUGS = [
   "start",
@@ -155,4 +159,50 @@ export async function ensureVendorAiLaunchSubscription(params: {
     .where(eq(subscriptionsTable.tenantId, params.tenantId))
     .limit(1);
   return raced ?? null;
+}
+
+/**
+ * Consolidated entry point used by lifecycle jobs. It only creates a VendorAI
+ * launch subscription for a real trial_signup deal with a valid trialTenantId
+ * and a seller-selected plan. Normal customer deals are ignored.
+ */
+export async function ensureVendorAiLaunchSubscriptionForDeal(
+  dealId: string,
+): Promise<typeof subscriptionsTable.$inferSelect | null> {
+  const [row] = await db
+    .select({
+      dealTenantId: dealsTable.tenantId,
+      planSlug: dealsTable.planoContratado,
+      leadSource: leadsTable.source,
+      discoveryData: leadsTable.discoveryData,
+    })
+    .from(dealsTable)
+    .leftJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+    .where(eq(dealsTable.id, dealId))
+    .limit(1);
+
+  if (!row || row.leadSource !== "trial_signup" || !row.planSlug) return null;
+
+  const resolution = resolveClientTenantForDeal({
+    dealTenantId: row.dealTenantId,
+    leadSource: row.leadSource,
+    discoveryData: row.discoveryData,
+  });
+  if (!resolution.valid || !resolution.fromTrial || !resolution.tenantId) {
+    throw new Error(`Trial deal ${dealId} sem trialTenantId válido`);
+  }
+
+  const [trialTenant] = await db
+    .select({ id: tenantsTable.id, createdAt: tenantsTable.createdAt })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, resolution.tenantId))
+    .limit(1);
+  if (!trialTenant) throw new Error(`Tenant de trial ${resolution.tenantId} não encontrado`);
+
+  return ensureVendorAiLaunchSubscription({
+    tenantId: trialTenant.id,
+    dealId,
+    planSlug: row.planSlug,
+    trialStartedAt: trialTenant.createdAt,
+  });
 }
