@@ -19,10 +19,12 @@ export default function Demo() {
     email: "",
     senha: "",
     telefone: "",
+    adDataConsent: false,
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+    const { name, type, value, checked } = e.target;
+    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -123,6 +125,21 @@ export default function Demo() {
                 <Input id="telefone" name="telefone" value={form.telefone} onChange={handleChange} placeholder="(48) 99999-9999" data-testid="input-telefone" />
               </div>
 
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="adDataConsent"
+                  checked={form.adDataConsent}
+                  onChange={handleChange}
+                  className="mt-1 h-4 w-4 rounded border-slate-300"
+                  data-testid="input-ad-data-consent"
+                />
+                <span>
+                  <strong className="font-medium text-slate-800">Opcional:</strong> autorizo o VendorAI a usar dados de conversão e identificadores protegidos para medir e otimizar campanhas em plataformas de anúncios, como Meta e Google. Posso revogar esta autorização posteriormente. Consulte a{" "}
+                  <Link href="/privacy" className="underline hover:text-slate-900">Política de Privacidade</Link>.
+                </span>
+              </label>
+
               <Button type="submit" className="w-full h-12 text-base font-bold" disabled={loading} data-testid="btn-criar-demo">
                 {loading ? "Criando seu teste..." : "Começar meus 5 dias grátis"}
                 <ArrowRight className="ml-2 w-5 h-5" />
@@ -131,7 +148,7 @@ export default function Demo() {
               <p className="text-xs text-slate-400 text-center">
                 Ao criar a conta, você concorda com os{" "}
                 <Link href="/terms" className="underline hover:text-slate-600">Termos de Uso</Link>{" "}
-                e{" "}
+                e reconhece a{" "}
                 <Link href="/privacy" className="underline hover:text-slate-600">Política de Privacidade</Link>.
               </p>
             </form>
