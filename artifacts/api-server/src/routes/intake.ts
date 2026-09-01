@@ -38,9 +38,9 @@ const intakeSchema = z.object({
   urgencia: z.string().optional(),
   orcamento: z.string().optional(),
 
-  // First-party attribution. These values come from the public page URL and
-  // are persisted with the lead so Ads can be optimized against CRM revenue,
-  // not only platform clicks/conversions.
+  // First-party attribution. A future LP can send these explicitly. The route
+  // also recovers them from the same-origin Referer URL, so the current public
+  // questionnaire already becomes attributable without a frontend rewrite.
   utmSource: optionalTrackingString,
   utmMedium: optionalTrackingString,
   utmCampaign: optionalTrackingString,
@@ -52,6 +52,30 @@ const intakeSchema = z.object({
   referrer: z.string().trim().max(2000).optional(),
   landingPageSlug: optionalTrackingString,
 });
+
+type IntakeData = z.infer<typeof intakeSchema>;
+
+function attributionFromReferer(rawReferer?: string): Partial<IntakeData> {
+  if (!rawReferer) return {};
+  try {
+    const url = new URL(rawReferer);
+    return {
+      utmSource: url.searchParams.get("utm_source") ?? undefined,
+      utmMedium: url.searchParams.get("utm_medium") ?? undefined,
+      utmCampaign: url.searchParams.get("utm_campaign") ?? undefined,
+      utmContent: url.searchParams.get("utm_content") ?? undefined,
+      utmTerm: url.searchParams.get("utm_term") ?? undefined,
+      gclid: url.searchParams.get("gclid") ?? undefined,
+      fbclid: url.searchParams.get("fbclid") ?? undefined,
+      pageUrl: rawReferer,
+      landingPageSlug: url.hostname.endsWith(".appvendorai.com")
+        ? url.hostname.slice(0, -".appvendorai.com".length)
+        : undefined,
+    };
+  } catch {
+    return { pageUrl: rawReferer.slice(0, 2000) };
+  }
+}
 
 intakeRouter.get("/public/:tenantSlug/intake", async (req, res) => {
   const slug = String(req.params["tenantSlug"]);
@@ -87,7 +111,23 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
     return;
   }
 
-  const d = parsed.data;
+  const body = parsed.data;
+  const referer = req.get("referer");
+  const recovered = attributionFromReferer(referer);
+  const d: IntakeData = {
+    ...body,
+    utmSource: body.utmSource || recovered.utmSource,
+    utmMedium: body.utmMedium || recovered.utmMedium,
+    utmCampaign: body.utmCampaign || recovered.utmCampaign,
+    utmContent: body.utmContent || recovered.utmContent,
+    utmTerm: body.utmTerm || recovered.utmTerm,
+    gclid: body.gclid || recovered.gclid,
+    fbclid: body.fbclid || recovered.fbclid,
+    pageUrl: body.pageUrl || recovered.pageUrl,
+    referrer: body.referrer || referer,
+    landingPageSlug: body.landingPageSlug || recovered.landingPageSlug,
+  };
+
   const adCampaignId = await resolveAdCampaignFromUtm(tenant.id, d.utmCampaign, req.log);
   const attribution = {
     utmSource: d.utmSource || null,
