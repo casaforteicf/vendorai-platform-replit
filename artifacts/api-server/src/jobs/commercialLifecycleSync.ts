@@ -8,6 +8,7 @@ import {
   tenantsTable,
 } from "@workspace/db";
 import { ensureTenantPlanAndCommission } from "../lib/deal-closure-commission.js";
+import { ensureVendorAiLaunchSubscriptionForDeal } from "../lib/vendorai-subscription-lifecycle.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const LOOKBACK_DAYS = 30;
@@ -25,18 +26,20 @@ function readMetadataString(metadata: unknown, key: string): string | null {
 
 /**
  * Converte estados comerciais/financeiros consolidados em eventos de lifecycle.
- * CRM continua sendo a fonte de venda; chargeStatus=paid é a fonte mínima para
- * ativação paga do trial. Isso evita tratar deal ganho como pagamento recebido.
+ * CRM continua sendo a fonte de venda; subscriptions.status=ativa é a fonte de
+ * ativação paga dos trials da campanha. Isso evita tratar deal ganho ou mero
+ * boleto criado como pagamento recebido.
  */
 export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
   const since = lookbackDate();
   let salesRecorded = 0;
+  let subscriptionsPrepared = 0;
   let subscriptionsStarted = 0;
   let trialsActivated = 0;
 
-  // 1) Deals ganhos recentes. Não filtramos por campanha aqui porque a ativação
-  // paga de um trial orgânico também precisa acontecer. Eventos de marketing só
-  // são gravados quando campaignId existe.
+  // 1) Deals ganhos recentes. Não filtramos por campanha aqui porque a assinatura
+  // do trial orgânico também precisa ser preparada. Eventos de marketing só são
+  // gravados quando campaignId existe.
   const wonDeals = await db
     .select({
       dealId: dealsTable.id,
@@ -44,7 +47,6 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
       leadId: dealsTable.leadId,
       value: dealsTable.valor,
       updatedAt: dealsTable.updatedAt,
-      chargeStatus: dealsTable.chargeStatus,
       campaignId: leadsTable.adCampaignId,
       leadSource: leadsTable.source,
     })
@@ -58,7 +60,7 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
     .limit(MAX_ROWS_PER_RUN);
 
   for (const row of wonDeals) {
-    // Venda comercial: útil mesmo antes da liquidação para diagnóstico do funil.
+    // Venda comercial: útil antes da liquidação para diagnóstico do funil.
     if (row.campaignId) {
       try {
         const event = await recordAdCampaignEvent({
@@ -82,32 +84,40 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
       }
     }
 
-    // Trial pago: somente o sinal financeiro reabre/converte a conta testada.
-    if (row.leadSource === "trial_signup" && row.chargeStatus === "paid") {
+    if (row.leadSource === "trial_signup") {
       try {
-        const activation = await ensureTenantPlanAndCommission(row.dealId, log, { activateTrial: true });
-        if (activation.tenantId && row.campaignId) {
-          const event = await recordAdCampaignEvent({
-            tenantId: row.tenantId,
-            campaignId: row.campaignId,
-            eventType: "subscription_started",
-            severity: "success",
-            message: "Pagamento confirmado e trial convertido em assinatura ativa.",
-            dedupeKey: `deal:${row.dealId}:subscription_started`,
-            metadata: {
-              dealId: row.dealId,
-              leadId: row.leadId,
-              trialTenantId: activation.tenantId,
-              value: Number(row.value ?? 0),
-              currency: "BRL",
-              paymentStatus: "paid",
-              startedAt: row.updatedAt?.toISOString() ?? new Date().toISOString(),
-            },
-          });
-          if (event) subscriptionsStarted++;
+        const subscription = await ensureVendorAiLaunchSubscriptionForDeal(row.dealId);
+        if (subscription) subscriptionsPrepared++;
+
+        // A conta testada só vira paga quando o webhook financeiro marcou a
+        // assinatura como ativa. O lifecycle é idempotente e pode rodar várias vezes.
+        if (subscription?.status === "ativa") {
+          const activation = await ensureTenantPlanAndCommission(row.dealId, log, { activateTrial: true });
+          if (activation.tenantId && row.campaignId) {
+            const event = await recordAdCampaignEvent({
+              tenantId: row.tenantId,
+              campaignId: row.campaignId,
+              eventType: "subscription_started",
+              severity: "success",
+              message: "Pagamento confirmado e trial convertido em assinatura ativa.",
+              dedupeKey: `deal:${row.dealId}:subscription_started`,
+              metadata: {
+                dealId: row.dealId,
+                leadId: row.leadId,
+                trialTenantId: activation.tenantId,
+                subscriptionId: subscription.id,
+                value: Number(subscription.valorMensal ?? 0),
+                currency: "BRL",
+                paymentStatus: "paid",
+                billingPhase: subscription.billingPhase,
+                startedAt: subscription.updatedAt?.toISOString() ?? new Date().toISOString(),
+              },
+            });
+            if (event) subscriptionsStarted++;
+          }
         }
       } catch (err) {
-        log.error({ err, dealId: row.dealId }, "commercial-lifecycle: paid trial activation failed");
+        log.error({ err, dealId: row.dealId }, "commercial-lifecycle: trial subscription sync failed");
       }
     }
   }
@@ -185,7 +195,10 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
     }
   }
 
-  if (salesRecorded > 0 || subscriptionsStarted > 0 || trialsActivated > 0) {
-    log.info({ salesRecorded, subscriptionsStarted, trialsActivated }, "commercial-lifecycle: events synchronized");
+  if (salesRecorded > 0 || subscriptionsPrepared > 0 || subscriptionsStarted > 0 || trialsActivated > 0) {
+    log.info(
+      { salesRecorded, subscriptionsPrepared, subscriptionsStarted, trialsActivated },
+      "commercial-lifecycle: events synchronized",
+    );
   }
 }
