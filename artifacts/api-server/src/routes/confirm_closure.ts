@@ -516,9 +516,10 @@ export async function runDealClosure(
   }
 
   // ── 4. Asaas billing ────────────────────────────────────────────────────
-  // Cada tenant tem sua própria conta Asaas; a chave é armazenada criptografada
-  // (lib/crypto.ts). Ausência de chave é um estado normal (fallback manual),
-  // não um erro — só cai no ASAAS_API_KEY global se o tenant não tiver a sua.
+  // Trial de lançamento é exceção: a mensalidade segue o lifecycle próprio
+  // (5 dias grátis → 497 → 990 → preço regular). Cobrar o deal aqui geraria
+  // uma cobrança imediata e depois outra no ciclo da assinatura.
+  // Deals comuns preservam o fluxo financeiro legado abaixo.
   const rawTenantAsaasKey = (tenant?.asaas_api_key as string) || null;
   let tenantAsaasKey: string | null = null;
   if (rawTenantAsaasKey) {
@@ -529,8 +530,9 @@ export async function runDealClosure(
     }
   }
   const asaasReady = tenantAsaasKey ? true : await isAsaasConfigured();
+  const usesLaunchSubscriptionBilling = lead?.source === "trial_signup";
 
-  if (asaasReady && valorNum > 0 && lead) {
+  if (asaasReady && valorNum > 0 && lead && !usesLaunchSubscriptionBilling) {
     try {
       const customer = await createOrGetCustomer({
         name: lead.nome ?? lead.empresa ?? "Cliente",
