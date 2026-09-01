@@ -18,6 +18,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
+      // Website consumes the canonical Vendor Brain marketing source directly
+      // from the monorepo. This keeps one source of truth without adding a new
+      // website package dependency that would require lockfile drift.
+      "@workspace/vendor-brain/marketing-verticals": path.resolve(
+        import.meta.dirname,
+        "../../lib/vendor-brain/src/marketing-verticals.ts",
+      ),
     },
   },
   root: path.resolve(import.meta.dirname),
@@ -37,4 +44,3 @@ export default defineConfig({
     allowedHosts: true,
   },
 });
-
