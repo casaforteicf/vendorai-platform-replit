@@ -163,7 +163,7 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
           .values({
             tenantId: sub.tenantId,
             mes: cycleKey,
-            tipo: "monthly",
+            tipo: sub.status === "trial" ? "initial" : "monthly",
             valor: pricing.price,
             status: "pending",
             dueDate: chargeDue,
@@ -193,9 +193,26 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         const recoveredStatus = localStatusFromAsaas(remotelyExisting);
         await db.update(billingEventsTable).set({
           asaasChargeId: remotelyExisting.id,
+          valor: pricing.price,
           status: recoveredStatus,
+          dueDate: chargeDue,
           ...(recoveredStatus === "paid" ? { paidAt: new Date() } : {}),
         }).where(eq(billingEventsTable.id, billingEvent.id));
+
+        // Critical crash-recovery path: the remote payment may have been
+        // created before the previous process persisted the subscription phase
+        // and regular-price snapshot. Reconcile those fields here as well so a
+        // later catalog price change can never rewrite an agreement already in
+        // the regular phase.
+        await db.update(subscriptionsTable).set({
+          billingPhase: phase,
+          valorMensal: pricing.price,
+          ...(pricing.regularSnapshot && !sub.regularPriceAtTransition
+            ? { regularPriceAtTransition: pricing.regularSnapshot }
+            : {}),
+          updatedAt: now,
+        }).where(eq(subscriptionsTable.id, sub.id));
+
         recovered++;
         continue;
       }
@@ -225,6 +242,9 @@ export async function runVendorAiSubscriptionBilling(log: Logger): Promise<void>
         phone: admin.telefone ?? undefined,
       })).id;
 
+      // Reconcile one more time immediately before POST. This closes the stale
+      // claim window where another attempt may have created the charge after the
+      // first lookup but before this worker became eligible to retry.
       const beforeCreate = await findChargeByExternalReference(cycleKey);
       const charge = beforeCreate ?? await createCharge({
         customer: customerId,
