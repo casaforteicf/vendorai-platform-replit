@@ -16,7 +16,8 @@ import VerticalPage from "@/pages/site/VerticalPage";
 import ParceirosPage from "@/pages/site/ParceirosPage";
 import BlogList from "@/pages/blog/BlogList";
 import BlogPost from "@/pages/blog/BlogPost";
-import LpRouter from "@/pages/lp/LpPage";
+import UnifiedLpRouter from "@/pages/lp/UnifiedLpRouter";
+import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -28,7 +29,8 @@ function Router() {
       {/* Standalone pages — own layout, no global Navbar/Footer */}
       <Route path="/verticais/:slug" component={VerticalPage} />
       <Route path="/parceiros" component={ParceirosPage} />
-      <Route path="/lp/:slug" component={LpRouter} />
+      <Route path="/segmentos/:slug" component={MacrosegmentHub} />
+      <Route path="/lp/:slug" component={UnifiedLpRouter} />
 
       {/* Standard layout — Navbar + Footer */}
       <Route>
