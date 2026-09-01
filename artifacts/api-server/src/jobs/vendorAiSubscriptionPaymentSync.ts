@@ -82,14 +82,17 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
       const anchor = paidAt > logicalDue ? paidAt : logicalDue;
       const computedNextDue = addCalendarMonth(anchor);
       const shouldAdvance = !sub.proximaCobranca || sub.proximaCobranca.getTime() <= logicalDue.getTime();
+      const needsProductActivation = sub.status !== "ativa";
 
-      await db.update(subscriptionsTable).set({
-        status: "ativa",
-        ...(shouldAdvance ? { proximaCobranca: computedNextDue } : {}),
-        updatedAt: new Date(),
-      }).where(eq(subscriptionsTable.id, sub.id));
+      if (needsProductActivation || shouldAdvance) {
+        await db.update(subscriptionsTable).set({
+          status: "ativa",
+          ...(shouldAdvance ? { proximaCobranca: computedNextDue } : {}),
+          updatedAt: new Date(),
+        }).where(eq(subscriptionsTable.id, sub.id));
+      }
 
-      if (sub.sourceDealId) {
+      if (sub.sourceDealId && needsProductActivation) {
         // Existing dashboards can keep using chargeStatus, but it is now a
         // mirror of the subscription payment rather than the activation source.
         await db.update(dealsTable).set({
@@ -98,8 +101,8 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
         }).where(eq(dealsTable.id, sub.sourceDealId));
 
         await ensureTenantPlanAndCommission(sub.sourceDealId, log, { activateTrial: true });
+        activated++;
       }
-      activated++;
     } catch (err) {
       log.error({ err, subscriptionId: sub.id, tenantId: sub.tenantId }, "vendorai-subscription-payment-sync: failed");
     }
