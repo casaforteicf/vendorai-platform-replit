@@ -16,9 +16,9 @@ function lookbackDate(): Date {
   return new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 }
 
-function readTrialTenantId(metadata: unknown): string | null {
+function readMetadataString(metadata: unknown, key: string): string | null {
   if (!metadata || typeof metadata !== "object") return null;
-  const value = (metadata as Record<string, unknown>)["trialTenantId"];
+  const value = (metadata as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
@@ -99,8 +99,9 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
     .limit(MAX_ROWS_PER_RUN);
 
   for (const trialStart of trialStarts) {
-    const trialTenantId = readTrialTenantId(trialStart.metadata);
+    const trialTenantId = readMetadataString(trialStart.metadata, "trialTenantId");
     if (!trialTenantId) continue;
+    const salesLeadId = readMetadataString(trialStart.metadata, "leadId");
 
     try {
       const [trialTenant] = await db
@@ -138,6 +139,7 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
         dedupeKey: `trial:${trialTenantId}:activated`,
         metadata: {
           trialTenantId,
+          leadId: salesLeadId,
           trialStartedEventId: trialStart.eventId,
           activationDefinition: "onboarding_complete_and_(integration_complete_or_first_real_lead)",
           integrationsComplete: trialTenant.integracoesConcluido,
