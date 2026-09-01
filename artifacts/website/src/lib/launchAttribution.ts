@@ -18,10 +18,15 @@ export type AdDataConsentState = {
   textVersion: string;
 };
 
+type BehaviorEventType = "page_view" | "cta_click" | "form_start" | "form_submit" | "engagement";
+
 const STORAGE_KEY = "vendorai_launch_attribution_v1";
 const CONSENT_STORAGE_KEY = "vendorai_ad_data_consent_v1";
+const BEHAVIOR_SESSION_KEY = "vendorai_behavior_session_v1";
 export const AD_DATA_CONSENT_TEXT_VERSION = "ad-data-measurement-v1-2026-09-01";
 const FETCH_BRIDGE_MARKER = "__vendoraiPublicConsentBridgeInstalled";
+const BEHAVIOR_TRACKING_MARKER = "__vendoraiBehaviorTrackingInstalled";
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 function parseUrl(raw: string | undefined): LaunchAttribution {
   if (!raw) return {};
@@ -124,12 +129,8 @@ export function captureLaunchAttribution(): LaunchAttribution {
     ...(consent ? { adDataConsent: consent.granted } : {}),
   };
 
-  // Só persiste first-touch quando existe um sinal real de aquisição. Acesso
-  // orgânico continua funcionando, mas não cria uma falsa atribuição de mídia.
   if (hasPaidOrCampaignSignal(value)) {
     try {
-      // Consentimento não faz parte do first-touch: é sempre lido do estado
-      // atual, para que uma escolha posterior não fique congelada na atribuição.
       const { adDataConsent: _consent, ...firstTouch } = value;
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(firstTouch));
     } catch {
@@ -157,6 +158,138 @@ export function getLaunchAttribution(): LaunchAttribution {
   return captureLaunchAttribution();
 }
 
+export function getBehaviorSessionId(): string {
+  if (typeof window === "undefined") return "server-session";
+  try {
+    const existing = window.sessionStorage.getItem(BEHAVIOR_SESSION_KEY);
+    if (existing) return existing;
+    const created = typeof crypto?.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+    window.sessionStorage.setItem(BEHAVIOR_SESSION_KEY, created);
+    return created;
+  } catch {
+    return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+  }
+}
+
+function sendBehaviorEvent(
+  eventType: BehaviorEventType,
+  details: {
+    engagedMs?: number;
+    scrollDepth?: number;
+    metadata?: Record<string, string | number | boolean | null>;
+  } = {},
+): void {
+  if (typeof window === "undefined") return;
+  const attribution = getLaunchAttribution();
+  const body = JSON.stringify({
+    anonymousSessionId: getBehaviorSessionId(),
+    eventType,
+    pageUrl: window.location.href,
+    path: `${window.location.pathname}${window.location.search}`,
+    referrer: document.referrer || undefined,
+    landingPageSlug: attribution.landingPageSlug,
+    utmCampaign: attribution.utmCampaign,
+    engagedMs: details.engagedMs,
+    scrollDepth: details.scrollDepth,
+    metadata: details.metadata ?? {},
+  });
+
+  const url = `${API_BASE}/site/behavior-event`;
+  if (eventType === "engagement" && typeof navigator.sendBeacon === "function") {
+    try {
+      const blob = new Blob([body], { type: "application/json" });
+      if (navigator.sendBeacon(url, blob)) return;
+    } catch {
+      // fallback para fetch keepalive
+    }
+  }
+
+  void fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+function elementLabel(element: Element): string {
+  const textContent = element.textContent?.replace(/\s+/g, " ").trim().slice(0, 120);
+  return textContent || element.getAttribute("aria-label")?.slice(0, 120) || element.tagName.toLowerCase();
+}
+
+/** Instala coleta first-party mínima uma única vez por carregamento. */
+export function installFirstPartyBehaviorTracking(): void {
+  if (typeof window === "undefined") return;
+  const w = window as typeof window & { [BEHAVIOR_TRACKING_MARKER]?: boolean };
+  if (w[BEHAVIOR_TRACKING_MARKER]) return;
+  w[BEHAVIOR_TRACKING_MARKER] = true;
+
+  const startedAt = Date.now();
+  let maxScrollDepth = 0;
+  let engagementSent = false;
+  const startedForms = new WeakSet<HTMLFormElement>();
+
+  sendBehaviorEvent("page_view", { metadata: { title: document.title.slice(0, 160) } });
+
+  const updateScroll = () => {
+    const scrollable = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    const depth = Math.max(0, Math.min(100, Math.round((window.scrollY / scrollable) * 100)));
+    if (depth > maxScrollDepth) maxScrollDepth = depth;
+  };
+  window.addEventListener("scroll", updateScroll, { passive: true });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest("button, a, [role='button'], [data-track-cta]")
+      : null;
+    if (!target) return;
+
+    const label = elementLabel(target);
+    const href = target instanceof HTMLAnchorElement ? target.href.slice(0, 500) : null;
+    sendBehaviorEvent("cta_click", {
+      metadata: {
+        label,
+        href,
+        tag: target.tagName.toLowerCase(),
+      },
+    });
+  }, { capture: true });
+
+  document.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) return;
+    const form = target.closest("form");
+    if (!form || startedForms.has(form)) return;
+    startedForms.add(form);
+    sendBehaviorEvent("form_start", {
+      metadata: { formId: form.id || form.getAttribute("data-testid") || "anonymous-form" },
+    });
+  }, { capture: true });
+
+  document.addEventListener("submit", (event) => {
+    const form = event.target instanceof HTMLFormElement ? event.target : null;
+    sendBehaviorEvent("form_submit", {
+      metadata: { formId: form?.id || form?.getAttribute("data-testid") || "anonymous-form" },
+    });
+  }, { capture: true });
+
+  const flushEngagement = () => {
+    if (engagementSent) return;
+    engagementSent = true;
+    updateScroll();
+    sendBehaviorEvent("engagement", {
+      engagedMs: Math.max(0, Date.now() - startedAt),
+      scrollDepth: maxScrollDepth,
+    });
+  };
+  window.addEventListener("pagehide", flushEngagement, { once: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushEngagement();
+  });
+}
+
 function isPublicConversionEndpoint(input: RequestInfo | URL): boolean {
   try {
     const raw = typeof input === "string"
@@ -176,12 +309,9 @@ function isPublicConversionEndpoint(input: RequestInfo | URL): boolean {
 }
 
 /**
- * Ponte central para os formulários públicos do site. Ela só toca requests JSON
- * para os endpoints de conversão conhecidos e acrescenta a escolha atual de
- * consentimento quando o formulário ainda não enviou esse campo.
- *
- * Isso evita duplicar a mesma regra em cada LP vertical e preserva os payloads
- * existentes. Ausência de escolha continua sendo ausência/false no backend.
+ * Ponte central para formulários públicos: injeta consentimento atual e o ID da
+ * sessão comportamental. O ID não contém PII e permite vincular a navegação
+ * anônima ao lead somente depois que o próprio visitante envia o formulário.
  */
 export function installPublicFormConsentBridge(): void {
   if (typeof window === "undefined") return;
@@ -204,6 +334,9 @@ export function installPublicFormConsentBridge(): void {
       if (typeof body["adDataConsent"] !== "boolean") {
         const consent = getAdDataConsentState();
         if (consent) body["adDataConsent"] = consent.granted;
+      }
+      if (typeof body["behaviorSessionId"] !== "string") {
+        body["behaviorSessionId"] = getBehaviorSessionId();
       }
       return originalFetch(input, { ...init, body: JSON.stringify(body) });
     } catch {
