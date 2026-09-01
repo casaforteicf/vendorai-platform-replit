@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Sparkles, Loader2, Search, Check, X, Wand2, ExternalLink, Globe, EyeOff } from "lucide-react";
+import { getContentAutopilotBlogPostUrl } from "@/lib/contentAutopilotBlogUrl";
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -370,7 +371,9 @@ export default function ContentAutopilot() {
           {blogPosts.length === 0 ? (
             <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum post ainda. Gere e publique um artigo na aba Artigos primeiro.</div>
           ) : (
-            blogPosts.map((p) => (
+            blogPosts.map((p) => {
+              const publicPostUrl = getContentAutopilotBlogPostUrl(config?.siteUrl, p.slug);
+              return (
               <Card key={p.id}>
                 <CardContent className="p-4 flex gap-4 flex-wrap items-center">
                   {p.imagemCapaUrl && <img src={p.imagemCapaUrl} alt="" className="w-20 h-14 object-cover rounded-md shrink-0" />}
@@ -385,11 +388,13 @@ export default function ContentAutopilot() {
                   <div className="flex gap-1.5 shrink-0">
                     {p.publicado ? (
                       <>
-                        <Button size="sm" variant="outline" asChild>
-                          <a href={`/api/sites/vendorai/blog/${p.slug}`} target="_blank" rel="noreferrer">
+                        {publicPostUrl ? (
+                          <Button size="sm" variant="outline" asChild>
+                            <a href={publicPostUrl} target="_blank" rel="noreferrer">
                             <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Ver
-                          </a>
-                        </Button>
+                            </a>
+                          </Button>
+                        ) : null}
                         <Button size="sm" variant="ghost" onClick={() => togglePublishMutation.mutate({ id: p.id, publish: false })} disabled={togglePublishMutation.isPending}>
                           <EyeOff className="h-3.5 w-3.5" />
                         </Button>
@@ -403,7 +408,8 @@ export default function ContentAutopilot() {
                   </div>
                 </CardContent>
               </Card>
-            ))
+              );
+            })
           )}
         </TabsContent>
       </Tabs>
