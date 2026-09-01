@@ -7,19 +7,13 @@ import {
   subscriptionsTable,
 } from "@workspace/db";
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
-import { addCalendarMonth } from "../lib/vendorai-subscription-lifecycle.js";
+import {
+  addCalendarMonth,
+  logicalDueFromVendorAiCycleKey,
+} from "../lib/vendorai-subscription-rules.js";
 import { ensureTenantPlanAndCommission } from "../lib/deal-closure-commission.js";
 
 const MAX_SUBSCRIPTIONS_PER_RUN = 200;
-
-function logicalDueFromCycleKey(value: string | null): Date | null {
-  if (!value?.startsWith("subscription:")) return null;
-  const parts = value.split(":");
-  const raw = parts[2];
-  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  const date = new Date(`${raw}T00:00:00.000Z`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
 
 /**
  * Reconciles the Asaas webhook result (billing_events) with subscriptions.
@@ -72,7 +66,7 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
 
       if (event.status !== "paid") continue;
 
-      const logicalDue = logicalDueFromCycleKey(event.mes) ?? event.dueDate;
+      const logicalDue = logicalDueFromVendorAiCycleKey(event.mes) ?? event.dueDate;
       if (!logicalDue) {
         log.error({ subscriptionId: sub.id, billingEventId: event.id }, "vendorai-subscription-payment-sync: ciclo sem data lógica");
         continue;
