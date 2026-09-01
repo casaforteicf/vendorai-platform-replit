@@ -41,7 +41,7 @@ export default function Footer() {
             <h4 className="font-semibold text-white mb-4">Contato</h4>
             <ul className="space-y-2 text-sm">
               <li>vendorai@appvendorai.com</li>
-              <li>Chapecó, SC — Brasil</li>
+              <li>Florianópolis, SC — Brasil</li>
             </ul>
           </div>
         </div>
