@@ -43,3 +43,4 @@ jobs:
           pnpm --filter @workspace/api-server exec vitest run
           src/lib/trial-tenant-resolution.test.ts
           src/lib/vendorai-subscription-lifecycle.test.ts
+          src/lib/vendorai-subscription-rules.test.ts
