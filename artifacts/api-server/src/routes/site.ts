@@ -50,6 +50,7 @@ router.get("/site/verticais/:slug", async (req, res) => {
 });
 
 const optionalTrackingString = z.string().trim().max(500).optional();
+const optionalBehaviorSession = z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/).optional();
 
 type SiteAttribution = {
   utmSource?: string;
@@ -149,8 +150,6 @@ function updateConsentOnly(
   };
 }
 
-// Eventos comportamentais first-party: não recebem PII. O objetivo é medir a
-// jornada anônima antes do formulário e, depois, vincular a sessão ao lead.
 const behaviorEventSchema = z.object({
   anonymousSessionId: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
   eventType: z.enum(["page_view", "cta_click", "form_start", "form_submit", "engagement"]),
@@ -195,7 +194,6 @@ router.post("/site/behavior-event", async (req, res) => {
     return res.status(202).json({ accepted: true });
   } catch (err) {
     logger.warn({ err, eventType: d.eventType }, "site/behavior-event: ingest failed");
-    // Tracking nunca deve interferir na experiência do visitante.
     return res.status(202).json({ accepted: false });
   }
 });
@@ -222,6 +220,7 @@ const contatoSchema = z.object({
   referrer: z.string().trim().max(2000).optional(),
   landingPageSlug: optionalTrackingString,
   adDataConsent: z.boolean().optional(),
+  behaviorSessionId: optionalBehaviorSession,
 });
 
 router.post("/site/contato", async (req, res) => {
@@ -240,6 +239,7 @@ router.post("/site/contato", async (req, res) => {
     telefone,
     empresa,
     origem,
+    behaviorSessionId,
     ...trackingBody
   } = parsed.data;
   const attribution = recoverSiteAttribution(trackingBody, req.get("referer"));
@@ -335,6 +335,7 @@ router.post("/site/contato", async (req, res) => {
             discoveryData: {
               attribution: attributionRecord(attribution),
               siteOrigin: origem ?? null,
+              behaviorSessionId: behaviorSessionId ?? null,
             },
           })
           .returning({ id: leadsTable.id });
@@ -377,6 +378,17 @@ router.post("/site/contato", async (req, res) => {
         }
       }
 
+      if (behaviorSessionId) {
+        await db
+          .update(webBehaviorEventsTable)
+          .set({ leadId })
+          .where(and(
+            eq(webBehaviorEventsTable.tenantId, INSTITUTIONAL_TENANT_ID),
+            eq(webBehaviorEventsTable.anonymousSessionId, behaviorSessionId),
+            isNull(webBehaviorEventsTable.leadId),
+          ));
+      }
+
       if (adCampaignId && attributedNow) {
         await recordAdCampaignEvent({
           tenantId: INSTITUTIONAL_TENANT_ID,
@@ -395,6 +407,7 @@ router.post("/site/contato", async (req, res) => {
             utmMedium: attribution.utmMedium ?? null,
             adDataConsent: attribution.adDataConsent === true,
             adDataConsentTextVersion: AD_DATA_CONSENT_TEXT_VERSION,
+            behaviorSessionId: behaviorSessionId ?? null,
           },
         });
       }
