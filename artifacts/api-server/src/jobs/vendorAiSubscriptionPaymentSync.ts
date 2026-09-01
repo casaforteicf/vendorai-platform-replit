@@ -40,6 +40,7 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
     .limit(MAX_SUBSCRIPTIONS_PER_RUN);
 
   let activated = 0;
+  let recovered = 0;
   let overdue = 0;
 
   for (const sub of subscriptions) {
@@ -80,12 +81,13 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
       const anchor = paidAt > logicalDue ? paidAt : logicalDue;
       const computedNextDue = addCalendarMonth(anchor);
       const shouldAdvance = !sub.proximaCobranca || sub.proximaCobranca.getTime() <= logicalDue.getTime();
-      const needsProductActivation = sub.status !== "ativa";
+      const isFirstActivation = sub.status === "trial";
+      const isRecovery = sub.status === "inadimplente";
 
-      // Product activation comes first. If it fails, the subscription remains
-      // trial/inadimplente and the next sync retries instead of falsely marking
-      // financial activation as complete.
-      if (sub.sourceDealId && needsProductActivation) {
+      // Only the first paid cycle converts isDemo → paid tenant and needs the
+      // full trial→plan activation routine. Delinquency recovery keeps the same
+      // plan/data and the Asaas webhook already reopens the suspended tenant.
+      if (sub.sourceDealId && isFirstActivation) {
         await db.update(dealsTable).set({
           chargeStatus: "paid",
           updatedAt: new Date(),
@@ -93,7 +95,7 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
         await ensureTenantPlanAndCommission(sub.sourceDealId, log, { activateTrial: true });
       }
 
-      if (needsProductActivation || shouldAdvance) {
+      if (isFirstActivation || isRecovery || shouldAdvance) {
         await db.update(subscriptionsTable).set({
           status: "ativa",
           ...(shouldAdvance ? { proximaCobranca: computedNextDue } : {}),
@@ -101,13 +103,14 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
         }).where(eq(subscriptionsTable.id, sub.id));
       }
 
-      if (needsProductActivation) activated++;
+      if (isFirstActivation) activated++;
+      else if (isRecovery) recovered++;
     } catch (err) {
       log.error({ err, subscriptionId: sub.id, tenantId: sub.tenantId }, "vendorai-subscription-payment-sync: failed");
     }
   }
 
-  if (activated > 0 || overdue > 0) {
-    log.info({ activated, overdue }, "vendorai-subscription-payment-sync: complete");
+  if (activated > 0 || recovered > 0 || overdue > 0) {
+    log.info({ activated, recovered, overdue }, "vendorai-subscription-payment-sync: complete");
   }
 }
