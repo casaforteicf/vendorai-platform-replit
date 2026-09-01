@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   adCampaignEventsTable,
@@ -7,6 +7,7 @@ import {
   leadsTable,
   tenantsTable,
 } from "@workspace/db";
+import { ensureTenantPlanAndCommission } from "../lib/deal-closure-commission.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const LOOKBACK_DAYS = 30;
@@ -23,19 +24,19 @@ function readMetadataString(metadata: unknown, key: string): string | null {
 }
 
 /**
- * Converte estados comerciais já consolidados do CRM em eventos de marketing
- * idempotentes. O CRM continua sendo a fonte de verdade; este job apenas cria
- * a trilha de eventos que depois alimenta Ads Intelligence, CAPI/Google e o
- * Launch Command Center.
+ * Converte estados comerciais/financeiros consolidados em eventos de lifecycle.
+ * CRM continua sendo a fonte de venda; chargeStatus=paid é a fonte mínima para
+ * ativação paga do trial. Isso evita tratar deal ganho como pagamento recebido.
  */
 export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
   const since = lookbackDate();
   let salesRecorded = 0;
+  let subscriptionsStarted = 0;
   let trialsActivated = 0;
 
-  // 1) Venda atribuída: qualquer caminho que tenha deixado o deal em "ganho"
-  // converge aqui. onConflictDoNothing + dedupeKey tornam o processo seguro
-  // mesmo com várias réplicas ou execuções repetidas.
+  // 1) Deals ganhos recentes. Não filtramos por campanha aqui porque a ativação
+  // paga de um trial orgânico também precisa acontecer. Eventos de marketing só
+  // são gravados quando campaignId existe.
   const wonDeals = await db
     .select({
       dealId: dealsTable.id,
@@ -43,45 +44,76 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
       leadId: dealsTable.leadId,
       value: dealsTable.valor,
       updatedAt: dealsTable.updatedAt,
+      chargeStatus: dealsTable.chargeStatus,
       campaignId: leadsTable.adCampaignId,
+      leadSource: leadsTable.source,
     })
     .from(dealsTable)
     .innerJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
     .where(and(
       eq(dealsTable.etapa, "ganho"),
-      isNotNull(leadsTable.adCampaignId),
       gte(dealsTable.updatedAt, since),
     ))
     .orderBy(desc(dealsTable.updatedAt))
     .limit(MAX_ROWS_PER_RUN);
 
   for (const row of wonDeals) {
-    if (!row.campaignId) continue;
-    try {
-      const event = await recordAdCampaignEvent({
-        tenantId: row.tenantId,
-        campaignId: row.campaignId,
-        eventType: "sale_closed",
-        severity: "success",
-        message: "Venda fechada no CRM e atribuída à campanha.",
-        dedupeKey: `deal:${row.dealId}:won`,
-        metadata: {
-          dealId: row.dealId,
-          leadId: row.leadId,
-          value: Number(row.value ?? 0),
-          currency: "BRL",
-          closedAt: row.updatedAt?.toISOString() ?? null,
-        },
-      });
-      if (event) salesRecorded++;
-    } catch (err) {
-      log.warn({ err, dealId: row.dealId, campaignId: row.campaignId }, "commercial-lifecycle: sale_closed failed");
+    // Venda comercial: útil mesmo antes da liquidação para diagnóstico do funil.
+    if (row.campaignId) {
+      try {
+        const event = await recordAdCampaignEvent({
+          tenantId: row.tenantId,
+          campaignId: row.campaignId,
+          eventType: "sale_closed",
+          severity: "success",
+          message: "Venda fechada no CRM e atribuída à campanha.",
+          dedupeKey: `deal:${row.dealId}:won`,
+          metadata: {
+            dealId: row.dealId,
+            leadId: row.leadId,
+            value: Number(row.value ?? 0),
+            currency: "BRL",
+            closedAt: row.updatedAt?.toISOString() ?? null,
+          },
+        });
+        if (event) salesRecorded++;
+      } catch (err) {
+        log.warn({ err, dealId: row.dealId, campaignId: row.campaignId }, "commercial-lifecycle: sale_closed failed");
+      }
+    }
+
+    // Trial pago: somente o sinal financeiro reabre/converte a conta testada.
+    if (row.leadSource === "trial_signup" && row.chargeStatus === "paid") {
+      try {
+        const activation = await ensureTenantPlanAndCommission(row.dealId, log, { activateTrial: true });
+        if (activation.tenantId && row.campaignId) {
+          const event = await recordAdCampaignEvent({
+            tenantId: row.tenantId,
+            campaignId: row.campaignId,
+            eventType: "subscription_started",
+            severity: "success",
+            message: "Pagamento confirmado e trial convertido em assinatura ativa.",
+            dedupeKey: `deal:${row.dealId}:subscription_started`,
+            metadata: {
+              dealId: row.dealId,
+              leadId: row.leadId,
+              trialTenantId: activation.tenantId,
+              value: Number(row.value ?? 0),
+              currency: "BRL",
+              paymentStatus: "paid",
+              startedAt: row.updatedAt?.toISOString() ?? new Date().toISOString(),
+            },
+          });
+          if (event) subscriptionsStarted++;
+        }
+      } catch (err) {
+        log.error({ err, dealId: row.dealId }, "commercial-lifecycle: paid trial activation failed");
+      }
     }
   }
 
-  // 2) Trial ativado: trial_started já traz o tenant criado no metadata.
-  // Ativação operacional = onboarding concluído + (integrações concluídas OU
-  // pelo menos um lead real criado no tenant). Não usamos apenas login/pageview.
+  // 2) Trial ativado operacionalmente: onboarding completo + integração ou
+  // primeiro lead real. É valor de produto, não assinatura paga.
   const trialStarts = await db
     .select({
       eventId: adCampaignEventsTable.id,
@@ -153,7 +185,7 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
     }
   }
 
-  if (salesRecorded > 0 || trialsActivated > 0) {
-    log.info({ salesRecorded, trialsActivated }, "commercial-lifecycle: events synchronized");
+  if (salesRecorded > 0 || subscriptionsStarted > 0 || trialsActivated > 0) {
+    log.info({ salesRecorded, subscriptionsStarted, trialsActivated }, "commercial-lifecycle: events synchronized");
   }
 }
