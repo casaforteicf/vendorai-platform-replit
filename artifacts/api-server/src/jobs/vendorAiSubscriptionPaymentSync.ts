@@ -34,6 +34,7 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
       status: subscriptionsTable.status,
       sourceDealId: subscriptionsTable.sourceDealId,
       proximaCobranca: subscriptionsTable.proximaCobranca,
+      trialEndsAt: subscriptionsTable.trialEndsAt,
     })
     .from(subscriptionsTable)
     .where(eq(subscriptionsTable.campaignCode, VENDORAI_LAUNCH_CAMPAIGN))
@@ -78,8 +79,11 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
       }
 
       // Preserve the contractual billing calendar. A late payment settles the
-      // overdue cycle, but does not silently move every future due date.
-      const computedNextDue = addCalendarMonth(logicalDue);
+      // overdue cycle, but does not silently move every future due date. The
+      // trial-end day is the anchor so Jan-31 → Feb-28/29 → Mar-31 instead of
+      // drifting permanently to the 28th.
+      const anchorDay = sub.trialEndsAt?.getUTCDate() ?? logicalDue.getUTCDate();
+      const computedNextDue = addCalendarMonth(logicalDue, anchorDay);
       const shouldAdvance = !sub.proximaCobranca || sub.proximaCobranca.getTime() <= logicalDue.getTime();
       const isFirstActivation = sub.status === "trial";
       const isRecovery = sub.status === "inadimplente";
