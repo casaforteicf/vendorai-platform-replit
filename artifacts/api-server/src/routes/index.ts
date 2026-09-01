@@ -86,6 +86,7 @@ import varejoRouter from "./varejo";
 import supermercadoRouter, { supermercadoPublicRouter } from "./supermercado";
 import farmaciaRouter from "./farmacia";
 import adsRouter, { adsPublicRouter } from "./ads";
+import launchCommandCenterRouter from "./launch_command_center";
 import imoveisRouter from "./imoveis";
 import fretesRouter, { fretesPublicRouter } from "./fretes";
 import storiesRouter from "./stories";
@@ -259,6 +260,7 @@ router.use(agentsRouter);
 
 // Marketing Hub
 router.use(campaignsRouter);
+router.use(launchCommandCenterRouter);
 
 // Sales / CPQ Hub
 router.use(produtosCatalogoRouter);
