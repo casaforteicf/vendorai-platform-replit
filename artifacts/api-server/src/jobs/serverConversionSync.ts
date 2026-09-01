@@ -50,6 +50,15 @@ function hashPhone(phone?: string | null): string | null {
   return normalized ? sha256(normalized) : null;
 }
 
+function hasAdDataConsent(metadata: Record<string, unknown>, attribution: Record<string, unknown>): boolean {
+  // O evento pode carregar o snapshot do opt-in e o lead mantém a evidência
+  // completa (granted/capturedAt/textVersion). Basta uma evidência explícita
+  // positiva; ausência nunca é interpretada como consentimento.
+  if (metadata["adDataConsent"] === true) return true;
+  const consent = asRecord(attribution["adDataConsent"]);
+  return consent["granted"] === true;
+}
+
 function eventTimeSeconds(eventCreatedAt: Date, metadata: Record<string, unknown>): number {
   const candidate = text(metadata["closedAt"]) || text(metadata["activatedAt"]);
   if (candidate) {
@@ -96,9 +105,9 @@ async function markMetaResult(
 }
 
 /**
- * Envia conversões first-party para Meta CAPI somente quando a feature flag
- * global estiver explicitamente ligada. A flag permanece false por padrão até
- * o fluxo de consentimento/privacidade ser validado para produção.
+ * Envia conversões first-party para Meta CAPI somente quando:
+ * 1) a feature flag global está explicitamente ligada; e
+ * 2) o titular concedeu opt-in específico para medição/otimização de anúncios.
  *
  * event_id usa o ID estável do evento no VendorAI; se houver retry após uma
  * resposta já processada, a Meta consegue deduplicar o mesmo evento.
@@ -138,6 +147,34 @@ export async function runServerConversionSync(log: Logger): Promise<void> {
     }
 
     try {
+      const leadId = text(metadata["leadId"]);
+      const [lead] = leadId
+        ? await db
+            .select({
+              id: leadsTable.id,
+              email: leadsTable.email,
+              telefone: leadsTable.telefone,
+              discoveryData: leadsTable.discoveryData,
+            })
+            .from(leadsTable)
+            .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, event.tenantId)))
+            .limit(1)
+        : [];
+
+      const discovery = asRecord(lead?.discoveryData);
+      const attribution = asRecord(discovery["attribution"]);
+
+      if (!hasAdDataConsent(metadata, attribution)) {
+        if (metadata["metaCapiSkippedReason"] !== "ad_data_consent_not_granted") {
+          await markMetaResult(event.id, metadata, {
+            metaCapiSkippedReason: "ad_data_consent_not_granted",
+            metaCapiLastEvaluatedAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
+        skipped++;
+        continue;
+      }
+
       const [tenant] = await db
         .select({ metaPixelId: tenantsTable.metaPixelId })
         .from(tenantsTable)
@@ -155,22 +192,6 @@ export async function runServerConversionSync(log: Logger): Promise<void> {
         continue;
       }
 
-      const leadId = text(metadata["leadId"]);
-      const [lead] = leadId
-        ? await db
-            .select({
-              id: leadsTable.id,
-              email: leadsTable.email,
-              telefone: leadsTable.telefone,
-              discoveryData: leadsTable.discoveryData,
-            })
-            .from(leadsTable)
-            .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, event.tenantId)))
-            .limit(1)
-        : [];
-
-      const discovery = asRecord(lead?.discoveryData);
-      const attribution = asRecord(discovery["attribution"]);
       const emailHash = hashEmail(lead?.email);
       const phoneHash = hashPhone(lead?.telefone);
       const fbc = buildFbc(metadata, attribution, event.createdAt);
@@ -224,6 +245,7 @@ export async function runServerConversionSync(log: Logger): Promise<void> {
       await markMetaResult(event.id, metadata, {
         metaCapiSentAt: new Date().toISOString(),
         metaCapiEventId: `vendorai:${event.id}`,
+        metaCapiSkippedReason: null,
         metaCapiLastError: null,
       });
       sent++;
