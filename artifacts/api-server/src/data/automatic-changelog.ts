@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-221",
+    "titulo": "fechar atribuição de campanha e otimizar por receita",
+    "descricao": "A PR entrega aquisição → trial → ativação → venda → cobrança → assinatura → renovação/churn com atribuição de receita, verticais oficiais, Revenue Scout e guardrails de privacidade/financeiro, preservando a mesma conta testada pelo cliente durante toda a jornada.",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-01T22:27:21.000Z",
+    "pullRequest": 221
+  },
+  {
     "id": "pr-216",
     "titulo": "remover excluídos da pipeline e dashboard",
     "descricao": "Leads excluídos deixam de aparecer na pipeline e nos indicadores do dashboard.",
