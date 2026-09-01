@@ -148,17 +148,166 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const effectiveVertical = isSuperAdmin && tenantOverride
     ? tenantOverride.vertical
     : tenantData?.vertical ?? user?.tenantVertical;
-  const isConstrucao = effectiveVertical === "Construção & Reforma";
-  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios" || effectiveVertical === "Varejo de Eletroeletrônicos" || effectiveVertical === "Varejo de Decoração, Variedades & Utilidades" || effectiveVertical === "Bebês e Crianças" || effectiveVertical === "Esportes e Lazer" || effectiveVertical === "Automotivo — Acessórios e Som" || effectiveVertical === "Papelaria e Livraria" || effectiveVertical === "Joias, Relógios e Óticas" || effectiveVertical === "Calçados" || effectiveVertical === "Móveis" || effectiveVertical === "Cama, Mesa e Banho" || effectiveVertical === "Brinquedos" || effectiveVertical === "Instrumentos Musicais" || effectiveVertical === "Perfumaria e Cosméticos" || effectiveVertical === "Floricultura" || effectiveVertical === "Adega e Bebidas" || effectiveVertical === "Produtos Naturais e Suplementos" || effectiveVertical === "Armarinho e Tecidos" || effectiveVertical === "Papelaria Criativa e Artesanato" || effectiveVertical === "Games e Informática" || effectiveVertical === "Pet Shop (Varejo)" || effectiveVertical === "Material de Construção — Varejo";
-  const isSupermercado = effectiveVertical === "Supermercado";
-  const isSalao   = effectiveVertical === "Salão de Beleza" || effectiveVertical === "Barbearia" || effectiveVertical === "Pet Shop (Varejo)";
+  type VerticalBucket =
+    | "core" | "construcao" | "varejo" | "supermercado" | "salao" | "clinica"
+    | "farmacia" | "imoveis" | "fretes" | "veiculos" | "arquitetura" | "seguros"
+    | "servicos" | "distribuidora";
+
+  // Fonte única de verdade: TODO nicho cadastrado (100 hoje, ver Admin →
+  // Segmentos) precisa estar aqui, mapeado pro balde certo. Nicho sem
+  // módulo próprio vai explicitamente pra "core" -- nunca fica de fora do
+  // mapa, que era o bug real: vertical sem entrada aqui não filtrava NADA
+  // (mostrava tudo junto: Farmácia + Veículos + Obras + Varejo ao mesmo
+  // tempo), em vez de mostrar só o núcleo genérico.
+  const VERTICAL_BUCKET: Record<string, VerticalBucket> = {
+    "Construção & Reforma": "construcao",
+    "Varejo de Roupas & Acessórios": "varejo",
+    "Varejo de Eletroeletrônicos": "varejo",
+    "Varejo de Decoração, Variedades & Utilidades": "varejo",
+    "Bebês e Crianças": "varejo",
+    "Esportes e Lazer": "varejo",
+    "Automotivo — Acessórios e Som": "varejo",
+    "Papelaria e Livraria": "varejo",
+    "Joias, Relógios e Óticas": "varejo",
+    "Calçados": "varejo",
+    "Móveis": "varejo",
+    "Cama, Mesa e Banho": "varejo",
+    "Brinquedos": "varejo",
+    "Instrumentos Musicais": "varejo",
+    "Perfumaria e Cosméticos": "varejo",
+    "Floricultura": "varejo",
+    "Adega e Bebidas": "varejo",
+    "Produtos Naturais e Suplementos": "varejo",
+    "Armarinho e Tecidos": "varejo",
+    "Papelaria Criativa e Artesanato": "varejo",
+    "Games e Informática": "varejo",
+    "Pet Shop (Varejo)": "varejo",
+    "Material de Construção — Varejo": "varejo",
+    "Supermercado": "supermercado",
+    "Salão de Beleza": "salao",
+    "Barbearia": "salao",
+    "Clínica": "clinica",
+    "Farmácia": "farmacia",
+    "Imóveis": "imoveis",
+    "Fretes": "fretes",
+    "Veículos": "veiculos",
+    "Arquitetura & Design": "arquitetura",
+    "Arquitetura": "arquitetura",
+    "Seguros Corporativos": "seguros",
+    "Serviços": "servicos",
+    "Distribuidora de Materiais de Construção": "distribuidora",
+    "Distribuidora de Alimentos": "distribuidora",
+    "Distribuidora de Máquinas e Insumos": "distribuidora",
+    // Nichos "só template" (Admin → Segmentos), sem módulo de tela próprio
+    // ainda -- core explícito, de propósito.
+    "Academia / Personal Trainer": "core",
+    "Açougue": "core",
+    "Adestramento": "core",
+    "Advocacia": "core",
+    "Agência de Marketing / Publicidade": "core",
+    "Agência de Viagens": "core",
+    "Agropecuária": "core",
+    "Assistência Técnica (Celular/Eletrônicos)": "core",
+    "Banho e Tosa": "core",
+    "Bicicletaria / Oficina de Bike": "core",
+    "Buffet / Festas": "core",
+    "Cafeteria": "core",
+    "Casa & Decoração": "core",
+    "Chaveiro": "core",
+    "Comunicação Visual / Sinalização": "core",
+    "Confecção / Facção Têxtil": "core",
+    "Confeitaria / Doceria": "core",
+    "Consultoria Empresarial": "core",
+    "Contabilidade": "core",
+    "Creche / Berçário": "core",
+    "Decoração de Eventos": "core",
+    "Dedetização / Controle de Pragas": "core",
+    "Delivery de comida": "core",
+    "Desenvolvimento de Software / TI": "core",
+    "Design Gráfico": "core",
+    "Distribuição Técnica": "core",
+    "Distribuidora de Peças": "core",
+    "DJ / Som para Eventos": "core",
+    "Educação": "core",
+    "Energia & Climatização": "core",
+    "Escola de Idiomas": "core",
+    "Escolinha Esportiva / Artes Marciais": "core",
+    "Estúdio de Pilates / Yoga": "core",
+    "Food truck": "core",
+    "Fotografia / Filmagem": "core",
+    "Funerária": "core",
+    "Funilaria / Pintura": "core",
+    "Gráfica Industrial": "core",
+    "Gráfica Rápida": "core",
+    "Hamburgueria": "core",
+    "Hospedagem/Creche Pet": "core",
+    "Hotel / Pousada": "core",
+    "Jardinagem / Paisagismo": "core",
+    "Lavajato": "core",
+    "Lavanderia": "core",
+    "Limpeza Residencial/Comercial": "core",
+    "Locação de Equipamentos": "core",
+    "Locação de Espaço para Eventos": "core",
+    "Locadora de Veículos": "core",
+    "Loja de Piscinas & Spas": "core",
+    "Manutenção Predial": "core",
+    "Marcenaria Sob Encomenda": "core",
+    "Marmitaria": "core",
+    "Metalúrgica": "core",
+    "Mobilidade": "core",
+    "Nutricionista": "core",
+    "Odontologia": "core",
+    "Óptica": "core",
+    "Padaria": "core",
+    "Pizzaria": "core",
+    "Recursos Humanos / Recrutamento": "core",
+    "Restaurante": "core",
+    "Saúde & Estética": "core",
+    "Saúde Animal & Pet": "core",
+    "Segurança Eletrônica / CFTV": "core",
+    "Segurança Patrimonial / Monitoramento": "core",
+    "Self Storage / Armazenagem": "core",
+    "Serralheria": "core",
+    "Transporte Turístico": "core",
+  };
+
+  const BUCKET_EXTRA_HREFS: Record<VerticalBucket, string[]> = {
+    core: [],
+    construcao: ["/entregas", "/estoque", "/obras", "/insumos", "/composicoes"],
+    varejo: ["/estoque", "/varejo/produtos", "/varejo/colecoes", "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade", "/varejo/combos"],
+    supermercado: ["/supermercado", "/supermercado/produtos", "/supermercado/pedidos", "/supermercado/campanhas", "/supermercado/config"],
+    salao: ["/beauty", "/beauty/agenda", "/beauty/servicos", "/beauty/profissionais"],
+    clinica: ["/clinic", "/clinic/agenda", "/clinic/medicos"],
+    farmacia: ["/farmacia", "/farmacia/produtos", "/farmacia/bulas", "/farmacia/pedidos", "/farmacia/receitas"],
+    imoveis: ["/imoveis/propriedades", "/imoveis/visitas"],
+    fretes: ["/fretes/cargas", "/fretes/veiculos", "/fretes/motorista"],
+    veiculos: ["/veiculos/estoque", "/veiculos/test-drives"],
+    arquitetura: ["/arch", "/arch/projetos", "/arch/render", "/arch/catalogo", "/arch/marketplace"],
+    seguros: ["/scout/seguros/renovacoes"],
+    servicos: ["/servicos", "/servicos/cadastros"],
+    distribuidora: ["/estoque", "/entregas", "/vendor-certified-network", "/poe"],
+  };
+
+  function findVerticalBucket(vertical: string | null | undefined): VerticalBucket | null {
+    if (!vertical) return null;
+    if (VERTICAL_BUCKET[vertical]) return VERTICAL_BUCKET[vertical];
+    const normalized = vertical.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const found = Object.entries(VERTICAL_BUCKET).find(
+      ([name]) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === normalized
+    );
+    // Fallback seguro: vertical com nome que não bate com nada -- provavelmente
+    // erro de cadastro/digitação -- vira "core" em vez de "sem filtro nenhum".
+    return found ? found[1] : "core";
+  }
+
+  const effectiveBucket = findVerticalBucket(effectiveVertical);
+  const isConstrucao = effectiveBucket === "construcao";
+  const isVarejo = effectiveBucket === "varejo";
+  const isSupermercado = effectiveBucket === "supermercado";
+  const isSalao = effectiveBucket === "salao" || effectiveVertical === "Pet Shop (Varejo)";
   const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
-  const isClinica = effectiveVertical === "Clínica";
-  const normalizedVertical = (effectiveVertical ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  const isFarmacia = normalizedVertical.includes("farmacia");
+  const isClinica = effectiveBucket === "clinica";
+  const isFarmacia = effectiveBucket === "farmacia";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
@@ -252,255 +401,37 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     "/praca-perguntas", "/erp", "/ads", "/marketing/plano-de-midia",
   ];
 
-  const verticalHrefAllowlists: Record<string, Set<string>> = {
-    "Construção & Reforma": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/entregas", "/estoque", "/obras", "/insumos", "/composicoes",
-    ]),
-    "Varejo de Roupas & Acessórios": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Varejo de Eletroeletrônicos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Varejo de Decoração, Variedades & Utilidades": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Bebês e Crianças": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Esportes e Lazer": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Automotivo — Acessórios e Som": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Papelaria e Livraria": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Joias, Relógios e Óticas": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Calçados": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Móveis": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Cama, Mesa e Banho": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Brinquedos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Instrumentos Musicais": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Perfumaria e Cosméticos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Floricultura": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Adega e Bebidas": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Produtos Naturais e Suplementos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Armarinho e Tecidos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Papelaria Criativa e Artesanato": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Games e Informática": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Pet Shop (Varejo)": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Material de Construção — Varejo": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/varejo/produtos", "/varejo/colecoes",
-      "/varejo/fornecedores", "/varejo/compras", "/varejo/fidelidade",
-      "/varejo/combos",
-    ]),
-    "Supermercado": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/supermercado", "/supermercado/produtos", "/supermercado/pedidos",
-      "/supermercado/campanhas", "/supermercado/config",
-    ]),
-    "Seguros Corporativos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/scout/seguros/renovacoes",
-    ]),
-    "Clínica": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/clinic", "/clinic/agenda", "/clinic/medicos",
-    ]),
-    "Salão de Beleza": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/beauty", "/beauty/agenda", "/beauty/servicos",
-      "/beauty/profissionais",
-    ]),
-    "Barbearia": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/beauty", "/beauty/agenda", "/beauty/servicos",
-      "/beauty/profissionais",
-    ]),
-    "Serviços": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/servicos", "/servicos/cadastros",
-    ]),
-    "Farmácia": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/farmacia", "/farmacia/produtos", "/farmacia/bulas", "/farmacia/pedidos", "/farmacia/receitas",
-    ]),
-    "Imóveis": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/imoveis/propriedades", "/imoveis/visitas",
-    ]),
-    "Fretes": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/fretes/cargas", "/fretes/veiculos", "/fretes/motorista",
-    ]),
-    "Veículos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/veiculos/estoque", "/veiculos/test-drives",
-    ]),
-    "Arquitetura & Design": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/arch", "/arch/projetos", "/arch/render", "/arch/catalogo",
-      "/arch/marketplace",
-    ]),
-    "Arquitetura": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/arch", "/arch/projetos", "/arch/render", "/arch/catalogo",
-      "/arch/marketplace",
-    ]),
-    "Distribuidora de Materiais de Construção": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/entregas", "/vendor-certified-network", "/poe",
-    ]),
-    "Distribuidora de Alimentos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/entregas", "/vendor-certified-network", "/poe",
-    ]),
-    "Distribuidora de Máquinas e Insumos": new Set([
-      ...CORE_VERTICAL_HREFS,
-      "/estoque", "/entregas", "/vendor-certified-network", "/poe",
-    ]),
-  };
-
+  // Baldes de nicho já cobrem o que os antigos allowlists cobriam --
+  // computa direto a partir de VERTICAL_BUCKET (fonte única). Pet Shop é
+  // caso especial: usa 2 baldes ao mesmo tempo (varejo + salão/banho&tosa).
   const activeVerticalAllowlist = effectiveVertical
-    ? verticalHrefAllowlists[effectiveVertical] ?? Object.entries(verticalHrefAllowlists)
-      .find(([name]) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === normalizedVertical)?.[1]
+    ? new Set([
+        ...CORE_VERTICAL_HREFS,
+        ...BUCKET_EXTRA_HREFS[effectiveBucket ?? "core"],
+        ...(effectiveVertical === "Pet Shop (Varejo)" ? BUCKET_EXTRA_HREFS.salao : []),
+      ])
     : undefined;
 
-  const scoutVerticalLabels: Record<string, string> = {
-    "Construção & Reforma": "Construção",
-    "Varejo de Roupas & Acessórios": "Varejo",
-    "Varejo de Eletroeletrônicos": "Varejo",
-    "Varejo de Decoração, Variedades & Utilidades": "Varejo",
-    "Bebês e Crianças": "Varejo",
-    "Esportes e Lazer": "Varejo",
-    "Automotivo — Acessórios e Som": "Varejo",
-    "Papelaria e Livraria": "Varejo",
-    "Joias, Relógios e Óticas": "Varejo",
-    "Calçados": "Varejo",
-    "Móveis": "Varejo",
-    "Cama, Mesa e Banho": "Varejo",
-    "Brinquedos": "Varejo",
-    "Instrumentos Musicais": "Varejo",
-    "Perfumaria e Cosméticos": "Varejo",
-    "Floricultura": "Varejo",
-    "Adega e Bebidas": "Varejo",
-    "Produtos Naturais e Suplementos": "Varejo",
-    "Armarinho e Tecidos": "Varejo",
-    "Papelaria Criativa e Artesanato": "Varejo",
-    "Games e Informática": "Varejo",
-    "Pet Shop (Varejo)": "Varejo",
-    "Material de Construção — Varejo": "Varejo",
-    "Barbearia": "Salão",
-    "Bicicletaria / Oficina de Bike": "CRM",
-    "Gráfica Rápida": "CRM",
-    "Supermercado": "Supermercado",
-    "Seguros Corporativos": "Seguros",
-    "Clínica": "Clínica",
-    "Salão de Beleza": "Salão",
-    "Arquitetura & Design": "Arquitetura",
-    "Arquitetura": "Arquitetura",
-    "Distribuidora de Materiais de Construção": "Materiais de Construção",
-    "Distribuidora de Alimentos": "Alimentos",
-    "Distribuidora de Máquinas e Insumos": "Máquinas e Insumos",
+
+  const BUCKET_SCOUT_LABEL: Partial<Record<VerticalBucket, string>> = {
+    construcao: "Construção",
+    varejo: "Varejo",
+    supermercado: "Supermercado",
+    salao: "Salão",
+    clinica: "Clínica",
+    farmacia: "Farmácia",
+    imoveis: "Imóveis",
+    fretes: "Fretes",
+    veiculos: "Veículos",
+    arquitetura: "Arquitetura",
+    seguros: "Seguros",
+    servicos: "Serviços",
+    // distribuidora usa 3 nomes diferentes conforme o nicho específico
+    // (a rótulo genérico "Distribuidora" cobre os 3 igual de bem)
+    distribuidora: "Distribuidora",
+    // core: sem rótulo -- "Revenue Scout" sozinho, sem sufixo
   };
-  const scoutVerticalLabel = effectiveVertical
-    ? scoutVerticalLabels[effectiveVertical]
-    : undefined;
+  const scoutVerticalLabel = effectiveBucket ? BUCKET_SCOUT_LABEL[effectiveBucket] : undefined;
 
   function isVisible(item: typeof allNavItems[0]) {
     if (isStartPlan && !START_PLAN_HREFS.has(item.href)) return false;
