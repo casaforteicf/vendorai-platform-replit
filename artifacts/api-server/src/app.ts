@@ -203,9 +203,11 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   const refererHost = hostnameFromUrlHeader(typeof req.headers.referer === "string" ? req.headers.referer : undefined);
   const isCrmRequest = [hostname, forwardedHost, originalHost, originHost, refererHost].some(isCrmHostname);
 
-  // A CRM host is authoritative even if an upstream edge accidentally adds
-  // x-tenant-subdomain. Public tenant hosts are not matched by isCrmHostname.
-  if (isCrmRequest) return next();
+  // O header x-tenant-subdomain é o sinal autoritativo do Worker para sites
+  // públicos. O Worker pode encaminhar a chamada usando um host interno/CRM,
+  // então esse host não pode anular o subdomínio público explicitamente enviado.
+  // Sem o header, mantemos o bypass do CRM para proteger /auth e o painel.
+  if (!subdomainFromHeader && isCrmRequest) return next();
 
   const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
   const isApi = isApiRequest;
