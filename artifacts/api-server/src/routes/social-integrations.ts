@@ -11,6 +11,7 @@ import {
 } from "../services/social-platforms.js";
 
 const router: IRouter = Router();
+const callbackRouter: IRouter = Router();
 const providers = new Set<SocialProvider>(["youtube", "linkedin", "tiktok"]);
 
 function provider(value: unknown): SocialProvider | null {
@@ -39,7 +40,7 @@ router.get("/auth/:provider", authenticate, (req, res) => {
   }
 });
 
-router.get("/auth/:provider/callback", async (req, res) => {
+callbackRouter.get("/auth/:provider/callback", async (req, res) => {
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).send("Provider not supported");
   const { code, state, error } = req.query as Record<string, string>;
@@ -130,4 +131,4 @@ router.post("/tenants/:tenantId/social-comments/:provider/:commentId/replies", a
 });
 
 export default router;
-export const socialIntegrationsCallbackRouter: IRouter = router;
+export const socialIntegrationsCallbackRouter: IRouter = callbackRouter;
