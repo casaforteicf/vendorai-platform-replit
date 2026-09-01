@@ -17,6 +17,7 @@ import { signToken } from "../lib/jwt.js";
 
 export const intakeRouter: IRouter = Router();
 
+const AD_DATA_CONSENT_TEXT_VERSION = "ad-data-measurement-v1-2026-09-01";
 const optionalTrackingString = z.string().trim().max(500).optional();
 
 const trackingFields = {
@@ -30,6 +31,9 @@ const trackingFields = {
   pageUrl: z.string().trim().max(2000).optional(),
   referrer: z.string().trim().max(2000).optional(),
   landingPageSlug: optionalTrackingString,
+  // Opt-in separado do aceite dos Termos. Ausência = denied/unspecified para
+  // fins de compartilhamento server-side com plataformas de anúncios.
+  adDataConsent: z.boolean().optional(),
 };
 
 const intakeSchema = z.object({
@@ -76,6 +80,7 @@ type TrackingData = Pick<
   | "pageUrl"
   | "referrer"
   | "landingPageSlug"
+  | "adDataConsent"
 >;
 
 const trialSignupSchema = z.object({
@@ -125,10 +130,12 @@ function mergeTracking<T extends TrackingData>(body: T, referer?: string): T {
     pageUrl: body.pageUrl || recovered.pageUrl,
     referrer: body.referrer || referer,
     landingPageSlug: body.landingPageSlug || recovered.landingPageSlug,
+    adDataConsent: body.adDataConsent === true,
   };
 }
 
 function attributionRecord(data: TrackingData) {
+  const capturedAt = new Date().toISOString();
   return {
     utmSource: data.utmSource || null,
     utmMedium: data.utmMedium || null,
@@ -140,7 +147,12 @@ function attributionRecord(data: TrackingData) {
     pageUrl: data.pageUrl || null,
     referrer: data.referrer || null,
     landingPageSlug: data.landingPageSlug || null,
-    capturedAt: new Date().toISOString(),
+    capturedAt,
+    adDataConsent: {
+      granted: data.adDataConsent === true,
+      capturedAt,
+      textVersion: AD_DATA_CONSENT_TEXT_VERSION,
+    },
   };
 }
 
@@ -283,6 +295,7 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
           utmSource: d.utmSource ?? null,
           utmMedium: d.utmMedium ?? null,
           landingPageSlug: d.landingPageSlug ?? null,
+          adDataConsent: d.adDataConsent === true,
         },
       });
     } catch (err) {
@@ -434,6 +447,8 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
               gclid: d.gclid ?? null,
               fbclid: d.fbclid ?? null,
               landingPageSlug: d.landingPageSlug ?? null,
+              adDataConsent: d.adDataConsent === true,
+              adDataConsentTextVersion: AD_DATA_CONSENT_TEXT_VERSION,
             },
           });
         }
