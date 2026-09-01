@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   adCampaignEventsTable,
   adCampaignsTable,
@@ -52,8 +52,15 @@ export async function getAdsOverview(tenantId: string) {
     .where(eq(adCampaignsTable.tenantId, tenantId))
     .orderBy(desc(adCampaignsTable.updatedAt));
 
+  // Somente warning/critical são alertas operacionais. Eventos de lifecycle
+  // (lead_attributed, trial_started, lead_recovered etc.) continuam auditáveis
+  // no histórico, mas não devem poluir o card "Atenção necessária".
   const activeAlerts = await db.select().from(adCampaignEventsTable)
-    .where(and(eq(adCampaignEventsTable.tenantId, tenantId), isNull(adCampaignEventsTable.resolvedAt)))
+    .where(and(
+      eq(adCampaignEventsTable.tenantId, tenantId),
+      isNull(adCampaignEventsTable.resolvedAt),
+      inArray(adCampaignEventsTable.severity, ["warning", "critical"]),
+    ))
     .orderBy(desc(adCampaignEventsTable.createdAt));
   const alertsByCampaign = new Map<string, typeof activeAlerts>();
   for (const alert of activeAlerts) {
@@ -74,6 +81,17 @@ export async function getAdsOverview(tenantId: string) {
 
     const [leadStats] = await db.select({ total: sql<number>`count(*)` })
       .from(leadsTable).where(eq(leadsTable.adCampaignId, campaign.id));
+
+    const [lifecycleStats] = await db.select({
+      trials: sql<number>`count(*) filter (where ${adCampaignEventsTable.eventType} = 'trial_started')`,
+      recoveredLeads: sql<number>`count(*) filter (where ${adCampaignEventsTable.eventType} = 'lead_recovered')`,
+      coolingLeads: sql<number>`count(*) filter (where ${adCampaignEventsTable.eventType} = 'lead_cooling')`,
+    }).from(adCampaignEventsTable)
+      .where(and(
+        eq(adCampaignEventsTable.tenantId, tenantId),
+        eq(adCampaignEventsTable.campaignId, campaign.id),
+      ));
+
     const [sales] = await db.select({
       total: sql<number>`count(*)`,
       revenue: sql<string>`coalesce(sum(${dealsTable.valor}), 0)`,
@@ -83,11 +101,17 @@ export async function getAdsOverview(tenantId: string) {
 
     const spend = Number(platform?.spend ?? 0);
     const leads = Number(leadStats?.total ?? 0);
+    const trials = Number(lifecycleStats?.trials ?? 0);
+    const recoveredLeads = Number(lifecycleStats?.recoveredLeads ?? 0);
+    const coolingLeads = Number(lifecycleStats?.coolingLeads ?? 0);
     const salesCount = Number(sales?.total ?? 0);
     const revenue = Number(sales?.revenue ?? 0);
     const roas = spend > 0 ? Number((revenue / spend).toFixed(2)) : null;
     const costPerLead = leads > 0 ? Number((spend / leads).toFixed(2)) : null;
+    const costPerTrial = trials > 0 ? Number((spend / trials).toFixed(2)) : null;
     const costPerSale = salesCount > 0 ? Number((spend / salesCount).toFixed(2)) : null;
+    const leadToTrialRate = leads > 0 ? Number(((trials / leads) * 100).toFixed(2)) : null;
+    const trialToSaleRate = trials > 0 ? Number(((salesCount / trials) * 100).toFixed(2)) : null;
     const leadToSaleRate = leads > 0 ? Number(((salesCount / leads) * 100).toFixed(2)) : null;
     const revenuePerLead = leads > 0 ? Number((revenue / leads).toFixed(2)) : null;
     const control = campaign.segmentacao?.campaignControl;
@@ -115,6 +139,13 @@ export async function getAdsOverview(tenantId: string) {
       recommendation = { title: "Corrigir o criativo", reason: campaign.segmentacao.platformReview.reason ?? "A plataforma reprovou o anúncio.", action: "correct_creative", requiresApproval: false };
     } else if (spend > 0 && leads === 0) {
       recommendation = { title: "Revisar público e oferta", reason: `Já foram gastos R$ ${spend.toFixed(2)} sem lead atribuído.`, action: "review_targeting", requiresApproval: false };
+    } else if (trials >= 3 && salesCount === 0) {
+      recommendation = {
+        title: "Melhorar ativação e conversão do trial",
+        reason: `${trials} trial(s) atribuídos, mas nenhuma venda fechada. O gargalo está depois da aquisição: onboarding, ativação, demonstração de valor ou abordagem comercial.`,
+        action: "review_trial_activation",
+        requiresApproval: false,
+      };
     } else if (leads >= 5 && salesCount === 0) {
       recommendation = {
         title: "Otimizar para venda, não só para lead",
@@ -151,10 +182,16 @@ export async function getAdsOverview(tenantId: string) {
       clicks: Number(platform?.clicks ?? 0),
       platformConversions: Number(platform?.platformConversions ?? 0),
       leads,
+      trials,
+      recoveredLeads,
+      coolingLeads,
       sales: salesCount,
       revenue,
       costPerLead,
+      costPerTrial,
       costPerSale,
+      leadToTrialRate,
+      trialToSaleRate,
       leadToSaleRate,
       revenuePerLead,
       roas,
@@ -168,11 +205,13 @@ export async function getAdsOverview(tenantId: string) {
       plannedBudget: total.plannedBudget + row.plannedBudget,
       spend: total.spend + row.spend,
       leads: total.leads + row.leads,
+      trials: total.trials + row.trials,
+      recoveredLeads: total.recoveredLeads + row.recoveredLeads,
       sales: total.sales + row.sales,
       revenue: total.revenue + row.revenue,
       activeCampaigns: total.activeCampaigns + (row.status === "ativo" ? 1 : 0),
       unresolvedAlerts: total.unresolvedAlerts + row.alerts.length,
-    }), { plannedBudget: 0, spend: 0, leads: 0, sales: 0, revenue: 0, activeCampaigns: 0, unresolvedAlerts: 0 }),
+    }), { plannedBudget: 0, spend: 0, leads: 0, trials: 0, recoveredLeads: 0, sales: 0, revenue: 0, activeCampaigns: 0, unresolvedAlerts: 0 }),
     campaigns: rows,
   };
 }
