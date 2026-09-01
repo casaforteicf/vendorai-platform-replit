@@ -49,6 +49,10 @@ jobs:
             exit 1
           fi
       - name: Run Revenue Scout insurance tests
-        run: pnpm --filter @workspace/api-server test -- corporateInsuranceRevenuePack.test.ts insuranceWhitespaceEngine.test.ts distributorRevenueEngine.test.ts
+        run: >-
+          pnpm --filter @workspace/api-server exec vitest run
+          src/__tests__/corporateInsuranceRevenuePack.test.ts
+          src/__tests__/insuranceWhitespaceEngine.test.ts
+          src/__tests__/distributorRevenueEngine.test.ts
       - name: Verify migrations are discoverable
         run: test -f lib/db/migrations/034_insurance_revenue_scout.sql && test -f lib/db/migrations/035_insurance_renewal_opportunities.sql
