@@ -77,16 +77,17 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
         continue;
       }
 
-      const paidAt = event.paidAt ?? new Date();
-      const anchor = paidAt > logicalDue ? paidAt : logicalDue;
-      const computedNextDue = addCalendarMonth(anchor);
+      // Preserve the contractual billing calendar. A late payment settles the
+      // overdue cycle, but does not silently move every future due date.
+      const computedNextDue = addCalendarMonth(logicalDue);
       const shouldAdvance = !sub.proximaCobranca || sub.proximaCobranca.getTime() <= logicalDue.getTime();
       const isFirstActivation = sub.status === "trial";
       const isRecovery = sub.status === "inadimplente";
 
       // Only the first paid cycle converts isDemo → paid tenant and needs the
       // full trial→plan activation routine. Delinquency recovery keeps the same
-      // plan/data and the Asaas webhook already reopens the suspended tenant.
+      // plan/data. Suspension policy is intentionally separate from marking an
+      // overdue subscription.
       if (sub.sourceDealId && isFirstActivation) {
         await db.update(dealsTable).set({
           chargeStatus: "paid",
