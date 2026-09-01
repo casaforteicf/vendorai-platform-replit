@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import {
   db,
   dealsTable,
+  leadsTable,
   tenantsTable,
   propostasTable,
   plansTable,
@@ -12,17 +13,18 @@ import {
   sellerCommissionsTable,
 } from "@workspace/db";
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
 /**
  * Garante que, quando um negócio fecha "ganho", o cliente ganha tenant +
  * plano atribuído, e o vendedor tem a comissão gerada.
  *
- * Extraído do handler PATCH /deals/:id (deals.ts) — até esse extract, essa
- * lógica só rodava quando o negócio era movido pra "Ganho" arrastando o
- * card no Kanban. O fluxo "oficial" de fechamento (botão Vendido →
- * POST /deals/:id/confirm-closure → runDealClosure) NUNCA chamava isso —
- * ou seja, negócios fechados pelo botão Vendido nunca geravam tenant
- * automático, plano atribuído, nem comissão de vendedor registrada.
- * Achado e corrigido numa auditoria do pipeline financeiro.
+ * Trial VendorAI é um caso especial importante: o deal comercial pertence ao
+ * tenant vendedor "vendorai", enquanto a conta que deve receber o plano é o
+ * tenant criado para o cliente testar. O `trialTenantId` persistido no lead é
+ * a fonte de verdade para preservar exatamente a conta e os dados dos 5 dias.
  *
  * Idempotente: se o deal já tem tenant com plano, não recria; se a
  * comissão já existe pro dealId, não duplica.
@@ -54,8 +56,23 @@ export async function ensureTenantPlanAndCommission(
     return { tenantId: deal.tenantId, tenantCreated: false, commissionCreated: false };
   }
 
-  // ── Resolve tenant: usar existing ou criar novo do deal ─────────────────
-  let tenantId = deal.tenantId;
+  // ── Resolve tenant do CLIENTE ────────────────────────────────────────────
+  // Deals comuns preservam o comportamento legado. Deals de trial usam o
+  // tenant experimental indicado pelo lead e nunca o tenant vendedor.
+  let trialTenantId: string | null = null;
+  if (deal.leadId) {
+    const [lead] = await db
+      .select({ source: leadsTable.source, discoveryData: leadsTable.discoveryData })
+      .from(leadsTable)
+      .where(eq(leadsTable.id, deal.leadId))
+      .limit(1);
+    if (lead?.source === "trial_signup") {
+      const candidate = asRecord(lead.discoveryData)["trialTenantId"];
+      if (typeof candidate === "string" && candidate.trim()) trialTenantId = candidate.trim();
+    }
+  }
+
+  let tenantId: string | null = trialTenantId ?? deal.tenantId;
   let tenantCreated = false;
   let tenant: { id: string } | undefined;
   if (tenantId) {
@@ -65,6 +82,15 @@ export async function ensureTenantPlanAndCommission(
       .where(eq(tenantsTable.id, tenantId))
       .then((rows) => rows[0]);
   }
+
+  if (trialTenantId && !tenant) {
+    // Não fazemos fallback para o tenant vendedor: isso poderia atribuir o
+    // plano da venda ao próprio VendorAI. Falha segura e deixa o fechamento
+    // comercial auditável para correção manual.
+    log.error({ dealId, trialTenantId }, "ensureTenantPlanAndCommission: trialTenantId não encontrado — plano não atribuído");
+    return { tenantId: null, tenantCreated: false, commissionCreated: false };
+  }
+
   if (!tenant) {
     const slugBase = (deal.titulo ?? deal.id).toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
     const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
@@ -79,7 +105,7 @@ export async function ensureTenantPlanAndCommission(
     log.info({ dealId, tenantId: newTenant.id }, "ensureTenantPlanAndCommission: tenant criado automaticamente");
   }
 
-  // ── Atribuir plano ao tenant ─────────────────────────────────────────────
+  // ── Atribuir plano ao tenant do cliente ─────────────────────────────────
   await db
     .update(tenantsTable)
     .set({
@@ -88,16 +114,18 @@ export async function ensureTenantPlanAndCommission(
       planStartedAt: new Date(),
       isDemo: false,
       demoExpiresAt: null,
+      status: "active",
+      suspendedReason: null,
       updatedAt: new Date(),
     })
-    .where(eq(tenantsTable.id, tenantId));
+    .where(eq(tenantsTable.id, tenantId!));
   await db.insert(planAssignmentLogTable).values({
-    tenantId,
+    tenantId: tenantId!,
     dealId,
     planId: plano.id,
-    assignedBy: "sistema_fechamento_deal",
+    assignedBy: trialTenantId ? "conversao_trial_vendorai" : "sistema_fechamento_deal",
   });
-  log.info({ dealId, tenantId, planId: plano.id }, "ensureTenantPlanAndCommission: plano atribuído ao tenant");
+  log.info({ dealId, tenantId, planId: plano.id, fromTrial: Boolean(trialTenantId) }, "ensureTenantPlanAndCommission: plano atribuído ao tenant");
 
   // ── Auto-gerar comissão do vendedor ──────────────────────────────────────
   // A comissão pertence ao vendedor do tenant e é calculada por item vendido.
