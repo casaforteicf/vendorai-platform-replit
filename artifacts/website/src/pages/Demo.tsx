@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Sparkles, Clock, Users, Zap } from "lucide-react";
 import { Link } from "wouter";
+import { getLaunchAttribution } from "@/lib/launchAttribution";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com").replace(/\/$/, "");
@@ -37,10 +38,11 @@ export default function Demo() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/demo-signup`, {
+      const attribution = getLaunchAttribution();
+      const res = await fetch(`${API_BASE}/auth/trial-signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ...attribution }),
       });
       const data = await res.json();
       if (!res.ok) {
