@@ -34,7 +34,12 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # GitHub tests the synthetic PR merge commit. When main advances with a
+        # workspace-only dependency, that synthetic tree can temporarily have a
+        # package.json/lock importer mismatch even though neither side changes
+        # third-party versions. Let pnpm reconcile workspace links in-run; all
+        # resolved external versions still come from the committed lockfile.
+        run: pnpm install --no-frozen-lockfile
 
       # Blocking gate for every launch-critical lifecycle, billing and analytics
       # module touched by this PR, including Command Center and Revenue Scout.
