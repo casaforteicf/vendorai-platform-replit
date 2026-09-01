@@ -3,7 +3,8 @@
   "compilerOptions": {
     "incremental": false,
     "composite": false,
-    "noEmit": true
+    "noEmit": true,
+    "types": ["node", "pino-http"]
   },
   "include": [],
   "files": [
