@@ -1,12 +1,15 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { z } from "zod";
 import {
   billingEventsTable,
   db,
   dealsTable,
+  plansTable,
   subscriptionsTable,
+  tenantsTable,
 } from "@workspace/db";
+import { deleteCharge } from "../lib/asaas.js";
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
 
 const router: IRouter = Router();
@@ -28,6 +31,161 @@ function subscriptionIdFromCycleKey(value: string): string | null {
   const parts = value.split(":");
   return parts.length === 3 && parts[1] ? parts[1] : null;
 }
+
+function canManageTenant(req: Parameters<IRouter["use"]>[0] extends never ? never : any, tenantId: string): boolean {
+  return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+}
+
+/**
+ * Annual upgrade is an explicit commercial choice. It never interrupts the
+ * R$497/R$990 promotional cycles: tenant.billingCycle becomes annual now, but
+ * the billing worker only applies it after the subscription reaches regular.
+ * The annual price snapshot is taken only when the first annual charge is
+ * actually generated, preserving the catalog price governing that transition.
+ */
+router.post("/subscriptions/:id/annual-upgrade", async (req, res) => {
+  const subscriptionId = String(req.params.id);
+  const [subscription] = await db
+    .select({
+      id: subscriptionsTable.id,
+      tenantId: subscriptionsTable.tenantId,
+      plano: subscriptionsTable.plano,
+      status: subscriptionsTable.status,
+      campaignCode: subscriptionsTable.campaignCode,
+      billingPhase: subscriptionsTable.billingPhase,
+      proximaCobranca: subscriptionsTable.proximaCobranca,
+      billingCycle: tenantsTable.billingCycle,
+    })
+    .from(subscriptionsTable)
+    .innerJoin(tenantsTable, eq(tenantsTable.id, subscriptionsTable.tenantId))
+    .where(eq(subscriptionsTable.id, subscriptionId))
+    .limit(1);
+
+  if (!subscription || subscription.campaignCode !== VENDORAI_LAUNCH_CAMPAIGN) {
+    res.status(404).json({ error: "VendorAI launch subscription not found" });
+    return;
+  }
+  if (!canManageTenant(req, subscription.tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (!["trial", "ativa"].includes(subscription.status)) {
+    res.status(409).json({ error: "Only trial or active subscriptions can request annual billing" });
+    return;
+  }
+
+  const [plan] = await db
+    .select({ monthlyPriceAnnualCents: plansTable.monthlyPriceAnnualCents })
+    .from(plansTable)
+    .where(eq(plansTable.slug, subscription.plano))
+    .limit(1);
+  const annualMonthlyCents = Number(plan?.monthlyPriceAnnualCents ?? 0);
+  if (!(annualMonthlyCents > 0)) {
+    res.status(409).json({ error: "This plan has no annual price configured" });
+    return;
+  }
+
+  if (subscription.billingCycle !== "annual") {
+    await db
+      .update(tenantsTable)
+      .set({ billingCycle: "annual", updatedAt: new Date() })
+      .where(eq(tenantsTable.id, subscription.tenantId));
+  }
+
+  const monthlyEquivalent = annualMonthlyCents / 100;
+  res.json({
+    ok: true,
+    subscriptionId: subscription.id,
+    billingCycle: "annual",
+    annualMonthlyEquivalent: monthlyEquivalent.toFixed(2),
+    annualTotal: (monthlyEquivalent * 12).toFixed(2),
+    appliesWhen: subscription.billingPhase === "regular"
+      ? "next_unissued_regular_cycle"
+      : "regular_phase_after_promotions",
+    nextLogicalChargeAt: subscription.proximaCobranca,
+  });
+});
+
+/**
+ * Launch subscriptions are never physically deleted. We first remove unpaid
+ * Asaas charges from the active collection flow, then mark local cycles and the
+ * subscription cancelled. Paid events remain immutable financial history and
+ * the commercial lifecycle emits churn from this logical cancellation.
+ */
+router.delete("/subscriptions/:id", async (req, res, next) => {
+  const subscriptionId = String(req.params.id);
+  const [subscription] = await db
+    .select({
+      id: subscriptionsTable.id,
+      tenantId: subscriptionsTable.tenantId,
+      campaignCode: subscriptionsTable.campaignCode,
+      status: subscriptionsTable.status,
+    })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.id, subscriptionId))
+    .limit(1);
+
+  if (!subscription || subscription.campaignCode !== VENDORAI_LAUNCH_CAMPAIGN) {
+    next();
+    return;
+  }
+  if (!canManageTenant(req, subscription.tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (subscription.status === "cancelada") {
+    res.json({ ok: true, subscriptionId: subscription.id, status: "cancelada", alreadyCancelled: true });
+    return;
+  }
+
+  const activeCycles = await db
+    .select({
+      id: billingEventsTable.id,
+      asaasChargeId: billingEventsTable.asaasChargeId,
+      status: billingEventsTable.status,
+    })
+    .from(billingEventsTable)
+    .where(and(
+      eq(billingEventsTable.tenantId, subscription.tenantId),
+      like(billingEventsTable.mes, `subscription:${subscription.id}:%`),
+      inArray(billingEventsTable.status, ["pending", "overdue"]),
+    ));
+
+  // Delete remote unpaid charges first. If Asaas rejects any removal (for
+  // example because it was paid concurrently), keep the subscription active
+  // locally so reconciliation can converge instead of producing split-brain.
+  try {
+    for (const cycle of activeCycles) {
+      if (!cycle.asaasChargeId) continue;
+      const result = await deleteCharge(cycle.asaasChargeId);
+      if (!result.deleted) throw new Error(`Asaas did not delete charge ${cycle.asaasChargeId}`);
+    }
+  } catch (err) {
+    req.log.error({ err, subscriptionId }, "vendorai-subscription: Asaas charge cancellation failed");
+    res.status(502).json({ error: "Could not cancel active Asaas charge; subscription was not cancelled" });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    if (activeCycles.length > 0) {
+      await tx
+        .update(billingEventsTable)
+        .set({ status: "cancelled" })
+        .where(and(
+          eq(billingEventsTable.tenantId, subscription.tenantId),
+          like(billingEventsTable.mes, `subscription:${subscription.id}:%`),
+          inArray(billingEventsTable.status, ["pending", "overdue"]),
+        ));
+    }
+
+    await tx
+      .update(subscriptionsTable)
+      .set({ status: "cancelada", proximaCobranca: null, updatedAt: new Date() })
+      .where(eq(subscriptionsTable.id, subscription.id));
+  });
+
+  res.json({ ok: true, subscriptionId: subscription.id, status: "cancelada" });
+});
 
 /**
  * Handles only the NEW VendorAI commercial subscription lifecycle.
