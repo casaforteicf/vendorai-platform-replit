@@ -5,6 +5,7 @@ import {
   db,
   dealsTable,
   subscriptionsTable,
+  tenantsTable,
 } from "@workspace/db";
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
 import {
@@ -29,8 +30,10 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
       sourceDealId: subscriptionsTable.sourceDealId,
       proximaCobranca: subscriptionsTable.proximaCobranca,
       trialEndsAt: subscriptionsTable.trialEndsAt,
+      tenantIsDemo: tenantsTable.isDemo,
     })
     .from(subscriptionsTable)
+    .innerJoin(tenantsTable, eq(tenantsTable.id, subscriptionsTable.tenantId))
     .where(eq(subscriptionsTable.campaignCode, VENDORAI_LAUNCH_CAMPAIGN))
     .limit(MAX_SUBSCRIPTIONS_PER_RUN);
 
@@ -79,22 +82,24 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
       const anchorDay = sub.trialEndsAt?.getUTCDate() ?? logicalDue.getUTCDate();
       const computedNextDue = addCalendarMonth(logicalDue, anchorDay);
       const shouldAdvance = !sub.proximaCobranca || sub.proximaCobranca.getTime() <= logicalDue.getTime();
-      const isFirstActivation = sub.status === "trial";
+      const needsTrialActivation = Boolean(sub.sourceDealId && sub.tenantIsDemo);
       const isRecovery = sub.status === "inadimplente";
 
-      // Only the first paid cycle converts isDemo → paid tenant and needs the
-      // full trial→plan activation routine. Delinquency recovery keeps the same
-      // plan/data. Suspension policy is intentionally separate from marking an
-      // overdue subscription.
-      if (sub.sourceDealId && isFirstActivation) {
+      // Financial truth is reflected on the originating deal on every paid
+      // reconciliation. Activation itself is keyed from the tenant's real demo
+      // state, not from subscription.status: the first charge may have gone
+      // trial → inadimplente → paid and still needs to convert that same tenant.
+      if (sub.sourceDealId) {
         await db.update(dealsTable).set({
           chargeStatus: "paid",
           updatedAt: new Date(),
         }).where(eq(dealsTable.id, sub.sourceDealId));
+      }
+      if (sub.sourceDealId && needsTrialActivation) {
         await ensureTenantPlanAndCommission(sub.sourceDealId, log, { activateTrial: true });
       }
 
-      if (isFirstActivation || isRecovery || shouldAdvance) {
+      if (needsTrialActivation || isRecovery || shouldAdvance || sub.status === "trial") {
         await db.update(subscriptionsTable).set({
           status: "ativa",
           ...(shouldAdvance ? { proximaCobranca: computedNextDue } : {}),
@@ -102,7 +107,7 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
         }).where(eq(subscriptionsTable.id, sub.id));
       }
 
-      if (isFirstActivation) activated++;
+      if (needsTrialActivation) activated++;
       else if (isRecovery) recovered++;
     } catch (err) {
       log.error({ err, subscriptionId: sub.id, tenantId: sub.tenantId }, "vendorai-subscription-payment-sync: failed");
