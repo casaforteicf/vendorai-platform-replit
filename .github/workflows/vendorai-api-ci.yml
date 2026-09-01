@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Launch lifecycle typecheck
+      - name: Launch lifecycle and analytics typecheck
         run: pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit
 
       - name: Trial and billing tests
@@ -46,13 +46,10 @@ jobs:
           src/lib/vendorai-subscription-lifecycle.test.ts
           src/lib/vendorai-subscription-rules.test.ts
 
-      # The repository-wide API typecheck currently contains pre-existing debt
-      # in modules outside the launch lifecycle (PraçaAI, Access License, agents,
-      # etc.). Keep it visible as a diagnostic without letting unrelated legacy
-      # errors hide the launch gate above. Build the referenced Anthropic types
-      # first so this diagnostic does not generate false TS6305 errors.
-      - name: API-wide typecheck diagnostic
-        continue-on-error: true
+      # Full API typecheck is now a blocking gate. The Anthropic integration is
+      # built first so project-reference types are present and TS6305 is not a
+      # false negative.
+      - name: API-wide typecheck
         run: |
           pnpm exec tsc -b lib/integrations-anthropic-ai/tsconfig.json
           pnpm --filter @workspace/api-server typecheck
