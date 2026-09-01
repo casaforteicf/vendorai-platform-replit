@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { startScheduler } from "./jobs/scheduler.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
 import { runServerConversionSync } from "./jobs/serverConversionSync.js";
+import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
 import { applyPendingMigrations } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
@@ -19,21 +20,6 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// ─── Boot sequence ────────────────────────────────────────────────────────────
-//
-// O Railway sobe a API (CMD do Dockerfile) sem garantir que
-// `pnpm --filter @workspace/db run migrate` já rodou antes — então um
-// deploy recém-publicado pode ter a API no ar antes de migrations recentes
-// (ex: colunas de journey do lead_briefings, normalização do Scout) terem
-// sido aplicadas no banco. Rotas que dependem delas quebrariam.
-//
-// Em vez de duplicar DDL de migrations específicas aqui dentro (o que já
-// gerou drift no passado — alguém corrigia a migration e esquecia de
-// atualizar a cópia), a API aplica TODAS as migrations pendentes no boot
-// usando o mesmo motor do CLI (lib/db/src/apply-migrations.ts), direto dos
-// arquivos em lib/db/migrations. É seguro rodar em toda subida: cada
-// migration só aplica uma vez (controle em vendorai_schema_migrations) e um
-// advisory lock evita corrida entre réplicas subindo ao mesmo tempo.
 async function runStartupMigrations() {
   const result = await applyPendingMigrations(logger);
   if (result.applied.length > 0) {
@@ -54,18 +40,16 @@ async function start() {
     }
 
     logger.info({ port }, "Server listening");
-
-    // Start background scheduler after server is ready
     startScheduler(logger);
 
-    // Marketing lifecycle: primeiro converge estados reais do CRM em eventos
-    // first-party; depois, se a feature flag estiver habilitada, encaminha os
-    // eventos elegíveis para as plataformas de mídia. Dedupe no banco torna o
-    // processo seguro mesmo com retries e mais de uma réplica da API.
+    // Lifecycle de marketing: converge o estado real do CRM e depois oferece
+    // os eventos elegíveis aos conectores server-side. Meta e Google têm flags
+    // independentes; Google ainda usa validateOnly=true por padrão.
     const syncMarketingLifecycle = async () => {
       try {
         await runCommercialLifecycleSync(logger);
         await runServerConversionSync(logger);
+        await runGoogleDataManagerConversionSync(logger);
       } catch (syncErr) {
         logger.error({ err: syncErr }, "marketing-lifecycle: unhandled sync error");
       }
