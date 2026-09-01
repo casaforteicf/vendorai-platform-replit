@@ -76,13 +76,22 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
         continue;
       }
 
-      // If payment happened after due date, reset the next monthly cadence from
-      // the actual recovery date so the customer is not charged twice at once.
       const paidAt = event.paidAt ?? new Date();
       const anchor = paidAt > logicalDue ? paidAt : logicalDue;
       const computedNextDue = addCalendarMonth(anchor);
       const shouldAdvance = !sub.proximaCobranca || sub.proximaCobranca.getTime() <= logicalDue.getTime();
       const needsProductActivation = sub.status !== "ativa";
+
+      // Product activation comes first. If it fails, the subscription remains
+      // trial/inadimplente and the next sync retries instead of falsely marking
+      // financial activation as complete.
+      if (sub.sourceDealId && needsProductActivation) {
+        await db.update(dealsTable).set({
+          chargeStatus: "paid",
+          updatedAt: new Date(),
+        }).where(eq(dealsTable.id, sub.sourceDealId));
+        await ensureTenantPlanAndCommission(sub.sourceDealId, log, { activateTrial: true });
+      }
 
       if (needsProductActivation || shouldAdvance) {
         await db.update(subscriptionsTable).set({
@@ -92,17 +101,7 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
         }).where(eq(subscriptionsTable.id, sub.id));
       }
 
-      if (sub.sourceDealId && needsProductActivation) {
-        // Existing dashboards can keep using chargeStatus, but it is now a
-        // mirror of the subscription payment rather than the activation source.
-        await db.update(dealsTable).set({
-          chargeStatus: "paid",
-          updatedAt: new Date(),
-        }).where(eq(dealsTable.id, sub.sourceDealId));
-
-        await ensureTenantPlanAndCommission(sub.sourceDealId, log, { activateTrial: true });
-        activated++;
-      }
+      if (needsProductActivation) activated++;
     } catch (err) {
       log.error({ err, subscriptionId: sub.id, tenantId: sub.tenantId }, "vendorai-subscription-payment-sync: failed");
     }
