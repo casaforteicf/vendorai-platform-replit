@@ -18,6 +18,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
+      "@workspace/vendor-brain/marketing-verticals": path.resolve(
+        import.meta.dirname,
+        "../../lib/vendor-brain/src/marketing-verticals.ts",
+      ),
     },
   },
   root: path.resolve(import.meta.dirname),
@@ -37,4 +41,3 @@ export default defineConfig({
     allowedHosts: true,
   },
 });
-

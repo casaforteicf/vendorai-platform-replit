@@ -13,12 +13,16 @@
     "moduleResolution": "bundler",
     "types": ["node", "vite/client"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@workspace/vendor-brain/marketing-verticals": ["../../lib/vendor-brain/src/marketing-verticals.ts"]
     }
   },
   "references": [
     {
       "path": "../../lib/api-client-react"
+    },
+    {
+      "path": "../../lib/vendor-brain"
     }
   ]
 }
