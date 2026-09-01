@@ -4,6 +4,7 @@ import {
   billingEventsTable,
   db,
   dealsTable,
+  leadsTable,
   subscriptionsTable,
   tenantsTable,
 } from "@workspace/db";
@@ -14,6 +15,7 @@ import {
   logicalDueFromVendorAiCycleKey,
 } from "../lib/vendorai-subscription-rules.js";
 import { ensureTenantPlanAndCommission } from "../lib/deal-closure-commission.js";
+import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const MAX_SUBSCRIPTIONS_PER_RUN = 200;
 
@@ -108,6 +110,45 @@ export async function runVendorAiSubscriptionPaymentSync(log: Logger): Promise<v
           ...(shouldAdvance ? { proximaCobranca: computedNextDue } : {}),
           updatedAt: new Date(),
         }).where(eq(subscriptionsTable.id, sub.id));
+      }
+
+      // Revenue recovery must be backed by actual money, never by lead intent.
+      // We emit it only when the persisted subscription was delinquent before
+      // this paid reconciliation. Event idempotency is tied to the paid cycle.
+      if (isRecovery && sub.sourceDealId) {
+        const [attribution] = await db
+          .select({
+            marketingTenantId: dealsTable.tenantId,
+            leadId: dealsTable.leadId,
+            campaignId: leadsTable.adCampaignId,
+          })
+          .from(dealsTable)
+          .leftJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+          .where(eq(dealsTable.id, sub.sourceDealId))
+          .limit(1);
+
+        if (attribution?.campaignId) {
+          await recordAdCampaignEvent({
+            tenantId: attribution.marketingTenantId,
+            campaignId: attribution.campaignId,
+            eventType: "subscription_recovered",
+            severity: "success",
+            message: "Pagamento em atraso recuperado e assinatura VendorAI reativada.",
+            dedupeKey: `billing:${event.id}:subscription_recovered`,
+            metadata: {
+              subscriptionId: sub.id,
+              billingEventId: event.id,
+              dealId: sub.sourceDealId,
+              leadId: attribution.leadId,
+              customerTenantId: sub.tenantId,
+              cadence: event.tipo,
+              value: Number(event.valor ?? 0),
+              currency: "BRL",
+              recoveredAt: event.paidAt?.toISOString() ?? new Date().toISOString(),
+              cycleKey: event.mes,
+            },
+          });
+        }
       }
 
       if (needsTrialActivation) activated++;
