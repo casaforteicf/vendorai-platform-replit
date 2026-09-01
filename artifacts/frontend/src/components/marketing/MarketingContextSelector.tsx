@@ -105,9 +105,15 @@ export function MarketingContextSelector({
       audienceNiche,
       campaignGoal,
     );
+
+    // businessVerticalSlug is optional in the state. When there is no official
+    // profile slug, the derived value is "" while the stored value is undefined.
+    // Comparing those values directly makes this effect emit on every render,
+    // which can trigger React error #185 (maximum update depth exceeded).
+    const currentBusinessVerticalSlug = value.businessVerticalSlug ?? "";
     if (
       value.businessVertical === businessVertical &&
-      value.businessVerticalSlug === businessVerticalSlug &&
+      currentBusinessVerticalSlug === businessVerticalSlug &&
       value.nicheName === summary
     ) return;
 
