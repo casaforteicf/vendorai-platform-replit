@@ -29,13 +29,18 @@ export function isSubscriptionPlanSlug(value: string): value is SubscriptionPlan
   return (SUBSCRIPTION_PLAN_SLUGS as readonly string[]).includes(value);
 }
 
-export function addCalendarMonth(date: Date): Date {
+/**
+ * Advances one calendar month while optionally preserving a contractual anchor
+ * day. Example with anchor 31: Jan 31 → Feb 28/29 → Mar 31, instead of drifting
+ * permanently to the 28th after February.
+ */
+export function addCalendarMonth(date: Date, anchorDay = date.getUTCDate()): Date {
   const result = new Date(date);
-  const originalDay = result.getUTCDate();
   result.setUTCDate(1);
   result.setUTCMonth(result.getUTCMonth() + 1);
   const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
-  result.setUTCDate(Math.min(originalDay, lastDay));
+  const normalizedAnchor = Math.min(31, Math.max(1, Math.trunc(anchorDay)));
+  result.setUTCDate(Math.min(normalizedAnchor, lastDay));
   return result;
 }
 
