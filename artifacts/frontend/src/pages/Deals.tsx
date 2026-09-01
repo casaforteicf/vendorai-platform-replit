@@ -1390,6 +1390,10 @@ function EditDealSheet({
   const quoteFileRef = useRef<HTMLInputElement>(null);
 
   async function handleQuoteUpload(file: File) {
+    if (!form.getValues("leadId")) {
+      toast({ title: "Vincule um lead antes de importar o orçamento", description: "Selecione um lead existente ou crie um novo na tela de Leads.", variant: "destructive" });
+      return;
+    }
     setExtracting(true);
     setExtractedInfo(null);
     try {
@@ -1525,7 +1529,7 @@ function EditDealSheet({
                 variant="outline"
                 size="sm"
                 className="w-full gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
-                disabled={extracting}
+                disabled={extracting || !form.watch("leadId")}
                 onClick={() => quoteFileRef.current?.click()}
               >
                 {extracting ? (
@@ -1535,7 +1539,7 @@ function EditDealSheet({
                 )}
               </Button>
               <p className="text-[11px] text-muted-foreground text-center">
-                PDF, imagem ou Word — IA extrai o valor e itens automaticamente
+                Selecione um lead acima ou <a href="/leads" target="_blank" rel="noreferrer" className="font-medium text-violet-700 underline">crie um novo lead</a>. PDF, imagem ou Word.
               </p>
             </div>
 
@@ -2278,6 +2282,10 @@ export default function Deals() {
   }
 
   async function handleCreateQuoteUpload(file: File) {
+    if (!createForm.getValues("leadId")) {
+      toast({ title: "Vincule um lead antes de importar o orçamento", description: "Selecione um lead existente ou crie um novo na tela de Leads.", variant: "destructive" });
+      return;
+    }
     setCreateExtracting(true);
     setCreateExtractedInfo(null);
     try {
@@ -2743,7 +2751,7 @@ export default function Deals() {
                     variant="outline"
                     size="sm"
                     className="w-full gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
-                    disabled={createExtracting}
+                    disabled={createExtracting || !createForm.watch("leadId")}
                     onClick={() => createQuoteFileRef.current?.click()}
                   >
                     {createExtracting ? (
@@ -2753,7 +2761,7 @@ export default function Deals() {
                     )}
                   </Button>
                   <p className="text-[11px] text-muted-foreground text-center">
-                    PDF, imagem ou Word — IA extrai o valor e itens automaticamente
+                    Selecione um lead acima ou <a href="/leads" target="_blank" rel="noreferrer" className="font-medium text-violet-700 underline">crie um novo lead</a>. PDF, imagem ou Word.
                   </p>
                 </div>
 
