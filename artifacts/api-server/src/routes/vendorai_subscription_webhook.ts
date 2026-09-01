@@ -74,15 +74,16 @@ router.post("/webhooks/asaas", async (req, res, next) => {
     return;
   }
 
-  if (!billingEvent?.mes.startsWith("subscription:")) {
+  const cycleKey = billingEvent?.mes;
+  if (!billingEvent || !cycleKey || !cycleKey.startsWith("subscription:")) {
     next();
     return;
   }
   const resolvedBillingEvent = billingEvent;
 
-  const subscriptionId = subscriptionIdFromCycleKey(resolvedBillingEvent.mes);
+  const subscriptionId = subscriptionIdFromCycleKey(cycleKey);
   if (!subscriptionId) {
-    req.log.error({ billingEventId: resolvedBillingEvent.id, cycleKey: resolvedBillingEvent.mes }, "vendorai-subscription-webhook: invalid cycle key");
+    req.log.error({ billingEventId: resolvedBillingEvent.id, cycleKey }, "vendorai-subscription-webhook: invalid cycle key");
     res.status(200).json({ ok: true, ignored: true, reason: "invalid_subscription_cycle" });
     return;
   }
