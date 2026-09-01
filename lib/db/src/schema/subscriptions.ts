@@ -48,12 +48,15 @@ export const subscriptionsTable = pgTable(
     promoPhase2Price: numeric("promo_phase_2_price", { precision: 12, scale: 2 }),
     promoPhase2EndsAt: timestamp("promo_phase_2_ends_at"),
     regularPriceAtTransition: numeric("regular_price_at_transition", { precision: 12, scale: 2 }),
+    // Monthly-equivalent catalog price frozen when the customer first enters
+    // annual billing. The actual annual charge is this snapshot × 12.
+    annualPriceAtTransition: numeric("annual_price_at_transition", { precision: 12, scale: 2 }),
     acceptedOfferAt: timestamp("accepted_offer_at"),
     acceptedTermsAt: timestamp("accepted_terms_at"),
     acceptedTermsVersion: text("accepted_terms_version"),
 
-    // VendorAI launch subscriptions use application-managed monthly charges in
-    // Asaas so the price can change across promo_1 → promo_2 → regular.
+    // VendorAI launch subscriptions use application-managed charges in Asaas
+    // so pricing/cadence can evolve from promo monthly cycles to regular annual.
     billingProvider: text("billing_provider").default("asaas"),
     asaasCustomerId: text("asaas_customer_id"),
     asaasSubscriptionId: text("asaas_subscription_id"),
@@ -73,6 +76,7 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable, {
   promoPhase1Price: decimalField.optional(),
   promoPhase2Price: decimalField.optional(),
   regularPriceAtTransition: decimalField.optional(),
+  annualPriceAtTransition: decimalField.optional(),
   dataInicio: z.coerce.date(),
   proximaCobranca: z.coerce.date().optional(),
   trialEndsAt: z.coerce.date().optional(),
@@ -87,6 +91,7 @@ export const updateSubscriptionSchema = createSelectSchema(subscriptionsTable, {
   promoPhase1Price: decimalField.optional(),
   promoPhase2Price: decimalField.optional(),
   regularPriceAtTransition: decimalField.optional(),
+  annualPriceAtTransition: decimalField.optional(),
   dataInicio: z.coerce.date().optional(),
   proximaCobranca: z.coerce.date().optional(),
   trialEndsAt: z.coerce.date().optional(),
