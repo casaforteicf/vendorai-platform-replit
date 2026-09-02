@@ -1806,6 +1806,7 @@ export interface PipelineStage {
   ordem: number;
   isSystem: boolean;
   slaMinutos?: number | null;
+  elegiveisUserIds?: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1823,6 +1824,7 @@ export interface UpdatePipelineStageBody {
   bg?: string;
   ordem?: number;
   slaMinutos?: number | null;
+  elegiveisUserIds?: string[] | null;
 }
 
 export interface CreateFunilBody {

@@ -16,6 +16,7 @@ export interface PipelineStage {
   ordem: number;
   isSystem: boolean;
   slaMinutos?: number | null;
+  elegiveisUserIds?: string[] | null;
   createdAt: Date;
   updatedAt: Date;
 }

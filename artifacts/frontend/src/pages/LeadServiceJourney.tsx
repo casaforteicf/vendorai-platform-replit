@@ -9,6 +9,7 @@ import { Check, ChevronLeft, ChevronRight, ClipboardCheck, Loader2, Save } from 
 import { useToast } from "@/hooks/use-toast";
 import LeadBriefingTab from "./LeadBriefingTab";
 import { OportunidadesPrevistasCard } from "@/components/OportunidadesPrevistasCard";
+import { getListActivitiesQueryKey } from "@workspace/api-client-react";
 
 type JourneyItem = { checked: boolean; note?: string };
 type JourneyChecklist = Record<string, JourneyItem>;
@@ -129,6 +130,20 @@ export default function LeadServiceJourney({ leadId, tenantId, lead }: { leadId:
     onError: (error: Error) => toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }),
   });
 
+  // Registra a conclusão da atividade no histórico real do lead (não fica
+  // isolado só no checklist) — aparece em Atividades/histórico do lead.
+  const logActivity = useMutation({
+    mutationFn: (payload: { titulo: string; descricao?: string }) =>
+      fetch("/api/activities", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ tenantId, leadId, tipo: "tarefa", status: "concluida", titulo: payload.titulo, descricao: payload.descricao || undefined }),
+      }).then(readJson),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId }) });
+    },
+  });
+
   const stageIndex = Math.max(0, STAGES.findIndex(stage => stage.id === stageId));
   const stage = STAGES[stageIndex];
   const stageKeys = useMemo(() => stage.items.map(([key]) => `${stage.id}.${key}`), [stage]);
@@ -189,7 +204,7 @@ export default function LeadServiceJourney({ leadId, tenantId, lead }: { leadId:
                 const value = checklist[key] || { checked: false, note: "" };
                 return <div key={key} className={`rounded-lg border p-3 transition-colors ${value.checked ? "border-emerald-200 bg-emerald-50/50" : ""}`}>
                   <div className="flex items-start gap-3">
-                    <button aria-label={`Concluir ${label}`} onClick={() => { const next = { ...checklist, [key]: { ...value, checked: !value.checked } }; persist(stage.id, next); }} className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${value.checked ? "border-emerald-600 bg-emerald-600 text-white" : "border-muted-foreground/40"}`}>{value.checked && <Check className="h-3.5 w-3.5" />}</button>
+                    <button aria-label={`Concluir ${label}`} onClick={() => { const willComplete = !value.checked; const next = { ...checklist, [key]: { ...value, checked: willComplete } }; persist(stage.id, next); if (willComplete) logActivity.mutate({ titulo: label, descricao: value.note || undefined }); }} className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${value.checked ? "border-emerald-600 bg-emerald-600 text-white" : "border-muted-foreground/40"}`}>{value.checked && <Check className="h-3.5 w-3.5" />}</button>
                     <div className="min-w-0 flex-1"><p className="text-sm font-medium">{label}</p><p className="text-xs text-muted-foreground">{hint}</p>
                       <Input className="mt-2 h-8 text-xs" value={value.note || ""} placeholder="Anotação específica desta etapa (opcional)" onChange={event => updateItem(key, { note: event.target.value })} onBlur={() => save.mutate({ journeyStage: stage.id, journeyChecklist: checklist })} />
                     </div>

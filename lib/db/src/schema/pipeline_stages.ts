@@ -22,6 +22,9 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   // Minutos que um deal pode ficar nesta etapa antes do card ficar
   // vermelho no Kanban. Null = sem SLA (nunca fica vermelho).
   slaMinutos: integer("sla_minutos"),
+  // IDs dos usuários habilitados a ser responsável quando um negócio
+  // entra nesta etapa. Null/vazio = qualquer usuário do tenant pode.
+  elegiveisUserIds: text("elegiveis_user_ids").array(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
