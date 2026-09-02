@@ -1666,7 +1666,19 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           const senderName = (contacts[0] as any)?.profile?.name as string | undefined;
 
           let mensagem     = "";
-          let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+          let tipoConteudo: "texto" | "audio" | "imagem" | "video" | "documento" = "texto";
+          let midiaUrl: string | null = null;
+          let midiaMimeType: string | null = null;
+          let midiaFileName: string | null = null;
+          let midiaSize: number | null = null;
+
+          async function salvarMetaMidia(buffer: Buffer, mimeType: string, fileName: string) {
+            const objectPath = await objectStorage.savePrivateBuffer(buffer, mimeType, fileName);
+            midiaUrl = `/api/storage${objectPath}`;
+            midiaMimeType = mimeType;
+            midiaFileName = fileName;
+            midiaSize = buffer.length;
+          }
 
           if (msgType === "text") {
             mensagem = ((msg["text"] as Record<string, string>)?.body) ?? "";
@@ -1677,12 +1689,14 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
               req.log.warn({ phone, msgType }, "meta-webhook: audio received but no access token — skipping");
               continue;
             }
-            const audioId = ((msg["audio"] ?? msg["voice"]) as Record<string, string>)?.id;
+            const audioData = ((msg["audio"] ?? msg["voice"]) as Record<string, string>) ?? {};
+            const audioId = audioData.id;
             if (!audioId) continue;
             try {
               const buf = await downloadMetaMedia(audioId, whatsappConnection.metaAccessToken);
               mensagem = await transcribeAudioBuffer(buf, tenantId, req.log);
               tipoConteudo = "audio";
+              await salvarMetaMidia(buf, audioData.mime_type || "audio/ogg", "audio.ogg");
               req.log.info({ audioId, chars: mensagem.length }, "meta-webhook: audio transcribed");
             } catch (err) {
               req.log.error({ err, audioId }, "meta-webhook: audio transcription failed — skipping");
@@ -1704,9 +1718,51 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
               const dataUrl = `data:${mimeType};base64,${buf.toString("base64")}`;
               mensagem = await interpretImage(dataUrl, tenantId, caption, req.log);
               tipoConteudo = "imagem";
+              await salvarMetaMidia(buf, mimeType, "foto.jpg");
               req.log.info({ imageId, chars: mensagem.length }, "meta-webhook: image interpreted");
             } catch (err) {
               req.log.error({ err, imageId }, "meta-webhook: image interpretation failed — skipping");
+              continue;
+            }
+
+          } else if (msgType === "video") {
+            if (!whatsappConnection.metaAccessToken) {
+              req.log.warn({ phone }, "meta-webhook: video received but no access token — skipping");
+              continue;
+            }
+            const videoData = (msg["video"] as Record<string, string>) ?? {};
+            const videoId = videoData.id;
+            if (!videoId) continue;
+            try {
+              const buf = await downloadMetaMedia(videoId, whatsappConnection.metaAccessToken);
+              mensagem = videoData.caption?.trim() || "Vídeo enviado pelo WhatsApp";
+              tipoConteudo = "video";
+              await salvarMetaMidia(buf, videoData.mime_type || "video/mp4", "video.mp4");
+            } catch (err) {
+              req.log.error({ err, videoId }, "meta-webhook: video download failed — skipping");
+              continue;
+            }
+
+          } else if (msgType === "document") {
+            if (!whatsappConnection.metaAccessToken) {
+              req.log.warn({ phone }, "meta-webhook: document received but no access token — skipping");
+              continue;
+            }
+            const documentData = (msg["document"] as Record<string, string>) ?? {};
+            const documentId = documentData.id;
+            const fileName = documentData.filename || "documento";
+            const mimeType = documentData.mime_type || "application/octet-stream";
+            if (!documentId) continue;
+            try {
+              const buf = await downloadMetaMedia(documentId, whatsappConnection.metaAccessToken);
+              const supportedForText = mimeType.includes("pdf") || mimeType.includes("word") || /\.(pdf|doc|docx)$/i.test(fileName);
+              mensagem = supportedForText
+                ? await interpretPdfBuffer(buf, fileName, req.log)
+                : (documentData.caption?.trim() || `Documento: ${fileName}`);
+              tipoConteudo = "documento";
+              await salvarMetaMidia(buf, mimeType, fileName);
+            } catch (err) {
+              req.log.error({ err, documentId }, "meta-webhook: document processing failed — skipping");
               continue;
             }
 
@@ -1716,6 +1772,25 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           }
 
           if (!mensagem.trim()) continue;
+
+          const supportIngest = await tryIngestTechnicianSupportMessage({
+            tenantId,
+            phone,
+            text: mensagem,
+            mediaUrl: midiaUrl,
+            mediaType: tipoConteudo,
+            mimeType: midiaMimeType,
+            fileName: midiaFileName,
+            fileSize: midiaSize,
+            transcription: tipoConteudo === "audio" ? mensagem : null,
+            sourceMessageId: String(msg["id"] ?? "") || null,
+            provider: "meta",
+            log: req.log,
+          });
+          if (supportIngest.handled) {
+            req.log.info({ supportIngest, phone }, "meta-webhook: atualização de técnico absorvida pela assistência");
+            continue;
+          }
 
           // Find or create lead (dedup by normalized phone)
           const normalized = storePhone(phone) ?? phone;
@@ -1777,6 +1852,7 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             conteudo: mensagem,
             enviadoPor: "lead",
             tipoConteudo,
+            midiaUrl,
             status: "entregue",
           }).returning();
 
