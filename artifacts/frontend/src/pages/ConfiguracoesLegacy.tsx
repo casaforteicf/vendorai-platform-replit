@@ -1522,7 +1522,7 @@ export default function Configuracoes() {
       const messages: Record<string, string> = {
         access_denied: "Permissão negada. Tente novamente.",
         invalid_state: "Sessão inválida. Tente novamente.",
-        no_pages: "Nenhuma página encontrada. Verifique se sua conta tem uma página com Instagram Business.",
+        no_pages: "Nenhuma conta profissional do Instagram foi encontrada. Confirme que a conta é profissional e tente novamente.",
         token_exchange: "A Meta recusou a troca do código de acesso. Verifique o App Secret e a URL de callback do Instagram.",
         short_token_exchange: "A Meta recusou o código inicial. Verifique INSTAGRAM_APP_SECRET e a URL de callback cadastrada.",
         long_token_exchange: "O código inicial foi aceito, mas falhou ao gerar o token de longa duração.",
@@ -3847,7 +3847,7 @@ export default function Configuracoes() {
               <div>
                 <p className="text-sm font-semibold">Meta</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Instagram, Facebook, Meta Ads, WhatsApp e Messenger ficam juntos neste grupo.
+                  Instagram profissional, anúncios Meta e WhatsApp oficial ficam organizados em um único lugar.
                 </p>
               </div>
               <div className="space-y-4">
@@ -3857,11 +3857,10 @@ export default function Configuracoes() {
                 <div>
                   <h2 className="font-semibold text-lg flex items-center gap-2">
                     <Building2 className="h-5 w-5 text-blue-600" />
-                    Meta Business
+                    Central Meta
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Uma entrada para conectar e acompanhar Facebook, Instagram, anúncios e WhatsApp oficial.
-                    A Meta pode solicitar confirmações adicionais conforme cada produto.
+                    Conecte os serviços que o VendorAI usa no dia a dia. Instagram cuida de conteúdo e mensagens; Meta Ads cuida do patrocínio; WhatsApp cuida do atendimento.
                   </p>
                 </div>
                 {igConnection.data?.connected &&
@@ -3876,10 +3875,9 @@ export default function Configuracoes() {
                 )}
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 {[
                   { label: "Instagram profissional", connected: Boolean(igConnection.data?.connected) },
-                  { label: "Facebook / Página", connected: Boolean(igConnection.data?.connected && igConnection.data.pageId) },
                   { label: "Meta Ads", connected: Boolean(metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection) },
                   { label: "WhatsApp oficial", connected: Boolean(waConnection.data?.connected) },
                 ].map((item) => (
@@ -3937,9 +3935,8 @@ export default function Configuracoes() {
                     Meta Ads
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Conecte sua conta de anúncios da Meta (Facebook + Instagram) para publicar campanhas de imagem
-                    diretamente pelo VendorAI. Requer o Instagram já conectado (Integrações), pois o anúncio roda
-                    na mesma Página do Facebook vinculada lá. Nenhuma campanha é publicada sem sua confirmação manual.
+                    Conecte sua conta de anúncios da Meta para criar e patrocinar campanhas no Facebook e Instagram.
+                    Para patrocinar uma publicação existente, use a mesma conta profissional conectada no Instagram. Nenhuma campanha é ativada sem sua confirmação.
                   </p>
                 </div>
                 {metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection && (
@@ -4074,18 +4071,18 @@ export default function Configuracoes() {
               )}
             </div>
 
-            {/* Instagram DM — OAuth via Meta */}
-            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
+            {/* Instagram profissional — conexão direta para conteúdo, DMs e insights */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
                     </svg>
-                    Instagram DM — Omnichannel
+                    Instagram profissional
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Conecte sua página do Instagram Business via Meta OAuth para enviar e receber DMs diretamente pelo VendorAI.
+                    Uma única conexão para publicar conteúdo, receber DMs e acompanhar insights. Para patrocinar publicações, conecte também o Meta Ads.
                   </p>
                 </div>
                 {igConnection.data?.connected && (
@@ -4103,45 +4100,63 @@ export default function Configuracoes() {
                 </div>
               ) : igConnection.data?.connected ? (
                 <div className="space-y-4">
-                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Conta:</span>
-                      <span className="text-sm font-semibold text-foreground">@{igConnection.data.username}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Page ID:</span>
-                      <code className="text-sm font-mono text-muted-foreground">{igConnection.data.pageId}</code>
-                    </div>
-                    {igConnection.data.tokenExpiresAt && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Token expira em:</span>
-                        <span className="text-sm text-muted-foreground">
-                          {format(new Date(igConnection.data.tokenExpiresAt), "dd/MM/yyyy HH:mm")}
-                        </span>
+                  <div className="rounded-xl bg-muted/30 border p-4 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Conta conectada</p>
+                        <p className="text-base font-semibold text-foreground">@{igConnection.data.username}</p>
                       </div>
-                    )}
+                      {igConnection.data.tokenExpiresAt && (
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">Acesso válido até</p>
+                          <p className="text-sm font-medium">{format(new Date(igConnection.data.tokenExpiresAt), "dd/MM/yyyy")}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">O que já está disponível</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="secondary"><CheckCircle2 className="h-3 w-3 mr-1" /> Publicar conteúdo</Badge>
+                        <Badge variant="secondary"><CheckCircle2 className="h-3 w-3 mr-1" /> DMs</Badge>
+                        <Badge variant="secondary"><CheckCircle2 className="h-3 w-3 mr-1" /> Insights</Badge>
+                        {metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection ? (
+                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400">
+                            <CheckCircle2 className="h-3 w-3 mr-1" /> Patrocínio disponível
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Patrocínio: conecte Meta Ads</Badge>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <Button
-                      onClick={onConnectInstagram}
-                      variant="outline"
-                      className="gap-2"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Reconectar
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" onClick={() => window.location.assign("/content")} className="gap-2">
+                      <Wand2 className="h-4 w-4" /> Criar conteúdo
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => window.location.assign("/ads")} className="gap-2">
+                      <TrendingUp className="h-4 w-4" /> Anúncios patrocinados
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+                    <Button onClick={onConnectInstagram} variant="ghost" size="sm" className="gap-2">
+                      <RefreshCw className="h-4 w-4" /> Reconectar
                     </Button>
                     <Button
                       onClick={onRefreshInstagram}
-                      variant="outline"
+                      variant="ghost"
+                      size="sm"
                       disabled={refreshIg.isPending}
                       className="gap-2"
                     >
                       <RefreshCw className="h-4 w-4" />
-                      {refreshIg.isPending ? "Renovando…" : "Renovar token"}
+                      {refreshIg.isPending ? "Renovando…" : "Renovar acesso"}
                     </Button>
                     <Button
-                      variant="outline"
+                      variant="ghost"
+                      size="sm"
                       onClick={onDisconnectInstagramOAuth}
                       disabled={disconnectIg.isPending}
                       className="gap-2 text-destructive hover:text-destructive"
@@ -4151,31 +4166,28 @@ export default function Configuracoes() {
                     </Button>
                   </div>
 
-                  <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Webhook de entrada — DMs recebidas</p>
-                    <p className="text-xs text-muted-foreground">Configure o n8n para encaminhar DMs recebidas do Instagram para:</p>
-                    <code className="text-xs block text-muted-foreground">
-                      POST /api/tenants/{tenantId}/webhooks/instagram
-                    </code>
-                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-1">
-{`Headers:
-  X-Webhook-Secret: <seu-webhook-secret>
-  Content-Type: application/json
-
-Body:
-{
-  "igsid": "123456789",
-  "mensagem": "Olá, quero saber mais",
-  "nome": "João Silva"
-}`}
-                    </pre>
-                  </div>
+                  {showMetaDetails && (
+                    <div className="rounded-lg bg-muted/50 border p-4 space-y-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Detalhes técnicos</p>
+                      {igConnection.data.pageId && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">ID técnico:</span>
+                          <code className="text-xs font-mono text-muted-foreground">{igConnection.data.pageId}</code>
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">Webhook interno para DMs recebidas:</p>
+                      <code className="text-xs block text-muted-foreground">POST /api/tenants/{tenantId}/webhooks/instagram</code>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Clique no botão abaixo para autorizar a conexão com sua conta do Instagram Business via Meta.
-                  </p>
+                  <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
+                    <p className="text-sm font-medium">Conecte sua conta profissional do Instagram</p>
+                    <p className="text-sm text-muted-foreground">
+                      O VendorAI solicitará acesso para publicar conteúdo, receber mensagens e acompanhar insights. Depois, você poderá conectar o Meta Ads separadamente para patrocinar.
+                    </p>
+                  </div>
                   <Button
                     onClick={onConnectInstagram}
                     className="gap-2"
