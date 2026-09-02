@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SiteGeneratorTab as CoreSiteGeneratorTab } from "./SiteGeneratorCore";
-import { getGetBusinessProfileByTenantQueryKey, useGetBusinessProfileByTenant, useRequestUploadUrl } from "@workspace/api-client-react";
+import { useRequestUploadUrl } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,7 +81,7 @@ function competitorHosts(keywords: Keyword[]) {
   return [...out];
 }
 
-async function resilientFetch(url: string, init: RequestInit = {}, maxAttempts = 9): Promise<Response> {
+async function resilientFetch(url: string, init: RequestInit = {}, maxAttempts = 3): Promise<Response> {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
@@ -186,15 +186,25 @@ function Governance({ tenantId, token }: { tenantId: string; token?: string | nu
 }
 
 function GeneratorWorkspace() {
-  const { user, token } = useAuth(); const tenantId = user?.tenantId ?? ""; const { toast } = useToast(); const uploadHook = useRequestUploadUrl();
+  const { user, token, tenantOverride } = useAuth(); const tenantId = user?.tenantId ?? ""; const { toast } = useToast(); const uploadHook = useRequestUploadUrl();
   const [mode, setMode] = useState<Mode>(() => (sessionStorage.getItem("vendorai_site_creation_mode") as Mode | null) ?? "new-site"); const [choosing, setChoosing] = useState(true); const [editContext, setEditContext] = useState(false); const [assetsOpen, setAssetsOpen] = useState(false); const [editor, setEditor] = useState(false); const [generating, setGenerating] = useState(false); const [error, setError] = useState<string | null>(null);
   const [audience, setAudience] = useState(""); const [offer, setOffer] = useState(""); const [objectiveId, setObjectiveId] = useState<(typeof OBJECTIVES)[number]["id"]>("leads"); const [name, setName] = useState(""); const [sector, setSector] = useState(""); const [desc, setDesc] = useState(""); const [notes, setNotes] = useState(""); const [tone, setTone] = useState("profissional");
   const [catalog, setCatalog] = useState<CatalogItem[]>([]); const [selected, setSelected] = useState<string[]>([]); const [images, setImages] = useState<string[]>([]); const [videos, setVideos] = useState<string[]>([]); const [videoUrl, setVideoUrl] = useState(""); const [testimonials, setTestimonials] = useState<Testimonial[]>([]); const [extras, setExtras] = useState<ExtraContent[]>([]); const [uploads, setUploads] = useState(0);
-  const [market, setMarket] = useState<{ tone?: string; keywords: Keyword[]; competitors: string[] } | null>(null); const [marketBusy, setMarketBusy] = useState(false); const [aiBusiness, setAiBusiness] = useState<AiBusinessSuggestions | null>(null); const [aiBusinessBusy, setAiBusinessBusy] = useState(false); const aiBusinessKey = useRef("");
+  const [market, setMarket] = useState<{ tone?: string; keywords: Keyword[]; competitors: string[] } | null>(null); const [marketBusy, setMarketBusy] = useState(false); const [aiBusiness, setAiBusiness] = useState<AiBusinessSuggestions | null>(null); const [aiBusinessBusy, setAiBusinessBusy] = useState(false); const [bp, setBp] = useState<any>(null); const aiBusinessKey = useRef(""); const aiBusinessFailedUntil = useRef(0);
   const [siteUrl, setSiteUrl] = useState(""); const [remodelLevel, setRemodelLevel] = useState<RemodelLevel>("complete"); const [preserve, setPreserve] = useState("Logo, identidade visual, conteúdos aprovados, URLs importantes e informações comerciais verdadeiras"); const [structure, setStructure] = useState<RemodelStructure | null>(null); const [remodelTone, setRemodelTone] = useState<unknown>(null); const [analyzing, setAnalyzing] = useState(false);
   const init = useRef(false); const defaults = useRef("");
-  const { data: bp } = useGetBusinessProfileByTenant(tenantId, { query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId && !editor } });
-  const rawProfile = (bp ?? {}) as any; const profileName = bp?.nomeFantasia ?? bp?.razaoSocial ?? rawProfile.nome ?? ""; const profileSector = bp?.vertical ?? rawProfile.segmento ?? rawProfile.setor ?? ""; const profileDesc = rawProfile.descricaoNegocio ?? rawProfile.descricao ?? rawProfile.sobreEmpresa ?? bp?.diferenciais ?? bp?.publicoAlvo ?? ""; const phone = bp?.telefone ?? rawProfile.whatsapp ?? ""; const logo = bp?.logoUrl ?? ""; const modeDef = MODES.find((m) => m.id === mode)!; const objective = OBJECTIVES.find((o) => o.id === objectiveId)!;
+  useEffect(() => {
+    if (!tenantId || editor) return;
+    let cancelled = false;
+    void resilientFetch(`/api/tenants/${tenantId}/site-generator/business-context`, { headers: headers(token), cache: "no-store" }, 2)
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!cancelled && response.ok) setBp(body.profile ?? null);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [tenantId, token, editor]);
+  const rawProfile = (bp ?? {}) as any; const profileName = bp?.nomeFantasia ?? bp?.razaoSocial ?? rawProfile.nome ?? tenantOverride?.name ?? ""; const profileSector = bp?.vertical ?? rawProfile.segmento ?? rawProfile.setor ?? tenantOverride?.vertical ?? ""; const profileDesc = rawProfile.descricaoNegocio ?? rawProfile.descricao ?? rawProfile.sobreEmpresa ?? bp?.diferenciais ?? bp?.publicoAlvo ?? ""; const phone = bp?.telefone ?? rawProfile.whatsapp ?? rawProfile.displayPhoneNumber ?? ""; const logo = bp?.logoUrl ?? tenantOverride?.logoUrl ?? ""; const logoForSite = logo ? (logo.startsWith("http://") || logo.startsWith("https://") ? logo : logo.startsWith("/objects/") ? `${window.location.origin}/api/storage${logo}` : logo.startsWith("/") ? `${window.location.origin}${logo}` : logo) : ""; const modeDef = MODES.find((m) => m.id === mode)!; const objective = OBJECTIVES.find((o) => o.id === objectiveId)!;
   useEffect(() => { if (!bp || init.current) return; init.current = true; setName(profileName); setSector(profileSector); setDesc(profileDesc); setAudience(bp?.publicoAlvo ?? ""); }, [bp, profileName, profileSector, profileDesc]);
   useEffect(() => { if (!tenantId || editor) return; fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: headers(token), cache: "no-store" }).then((r) => r.ok ? r.json() : []).then((rows) => setCatalog(Array.isArray(rows) ? rows.filter((p: CatalogItem) => p.ativo !== false) : [])).catch(() => setCatalog([])); }, [tenantId, token, editor]);
   useEffect(() => { if (!catalog.length) return; const key = `${mode}:${catalog.length}`; if (defaults.current === key) return; defaults.current = key; if (mode === "catalog") { setSelected(catalog.slice(0, 30).map((p) => p.id)); setOffer((v) => v || "Catálogo de produtos e serviços"); } else if (mode === "new-site") setSelected(catalog.slice(0, 6).map((p) => p.id)); else if (mode === "product" || mode === "ecommerce") setSelected([]); }, [catalog, mode]);
@@ -255,7 +265,7 @@ function GeneratorWorkspace() {
   async function loadAiBusinessSuggestions(force = false) {
     if (!tenantId || editor || aiBusinessBusy) return;
     const contextKey = `${tenantId}:${mode}:${profileName}:${profileSector}:${profileDesc}:${catalog.length}`;
-    if (!force && aiBusinessKey.current === contextKey) return;
+    if (!force && (aiBusinessKey.current === contextKey || Date.now() < aiBusinessFailedUntil.current)) return;
     aiBusinessKey.current = contextKey;
     setAiBusinessBusy(true);
     try {
@@ -263,22 +273,24 @@ function GeneratorWorkspace() {
         method: "POST",
         headers: headers(token),
         body: JSON.stringify({ creationMode: mode }),
-      }, 4);
+      }, 1);
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? `Não foi possível analisar o perfil (${response.status})`);
+      aiBusinessFailedUntil.current = 0;
       setAiBusiness({ audiences: Array.isArray(body.audiences) ? body.audiences : [], offers: Array.isArray(body.offers) ? body.offers : [] });
     } catch (error) {
-      if (force) toast({ title: "Não foi possível atualizar as sugestões", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      aiBusinessFailedUntil.current = Date.now() + 60_000;
+      if (force) toast({ title: "Sugestões de IA temporariamente indisponíveis", description: "As sugestões do perfil e do catálogo continuam disponíveis e não bloqueiam a geração." });
     } finally {
       setAiBusinessBusy(false);
     }
   }
 
   useEffect(() => {
-    if (editor || !tenantId || (!bp && !catalog.length)) return;
-    const timer = window.setTimeout(() => { void loadAiBusinessSuggestions(false); }, 700);
+    if (editor || !tenantId || (!profileName && !profileSector && !catalog.length)) return;
+    const timer = window.setTimeout(() => { void loadAiBusinessSuggestions(false); }, 900);
     return () => window.clearTimeout(timer);
-  }, [tenantId, mode, bp, catalog.length, editor]);
+  }, [tenantId, mode, profileName, profileSector, profileDesc, catalog.length, editor]);
 
   function applyBusinessDefaults() {
     let changed = false;
@@ -415,7 +427,7 @@ function GeneratorWorkspace() {
       const productData = selectedProducts.map((p) => ({ name: p.nome, price: price(p.precoBase), description: p.descricao || undefined, imageUrl: p.imagens?.[0] || p.imagemUrl || undefined, marca: p.marca || undefined }));
       const validExtras = extras.filter((x) => x.title.trim() || x.text.trim()); const extraText = validExtras.length ? `CONTEÚDOS ADICIONAIS REAIS:\n${validExtras.map((x, i) => `${i + 1}. ${x.title || "Conteúdo"}: ${x.text}${x.mediaUrl ? ` | mídia: ${x.mediaUrl}` : ""}`).join("\n")}` : "";
       const testImages = validTestimonials.filter((t) => t.mediaType === "image").map((t) => t.mediaUrl); const testVideos = validTestimonials.filter((t) => t.mediaType === "video").map((t) => t.mediaUrl); const extraImages = validExtras.filter((x) => x.mediaType === "image").map((x) => x.mediaUrl); const extraVideos = validExtras.filter((x) => x.mediaType === "video").map((x) => x.mediaUrl);
-      await runJob({ type: modeDef.type, creationMode: mode, name: resolvedName, sector: resolvedSector, desc: [resolvedDesc, `Público prioritário: ${audience}.`, `Oferta principal: ${offer || selectedProducts.map((p) => p.nome).join(", ") || "produtos e serviços da empresa"}.`, `Objetivo: ${objective.label}.`, marketText, remodelText].filter(Boolean).join("\n\n"), pain: `O público ${audience} precisa compreender com clareza como ${offer || "a solução"} atende sua necessidade e avançar para ${objective.label.toLowerCase()}.`, tone, cta: objective.cta, color: "#6366F1", products: productData, whatsapp: phone, images: [...images, ...testImages, ...extraImages], videos: [...videos, ...testVideos, ...extraVideos], servicos: [selectedProducts.length ? `Produtos reais selecionados: ${selectedProducts.map((p) => p.nome).join(", ")}` : "", testimony, extraText, notes ? `Orientação adicional do usuário:\n${notes}` : ""].filter(Boolean).join("\n\n"), nicheName: audience, productIds: selected, productNames: selectedProducts.map((p) => p.nome), produtoId: mode === "product" ? selected[0] : undefined, remodelContext: mode === "remodel" ? { siteUrl, remodelLevel, preserve, structure: st, brandTone: remodelTone } : undefined });
+      await runJob({ type: modeDef.type, creationMode: mode, name: resolvedName, sector: resolvedSector, desc: [resolvedDesc, `Público prioritário: ${audience}.`, `Oferta principal: ${offer || selectedProducts.map((p) => p.nome).join(", ") || "produtos e serviços da empresa"}.`, `Objetivo: ${objective.label}.`, marketText, remodelText].filter(Boolean).join("\n\n"), pain: `O público ${audience} precisa compreender com clareza como ${offer || "a solução"} atende sua necessidade e avançar para ${objective.label.toLowerCase()}.`, tone, cta: objective.cta, color: "#6366F1", logoUrl: logoForSite, products: productData, whatsapp: phone, images: [...images, ...testImages, ...extraImages], videos: [...videos, ...testVideos, ...extraVideos], servicos: [selectedProducts.length ? `Produtos reais selecionados: ${selectedProducts.map((p) => p.nome).join(", ")}` : "", testimony, extraText, notes ? `Orientação adicional do usuário:\n${notes}` : ""].filter(Boolean).join("\n\n"), nicheName: audience, productIds: selected, productNames: selectedProducts.map((p) => p.nome), produtoId: mode === "product" ? selected[0] : undefined, remodelContext: mode === "remodel" ? { siteUrl, remodelLevel, preserve, structure: st, brandTone: remodelTone } : undefined });
       setEditor(true); toast({ title: "Site gerado", description: "Abrindo o preview para revisão." });
     } catch (e) { const m = e instanceof Error ? e.message : "Não foi possível gerar"; setError(m); toast({ title: m.includes("continua em processamento") ? "Geração continua no servidor" : "Erro na geração", description: m, variant: m.includes("continua em processamento") ? "default" : "destructive" }); } finally { setGenerating(false); }
   }
@@ -425,7 +437,7 @@ function GeneratorWorkspace() {
     {choosing ? <Card><CardHeader><div className="flex items-center justify-between gap-2"><div><CardTitle className="flex items-center gap-2 text-base"><Wand2 className="h-4 w-4 text-primary" />O que você quer criar?</CardTitle><p className="mt-1 text-sm text-muted-foreground">Esta é a única escolha de tipo. Não será perguntada novamente abaixo.</p></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void previewLatest()}><Globe className="mr-2 h-4 w-4" />Visualizar site</Button><Button size="sm" variant="outline" onClick={() => void openSites()}>Meus sites</Button></div></div></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{MODES.map((m) => { const I = m.icon; return <button key={m.id} type="button" onClick={() => choose(m.id)} className={`rounded-xl border p-4 text-left transition-all ${mode === m.id ? "border-primary bg-primary/5" : "hover:border-primary/40"}`}><I className="h-5 w-5 text-primary" /><p className="mt-3 text-sm font-semibold">{m.title}</p><p className="mt-1 text-xs text-muted-foreground">{m.desc}</p></button>; })}</div></CardContent></Card> : <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/20 px-4 py-3"><div className="flex items-center gap-2"><Badge>{modeDef.short}</Badge><span className="text-xs text-muted-foreground">Modo definido. Sem segunda seleção de tipo.</span></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void previewLatest()}><Globe className="mr-2 h-4 w-4" />Visualizar site</Button><Button size="sm" variant="ghost" onClick={() => setChoosing(true)}>Trocar</Button></div></div>}
     {!choosing && <><div className="overflow-x-auto"><div className="flex min-w-max items-center gap-2 rounded-xl border bg-muted/20 p-3">{STEPS.map((s, i) => <div key={s} className="flex items-center gap-2"><span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] ${i === 0 ? "bg-primary text-white" : "border bg-background"}`}>{i + 1}</span><span className={`text-xs ${i === 0 ? "font-semibold" : "text-muted-foreground"}`}>{s}</span>{i < STEPS.length - 1 && <span className="text-muted-foreground/40">→</span>}</div>)}</div></div>
       <Card className="border-primary/20"><CardHeader><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" />Briefing inteligente</CardTitle><p className="mt-1 text-sm text-muted-foreground">O VendorAI usa primeiro o que já conhece e só pede confirmação do que faltar.</p></div><div className="min-w-52 rounded-lg border p-3"><div className="mb-2 flex justify-between text-xs"><span>Contexto disponível</span><strong className="text-primary">{completeness}%</strong></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${completeness}%` }} /></div></div></div></CardHeader><CardContent className="space-y-4">
-        <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-xl border bg-muted/20 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">O VendorAI já sabe</p><div className="mt-2 flex items-center gap-3">{logo ? <img src={logo.startsWith("/objects/") ? `/api/storage${logo}` : logo} alt="Logo" className="h-10 w-10 rounded-lg border bg-white object-contain p-1" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <Building2 className="h-8 w-8 text-muted-foreground" />}<div><p className="text-sm font-semibold">{name || profileName || "Nome não informado"}</p><p className="text-xs text-muted-foreground">{sector || profileSector || "Segmento não informado"}</p></div></div><div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">Catálogo: {catalog.length}</Badge><Badge variant="outline">Logo: {logo ? "✓" : "—"}</Badge><Badge variant="outline">WhatsApp: {phone ? "✓" : "—"}</Badge></div></div>
+        <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-xl border bg-muted/20 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">O VendorAI já sabe</p><div className="mt-2 flex items-center gap-3">{logo ? <img src={logoForSite || logo} alt="Logo" className="h-10 w-10 rounded-lg border bg-white object-contain p-1" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <Building2 className="h-8 w-8 text-muted-foreground" />}<div><p className="text-sm font-semibold">{name || profileName || "Nome não informado"}</p><p className="text-xs text-muted-foreground">{sector || profileSector || "Segmento não informado"}</p></div></div><div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">Catálogo: {catalog.length}</Badge><Badge variant="outline">Logo: {logo ? "✓" : "—"}</Badge><Badge variant="outline">WhatsApp: {phone ? "✓" : "—"}</Badge></div></div>
           <div className="rounded-xl border p-4"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Público + Oferta + Objetivo</p><Button size="sm" variant="ghost" onClick={() => setEditContext((v) => !v)}>{editContext ? "Concluir" : "Editar"}</Button></div>{!editContext ? <div className="mt-3 space-y-2 text-sm"><div><span className="text-xs text-muted-foreground">Público</span><p className="font-medium">{audience || "Confirmar público"}</p></div><div><span className="text-xs text-muted-foreground">Oferta</span><p className="font-medium">{offer || selectedProducts.map((p) => p.nome).join(", ") || "Confirmar oferta"}</p></div><div><span className="text-xs text-muted-foreground">Objetivo</span><p className="font-medium">{objective.label}</p></div></div> : <div className="mt-3 space-y-2"><Input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Público prioritário" /><Input value={offer} onChange={(e) => setOffer(e.target.value)} placeholder="Produto, serviço ou oferta" /><Select value={objectiveId} onValueChange={(v) => setObjectiveId(v as any)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OBJECTIVES.map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent></Select>{(!profileName || !profileSector) && <div className="grid grid-cols-2 gap-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do negócio" /><Input value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Segmento" /></div>}{!profileDesc && <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} placeholder="Descrição do negócio" />}</div>}</div></div>
 
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
