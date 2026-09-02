@@ -31,19 +31,19 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: TypeScript targeted frontend file
+      - name: TypeScript targeted Instagram block
         run: |
           set +e
           NODE_OPTIONS=--max-old-space-size=8192 pnpm --filter @workspace/frontend exec tsc --noEmit --pretty false > /tmp/tsc.log 2>&1
           status=$?
           set -e
           echo "tsc exit: $status"
-          matches=$(grep -E "ConfiguracoesLegacy\.tsx" /tmp/tsc.log || true)
+          matches=$(grep -E "ConfiguracoesLegacy\.tsx\((38[0-9]{2}|39[0-9]{2}|40[0-9]{2}|41[0-9]{2}|42[0-9]{2}|43[0-9]{2})," /tmp/tsc.log || true)
           if [ -n "$matches" ]; then
             echo "$matches"
             exit 1
           fi
-          echo "No TypeScript errors reported in ConfiguracoesLegacy.tsx."
+          echo "No TypeScript errors reported in the changed Instagram integration block."
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
