@@ -102,7 +102,7 @@ async function readJson(response: Response) {
   return data;
 }
 
-export default function LeadServiceJourney({ leadId, tenantId, lead }: { leadId: string; tenantId: string; lead: any }) {
+export default function LeadServiceJourney({ leadId, tenantId, lead, dealId }: { leadId: string; tenantId: string; lead: any; dealId?: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [stageId, setStageId] = useState<string>(STAGES[0].id);
@@ -214,7 +214,7 @@ export default function LeadServiceJourney({ leadId, tenantId, lead }: { leadId:
             </div>
           </div>
 
-          {stage.id === "fechamento" && <LeadBriefingTab leadId={leadId} tenantId={tenantId} lead={lead} roteiroOnly />}
+          {stage.id === "fechamento" && <LeadBriefingTab leadId={leadId} tenantId={tenantId} lead={lead} dealId={dealId} roteiroOnly />}
           <OportunidadesPrevistasCard leadId={leadId} />
 
           <div className="flex items-center justify-between gap-2 border-t pt-4">
