@@ -19,13 +19,16 @@ import { ArrowLeft, ArrowRight, AlertTriangle, Loader2, Settings2, UserRound } f
 
 const fallbackStages = [
   { key: "novo", label: "Novo", ordem: 10 },
-  { key: "qualificado", label: "Qualificado", ordem: 20 },
-  { key: "proposta", label: "Orçamento", ordem: 30 },
-  { key: "negociacao", label: "Negociação", ordem: 40 },
-  { key: "conferencia_estoque", label: "Fechamento", ordem: 50 },
-  { key: "contrato", label: "Contrato", ordem: 60 },
-  { key: "ganho", label: "Pedido", ordem: 70 },
-  { key: "perdido", label: "Perdido", ordem: 80 },
+  { key: "em_aquecimento", label: "Em aquecimento", ordem: 20 },
+  { key: "qualificado", label: "Qualificado", ordem: 30 },
+  { key: "proposta", label: "Proposta", ordem: 40 },
+  { key: "negociacao", label: "Negociação", ordem: 50 },
+  { key: "conferencia_estoque", label: "Conferência de estoque", ordem: 60 },
+  { key: "contrato", label: "Contrato", ordem: 65 },
+  { key: "ganho", label: "Ganho", ordem: 70 },
+  { key: "em_execucao", label: "Em execução", ordem: 80 },
+  { key: "entregue", label: "Entregue", ordem: 90 },
+  { key: "perdido", label: "Perdido", ordem: 100 },
 ];
 
 const guidance: Record<string, [string, string]> = {
@@ -40,6 +43,17 @@ const guidance: Record<string, [string, string]> = {
   em_execucao: ["Execução do combinado", "Atualizar andamento da execução"],
   entregue: ["Pós-venda", "Realizar contato de pós-venda"],
   perdido: ["Encerrado", "Programar tentativa de reativação"],
+};
+
+const pipelineDisplayLabel: Record<string, string> = {
+  novo: "Novo",
+  qualificado: "Qualificado",
+  proposta: "Orçamento",
+  negociacao: "Negociação",
+  conferencia_estoque: "Fechamento",
+  contrato: "Contrato",
+  ganho: "Pedido",
+  perdido: "Perdido",
 };
 
 const pipelineDotClass: Record<string, string> = {
@@ -230,6 +244,7 @@ export default function LeadWorkspace() {
             <div className="flex min-w-max gap-2">
               {visualStages.map((stage) => {
                 const active = stage.key === deal.etapa;
+                const displayLabel = pipelineDisplayLabel[stage.key] ?? stage.label;
                 return (
                   <div
                     key={stage.key}
@@ -238,7 +253,7 @@ export default function LeadWorkspace() {
                   >
                     <div className="flex items-center gap-2">
                       <span className={`h-2 w-2 shrink-0 rounded-full ${pipelineDotClass[stage.key] ?? "bg-muted-foreground"}`} />
-                      <span className={`truncate text-sm font-semibold ${active ? "text-primary" : "text-foreground"}`}>{stage.label}</span>
+                      <span className={`truncate text-sm font-semibold ${active ? "text-primary" : "text-foreground"}`}>{displayLabel}</span>
                     </div>
                     <p className="mt-1 truncate pl-4 text-[11px] text-muted-foreground">{guidance[stage.key]?.[0] ?? "Etapa comercial"}</p>
                   </div>
