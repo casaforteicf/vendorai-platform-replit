@@ -6,6 +6,8 @@ on:
       - fix/pipeline-active-processes-unified-ui
     paths:
       - scripts/patch-pipeline-active-processes.py
+      - scripts/repair-pipeline-active-processes-patch.py
+      - scripts/finalize-pipeline-active-processes-patch.py
       - .github/workflows/temp-pipeline-active-processes.yml
 
 permissions:
@@ -22,8 +24,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Repair patch marker
+        run: python scripts/repair-pipeline-active-processes-patch.py
       - name: Apply pipeline patch
         run: python scripts/patch-pipeline-active-processes.py
+      - name: Finalize forward-only selectors
+        run: python scripts/finalize-pipeline-active-processes-patch.py
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
