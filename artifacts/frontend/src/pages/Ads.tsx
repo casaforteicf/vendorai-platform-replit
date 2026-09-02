@@ -594,19 +594,19 @@ export default function Ads() {
     },
   });
 
-  // Publicar cria a estrutura completa e a ativa em uma única ação confirmada.
-  // A plataforma ainda faz sua análise obrigatória antes de iniciar a entrega.
+  // Publicar cria a estrutura real na plataforma sempre em modo pausado.
+  // Somente a ação separada "Ativar" pode iniciar gasto real.
   const publicarCampanha = useMutation({
     mutationFn: async (campaignId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/publicar`, {
-        method: "POST", headers: authHeaders(), body: JSON.stringify({ activate: true }),
+        method: "POST", headers: authHeaders(), body: JSON.stringify({ activate: false }),
       });
       if (!r.ok) throw new Error((await r.json())?.error ?? "Falha ao publicar");
       return r.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
-      toast({ title: "Campanha enviada e ativada", description: "Ela ficará em análise e começará a veicular quando a plataforma aprovar." });
+      toast({ title: "Campanha publicada pausada", description: "Ela foi enviada para análise. O gasto só começa quando você clicar em Ativar." });
     },
     onError: (e: any) => toast({ title: "Erro ao publicar", description: e.message, variant: "destructive" }),
   });
@@ -704,7 +704,7 @@ export default function Ads() {
         <CardContent className="pt-4 text-sm space-y-2">
           <p className="font-medium">Como colocar um anúncio no ar</p>
           <div className="grid gap-2 sm:grid-cols-3 py-2">
-            {["1. Configurar público e oferta", "2. Gerar o anúncio", "3. Publicar e iniciar"].map((step) => (
+            {["1. Configurar público e oferta", "2. Gerar e aprovar", "3. Publicar pausada e ativar"].map((step) => (
               <div key={step} className="rounded-md border bg-background px-2 py-2 text-center text-xs font-medium">{step}</div>
             ))}
           </div>
@@ -713,7 +713,7 @@ export default function Ads() {
             <li>Veículos, imóveis e serviços usam texto gerado por IA (Google Search) ou foto gerada por IA (Meta).</li>
             <li>Farmácia (venda livre), mercado e distribuidoras usam o feed do Google Shopping. Medicamento que exige receita nunca entra no feed.</li>
             <li>Anúncio na Meta exige Meta Ads conectado. Para veicular no Instagram, a conta profissional precisa estar vinculada à Página do Facebook acessível pela mesma conexão Meta.</li>
-            <li>Ao clicar em <strong>Publicar e iniciar</strong>, a plataforma analisa o anúncio e só começa a entrega depois da aprovação automática.</li>
+            <li><strong>Publicar</strong> envia a campanha em modo pausado para análise. Somente <strong>Ativar</strong> inicia o gasto real.</li>
             <li>A mídia é cobrada diretamente pelo Google ou pela Meta usando a forma de pagamento da conta do cliente.</li>
           </ul>
           {feedInfo?.feedUrl && (
@@ -912,12 +912,12 @@ export default function Ads() {
                             <div className="border-t pt-2 mt-1">
                               {!c.externalCampaignId ? (
                                 <Button size="sm" onClick={() => {
-                                  if (window.confirm(`Publicar e iniciar com até R$ ${c.orcamentoDiario} por dia e limite planejado de R$ ${Number(c.segmentacao?.campaignControl?.totalBudget ?? Number(c.orcamentoDiario) * 30).toFixed(2)}? A mídia será cobrada diretamente pela plataforma.`)) {
+                                  if (window.confirm(`Publicar esta campanha em modo pausado? Nenhum gasto começa agora. Depois da publicação, use Ativar quando quiser iniciar a veiculação de até R$ ${c.orcamentoDiario} por dia.`)) {
                                     publicarCampanha.mutate(c.id);
                                   }
-                                }} disabled={publicarCampanha.isPending}>
+                                }} disabled={publicarCampanha.isPending || creative.status !== "aprovado"}>
                                   {publicarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Megaphone className="h-4 w-4 mr-1" />}
-                                  Publicar e iniciar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
+                                  Publicar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
                                 </Button>
                               ) : (
                                 <div className="flex items-center gap-2 flex-wrap">

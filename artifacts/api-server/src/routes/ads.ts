@@ -590,25 +590,13 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) =>
   }
 
   try {
-    const activateNow = req.body?.activate !== false;
-    if (activateNow) {
-      await db.update(adCreativesTable)
-        .set({ status: "aprovado", aprovadoPorId: (req as any).user?.sub ?? null, aprovadoEm: new Date() })
-        .where(eq(adCreativesTable.campaignId, campaignId));
-    }
-
     const result = plataforma === "google"
       ? await publishCampaignToGoogleAds(tenantId, campaignId)
       : await publishCampaignToMetaAds(tenantId, campaignId);
 
-    if (activateNow) {
-      if (plataforma === "google") await setGoogleAdsCampaignStatus(tenantId, campaignId, true);
-      else await setMetaAdsCampaignStatus(tenantId, campaignId, true);
-    }
-
-    logger.info({ tenantId, campaignId, plataforma, activateNow }, "ads: campanha publicada via rota");
-    await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: activateNow ? "published_and_activated" : "published", severity: "success", message: activateNow ? "Campanha publicada e ativada na plataforma." : "Campanha publicada em modo pausado.", metadata: { plataforma } });
-    return res.status(201).json({ ...result, activated: activateNow });
+    logger.info({ tenantId, campaignId, plataforma, activateNow: false }, "ads: campanha publicada via rota");
+    await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: "published", severity: "success", message: "Campanha publicada em modo pausado.", metadata: { plataforma } });
+    return res.status(201).json({ ...result, activated: false });
   } catch (err) {
     const failureMessage = err instanceof Error ? err.message : "Falha não identificada ao publicar.";
     await recordAdCampaignEvent({
