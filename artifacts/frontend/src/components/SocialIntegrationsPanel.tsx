@@ -16,7 +16,7 @@ type Connection = {
 
 const labels: Record<Provider, string> = { youtube: "YouTube", linkedin: "LinkedIn", tiktok: "TikTok" };
 
-export function SocialIntegrationsPanel() {
+export function SocialIntegrationsPanel({ providers: providersFilter }: { providers?: Provider[] } = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const tenantId = user?.tenantId;
@@ -102,7 +102,7 @@ export function SocialIntegrationsPanel() {
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        {connections.map((item) => (
+        {connections.filter((item) => !providersFilter || providersFilter.includes(item.provider)).map((item) => (
           <div key={item.provider} className="rounded-lg border p-4 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <strong>{labels[item.provider]}</strong>

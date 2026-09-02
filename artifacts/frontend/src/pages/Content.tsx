@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SocialIntegrationsPanel } from "@/components/SocialIntegrationsPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1778,6 +1779,11 @@ export default function Content() {
 
         {(Object.keys(TYPE_CONFIG) as ContentType[]).map((key) => (
           <TabsContent key={key} value={key} className="mt-4">
+            {(key === "youtube" || key === "linkedin") && (
+              <div className="mb-4">
+                <SocialIntegrationsPanel providers={[key]} />
+              </div>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
               {/* ── Left: form ── */}
               <div className="lg:col-span-2 space-y-4">
