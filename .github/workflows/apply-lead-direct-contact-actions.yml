@@ -1,0 +1,40 @@
+name: Apply lead direct contact actions
+
+on:
+  push:
+    branches:
+      - fix/lead-direct-contact-actions
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/lead-direct-contact-actions
+          fetch-depth: 0
+      - name: Skip generated patch commit
+        id: guard
+        run: |
+          if git log -1 --pretty=%B | grep -q '\[lead-contact-patch\]'; then
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'skip=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Apply contact actions patch
+        if: steps.guard.outputs.skip != 'true'
+        run: python scripts/apply-lead-direct-contact-actions.py
+      - name: Remove one-shot files
+        if: steps.guard.outputs.skip != 'true'
+        run: rm .github/workflows/apply-lead-direct-contact-actions.yml scripts/apply-lead-direct-contact-actions.py
+      - name: Commit patch
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          git config user.name 'VendorAI Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add artifacts/frontend/src/pages/LeadDetail.tsx .github/workflows/apply-lead-direct-contact-actions.yml scripts/apply-lead-direct-contact-actions.py
+          git commit -m 'fix: direct WhatsApp and Instagram actions [lead-contact-patch]'
+          git push origin HEAD:fix/lead-direct-contact-actions
