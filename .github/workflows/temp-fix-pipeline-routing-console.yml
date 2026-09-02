@@ -1,0 +1,33 @@
+name: Temp Fix Pipeline Routing Console
+
+on:
+  push:
+    branches:
+      - fix/pipeline-tab-routing-console-404
+    paths:
+      - scripts/patch-pipeline-routing-console.py
+      - .github/workflows/temp-fix-pipeline-routing-console.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/pipeline-tab-routing-console-404
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply deterministic patch
+        run: python scripts/patch-pipeline-routing-console.py
+      - name: Commit product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/App.tsx artifacts/frontend/src/components/PipelineNav.tsx artifacts/frontend/src/pages/PipelineOperacional.tsx artifacts/frontend/src/pages/PipelineRelacionamento.tsx artifacts/frontend/src/components/StoreSwitcher.tsx artifacts/frontend/src/components/layout/SidebarLayoutLegacy.tsx
+          git commit -m "fix(pipeline): tornar seletor reativo e remover 404s do shell"
+          git push origin HEAD:fix/pipeline-tab-routing-console-404
