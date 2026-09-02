@@ -6,14 +6,15 @@ import {
   insertTenantCalendarSettingsSchema,
   updateTenantCalendarSettingsSchema,
 } from "@workspace/db";
-import type { CommercialDate } from "@workspace/db";
+import type { CommercialDate, ProfessionalDate } from "@workspace/db";
 
 const router: IRouter = Router();
 
-function normalizeCalendarBody(body: Record<string, unknown>): { commercialDates?: CommercialDate[]; enableSpouseGiftFlow?: boolean } {
+function normalizeCalendarBody(body: Record<string, unknown>): { commercialDates?: CommercialDate[]; professionalDates?: ProfessionalDate[]; enableSpouseGiftFlow?: boolean } {
   // Frontend is the single source of truth for commercialDates array
   return {
     commercialDates: Array.isArray(body.commercialDates) ? (body.commercialDates as CommercialDate[]) : undefined,
+    professionalDates: Array.isArray(body.professionalDates) ? (body.professionalDates as ProfessionalDate[]) : undefined,
     enableSpouseGiftFlow: body.enableSpouseGiftFlow as boolean | undefined,
   };
 }

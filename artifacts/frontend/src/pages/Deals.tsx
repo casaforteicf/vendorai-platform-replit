@@ -2205,7 +2205,7 @@ export default function Deals() {
 
   function handleCardClick(deal: Deal) {
     if (deal.leadId) {
-      navigate(`/leads/${deal.leadId}`);
+      navigate(`/trabalho/${deal.leadId}?dealId=${deal.id}&from=pipeline`);
     }
   }
 
@@ -2407,6 +2407,12 @@ export default function Deals() {
         return;
       }
 
+      // Toda movimentação passa pela Central para registrar responsável, atividade e contexto.
+      if (draggedDeal.leadId) {
+        navigate(`/trabalho/${draggedDeal.leadId}?dealId=${draggedDeal.id}&targetStage=${targetCol.onDrop.etapa}&from=pipeline`);
+        return;
+      }
+
       const novaProb = ETAPA_PROBABILIDADE[targetCol.onDrop.etapa];
 
       // Interceptar movimento para "perdido" — exibir modal antes de confirmar
@@ -2451,7 +2457,7 @@ export default function Deals() {
       // vai" (mesmo mim mesmo) -- abre o modal em vez de mandar direto.
       setAssignDialog({ open: true, deal: draggedDeal, updateData, onGanho: targetCol.onDrop.etapa === "ganho" });
     },
-    [deals, kanbanColumns, queryClient, tenantId, updateDeal, toast]
+    [deals, kanbanColumns, navigate, queryClient, tenantId, updateDeal, toast]
   );
 
   function confirmarAtribuicao(assignedTo: string) {

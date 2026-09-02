@@ -622,6 +622,7 @@ export default function LeadDetail() {
     pfCpf: "",
     pfDonome: "",
     dataNascimento: "",
+    profissao: "",
     estadoCivil: "",
     genero: "",
     conjugeNome: "",
@@ -670,6 +671,7 @@ export default function LeadDetail() {
       pfCpf: lead.documento ?? "",
       pfDonome: (lead as any).metadata?.donome ?? "",
       dataNascimento: lead.dataNascimento ?? "",
+      profissao: (lead as any).profissao ?? "",
       estadoCivil: lead.estadoCivil ?? "",
       genero: lead.genero ?? "",
       conjugeNome: lead.conjugeNome ?? "",
@@ -716,6 +718,7 @@ export default function LeadDetail() {
         nome: isPj ? (lead?.nome ?? "") : (pessoalDraft.pfNome || lead?.nome || ""),
         documento: isPj ? (pessoalDraft.pjCnpj.replace(/\D/g, "") || null) : (pessoalDraft.pfCpf.replace(/\D/g, "") || null),
         dataNascimento: isPj ? null : (pessoalDraft.dataNascimento || null),
+        profissao: isPj ? null : (pessoalDraft.profissao.trim() || null),
         ...((!isPj && pessoalDraft.pfDonome.trim()) ? {
           metadata: { ...((lead as any)?.metadata ?? {}), donome: pessoalDraft.pfDonome.trim() },
         } : (!isPj && !(pessoalDraft.pfDonome.trim()) && (lead as any)?.metadata?.donome) ? {
@@ -3094,6 +3097,17 @@ export default function LeadDetail() {
                     value={pessoalDraft.dataNascimento}
                     onChange={(e) => setPessoalDraft((d) => ({ ...d, dataNascimento: e.target.value }))}
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Profissão</label>
+                  <Input
+                    placeholder="Ex: Médico veterinário"
+                    value={pessoalDraft.profissao}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, profissao: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Usada para enviar parabéns nas datas profissionais configuradas no calendário.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Gênero</label>

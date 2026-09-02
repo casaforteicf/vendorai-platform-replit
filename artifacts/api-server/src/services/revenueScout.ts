@@ -40,6 +40,7 @@ import { runVerticalRevenueForTenant, normalize } from "./verticalRevenueEngine.
 import { isWithinBusinessHours, renderTemplate } from "../lib/proactiveMessageGuard.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 import { isSentProposalStatus, requiresSentProposalContext } from "../lib/scoutBudgetGuard.js";
+import { isBirthdayOn } from "../lib/birthday-date.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -197,20 +198,8 @@ function calcularScoreOportunidade(
 
 /** Retorna true se o mês e dia do dataNascimento coincidem com hoje. */
 function isAniversarioHoje(dataNascimento: string | null): boolean {
-  if (!dataNascimento) return false;
   const today = new Date();
-  // Suporta YYYY-MM-DD ou DD/MM/YYYY
-  let month: number, day: number;
-  if (dataNascimento.includes("-")) {
-    const parts = dataNascimento.split("-");
-    month = parseInt(parts[1] ?? "0", 10);
-    day   = parseInt(parts[2] ?? "0", 10);
-  } else {
-    const parts = dataNascimento.split("/");
-    day   = parseInt(parts[0] ?? "0", 10);
-    month = parseInt(parts[1] ?? "0", 10);
-  }
-  return month === today.getMonth() + 1 && day === today.getDate();
+  return isBirthdayOn(dataNascimento, today.getMonth() + 1, today.getDate());
 }
 
 // ── Intent score helper ────────────────────────────────────────────────────────

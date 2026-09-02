@@ -57,6 +57,13 @@
       "when": 1783175193539,
       "tag": "0007_certain_silver_sable",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788332400000,
+      "tag": "0008_professional_dates",
+      "breakpoints": true
     }
   ]
 }

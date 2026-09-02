@@ -13,6 +13,22 @@ export type CommercialDate = {
   day?: number;
 };
 
+export type ProfessionalDate = {
+  name: string;
+  active: boolean;
+  month: number;
+  day: number;
+  professions: string[];
+};
+
+const professionalDatesSchema = z.array(z.object({
+  name: z.string().min(1),
+  active: z.boolean(),
+  month: z.number().int().min(1).max(12),
+  day: z.number().int().min(1).max(31),
+  professions: z.array(z.string().min(1)).min(1),
+}));
+
 export const tenantCalendarSettingsTable = pgTable(
   "tenant_calendar_settings",
   {
@@ -26,6 +42,10 @@ export const tenantCalendarSettingsTable = pgTable(
       .$type<CommercialDate[]>()
       .notNull()
       .default([]),
+    professionalDates: jsonb("professional_dates")
+      .$type<ProfessionalDate[]>()
+      .notNull()
+      .default([]),
     enableSpouseGiftFlow: boolean("enable_spouse_gift_flow").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -36,6 +56,7 @@ export const tenantCalendarSettingsTable = pgTable(
 export const insertTenantCalendarSettingsSchema = createInsertSchema(
   tenantCalendarSettingsTable,
   {
+    professionalDates: professionalDatesSchema.optional(),
     commercialDates: z.array(
       z.object({
         name: z.string(),
@@ -53,6 +74,7 @@ export const insertTenantCalendarSettingsSchema = createInsertSchema(
 export const updateTenantCalendarSettingsSchema = createSelectSchema(
   tenantCalendarSettingsTable,
   {
+    professionalDates: professionalDatesSchema.optional(),
     commercialDates: z.array(
       z.object({
         name: z.string(),
