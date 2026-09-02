@@ -1,0 +1,164 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import ComissoesVendedor from "@/pages/ComissoesVendedor";
+import Estoque from "@/pages/Estoque";
+import { ArrowDownCircle, ArrowUpCircle, Banknote, Barcode, Boxes, Camera, FileCheck2, FileText, Landmark, Loader2, PackageCheck, Plus, Receipt, RefreshCw, Scale, ShieldCheck, ShoppingCart, TrendingUp, WalletCards } from "lucide-react";
+
+type Title = { id:string; tipo:"receber"|"pagar"; categoria:string; descricao:string; pessoa?:string|null; documento?:string|null; valorOriginal:string; juros:string; multa:string; desconto:string; valorPago:string; vencimento:string; pagoEm?:string|null; status:"pendente"|"pago"|"vencido"|"cancelado"; provedorCobrancaId?:string|null; urlCobranca?:string|null };
+type Summary = { receitas:number; custos:number; despesas:number; impostos:number; lucroLiquido:number; saldoRealizado:number; receberAberto:number; pagarAberto:number };
+type Fiscal = { id:string; tipo:"nfe"|"nfse"|"boleto"; status:string; destinatario:string; documentoDestinatario?:string|null; valor:string; numero?:string|null; createdAt:string };
+type Config = { asaas:boolean; nuvemFiscal:boolean; ambienteFiscal:string };
+
+const money = (value:number|string) => Number(value || 0).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+
+export default function GestaoErp() {
+  const { user, token } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const headers = { "Content-Type":"application/json", ...(token ? { Authorization:`Bearer ${token}` } : {}) };
+  const [titleOpen, setTitleOpen] = useState(false);
+  const [fiscalOpen, setFiscalOpen] = useState(false);
+  const [paying, setPaying] = useState<Title|null>(null);
+  const initialTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") ?? "financeiro" : "financeiro";
+
+  const { data: titles = [], isLoading } = useQuery<Title[]>({ queryKey:["erp",tenantId,"titles"], enabled:!!tenantId, queryFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/titulos`,{headers}); if(!r.ok) throw new Error("Falha ao carregar contas"); return r.json(); } });
+  const { data: summary } = useQuery<Summary>({ queryKey:["erp",tenantId,"summary"], enabled:!!tenantId, queryFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/resumo`,{headers}); if(!r.ok) throw new Error("Falha ao carregar resumo"); return r.json(); } });
+  const { data: fiscal = [] } = useQuery<Fiscal[]>({ queryKey:["erp",tenantId,"fiscal"], enabled:!!tenantId, queryFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/documentos-fiscais`,{headers}); if(!r.ok) throw new Error("Falha ao carregar documentos"); return r.json(); } });
+  const { data: config } = useQuery<Config>({ queryKey:["erp",tenantId,"config"], enabled:!!tenantId, queryFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/configuracao`,{headers}); if(!r.ok) throw new Error("Falha ao carregar integrações"); return r.json(); } });
+
+  const refresh = () => { qc.invalidateQueries({ queryKey:["erp",tenantId] }); };
+  const sync = useMutation({ mutationFn:async()=>{ const r=await fetch(`/api/tenants/${tenantId}/erp/sincronizar`,{method:"POST",headers}); const d=await r.json(); if(!r.ok) throw new Error(d.error); return d; }, onSuccess:(d)=>{ toast({title:`${d.imported} lançamento(s) importado(s)`,description:"Vendas aprovadas e compras confirmadas foram conciliadas."}); refresh(); }, onError:(e:any)=>toast({title:e.message||"Erro ao sincronizar",variant:"destructive"}) });
+
+  async function post(path:string, body:Record<string,unknown>) { const r=await fetch(path,{method:"POST",headers,body:JSON.stringify(body)}); const d=await r.json(); if(!r.ok) throw new Error(d.error||"Operação não concluída"); return d; }
+
+  const stats = [
+    {label:"A receber",value:summary?.receberAberto??0,icon:ArrowDownCircle,tone:"text-emerald-700 bg-emerald-50"},
+    {label:"A pagar",value:summary?.pagarAberto??0,icon:ArrowUpCircle,tone:"text-red-700 bg-red-50"},
+    {label:"Saldo realizado",value:summary?.saldoRealizado??0,icon:Landmark,tone:"text-blue-700 bg-blue-50"},
+    {label:"Lucro líquido",value:summary?.lucroLiquido??0,icon:TrendingUp,tone:"text-violet-700 bg-violet-50"},
+  ];
+
+  return <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+    <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div><h1 className="text-2xl font-bold flex items-center gap-2"><Banknote className="h-6 w-6 text-primary"/>Gestão ERP</h1><p className="text-sm text-muted-foreground">Financeiro, faturamento, vendas, estoque e compras conectados.</p></div>
+      <div className="flex gap-2 flex-wrap"><Button asChild variant="outline"><Link href="/erp/captura"><Camera className="h-4 w-4 mr-2"/>Capturar documento</Link></Button><Button variant="outline" onClick={()=>sync.mutate()} disabled={sync.isPending}>{sync.isPending?<Loader2 className="h-4 w-4 mr-2 animate-spin"/>:<RefreshCw className="h-4 w-4 mr-2"/>}Sincronizar operação</Button><Button onClick={()=>setTitleOpen(true)}><Plus className="h-4 w-4 mr-2"/>Novo lançamento</Button></div>
+    </div>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{stats.map(({label,value,icon:Icon,tone})=><Card key={label}><CardContent className="p-4 flex items-center gap-3"><div className={`h-10 w-10 rounded-lg flex items-center justify-center ${tone}`}><Icon className="h-5 w-5"/></div><div><p className="text-lg font-bold">{money(value)}</p><p className="text-xs text-muted-foreground">{label}</p></div></CardContent></Card>)}</div>
+
+    <Tabs defaultValue={initialTab}>
+      <TabsList className="flex flex-wrap h-auto"><TabsTrigger value="financeiro">Contas e caixa</TabsTrigger><TabsTrigger value="dre">DRE</TabsTrigger><TabsTrigger value="fiscal">Faturamento</TabsTrigger><TabsTrigger value="comissoes">Comissões</TabsTrigger><TabsTrigger value="estoque">Estoque</TabsTrigger><TabsTrigger value="operacao">Compras e vendas</TabsTrigger><TabsTrigger value="controle">Controle ERP</TabsTrigger></TabsList>
+      <TabsContent value="financeiro" className="mt-4"><Card><CardHeader><CardTitle className="text-base">Contas a pagar e receber</CardTitle></CardHeader><CardContent>{isLoading?<Loader2 className="h-5 w-5 animate-spin mx-auto"/>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left border-b text-muted-foreground"><th className="py-2">Tipo</th><th>Descrição</th><th>Vencimento</th><th>Valor</th><th>Pago</th><th>Status</th><th></th></tr></thead><tbody>{titles.map(t=><tr key={t.id} className="border-b last:border-0"><td className="py-3"><Badge variant="outline" className={t.tipo==="receber"?"text-emerald-700":"text-red-700"}>{t.tipo==="receber"?"Receber":"Pagar"}</Badge></td><td><p className="font-medium">{t.descricao}</p><p className="text-xs text-muted-foreground">{t.pessoa||t.documento||t.categoria}</p></td><td>{new Date(t.vencimento).toLocaleDateString("pt-BR")}</td><td>{money(Number(t.valorOriginal)+Number(t.juros)+Number(t.multa)-Number(t.desconto))}</td><td>{money(t.valorPago)}</td><td><Badge className={t.status==="pago"?"bg-emerald-100 text-emerald-700":t.status==="vencido"?"bg-red-100 text-red-700":"bg-amber-100 text-amber-700"}>{t.status}</Badge></td><td>{t.status!=="pago"&&t.status!=="cancelado"&&<Button size="sm" variant="outline" onClick={()=>setPaying(t)}>Dar baixa</Button>}</td></tr>)}</tbody></table>{!titles.length&&<p className="text-center text-muted-foreground py-10">Nenhum lançamento. Sincronize a operação ou cadastre manualmente.</p>}</div>}</CardContent></Card></TabsContent>
+      <TabsContent value="dre" className="mt-4"><div className="grid lg:grid-cols-2 gap-4"><Card><CardHeader><CardTitle className="text-base">Demonstração do resultado</CardTitle></CardHeader><CardContent className="space-y-3">{[["Receita bruta",summary?.receitas],["(-) Custos",-(summary?.custos??0)],["(-) Despesas",-(summary?.despesas??0)],["(-) Impostos",-(summary?.impostos??0)]].map(([l,v])=><div key={String(l)} className="flex justify-between border-b pb-2"><span>{l}</span><strong>{money(Number(v))}</strong></div>)}<div className="flex justify-between text-lg pt-2"><strong>Lucro líquido</strong><strong className={(summary?.lucroLiquido??0)>=0?"text-emerald-700":"text-red-700"}>{money(summary?.lucroLiquido??0)}</strong></div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Fluxo de caixa</CardTitle></CardHeader><CardContent className="space-y-4"><p className="text-sm text-muted-foreground">O saldo realizado considera todas as baixas. A projeção considera títulos em aberto por vencimento.</p><div className="rounded-lg bg-blue-50 p-4"><p className="text-xs text-blue-700">Saldo realizado</p><p className="text-2xl font-bold text-blue-900">{money(summary?.saldoRealizado??0)}</p></div><div className="grid grid-cols-2 gap-3"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Entradas projetadas</p><strong>{money(summary?.receberAberto??0)}</strong></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Saídas projetadas</p><strong>{money(summary?.pagarAberto??0)}</strong></div></div></CardContent></Card></div></TabsContent>
+      <TabsContent value="fiscal" className="mt-4"><Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-base">Documentos fiscais e boletos</CardTitle><p className="text-xs text-muted-foreground mt-1">Rascunhos preparados para integração com provedor fiscal.</p></div><Button onClick={()=>setFiscalOpen(true)}><Plus className="h-4 w-4 mr-2"/>Novo documento</Button></CardHeader><CardContent><div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{fiscal.map(d=><div key={d.id} className="rounded-lg border p-4"><div className="flex justify-between"><Badge variant="outline">{d.tipo.toUpperCase()}</Badge><Badge>{d.status}</Badge></div><p className="font-medium mt-3">{d.destinatario}</p><p className="text-xl font-bold mt-1">{money(d.valor)}</p><p className="text-xs text-muted-foreground mt-2">{d.numero||"Aguardando emissão"}</p></div>)}{!fiscal.length&&<p className="text-sm text-muted-foreground col-span-full text-center py-8">Nenhum documento fiscal cadastrado.</p>}</div></CardContent></Card></TabsContent>
+      <TabsContent value="comissoes" className="mt-4"><ComissoesVendedor embedded /></TabsContent>
+      <TabsContent value="estoque" className="mt-4 -mx-4 md:-mx-6"><Estoque /></TabsContent>
+      <TabsContent value="operacao" className="mt-4"><div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">{[
+        {title:"Vendas e preços",desc:"Pedidos, conversão, propostas e tabelas de preço.",href:"/propostas",icon:Receipt},
+        {title:"Estoque",desc:"Produtos, localização, entradas, saídas e inventário.",href:"/erp?tab=estoque",icon:Boxes},
+        {title:"Compras",desc:"Fornecedores, ordens de compra e recebimento.",href:"/solicitacao-compra",icon:ShoppingCart},
+        {title:"Códigos",desc:"SKU e estrutura preparada para código de barras e QR Code.",href:"/erp?tab=estoque",icon:Barcode},
+      ].map(({title,desc,href,icon:Icon})=><Link key={title} href={href}><Card className="h-full hover:border-primary cursor-pointer transition-colors"><CardContent className="p-5"><Icon className="h-7 w-7 text-primary"/><h3 className="font-semibold mt-4">{title}</h3><p className="text-sm text-muted-foreground mt-1">{desc}</p></CardContent></Card></Link>)}</div></TabsContent>
+      <TabsContent value="controle" className="mt-4 space-y-4">
+        <div className="grid md:grid-cols-2 gap-3">
+          <Card><CardContent className="p-5 flex items-center gap-4"><div className={`h-11 w-11 rounded-full grid place-items-center ${config?.asaas?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}><WalletCards/></div><div><p className="font-semibold">Cobranças Asaas</p><p className="text-sm text-muted-foreground">{config?.asaas?"Conectado: Pix, boleto e baixa automática disponíveis.":"Pendente: conecte a conta em Configurações > Integrações."}</p></div></CardContent></Card>
+          <Card><CardContent className="p-5 flex items-center gap-4"><div className={`h-11 w-11 rounded-full grid place-items-center ${config?.nuvemFiscal?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}><FileCheck2/></div><div><p className="font-semibold">Nuvem Fiscal</p><p className="text-sm text-muted-foreground">{config?.nuvemFiscal?`Conectada em ${config.ambienteFiscal}. NF-e e NFS-e habilitadas.`:"Pendente: credenciais, empresa e certificado digital."}</p></div></CardContent></Card>
+        </div>
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">{[
+          {title:"Conciliação bancária",desc:"Contas, extratos e vínculo de cada movimentação com sua baixa.",icon:Landmark},
+          {title:"Lotes e validade",desc:"Localização, lote, validade, custo unitário e inventário rastreável.",icon:PackageCheck},
+          {title:"Cotações",desc:"Compare propostas de vários fornecedores, prazo e condição.",icon:Scale},
+          {title:"Auditoria",desc:"Histórico de usuário, ação, entidade e alteração para governança.",icon:ShieldCheck},
+        ].map(({title,desc,icon:Icon})=><Card key={title}><CardContent className="p-5"><Icon className="h-6 w-6 text-primary"/><h3 className="font-semibold mt-3">{title}</h3><p className="text-sm text-muted-foreground mt-1">{desc}</p><Badge variant="secondary" className="mt-3">Ativo</Badge></CardContent></Card>)}</div>
+        <Card><CardHeader><CardTitle className="text-base">Fluxos automáticos ativos</CardTitle></CardHeader><CardContent className="grid md:grid-cols-2 gap-2 text-sm">{["Venda aprovada → conta a receber","Pagamento Asaas → baixa e conciliação","Pedido confirmado → conta a pagar","Recebimento parcial → entrada por item/lote","Cancelamento/devolução → estorno rastreável","NF-e/NFS-e → emissão oficial e retorno do provedor","QR/código de barras → localização do produto","Toda ação sensível → trilha de auditoria"].map(x=><div className="flex gap-2 items-center" key={x}><ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0"/>{x}</div>)}</CardContent></Card>
+      </TabsContent>
+    </Tabs>
+
+    <TitleDialog open={titleOpen} onClose={()=>setTitleOpen(false)} onSave={async body=>{await post(`/api/tenants/${tenantId}/erp/titulos`,body);setTitleOpen(false);refresh();toast({title:"Lançamento criado"});}} />
+    <PayDialog title={paying} onClose={()=>setPaying(null)} onSave={async body=>{if(!paying)return;await post(`/api/tenants/${tenantId}/erp/titulos/${paying.id}/baixar`,body);setPaying(null);refresh();toast({title:"Pagamento registrado"});}} />
+    <FiscalDialog open={fiscalOpen} onClose={()=>setFiscalOpen(false)} onSave={async body=>{await post(`/api/tenants/${tenantId}/erp/documentos-fiscais`,body);setFiscalOpen(false);refresh();toast({title:"Documento fiscal criado"});}} />
+  </div>;
+}
+
+function TitleDialog({open,onClose,onSave}:{open:boolean;onClose:()=>void;onSave:(b:any)=>Promise<void>}) {
+  const { user, token } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+  const { toast } = useToast();
+  const [f,setF]=useState({tipo:"receber",categoria:"receita",descricao:"",pessoa:"",valorOriginal:"",vencimento:""});
+  const [extracting, setExtracting] = useState(false);
+  const [extractedInfo, setExtractedInfo] = useState<{ tipoDocumento?: string | null; numero?: string | null; confianca?: number | null } | null>(null);
+
+  // D-004: foto ou arquivo -- IA identifica o tipo (nota fiscal, recibo,
+  // boleto) e já preenche o formulário abaixo. A pessoa sempre confere/edita
+  // antes de salvar -- nada é lançado direto sem passar por aqui.
+  async function handleFileUpload(file: File) {
+    setExtracting(true);
+    setExtractedInfo(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`/api/tenants/${tenantId}/erp/extrair-lancamento`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!r.ok) throw new Error("Falha ao processar");
+      const data = await r.json();
+      setF((current) => ({
+        tipo: data.tipo ?? current.tipo,
+        categoria: data.categoria ?? (data.tipo === "receber" ? "receita" : current.categoria),
+        descricao: data.descricao ?? current.descricao,
+        pessoa: data.pessoa ?? current.pessoa,
+        valorOriginal: data.valorOriginal != null ? String(data.valorOriginal) : current.valorOriginal,
+        vencimento: data.vencimento ?? current.vencimento,
+      }));
+      setExtractedInfo({ tipoDocumento: data.tipoDocumento, numero: data.numero, confianca: data.confianca });
+      const confianca = data.confianca ?? 0;
+      toast({ title: confianca >= 0.5 ? "Documento lido com sucesso!" : "Documento importado (leitura parcial) — confira os campos" });
+    } catch {
+      toast({ title: "Erro ao ler o documento", variant: "destructive" });
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  return <Dialog open={open} onOpenChange={v=>!v&&onClose()}><DialogContent><DialogHeader><DialogTitle>Novo lançamento financeiro</DialogTitle></DialogHeader>
+    <div className="rounded-lg border border-dashed p-3 space-y-2">
+      <p className="text-xs text-muted-foreground">Tire uma foto ou envie a nota fiscal, recibo ou boleto — a IA preenche os campos abaixo pra você conferir.</p>
+      <input
+        type="file"
+        accept="image/*,.pdf"
+        capture="environment"
+        className="hidden"
+        id="erp-lancamento-upload"
+        onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleFileUpload(file); e.target.value = ""; }}
+      />
+      <label htmlFor="erp-lancamento-upload">
+        <Button type="button" variant="outline" size="sm" className="w-full" disabled={extracting} asChild>
+          <span className="cursor-pointer flex items-center justify-center gap-1.5">
+            {extracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+            {extracting ? "Lendo documento..." : "Tirar foto ou importar arquivo"}
+          </span>
+        </Button>
+      </label>
+      {extractedInfo && (
+        <p className="text-xs text-muted-foreground">
+          {extractedInfo.tipoDocumento && `Identificado: ${extractedInfo.tipoDocumento.toUpperCase()}`}
+          {extractedInfo.numero && ` · nº ${extractedInfo.numero}`}
+        </p>
+      )}
+    </div>
+    <form className="space-y-3" onSubmit={async e=>{e.preventDefault();await onSave({...f,vencimento:new Date(`${f.vencimento}T12:00:00`).toISOString()});}}><div className="grid grid-cols-2 gap-3"><Field label="Tipo"><select className="h-9 w-full border rounded-md px-2" value={f.tipo} onChange={e=>setF({...f,tipo:e.target.value,categoria:e.target.value==="receber"?"receita":"despesa"})}><option value="receber">A receber</option><option value="pagar">A pagar</option></select></Field><Field label="Categoria"><select className="h-9 w-full border rounded-md px-2" value={f.categoria} onChange={e=>setF({...f,categoria:e.target.value})}>{["receita","custo","despesa","imposto","investimento"].map(x=><option key={x}>{x}</option>)}</select></Field></div><Field label="Descrição"><Input required value={f.descricao} onChange={e=>setF({...f,descricao:e.target.value})}/></Field><Field label="Cliente / fornecedor"><Input value={f.pessoa} onChange={e=>setF({...f,pessoa:e.target.value})}/></Field><div className="grid grid-cols-2 gap-3"><Field label="Valor"><Input required type="number" step="0.01" value={f.valorOriginal} onChange={e=>setF({...f,valorOriginal:e.target.value})}/></Field><Field label="Vencimento"><Input required type="date" value={f.vencimento} onChange={e=>setF({...f,vencimento:e.target.value})}/></Field></div><Button className="w-full">Salvar lançamento</Button></form></DialogContent></Dialog>; }
+function PayDialog({title,onClose,onSave}:{title:Title|null;onClose:()=>void;onSave:(b:any)=>Promise<void>}) { const [valor,setValor]=useState(""); return <Dialog open={!!title} onOpenChange={v=>!v&&onClose()}><DialogContent><DialogHeader><DialogTitle>Registrar baixa</DialogTitle></DialogHeader><form className="space-y-3" onSubmit={async e=>{e.preventDefault();await onSave({valor,pagoEm:new Date().toISOString(),forma:"manual"});}}><p className="text-sm text-muted-foreground">{title?.descricao}</p><Field label="Valor pago"><Input required type="number" step="0.01" value={valor} onChange={e=>setValor(e.target.value)}/></Field><Button className="w-full">Confirmar pagamento</Button></form></DialogContent></Dialog>; }
+function FiscalDialog({open,onClose,onSave}:{open:boolean;onClose:()=>void;onSave:(b:any)=>Promise<void>}) { const [f,setF]=useState({tipo:"nfe",destinatario:"",documentoDestinatario:"",valor:"",status:"rascunho"}); return <Dialog open={open} onOpenChange={v=>!v&&onClose()}><DialogContent><DialogHeader><DialogTitle>Novo documento fiscal</DialogTitle></DialogHeader><form className="space-y-3" onSubmit={async e=>{e.preventDefault();await onSave(f);}}><Field label="Tipo"><select className="h-9 w-full border rounded-md px-2" value={f.tipo} onChange={e=>setF({...f,tipo:e.target.value})}><option value="nfe">NF-e</option><option value="nfse">NFS-e</option><option value="boleto">Boleto</option></select></Field><Field label="Destinatário"><Input required value={f.destinatario} onChange={e=>setF({...f,destinatario:e.target.value})}/></Field><Field label="CPF / CNPJ"><Input value={f.documentoDestinatario} onChange={e=>setF({...f,documentoDestinatario:e.target.value})}/></Field><Field label="Valor"><Input required type="number" step="0.01" value={f.valor} onChange={e=>setF({...f,valor:e.target.value})}/></Field><Button className="w-full"><FileText className="h-4 w-4 mr-2"/>Criar rascunho</Button></form></DialogContent></Dialog>; }
+function Field({label,children}:{label:string;children:React.ReactNode}) { return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>; }

@@ -22,6 +22,8 @@ const PRODUCTS = [
   { sku: "USER-ADD-GROWTH",   nome: "Usuário extra Growth",    precoBase: "89.00",   productType: "saas_addon" as const, unidade: "mês" },
   { sku: "USER-ADD-PMEMAIS",  nome: "Usuário extra PME+",      precoBase: "84.00",   productType: "saas_addon" as const, unidade: "mês" },
   { sku: "USER-ADD-ENT",      nome: "Usuário extra Enterprise", precoBase: "79.00",  productType: "saas_addon" as const, unidade: "mês" },
+  // ── Add-ons de produto ─────────────────────────────────────────────────────
+  { sku: "ERP-ADDON-M",       nome: "Gestão ERP",               precoBase: "299.00",  productType: "saas_addon" as const, unidade: "mês" },
   // ── Créditos IA ────────────────────────────────────────────────────────────
   { sku: "AI-CREDITS-25",  nome: "Créditos IA R$25",  precoBase: "25.00",  productType: "saas_addon" as const, unidade: "un" },
   { sku: "AI-CREDITS-50",  nome: "Créditos IA R$50",  precoBase: "50.00",  productType: "saas_addon" as const, unidade: "un" },

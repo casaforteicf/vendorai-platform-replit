@@ -55,7 +55,7 @@ export const NAV_MODULE_CATALOG: NavModuleCatalogEntry[] = [
   { moduleKey: "analytics",   moduleName: "Análises",        icon: "BarChart2",       description: "Relatórios e inteligência",         isDefault: false },
   { moduleKey: "arch",        moduleName: "Arch",            icon: "Compass",         description: "Módulo de arquitetura e design",    isDefault: false },
   { moduleKey: "obras",       moduleName: "Obras",           icon: "HardHat",         description: "Gestão de obras e projetos",        isDefault: false },
-  { moduleKey: "financeiro",  moduleName: "Financeiro",      icon: "Wallet",          description: "Cobranças e financeiro",            isDefault: false },
+  { moduleKey: "financeiro",  moduleName: "Gestão ERP",      icon: "WalletCards",     description: "ERP financeiro e operacional — add-on R$ 299/mês", isDefault: false },
   { moduleKey: "settings",    moduleName: "Configurações",   icon: "Settings",        description: "Configurações do sistema",          isDefault: true  },
   { moduleKey: "varejo",       moduleName: "Varejo",         icon: "ShoppingBag",     description: "Produtos, coleções e compras (seção Varejo)", isDefault: true },
   { moduleKey: "supermercado", moduleName: "Supermercado",   icon: "ShoppingCart",    description: "Produtos, pedidos e campanhas de mercado",     isDefault: true },

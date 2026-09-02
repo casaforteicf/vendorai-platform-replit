@@ -10,6 +10,7 @@ import {
 import { requireRole } from "./index.js";
 
 const router: IRouter = Router();
+const ERP_MODULE_KEY: NavModuleKey = "financeiro";
 
 // ── POST /tenants/:tenantId/apply-light-plan-defaults ───────────────────────
 // Aplica as restrições de tela do plano Light: sem Revenue Scout ("revenue",
@@ -38,7 +39,10 @@ router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_
 
 // ── GET /tenants/:tenantId/nav-modules ──────────────────────────────────────
 // Retorna o catálogo completo de módulos com o estado is_enabled do tenant.
-// Módulos sem override usam o default do catálogo.
+// Módulos sem override usam o default do catálogo. O ERP é uma exceção
+// deliberada: por ser add-on pago, o default false é efetivo mesmo sem linha
+// persistida, garantindo que tenants atuais e futuros não recebam acesso
+// automaticamente.
 router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   const user = (req as any).user;
@@ -59,27 +63,32 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
 
   const overrideMap = new Map(overrides.map((o) => [o.moduleKey, o.isEnabled]));
 
-  const modules = NAV_MODULE_CATALOG.map((entry) => ({
-    moduleKey:   entry.moduleKey,
-    moduleName:  entry.moduleName,
-    icon:        entry.icon,
-    description: entry.description,
-    isDefault:   entry.isDefault,
-    isEnabled:   overrideMap.has(entry.moduleKey)
-      ? overrideMap.get(entry.moduleKey)!
-      : entry.isDefault,
-    // Distingue "desligado porque um admin decidiu isso pra esse tenant" de
-    // "desligado porque é o padrão do catálogo, nunca foi tocado" — quem
-    // consome isso pra decidir o que esconder no menu real (SidebarLayout)
-    // só deve agir sobre overrides explícitos, nunca sobre o default puro.
-    hasOverride: overrideMap.has(entry.moduleKey),
-  }));
+  const modules = NAV_MODULE_CATALOG.map((entry) => {
+    const hasPersistedOverride = overrideMap.has(entry.moduleKey);
+    const isPaidErpEntitlement = entry.moduleKey === ERP_MODULE_KEY;
+
+    return {
+      moduleKey:   entry.moduleKey,
+      moduleName:  entry.moduleName,
+      icon:        entry.icon,
+      description: entry.description,
+      isDefault:   entry.isDefault,
+      isEnabled:   hasPersistedOverride
+        ? overrideMap.get(entry.moduleKey)!
+        : entry.isDefault,
+      // O menu legado só esconde módulos quando hasOverride=true. Para o ERP,
+      // tratamos o default pago/desligado como efetivo para que ele desapareça
+      // mesmo antes de existir uma linha tenant_nav_modules.
+      hasOverride: hasPersistedOverride || isPaidErpEntitlement,
+    };
+  });
 
   res.json(modules);
 });
 
 // ── PATCH /tenants/:tenantId/nav-modules/:moduleKey ─────────────────────────
-// Liga/desliga um módulo específico.
+// Liga/desliga um módulo específico. Gestão ERP é comercial: somente o
+// super_admin pode ativar/desativar após a contratação do add-on.
 router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("tenant_admin", "super_admin"), async (req, res) => {
   const tenantId = req.params.tenantId as string;
   const moduleKey = req.params.moduleKey as string;
@@ -87,6 +96,14 @@ router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("tenant_ad
 
   if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
     res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  if (moduleKey === ERP_MODULE_KEY && user.platformRole !== "super_admin") {
+    res.status(403).json({
+      error: "ERP_ADDON_ADMIN_REQUIRED",
+      message: "A Gestão ERP é um add-on pago e só pode ser ativada pelo Super Admin.",
+    });
     return;
   }
 
@@ -128,6 +145,14 @@ router.put("/tenants/:tenantId/nav-modules", requireRole("tenant_admin", "super_
   const { modules } = req.body;
   if (!Array.isArray(modules)) {
     res.status(400).json({ error: "modules deve ser um array" });
+    return;
+  }
+
+  if (user.platformRole !== "super_admin" && modules.some((mod: any) => mod?.moduleKey === ERP_MODULE_KEY)) {
+    res.status(403).json({
+      error: "ERP_ADDON_ADMIN_REQUIRED",
+      message: "A Gestão ERP é um add-on pago e só pode ser alterada pelo Super Admin.",
+    });
     return;
   }
 
