@@ -90,6 +90,7 @@ type BalanceItem = {
 type BalanceResponse = { propostaId: string; propostaTitulo: string; itens: BalanceItem[] };
 
 const EXECUTION_STAGES = [
+  ["contrato", "Contrato"],
   ["pedido_confirmado", "Pedido confirmado"],
   ["liberacao_financeira", "Liberação financeira"],
   ["liberacao_medidas", "Liberação de medidas"],
