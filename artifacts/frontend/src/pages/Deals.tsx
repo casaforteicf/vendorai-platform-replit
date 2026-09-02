@@ -66,7 +66,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, Settings2, Trash2, RotateCcw } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, Settings2, Trash2, RotateCcw, KanbanSquare } from "lucide-react";
 import { ContractGeneratorModal } from "@/components/ContractGeneratorModal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -2622,6 +2622,7 @@ export default function Deals() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" className="gap-2" onClick={() => navigate("/pipeline-operacional")}><KanbanSquare className="h-4 w-4" /> Execução / Suporte</Button>
         {isAdmin && <Dialog open={isStagesOpen} onOpenChange={setIsStagesOpen}>
           <DialogTrigger asChild><Button variant="outline"><Settings2 className="h-4 w-4 mr-2" /> Etapas</Button></DialogTrigger>
           <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">

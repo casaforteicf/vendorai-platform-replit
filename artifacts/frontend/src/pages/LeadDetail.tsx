@@ -114,6 +114,7 @@ import {
   Wand2,
   Send,
   Tag,
+  Wrench,
 } from "lucide-react";
 
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -183,6 +184,7 @@ const ACTIVITY_TIPO_LABELS: Record<string, string> = {
   tarefa: "Tarefa",
   reuniao: "Reunião Online",
   feedback_entrega: "Feedback pós-entrega",
+  assistencia: "Assistência",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -975,7 +977,7 @@ export default function LeadDetail() {
 
   // ── Nova Atividade ────────────────────────────────────────────────────────
   const [isNewActivityOpen, setIsNewActivityOpen] = useState(false);
-  const [newActivityTipo, setNewActivityTipo] = useState<"ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao">("tarefa");
+  const [newActivityTipo, setNewActivityTipo] = useState<"ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao" | "assistencia">("tarefa");
   const [newActivityTitulo, setNewActivityTitulo] = useState("");
   const [newActivityDescricao, setNewActivityDescricao] = useState("");
   const [newActivityData, setNewActivityData] = useState("");
@@ -992,6 +994,13 @@ export default function LeadDetail() {
   const [newActivityNomeGatekeeper, setNewActivityNomeGatekeeper] = useState("");
   const [isUploadingAnexo, setIsUploadingAnexo] = useState(false);
   const anexoInputRef = useRef<HTMLInputElement>(null);
+  // Assistência — coleta estruturada antes de enviar ao suporte.
+  const [newAssistenciaCategoria, setNewAssistenciaCategoria] = useState("defeito");
+  const [newAssistenciaRelato, setNewAssistenciaRelato] = useState("");
+  const [newAssistenciaDealId, setNewAssistenciaDealId] = useState("");
+  const [newAssistenciaProdutos, setNewAssistenciaProdutos] = useState("");
+  const [newAssistenciaPrioridade, setNewAssistenciaPrioridade] = useState("normal");
+  const [newAssistenciaFiles, setNewAssistenciaFiles] = useState<File[]>([]);
 
   const { data: tenantUsers } = useListTenantUsers(tenantId, {
     query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
@@ -1040,11 +1049,110 @@ export default function LeadDetail() {
     setNewActivityAnexoCategoria("documento");
     setNewActivityFalouComDecisor(true);
     setNewActivityNomeGatekeeper("");
+    setNewAssistenciaCategoria("defeito");
+    setNewAssistenciaRelato("");
+    setNewAssistenciaDealId("");
+    setNewAssistenciaProdutos("");
+    setNewAssistenciaPrioridade("normal");
+    setNewAssistenciaFiles([]);
     setIsNewActivityOpen(true);
   }
 
   async function handleCreateActivity() {
     if (!tenantId || !id || !newActivityTitulo.trim()) return;
+
+    if (newActivityTipo === "assistencia") {
+      const responsavelId = newActivityResponsavelId === "__ia__" ? "" : newActivityResponsavelId;
+      if (!responsavelId) {
+        toast({ title: "Assistência precisa de um responsável", variant: "destructive" });
+        return;
+      }
+      if (newAssistenciaRelato.trim().length < 10) {
+        toast({ title: "Descreva claramente o problema antes de abrir o chamado", variant: "destructive" });
+        return;
+      }
+
+      setIsUploadingAnexo(true);
+      try {
+        const proposal = newAssistenciaDealId
+          ? (leadPropostas ?? []).find((p) => p.dealId === newAssistenciaDealId)
+          : undefined;
+        const supportRes = await fetch(`/api/tenants/${tenantId}/support-cases`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({
+            leadId: id,
+            dealId: newAssistenciaDealId || null,
+            propostaId: proposal?.id ?? null,
+            titulo: newActivityTitulo.trim(),
+            relato: newAssistenciaRelato.trim(),
+            categoria: newAssistenciaCategoria,
+            produtos: newAssistenciaProdutos.split(/[\n,;]/).map((v) => v.trim()).filter(Boolean),
+            responsavelId,
+            prioridade: newAssistenciaPrioridade,
+            dataVencimento: newActivityData || undefined,
+            origem: "humano",
+          }),
+        });
+        const supportBody = await supportRes.json().catch(() => ({}));
+        if (!supportRes.ok) throw new Error(supportBody.error || "Falha ao abrir assistência");
+
+        const files = [
+          ...newAssistenciaFiles,
+          ...(newActivityAnexoFile ? [newActivityAnexoFile] : []),
+        ];
+        for (const file of files) {
+          const metaRes = await fetch("/api/storage/uploads/request-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+            body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+          });
+          if (!metaRes.ok) throw new Error(`Falha ao preparar o anexo ${file.name}`);
+          const { uploadURL, objectPath } = await metaRes.json();
+          const putRes = await fetch(uploadURL, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": file.type || "application/octet-stream" },
+          });
+          if (!putRes.ok) throw new Error(`Falha ao enviar ${file.name}`);
+          const attachmentRes = await fetch(`/api/work-cards/${supportBody.card.id}/attachments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+            body: JSON.stringify({
+              nome: file.name,
+              url: `/api/storage${objectPath}`,
+              mimeType: file.type || "application/octet-stream",
+              tamanho: file.size,
+              origem: "abertura_chamado",
+            }),
+          });
+          if (!attachmentRes.ok) throw new Error(`Falha ao registrar ${file.name}`);
+        }
+
+        await queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) });
+        setIsNewActivityOpen(false);
+        setNewActivityTitulo("");
+        setNewActivityDescricao("");
+        setNewActivityData("");
+        setNewActivityTipo("tarefa");
+        setNewActivityResponsavelId("__ia__");
+        setNewActivityAnexoFile(null);
+        setNewAssistenciaRelato("");
+        setNewAssistenciaDealId("");
+        setNewAssistenciaProdutos("");
+        setNewAssistenciaFiles([]);
+        toast({
+          title: `Assistência ${supportBody.card.codigo} aberta`,
+          description: "O card já está na Pipeline de Suporte e foi atribuído ao responsável.",
+        });
+      } catch (error) {
+        toast({ title: "Erro ao abrir assistência", description: String(error), variant: "destructive" });
+      } finally {
+        setIsUploadingAnexo(false);
+      }
+      return;
+    }
+
     const responsavelId = newActivityResponsavelId === "__ia__" ? undefined : newActivityResponsavelId;
     const isReuniao = newActivityTipo === "reuniao";
 
@@ -3517,7 +3625,13 @@ export default function LeadDetail() {
               <label className="text-sm font-medium">Tipo</label>
               <Select
                 value={newActivityTipo}
-                onValueChange={(v) => setNewActivityTipo(v as typeof newActivityTipo)}
+                onValueChange={(v) => {
+                  const next = v as typeof newActivityTipo;
+                  setNewActivityTipo(next);
+                  if (next === "assistencia" && newActivityResponsavelId === "__ia__") {
+                    setNewActivityResponsavelId(user?.id ?? (tenantUsers ?? [])[0]?.id ?? "");
+                  }
+                }}
               >
                 <SelectTrigger data-testid="select-activity-tipo">
                   <SelectValue />
@@ -3541,7 +3655,7 @@ export default function LeadDetail() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__ia__">🤖 IA</SelectItem>
+                  {newActivityTipo !== "assistencia" && <SelectItem value="__ia__">🤖 IA</SelectItem>}
                   {(tenantUsers ?? []).map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.name || u.email}
@@ -3563,6 +3677,68 @@ export default function LeadDetail() {
                 autoFocus
               />
             </div>
+
+            {newActivityTipo === "assistencia" && (
+              <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                <div className="flex items-center gap-2">
+                  <Wrench className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold">Abertura estruturada da assistência</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Categoria *</label>
+                    <Select value={newAssistenciaCategoria} onValueChange={setNewAssistenciaCategoria}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="defeito">Defeito</SelectItem>
+                        <SelectItem value="instalacao">Instalação</SelectItem>
+                        <SelectItem value="funcionamento">Funcionamento</SelectItem>
+                        <SelectItem value="avaria">Avaria</SelectItem>
+                        <SelectItem value="falta_material">Falta de material</SelectItem>
+                        <SelectItem value="erro_medida">Erro de medida</SelectItem>
+                        <SelectItem value="duvida_tecnica">Dúvida técnica</SelectItem>
+                        <SelectItem value="garantia">Garantia</SelectItem>
+                        <SelectItem value="manutencao">Manutenção</SelectItem>
+                        <SelectItem value="outro">Outro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Pedido relacionado</label>
+                    <Select value={newAssistenciaDealId || "__none__"} onValueChange={(v) => setNewAssistenciaDealId(v === "__none__" ? "" : v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sem pedido específico</SelectItem>
+                        {(leadDeals ?? []).map((deal) => <SelectItem key={deal.id} value={deal.id}>{deal.titulo}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Itens/produtos afetados</label>
+                  <Input value={newAssistenciaProdutos} onChange={(e) => setNewAssistenciaProdutos(e.target.value)} placeholder="Ex: janela suíte, porta varanda, motor..." />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Relato claro do problema *</label>
+                  <Textarea rows={5} value={newAssistenciaRelato} onChange={(e) => setNewAssistenciaRelato(e.target.value)} placeholder="Descreva o sintoma, quando começou, onde ocorre, o que já foi testado e tudo que o suporte precisa saber antes de ir ao cliente." />
+                  <p className="text-xs text-muted-foreground">IA ou humano devem coletar informação suficiente antes de enviar o chamado ao suporte.</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Prioridade</label>
+                    <Select value={newAssistenciaPrioridade} onValueChange={setNewAssistenciaPrioridade}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="baixa">Baixa</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="alta">Alta</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Fotos, vídeos, áudios e documentos</label>
+                    <Input type="file" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => setNewAssistenciaFiles(Array.from(e.target.files ?? []))} />
+                    <p className="text-xs text-muted-foreground">{newAssistenciaFiles.length ? `${newAssistenciaFiles.length} arquivo(s)` : "Opcional"}</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Descrição */}
             <div className="space-y-1.5">
@@ -3753,7 +3929,8 @@ export default function LeadDetail() {
                 isCreatingActivity ||
                 isUploadingAnexo ||
                 !newActivityTitulo.trim() ||
-                (newActivityTipo === "reuniao" && (!newActivityAgendaId || !newActivityDataHoraInicio || !newActivityDataHoraFim))
+                (newActivityTipo === "reuniao" && (!newActivityAgendaId || !newActivityDataHoraInicio || !newActivityDataHoraFim)) ||
+                (newActivityTipo === "assistencia" && (newActivityResponsavelId === "__ia__" || !newActivityResponsavelId || newAssistenciaRelato.trim().length < 10))
               }
               data-testid="btn-salvar-atividade"
             >
