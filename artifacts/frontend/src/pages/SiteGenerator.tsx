@@ -23,6 +23,31 @@ type RemodelStructure = { sourceUrl: string; title: string; nav: string; images:
 type GovernanceSite = { id: string; name: string };
 type GovernanceSection = { index: number; key: string; title: string; locked: boolean };
 
+type BriefingSuggestion = { value: string; source: "Perfil" | "Catálogo" | "Mercado" | "IA"; productId?: string };
+type AiBusinessSuggestions = { audiences: Array<{ value: string; reason?: string }>; offers: Array<{ value: string; productId?: string; reason?: string }> };
+
+function normalizeSuggestion(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(normalizeSuggestion);
+  if (typeof value !== "string") return [];
+  return value
+    .split(/\n|;|\||•/g)
+    .map((item) => item.replace(/^[-–—\s]+/, "").trim())
+    .filter((item) => item.length >= 2 && item.length <= 180);
+}
+
+function uniqueSuggestions(items: BriefingSuggestion[], limit = 8) {
+  const seen = new Set<string>();
+  const out: BriefingSuggestion[] = [];
+  for (const item of items) {
+    const key = item.value.trim().toLocaleLowerCase("pt-BR");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...item, value: item.value.trim() });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 const MODES: Array<{ id: Mode; title: string; short: string; desc: string; icon: typeof Globe; type: "landing" | "ecommerce" | "institutional" | "product" }> = [
   { id: "new-site", title: "Criar novo site com IA", short: "Site completo com IA", desc: "Site completo orientado ao negócio, público, oferta e conversão.", icon: Sparkles, type: "institutional" },
   { id: "remodel", title: "Remodelar site existente", short: "Remodelar site", desc: "Analisa estrutura e conteúdo do site atual antes de criar a nova versão.", icon: RefreshCw, type: "institutional" },
@@ -165,18 +190,110 @@ function GeneratorWorkspace() {
   const [mode, setMode] = useState<Mode>(() => (sessionStorage.getItem("vendorai_site_creation_mode") as Mode | null) ?? "new-site"); const [choosing, setChoosing] = useState(true); const [editContext, setEditContext] = useState(false); const [assetsOpen, setAssetsOpen] = useState(false); const [editor, setEditor] = useState(false); const [generating, setGenerating] = useState(false); const [error, setError] = useState<string | null>(null);
   const [audience, setAudience] = useState(""); const [offer, setOffer] = useState(""); const [objectiveId, setObjectiveId] = useState<(typeof OBJECTIVES)[number]["id"]>("leads"); const [name, setName] = useState(""); const [sector, setSector] = useState(""); const [desc, setDesc] = useState(""); const [notes, setNotes] = useState(""); const [tone, setTone] = useState("profissional");
   const [catalog, setCatalog] = useState<CatalogItem[]>([]); const [selected, setSelected] = useState<string[]>([]); const [images, setImages] = useState<string[]>([]); const [videos, setVideos] = useState<string[]>([]); const [videoUrl, setVideoUrl] = useState(""); const [testimonials, setTestimonials] = useState<Testimonial[]>([]); const [extras, setExtras] = useState<ExtraContent[]>([]); const [uploads, setUploads] = useState(0);
-  const [market, setMarket] = useState<{ tone?: string; keywords: Keyword[]; competitors: string[] } | null>(null); const [marketBusy, setMarketBusy] = useState(false);
+  const [market, setMarket] = useState<{ tone?: string; keywords: Keyword[]; competitors: string[] } | null>(null); const [marketBusy, setMarketBusy] = useState(false); const [aiBusiness, setAiBusiness] = useState<AiBusinessSuggestions | null>(null); const [aiBusinessBusy, setAiBusinessBusy] = useState(false); const aiBusinessKey = useRef("");
   const [siteUrl, setSiteUrl] = useState(""); const [remodelLevel, setRemodelLevel] = useState<RemodelLevel>("complete"); const [preserve, setPreserve] = useState("Logo, identidade visual, conteúdos aprovados, URLs importantes e informações comerciais verdadeiras"); const [structure, setStructure] = useState<RemodelStructure | null>(null); const [remodelTone, setRemodelTone] = useState<unknown>(null); const [analyzing, setAnalyzing] = useState(false);
   const init = useRef(false); const defaults = useRef("");
   const { data: bp } = useGetBusinessProfileByTenant(tenantId, { query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId && !editor } });
-  const profileName = bp?.nomeFantasia ?? bp?.razaoSocial ?? ""; const profileSector = bp?.vertical ?? ""; const profileDesc = bp?.diferenciais || bp?.publicoAlvo || ""; const phone = bp?.telefone ?? ""; const logo = bp?.logoUrl ?? ""; const modeDef = MODES.find((m) => m.id === mode)!; const objective = OBJECTIVES.find((o) => o.id === objectiveId)!;
+  const rawProfile = (bp ?? {}) as any; const profileName = bp?.nomeFantasia ?? bp?.razaoSocial ?? rawProfile.nome ?? ""; const profileSector = bp?.vertical ?? rawProfile.segmento ?? rawProfile.setor ?? ""; const profileDesc = rawProfile.descricaoNegocio ?? rawProfile.descricao ?? rawProfile.sobreEmpresa ?? bp?.diferenciais ?? bp?.publicoAlvo ?? ""; const phone = bp?.telefone ?? rawProfile.whatsapp ?? ""; const logo = bp?.logoUrl ?? ""; const modeDef = MODES.find((m) => m.id === mode)!; const objective = OBJECTIVES.find((o) => o.id === objectiveId)!;
   useEffect(() => { if (!bp || init.current) return; init.current = true; setName(profileName); setSector(profileSector); setDesc(profileDesc); setAudience(bp?.publicoAlvo ?? ""); }, [bp, profileName, profileSector, profileDesc]);
   useEffect(() => { if (!tenantId || editor) return; fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: headers(token), cache: "no-store" }).then((r) => r.ok ? r.json() : []).then((rows) => setCatalog(Array.isArray(rows) ? rows.filter((p: CatalogItem) => p.ativo !== false) : [])).catch(() => setCatalog([])); }, [tenantId, token, editor]);
   useEffect(() => { if (!catalog.length) return; const key = `${mode}:${catalog.length}`; if (defaults.current === key) return; defaults.current = key; if (mode === "catalog") { setSelected(catalog.slice(0, 30).map((p) => p.id)); setOffer((v) => v || "Catálogo de produtos e serviços"); } else if (mode === "new-site") setSelected(catalog.slice(0, 6).map((p) => p.id)); else if (mode === "product" || mode === "ecommerce") setSelected([]); }, [catalog, mode]);
   useEffect(() => { setObjectiveId(mode === "ecommerce" ? "sales" : mode === "product" || mode === "catalog" ? "quote" : "leads"); }, [mode]);
   const selectedProducts = useMemo(() => catalog.filter((p) => selected.includes(p.id)), [catalog, selected]);
   const groups = useMemo(() => { const m = new Map<string, CatalogItem[]>(); catalog.forEach((p) => { const k = p.categoria?.trim() || p.marca?.trim() || "Produtos"; m.set(k, [...(m.get(k) ?? []), p]); }); return [...m.entries()]; }, [catalog]);
+  const audienceSuggestions = useMemo(() => {
+    const profileValues = [
+      rawProfile.publicoAlvo,
+      rawProfile.publicoPrioritario,
+      rawProfile.clienteIdeal,
+      rawProfile.icp,
+      rawProfile.personas,
+      rawProfile.perfisClientes,
+      rawProfile.segmentosClientes,
+    ].flatMap(normalizeSuggestion).map((value) => ({ value, source: "Perfil" as const }));
+    const aiValues = aiBusiness?.audiences.map((item) => ({ value: item.value, source: "IA" as const })) ?? [];
+    const marketValues = market?.keywords.slice(0, 3).map((keyword) => ({ value: `Pessoas buscando ${keyword.termo}`, source: "Mercado" as const })) ?? [];
+    return uniqueSuggestions([...profileValues, ...aiValues, ...marketValues], 8);
+  }, [rawProfile, market, aiBusiness]);
+  const offerSuggestions = useMemo(() => {
+    const profileValues = [
+      rawProfile.ofertaPrincipal,
+      rawProfile.produtosServicos,
+      rawProfile.servicos,
+      rawProfile.solucoes,
+      rawProfile.linhasProduto,
+    ].flatMap(normalizeSuggestion).map((value) => ({ value, source: "Perfil" as const }));
+    const productValues = catalog.slice(0, 8).map((product) => ({ value: product.nome, source: "Catálogo" as const, productId: product.id }));
+    const aiValues = aiBusiness?.offers.map((item) => ({ value: item.value, source: "IA" as const, productId: item.productId })) ?? [];
+    const categoryValues = groups.slice(0, 5).map(([category]) => ({ value: category, source: "Catálogo" as const }));
+    return uniqueSuggestions([...profileValues, ...productValues, ...aiValues, ...categoryValues], 10);
+  }, [rawProfile, catalog, groups, aiBusiness]);
+  const objectiveSuggestions = useMemo(() => {
+    const preferred = mode === "ecommerce"
+      ? ["sales", "whatsapp", "leads", "quote"]
+      : mode === "product" || mode === "catalog"
+        ? ["quote", "sales", "whatsapp", "leads"]
+        : mode === "landing" || mode === "campaign"
+          ? ["leads", "whatsapp", "quote", "schedule"]
+          : ["brand", "leads", "whatsapp", "quote"];
+    return preferred.map((id) => OBJECTIVES.find((item) => item.id === id)).filter((item): item is (typeof OBJECTIVES)[number] => Boolean(item));
+  }, [mode]);
+  const opportunities = useMemo(() => {
+    const audiences = audienceSuggestions.length ? audienceSuggestions.slice(0, 3) : audience.trim() ? [{ value: audience.trim(), source: "Perfil" as const }] : [];
+    const offers = offerSuggestions.length ? offerSuggestions.slice(0, 4) : offer.trim() ? [{ value: offer.trim(), source: "Perfil" as const }] : [];
+    const result: Array<{ audience: BriefingSuggestion; offer: BriefingSuggestion; objectiveId: (typeof OBJECTIVES)[number]["id"] }> = [];
+    for (let index = 0; index < Math.min(4, Math.max(audiences.length, offers.length)); index += 1) {
+      const audienceItem = audiences[index % audiences.length]; const offerItem = offers[index % offers.length];
+      if (!audienceItem || !offerItem) continue;
+      result.push({ audience: audienceItem, offer: offerItem, objectiveId: objectiveSuggestions[index % objectiveSuggestions.length]?.id ?? objectiveId });
+    }
+    return result;
+  }, [audienceSuggestions, offerSuggestions, objectiveSuggestions, audience, offer, objectiveId]);
+  const contextSourceCount = [Boolean(bp), catalog.length > 0, Boolean(market)].filter(Boolean).length;
   const completeness = Math.round(([name || profileName, sector || profileSector, desc || profileDesc, audience, offer || selectedProducts.length || mode === "ecommerce", objectiveId, logo, phone, market].filter(Boolean).length / 9) * 100);
+
+  async function loadAiBusinessSuggestions(force = false) {
+    if (!tenantId || editor || aiBusinessBusy) return;
+    const contextKey = `${tenantId}:${mode}:${profileName}:${profileSector}:${profileDesc}:${catalog.length}`;
+    if (!force && aiBusinessKey.current === contextKey) return;
+    aiBusinessKey.current = contextKey;
+    setAiBusinessBusy(true);
+    try {
+      const response = await resilientFetch(`/api/tenants/${tenantId}/site-generator/briefing-suggestions`, {
+        method: "POST",
+        headers: headers(token),
+        body: JSON.stringify({ creationMode: mode }),
+      }, 4);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? `Não foi possível analisar o perfil (${response.status})`);
+      setAiBusiness({ audiences: Array.isArray(body.audiences) ? body.audiences : [], offers: Array.isArray(body.offers) ? body.offers : [] });
+    } catch (error) {
+      if (force) toast({ title: "Não foi possível atualizar as sugestões", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setAiBusinessBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (editor || !tenantId || (!bp && !catalog.length)) return;
+    const timer = window.setTimeout(() => { void loadAiBusinessSuggestions(false); }, 700);
+    return () => window.clearTimeout(timer);
+  }, [tenantId, mode, bp, catalog.length, editor]);
+
+  function applyBusinessDefaults() {
+    let changed = false;
+    if (!audience.trim() && audienceSuggestions[0]) { setAudience(audienceSuggestions[0].value); changed = true; }
+    if (!offer.trim() && offerSuggestions[0]) { setOffer(offerSuggestions[0].value); changed = true; if (offerSuggestions[0].productId) setSelected([offerSuggestions[0].productId]); }
+    if (!name.trim() && profileName) { setName(profileName); changed = true; }
+    if (!sector.trim() && profileSector) { setSector(profileSector); changed = true; }
+    if (!desc.trim() && profileDesc) { setDesc(profileDesc); changed = true; }
+    toast({ title: changed ? "Briefing preenchido com o perfil" : "Briefing já está preenchido", description: changed ? "O VendorAI completou somente campos vazios com dados deste negócio." : "Nenhum campo preenchido pelo usuário foi alterado." });
+  }
+
+  function chooseAudience(item: BriefingSuggestion) { setAudience(item.value); setEditContext(false); }
+  function chooseOffer(item: BriefingSuggestion) { setOffer(item.value); if (item.productId) setSelected([item.productId]); setEditContext(false); }
+  function useOpportunity(item: { audience: BriefingSuggestion; offer: BriefingSuggestion; objectiveId: (typeof OBJECTIVES)[number]["id"] }) { setAudience(item.audience.value); setOffer(item.offer.value); setObjectiveId(item.objectiveId); if (item.offer.productId) setSelected([item.offer.productId]); setEditContext(false); }
+
 
   useEffect(() => {
     if (!tenantId) return;
@@ -310,6 +427,19 @@ function GeneratorWorkspace() {
       <Card className="border-primary/20"><CardHeader><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" />Briefing inteligente</CardTitle><p className="mt-1 text-sm text-muted-foreground">O VendorAI usa primeiro o que já conhece e só pede confirmação do que faltar.</p></div><div className="min-w-52 rounded-lg border p-3"><div className="mb-2 flex justify-between text-xs"><span>Contexto disponível</span><strong className="text-primary">{completeness}%</strong></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${completeness}%` }} /></div></div></div></CardHeader><CardContent className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-xl border bg-muted/20 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">O VendorAI já sabe</p><div className="mt-2 flex items-center gap-3">{logo ? <img src={logo.startsWith("/objects/") ? `/api/storage${logo}` : logo} alt="Logo" className="h-10 w-10 rounded-lg border bg-white object-contain p-1" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <Building2 className="h-8 w-8 text-muted-foreground" />}<div><p className="text-sm font-semibold">{name || profileName || "Nome não informado"}</p><p className="text-xs text-muted-foreground">{sector || profileSector || "Segmento não informado"}</p></div></div><div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">Catálogo: {catalog.length}</Badge><Badge variant="outline">Logo: {logo ? "✓" : "—"}</Badge><Badge variant="outline">WhatsApp: {phone ? "✓" : "—"}</Badge></div></div>
           <div className="rounded-xl border p-4"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Público + Oferta + Objetivo</p><Button size="sm" variant="ghost" onClick={() => setEditContext((v) => !v)}>{editContext ? "Concluir" : "Editar"}</Button></div>{!editContext ? <div className="mt-3 space-y-2 text-sm"><div><span className="text-xs text-muted-foreground">Público</span><p className="font-medium">{audience || "Confirmar público"}</p></div><div><span className="text-xs text-muted-foreground">Oferta</span><p className="font-medium">{offer || selectedProducts.map((p) => p.nome).join(", ") || "Confirmar oferta"}</p></div><div><span className="text-xs text-muted-foreground">Objetivo</span><p className="font-medium">{objective.label}</p></div></div> : <div className="mt-3 space-y-2"><Input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Público prioritário" /><Input value={offer} onChange={(e) => setOffer(e.target.value)} placeholder="Produto, serviço ou oferta" /><Select value={objectiveId} onValueChange={(v) => setObjectiveId(v as any)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OBJECTIVES.map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent></Select>{(!profileName || !profileSector) && <div className="grid grid-cols-2 gap-2"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do negócio" /><Input value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Segmento" /></div>}{!profileDesc && <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} placeholder="Descrição do negócio" />}</div>}</div></div>
+
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="text-sm font-semibold">Sugestões do seu negócio</p><p className="text-xs text-muted-foreground">Usa apenas o perfil, catálogo e inteligência do tenant atual. Nada é compartilhado entre empresas.</p></div>
+            <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{contextSourceCount}/3 fontes</Badge><Button size="sm" variant="outline" onClick={() => void loadAiBusinessSuggestions(true)} disabled={aiBusinessBusy}>{aiBusinessBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Atualizar sugestões com IA</Button><Button size="sm" variant="outline" onClick={applyBusinessDefaults}>Preencher campos vazios</Button></div>
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Públicos recomendados</p><div className="flex flex-wrap gap-2">{audienceSuggestions.length ? audienceSuggestions.map((item) => <button key={`${item.source}-${item.value}`} type="button" onClick={() => chooseAudience(item)} className={`rounded-full border px-3 py-1.5 text-left text-xs transition-colors ${audience === item.value ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:border-primary/50"}`} title={`Fonte: ${item.source}`}>{item.value}<span className="ml-1 opacity-60">· {item.source}</span></button>) : <span className="text-xs text-muted-foreground">Informe o público no Perfil do Negócio para o VendorAI sugerir opções reais.</span>}</div></div>
+            <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ofertas recomendadas</p><div className="flex flex-wrap gap-2">{offerSuggestions.length ? offerSuggestions.map((item) => <button key={`${item.source}-${item.value}`} type="button" onClick={() => chooseOffer(item)} className={`rounded-full border px-3 py-1.5 text-left text-xs transition-colors ${offer === item.value ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:border-primary/50"}`} title={`Fonte: ${item.source}`}>{item.value}<span className="ml-1 opacity-60">· {item.source}</span></button>) : <span className="text-xs text-muted-foreground">Cadastre produtos, serviços ou ofertas no perfil/catálogo para receber sugestões.</span>}</div></div>
+            <div><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Objetivos recomendados</p><div className="flex flex-wrap gap-2">{objectiveSuggestions.map((item) => <button key={item.id} type="button" onClick={() => setObjectiveId(item.id)} className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${objectiveId === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:border-primary/50"}`}>{item.label}</button>)}</div></div>
+          </div>
+          {opportunities.length > 0 && <div className="mt-4 border-t border-primary/15 pt-4"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Oportunidades encontradas</p><span className="text-[11px] text-muted-foreground">Público + oferta + objetivo</span></div><div className="grid gap-2 md:grid-cols-2">{opportunities.map((item, index) => { const target = OBJECTIVES.find((option) => option.id === item.objectiveId); return <button key={`${item.audience.value}-${item.offer.value}-${index}`} type="button" onClick={() => useOpportunity(item)} className="rounded-lg border bg-background p-3 text-left transition-colors hover:border-primary/50"><p className="text-xs font-semibold">{item.audience.value}</p><p className="mt-1 text-xs text-muted-foreground">→ {item.offer.value}</p><p className="mt-1 text-[11px] font-medium text-primary">Objetivo: {target?.label ?? "Gerar leads"} · Usar esta oportunidade</p></button>; })}</div></div>}
+        </div>
         {mode === "remodel" && <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2"><div className="flex items-center gap-2 text-sm font-semibold"><RefreshCw className="h-4 w-4" />Site atual</div><div className="grid gap-2 lg:grid-cols-[1.4fr_1fr]"><Input value={siteUrl} onChange={(e) => { setSiteUrl(e.target.value); setStructure(null); }} placeholder="https://www.suaempresa.com.br" /><Select value={remodelLevel} onValueChange={(v) => setRemodelLevel(v as RemodelLevel)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="visual">Visual</SelectItem><SelectItem value="structural">Estrutural</SelectItem><SelectItem value="complete">Completa com IA</SelectItem></SelectContent></Select></div><Input value={preserve} onChange={(e) => setPreserve(e.target.value)} /><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void analyzeSite()} disabled={analyzing || !siteUrl.trim()}>{analyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}Analisar site atual</Button>{structure && <Badge variant="secondary">{structure.sections.length} seções mapeadas</Badge>}</div></div>}
         <div className="rounded-xl border p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">Inteligência do negócio e mercado</p><p className="text-xs text-muted-foreground">Reaproveita tom de marca, keywords e concorrentes já pesquisados pelo Content Autopilot. Sem cobrança escondida.</p></div><Button size="sm" variant="outline" onClick={() => void intelligence()} disabled={marketBusy}>{marketBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Completar automaticamente</Button></div>{market && <div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">Tom: {market.tone || "—"}</Badge><Badge variant="outline">Keywords: {market.keywords.length}</Badge><Badge variant="outline">Referências públicas: {market.competitors.length}</Badge></div>}</div>
       </CardContent></Card>
