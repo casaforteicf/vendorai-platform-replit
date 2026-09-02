@@ -142,13 +142,6 @@ function normalizeInstagramHandle(value?: string | null): string {
   return raw.replace(/^@/, "").split(/[/?#]/)[0]?.trim() ?? "";
 }
 
-const DEAL_STAGE_LABELS: Record<string, string> = {
-  em_aquecimento: "Em aquecimento", novo: "Novo", qualificado: "Qualificado", proposta: "Proposta",
-  negociacao: "Negociação", conferencia_estoque: "Conferência de estoque", ganho: "Ganho",
-  em_execucao: "Em execução", entregue: "Entregue", perdido: "Perdido", parceiro: "Parceiro",
-};
-const DEAL_STAGE_ORDER = ["novo", "qualificado", "proposta", "negociacao", "ganho"];
-
 function InstagramIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -327,6 +320,7 @@ export default function LeadDetail() {
   const queryClient = useQueryClient();
 
   const [propostaModalOpen, setPropostaModalOpen] = useState(false);
+  const [leadWorkspaceTab, setLeadWorkspaceTab] = useState<"atendimento" | "proposta">("atendimento");
   const [agendarOpen, setAgendarOpen] = useState(false);
   const [vendidoOpen, setVendidoOpen] = useState(false);
   const [naoLeadOpen, setNaoLeadOpen] = useState(false);
@@ -1371,6 +1365,31 @@ export default function LeadDetail() {
         <div className="flex items-center gap-2 flex-wrap">
           <Button
             size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => setPropostaModalOpen(true)}
+            data-testid="btn-new-budget"
+          >
+            <FileText className="h-4 w-4" />
+            Gerar orçamento
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => {
+              setLeadWorkspaceTab("proposta");
+              requestAnimationFrame(() => {
+                document.getElementById("lead-workspace-tabs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              });
+            }}
+            data-testid="btn-open-proposals"
+          >
+            <Sparkles className="h-4 w-4" />
+            Propostas
+          </Button>
+          <Button
+            size="sm"
             className="bg-[#25D366] hover:bg-[#1ebe5d] text-white gap-1.5"
             onClick={openDirectWhatsApp}
             disabled={!lead.telefone}
@@ -2328,23 +2347,6 @@ export default function LeadDetail() {
         {/* Right column — Activities + Conversations */}
         <div className="lg:col-span-2 space-y-4">
 
-          {activeLeadDeal && (
-            <Card data-testid="card-commercial-journey">
-              <CardHeader className="pb-3"><CardTitle className="flex items-center justify-between gap-3 text-sm font-semibold"><span className="flex items-center gap-2"><Briefcase className="h-4 w-4 text-primary" /> Jornada do negócio</span><Badge>{DEAL_STAGE_LABELS[activeLeadDeal.etapa] ?? activeLeadDeal.etapa}</Badge></CardTitle></CardHeader>
-              <CardContent>
-                <div className="mb-4"><p className="font-medium">{activeLeadDeal.titulo}</p><p className="mt-1 text-xs text-muted-foreground">Negócio #{activeLeadDeal.id.slice(0, 8)} · {activeLeadDeal.valor ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(activeLeadDeal.valor)) : "Valor em definição"}</p></div>
-                <div className="grid grid-cols-5 gap-1">
-                  {DEAL_STAGE_ORDER.map((stage, index) => {
-                    const current = DEAL_STAGE_ORDER.indexOf(activeLeadDeal.etapa);
-                    const reached = current >= index || activeLeadDeal.etapa === "ganho";
-                    return <div key={stage} className="min-w-0"><div className={`h-1.5 rounded-full ${reached ? "bg-primary" : "bg-muted"}`} /><p className={`mt-2 truncate text-[10px] ${reached ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{DEAL_STAGE_LABELS[stage]}</p></div>;
-                  })}
-                </div>
-                <p className="mt-4 text-xs text-muted-foreground">Mudanças de etapa, descontos, aprovações gerenciais e ações da IA aparecem no histórico abaixo.</p>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Activities */}
           <Card data-testid="card-activities">
             <CardHeader className="pb-3">
@@ -2727,7 +2729,7 @@ export default function LeadDetail() {
         {/* Atendimento, Proposta, Apresentações e Renderizações — antes eram
             4 cards enormes empilhados na vertical; agora organizados em abas
             pra reduzir o scroll e deixar a tela mais limpa. */}
-        <Tabs defaultValue="atendimento" className="w-full">
+        <Tabs id="lead-workspace-tabs" value={leadWorkspaceTab} onValueChange={(value) => setLeadWorkspaceTab(value as "atendimento" | "proposta")} className="w-full">
           <TabsList className="grid w-full grid-cols-2 max-w-md">
             <TabsTrigger value="atendimento">Atendimento</TabsTrigger>
             <TabsTrigger value="proposta">Proposta</TabsTrigger>
