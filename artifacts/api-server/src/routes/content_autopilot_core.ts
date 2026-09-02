@@ -30,13 +30,29 @@ function checkAccess(req: any, res: any, tenantId: string): boolean {
   return true;
 }
 
+function normalizeHttpSiteUrl(raw: string | null | undefined): string | null {
+  const value = (raw ?? "").trim();
+  if (!value) return null;
+  const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  try {
+    const url = new URL(candidate);
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || !url.hostname.includes(".")) return null;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
 // ── GET /tenants/:tenantId/content-autopilot/config ─────────────────────────
 router.get("/tenants/:tenantId/content-autopilot/config", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!checkAccess(req, res, tenantId)) return;
 
   const config = await getConfig(tenantId);
-  res.json({ config, dataForSeoConfigured: isDataForSeoConfigured() });
+  const normalizedConfig = config?.siteUrl
+    ? { ...config, siteUrl: normalizeHttpSiteUrl(config.siteUrl) ?? config.siteUrl }
+    : config;
+  res.json({ config: normalizedConfig, dataForSeoConfigured: isDataForSeoConfigured() });
 });
 
 // ── PUT /tenants/:tenantId/content-autopilot/config ──────────────────────────
@@ -45,7 +61,22 @@ router.put("/tenants/:tenantId/content-autopilot/config", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!checkAccess(req, res, tenantId)) return;
 
-  const parsed = updateContentAutopilotConfigSchema.safeParse(req.body);
+  let payload = req.body;
+  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "siteUrl")) {
+    const rawSiteUrl = (payload as { siteUrl?: unknown }).siteUrl;
+    if (rawSiteUrl !== null && rawSiteUrl !== undefined && typeof rawSiteUrl !== "string") {
+      res.status(422).json({ error: "URL do site inválida" });
+      return;
+    }
+    const normalizedSiteUrl = normalizeHttpSiteUrl(rawSiteUrl as string | null | undefined);
+    if (typeof rawSiteUrl === "string" && rawSiteUrl.trim() && !normalizedSiteUrl) {
+      res.status(422).json({ error: "Informe uma URL pública válida, por exemplo https://seusite.com" });
+      return;
+    }
+    payload = { ...(payload as Record<string, unknown>), siteUrl: normalizedSiteUrl };
+  }
+
+  const parsed = updateContentAutopilotConfigSchema.safeParse(payload);
   if (!parsed.success) {
     res.status(422).json({ error: "Payload inválido", issues: parsed.error.issues });
     return;
@@ -83,8 +114,14 @@ router.post("/tenants/:tenantId/content-autopilot/analyze-site", async (req, res
     return;
   }
 
+  const normalizedSiteUrl = normalizeHttpSiteUrl(config.siteUrl);
+  if (!normalizedSiteUrl) {
+    res.status(422).json({ error: "A URL configurada é inválida. Salve novamente usando um domínio válido." });
+    return;
+  }
+
   try {
-    const brandTone = await analyzeSiteTone(tenantId, config.siteUrl);
+    const brandTone = await analyzeSiteTone(tenantId, normalizedSiteUrl);
     res.json({ brandTone });
   } catch (err) {
     req.log?.error({ err, tenantId }, "content-autopilot/analyze-site: falhou");
