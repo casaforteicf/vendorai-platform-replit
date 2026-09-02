@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-271",
+    "titulo": "remover jornada duplicada da Central de Trabalho",
+    "descricao": "A Central de Trabalho passa a ter uma única Jornada de Atendimento, usando o novo bloco compacto integrado à pipeline, sem duplicidade visual.",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-02T20:58:55.000Z",
+    "pullRequest": 271
+  },
+  {
     "id": "pr-269",
     "titulo": "metas globais e por vendedor no Dashboard",
     "descricao": "adiciona botão **Configurar metas** no Dashboard; permite criar metas para **Empresa inteira** ou **Vendedor**; indicadores: Leads novos, Oportunidades ativas, Vendas confirmadas, Receita vendida, Ticket médio e Conversão comercial; periodicidade semanal, mensal, trimestral, anual ou personalizada;",
