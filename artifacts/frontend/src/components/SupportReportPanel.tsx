@@ -67,7 +67,12 @@ export function SupportReportPanel({ card, token, onChanged }: {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Falha ao confirmar relatório");
-      toast({ title: "Relatório confirmado", description: "O cliente recebeu a solicitação de feedback e o chamado avançou para Feedback Cliente." });
+      toast({
+        title: "Relatório confirmado",
+        description: body.feedbackRequested
+          ? "O cliente recebeu a solicitação de feedback e o chamado avançou para Feedback Cliente."
+          : "A assistência ainda não foi marcada como resolvida; o card voltou para Execução da Assistência para continuidade.",
+      });
       await onChanged?.();
     } catch (error) {
       toast({ title: "Erro ao confirmar relatório", description: String(error), variant: "destructive" });
@@ -105,7 +110,7 @@ export function SupportReportPanel({ card, token, onChanged }: {
           <div className="space-y-1"><label className="text-xs font-medium">Observações</label><Textarea rows={2} value={draft.observacoes} disabled={confirmed} onChange={(e) => setDraft({ ...draft, observacoes: e.target.value })} /></div>
           {!confirmed && (
             <div className="flex flex-wrap gap-2">
-              <Button disabled={confirming} onClick={() => void confirm()}>{confirming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Confirmar relatório e pedir feedback</Button>
+              <Button disabled={confirming} onClick={() => void confirm()}>{confirming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{draft.situacaoFinal === "resolvido" ? "Confirmar relatório e pedir feedback" : "Confirmar relatório e continuar assistência"}</Button>
               <Button variant="outline" disabled={generating} onClick={() => void generate()}>{generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Gerar novamente</Button>
             </div>
           )}
