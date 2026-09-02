@@ -28,7 +28,8 @@ const FALLBACK_LABELS: Record<string, string> = {
 
 type QueueItem = {
   key: string;
-  leadId: string;
+  leadId?: string;
+  dataIssue?: boolean;
   dealId?: string;
   leadName: string;
   company?: string | null;
@@ -76,18 +77,17 @@ export default function WorkCenterHome() {
     const items: QueueItem[] = [];
     const leadsWithDeal = new Set<string>();
     for (const deal of deals) {
-      if (!deal.leadId) continue;
-      const lead = leadById.get(deal.leadId);
-      if (!lead) continue;
-      leadsWithDeal.add(deal.leadId);
+      const lead = deal.leadId ? leadById.get(deal.leadId) : undefined;
+      if (deal.leadId && lead) leadsWithDeal.add(deal.leadId);
       items.push({
-        key: deal.id, leadId: deal.leadId, dealId: deal.id, leadName: lead.nome,
-        company: lead.empresa, dealTitle: deal.titulo, stage: deal.etapa,
-        ownerId: deal.assignedTo ?? lead.assignedTo, nextActivity: pendingByDeal.get(deal.id)?.[0],
-        updatedAt: deal.updatedAt,
+        key: deal.id, leadId: lead?.id, dealId: deal.id,
+        leadName: lead?.nome ?? deal.titulo ?? "Negócio sem identificação",
+        company: lead?.empresa, dealTitle: deal.titulo, stage: deal.etapa,
+        ownerId: deal.assignedTo ?? lead?.assignedTo,
+        nextActivity: pendingByDeal.get(deal.id)?.[0],
+        updatedAt: deal.updatedAt, dataIssue: !lead,
       });
-    }
-    for (const lead of leads) {
+    }    for (const lead of leads) {
       if (leadsWithDeal.has(lead.id)) continue;
       items.push({
         key: "lead-" + lead.id, leadId: lead.id, leadName: lead.nome, company: lead.empresa,
@@ -122,10 +122,13 @@ export default function WorkCenterHome() {
   const loading = loadingLeads || loadingDeals || loadingActivities;
 
   function openItem(item: QueueItem) {
+    if (!item.leadId) {
+      navigate("/deals?dealId=" + item.dealId + "&cadastro=incompleto");
+      return;
+    }
     const query = item.dealId ? "?dealId=" + item.dealId + "&from=work-center" : "?from=work-center";
     navigate("/trabalho/" + item.leadId + query);
   }
-
   return <div className="space-y-6">
     <div>
       <Badge variant="outline" className="mb-2">Estação operacional</Badge>
@@ -155,7 +158,7 @@ export default function WorkCenterHome() {
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">{visibleQueue.map((item) => {
           const isOverdue = Boolean(item.nextActivity?.dataVencimento && new Date(item.nextActivity.dataVencimento).getTime() < now);
           return <button key={item.key} type="button" onClick={() => openItem(item)} className="group rounded-xl border bg-card p-4 text-left transition hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate font-semibold">{item.leadName}</h2><p className="truncate text-sm text-muted-foreground">{item.company || item.dealTitle}</p></div><Badge variant={isOverdue ? "destructive" : "secondary"}>{stageLabel.get(item.stage) ?? FALLBACK_LABELS[item.stage] ?? "Sem negócio"}</Badge></div>
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate font-semibold">{item.leadName}</h2><p className="truncate text-sm text-muted-foreground">{item.company || item.dealTitle}</p>{item.dataIssue ? <Badge variant="outline" className="mt-2 text-amber-700">Cadastro incompleto</Badge> : null}</div><Badge variant={isOverdue ? "destructive" : "secondary"}>{stageLabel.get(item.stage) ?? FALLBACK_LABELS[item.stage] ?? "Sem negócio"}</Badge></div>
             <div className="mt-4 space-y-2 text-sm">
               <p className="flex items-center gap-2"><UserRound className="h-4 w-4 text-muted-foreground" /><span>{userById.get(item.ownerId ?? "") ?? "Responsável não definido"}</span></p>
               <p className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-muted-foreground" /><span className="truncate">{item.nextActivity?.titulo ?? "Próxima atividade não definida"}</span></p>

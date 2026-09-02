@@ -131,25 +131,36 @@ router.post("/deals", async (req, res) => {
     return;
   }
 
-  // Contatos classificados como "Não lead" permanecem no histórico, mas não
-  // podem voltar ao funil comercial por criação manual ou automação.
-  if (parsed.data.leadId) {
-    const [linkedLead] = await db
-      .select({ naoLeadTipo: leadsTable.naoLeadTipo })
-      .from(leadsTable)
-      .where(and(
-        eq(leadsTable.id, parsed.data.leadId),
-        eq(leadsTable.tenantId, parsed.data.tenantId),
-      ));
-    if (linkedLead?.naoLeadTipo) {
-      res.status(422).json({
-        error: "Contato classificado como Não lead não pode ser incluído na pipeline.",
-        code: "NON_LEAD_PIPELINE_EXEMPT",
-      });
-      return;
-    }
+  // Todo card comercial precisa de um lead real do mesmo tenant. Isso evita
+  // negócios órfãos que aparecem na pipeline, mas somem da Central/Leads.
+  if (!parsed.data.leadId) {
+    res.status(422).json({
+      error: "Selecione ou crie um lead antes de iniciar o negócio.",
+      code: "DEAL_LEAD_REQUIRED",
+    });
+    return;
   }
-
+  const [linkedLead] = await db
+    .select({ id: leadsTable.id, naoLeadTipo: leadsTable.naoLeadTipo })
+    .from(leadsTable)
+    .where(and(
+      eq(leadsTable.id, parsed.data.leadId),
+      eq(leadsTable.tenantId, parsed.data.tenantId),
+    ));
+  if (!linkedLead) {
+    res.status(422).json({
+      error: "O lead informado não existe neste tenant.",
+      code: "DEAL_LEAD_INVALID",
+    });
+    return;
+  }
+  if (linkedLead.naoLeadTipo) {
+    res.status(422).json({
+      error: "Contato classificado como Não lead não pode ser incluído na pipeline.",
+      code: "NON_LEAD_PIPELINE_EXEMPT",
+    });
+    return;
+  }
   const assignedTo = parsed.data.assignedTo ?? (
     req.user?.platformRole !== "super_admin" && req.user?.sub ? req.user.sub : null
   );
