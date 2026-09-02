@@ -1,0 +1,24 @@
+name: Temporary Railway API build diagnostic
+
+on:
+  push:
+    branches:
+      - fix/railway-api-502-profile-data
+
+jobs:
+  railway-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install exactly like Railway
+        run: pnpm install --frozen-lockfile
+      - name: Build API exactly like Railway
+        run: pnpm --filter @workspace/api-server run build
