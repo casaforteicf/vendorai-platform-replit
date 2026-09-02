@@ -1,5 +1,5 @@
 -- VendorAI — complemento da arquitetura de pipelines
--- Migration 210 — aditiva/idempotente
+-- Migration 206 — aditiva/idempotente
 
 ALTER TABLE deals
   ADD COLUMN IF NOT EXISTS relationship_stage text;
