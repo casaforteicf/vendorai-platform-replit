@@ -65,6 +65,10 @@ export const propostasTable = pgTable("propostas", {
   formaPagamentoMensalidade: text("forma_pagamento_mensalidade"),
   condPagamentoMensalidade: text("cond_pagamento_mensalidade"),
   numero: text("numero"),
+  // Orçamento importado de outro sistema (não gerado pelo Vendor.ai) —
+  // guarda o arquivo original anexado pelo usuário como referência.
+  arquivoImportadoUrl: text("arquivo_importado_url"),
+  arquivoImportadoNome: text("arquivo_importado_nome"),
   recorrente: boolean("recorrente").default(false),
   valorMensal: numeric("valor_mensal", { precision: 12, scale: 2 }),
   prazoContratoMeses: integer("prazo_contrato_meses"),

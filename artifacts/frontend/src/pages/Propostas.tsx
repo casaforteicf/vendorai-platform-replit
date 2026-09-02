@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1783,7 +1783,7 @@ function newFreeItem(): FreeItem {
     const qc = useQueryClient();
   
     // mode
-    const [mode, setMode] = useState<"catalogo" | "livre" | "template">("catalogo");
+    const [mode, setMode] = useState<"catalogo" | "livre" | "template" | "importar">("catalogo");
     const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
   
     // catalog mode
@@ -1860,7 +1860,34 @@ function newFreeItem(): FreeItem {
       return s + l.quantidade * pu;
     }, 0);
     const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
-  
+
+    // ── Importar orçamento de outro sistema ──────────────────────────────
+    const [importValorTotal, setImportValorTotal] = useState<number>(0);
+    const [importArquivo, setImportArquivo] = useState<{ url: string; nome: string } | null>(null);
+    const [importUploading, setImportUploading] = useState(false);
+    const [importError, setImportError] = useState("");
+    const importFileInputRef = useRef<HTMLInputElement>(null);
+
+    async function uploadImportFile(file: File) {
+      setImportUploading(true);
+      try {
+        const metaRes = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+        });
+        if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
+        const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+        const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+        if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
+        setImportArquivo({ url: `${window.location.origin}/api/storage${objectPath}`, nome: file.name });
+      } catch {
+        toast({ title: "Erro no upload do arquivo", variant: "destructive" });
+      } finally {
+        setImportUploading(false);
+      }
+    }
+
     function handleClose() {
       form.reset({
         leadId: lockedLeadId || "",
@@ -1982,7 +2009,38 @@ function newFreeItem(): FreeItem {
         }
       : { recorrente: false, valorMensal: undefined, prazoContratoMeses: undefined };
 
-    if (mode === "catalogo") {
+    if (mode === "importar") {
+      if (!importValorTotal || importValorTotal <= 0) { setImportError("Informe o valor total do orçamento."); return; }
+      setImportError("");
+      createLivreMut.mutate(
+        {
+          data: {
+            tenantId, leadId: vals.leadId, dealId: activeDealId, titulo: vals.titulo,
+            validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined,
+            itens: [{ nome: "Orçamento importado de outro sistema", quantidade: 1, valorUnitario: importValorTotal }],
+            valorTotal: importValorTotal,
+            arquivoImportadoUrl: importArquivo?.url || undefined,
+            arquivoImportadoNome: importArquivo?.nome || undefined,
+          },
+        },
+        {
+          onSuccess: () => {
+            toast({ title: "Orçamento importado com sucesso" });
+            qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+            if (lockedLeadId) {
+              qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
+            }
+            if (!activeDealId) createDeal(
+              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: importValorTotal } },
+              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
+            );
+            onSuccess?.();
+            handleClose();
+          },
+          onError: () => toast({ title: "Erro ao importar orçamento", variant: "destructive" }),
+        }
+      );
+    } else if (mode === "catalogo") {
       const valid = cartLines.filter((l) => l.produtoId);
       if (!valid.length) { setCartError("Adicione pelo menos um produto."); return; }
       setCartError("");
@@ -2072,7 +2130,7 @@ function newFreeItem(): FreeItem {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-[96vw] xl:max-w-[1600px] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Novo Orçamento</DialogTitle>
         </DialogHeader>
@@ -2138,6 +2196,13 @@ function newFreeItem(): FreeItem {
                 className={`flex-1 py-2 font-medium transition-colors ${mode === "livre" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
               >
                 Itens Livres
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("importar")}
+                className={`flex-1 py-2 font-medium transition-colors ${mode === "importar" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              >
+                Importar de outro sistema
               </button>
             </div>
 
@@ -2454,6 +2519,60 @@ function newFreeItem(): FreeItem {
                   </div>
                   {freeError && <p className="text-sm text-destructive mt-1">{freeError}</p>}
                 </div>
+              </div>
+            )}
+
+            {/* ── IMPORT MODE ───────────────────────────────────────────────── */}
+            {mode === "importar" && (
+              <div className="space-y-3">
+                <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+                  Anexe o orçamento gerado em outro sistema (PDF, planilha, imagem etc.) e informe o valor total.
+                  O arquivo original fica salvo aqui pra consulta — os itens não precisam ser detalhados linha a linha.
+                </div>
+
+                <div className="grid gap-1.5">
+                  <FormLabel>Arquivo do orçamento</FormLabel>
+                  <input
+                    ref={importFileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void uploadImportFile(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="justify-start gap-2 w-fit"
+                    disabled={importUploading}
+                    onClick={() => importFileInputRef.current?.click()}
+                  >
+                    {importUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {importUploading ? "Enviando…" : importArquivo ? "Trocar arquivo" : "Selecionar arquivo"}
+                  </Button>
+                  {importArquivo && (
+                    <a href={importArquivo.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1.5 mt-1">
+                      <FileText className="h-3.5 w-3.5" />
+                      {importArquivo.nome}
+                    </a>
+                  )}
+                </div>
+
+                <div className="grid gap-1.5 max-w-xs">
+                  <FormLabel>Valor total (R$)</FormLabel>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={importValorTotal || ""}
+                    onChange={(e) => setImportValorTotal(parseFloat(e.target.value) || 0)}
+                    placeholder="0,00"
+                  />
+                </div>
+
+                {importError && <p className="text-sm text-destructive">{importError}</p>}
               </div>
             )}
 
