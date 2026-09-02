@@ -45,6 +45,7 @@ import {
   getGetLeadSpouseConsentQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2694,84 +2695,100 @@ export default function LeadDetail() {
           </Card>
         </div>
 
-        {/* Jornada de atendimento (inclui o Briefing SPIN na qualificação) */}
-        <LeadServiceJourney leadId={id} tenantId={tenantId} lead={lead} />
+        {/* Atendimento, Proposta, Apresentações e Renderizações — antes eram
+            4 cards enormes empilhados na vertical; agora organizados em abas
+            pra reduzir o scroll e deixar a tela mais limpa. */}
+        <Tabs defaultValue="atendimento" className="w-full">
+          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+            <TabsTrigger value="atendimento">Atendimento</TabsTrigger>
+            <TabsTrigger value="proposta">Proposta</TabsTrigger>
+            <TabsTrigger value="apresentacoes">Apresentações</TabsTrigger>
+            <TabsTrigger value="renderizacoes">Renderizações</TabsTrigger>
+          </TabsList>
 
-        {/* Proposta Gerada */}
-        <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
+          <TabsContent value="atendimento" className="mt-4">
+            <LeadServiceJourney leadId={id} tenantId={tenantId} lead={lead} />
+          </TabsContent>
 
-        {/* Apresentações de Produto */}
-        <LeadProductPresentationTab leadId={id} tenantId={tenantId} lead={lead} />
+          <TabsContent value="proposta" className="mt-4">
+            <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
+          </TabsContent>
 
-        {/* Galeria de Renderizações salvas (distinto das imagens específicas da proposta, acima) */}
-        {(() => {
-          const renderImages = (activities ?? []).filter(
-            (a) => a.anexoCategoria === "imagem" && a.anexoUrl
-          ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          return (
-            <Card data-testid="card-imagens-proposta">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Image className="h-4 w-4" />
-                  Galeria de Renderizações
-                  {renderImages.length > 0 && (
-                    <Badge variant="outline" className="text-xs ml-1">{renderImages.length}</Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {activitiesLoading ? (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
-                    {[1,2,3].map((i) => (
-                      <div key={i} className="aspect-video bg-muted animate-pulse rounded-lg" />
-                    ))}
-                  </div>
-                ) : renderImages.length === 0 ? (
-                  <div className="py-8 text-center space-y-2">
-                    <Image className="h-10 w-10 mx-auto text-muted-foreground/30" />
-                    <p className="text-sm text-muted-foreground">Nenhuma imagem salva para este lead.</p>
-                    <p className="text-xs text-muted-foreground/70">
-                      Gere uma renderização em{" "}
-                      <span className="font-medium">Módulo Arch → Renderização</span>{" "}
-                      e clique em "Salvar no Lead".
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                    {renderImages.map((activity) => (
-                      <button
-                        key={activity.id}
-                        type="button"
-                        onClick={() => {
-                          setLightboxUrl(activity.anexoUrl!);
-                          setLightboxTitle(activity.titulo ?? "Imagem da Proposta");
-                        }}
-                        className="group relative aspect-video rounded-lg overflow-hidden border border-border bg-muted hover:border-violet-400 transition-all shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-violet-500"
-                      >
-                        <img
-                          src={activity.anexoUrl!}
-                          alt={activity.titulo ?? "Imagem"}
-                          className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                          loading="lazy"
-                        />
-                        {/* Overlay */}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                          <Maximize2 className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
-                        </div>
-                        {/* Date badge */}
-                        <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/70 to-transparent">
-                          <p className="text-[10px] text-white/90 truncate">
-                            {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(activity.createdAt))}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })()}
+          <TabsContent value="apresentacoes" className="mt-4">
+            <LeadProductPresentationTab leadId={id} tenantId={tenantId} lead={lead} />
+          </TabsContent>
+
+          <TabsContent value="renderizacoes" className="mt-4">
+            {(() => {
+              const renderImages = (activities ?? []).filter(
+                (a) => a.anexoCategoria === "imagem" && a.anexoUrl
+              ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+              return (
+                <Card data-testid="card-imagens-proposta">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Image className="h-4 w-4" />
+                      Galeria de Renderizações
+                      {renderImages.length > 0 && (
+                        <Badge variant="outline" className="text-xs ml-1">{renderImages.length}</Badge>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {activitiesLoading ? (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                        {[1,2,3].map((i) => (
+                          <div key={i} className="aspect-video bg-muted animate-pulse rounded-lg" />
+                        ))}
+                      </div>
+                    ) : renderImages.length === 0 ? (
+                      <div className="py-8 text-center space-y-2">
+                        <Image className="h-10 w-10 mx-auto text-muted-foreground/30" />
+                        <p className="text-sm text-muted-foreground">Nenhuma imagem salva para este lead.</p>
+                        <p className="text-xs text-muted-foreground/70">
+                          Gere uma renderização em{" "}
+                          <span className="font-medium">Módulo Arch → Renderização</span>{" "}
+                          e clique em "Salvar no Lead".
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                        {renderImages.map((activity) => (
+                          <button
+                            key={activity.id}
+                            type="button"
+                            onClick={() => {
+                              setLightboxUrl(activity.anexoUrl!);
+                              setLightboxTitle(activity.titulo ?? "Imagem da Proposta");
+                            }}
+                            className="group relative aspect-video rounded-lg overflow-hidden border border-border bg-muted hover:border-violet-400 transition-all shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                          >
+                            <img
+                              src={activity.anexoUrl!}
+                              alt={activity.titulo ?? "Imagem"}
+                              className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                              loading="lazy"
+                            />
+                            {/* Overlay */}
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                              <Maximize2 className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                            </div>
+                            {/* Date badge */}
+                            <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/70 to-transparent">
+                              <p className="text-[10px] text-white/90 truncate">
+                                {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(activity.createdAt))}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+          </TabsContent>
+        </Tabs>
 
       </div>
 
