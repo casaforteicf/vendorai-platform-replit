@@ -1,0 +1,28 @@
+name: Temporary business briefing validation
+
+on:
+  push:
+    branches:
+      - feat/business-context-briefing-suggestions
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/vendorai_ci
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - name: API launch typecheck
+        run: pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit
+      - name: Frontend typecheck
+        run: pnpm --filter @workspace/frontend typecheck
