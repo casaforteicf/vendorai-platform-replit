@@ -26,13 +26,13 @@ import {
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image, ImageIcon,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
-  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Megaphone, Linkedin, Youtube,
+  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Megaphone, Linkedin, Youtube, Music2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 import JSZip from "jszip";
 
-type ContentType = "feed" | "stories" | "reels" | "linkedin" | "youtube";
+type ContentType = "feed" | "stories" | "reels" | "linkedin" | "youtube" | "tiktok";
 type ProductSource = "catalog" | "varejo" | "supermercado" | "insumo";
 
 interface FeedVariation { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[] }
@@ -105,6 +105,12 @@ const TYPE_CONFIG = {
     icon: Youtube,
     description: "Roteiro pra gravar (gancho + desenvolvimento + encerramento) + título/descrição/tags prontos",
     placeholder: "Ex: Tutorial mostrando como funciona nosso processo de instalação, passo a passo",
+  },
+  tiktok: {
+    label: "TikTok",
+    icon: Music2,
+    description: "Roteiro curto pra vídeo vertical (gancho + desenvolvimento + CTA), mesmo formato de Reels",
+    placeholder: "Ex: Bastidores rápidos do processo de produção, formato dinâmico e envolvente",
   },
 };
 
@@ -956,7 +962,7 @@ function VariationCard({
   const [, setLocation] = useLocation();
 
   const effectiveVariation =
-    type === "reels"
+    (type === "reels" || type === "tiktok")
       ? localVideoUrl ? { ...variation, videoUrl: localVideoUrl } : variation
       : (() => {
           const base = localImageUrl ? { ...variation, imageUrl: localImageUrl } : variation;
@@ -1157,7 +1163,7 @@ CTA: ${v.cta}` : ""}`];
     setEditing(false);
   }
 
-  const canEdit = type !== "reels";
+  const canEdit = type !== "reels" && type !== "tiktok";
 
   return (
     <Card>
@@ -1206,14 +1212,14 @@ CTA: ${v.cta}` : ""}`];
                     Editar
                   </Button>
                 )}
-                {contentId && tenantId && (type === "feed" || type === "stories" || type === "reels") && (
+                {contentId && tenantId && (type === "feed" || type === "stories" || type === "reels" || type === "tiktok") && (
                   <MediaUploadButton
                     contentId={contentId}
                     variationIndex={index}
                     tenantId={tenantId}
-                    mediaType={type === "reels" ? "video" : "image"}
-                    onUploaded={type === "reels" ? setLocalVideoUrl : (url) => { setLocalImageUrl(url); setLocalImageUrls(null); }}
-                    triggerRef={type !== "reels" ? uploadTriggerRef : undefined}
+                    mediaType={(type === "reels" || type === "tiktok") ? "video" : "image"}
+                    onUploaded={(type === "reels" || type === "tiktok") ? setLocalVideoUrl : (url) => { setLocalImageUrl(url); setLocalImageUrls(null); }}
+                    triggerRef={(type !== "reels" && type !== "tiktok") ? uploadTriggerRef : undefined}
                   />
                 )}
                 {type === "feed" || type === "stories" ? (
@@ -1258,6 +1264,7 @@ CTA: ${v.cta}` : ""}`];
           />
         )}
         {type === "reels" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
+        {type === "tiktok" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
         {type === "linkedin" && <LinkedInCard v={displayVariation as LinkedInVariation} />}
         {type === "youtube" && <YouTubeCard v={displayVariation as YouTubeVariation} />}
         {(type === "feed" || type === "stories") && contentId && tenantId && (
@@ -1391,7 +1398,7 @@ function HistoryItem({
             <ExternalLink className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
               Para publicar: copie o texto e publique manualmente no Instagram.
-              {item.type !== "reels" && " Imagens geradas pela IA ficam disponíveis por até 1h após a geração."}
+              {item.type !== "reels" && item.type !== "tiktok" && " Imagens geradas pela IA ficam disponíveis por até 1h após a geração."}
             </span>
           </div>
           {historyVariations.length === 0 ? (
@@ -1456,7 +1463,7 @@ export default function Content() {
   const [sessionId] = useState(() => crypto.randomUUID());
   const multiUploadRef = useRef<HTMLInputElement>(null);
 
-  const contentFormat = activeTab === "stories" ? "stories" : activeTab === "reels" ? "reels" : feedSubFormat;
+  const contentFormat = activeTab === "stories" ? "stories" : (activeTab === "reels" || activeTab === "tiktok") ? "reels" : feedSubFormat;
   const aspectRatio = contentFormat === "feed_portrait" ? "4:5" : contentFormat === "feed_square" ? "1:1" : "9:16";
 
   // Simple command mode
@@ -1697,7 +1704,7 @@ export default function Content() {
       productId: productId !== "none" ? productId : undefined,
       productSource,
       variations,
-      imageCount: activeTab === "reels" ? 1 : imageCount,
+      imageCount: (activeTab === "reels" || activeTab === "tiktok") ? 1 : imageCount,
       imageUrls: styleRefs.length > 0 ? styleRefs : undefined,
       postMaterialUrls: materialImgs.length > 0 ? materialImgs : undefined,
       contentFormat,
@@ -1765,7 +1772,7 @@ export default function Content() {
 
       {/* Main content */}
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as ContentType); setLastResult(null); setStrategyResult(null); }}>
-        <TabsList className="grid grid-cols-5 w-full max-w-xl">
+        <TabsList className="grid grid-cols-6 w-full max-w-2xl">
           {(Object.keys(TYPE_CONFIG) as ContentType[]).map((key) => {
             const Icon = TYPE_CONFIG[key].icon;
             return (
@@ -1779,7 +1786,7 @@ export default function Content() {
 
         {(Object.keys(TYPE_CONFIG) as ContentType[]).map((key) => (
           <TabsContent key={key} value={key} className="mt-4">
-            {(key === "youtube" || key === "linkedin") && (
+            {(key === "youtube" || key === "linkedin" || key === "tiktok") && (
               <div className="mb-4">
                 <SocialIntegrationsPanel providers={[key]} mode="publish" />
               </div>
@@ -2011,7 +2018,7 @@ export default function Content() {
                             </div>
                           </div>
                         )}
-                        {(key === "stories" || key === "reels") && (
+                        {(key === "stories" || key === "reels" || key === "tiktok") && (
                           <div className="flex items-center gap-2 rounded-lg bg-muted/50 border px-3 py-2">
                             <div className="w-5 h-8 border-2 border-primary rounded flex-shrink-0" />
                             <div>
@@ -2026,9 +2033,9 @@ export default function Content() {
                           const hasMaterial = uploadedImages.some((img) => img.purpose === "post_material" && !img.uploading);
                           return (
                             <div className="space-y-1.5">
-                              <Label className={cn((key === "reels" || hasMaterial) && "text-muted-foreground")}>
+                              <Label className={cn((key === "reels" || key === "tiktok" || hasMaterial) && "text-muted-foreground")}>
                                 Quantidade de imagens
-                                {key === "reels" && <span className="ml-1 text-[10px] font-normal">(Reels gera 1 thumbnail)</span>}
+                                {(key === "reels" || key === "tiktok") && <span className="ml-1 text-[10px] font-normal">({key === "tiktok" ? "TikTok" : "Reels"} gera 1 thumbnail)</span>}
                                 {key === "stories" && !hasMaterial && <span className="ml-1 text-[10px] font-normal text-muted-foreground">(carrossel sequencial)</span>}
                                 {hasMaterial && <span className="ml-1 text-[10px] font-normal text-emerald-600">(usando fotos do cliente)</span>}
                               </Label>
@@ -2048,7 +2055,7 @@ export default function Content() {
                                       size="sm"
                                       onClick={() => setImageCount(n)}
                                       className="w-12"
-                                      disabled={key === "reels"}
+                                      disabled={key === "reels" || key === "tiktok"}
                                     >
                                       {n}
                                     </Button>
