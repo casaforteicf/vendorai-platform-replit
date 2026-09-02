@@ -1,0 +1,37 @@
+name: Temp Pipeline Active Processes
+
+on:
+  push:
+    branches:
+      - fix/pipeline-active-processes-unified-ui
+    paths:
+      - scripts/patch-pipeline-active-processes.py
+      - .github/workflows/temp-pipeline-active-processes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/pipeline-active-processes-unified-ui
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply pipeline patch
+        run: python scripts/patch-pipeline-active-processes.py
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/api-server/src/routes/entregas.ts artifacts/api-server/src/routes/deals.ts artifacts/api-server/src/services/support-feedback.ts artifacts/frontend/src/pages/PipelineOperacional.tsx artifacts/frontend/src/pages/PipelineRelacionamento.tsx artifacts/frontend/src/pages/Leads.tsx artifacts/frontend/src/pages/Deals.tsx
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "feat(pipeline): manter somente processos ativos e fluxo progressivo"
+          git push origin HEAD:fix/pipeline-active-processes-unified-ui
