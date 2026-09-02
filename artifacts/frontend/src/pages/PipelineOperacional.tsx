@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
+import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
 import {
   AlertTriangle,
   CalendarDays,
@@ -52,6 +53,9 @@ type WorkCard = {
   metadata?: Record<string, unknown> | null;
   createdAt?: string;
   updatedAt?: string;
+  leadLabel?: string | null;
+  responsavelLabel?: string | null;
+  dealTitle?: string | null;
 };
 
 type Attachment = {
@@ -169,22 +173,24 @@ export default function PipelineOperacional() {
     queryKey: ["work-cards", tenantId, pipeline],
     enabled: !!tenantId,
     queryFn: () => api(`/api/tenants/${tenantId}/work-cards?pipeline=${pipeline}`),
+    staleTime: 15_000, refetchOnWindowFocus: false,
   });
+  const needsContext = supportOpen || deliveryOpen || Boolean(selectedCard);
   const leadsQuery = useQuery<Lead[]>({
-    queryKey: ["work-card-leads", tenantId], enabled: !!tenantId,
-    queryFn: () => api(`/api/tenants/${tenantId}/leads`),
+    queryKey: ["work-card-leads", tenantId], enabled: !!tenantId && needsContext,
+    queryFn: () => api(`/api/tenants/${tenantId}/leads`), staleTime: 60_000, refetchOnWindowFocus: false,
   });
   const usersQuery = useQuery<User[]>({
-    queryKey: ["work-card-users", tenantId], enabled: !!tenantId,
-    queryFn: () => api(`/api/tenants/${tenantId}/users`),
+    queryKey: ["work-card-users", tenantId], enabled: !!tenantId && needsContext,
+    queryFn: () => api(`/api/tenants/${tenantId}/users`), staleTime: 60_000, refetchOnWindowFocus: false,
   });
   const dealsQuery = useQuery<Deal[]>({
-    queryKey: ["work-card-deals", tenantId], enabled: !!tenantId,
-    queryFn: () => api(`/api/tenants/${tenantId}/deals`),
+    queryKey: ["work-card-deals", tenantId], enabled: !!tenantId && needsContext,
+    queryFn: () => api(`/api/tenants/${tenantId}/deals`), staleTime: 60_000, refetchOnWindowFocus: false,
   });
   const proposalsQuery = useQuery<Proposal[]>({
-    queryKey: ["work-card-proposals", tenantId], enabled: !!tenantId,
-    queryFn: () => api(`/api/tenants/${tenantId}/propostas`),
+    queryKey: ["work-card-proposals", tenantId], enabled: !!tenantId && (supportOpen || deliveryOpen),
+    queryFn: () => api(`/api/tenants/${tenantId}/propostas`), staleTime: 60_000, refetchOnWindowFocus: false,
   });
   const attachmentsQuery = useQuery<Attachment[]>({
     queryKey: ["work-card-attachments", selectedCard?.id],
@@ -209,6 +215,8 @@ export default function PipelineOperacional() {
 
   const stages = pipeline === "suporte" ? SUPPORT_STAGES : EXECUTION_STAGES;
   const cards = cardsQuery.data ?? [];
+  const stageIndex = (stage: string) => stages.findIndex(([key]) => key === stage);
+  const canMoveForward = (card: WorkCard, target: string) => target === card.etapa || stageIndex(target) >= stageIndex(card.etapa);
 
   function setPipeline(next: PipelineKind | "comercial" | "aquecimento" | "parceiros") {
     if (next === "comercial") navigate("/deals");
@@ -265,13 +273,7 @@ export default function PipelineOperacional() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-2">
-        <Button size="sm" variant="ghost" onClick={() => setPipeline("comercial")}>Comercial</Button>
-        <Button size="sm" variant={pipeline === "execucao" ? "default" : "ghost"} onClick={() => setPipeline("execucao")}>Execução / Pedidos</Button>
-        <Button size="sm" variant={pipeline === "suporte" ? "default" : "ghost"} onClick={() => setPipeline("suporte")}>Suporte / Assistência</Button>
-        <Button size="sm" variant="ghost" onClick={() => setPipeline("aquecimento")}>Aquecimento</Button>
-        <Button size="sm" variant="ghost" onClick={() => setPipeline("parceiros")}>Parceiros</Button>
-      </div>
+      <PipelineNav active={pipeline} />
 
       <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-3">
         {stages.map(([key, label]) => {
@@ -279,14 +281,19 @@ export default function PipelineOperacional() {
           return (
             <section
               key={key}
-              className="flex w-80 shrink-0 flex-col rounded-xl border bg-muted/20"
+              className={PIPELINE_COLUMN_CLASS}
               onDragOver={(event) => event.preventDefault()}
               onDrop={() => {
-                if (draggedId) patchCard.mutate({ id: draggedId, data: { etapa: key } });
+                const dragged = cards.find((card) => card.id === draggedId);
+                if (dragged && !canMoveForward(dragged, key)) {
+                  toast({ title: "Movimento não permitido", description: "O card só pode avançar. Etapas já concluídas ficam no histórico.", variant: "destructive" });
+                } else if (draggedId) {
+                  patchCard.mutate({ id: draggedId, data: { etapa: key } });
+                }
                 setDraggedId(null);
               }}
             >
-              <div className="flex items-center justify-between border-b px-3 py-2.5">
+              <div className={PIPELINE_COLUMN_HEADER_CLASS}>
                 <h2 className="text-sm font-semibold">{label}</h2>
                 <Badge variant="secondary">{stageCards.length}</Badge>
               </div>
@@ -296,8 +303,8 @@ export default function PipelineOperacional() {
                   <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">Arraste um card para esta etapa</div>
                 )}
                 {stageCards.map((card) => {
-                  const lead = card.leadId ? leadMap.get(card.leadId) : undefined;
-                  const responsible = card.responsavelId ? userMap.get(card.responsavelId) : undefined;
+                  const lead = card.leadLabel || (card.leadId ? (leadMap.get(card.leadId)?.nome || leadMap.get(card.leadId)?.empresa) : undefined);
+                  const responsible = card.responsavelLabel || (card.responsavelId ? (userMap.get(card.responsavelId)?.name || userMap.get(card.responsavelId)?.email) : undefined);
                   const items = safeItems(card);
                   return (
                     <article
@@ -306,7 +313,7 @@ export default function PipelineOperacional() {
                       onDragStart={() => setDraggedId(card.id)}
                       onDragEnd={() => setDraggedId(null)}
                       onClick={() => setSelectedCard(card)}
-                      className="cursor-pointer rounded-lg border bg-card p-3 shadow-sm transition hover:shadow-md"
+                      className={PIPELINE_CARD_CLASS}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -315,9 +322,9 @@ export default function PipelineOperacional() {
                         </div>
                         {card.prioridade === "urgente" || card.prioridade === "alta" ? <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" /> : null}
                       </div>
-                      {lead && <p className="mt-2 truncate text-xs text-muted-foreground">{lead.nome || lead.empresa || "Cliente"}</p>}
+                      {lead && <p className="mt-2 truncate text-xs text-muted-foreground">{lead}</p>}
                       {responsible ? (
-                        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><UserRound className="h-3 w-3" /> {responsible.name || responsible.email}</p>
+                        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><UserRound className="h-3 w-3" /> {responsible}</p>
                       ) : (
                         <p className="mt-1 text-xs font-medium text-amber-600">Sem responsável</p>
                       )}
@@ -346,8 +353,8 @@ export default function PipelineOperacional() {
               </SheetHeader>
               <div className="mt-5 space-y-5">
                 <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
-                  <div><p className="text-xs text-muted-foreground">Cliente</p><p>{selectedCard.leadId ? (leadMap.get(selectedCard.leadId)?.nome || leadMap.get(selectedCard.leadId)?.empresa || "—") : "—"}</p></div>
-                  <div><p className="text-xs text-muted-foreground">Pedido</p><p>{selectedCard.dealId ? (dealMap.get(selectedCard.dealId)?.titulo || "—") : "—"}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Cliente</p><p>{selectedCard.leadLabel || (selectedCard.leadId ? (leadMap.get(selectedCard.leadId)?.nome || leadMap.get(selectedCard.leadId)?.empresa || "—") : "—")}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Pedido</p><p>{selectedCard.dealTitle || (selectedCard.dealId ? (dealMap.get(selectedCard.dealId)?.titulo || "—") : "—")}</p></div>
                   <div><p className="text-xs text-muted-foreground">Liberação prevista</p><p>{formatDate(selectedCard.dataInicioPrevista)}</p></div>
                   <div><p className="text-xs text-muted-foreground">Liberação efetiva</p><p>{formatDate(selectedCard.dataInicioEfetiva)}</p></div>
                   <div><p className="text-xs text-muted-foreground">Conclusão/entrega prevista</p><p>{formatDate(selectedCard.dataFimPrevista)}</p></div>
@@ -358,7 +365,7 @@ export default function PipelineOperacional() {
                   <label className="text-sm font-medium">Etapa</label>
                   <Select value={selectedCard.etapa} onValueChange={(etapa) => patchCard.mutate({ id: selectedCard.id, data: { etapa } })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{stages.map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
+                    <SelectContent>{stages.filter(([key]) => stageIndex(key) >= stageIndex(selectedCard.etapa)).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
