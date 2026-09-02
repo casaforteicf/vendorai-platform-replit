@@ -1,84 +1,67 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter";
-import DashboardAnalysis from "./DashboardAnalysis";
 
-type OfficialMetrics = Parameters<typeof OfficialCommandCenter>[0]["data"];
+type CommandCenterProps = Parameters<typeof OfficialCommandCenter>[0];
+type OfficialMetrics = CommandCenterProps["data"];
+type ExecutiveSnapshot = CommandCenterProps["executive"];
 
 export default function Dashboard() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [official, setOfficial] = useState<OfficialMetrics>(null);
-  const [officialLoading, setOfficialLoading] = useState(false);
+  const [executive, setExecutive] = useState<ExecutiveSnapshot>(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
 
   useEffect(() => {
     if (!tenantId || !token) {
       setOfficial(null);
-      setOfficialLoading(false);
+      setExecutive(null);
+      setLoading(false);
       return;
     }
 
     let cancelled = false;
-    setOfficialLoading(true);
+    const headers = { Authorization: `Bearer ${token}` };
+    setLoading(true);
 
-    fetch(`/api/tenants/${tenantId}/dashboard/command-center`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    })
-      .then(async (response) => {
+    Promise.allSettled([
+      fetch(`/api/tenants/${tenantId}/dashboard/command-center`, {
+        headers,
+        cache: "no-store",
+      }).then(async (response) => {
         if (!response.ok) throw new Error("Falha ao carregar métricas oficiais");
         return response.json();
-      })
-      .then((data) => {
-        if (!cancelled) setOfficial(data as OfficialMetrics);
-      })
-      .catch(() => {
-        if (!cancelled) setOfficial(null);
-      })
-      .finally(() => {
-        if (!cancelled) setOfficialLoading(false);
-      });
+      }),
+      fetch("/api/dashboard", {
+        headers,
+        cache: "no-store",
+      }).then(async (response) => {
+        if (!response.ok) throw new Error("Falha ao carregar visão executiva");
+        return response.json();
+      }),
+    ]).then(([officialResult, executiveResult]) => {
+      if (cancelled) return;
+      setOfficial(officialResult.status === "fulfilled" ? officialResult.value as OfficialMetrics : null);
+      setExecutive(executiveResult.status === "fulfilled" ? executiveResult.value as ExecutiveSnapshot : null);
+      setLoading(false);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [tenantId, token]);
-
-  const horaAtual = new Date().getHours();
-  const saudacao = horaAtual < 12 ? "Bom dia" : horaAtual < 18 ? "Boa tarde" : "Boa noite";
-  const primeiroNome = user?.name?.split(" ")[0] ?? "";
+  }, [tenantId, token, refreshKey]);
 
   return (
-    <div className="space-y-6 md:space-y-8">
-      <div>
-        <h1 className="vendor-page-title">
-          {saudacao}{primeiroNome ? `, ${primeiroNome}` : ""}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Aqui está o resumo do seu negócio hoje.
-        </p>
-      </div>
-
-      <OfficialCommandCenter data={official} loading={officialLoading} />
-
-      <div className="dashboard-analysis">
-        <DashboardAnalysis />
-      </div>
-
-      <style>{`
-        .dashboard-analysis > div > div:first-child {
-          display: none;
-        }
-        .dashboard-analysis > div > div:has(+ div > [data-testid="card-total-leads"]) {
-          display: none;
-        }
-        .dashboard-analysis div:has(> [data-testid="card-total-leads"]) {
-          display: none;
-        }
-        .dashboard-analysis div:has(> [data-testid="card-total-leads"]) + .grid {
-          display: none;
-        }
-      `}</style>
-    </div>
+    <OfficialCommandCenter
+      data={official}
+      executive={executive}
+      loading={loading}
+      userName={user?.name ?? ""}
+      onRefresh={refresh}
+    />
   );
 }
