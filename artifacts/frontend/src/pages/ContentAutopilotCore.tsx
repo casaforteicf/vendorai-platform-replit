@@ -25,6 +25,13 @@ import {
 type AutopilotMode = "suggestion" | "semi" | "automatic";
 type SourceType = "site" | "article" | "product";
 
+type ConfigResponse = {
+  config: {
+    ativo?: boolean;
+    automationMode?: AutopilotMode;
+  } | null;
+};
+
 type SitePlan = {
   generatedAt: string;
   summary: {
@@ -87,18 +94,21 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-const MODE_COPY: Record<AutopilotMode, { title: string; description: string }> = {
+const MODE_COPY: Record<AutopilotMode, { title: string; description: string; badge: string }> = {
   suggestion: {
     title: "Sugestão",
     description: "A IA identifica oportunidades e propõe alterações. Nada é produzido ou publicado automaticamente.",
+    badge: "Somente recomendações",
   },
   semi: {
     title: "Semiautomático",
-    description: "A IA prepara conteúdos e melhorias para revisão. A publicação continua dependendo de aprovação.",
+    description: "A IA gera e otimiza conteúdos a partir de keywords aprovadas e deixa tudo como rascunho para revisão humana.",
+    badge: "Gera rascunhos",
   },
   automatic: {
     title: "Automático",
-    description: "O job contínuo do Autopilot fica ativo para produzir a partir de oportunidades aprovadas.",
+    description: "A IA gera, otimiza e publica automaticamente no site próprio, somente a partir de keywords previamente aprovadas.",
+    badge: "Publicação autorizada",
   },
 };
 
@@ -113,17 +123,24 @@ export default function ContentAutopilotCore() {
   const tenantId = (user as any)?.tenantId ?? "";
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const storageKey = `vendorai_site_autopilot_mode:${tenantId}`;
-  const [mode, setMode] = useState<AutopilotMode>(() => {
-    const saved = localStorage.getItem(storageKey) as AutopilotMode | null;
-    return saved && ["suggestion", "semi", "automatic"].includes(saved) ? saved : "suggestion";
-  });
+  const [mode, setMode] = useState<AutopilotMode>("suggestion");
   const [savingMode, setSavingMode] = useState(false);
   const [sourceType, setSourceType] = useState<SourceType>("site");
   const [sourceId, setSourceId] = useState("");
   const [selectedChannels, setSelectedChannels] = useState<string[]>(["instagram", "reels", "whatsapp", "meta_ad", "landing_page"]);
   const [generatingKit, setGeneratingKit] = useState(false);
   const [outputs, setOutputs] = useState<RepurposeOutput[]>([]);
+
+  const configQuery = useQuery<ConfigResponse>({
+    queryKey: ["content-autopilot-config", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { headers: authHeaders() });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível carregar a configuração do Autopilot");
+      return body;
+    },
+    enabled: !!tenantId,
+  });
 
   const { data: plan, isLoading, refetch } = useQuery<SitePlan>({
     queryKey: ["content-autopilot-site-plan", tenantId],
@@ -180,20 +197,16 @@ export default function ContentAutopilotCore() {
   });
 
   const sources = useMemo<SimpleSource[]>(() => {
-    if (sourceType === "site") {
-      return (sitesQuery.data ?? []).map((site) => ({ id: site.id, label: site.name ?? "Site" }));
-    }
-    if (sourceType === "article") {
-      return (articlesQuery.data?.articles ?? []).map((article) => ({ id: article.id, label: article.titulo ?? "Artigo sem título" }));
-    }
+    if (sourceType === "site") return (sitesQuery.data ?? []).map((site) => ({ id: site.id, label: site.name ?? "Site" }));
+    if (sourceType === "article") return (articlesQuery.data?.articles ?? []).map((article) => ({ id: article.id, label: article.titulo ?? "Artigo sem título" }));
     return (productsQuery.data ?? []).map((product) => ({ id: product.id, label: product.nome ?? product.name ?? "Produto" }));
   }, [sourceType, sitesQuery.data, articlesQuery.data, productsQuery.data]);
 
   useEffect(() => {
-    if (!plan) return;
-    const saved = localStorage.getItem(storageKey);
-    if (!saved && plan.summary.autopilotActive) setMode("automatic");
-  }, [plan, storageKey]);
+    const config = configQuery.data?.config;
+    if (!config) return;
+    setMode(config.automationMode ?? (config.ativo ? "semi" : "suggestion"));
+  }, [configQuery.data]);
 
   useEffect(() => {
     setSourceId((current) => sources.some((source) => source.id === current) ? current : sources[0]?.id ?? "");
@@ -206,15 +219,21 @@ export default function ContentAutopilotCore() {
       const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/config`, {
         method: "PUT",
         headers: authHeaders(),
-        body: JSON.stringify({ ativo: next === "automatic" }),
+        body: JSON.stringify({ automationMode: next, ativo: next !== "suggestion" }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? "Não foi possível alterar o modo");
       setMode(next);
-      localStorage.setItem(storageKey, next);
-      queryClient.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] });
-      queryClient.invalidateQueries({ queryKey: ["content-autopilot-site-plan", tenantId] });
-      toast({ title: `Modo ${MODE_COPY[next].title} ativado` });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] }),
+        queryClient.invalidateQueries({ queryKey: ["content-autopilot-site-plan", tenantId] }),
+      ]);
+      toast({
+        title: `Modo ${MODE_COPY[next].title} ativado`,
+        description: next === "automatic"
+          ? "Somente keywords aprovadas poderão seguir até publicação automática."
+          : MODE_COPY[next].description,
+      });
     } catch (error: any) {
       toast({ title: "Erro ao alterar modo", description: error.message, variant: "destructive" });
     } finally {
@@ -255,6 +274,7 @@ export default function ContentAutopilotCore() {
   }
 
   const signals = signalsQuery.data?.signals ?? [];
+  const jobActive = mode !== "suggestion";
 
   return (
     <div className="space-y-6">
@@ -266,8 +286,8 @@ export default function ContentAutopilotCore() {
               <p className="mt-1 text-sm text-muted-foreground">Motor editorial e de crescimento conectado ao Gerador de Sites, CRM, SEO, conteúdo e desempenho comercial.</p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant={plan?.summary.autopilotActive ? "default" : "secondary"}>{plan?.summary.autopilotActive ? "Ativo" : "Job pausado"}</Badge>
-              <Button size="sm" variant="outline" onClick={() => { void refetch(); void signalsQuery.refetch(); }} disabled={isLoading}>
+              <Badge variant={jobActive ? "default" : "secondary"}>{jobActive ? MODE_COPY[mode].badge : "Job pausado"}</Badge>
+              <Button size="sm" variant="outline" onClick={() => { void refetch(); void signalsQuery.refetch(); void configQuery.refetch(); }} disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}Atualizar diagnóstico
               </Button>
             </div>
@@ -284,7 +304,7 @@ export default function ContentAutopilotCore() {
                     key={item}
                     type="button"
                     onClick={() => changeMode(item)}
-                    disabled={savingMode}
+                    disabled={savingMode || configQuery.isLoading}
                     className={`rounded-xl border p-4 text-left transition-all ${active ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:border-primary/40"}`}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -296,20 +316,15 @@ export default function ContentAutopilotCore() {
                 );
               })}
             </div>
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Seções bloqueadas no Gerador são preservadas mesmo quando a IA refina o restante do site.</p>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Automático não elimina governança: só consome keywords aprovadas, e seções bloqueadas no Gerador continuam protegidas.</p>
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4" /> Plano de Conteúdo do Site</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4" /> Plano de Conteúdo do Site</CardTitle></CardHeader>
         <CardContent className="space-y-5">
-          {isLoading && (
-            <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Analisando sites, keywords e conteúdos reais...</div>
-          )}
-
+          {isLoading && <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Analisando sites, keywords e conteúdos reais...</div>}
           {plan && (
             <>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -325,21 +340,19 @@ export default function ContentAutopilotCore() {
                   <div className="flex items-center justify-between"><p className="text-sm font-semibold">Oportunidades encontradas</p><Badge variant="secondary">{plan.opportunities.length + signals.length}</Badge></div>
                   {plan.opportunities.length === 0 && signals.length === 0 ? (
                     <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma pendência estrutural detectada com os dados atuais. Continue acompanhando desempenho e novas demandas.</div>
-                  ) : (
-                    plan.opportunities.map((opportunity) => (
-                      <div key={opportunity.id} className="rounded-lg border p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2"><Badge variant={priorityVariant(opportunity.priority)} className="text-[10px]">{opportunity.priority}</Badge><span className="text-[10px] uppercase text-muted-foreground">{opportunity.area}</span></div>
-                            <p className="mt-2 text-sm font-semibold">{opportunity.title}</p>
-                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{opportunity.description}</p>
-                          </div>
-                          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : plan.opportunities.map((opportunity) => (
+                    <div key={opportunity.id} className="rounded-lg border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2"><Badge variant={priorityVariant(opportunity.priority)} className="text-[10px]">{opportunity.priority}</Badge><span className="text-[10px] uppercase text-muted-foreground">{opportunity.area}</span></div>
+                          <p className="mt-2 text-sm font-semibold">{opportunity.title}</p>
+                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{opportunity.description}</p>
                         </div>
-                        <button type="button" onClick={openProduction} className="mt-3 text-xs font-medium text-primary hover:underline">{opportunity.action}</button>
+                        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
                       </div>
-                    ))
-                  )}
+                      <button type="button" onClick={openProduction} className="mt-3 text-xs font-medium text-primary hover:underline">{opportunity.action}</button>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="space-y-3">
@@ -377,15 +390,10 @@ export default function ContentAutopilotCore() {
               {signals.map((signal) => (
                 <div key={signal.id} className="rounded-xl border p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">“{signal.question}”</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Detectada {signal.occurrences} vezes · {signal.channels.join(", ")}</p>
-                    </div>
+                    <div><p className="text-sm font-semibold">“{signal.question}”</p><p className="mt-1 text-xs text-muted-foreground">Detectada {signal.occurrences} vezes · {signal.channels.join(", ")}</p></div>
                     <Badge>{signal.occurrences}x</Badge>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {signal.recommendations.map((item) => <Badge key={item} variant="outline" className="text-[10px]">{item}</Badge>)}
-                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">{signal.recommendations.map((item) => <Badge key={item} variant="outline" className="text-[10px]">{item}</Badge>)}</div>
                 </div>
               ))}
             </div>
@@ -403,9 +411,7 @@ export default function ContentAutopilotCore() {
             <div>
               <label className="mb-1.5 block text-xs font-medium">Fonte</label>
               <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={sourceType} onChange={(event) => { setSourceType(event.target.value as SourceType); setOutputs([]); }}>
-                <option value="site">Site / Landing Page</option>
-                <option value="article">Artigo</option>
-                <option value="product">Produto</option>
+                <option value="site">Site / Landing Page</option><option value="article">Artigo</option><option value="product">Produto</option>
               </select>
             </div>
             <div>
@@ -422,28 +428,20 @@ export default function ContentAutopilotCore() {
             <div className="flex flex-wrap gap-2">
               {REPURPOSE_CHANNELS.map(([channel, label]) => {
                 const active = selectedChannels.includes(channel);
-                return (
-                  <button key={channel} type="button" onClick={() => toggleChannel(channel)} className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/40"}`}>
-                    {active && "✓ "}{label}
-                  </button>
-                );
+                return <button key={channel} type="button" onClick={() => toggleChannel(channel)} className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/40"}`}>{active && "✓ "}{label}</button>;
               })}
             </div>
           </div>
 
           <Button onClick={generateKit} disabled={generatingKit || !sourceId || selectedChannels.length === 0}>
-            {generatingKit ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            Gerar kit multicanal
+            {generatingKit ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Gerar kit multicanal
           </Button>
 
           {outputs.length > 0 && (
             <div className="grid gap-3 lg:grid-cols-2">
               {outputs.map((output, index) => (
                 <div key={`${output.channel}-${index}`} className="rounded-xl border p-4">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{output.title || REPURPOSE_CHANNELS.find(([channel]) => channel === output.channel)?.[1] || output.channel}</p>
-                    <Badge variant="secondary">{output.channel}</Badge>
-                  </div>
+                  <div className="mb-2 flex items-center justify-between gap-2"><p className="text-sm font-semibold">{output.title || REPURPOSE_CHANNELS.find(([channel]) => channel === output.channel)?.[1] || output.channel}</p><Badge variant="secondary">{output.channel}</Badge></div>
                   <div className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{output.content}</div>
                 </div>
               ))}
@@ -453,10 +451,7 @@ export default function ContentAutopilotCore() {
       </Card>
 
       <div id="content-autopilot-production" className="scroll-mt-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Wand2 className="h-4 w-4 text-primary" />
-          <div><p className="text-sm font-semibold">Produção, SEO e publicação</p><p className="text-xs text-muted-foreground">Ferramentas existentes preservadas: configuração, keywords, geração, otimização e posts do blog.</p></div>
-        </div>
+        <div className="flex items-center gap-2"><Wand2 className="h-4 w-4 text-primary" /><div><p className="text-sm font-semibold">Produção, SEO e publicação</p><p className="text-xs text-muted-foreground">Ferramentas existentes preservadas: configuração, keywords, geração, otimização e posts do blog.</p></div></div>
         <ContentAutopilotLegacyUI />
       </div>
 
@@ -469,13 +464,7 @@ export default function ContentAutopilotCore() {
       </Card>
 
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-        <div className="flex items-start gap-3">
-          <Lightbulb className="mt-0.5 h-4 w-4 text-primary" />
-          <div>
-            <p className="text-sm font-semibold">Ciclo fechado</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">CRM → dúvidas reais → conteúdo → site/LP → SEO e campanhas → comportamento → lead → oportunidade → venda → AI Marketing Manager → próximo conteúdo melhor.</p>
-          </div>
-        </div>
+        <div className="flex items-start gap-3"><Lightbulb className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-sm font-semibold">Ciclo fechado</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">CRM → dúvidas reais → conteúdo → site/LP → SEO e campanhas → comportamento → lead → oportunidade → venda → AI Marketing Manager → próximo conteúdo melhor.</p></div></div>
       </div>
     </div>
   );
