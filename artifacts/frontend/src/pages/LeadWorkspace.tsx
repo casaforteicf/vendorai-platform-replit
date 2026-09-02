@@ -24,8 +24,7 @@ const fallbackStages = [
   { key: "proposta", label: "Proposta", ordem: 40 },
   { key: "negociacao", label: "Negociação", ordem: 50 },
   { key: "conferencia_estoque", label: "Conferência de estoque", ordem: 60 },
-  { key: "contrato", label: "Contrato", ordem: 65 },
-  { key: "ganho", label: "Ganho", ordem: 70 },
+  { key: "ganho", label: "Venda concluída", ordem: 70 },
   { key: "em_execucao", label: "Em execução", ordem: 80 },
   { key: "entregue", label: "Entregue", ordem: 90 },
   { key: "perdido", label: "Perdido", ordem: 100 },
@@ -39,7 +38,7 @@ const guidance: Record<string, [string, string]> = {
   negociacao: ["Negociação", "Retomar negociação"],
   conferencia_estoque: ["Conferência e fechamento", "Confirmar estoque e prazo"],
   contrato: ["Formalização", "Formalizar contrato"],
-  ganho: ["Pedido confirmado", "Iniciar onboarding ou entrega"],
+  ganho: ["Transferência para execução", "Abrir contrato na execução"],
   em_execucao: ["Execução do combinado", "Atualizar andamento da execução"],
   entregue: ["Pós-venda", "Realizar contato de pós-venda"],
   perdido: ["Encerrado", "Programar tentativa de reativação"],
@@ -51,8 +50,7 @@ const pipelineDisplayLabel: Record<string, string> = {
   proposta: "Orçamento",
   negociacao: "Negociação",
   conferencia_estoque: "Fechamento",
-  contrato: "Contrato",
-  ganho: "Pedido",
+  ganho: "Venda concluída",
   perdido: "Perdido",
 };
 
@@ -62,12 +60,12 @@ const pipelineDotClass: Record<string, string> = {
   proposta: "bg-violet-600",
   negociacao: "bg-amber-500",
   conferencia_estoque: "bg-indigo-600",
-  contrato: "bg-sky-600",
-  ganho: "bg-emerald-600",
   perdido: "bg-red-600",
 };
 
-const hiddenFromCommercialFlow = new Set(["em_aquecimento", "em_execucao", "entregue", "parceiro"]);
+const hiddenFromCommercialFlow = new Set(["em_aquecimento", "contrato", "ganho", "em_execucao", "entregue", "parceiro"]);
+const excludedFromCommercialAdvance = new Set(["em_aquecimento", "contrato", "em_execucao", "entregue", "parceiro"]);
+const terminalDealStages = new Set(["ganho", "perdido", "entregue"]);
 
 function tomorrow() {
   const d = new Date(Date.now() + 86400000);
@@ -98,12 +96,10 @@ export default function LeadWorkspace() {
   const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
   const currentStage = stages[currentIndex];
-  const visualStages = useMemo(() => {
-    const commercial = stages.filter((stage) => !hiddenFromCommercialFlow.has(stage.key));
-    if (currentStage && !commercial.some((stage) => stage.key === currentStage.key)) return [currentStage, ...commercial];
-    return commercial;
-  }, [currentStage, stages]);
-  const initialNext = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
+  const visualStages = useMemo(() => stages.filter((stage) => !hiddenFromCommercialFlow.has(stage.key)), [stages]);
+  const advancementStages = useMemo(() => stages.filter((stage) => !excludedFromCommercialAdvance.has(stage.key)), [stages]);
+  const currentAdvanceIndex = advancementStages.findIndex((s) => s.key === deal?.etapa);
+  const initialNext = requestedStage ?? advancementStages[currentAdvanceIndex + 1]?.key ?? "";
   const pending = activities.filter((a) => a.status !== "concluida" && (!deal || !a.dealId || a.dealId === deal.id)).sort((a, b) => new Date(a.dataVencimento ?? "9999").getTime() - new Date(b.dataVencimento ?? "9999").getTime());
   const displayUser = (uid?: string | null) => users.find((u) => u.id === uid)?.name ?? users.find((u) => u.id === uid)?.email ?? "Não definido";
   const [open, setOpen] = useState(Boolean(requestedStage));
@@ -155,7 +151,7 @@ export default function LeadWorkspace() {
   }
 
   function showAdvance() {
-    const stage = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
+    const stage = requestedStage ?? advancementStages[currentAdvanceIndex + 1]?.key ?? "";
     setNextStage(stage);
     setOwner(deal?.assignedTo ?? user?.id ?? "");
     setTitle(guidance[stage]?.[1] ?? "Dar continuidade ao atendimento");
@@ -199,7 +195,10 @@ export default function LeadWorkspace() {
         qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
       ]);
       setOpen(false);
-      toast({ title: "Etapa avançada", description: "Próxima atividade atribuída a " + displayUser(owner) + "." });
+      toast({
+        title: nextStage === "ganho" ? "Venda transferida para execução" : "Etapa avançada",
+        description: nextStage === "ganho" ? "O fluxo operacional começa em Contrato na pipeline Execução / Pedidos." : "Próxima atividade atribuída a " + displayUser(owner) + ".",
+      });
     } catch (e) {
       toast({ title: "Erro ao avançar", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -230,9 +229,11 @@ export default function LeadWorkspace() {
               </p>
             </div>
           </div>
-          {deal
+          {deal && !terminalDealStages.has(deal.etapa)
             ? <Button className="shrink-0" onClick={showAdvance}>Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button>
-            : <Button className="shrink-0" disabled={createDeal.isPending} onClick={startAttendance}>{createDeal.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Iniciar atendimento</Button>}
+            : !deal
+              ? <Button className="shrink-0" disabled={createDeal.isPending} onClick={startAttendance}>{createDeal.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Iniciar atendimento</Button>
+              : null}
         </div>
       </CardContent>
     </Card>
@@ -296,7 +297,7 @@ export default function LeadWorkspace() {
           <Field label="Nova etapa">
             <Select value={nextStage} onValueChange={(v) => { setNextStage(v); setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>{stages.filter((s) => s.key !== deal?.etapa).map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{advancementStages.filter((s) => s.key !== deal?.etapa).map((s) => <SelectItem key={s.key} value={s.key}>{pipelineDisplayLabel[s.key] ?? s.label}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
 
