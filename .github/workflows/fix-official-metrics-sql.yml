@@ -1,0 +1,32 @@
+name: Fix Official Metrics SQL
+on:
+  push:
+    branches: [feat/official-metrics-command-center]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/official-metrics-command-center
+      - name: Fix aggregate cast
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('artifacts/api-server/src/routes/official_metrics.ts')
+          s=p.read_text()
+          old='''        percentile_cont(0.5) WITHIN GROUP (ORDER BY e.duration_seconds)\n          FILTER (WHERE e.duration_seconds IS NOT NULL AND e.origin <> 'backfill_current_state')::int AS median_duration_seconds,'''
+          new='''        (percentile_cont(0.5) WITHIN GROUP (ORDER BY e.duration_seconds)\n          FILTER (WHERE e.duration_seconds IS NOT NULL AND e.origin <> 'backfill_current_state'))::int AS median_duration_seconds,'''
+          if old not in s:
+              raise SystemExit('aggregate pattern not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          rm .github/workflows/fix-official-metrics-sql.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(metrics): corrigir cast da mediana por etapa"
+          git push origin HEAD:feat/official-metrics-command-center
