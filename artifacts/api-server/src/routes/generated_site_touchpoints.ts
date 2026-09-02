@@ -9,8 +9,9 @@ const router: IRouter = Router();
 const optionalText = z.string().trim().max(2000).nullable().optional();
 const payloadSchema = z.object({
   anonymousSessionId: z.string().trim().min(8).max(120).regex(/^[a-zA-Z0-9_-]+$/),
-  channel: z.enum(["whatsapp", "instagram", "messenger"]),
-  targetHost: z.string().trim().min(1).max(255),
+  eventType: z.enum(["page_view", "cta_click", "form_submit", "product_view"]).default("cta_click"),
+  channel: z.enum(["whatsapp", "instagram", "messenger"]).optional(),
+  targetHost: z.string().trim().min(1).max(255).optional(),
   pageUrl: z.string().trim().max(2000),
   path: z.string().trim().max(1000).optional(),
   referrer: optionalText,
@@ -49,15 +50,15 @@ router.post("/generated-site/touchpoint", async (req, res) => {
       anonymousSessionId: data.anonymousSessionId,
       tenantId,
       adCampaignId,
-      eventType: "cta_click",
+      eventType: data.eventType,
       pageUrl: data.pageUrl,
       path: data.path ?? null,
       referrer: data.referrer ?? null,
       landingPageSlug: data.siteIdentifier ?? null,
       metadata: {
         generatedSite: true,
-        channel: data.channel,
-        targetHost: data.targetHost,
+        channel: data.channel ?? null,
+        targetHost: data.targetHost ?? null,
         utmSource: data.utmSource ?? null,
         utmMedium: data.utmMedium ?? null,
         utmCampaign: data.utmCampaign ?? null,
@@ -70,8 +71,11 @@ router.post("/generated-site/touchpoint", async (req, res) => {
 
     res.status(202).json({ accepted: true });
   } catch (err) {
-    logger.warn({ err, tenantId, channel: data.channel }, "generated-site-touchpoint: ingest failed");
-    // Telemetry is best-effort and must never block the visitor's channel click.
+    logger.warn(
+      { err, tenantId, eventType: data.eventType, channel: data.channel ?? null },
+      "generated-site-touchpoint: ingest failed",
+    );
+    // Telemetry is best-effort and must never block the visitor's navigation or channel click.
     res.status(202).json({ accepted: false });
   }
 });
