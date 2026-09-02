@@ -38,6 +38,8 @@ import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { tryIngestTechnicianSupportMessage } from "../services/support-whatsapp-ingest.js";
+import { tryHandleSupportFeedbackMessage } from "../services/support-feedback.js";
 
 const objectStorage = new ObjectStorageService();
 
@@ -195,6 +197,18 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
 
   // ── 3. Find or create lead by phone (dedup-aware) ────────────────────
   const normalized = storePhone(telefone);
+  const supportIngest = await tryIngestTechnicianSupportMessage({
+    tenantId, phone: telefone, text: mensagem, mediaType: "texto", provider: "normalized", log: req.log,
+  });
+  if (supportIngest.handled) {
+    res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
+  const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone: telefone, text: mensagem, log: req.log });
+  if (supportFeedback.handled) {
+    res.status(200).json({ supportFeedback: true, ...supportFeedback });
+    return;
+  }
   const match = await findLeadByDedup(tenantId, telefone, null, null);
 
   let lead: typeof leadsTable.$inferSelect;
@@ -445,7 +459,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   // identify content. Instead, check which content sub-object is present.
 
   let mensagem = "";
-  let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+  let tipoConteudo: "texto" | "audio" | "imagem" | "video" | "documento" = "texto";
 
   if (payload.audio?.audioUrl) {
     // ── Audio / PTT ──────────────────────────────────────────────────────────
@@ -500,6 +514,11 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       return;
     }
 
+  } else if (payload.video?.videoUrl) {
+    // ── Video ────────────────────────────────────────────────────────────────
+    mensagem = payload.video.caption?.trim() || "Vídeo enviado pelo WhatsApp";
+    tipoConteudo = "video";
+
   } else if (payload.text?.message || payload.body) {
     // ── Text ─────────────────────────────────────────────────────────────────
     mensagem = payload.text?.message ?? payload.body ?? "";
@@ -521,6 +540,42 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   }
 
   const telefone = normalizeZapiPhone(payload.phone);
+  const zapiMediaUrl =
+    tipoConteudo === "audio" ? payload.audio?.audioUrl :
+    tipoConteudo === "imagem" ? payload.image?.imageUrl :
+    tipoConteudo === "video" ? payload.video?.videoUrl :
+    tipoConteudo === "documento" ? payload.document?.documentUrl : null;
+  const zapiMimeType =
+    tipoConteudo === "audio" ? payload.audio?.mimeType :
+    tipoConteudo === "imagem" ? payload.image?.mimeType :
+    tipoConteudo === "video" ? payload.video?.mimeType :
+    tipoConteudo === "documento" ? payload.document?.mimeType : null;
+  const zapiFileName =
+    tipoConteudo === "audio" ? "audio.ogg" :
+    tipoConteudo === "imagem" ? "foto.jpg" :
+    tipoConteudo === "video" ? "video.mp4" :
+    tipoConteudo === "documento" ? (payload.document?.fileName ?? "documento") : null;
+  const supportIngest = await tryIngestTechnicianSupportMessage({
+    tenantId,
+    phone: telefone,
+    text: mensagem,
+    mediaUrl: zapiMediaUrl,
+    mediaType: tipoConteudo,
+    mimeType: zapiMimeType,
+    fileName: zapiFileName,
+    transcription: tipoConteudo === "audio" ? mensagem : null,
+    provider: "zapi",
+    log: req.log,
+  });
+  if (supportIngest.handled) {
+    res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
+  const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone: telefone, text: mensagem, log: req.log });
+  if (supportFeedback.handled) {
+    res.status(200).json({ supportFeedback: true, ...supportFeedback });
+    return;
+  }
   const nome = payload.chatName ?? payload.senderName ?? telefone;
 
   req.log.info({ telefone, nome, tipoConteudo, type: payload.type }, "zapi-webhook: processing message");
@@ -856,7 +911,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
 
   const msg = (data as { message?: Record<string, unknown> }).message ?? {};
   let mensagem = "";
-  let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+  let tipoConteudo: "texto" | "audio" | "imagem" | "video" | "documento" = "texto";
   let midiaUrl: string | null = null;
 
   // Salva o arquivo original no nosso storage sempre que processar mídia --
@@ -918,6 +973,25 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
       res.status(200).json({ ignored: true, reason: "image_processing_failed" });
       return;
     }
+  } else if (msg["videoMessage"]) {
+    const messageId = key.id;
+    if (!messageId) {
+      res.status(200).json({ ignored: true, reason: "video_no_message_id" });
+      return;
+    }
+    const videoMsg = msg["videoMessage"] as { caption?: string; mimetype?: string };
+    try {
+      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
+      const buffer = Buffer.from(media.base64, "base64");
+      mensagem = videoMsg?.caption?.trim() || "Vídeo enviado pelo WhatsApp";
+      tipoConteudo = "video";
+      midiaUrl = await salvarMidiaOriginal(buffer, media.mimetype ?? videoMsg?.mimetype ?? "video/mp4", "video.mp4");
+    } catch (err) {
+      req.log.error({ err, tenantId, remoteJid }, "evolution-webhook: falha ao processar vídeo");
+      res.status(200).json({ ignored: true, reason: "video_processing_failed" });
+      return;
+    }
   } else if (msg["documentMessage"]) {
     const messageId = key.id;
     const docMsg = msg["documentMessage"] as { mimetype?: string; fileName?: string };
@@ -955,6 +1029,38 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   }
 
   const telefone = remoteJid.replace(/@.*$/, "").replace(/\D/g, "");
+  const evolutionFileName =
+    tipoConteudo === "audio" ? "audio.ogg" :
+    tipoConteudo === "imagem" ? "foto.jpg" :
+    tipoConteudo === "video" ? "video.mp4" :
+    tipoConteudo === "documento" ? ((msg["documentMessage"] as { fileName?: string } | undefined)?.fileName ?? "documento") : null;
+  const evolutionMimeType =
+    tipoConteudo === "audio" ? "audio/ogg" :
+    tipoConteudo === "imagem" ? "image/jpeg" :
+    tipoConteudo === "video" ? "video/mp4" :
+    tipoConteudo === "documento" ? ((msg["documentMessage"] as { mimetype?: string } | undefined)?.mimetype ?? "application/octet-stream") : null;
+  const supportIngest = await tryIngestTechnicianSupportMessage({
+    tenantId,
+    phone: telefone,
+    text: mensagem,
+    mediaUrl: midiaUrl,
+    mediaType: tipoConteudo,
+    mimeType: evolutionMimeType,
+    fileName: evolutionFileName,
+    transcription: tipoConteudo === "audio" ? mensagem : null,
+    sourceMessageId: key.id ?? null,
+    provider: "evolution",
+    log: req.log,
+  });
+  if (supportIngest.handled) {
+    res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
+  const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone: telefone, text: mensagem, log: req.log });
+  if (supportFeedback.handled) {
+    res.status(200).json({ supportFeedback: true, ...supportFeedback });
+    return;
+  }
   const nome = (data as { pushName?: string }).pushName ?? telefone;
 
   req.log.info({ telefone, nome, tipoConteudo }, "evolution-webhook: processing message");
@@ -1576,7 +1682,19 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           const senderName = (contacts[0] as any)?.profile?.name as string | undefined;
 
           let mensagem     = "";
-          let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+          let tipoConteudo: "texto" | "audio" | "imagem" | "video" | "documento" = "texto";
+          let midiaUrl: string | null = null;
+          let midiaMimeType: string | null = null;
+          let midiaFileName: string | null = null;
+          let midiaSize: number | null = null;
+
+          async function salvarMetaMidia(buffer: Buffer, mimeType: string, fileName: string) {
+            const objectPath = await objectStorage.savePrivateBuffer(buffer, mimeType, fileName);
+            midiaUrl = `/api/storage${objectPath}`;
+            midiaMimeType = mimeType;
+            midiaFileName = fileName;
+            midiaSize = buffer.length;
+          }
 
           if (msgType === "text") {
             mensagem = ((msg["text"] as Record<string, string>)?.body) ?? "";
@@ -1587,12 +1705,14 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
               req.log.warn({ phone, msgType }, "meta-webhook: audio received but no access token — skipping");
               continue;
             }
-            const audioId = ((msg["audio"] ?? msg["voice"]) as Record<string, string>)?.id;
+            const audioData = ((msg["audio"] ?? msg["voice"]) as Record<string, string>) ?? {};
+            const audioId = audioData.id;
             if (!audioId) continue;
             try {
               const buf = await downloadMetaMedia(audioId, whatsappConnection.metaAccessToken);
               mensagem = await transcribeAudioBuffer(buf, tenantId, req.log);
               tipoConteudo = "audio";
+              await salvarMetaMidia(buf, audioData.mime_type || "audio/ogg", "audio.ogg");
               req.log.info({ audioId, chars: mensagem.length }, "meta-webhook: audio transcribed");
             } catch (err) {
               req.log.error({ err, audioId }, "meta-webhook: audio transcription failed — skipping");
@@ -1614,9 +1734,51 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
               const dataUrl = `data:${mimeType};base64,${buf.toString("base64")}`;
               mensagem = await interpretImage(dataUrl, tenantId, caption, req.log);
               tipoConteudo = "imagem";
+              await salvarMetaMidia(buf, mimeType, "foto.jpg");
               req.log.info({ imageId, chars: mensagem.length }, "meta-webhook: image interpreted");
             } catch (err) {
               req.log.error({ err, imageId }, "meta-webhook: image interpretation failed — skipping");
+              continue;
+            }
+
+          } else if (msgType === "video") {
+            if (!whatsappConnection.metaAccessToken) {
+              req.log.warn({ phone }, "meta-webhook: video received but no access token — skipping");
+              continue;
+            }
+            const videoData = (msg["video"] as Record<string, string>) ?? {};
+            const videoId = videoData.id;
+            if (!videoId) continue;
+            try {
+              const buf = await downloadMetaMedia(videoId, whatsappConnection.metaAccessToken);
+              mensagem = videoData.caption?.trim() || "Vídeo enviado pelo WhatsApp";
+              tipoConteudo = "video";
+              await salvarMetaMidia(buf, videoData.mime_type || "video/mp4", "video.mp4");
+            } catch (err) {
+              req.log.error({ err, videoId }, "meta-webhook: video download failed — skipping");
+              continue;
+            }
+
+          } else if (msgType === "document") {
+            if (!whatsappConnection.metaAccessToken) {
+              req.log.warn({ phone }, "meta-webhook: document received but no access token — skipping");
+              continue;
+            }
+            const documentData = (msg["document"] as Record<string, string>) ?? {};
+            const documentId = documentData.id;
+            const fileName = documentData.filename || "documento";
+            const mimeType = documentData.mime_type || "application/octet-stream";
+            if (!documentId) continue;
+            try {
+              const buf = await downloadMetaMedia(documentId, whatsappConnection.metaAccessToken);
+              const supportedForText = mimeType.includes("pdf") || mimeType.includes("word") || /\.(pdf|doc|docx)$/i.test(fileName);
+              mensagem = supportedForText
+                ? await interpretPdfBuffer(buf, fileName, req.log)
+                : (documentData.caption?.trim() || `Documento: ${fileName}`);
+              tipoConteudo = "documento";
+              await salvarMetaMidia(buf, mimeType, fileName);
+            } catch (err) {
+              req.log.error({ err, documentId }, "meta-webhook: document processing failed — skipping");
               continue;
             }
 
@@ -1626,6 +1788,30 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           }
 
           if (!mensagem.trim()) continue;
+
+          const supportIngest = await tryIngestTechnicianSupportMessage({
+            tenantId,
+            phone,
+            text: mensagem,
+            mediaUrl: midiaUrl,
+            mediaType: tipoConteudo,
+            mimeType: midiaMimeType,
+            fileName: midiaFileName,
+            fileSize: midiaSize,
+            transcription: tipoConteudo === "audio" ? mensagem : null,
+            sourceMessageId: String(msg["id"] ?? "") || null,
+            provider: "meta",
+            log: req.log,
+          });
+          if (supportIngest.handled) {
+            req.log.info({ supportIngest, phone }, "meta-webhook: atualização de técnico absorvida pela assistência");
+            continue;
+          }
+          const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone, text: mensagem, log: req.log });
+          if (supportFeedback.handled) {
+            req.log.info({ supportFeedback, phone }, "meta-webhook: feedback da assistência processado");
+            continue;
+          }
 
           // Find or create lead (dedup by normalized phone)
           const normalized = storePhone(phone) ?? phone;
@@ -1687,6 +1873,7 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             conteudo: mensagem,
             enviadoPor: "lead",
             tipoConteudo,
+            midiaUrl,
             status: "entregue",
           }).returning();
 
