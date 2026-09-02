@@ -8,6 +8,7 @@ import {
   propostasTable, leadsTable, varejoPedidoCompraTable, varejoFornecedorTable,
   erpContasBancariasTable, erpExtratosBancariosTable, estoqueLotesTable,
   compraCotacoesTable, compraCotacaoPropostasTable, erpAuditoriaTable,
+  tenantNavModulesTable,
 } from "@workspace/db";
 import { createCharge, createOrGetCustomer, getTenantAsaasApiKey } from "../lib/asaas.js";
 import { emitirDocumentoFiscal, isNuvemFiscalConfigured } from "../lib/nuvem-fiscal.js";
@@ -24,6 +25,51 @@ const uploadLancamento = multer({
 function canAccess(req: Express.Request, tenantId: string) {
   return (req as any).user?.platformRole === "super_admin" || (req as any).user?.tenantId === tenantId;
 }
+
+// Gestão ERP é um add-on comercial de R$ 299/mês. O acesso é fail-closed:
+// tenants sem override explícito financeiro=true não conseguem consumir
+// nenhuma API do ERP. Super Admin mantém bypass para suporte e ativação.
+router.use("/tenants/:tenantId/erp", async (req, res, next) => {
+  const tenantId = String(req.params.tenantId);
+  const user = (req as any).user;
+
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (user?.platformRole === "super_admin") {
+    next();
+    return;
+  }
+
+  try {
+    const [entitlement] = await db
+      .select({ isEnabled: tenantNavModulesTable.isEnabled })
+      .from(tenantNavModulesTable)
+      .where(and(
+        eq(tenantNavModulesTable.tenantId, tenantId),
+        eq(tenantNavModulesTable.moduleKey, "financeiro"),
+      ))
+      .limit(1);
+
+    if (!entitlement?.isEnabled) {
+      res.status(403).json({
+        error: "ERP_ADDON_REQUIRED",
+        message: "A Gestão ERP é um add-on contratado separadamente por R$ 299/mês.",
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    req.log.error({ error, tenantId }, "Falha ao validar entitlement do ERP");
+    res.status(503).json({
+      error: "ERP_ENTITLEMENT_CHECK_FAILED",
+      message: "Não foi possível validar o acesso à Gestão ERP.",
+    });
+  }
+});
 
 async function audit(req: Express.Request, tenantId: string, acao: string, entidade: string, entidadeId?: string, depois?: unknown) {
   await db.insert(erpAuditoriaTable).values({ tenantId, usuarioId:(req as any).user?.id ?? null, modulo:"erp", acao, entidade, entidadeId, depois:depois as any, ip:(req as any).ip }).catch(()=>undefined);
