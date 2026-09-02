@@ -1,0 +1,37 @@
+name: Temp Complete Pipeline 242
+
+on:
+  push:
+    branches:
+      - feat/operational-pipelines-support-deliveries
+    paths:
+      - scripts/patch-complete-pipeline-242.py
+      - .github/workflows/temp-complete-pipeline-242.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/operational-pipelines-support-deliveries
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply deterministic patch
+        run: python scripts/patch-complete-pipeline-242.py
+      - name: Commit patched files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/db/src/schema/deals.ts artifacts/frontend/src/App.tsx artifacts/frontend/src/components/layout/SidebarLayout.tsx artifacts/frontend/src/pages/Deals.tsx artifacts/frontend/src/pages/PipelineOperacional.tsx artifacts/api-server/src/routes/deals.ts artifacts/api-server/src/routes/entregas.ts artifacts/api-server/src/routes/webhooks.ts
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "feat(crm): concluir arquitetura de pipelines e assistência"
+          git push origin HEAD:feat/operational-pipelines-support-deliveries
