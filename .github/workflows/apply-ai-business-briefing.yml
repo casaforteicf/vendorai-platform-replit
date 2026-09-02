@@ -1,0 +1,40 @@
+name: Apply AI business briefing patch
+
+on:
+  push:
+    branches:
+      - feat/business-context-briefing-suggestions
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/business-context-briefing-suggestions
+          fetch-depth: 0
+      - name: Skip generated patch commit
+        id: guard
+        run: |
+          if git log -1 --pretty=%B | grep -q '\[ai-briefing-patch\]'; then
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'skip=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Apply patch
+        if: steps.guard.outputs.skip != 'true'
+        run: python scripts/apply-ai-business-briefing.py
+      - name: Remove one-shot files
+        if: steps.guard.outputs.skip != 'true'
+        run: rm .github/workflows/apply-ai-business-briefing.yml scripts/apply-ai-business-briefing.py
+      - name: Commit patch
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          git config user.name 'VendorAI Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add artifacts/frontend/src/pages/SiteGenerator.tsx artifacts/api-server/src/routes/site_generator.ts .github/workflows/apply-ai-business-briefing.yml scripts/apply-ai-business-briefing.py
+          git commit -m 'feat: AI business-context briefing [ai-briefing-patch]'
+          git push origin HEAD:feat/business-context-briefing-suggestions
