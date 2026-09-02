@@ -2699,11 +2699,9 @@ export default function LeadDetail() {
             4 cards enormes empilhados na vertical; agora organizados em abas
             pra reduzir o scroll e deixar a tela mais limpa. */}
         <Tabs defaultValue="atendimento" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+          <TabsList className="grid w-full grid-cols-2 max-w-md">
             <TabsTrigger value="atendimento">Atendimento</TabsTrigger>
             <TabsTrigger value="proposta">Proposta</TabsTrigger>
-            <TabsTrigger value="apresentacoes">Apresentações</TabsTrigger>
-            <TabsTrigger value="renderizacoes">Renderizações</TabsTrigger>
           </TabsList>
 
           <TabsContent value="atendimento" className="mt-4">

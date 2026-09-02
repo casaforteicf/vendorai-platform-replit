@@ -145,6 +145,8 @@ interface LeadBriefingTabProps {
   leadId: string;
   tenantId: string;
   lead?: any;
+  /** Quando true, oculta a aba Briefing SPIN e mostra só o Roteiro de Reunião. */
+  roteiroOnly?: boolean;
 }
 
 import type {
@@ -230,7 +232,7 @@ function SpinSection({
   );
 }
 
-export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefingTabProps) {
+export default function LeadBriefingTab({ leadId, tenantId, lead, roteiroOnly }: LeadBriefingTabProps) {
   const { user } = useAuth();
   const hints = getSegmentHints(user?.tenantVertical);
   const { toast } = useToast();
@@ -344,7 +346,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
   const [openSpin, setOpenSpin] = useState<string | null>("S");
 
   // ── Tab SPIN Roteiro ────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<"briefing" | "roteiro">("briefing");
+  const [activeTab, setActiveTab] = useState<"briefing" | "roteiro">(roteiroOnly ? "roteiro" : "briefing");
   const [spinData, setSpinData] = useState<SpinMeetingData | null>(null);
   const [spinLoading, setSpinLoading] = useState(false);
   const [spinGenerating, setSpinGenerating] = useState(false);
@@ -845,17 +847,19 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
     <Card data-testid="card-briefing">
       {/* ══ TABS ══════════════════════════════════════════════════════════════ */}
       <div className="flex border-b border-border px-4 pt-3">
-        <button
-          onClick={() => setActiveTab("briefing")}
-          className={`flex items-center gap-1.5 text-xs font-medium pb-2 mr-4 border-b-2 transition-colors ${
-            activeTab === "briefing"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <ClipboardList className="h-3.5 w-3.5" />
-          Briefing SPIN
-        </button>
+        {!roteiroOnly && (
+          <button
+            onClick={() => setActiveTab("briefing")}
+            className={`flex items-center gap-1.5 text-xs font-medium pb-2 mr-4 border-b-2 transition-colors ${
+              activeTab === "briefing"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
+            Briefing SPIN
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("roteiro")}
           className={`flex items-center gap-1.5 text-xs font-medium pb-2 border-b-2 transition-colors ${

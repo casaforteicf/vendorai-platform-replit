@@ -36,7 +36,7 @@ const STAGES = [
     subtitle: "Diagnóstico + SPIN",
     title: "Qualificação e diagnóstico",
     goal: "Entender situação, problemas, impacto e valor esperado antes de propor uma solução.",
-    guidance: "O Briefing SPIN abaixo é a fonte oficial do diagnóstico e não duplica o cadastro do lead.",
+    guidance: "Registre o diagnóstico direto nos itens abaixo — sem duplicar o cadastro do lead.",
     items: [
       ["processo", "Mapear o processo atual", "O que acontece hoje e onde existe fricção?"],
       ["dores", "Validar dores prioritárias", "Confirme o problema com o cliente."],
@@ -66,7 +66,7 @@ const STAGES = [
     subtitle: "Negociação",
     title: "Fechamento e negociação",
     goal: "Transformar valor percebido em uma decisão clara, tratando objeções e condições.",
-    guidance: "Use as objeções registradas no SPIN e mantenha proposta e orçamento em seus blocos próprios.",
+    guidance: "Use as objeções registradas anteriormente e mantenha proposta e orçamento em seus blocos próprios. O Roteiro de Reunião abaixo ajuda a conduzir a negociação.",
     items: [
       ["valor", "Revisitar dor e valor", "Reforce o impacto validado."],
       ["proposta", "Apresentar proposta", "Registre apenas o retorno; a proposta já fica no bloco próprio."],
@@ -214,7 +214,7 @@ export default function LeadServiceJourney({ leadId, tenantId, lead }: { leadId:
             </div>
           </div>
 
-          {stage.id === "qualificacao" && <LeadBriefingTab leadId={leadId} tenantId={tenantId} lead={lead} />}
+          {stage.id === "fechamento" && <LeadBriefingTab leadId={leadId} tenantId={tenantId} lead={lead} roteiroOnly />}
           <OportunidadesPrevistasCard leadId={leadId} />
 
           <div className="flex items-center justify-between gap-2 border-t pt-4">
