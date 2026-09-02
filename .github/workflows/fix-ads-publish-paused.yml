@@ -1,9 +1,9 @@
 name: Fix ads publish paused
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/ads-publish-paused
+      - main
 
 permissions:
   contents: write
