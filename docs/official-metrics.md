@@ -50,3 +50,9 @@ CPL/ROAS só podem ser exibidos quando houver, simultaneamente, integração ati
 - períodos explícitos em toda resposta;
 - métricas históricas não usam backfill como duração real;
 - definições de KPI são versionadas e retornadas pelo backend.
+
+## Validação de produção — 2026-09-02
+
+A migration da camada oficial foi aplicada no banco `vendorai-core`. As quatro tabelas novas estão com RLS habilitado e os triggers de mudança de etapa estão ativos para `deals` e `work_cards`. O backfill foi identificado explicitamente como estado atual sem duração histórica.
+
+O build de produção da API foi reproduzido com Node 22, pnpm 10.26.1 e `pnpm --filter @workspace/api-server run build`, concluindo com sucesso. As consultas centrais do Command Center também foram executadas diretamente no banco de produção sem erro antes do redeploy da API.
