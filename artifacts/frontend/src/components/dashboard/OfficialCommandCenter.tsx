@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import {
   Activity,
@@ -119,8 +119,6 @@ export type ExecutiveSnapshot = {
     mensagensMes?: number;
     agentesAtivos?: number;
     tokensMes?: number;
-    gastoIaMesUsd?: number;
-    quotaUsd?: number | null;
     quotaUsada?: number;
     usosPorAgente?: Array<{ agentKey: string; nome: string; count: number }>;
   };
@@ -143,11 +141,6 @@ export type ExecutiveSnapshot = {
 function money(value: number | null | undefined): string {
   if (value == null) return "—";
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function usd(value: number | null | undefined): string {
-  if (value == null) return "—";
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "USD" });
 }
 
 function percentRatio(value: number | null | undefined): string {
@@ -458,12 +451,17 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
 
         <Card>
           <CardContent className="p-5">
-            <SectionHeader icon={Bot} title="IA" description="Automação, consumo e execução real." href="/metricas-ia" />
+            <SectionHeader icon={Bot} title="IA" description="Automação e utilização da quota." href="/metricas-ia" />
             <div className="space-y-3 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">Ações executadas</span><strong>{data.ai?.actionsExecuted ?? 0}</strong></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Ações pendentes</span><strong>{data.ai?.actionsPending ?? 0}</strong></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Custo no mês</span><strong>{usd(aiUsage?.gastoIaMesUsd)}</strong></div>
-              <div><div className="mb-1.5 flex justify-between text-xs"><span className="text-muted-foreground">Quota utilizada</span><strong>{quotaUsed.toFixed(1)}%</strong></div><Progress value={Math.min(100, quotaUsed)} className="h-2" /></div>
+              <div className="rounded-xl bg-muted/50 p-3.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">Quota utilizada</span>
+                  <strong className="text-base">{quotaUsed.toFixed(1)}%</strong>
+                </div>
+                <Progress value={Math.min(100, quotaUsed)} className="h-2" />
+              </div>
             </div>
           </CardContent>
         </Card>

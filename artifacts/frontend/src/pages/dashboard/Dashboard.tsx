@@ -5,6 +5,7 @@ import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter"
 type CommandCenterProps = Parameters<typeof OfficialCommandCenter>[0];
 type OfficialMetrics = CommandCenterProps["data"];
 type ExecutiveSnapshot = CommandCenterProps["executive"];
+type AgentConfigItem = { ativo?: boolean };
 
 export default function Dashboard() {
   const { user, token } = useAuth();
@@ -43,10 +44,35 @@ export default function Dashboard() {
         if (!response.ok) throw new Error("Falha ao carregar visão executiva");
         return response.json();
       }),
-    ]).then(([officialResult, executiveResult]) => {
+      fetch("/api/agent-configs", {
+        headers,
+        cache: "no-store",
+      }).then(async (response) => {
+        if (!response.ok) throw new Error("Falha ao carregar agentes ativos");
+        return response.json() as Promise<AgentConfigItem[]>;
+      }),
+    ]).then(([officialResult, executiveResult, agentsResult]) => {
       if (cancelled) return;
+
       setOfficial(officialResult.status === "fulfilled" ? officialResult.value as OfficialMetrics : null);
-      setExecutive(executiveResult.status === "fulfilled" ? executiveResult.value as ExecutiveSnapshot : null);
+
+      if (executiveResult.status === "fulfilled") {
+        const snapshot = executiveResult.value as NonNullable<ExecutiveSnapshot>;
+        const activeAgents = agentsResult.status === "fulfilled"
+          ? agentsResult.value.filter((agent) => agent.ativo === true).length
+          : snapshot.ia?.agentesAtivos;
+
+        setExecutive({
+          ...snapshot,
+          ia: {
+            ...snapshot.ia,
+            agentesAtivos: activeAgents,
+          },
+        });
+      } else {
+        setExecutive(null);
+      }
+
       setLoading(false);
     });
 
