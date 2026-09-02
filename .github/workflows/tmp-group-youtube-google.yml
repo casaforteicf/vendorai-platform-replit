@@ -1,0 +1,79 @@
+name: Temporary provider grouping fix
+
+on:
+  push:
+    branches:
+      - fix/group-youtube-under-google
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/group-youtube-under-google
+          fetch-depth: 0
+
+      - name: Move YouTube into Google group
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          cfg_path = Path('artifacts/frontend/src/pages/Configuracoes.tsx')
+          cfg = cfg_path.read_text()
+
+          old_desc = 'Calendar e Google Ads agrupados no mesmo ecossistema.'
+          new_desc = 'Calendar, Google Ads e YouTube agrupados no mesmo ecossistema.'
+          if cfg.count(old_desc) != 1:
+              raise RuntimeError(f'Google group description expected once, found {cfg.count(old_desc)}')
+          cfg = cfg.replace(old_desc, new_desc, 1)
+
+          google_end = '''              </div>\n            </section>\n\n            {/* Provider group — Meta */}'''
+          google_end_new = '''              <SocialIntegrationsPanel providers={["youtube"]} mode="connect" />\n\n              </div>\n            </section>\n\n            {/* Provider group — Meta */}'''
+          if cfg.count(google_end) != 1:
+              raise RuntimeError(f'Google section end expected once, found {cfg.count(google_end)}')
+          cfg = cfg.replace(google_end, google_end_new, 1)
+
+          old_social = '            <SocialIntegrationsPanel mode="connect" />'
+          new_social = '            <SocialIntegrationsPanel providers={["linkedin", "tiktok"]} mode="connect" />'
+          if cfg.count(old_social) != 1:
+              raise RuntimeError(f'Standalone social panel expected once, found {cfg.count(old_social)}')
+          cfg = cfg.replace(old_social, new_social, 1)
+          cfg_path.write_text(cfg)
+
+          panel_path = Path('artifacts/frontend/src/components/SocialIntegrationsPanel.tsx')
+          panel = panel_path.read_text()
+          anchor = '  const filtered = connections.filter((item) => !providersFilter || providersFilter.includes(item.provider));\n\n'
+          addition = '''  const filtered = connections.filter((item) => !providersFilter || providersFilter.includes(item.provider));\n\n  const connectTitle = providersFilter?.length === 1 && providersFilter[0] === "youtube"\n    ? "YouTube"\n    : providersFilter && !providersFilter.includes("youtube")\n      ? "Outros canais"\n      : "Canais sociais e conversas";\n  const connectDescription = providersFilter?.length === 1 && providersFilter[0] === "youtube"\n    ? "Canal de vídeo do ecossistema Google para publicações, métricas, comentários e respostas."\n    : providersFilter && !providersFilter.includes("youtube")\n      ? "Canais que não pertencem aos ecossistemas Google ou Meta."\n      : "Conecte suas contas para centralizar publicações, métricas, comentários e respostas.";\n\n'''
+          if panel.count(anchor) != 1:
+              raise RuntimeError(f'Filtered anchor expected once, found {panel.count(anchor)}')
+          panel = panel.replace(anchor, addition, 1)
+
+          old_title = '{mode === "publish" ? "Publicar" : "Canais sociais e conversas"}'
+          new_title = '{mode === "publish" ? "Publicar" : connectTitle}'
+          if panel.count(old_title) != 1:
+              raise RuntimeError(f'Panel title expected once, found {panel.count(old_title)}')
+          panel = panel.replace(old_title, new_title, 1)
+
+          old_desc_panel = ': "Conecte suas contas para centralizar publicações, métricas, comentários e respostas."}'
+          new_desc_panel = ': connectDescription}'
+          if panel.count(old_desc_panel) != 1:
+              raise RuntimeError(f'Panel description expected once, found {panel.count(old_desc_panel)}')
+          panel = panel.replace(old_desc_panel, new_desc_panel, 1)
+          panel_path.write_text(panel)
+          PY
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-group-youtube-google.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/pages/Configuracoes.tsx artifacts/frontend/src/components/SocialIntegrationsPanel.tsx .github/workflows/tmp-group-youtube-google.yml
+          git commit -m "fix(integrations): agrupar YouTube no ecossistema Google"
+          git push origin HEAD:fix/group-youtube-under-google
