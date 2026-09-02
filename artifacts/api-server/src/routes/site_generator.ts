@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
+  businessProfilesTable,
   contentAutopilotArticlesTable,
   db,
   dealsTable,
@@ -397,6 +398,82 @@ function similarity(a: string[], b: string[]): number {
   const union = new Set([...aa, ...bb]).size;
   return union === 0 ? 0 : intersection / union;
 }
+
+const briefingSuggestionsSchema = z.object({ creationMode: z.string().trim().max(40).optional() });
+router.post("/tenants/:tenantId/site-generator/briefing-suggestions", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, res, tenantId)) return;
+  const parsed = briefingSuggestionsSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: "Contexto do briefing inválido" });
+    return;
+  }
+  try {
+    const [[profile], products] = await Promise.all([
+      db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
+      db.select().from(produtosCatalogoTable).where(eq(produtosCatalogoTable.tenantId, tenantId)).limit(40),
+    ]);
+    if (!profile && products.length === 0) {
+      res.json({ audiences: [], offers: [], source: "empty" });
+      return;
+    }
+
+    const safeProfile = profile
+      ? Object.fromEntries(Object.entries(profile as Record<string, unknown>).filter(([key, value]) => {
+          if (/token|secret|senha|password|api.?key|credential/i.test(key)) return false;
+          return value !== null && value !== undefined && value !== "";
+        }))
+      : {};
+    const catalog = products.map((product: any) => ({
+      id: String(product.id ?? ""),
+      nome: String(product.nome ?? product.name ?? "").slice(0, 180),
+      categoria: String(product.categoria ?? "").slice(0, 120),
+      marca: String(product.marca ?? "").slice(0, 120),
+      descricao: String(product.descricao ?? "").slice(0, 500),
+    })).filter((product) => product.nome);
+    const prompt = `Analise o Perfil do Negócio e o catálogo do tenant atual e gere opções comerciais úteis para preencher um briefing de site/landing page.
+
+REGRAS OBRIGATÓRIAS:
+- O contexto abaixo pertence SOMENTE a este tenant. Não use conhecimento de outras empresas ou exemplos do VendorAI.
+- Entenda o segmento a partir dos dados reais informados no perfil.
+- Você pode INFERIR públicos comerciais plausíveis a partir do segmento/descrição, mas não transforme inferências em fatos sobre a empresa.
+- Ofertas devem ser produtos, serviços, categorias ou formas plausíveis de apresentar o que a empresa realmente vende. Não invente preço, certificação, garantia, estoque, unidade, depoimento ou condição comercial.
+- Se o catálogo tiver produto adequado, devolva exatamente o id informado em productId. Caso contrário, omita productId.
+- Gere de 4 a 8 públicos e de 4 a 8 ofertas. Evite opções redundantes ou genéricas demais.
+- Responda em português do Brasil.
+- Retorne SOMENTE JSON válido: {"audiences":[{"value":"...","reason":"..."}],"offers":[{"value":"...","productId":"...","reason":"..."}]}.
+
+MODO DE CRIAÇÃO: ${parsed.data.creationMode ?? "new-site"}
+PERFIL DO NEGÓCIO: ${JSON.stringify(safeProfile).slice(0, 12000)}
+CATÁLOGO: ${JSON.stringify(catalog).slice(0, 14000)}`;
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2200,
+      system: "Você é o Business Context Resolver do VendorAI. Seu trabalho é entender cada tenant pelo próprio perfil e catálogo, sem misturar dados entre empresas e sem inventar fatos.",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = message.content.filter((block) => block.type === "text").map((block) => (block as { type: "text"; text: string }).text).join("\n");
+    const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    const result = JSON.parse(cleaned) as any;
+    const validProductIds = new Set(catalog.map((product) => product.id));
+    const audiences = (Array.isArray(result.audiences) ? result.audiences : [])
+      .map((item: any) => ({ value: String(item?.value ?? "").trim().slice(0, 180), reason: String(item?.reason ?? "").trim().slice(0, 280) }))
+      .filter((item: any) => item.value)
+      .slice(0, 8);
+    const offers = (Array.isArray(result.offers) ? result.offers : [])
+      .map((item: any) => ({
+        value: String(item?.value ?? "").trim().slice(0, 180),
+        ...(validProductIds.has(String(item?.productId ?? "")) ? { productId: String(item.productId) } : {}),
+        reason: String(item?.reason ?? "").trim().slice(0, 280),
+      }))
+      .filter((item: any) => item.value)
+      .slice(0, 8);
+    res.json({ audiences, offers, source: "tenant_business_context" });
+  } catch (err) {
+    req.log?.warn({ err, tenantId }, "site-generator/briefing-suggestions: falhou");
+    res.status(502).json({ error: "Não foi possível gerar sugestões agora. O briefing manual e as sugestões locais continuam disponíveis." });
+  }
+});
 
 router.get("/tenants/:tenantId/site-generator/content-signals", async (req, res) => {
   const tenantId = String(req.params.tenantId);
