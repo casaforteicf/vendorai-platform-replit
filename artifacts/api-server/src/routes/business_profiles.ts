@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   db,
   businessProfilesTable,
   tenantsTable,
+  whatsappConnectionsTable,
   insertBusinessProfileSchema,
   updateBusinessProfileSchema,
 } from "@workspace/db";
@@ -44,17 +45,48 @@ router.post("/business-profiles", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/business-profile", async (req, res) => {
-  const [profile] = await db
-    .select()
-    .from(businessProfilesTable)
-    .where(eq(businessProfilesTable.tenantId, String(req.params.tenantId)));
-
-  if (!profile) {
-    res.status(404).json({ error: "Business profile not found" });
-    return;
-  }
-
-  res.json(profile);
+  const tenantId = String(req.params.tenantId);
+  const [profileResult, tenantResult, whatsappResult] = await Promise.allSettled([
+    db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
+    db.select({
+      id: tenantsTable.id,
+      name: tenantsTable.name,
+      nomeEmpresa: tenantsTable.nomeEmpresa,
+      vertical: tenantsTable.vertical,
+      segmento: tenantsTable.segmento,
+      logoUrl: tenantsTable.logoUrl,
+      site: tenantsTable.site,
+      descricao: tenantsTable.descricao,
+    }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select({
+      displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber,
+      businessName: whatsappConnectionsTable.businessName,
+      isDefault: whatsappConnectionsTable.isDefault,
+      updatedAt: whatsappConnectionsTable.updatedAt,
+    }).from(whatsappConnectionsTable)
+      .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active")))
+      .orderBy(desc(whatsappConnectionsTable.isDefault), desc(whatsappConnectionsTable.updatedAt))
+      .limit(1),
+  ]);
+  const profile = profileResult.status === "fulfilled" ? profileResult.value[0] ?? null : null;
+  const tenant = tenantResult.status === "fulfilled" ? tenantResult.value[0] ?? null : null;
+  const whatsapp = whatsappResult.status === "fulfilled" ? whatsappResult.value[0] ?? null : null;
+  const mergedProfile = tenant || profile || whatsapp ? {
+    ...(profile ?? {}),
+    tenantId,
+    razaoSocial: profile?.razaoSocial || tenant?.nomeEmpresa || tenant?.name || whatsapp?.businessName || "",
+    nomeFantasia: profile?.nomeFantasia || tenant?.nomeEmpresa || tenant?.name || whatsapp?.businessName || null,
+    vertical: profile?.vertical || tenant?.segmento || tenant?.vertical || null,
+    logoUrl: profile?.logoUrl || tenant?.logoUrl || null,
+    telefone: profile?.telefone || whatsapp?.displayPhoneNumber || null,
+    descricao: tenant?.descricao || null,
+    site: tenant?.site || null,
+    displayPhoneNumber: whatsapp?.displayPhoneNumber || null,
+  } : null;
+  const degraded = [profileResult, tenantResult, whatsappResult].some((result) => result.status === "rejected");
+  if (degraded) req.log?.warn({ tenantId }, "business-profile: served with fallback sources");
+  res.setHeader("Cache-Control", "no-store");
+  res.status(200).json(mergedProfile);
 });
 
 router.get("/business-profiles/:id", async (req, res) => {

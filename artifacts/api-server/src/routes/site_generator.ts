@@ -10,6 +10,8 @@ import {
   leadsTable,
   messagesTable,
   produtosCatalogoTable,
+  tenantsTable,
+  whatsappConnectionsTable,
   webBehaviorEventsTable,
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -26,6 +28,57 @@ function hasAccess(req: any, res: any, tenantId: string): boolean {
     return false;
   }
   return true;
+}
+
+async function loadSiteGeneratorBusinessContext(tenantId: string) {
+  const [tenantResult, profileResult, whatsappResult] = await Promise.allSettled([
+    db.select({
+      id: tenantsTable.id,
+      name: tenantsTable.name,
+      nomeEmpresa: tenantsTable.nomeEmpresa,
+      vertical: tenantsTable.vertical,
+      segmento: tenantsTable.segmento,
+      logoUrl: tenantsTable.logoUrl,
+      site: tenantsTable.site,
+      descricao: tenantsTable.descricao,
+      updatedAt: tenantsTable.updatedAt,
+    }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
+    db.select({
+      displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber,
+      businessName: whatsappConnectionsTable.businessName,
+      isDefault: whatsappConnectionsTable.isDefault,
+      status: whatsappConnectionsTable.status,
+      updatedAt: whatsappConnectionsTable.updatedAt,
+    }).from(whatsappConnectionsTable)
+      .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active")))
+      .orderBy(desc(whatsappConnectionsTable.isDefault), desc(whatsappConnectionsTable.updatedAt))
+      .limit(1),
+  ]);
+  const tenant = tenantResult.status === "fulfilled" ? tenantResult.value[0] ?? null : null;
+  const profile = profileResult.status === "fulfilled" ? profileResult.value[0] ?? null : null;
+  const whatsapp = whatsappResult.status === "fulfilled" ? whatsappResult.value[0] ?? null : null;
+  const mergedProfile = tenant || profile || whatsapp ? {
+    ...(profile ?? {}),
+    tenantId,
+    razaoSocial: profile?.razaoSocial || tenant?.nomeEmpresa || tenant?.name || whatsapp?.businessName || "",
+    nomeFantasia: profile?.nomeFantasia || tenant?.nomeEmpresa || tenant?.name || whatsapp?.businessName || null,
+    vertical: profile?.vertical || tenant?.segmento || tenant?.vertical || null,
+    logoUrl: profile?.logoUrl || tenant?.logoUrl || null,
+    telefone: profile?.telefone || whatsapp?.displayPhoneNumber || null,
+    descricao: tenant?.descricao || null,
+    site: tenant?.site || null,
+    displayPhoneNumber: whatsapp?.displayPhoneNumber || null,
+  } : null;
+  return {
+    profile: mergedProfile,
+    sources: {
+      tenant: tenantResult.status === "fulfilled" && Boolean(tenant),
+      businessProfile: profileResult.status === "fulfilled" && Boolean(profile),
+      whatsapp: whatsappResult.status === "fulfilled" && Boolean(whatsapp),
+    },
+    degraded: [tenantResult, profileResult, whatsappResult].some((result) => result.status === "rejected"),
+  };
 }
 
 function cleanText(value: string): string {
@@ -399,6 +452,19 @@ function similarity(a: string[], b: string[]): number {
   return union === 0 ? 0 : intersection / union;
 }
 
+router.get("/tenants/:tenantId/site-generator/business-context", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, res, tenantId)) return;
+  try {
+    const context = await loadSiteGeneratorBusinessContext(tenantId);
+    res.setHeader("Cache-Control", "no-store");
+    res.json(context);
+  } catch (err) {
+    req.log?.warn({ err, tenantId }, "site-generator/business-context: contexto degradado");
+    res.status(200).json({ profile: null, sources: { tenant: false, businessProfile: false, whatsapp: false }, degraded: true });
+  }
+});
+
 const briefingSuggestionsSchema = z.object({ creationMode: z.string().trim().max(40).optional() });
 router.post("/tenants/:tenantId/site-generator/briefing-suggestions", async (req, res) => {
   const tenantId = String(req.params.tenantId);
@@ -409,12 +475,15 @@ router.post("/tenants/:tenantId/site-generator/briefing-suggestions", async (req
     return;
   }
   try {
-    const [[profile], products] = await Promise.all([
-      db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
+    const [contextResult, productsResult] = await Promise.allSettled([
+      loadSiteGeneratorBusinessContext(tenantId),
       db.select().from(produtosCatalogoTable).where(eq(produtosCatalogoTable.tenantId, tenantId)).limit(40),
     ]);
+    const context = contextResult.status === "fulfilled" ? contextResult.value : { profile: null, sources: { tenant: false, businessProfile: false, whatsapp: false }, degraded: true };
+    const profile = context.profile as Record<string, unknown> | null;
+    const products = productsResult.status === "fulfilled" ? productsResult.value : [];
     if (!profile && products.length === 0) {
-      res.json({ audiences: [], offers: [], source: "empty" });
+      res.json({ audiences: [], offers: [], source: "empty", degraded: true });
       return;
     }
 
@@ -470,8 +539,22 @@ CATÁLOGO: ${JSON.stringify(catalog).slice(0, 14000)}`;
       .slice(0, 8);
     res.json({ audiences, offers, source: "tenant_business_context" });
   } catch (err) {
-    req.log?.warn({ err, tenantId }, "site-generator/briefing-suggestions: falhou");
-    res.status(502).json({ error: "Não foi possível gerar sugestões agora. O briefing manual e as sugestões locais continuam disponíveis." });
+    req.log?.warn({ err, tenantId }, "site-generator/briefing-suggestions: usando fallback local");
+    try {
+      const context = await loadSiteGeneratorBusinessContext(tenantId);
+      const profile = (context.profile ?? {}) as Record<string, any>;
+      const audiences = [profile.publicoAlvo, profile.discoveryData?.publicoAlvo, profile.discoveryData?.clienteIdeal]
+        .flatMap((value) => typeof value === "string" ? value.split(/\n|;|\||•/g) : [])
+        .map((value) => ({ value: value.trim().slice(0, 180), reason: "Perfil do negócio" }))
+        .filter((item) => item.value)
+        .slice(0, 8);
+      const offers = Array.isArray(profile.produtos)
+        ? profile.produtos.map((item: any) => ({ value: String(item?.nome ?? "").trim().slice(0, 180), reason: "Perfil do negócio" })).filter((item: any) => item.value).slice(0, 8)
+        : [];
+      res.status(200).json({ audiences, offers, source: "local_fallback", degraded: true });
+    } catch {
+      res.status(200).json({ audiences: [], offers: [], source: "degraded", degraded: true });
+    }
   }
 });
 
