@@ -10,8 +10,6 @@ import {
   getListDealsQueryKey,
   useListCustomerIntelligence,
   getListCustomerIntelligenceQueryKey,
-  useListPropostas,
-  getListPropostasQueryKey,
   useListTenantBriefings,
   getListTenantBriefingsQueryKey,
   useListTenantUsers,
@@ -64,7 +62,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const LEAD_STATUSES = [
@@ -84,6 +82,38 @@ const STATUS_STYLES: Record<string, string> = {
   perdido: "bg-red-100 text-red-600 border-red-200",
   quente: "bg-amber-100 text-amber-700 border-amber-200",
 };
+
+type ActiveProcess = { pipeline: string; etapa: string; label: string; id: string; codigo?: string };
+type LeadsOverviewContext = {
+  activeProcessesByLeadId: Record<string, ActiveProcess[]>;
+  proposalTotalsByLeadId: Record<string, string>;
+  userLabelsById: Record<string, string>;
+};
+
+const PROCESS_LABELS: Record<string, string> = {
+  comercial: "COMERCIAL",
+  execucao: "EXECUÇÃO",
+  suporte: "SUPORTE",
+  aquecimento: "AQUECIMENTO",
+  parceiros: "PARCEIROS",
+};
+
+function ActiveProcessBadges({ processes }: { processes: ActiveProcess[] | undefined }) {
+  if (!processes?.length) return <span className="text-xs text-muted-foreground">—</span>;
+  const visible = processes.slice(0, 2);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {visible.map((process) => (
+        <Badge key={`${process.pipeline}-${process.id}`} variant="outline" className="max-w-[220px] text-[10px] font-medium">
+          <span className="font-semibold">{PROCESS_LABELS[process.pipeline] || process.pipeline.toUpperCase()}</span>
+          <span className="mx-1 text-muted-foreground">·</span>
+          <span className="truncate">{process.label}</span>
+        </Badge>
+      ))}
+      {processes.length > visible.length && <Badge variant="secondary" className="text-[10px]">+{processes.length - visible.length}</Badge>}
+    </div>
+  );
+}
 
 function getFirstChurnReason(reasons: unknown[] | null | undefined): string | null {
   if (!reasons || reasons.length === 0) return null;
@@ -416,10 +446,15 @@ export default function Leads() {
     },
   });
 
-  const { data: propostas } = useListPropostas(tenantId, undefined, {
-    query: {
-      enabled: !!tenantId,
-      queryKey: getListPropostasQueryKey(tenantId),
+  const { data: overview } = useQuery<LeadsOverviewContext>({
+    queryKey: ["leads-overview-context", tenantId],
+    enabled: !!tenantId && viewMode === "ativos",
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/leads-overview-context`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) throw new Error(`Erro ${response.status}`);
+      return response.json();
     },
   });
 
@@ -431,24 +466,16 @@ export default function Leads() {
   });
 
   const { data: tenantUsers = [] } = useListTenantUsers(tenantId, {
-    query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
+    query: { enabled: !!tenantId && assignDialog.open, queryKey: getListTenantUsersQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
   });
 
-  const userMap = new Map(tenantUsers.map((u) => [u.id, u.name || u.email || u.id]));
+  const userMap = new Map(Object.entries(overview?.userLabelsById ?? {}));
 
   const ciMap = new Map(ciList?.map((ci) => [ci.leadId, ci]) ?? []);
 
   const briefingMap = new Map(briefings.map((b) => [b.leadId, b]));
 
-  // Map: leadId → maior valor total de proposta
-  const leadValorMap = new Map<string, string>();
-  for (const p of propostas ?? []) {
-    if (!p.leadId || !p.valorTotal) continue;
-    const current = leadValorMap.get(p.leadId);
-    if (!current || parseFloat(p.valorTotal) > parseFloat(current)) {
-      leadValorMap.set(p.leadId, p.valorTotal);
-    }
-  }
+  const leadValorMap = new Map<string, string>(Object.entries(overview?.proposalTotalsByLeadId ?? {}));
 
   function formatCurrency(value: string | null | undefined): string {
     if (!value) return "";
@@ -960,6 +987,7 @@ export default function Leads() {
                         </Badge>
                         <BriefingBadge briefing={briefingMap.get(lead.id)} />
                         {churnBadge(ci?.churnRisk, ci?.churnReasons)}
+                        <ActiveProcessBadges processes={overview?.activeProcessesByLeadId?.[lead.id]} />
                         {leadValorMap.get(lead.id) && (
                           <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs font-mono">
                             {formatCurrency(leadValorMap.get(lead.id))}
@@ -992,6 +1020,7 @@ export default function Leads() {
                   <TableHead>Empresa</TableHead>
                   <TableHead>Telefone</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Pipelines ativas</TableHead>
                   <TableHead>Responsável</TableHead>
                   <TableHead className="text-right">Orçamento</TableHead>
                   <TableHead>
@@ -1017,7 +1046,7 @@ export default function Leads() {
                 {leadsLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 7 }).map((__, j) => (
+                      {Array.from({ length: 8 }).map((__, j) => (
                         <TableCell key={j}>
                           <div className="h-4 bg-muted animate-pulse rounded w-full max-w-[120px]" />
                         </TableCell>
@@ -1027,7 +1056,7 @@ export default function Leads() {
                 ) : filteredLeads.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="text-center py-12 text-muted-foreground"
                     >
                       {leads?.length === 0
@@ -1068,6 +1097,9 @@ export default function Leads() {
                             {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ??
                               lead.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="min-w-[180px]">
+                          <ActiveProcessBadges processes={overview?.activeProcessesByLeadId?.[lead.id]} />
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           <span className="flex items-center gap-2">

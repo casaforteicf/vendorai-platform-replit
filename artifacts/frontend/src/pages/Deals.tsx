@@ -68,6 +68,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, Settings2, Trash2, RotateCcw, KanbanSquare } from "lucide-react";
 import { ContractGeneratorModal } from "@/components/ContractGeneratorModal";
+import { PipelineNav } from "@/components/PipelineNav";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -152,6 +153,7 @@ function getColumnIdForDeal(deal: Deal): string {
 
 /** Filter deals belonging to a given kanban column. */
 function dealsForColumn(col: KanbanColumnDef, deals: Deal[]): Deal[] {
+  if (["ganho", "perdido"].includes(col.onDrop.etapa)) return [];
   if (col.dropId === "aquecimento_nao_cliente") {
     return deals.filter(
       (d) => d.etapa === "em_aquecimento" &&
@@ -667,16 +669,16 @@ function KanbanColumn({
   const slaOverdueCount = deals.filter(isSlaOverdue).length;
 
   return (
-    <div className="flex flex-col w-72 shrink-0 h-full min-h-0">
+    <div className="flex w-80 shrink-0 flex-col h-full min-h-0 rounded-xl border bg-muted/20">
       {/* Column header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between mb-2 px-1 py-1 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="sticky top-0 z-10 flex min-h-11 items-center justify-between border-b px-3 py-2.5 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex items-center gap-2">
           <span
             className={`inline-block h-2 w-2 rounded-full border ${col.color.replace("text-", "border-")}`}
             style={{ background: "currentColor" }}
           />
           <div className="flex flex-col leading-tight">
-            <span className={`text-xs font-semibold uppercase tracking-wide ${col.color}`}>
+            <span className="text-sm font-semibold text-foreground">
               {col.label}
             </span>
             {col.sublabel && (
@@ -711,7 +713,7 @@ function KanbanColumn({
       {/* Drop zone */}
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-0 overflow-y-auto rounded-lg p-2 space-y-2 transition-colors ${
+        className={`flex-1 min-h-0 overflow-y-auto rounded-b-xl p-2 space-y-2 transition-colors ${
           isOver
             ? "bg-primary/5 border-2 border-dashed border-primary/30"
             : "bg-muted/30 border-2 border-transparent"
@@ -2466,6 +2468,12 @@ export default function Deals() {
       const targetEtapa = ETAPAS_SAAS.find((e) => e.value === targetColId);
       if (!draggedDeal || !targetEtapa) return;
       if (draggedDeal.etapaSaas === targetEtapa.value) return;
+      const currentSaasIndex = ETAPAS_SAAS.findIndex((stage) => stage.value === draggedDeal.etapaSaas);
+      const targetSaasIndex = ETAPAS_SAAS.findIndex((stage) => stage.value === targetEtapa.value);
+      if (currentSaasIndex >= 0 && targetSaasIndex < currentSaasIndex) {
+        toast({ title: "Movimento não permitido", description: "O card SaaS só pode avançar. Etapas já concluídas permanecem no histórico.", variant: "destructive" });
+        return;
+      }
 
       const novaProb = ETAPA_SAAS_PROBABILIDADE[targetEtapa.value];
 
@@ -2510,12 +2518,11 @@ export default function Deals() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Negócios</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {deals.filter((d) => !["em_aquecimento", "parceiro", "em_execucao", "entregue"].includes(d.etapa)).length} negócios na pipeline comercial
+            {deals.filter((d) => !["em_aquecimento", "parceiro", "em_execucao", "ganho", "entregue", "perdido"].includes(d.etapa)).length} negócios ativos na pipeline comercial
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" className="gap-2" onClick={() => navigate("/pipeline-operacional")}><KanbanSquare className="h-4 w-4" /> Pipelines</Button>
         {isAdmin && <Dialog open={isStagesOpen} onOpenChange={setIsStagesOpen}>
           <DialogTrigger asChild><Button variant="outline"><Settings2 className="h-4 w-4 mr-2" /> Etapas</Button></DialogTrigger>
           <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
@@ -2827,6 +2834,8 @@ export default function Deals() {
         </div>
       </div>
 
+      <PipelineNav active="comercial" />
+
       {/* ── Pipeline Clássico — Mobile column picker ────────────────────── */}
       <div className="md:hidden flex flex-col gap-3 flex-1 min-h-0">
         <div className="flex gap-2 overflow-x-auto pb-1 shrink-0">
@@ -2930,7 +2939,12 @@ export default function Deals() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {visibleEtapas.map((e) => (
+                      {visibleEtapas.filter((stage) => {
+                        if (stage.value === "perdido") return true;
+                        const currentOrder = kanbanColumns.find((column) => column.onDrop.etapa === deal.etapa)?.order ?? -1;
+                        const targetOrder = kanbanColumns.find((column) => column.onDrop.etapa === stage.value)?.order ?? -1;
+                        return currentOrder < 0 || targetOrder < 0 || targetOrder >= currentOrder;
+                      }).map((e) => (
                         <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
                       ))}
                     </SelectContent>

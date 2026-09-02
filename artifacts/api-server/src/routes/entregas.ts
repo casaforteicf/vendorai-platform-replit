@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import {
@@ -25,6 +25,7 @@ import { triggerDeliveryFeedbackRequest } from "../services/post-venda.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { generateSupportReportDraft } from "../services/support-report.js";
 import { requestSupportFeedback } from "../services/support-feedback.js";
+import { canAdvanceWorkCard, TERMINAL_WORK_STAGES } from "../lib/pipeline-progress.js";
 
 const router: IRouter = Router();
 
@@ -647,7 +648,8 @@ router.patch("/entregas/:id", async (req, res) => {
   const [linkedCard] = await db.select().from(workCardsTable)
     .where(eq(workCardsTable.entregaId, entrega.id)).limit(1);
   if (linkedCard) {
-    const nextStage = deliveryStage(entrega);
+    const requestedStage = deliveryStage(entrega);
+    const nextStage = canAdvanceWorkCard("execucao", linkedCard.etapa, requestedStage) ? requestedStage : linkedCard.etapa;
     const stageChanged = nextStage !== linkedCard.etapa;
     const [updatedCard] = await db.update(workCardsTable).set({
       etapa: nextStage,
@@ -693,7 +695,7 @@ router.get("/tenants/:tenantId/work-cards", async (req, res) => {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
-  const { pipeline, etapa, leadId, dealId, entregaId } = req.query as Record<string, string | undefined>;
+  const { pipeline, etapa, leadId, dealId, entregaId, includeClosed } = req.query as Record<string, string | undefined>;
   const conditions = [eq(workCardsTable.tenantId, tenantId)];
   if (pipeline) conditions.push(eq(workCardsTable.pipeline, pipeline));
   if (etapa) conditions.push(eq(workCardsTable.etapa, etapa));
@@ -702,10 +704,111 @@ router.get("/tenants/:tenantId/work-cards", async (req, res) => {
   if (entregaId) conditions.push(eq(workCardsTable.entregaId, entregaId));
   if (restrictedToOwnWork(req) && req.user?.sub) conditions.push(eq(workCardsTable.responsavelId, req.user.sub));
 
-  const cards = await db.select().from(workCardsTable)
+  const storedCards = await db.select().from(workCardsTable)
     .where(and(...conditions))
     .orderBy(workCardsTable.updatedAt, workCardsTable.createdAt);
-  res.json(cards);
+  const cards = includeClosed === "1" ? storedCards : storedCards.filter((card) => !TERMINAL_WORK_STAGES.has(card.etapa));
+
+  const leadIds = [...new Set(cards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
+  const userIds = [...new Set(cards.map((card) => card.responsavelId).filter((id): id is string => Boolean(id)))];
+  const dealIds = [...new Set(cards.map((card) => card.dealId).filter((id): id is string => Boolean(id)))];
+  const [leadRows, userRows, dealRows] = await Promise.all([
+    leadIds.length ? db.select({ id: leadsTable.id, nome: leadsTable.nome, empresa: leadsTable.empresa }).from(leadsTable).where(inArray(leadsTable.id, leadIds)) : Promise.resolve([]),
+    userIds.length ? db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(inArray(usersTable.id, userIds)) : Promise.resolve([]),
+    dealIds.length ? db.select({ id: dealsTable.id, titulo: dealsTable.titulo }).from(dealsTable).where(inArray(dealsTable.id, dealIds)) : Promise.resolve([]),
+  ]);
+  const leadLabels = new Map(leadRows.map((lead) => [lead.id, lead.nome || lead.empresa || "Cliente"]));
+  const userLabels = new Map(userRows.map((user) => [user.id, user.name || user.email || "Responsável"]));
+  const dealLabels = new Map(dealRows.map((deal) => [deal.id, deal.titulo]));
+
+  res.json(cards.map((card) => ({
+    ...card,
+    leadLabel: card.leadId ? leadLabels.get(card.leadId) ?? null : null,
+    responsavelLabel: card.responsavelId ? userLabels.get(card.responsavelId) ?? null : null,
+    dealTitle: card.dealId ? dealLabels.get(card.dealId) ?? null : null,
+  })));
+});
+
+router.get("/tenants/:tenantId/leads-overview-context", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const dealConditions = [eq(dealsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, dealsTable)];
+  const workConditions = [eq(workCardsTable.tenantId, tenantId)];
+  if (restrictedToOwnWork(req) && req.user?.sub) workConditions.push(eq(workCardsTable.responsavelId, req.user.sub));
+
+  const [deals, workCards, proposals, users] = await Promise.all([
+    db.select({
+      id: dealsTable.id,
+      leadId: dealsTable.leadId,
+      titulo: dealsTable.titulo,
+      etapa: dealsTable.etapa,
+      aquecimentoTipo: dealsTable.aquecimentoTipo,
+      relationshipStage: dealsTable.relationshipStage,
+    }).from(dealsTable).where(and(...dealConditions)),
+    db.select({
+      id: workCardsTable.id,
+      leadId: workCardsTable.leadId,
+      codigo: workCardsTable.codigo,
+      pipeline: workCardsTable.pipeline,
+      etapa: workCardsTable.etapa,
+    }).from(workCardsTable).where(and(...workConditions)),
+    db.select({ leadId: propostasTable.leadId, valorTotal: propostasTable.valorTotal }).from(propostasTable).where(eq(propostasTable.tenantId, tenantId)),
+    db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.tenantId, tenantId)),
+  ]);
+
+  const byLeadId: Record<string, Array<{ pipeline: string; etapa: string; label: string; id: string; codigo?: string }>> = {};
+  const push = (leadId: string | null, process: { pipeline: string; etapa: string; label: string; id: string; codigo?: string }) => {
+    if (!leadId) return;
+    (byLeadId[leadId] ??= []).push(process);
+  };
+  const commercialLabels: Record<string, string> = {
+    novo: "Novo", qualificado: "Qualificado", proposta: "Orçamento", negociacao: "Negociação",
+    conferencia_estoque: "Fechamento", contrato: "Contrato",
+  };
+  const partnerLabels: Record<string, string> = {
+    parceiro_identificado: "Parceiro identificado", contato: "Contato", qualificacao: "Qualificação",
+    proposta_parceria: "Proposta de parceria", negociacao: "Negociação",
+  };
+
+  for (const deal of deals) {
+    if (!deal.leadId) continue;
+    if (commercialLabels[deal.etapa]) {
+      push(deal.leadId, { pipeline: "comercial", etapa: deal.etapa, label: commercialLabels[deal.etapa], id: deal.id });
+      continue;
+    }
+    if (deal.etapa === "em_aquecimento" && deal.relationshipStage !== "aquecimento_retomado") {
+      push(deal.leadId, { pipeline: "aquecimento", etapa: deal.relationshipStage || "aquecimento_lead", label: deal.aquecimentoTipo === "cliente" ? "Cliente em aquecimento" : "Lead em aquecimento", id: deal.id });
+      continue;
+    }
+    if (deal.etapa === "parceiro" && !["parceiro_ativo", "inativo"].includes(deal.relationshipStage || "parceiro_identificado")) {
+      const relationshipStage = deal.relationshipStage || "parceiro_identificado";
+      push(deal.leadId, { pipeline: "parceiros", etapa: relationshipStage, label: partnerLabels[relationshipStage] || relationshipStage, id: deal.id });
+    }
+  }
+  for (const card of workCards) {
+    if (!card.leadId || TERMINAL_WORK_STAGES.has(card.etapa)) continue;
+    push(card.leadId, {
+      pipeline: card.pipeline,
+      etapa: card.etapa,
+      label: WORK_STAGE_LABELS[card.etapa] ?? card.etapa,
+      id: card.id,
+      codigo: card.codigo,
+    });
+  }
+
+  const proposalTotalsByLeadId: Record<string, string> = {};
+  for (const proposal of proposals) {
+    if (!proposal.leadId || !proposal.valorTotal) continue;
+    const current = Number(proposalTotalsByLeadId[proposal.leadId] || 0);
+    const next = Number(proposal.valorTotal || 0);
+    if (next > current) proposalTotalsByLeadId[proposal.leadId] = proposal.valorTotal;
+  }
+  const userLabelsById = Object.fromEntries(users.map((user) => [user.id, user.name || user.email || user.id]));
+  res.json({ activeProcessesByLeadId: byLeadId, proposalTotalsByLeadId, userLabelsById });
 });
 
 router.post("/tenants/:tenantId/work-cards", async (req, res) => {
@@ -896,6 +999,14 @@ router.patch("/work-cards/:id", async (req, res) => {
 
   const targetPipeline = parsed.data.pipeline ?? existing.pipeline;
   const targetStage = parsed.data.etapa ?? existing.etapa;
+  if (parsed.data.pipeline && parsed.data.pipeline !== existing.pipeline) {
+    res.status(409).json({ error: "CARD_PIPELINE_IMMUTABLE", message: "Um card não muda de pipeline. A transferência cria um novo processo vinculado ao anterior." });
+    return;
+  }
+  if (targetStage !== existing.etapa && !canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage)) {
+    res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card só pode avançar. Para retrabalho ou retorno, crie um novo ciclo vinculado ao card anterior." });
+    return;
+  }
   if (targetPipeline === "execucao" && !EXECUTION_STAGES.includes(targetStage as typeof EXECUTION_STAGES[number])) {
     res.status(422).json({ error: "Etapa inválida para pipeline de execução" });
     return;
@@ -971,34 +1082,80 @@ router.post("/work-cards/:id/support-report/confirm", async (req, res) => {
   if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
 
   const solved = parsed.data.situacaoFinal === "resolvido";
-  const nextStage = solved ? "feedback_cliente" : "execucao_assistencia";
-  const [updated] = await db.update(workCardsTable).set({
-    etapa: nextStage,
+  const now = new Date();
+  if (solved) {
+    const [updated] = await db.update(workCardsTable).set({
+      etapa: "feedback_cliente",
+      metadata: {
+        ...(card.metadata ?? {}),
+        supportReport: parsed.data,
+        supportReportConfirmed: true,
+        supportReportConfirmedAt: now.toISOString(),
+        supportReportConfirmedBy: req.user?.sub ?? null,
+      },
+      updatedAt: now,
+    }).where(eq(workCardsTable.id, card.id)).returning();
+    await recordWorkHistory({
+      tenantId: card.tenantId, leadId: card.leadId, dealId: card.dealId, tipo: "assistencia",
+      titulo: `${card.codigo}: relatório da assistência confirmado`,
+      descricao: `Diagnóstico: ${parsed.data.diagnostico || "não informado"}
+Serviço: ${parsed.data.servicoExecutado || "não informado"}
+Situação: resolvido.`,
+      responsavelId: card.responsavelId,
+    });
+    await ensureWorkStageTask(updated);
+    void requestSupportFeedback(card.tenantId, card.id, req.log);
+    res.json({ card: updated, feedbackRequested: true });
+    return;
+  }
+
+  const [closedAttempt] = await db.update(workCardsTable).set({
+    etapa: "fechamento_assistencia",
+    dataFimEfetiva: now,
     metadata: {
       ...(card.metadata ?? {}),
       supportReport: parsed.data,
       supportReportConfirmed: true,
-      supportReportConfirmedAt: new Date().toISOString(),
+      supportReportConfirmedAt: now.toISOString(),
       supportReportConfirmedBy: req.user?.sub ?? null,
-      ...(solved ? {} : { substatus: parsed.data.situacaoFinal }),
+      supportCycleOutcome: "necessita_continuidade",
+      substatus: parsed.data.situacaoFinal,
     },
-    updatedAt: new Date(),
+    updatedAt: now,
   }).where(eq(workCardsTable.id, card.id)).returning();
-
-  await recordWorkHistory({
+  const [continuation] = await db.insert(workCardsTable).values({
     tenantId: card.tenantId,
+    codigo: workCode("AST"),
+    pipeline: "suporte",
+    tipo: "assistencia_retorno",
+    etapa: "execucao_assistencia",
+    titulo: `Retorno • ${card.titulo}`,
+    descricao: parsed.data.observacoes || parsed.data.recomendacoes || card.descricao,
+    prioridade: card.prioridade,
     leadId: card.leadId,
     dealId: card.dealId,
-    tipo: "assistencia",
-    titulo: `${card.codigo}: relatório da assistência confirmado`,
-    descricao: `Diagnóstico: ${parsed.data.diagnostico || "não informado"}
-Serviço: ${parsed.data.servicoExecutado || "não informado"}
-Situação: ${parsed.data.situacaoFinal}.`,
+    propostaId: card.propostaId,
+    parentCardId: card.id,
+    responsavelId: card.responsavelId,
+    dataInicioEfetiva: now,
+    metadata: {
+      categoria: (card.metadata as any)?.categoria ?? null,
+      produtos: (card.metadata as any)?.produtos ?? [],
+      origem: "continuidade_relatorio",
+      continuationOf: card.codigo,
+      previousWorkCardId: card.id,
+      previousOutcome: parsed.data.situacaoFinal,
+      supportCycle: Number((card.metadata as any)?.supportCycle ?? 1) + 1,
+    },
+  }).returning();
+  await recordWorkHistory({
+    tenantId: card.tenantId, leadId: card.leadId, dealId: card.dealId, tipo: "assistencia",
+    titulo: `${closedAttempt.codigo}: ciclo encerrado com necessidade de continuidade`,
+    descricao: `O card não retrocedeu. Foi criado o retorno ${continuation.codigo} para continuar a execução. Situação: ${parsed.data.situacaoFinal}.`,
     responsavelId: card.responsavelId,
   });
-  await ensureWorkStageTask(updated);
-  if (solved) void requestSupportFeedback(card.tenantId, card.id, req.log);
-  res.json({ card: updated, feedbackRequested: solved });
+  await ensureWorkStageTask(continuation);
+  res.json({ card: continuation, previousCard: closedAttempt, feedbackRequested: false, continuationCreated: true });
 });
 
 router.get("/work-cards/:id/attachments", async (req, res) => {

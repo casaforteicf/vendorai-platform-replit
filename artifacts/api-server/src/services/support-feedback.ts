@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { findLeadByDedup } from "../lib/dedup.js";
+import { randomUUID } from "node:crypto";
 
 export type SupportFeedbackResult =
   | { handled: false }
@@ -42,7 +43,7 @@ export async function requestSupportFeedback(tenantId: string, workCardId: strin
     `Olá${lead.nome ? `, ${lead.nome}` : ""}. A assistência ${card.codigo} foi executada.`,
     "O problema ficou resolvido?",
     `Responda: SIM ${card.codigo}, PARCIALMENTE ${card.codigo} ou NÃO ${card.codigo}.`,
-    "Se não tiver sido resolvido, o chamado volta automaticamente para execução.",
+    "Se não tiver sido resolvido, abriremos automaticamente um retorno vinculado a esta assistência.",
   ].join("\n");
 
   try {
@@ -100,50 +101,88 @@ export async function tryHandleSupportFeedbackMessage(input: {
 
   const now = new Date();
   const resolved = result === "sim";
-  const nextStage = resolved ? "fechamento_assistencia" : "execucao_assistencia";
   const feedbackLabel = result === "sim" ? "Resolvido" : result === "parcial" ? "Parcialmente resolvido" : "Não resolvido";
 
+  if (resolved) {
+    await db.update(workCardsTable).set({
+      etapa: "fechamento_assistencia",
+      dataFimEfetiva: now,
+      metadata: {
+        ...(card.metadata ?? {}),
+        supportFeedbackStatus: result,
+        supportFeedbackText: input.text.slice(0, 5000),
+        supportFeedbackAt: now.toISOString(),
+        supportCycleOutcome: "resolvido",
+      },
+      updatedAt: now,
+    }).where(eq(workCardsTable.id, card.id));
+    await db.insert(activitiesTable).values({
+      tenantId: input.tenantId, leadId: lead.id, dealId: card.dealId, tipo: "assistencia",
+      titulo: `${card.codigo}: feedback do cliente — ${feedbackLabel}`,
+      descricao: "Cliente confirmou que a assistência resolveu o problema. Ciclo encerrado e preservado no histórico.",
+      status: "concluida", concluidaEm: now, responsavelId: card.responsavelId,
+    });
+    input.log?.info?.({ workCardId: card.id, codigo: card.codigo, feedback: result }, "support-feedback: assistência encerrada");
+    return { handled: true, cardId: card.id, codigo: card.codigo, result: "resolved" };
+  }
+
+  const reopenCount = Number((card.metadata as any)?.supportReopenCount ?? 0) + 1;
   await db.update(workCardsTable).set({
-    etapa: nextStage,
-    ...(resolved ? { dataFimEfetiva: now } : {}),
+    etapa: "fechamento_assistencia",
+    dataFimEfetiva: now,
     metadata: {
       ...(card.metadata ?? {}),
       supportFeedbackStatus: result,
       supportFeedbackText: input.text.slice(0, 5000),
       supportFeedbackAt: now.toISOString(),
-      supportReopenCount: resolved ? Number((card.metadata as any)?.supportReopenCount ?? 0) : Number((card.metadata as any)?.supportReopenCount ?? 0) + 1,
+      supportReopenCount: reopenCount,
+      supportCycleOutcome: "necessita_retorno",
     },
     updatedAt: now,
   }).where(eq(workCardsTable.id, card.id));
 
-  await db.insert(activitiesTable).values({
+  const returnCode = `AST-${Date.now().toString(36).toUpperCase()}-${randomUUID().slice(0, 4).toUpperCase()}`;
+  const [returnCard] = await db.insert(workCardsTable).values({
     tenantId: input.tenantId,
-    leadId: lead.id,
+    codigo: returnCode,
+    pipeline: "suporte",
+    tipo: "assistencia_retorno",
+    etapa: "execucao_assistencia",
+    titulo: `Retorno • ${card.titulo}`,
+    descricao: `Retorno aberto após feedback do cliente: ${feedbackLabel}.`,
+    prioridade: card.prioridade,
+    leadId: card.leadId,
     dealId: card.dealId,
-    tipo: "assistencia",
-    titulo: `${card.codigo}: feedback do cliente — ${feedbackLabel}`,
-    descricao: resolved
-      ? "Cliente confirmou que a assistência resolveu o problema. Chamado encaminhado para fechamento."
-      : "Cliente informou que a assistência não foi totalmente resolvida. Chamado reaberto automaticamente em Execução da Assistência.",
-    status: "concluida",
-    concluidaEm: now,
+    propostaId: card.propostaId,
+    parentCardId: card.id,
     responsavelId: card.responsavelId,
+    dataInicioEfetiva: now,
+    metadata: {
+      categoria: (card.metadata as any)?.categoria ?? null,
+      produtos: (card.metadata as any)?.produtos ?? [],
+      origem: "feedback_cliente",
+      returnOf: card.codigo,
+      previousWorkCardId: card.id,
+      previousFeedback: result,
+      supportReopenCount: reopenCount,
+      supportCycle: Number((card.metadata as any)?.supportCycle ?? 1) + 1,
+    },
+  }).returning();
+
+  await db.insert(activitiesTable).values({
+    tenantId: input.tenantId, leadId: lead.id, dealId: card.dealId, tipo: "assistencia",
+    titulo: `${card.codigo}: feedback do cliente — ${feedbackLabel}`,
+    descricao: `O card anterior foi encerrado sem regressão. Retorno ${returnCard.codigo} criado automaticamente para nova execução.`,
+    status: "concluida", concluidaEm: now, responsavelId: card.responsavelId,
+  });
+  await db.insert(activitiesTable).values({
+    tenantId: input.tenantId, leadId: lead.id, dealId: card.dealId, tipo: "assistencia",
+    titulo: `Executar retorno ${returnCard.codigo}`,
+    descricao: `Feedback recebido: ${feedbackLabel}. Revisar diagnóstico, definir próxima ação e reagendar se necessário.`,
+    status: "planejado", responsavelId: card.responsavelId,
+    dataVencimento: new Date(now.getTime() + 24 * 60 * 60 * 1000),
   });
 
-  if (!resolved) {
-    await db.insert(activitiesTable).values({
-      tenantId: input.tenantId,
-      leadId: lead.id,
-      dealId: card.dealId,
-      tipo: "assistencia",
-      titulo: `Retomar ${card.codigo} — cliente não confirmou solução`,
-      descricao: `Feedback recebido: ${feedbackLabel}. Revisar diagnóstico, definir próxima ação e reagendar se necessário.`,
-      status: "planejado",
-      responsavelId: card.responsavelId,
-      dataVencimento: new Date(now.getTime() + 24 * 60 * 60 * 1000),
-    });
-  }
-
-  input.log?.info?.({ workCardId: card.id, codigo: card.codigo, feedback: result, nextStage }, "support-feedback: resposta processada");
-  return { handled: true, cardId: card.id, codigo: card.codigo, result: resolved ? "resolved" : "reopened" };
+  input.log?.info?.({ previousWorkCardId: card.id, workCardId: returnCard.id, codigo: returnCard.codigo, feedback: result }, "support-feedback: retorno criado sem regressão");
+  return { handled: true, cardId: returnCard.id, codigo: returnCard.codigo, result: "reopened" };
 }
