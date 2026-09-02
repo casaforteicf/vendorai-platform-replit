@@ -12770,6 +12770,16 @@ components:
           items:
             type: string
           nullable: true
+        perguntas:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              texto:
+                type: string
+            required: [id, texto]
         createdAt:
           type: string
           format: date-time
@@ -12811,6 +12821,16 @@ components:
           items:
             type: string
           nullable: true
+        perguntas:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              texto:
+                type: string
+            required: [id, texto]
 
 
     CreateFunilBody:
@@ -12983,6 +13003,13 @@ components:
           type: string
           format: date-time
           description: Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa.
+        respostasEtapas:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+          description: "Respostas às perguntas-chave de cada etapa, por chave de etapa: { etapaKey: { perguntaId: resposta } }"
         createdAt:
           type: string
           format: date-time
@@ -13165,6 +13192,12 @@ components:
           type: string
           nullable: true
           description: Subtipo de aquecimento ('cliente' ou 'nao_cliente')
+        respostasEtapas:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
 
     IncrementBody:
       type: object

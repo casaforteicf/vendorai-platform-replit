@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, integer, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, integer, pgEnum, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -104,6 +104,10 @@ export const dealsTable = pgTable("deals", {
   // de etapa não importa qual dos ~29 pontos do backend fez. Usado pro
   // SLA de tempo por etapa (card fica vermelho quando estoura).
   etapaAlteradaEm: timestamp("etapa_alterada_em").notNull().defaultNow(),
+  // Respostas às perguntas-chave de cada etapa (playbook), guardadas por
+  // chave de etapa: { "qualificado": { "qualif_situacao": "..." }, ... }.
+  // Alimenta roteiro de reunião, geração de proposta e argumento de venda.
+  respostasEtapas: jsonb("respostas_etapas").$type<Record<string, Record<string, string>>>().notNull().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

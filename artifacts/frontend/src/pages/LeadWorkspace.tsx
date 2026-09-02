@@ -5,6 +5,7 @@ import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipe
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import LeadDetail from "@/pages/LeadDetail";
+import { StageQuestionsPanel } from "@/components/StageQuestionsPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, ArrowRight, Loader2, Settings2, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, AlertTriangle, Loader2, Settings2, UserRound } from "lucide-react";
 
 const fallbackStages = [
   { key: "novo", label: "Novo", ordem: 10 }, { key: "em_aquecimento", label: "Em aquecimento", ordem: 20 },
@@ -67,6 +68,7 @@ export default function LeadWorkspace() {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [editEligible, setEditEligible] = useState(false);
+  const [savingAnswers, setSavingAnswers] = useState(false);
 
   // Etapa de destino escolhida no diálogo — usada pra filtrar quem pode
   // ser responsável (só quem está habilitado nela, se configurado).
@@ -92,6 +94,20 @@ export default function LeadWorkspace() {
       },
     );
   }
+  async function saveStageAnswers(next: Record<string, string>) {
+    if (!deal || !currentStage) return;
+    setSavingAnswers(true);
+    try {
+      const merged = { ...(deal.respostasEtapas as Record<string, Record<string, string>> | undefined), [currentStage.key]: next };
+      await fetch("/api/deals/" + deal.id, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ respostasEtapas: merged }) });
+      await qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) });
+    } catch {
+      toast({ title: "Erro ao salvar respostas", variant: "destructive" });
+    } finally {
+      setSavingAnswers(false);
+    }
+  }
+
   function showAdvance() {
     const stage = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
     setNextStage(stage); setOwner(deal?.assignedTo ?? user?.id ?? ""); setTitle(guidance[stage]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); setOpen(true);
@@ -143,9 +159,29 @@ export default function LeadWorkspace() {
         {deal ? <Button onClick={showAdvance}>Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button> : <Button disabled={createDeal.isPending} onClick={startAttendance}>{createDeal.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Iniciar atendimento</Button>}
       </div>
     </CardContent></Card>
+    <StageQuestionsPanel
+      tenantId={tenantId}
+      stage={currentStage}
+      answers={(deal?.respostasEtapas as Record<string, Record<string, string>> | undefined)?.[currentStage?.key ?? ""] ?? {}}
+      onSaveAnswers={saveStageAnswers}
+      saving={savingAnswers}
+    />
     <LeadDetail />
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>Avançar e definir a sequência</DialogTitle></DialogHeader><div className="grid gap-4 py-2">
       <div className="rounded-lg border bg-muted/40 p-3 text-sm">Atual: <strong>{currentStage?.label ?? deal?.etapa}</strong> — responsável: <strong>{displayUser(deal?.assignedTo)}</strong></div>
+      {(() => {
+        const perguntas = currentStage?.perguntas ?? [];
+        if (!perguntas.length) return null;
+        const respostas = (deal?.respostasEtapas as Record<string, Record<string, string>> | undefined)?.[currentStage?.key ?? ""] ?? {};
+        const faltando = perguntas.filter((p) => !respostas[p.id]?.trim()).length;
+        if (faltando === 0) return null;
+        return (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{faltando} pergunta(s) da etapa atual ({currentStage?.label}) ainda não foram respondidas. Você pode avançar mesmo assim, mas vale registrar antes se possível.</span>
+          </div>
+        );
+      })()}
       <Field label="Nova etapa"><Select value={nextStage} onValueChange={(v) => { setNextStage(v); setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{stages.filter((s) => s.key !== deal?.etapa).map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent></Select></Field>
 
       <div className="grid gap-2">

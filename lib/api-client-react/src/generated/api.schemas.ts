@@ -1807,6 +1807,7 @@ export interface PipelineStage {
   isSystem: boolean;
   slaMinutos?: number | null;
   elegiveisUserIds?: string[] | null;
+  perguntas?: { id: string; texto: string }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1825,6 +1826,7 @@ export interface UpdatePipelineStageBody {
   ordem?: number;
   slaMinutos?: number | null;
   elegiveisUserIds?: string[] | null;
+  perguntas?: { id: string; texto: string }[];
 }
 
 export interface CreateFunilBody {
@@ -1923,6 +1925,8 @@ export interface Deal {
   assignedTo?: string | null;
   /** Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa. */
   etapaAlteradaEm: string;
+  /** Respostas às perguntas-chave de cada etapa, por chave de etapa: { etapaKey: { perguntaId: resposta } } */
+  respostasEtapas?: { [key: string]: { [key: string]: string } };
   createdAt: string;
   updatedAt: string;
 }
@@ -2043,6 +2047,7 @@ export interface UpdateDealBody {
   skipAsaasBilling?: boolean | null;
   /** Subtipo de aquecimento ('cliente' ou 'nao_cliente') */
   aquecimentoTipo?: string | null;
+  respostasEtapas?: { [key: string]: { [key: string]: string } };
 }
 
 export interface IncrementBody {
