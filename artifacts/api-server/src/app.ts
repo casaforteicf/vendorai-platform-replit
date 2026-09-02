@@ -36,7 +36,18 @@ const authLimiter = rateLimit({
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/forgot-password", authLimiter);
 
-app.use(compression());
+// Compressão gzip padrão, exceto pra respostas de site gerado (JSON com HTML
+// embutido, tipicamente 50-100KB) — vimos corte determinístico no meio da
+// transmissão nessas respostas ao passar por Vercel (rewrite) + Railway
+// juntos com compressão ativa. Sem compressão nessas rotas específicas
+// elimina essa classe de bug de transporte; o payload já é só HTML/JSON
+// texto simples, sem custo real de banda relevante pro caso de uso.
+app.use(compression({
+  filter: (req, res) => {
+    if (/\/site-generator(\/|$)/.test(req.path)) return false;
+    return compression.filter(req, res);
+  },
+}));
 app.use(
   pinoHttp({
     logger,
