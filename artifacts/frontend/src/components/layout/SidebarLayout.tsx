@@ -63,7 +63,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     businessProfileQuery.data?.nomeFantasia?.trim() ||
     businessProfileQuery.data?.razaoSocial?.trim() ||
     tenantOverride?.name ||
-    (user as typeof user & { tenantName?: string | null } | null)?.tenantName?.trim() ||
+    (user as { tenantName?: string | null } | null)?.tenantName?.trim() ||
     "Sua empresa";
 
   const erpEntitled = tenantNavModules.some(
