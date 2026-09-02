@@ -1,418 +1,375 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SiteGeneratorTab } from "./SiteGenerator";
+import ContentAutopilotCore from "./ContentAutopilotCore";
+import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Loader2, Search, Check, X, Wand2, ExternalLink, Globe, EyeOff } from "lucide-react";
-import { getContentAutopilotBlogPostUrl } from "@/lib/contentAutopilotBlogUrl";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  ArrowRight,
+  BarChart3,
+  Bot,
+  CheckCircle2,
+  FileText,
+  Globe,
+  Lightbulb,
+  Search,
+  Settings2,
+  Sparkles,
+  Target,
+  Wand2,
+} from "lucide-react";
+
+type HubView = "overview" | "generator" | "autopilot" | "seo" | "analytics" | "settings";
+
+type SiteSummary = {
+  id: string;
+  name: string;
+  siteType: string;
+  updatedAt: string;
+};
+
+type AutopilotConfigResponse = {
+  config: {
+    ativo?: boolean;
+    siteUrl?: string | null;
+  } | null;
+};
+
+type KeywordsResponse = { keywords?: Array<{ id: string; status: string }> };
+type ArticlesResponse = { articles?: Array<{ id: string; status: string; seoScore?: number | null }> };
+type BlogPostsResponse = { posts?: Array<{ id: string; publicado: boolean }> };
+
+const VIEWS: HubView[] = ["overview", "generator", "autopilot", "seo", "analytics", "settings"];
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-interface Config {
-  siteUrl: string | null;
-  canalPublicacao: string;
-  artigosPorDia: number;
-  tetoGastoMensal: string | null;
-  gastoAcumulado: string;
-  ativo: boolean;
-  brandTone: unknown;
-}
-interface Keyword {
-  id: string; termo: string; volumeBusca: number | null; status: string;
-}
-interface Article {
-  id: string; titulo: string | null; status: string; seoScore: number | null;
-  imagens: { url: string; altText: string }[]; createdAt: string;
-}
-interface BlogPost {
-  id: string; slug: string; titulo: string; imagemCapaUrl: string | null;
-  publicado: boolean; publicadoEm: string | null;
+function initialView(): HubView {
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("view") as HubView | null;
+  return requested && VIEWS.includes(requested) ? requested : "overview";
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  descoberta: "Descoberta", aprovada: "Aprovada", em_uso: "Em uso", descartada: "Descartada",
-  pesquisando: "Pesquisando", gerando: "Gerando", otimizando: "Otimizando",
-  pronto_revisao: "Pronto p/ revisão", publicado: "Publicado", erro: "Erro",
-};
+function updateLocation(view: HubView) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", view);
+  if (view === "settings") url.searchParams.set("tab", "site");
+  else url.searchParams.delete("tab");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
-export default function ContentAutopilot() {
-  const { user } = useAuth();
-  const tenantId = (user as any)?.tenantId ?? "";
-  const qc = useQueryClient();
-  const { toast } = useToast();
+function MetricCard({ label, value, helper }: { label: string; value: string | number; helper: string }) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className="mt-2 text-3xl font-bold tracking-tight">{value}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+      </CardContent>
+    </Card>
+  );
+}
 
-  const [siteUrl, setSiteUrl] = useState("");
-  const [seedInput, setSeedInput] = useState("");
+function SiteSettingsBridge() {
+  const [ready, setReady] = useState(false);
 
-  const { data, isLoading } = useQuery<{ config: Config | null; dataForSeoConfigured: boolean }>({
-    queryKey: ["content-autopilot-config", tenantId],
-    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { headers: authHeaders() }).then((r) => r.json()),
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("tab") !== "site") {
+      url.searchParams.set("tab", "site");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+    setReady(true);
+  }, []);
+
+  if (!ready) return null;
+
+  return (
+    <div className="vendor-site-settings-bridge">
+      <style>{`
+        .vendor-site-settings-bridge > div > div:first-child { display: none; }
+        .vendor-site-settings-bridge [role="tablist"] { display: none !important; }
+        .vendor-site-settings-bridge [role="tabpanel"] > div:first-child { display: none; }
+      `}</style>
+      <ConfiguracoesLegacy />
+    </div>
+  );
+}
+
+function Overview({ tenantId, onNavigate }: { tenantId: string; onNavigate: (view: HubView) => void }) {
+  const sitesQuery = useQuery<SiteSummary[]>({
+    queryKey: ["marketing-sites-hub", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/site-generator`, { headers: authHeaders() });
+      if (!response.ok) return [];
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    },
     enabled: !!tenantId,
   });
-  const config = data?.config;
-  const dataForSeoConfigured = data?.dataForSeoConfigured ?? false;
 
-  const { data: keywordsData } = useQuery<{ keywords: Keyword[] }>({
-    queryKey: ["content-autopilot-keywords", tenantId],
-    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/keywords`, { headers: authHeaders() }).then((r) => r.json()),
+  const configQuery = useQuery<AutopilotConfigResponse>({
+    queryKey: ["marketing-sites-autopilot-config", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { headers: authHeaders() });
+      if (!response.ok) return { config: null };
+      return response.json();
+    },
     enabled: !!tenantId,
   });
-  const keywords = keywordsData?.keywords ?? [];
 
-  const { data: articlesData } = useQuery<{ articles: Article[] }>({
-    queryKey: ["content-autopilot-articles", tenantId],
-    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/articles`, { headers: authHeaders() }).then((r) => r.json()),
+  const keywordsQuery = useQuery<KeywordsResponse>({
+    queryKey: ["marketing-sites-autopilot-keywords", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/keywords`, { headers: authHeaders() });
+      if (!response.ok) return { keywords: [] };
+      return response.json();
+    },
     enabled: !!tenantId,
   });
-  const articles = articlesData?.articles ?? [];
 
-  const { data: blogPostsData } = useQuery<{ posts: BlogPost[] }>({
-    queryKey: ["content-autopilot-blog-posts", tenantId],
-    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/site-blog-posts`, { headers: authHeaders() }).then((r) => r.json()),
+  const articlesQuery = useQuery<ArticlesResponse>({
+    queryKey: ["marketing-sites-autopilot-articles", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/articles`, { headers: authHeaders() });
+      if (!response.ok) return { articles: [] };
+      return response.json();
+    },
     enabled: !!tenantId,
   });
-  const blogPosts = blogPostsData?.posts ?? [];
 
-  const saveConfigMutation = useMutation({
-    mutationFn: (payload: Partial<Config>) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(payload) })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao salvar"); return r.json(); }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] }); toast({ title: "Configuração salva" }); },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const analyzeSiteMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/analyze-site`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao analisar site"); return r.json(); }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] }); toast({ title: "Tom de marca extraído!" }); },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const runNowMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/run-now`, { method: "POST", headers: authHeaders() })
-        .then(async (r) => {
-          const body = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error((body as { error?: string }).error ?? "Erro ao executar o Autopilot");
-          return body as { artigosGerados: number; erros: string[] };
-        }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
-      qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] });
-      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
-      toast({
-        title: `Autopilot executado: ${res.artigosGerados} artigo${res.artigosGerados === 1 ? "" : "s"} gerado${res.artigosGerados === 1 ? "" : "s"}`,
-        description: res.erros?.length ? `${res.erros.length} item(ns) com erro — consulte os logs.` : undefined,
-      });
+  const postsQuery = useQuery<BlogPostsResponse>({
+    queryKey: ["marketing-sites-autopilot-posts", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/site-blog-posts`, { headers: authHeaders() });
+      if (!response.ok) return { posts: [] };
+      return response.json();
     },
-    onError: (e: Error) => toast({ title: "Erro ao executar Autopilot", description: e.message, variant: "destructive" }),
+    enabled: !!tenantId,
   });
 
-  const researchMutation = useMutation({
-    mutationFn: (seedKeywords: string[]) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/keywords/research`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ seedKeywords }) })
-        .then((r) => { if (!r.ok) throw new Error("Erro na pesquisa"); return r.json(); }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] });
-      toast({ title: `${res.inseridas} keywords novas encontradas`, description: `Custo: US$ ${res.custoUsd?.toFixed(4)}` });
-      setSeedInput("");
-    },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
+  const sites = sitesQuery.data ?? [];
+  const keywords = keywordsQuery.data?.keywords ?? [];
+  const articles = articlesQuery.data?.articles ?? [];
+  const posts = postsQuery.data?.posts ?? [];
+  const publishedPosts = posts.filter((post) => post.publicado).length;
+  const approvedKeywords = keywords.filter((keyword) => ["aprovada", "em_uso"].includes(keyword.status)).length;
+  const autopilotActive = Boolean(configQuery.data?.config?.ativo);
 
-  const patchKeywordMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/keywords/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] }),
-  });
-
-  const generateArticleMutation = useMutation({
-    mutationFn: (keywordId: string) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/keywords/${keywordId}/generate-article`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao gerar artigo"); return r.json(); }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
-      qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] });
-      toast({ title: "Artigo gerado!" });
-    },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const optimizeMutation = useMutation({
-    mutationFn: (articleId: string) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/articles/${articleId}/optimize`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao otimizar"); return r.json(); }),
-    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] }); toast({ title: `Score SEO: ${res.seoScore}/100` }); },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const publishNativeMutation = useMutation({
-    mutationFn: (articleId: string) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/articles/${articleId}/publish-native`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao publicar"); return r.json(); }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
-      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
-      toast({ title: "Rascunho criado — vá na aba Posts do Blog pra colocar no ar" });
-    },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const togglePublishMutation = useMutation({
-    mutationFn: ({ id, publish }: { id: string; publish: boolean }) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/site-blog-posts/${id}/${publish ? "publish" : "unpublish"}`, { method: "PATCH", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao atualizar publicação"); return r.json(); }),
-    onSuccess: (_res, vars) => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
-      toast({ title: vars.publish ? "Post publicado — já está no ar!" : "Post despublicado" });
-    },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  if (isLoading) {
-    return <div className="space-y-3"><Skeleton className="h-10 w-64" /><Skeleton className="h-40 w-full" /></div>;
-  }
+  const averageSeo = useMemo(() => {
+    const scores = articles.map((article) => article.seoScore).filter((score): score is number => typeof score === "number");
+    if (scores.length === 0) return "—";
+    return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+  }, [articles]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Sparkles className="h-5 w-5" /> Content Autopilot
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">Pesquisa, gera e publica conteúdo SEO automaticamente.</p>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Sites e LPs" value={sites.length} helper="Projetos existentes neste tenant" />
+        <MetricCard label="Conteúdos" value={articles.length} helper={`${publishedPosts} post${publishedPosts === 1 ? "" : "s"} publicado${publishedPosts === 1 ? "" : "s"}`} />
+        <MetricCard label="Keywords aprovadas" value={approvedKeywords} helper={`${keywords.length} oportunidade${keywords.length === 1 ? "" : "s"} mapeada${keywords.length === 1 ? "" : "s"}`} />
+        <MetricCard label="SEO médio" value={averageSeo} helper="Média dos artigos com score disponível" />
       </div>
 
-      <Tabs defaultValue="config">
-        <TabsList>
-          <TabsTrigger value="config">Configuração</TabsTrigger>
-          <TabsTrigger value="keywords">Keywords ({keywords.length})</TabsTrigger>
-          <TabsTrigger value="articles">Artigos ({articles.length})</TabsTrigger>
-          <TabsTrigger value="posts">Posts do Blog ({blogPosts.length})</TabsTrigger>
-        </TabsList>
-
-        {/* ── Configuração ─────────────────────────────────────────── */}
-        <TabsContent value="config" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium">Módulo ativo (roda sozinho todo dia às 05h)</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">Só processa keywords já aprovadas por você na aba Keywords.</p>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Ciclo de crescimento do site
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ["1", "Gerar", "Negócio + catálogo + público + estratégia"],
+                ["2", "Publicar", "Site, LP, produto, serviço ou e-commerce"],
+                ["3", "Aprender", "SEO, conteúdo, campanhas e sinais comerciais"],
+                ["4", "Melhorar", "Autopilot cria e otimiza novas oportunidades"],
+              ].map(([number, title, description]) => (
+                <div key={number} className="rounded-xl border bg-muted/20 p-4">
+                  <Badge variant="secondary" className="mb-3">{number}</Badge>
+                  <p className="text-sm font-semibold">{title}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
                 </div>
-                <Switch
-                  checked={config?.ativo ?? false}
-                  onCheckedChange={(v) => saveConfigMutation.mutate({ ativo: v })}
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
-                <div className="flex items-center gap-2 text-xs">
-                  <Badge variant={dataForSeoConfigured ? "outline" : "destructive"}>
-                    DataForSEO {dataForSeoConfigured ? "conectado" : "não configurado"}
-                  </Badge>
-                  <span className="text-muted-foreground">
-                    {config?.ativo ? "Automação diária ativa" : "Automação diária pausada"}
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => runNowMutation.mutate()}
-                  disabled={!config?.ativo || runNowMutation.isPending}
-                >
-                  {runNowMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                  Executar agora
-                </Button>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>URL do site</Label>
-                <div className="flex gap-2">
-                  <Input placeholder="https://seusite.com" value={siteUrl || config?.siteUrl || ""} onChange={(e) => setSiteUrl(e.target.value)} />
-                  <Button variant="outline" onClick={() => saveConfigMutation.mutate({ siteUrl })} disabled={!siteUrl || saveConfigMutation.isPending}>
-                    Salvar
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => analyzeSiteMutation.mutate()} disabled={!config?.siteUrl || analyzeSiteMutation.isPending}>
-                  {analyzeSiteMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                  Analisar tom de marca
-                </Button>
-                {config?.brandTone ? <Badge variant="outline" className="text-xs">Tom já extraído</Badge> : null}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t">
-                <div>
-                  <p className="text-xs text-muted-foreground">Gasto acumulado</p>
-                  <p className="text-sm font-semibold">US$ {Number(config?.gastoAcumulado ?? 0).toFixed(4)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Teto mensal</p>
-                  <p className="text-sm font-semibold">{config?.tetoGastoMensal ? `US$ ${config.tetoGastoMensal}` : "Sem teto definido"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Keywords ─────────────────────────────────────────────── */}
-        <TabsContent value="keywords" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-4 space-y-2">
-              <Label className="text-sm">Pesquisar novas keywords (Pesquisador — custo real via DataForSEO)</Label>
-              <div className="flex gap-2">
-                <Input placeholder="Termos separados por vírgula" value={seedInput} onChange={(e) => setSeedInput(e.target.value)} />
-                <Button
-                  onClick={() => researchMutation.mutate(seedInput.split(",").map((s) => s.trim()).filter(Boolean))}
-                  disabled={!seedInput.trim() || researchMutation.isPending || !dataForSeoConfigured}
-                >
-                  {researchMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-                  Pesquisar
-                </Button>
-              </div>
-              {!dataForSeoConfigured && (
-                <p className="text-xs text-amber-600">
-                  Pesquisa de keywords indisponível até as credenciais DataForSEO serem configuradas pela plataforma.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {keywords.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhuma keyword descoberta ainda.</div>
-          ) : (
-            <div className="space-y-1.5">
-              {keywords.map((k) => (
-                <Card key={k.id}>
-                  <CardContent className="p-3 flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex-1 min-w-[160px]">
-                      <p className="text-sm font-medium">{k.termo}</p>
-                      <p className="text-xs text-muted-foreground">{k.volumeBusca != null ? `${k.volumeBusca} buscas/mês` : "volume desconhecido"}</p>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{STATUS_LABEL[k.status] ?? k.status}</Badge>
-                    {k.status === "descoberta" && (
-                      <div className="flex gap-1.5">
-                        <Button size="sm" variant="outline" onClick={() => patchKeywordMutation.mutate({ id: k.id, status: "aprovada" })}>
-                          <Check className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => patchKeywordMutation.mutate({ id: k.id, status: "descartada" })}>
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    )}
-                    {k.status === "aprovada" && (
-                      <Button size="sm" onClick={() => generateArticleMutation.mutate(k.id)} disabled={generateArticleMutation.isPending}>
-                        {generateArticleMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
-                        Gerar artigo agora
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
               ))}
             </div>
-          )}
-        </TabsContent>
 
-        {/* ── Artigos ──────────────────────────────────────────────── */}
-        <TabsContent value="articles" className="space-y-2 mt-4">
-          {articles.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum artigo gerado ainda.</div>
-          ) : (
-            articles.map((a) => (
-              <Card key={a.id}>
-                <CardContent className="p-4 flex gap-4 flex-wrap items-center">
-                  {a.imagens?.[0]?.url && (
-                    <img src={a.imagens[0].url} alt="" className="w-20 h-14 object-cover rounded-md shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-[200px]">
-                    <p className="text-sm font-medium">{a.titulo ?? "(gerando...)"}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-xs">{STATUS_LABEL[a.status] ?? a.status}</Badge>
-                      {a.seoScore != null && <Badge variant="outline" className="text-xs">SEO {a.seoScore}/100</Badge>}
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    {a.status === "otimizando" && (
-                      <Button size="sm" variant="outline" onClick={() => optimizeMutation.mutate(a.id)} disabled={optimizeMutation.isPending}>
-                        Otimizar
-                      </Button>
-                    )}
-                    {a.status === "pronto_revisao" && (
-                      <Button size="sm" onClick={() => publishNativeMutation.mutate(a.id)} disabled={publishNativeMutation.isPending}>
-                        <Globe className="h-3.5 w-3.5 mr-1.5" /> Publicar rascunho
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <p className="text-sm font-semibold">Content Autopilot conectado ao site</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Blog, SEO, produtos, categorias, serviços, landing pages, FAQ, cases, depoimentos,
+                campanhas, SEO local, datas comerciais e novos produtos passam a fazer parte da mesma estratégia.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* ── Posts do Blog ────────────────────────────────────────── */}
-        <TabsContent value="posts" className="space-y-2 mt-4">
-          <p className="text-xs text-muted-foreground">
-            "Publicar" aqui é a única forma de um post ficar visível de verdade em {config?.siteUrl ? new URL(config.siteUrl).hostname : "seu site"}/api/sites/.../blog — o sistema nunca publica sozinho.
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between gap-2 text-base">
+              <span className="flex items-center gap-2"><Bot className="h-4 w-4" /> Autopilot do Site</span>
+              <Badge variant={autopilotActive ? "default" : "secondary"}>{autopilotActive ? "Ativo" : "Pausado"}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              O Autopilot usa o contexto do negócio e o desempenho do conteúdo para manter o ativo digital relevante.
+            </p>
+            <Button className="w-full justify-between" onClick={() => onNavigate("autopilot")}>
+              Abrir Content Autopilot <ArrowRight className="h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="cursor-pointer transition-colors hover:border-primary/40" onClick={() => onNavigate("generator")}>
+          <CardContent className="p-5">
+            <Wand2 className="h-5 w-5 text-primary" />
+            <p className="mt-3 font-semibold">Criar ou remodelar</p>
+            <p className="mt-1 text-sm text-muted-foreground">Gerador de Sites, LPs, páginas de produto, campanhas, catálogo e e-commerce.</p>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer transition-colors hover:border-primary/40" onClick={() => onNavigate("seo")}>
+          <CardContent className="p-5">
+            <Search className="h-5 w-5 text-primary" />
+            <p className="mt-3 font-semibold">SEO e conteúdo</p>
+            <p className="mt-1 text-sm text-muted-foreground">Keywords, artigos, posts, diagnóstico e otimização contínua com IA.</p>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer transition-colors hover:border-primary/40" onClick={() => onNavigate("settings")}>
+          <CardContent className="p-5">
+            <Settings2 className="h-5 w-5 text-primary" />
+            <p className="mt-3 font-semibold">Publicação e integrações</p>
+            <p className="mt-1 text-sm text-muted-foreground">Domínio, subdomínio, Meta Pixel, Google Ads e Search Console em um só lugar.</p>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function SeoOverview({ onNavigate }: { onNavigate: (view: HubView) => void }) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><Search className="h-4 w-4" /> SEO e otimização contínua</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm text-muted-foreground">
+          <p>
+            O score SEO do Gerador, a pesquisa de palavras-chave, a otimização dos artigos e a publicação no blog
+            já passam a ser vistos como partes do mesmo ativo digital.
           </p>
-          {blogPosts.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum post ainda. Gere e publique um artigo na aba Artigos primeiro.</div>
-          ) : (
-            blogPosts.map((p) => {
-              const publicPostUrl = getContentAutopilotBlogPostUrl(config?.siteUrl, p.slug);
-              return (
-              <Card key={p.id}>
-                <CardContent className="p-4 flex gap-4 flex-wrap items-center">
-                  {p.imagemCapaUrl && <img src={p.imagemCapaUrl} alt="" className="w-20 h-14 object-cover rounded-md shrink-0" />}
-                  <div className="flex-1 min-w-[200px]">
-                    <p className="text-sm font-medium">{p.titulo}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant={p.publicado ? "default" : "outline"} className="text-xs">
-                        {p.publicado ? "No ar" : "Rascunho (não visível)"}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    {p.publicado ? (
-                      <>
-                        {publicPostUrl ? (
-                          <Button size="sm" variant="outline" asChild>
-                            <a href={publicPostUrl} target="_blank" rel="noreferrer">
-                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Ver
-                            </a>
-                          </Button>
-                        ) : null}
-                        <Button size="sm" variant="ghost" onClick={() => togglePublishMutation.mutate({ id: p.id, publish: false })} disabled={togglePublishMutation.isPending}>
-                          <EyeOff className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
-                    ) : (
-                      <Button size="sm" onClick={() => togglePublishMutation.mutate({ id: p.id, publish: true })} disabled={togglePublishMutation.isPending}>
-                        {togglePublishMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Globe className="h-3.5 w-3.5 mr-1.5" />}
-                        Publicar
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              );
-            })
-          )}
-        </TabsContent>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border p-4"><CheckCircle2 className="mb-2 h-4 w-4 text-green-600" /><strong className="text-foreground">SEO do site</strong><p className="mt-1 text-xs">Título, meta description, cabeçalhos, legibilidade e imagens.</p></div>
+            <div className="rounded-lg border p-4"><Target className="mb-2 h-4 w-4 text-primary" /><strong className="text-foreground">Oportunidades</strong><p className="mt-1 text-xs">Keywords e temas aprovados alimentam o plano editorial.</p></div>
+            <div className="rounded-lg border p-4"><FileText className="mb-2 h-4 w-4 text-primary" /><strong className="text-foreground">Conteúdo</strong><p className="mt-1 text-xs">Artigos otimizados podem virar posts nativos do site.</p></div>
+          </div>
+          <Button onClick={() => onNavigate("autopilot")}><Sparkles className="mr-2 h-4 w-4" />Gerenciar SEO no Autopilot</Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AnalyticsOverview({ onNavigate }: { onNavigate: (view: HubView) => void }) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-4 w-4" /> Analytics e conversões</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Esta área concentra a leitura comercial do site. Os IDs reais de Google Ads e Meta Pixel continuam
+            disponíveis em Configurações do Site; os próximos indicadores devem conectar visita → lead → oportunidade → venda,
+            sem inventar métricas que ainda não estejam registradas no backend.
+          </p>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border p-4"><p className="text-xs uppercase text-muted-foreground">Origem</p><p className="mt-1 font-semibold">UTM / campanha / página</p></div>
+            <div className="rounded-lg border p-4"><p className="text-xs uppercase text-muted-foreground">Conversão</p><p className="mt-1 font-semibold">Lead / WhatsApp / formulário</p></div>
+            <div className="rounded-lg border p-4"><p className="text-xs uppercase text-muted-foreground">Resultado</p><p className="mt-1 font-semibold">Oportunidade / venda / receita</p></div>
+          </div>
+          <Button variant="outline" onClick={() => onNavigate("settings")}><Settings2 className="mr-2 h-4 w-4" />Configurar rastreamento</Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function MarketingSitesHub() {
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+  const [view, setView] = useState<HubView>(initialView);
+
+  function navigate(next: HubView) {
+    setView(next);
+    updateLocation(next);
+  }
+
+  useEffect(() => {
+    updateLocation(view);
+  }, []);
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
+            <Sparkles className="h-4 w-4" /> Marketing
+          </div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <Globe className="h-6 w-6" /> Sites & Content Autopilot
+          </h1>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Crie, remodele, publique e mantenha sites e landing pages conectados ao conteúdo, SEO, campanhas e inteligência comercial do VendorAI.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => navigate("autopilot")}><Bot className="mr-2 h-4 w-4" />Content Autopilot</Button>
+          <Button onClick={() => navigate("generator")}><Wand2 className="mr-2 h-4 w-4" />Criar site ou LP</Button>
+        </div>
+      </div>
+
+      <Tabs value={view} onValueChange={(value) => navigate(value as HubView)}>
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="w-max min-w-full justify-start">
+            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+            <TabsTrigger value="generator">Gerador de Sites</TabsTrigger>
+            <TabsTrigger value="autopilot">Content Autopilot</TabsTrigger>
+            <TabsTrigger value="seo">SEO & Otimização</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics & Conversões</TabsTrigger>
+            <TabsTrigger value="settings">Configurações do Site</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="overview" className="mt-5"><Overview tenantId={tenantId} onNavigate={navigate} /></TabsContent>
+        <TabsContent value="generator" className="mt-5"><SiteGeneratorTab /></TabsContent>
+        <TabsContent value="autopilot" className="mt-5"><ContentAutopilotCore /></TabsContent>
+        <TabsContent value="seo" className="mt-5"><SeoOverview onNavigate={navigate} /></TabsContent>
+        <TabsContent value="analytics" className="mt-5"><AnalyticsOverview onNavigate={navigate} /></TabsContent>
+        <TabsContent value="settings" className="mt-5"><SiteSettingsBridge /></TabsContent>
       </Tabs>
+
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <Lightbulb className="mt-0.5 h-4 w-4 text-amber-500" />
+            <div>
+              <p className="text-sm font-medium">Princípio do módulo</p>
+              <p className="text-xs text-muted-foreground">Gerador cria o ativo. Content Autopilot mantém, expande e melhora o ativo com base em contexto real.</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
