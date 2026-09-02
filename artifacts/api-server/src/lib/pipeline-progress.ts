@@ -4,11 +4,11 @@ export const COMMERCIAL_STAGE_ORDER = [
   "proposta",
   "negociacao",
   "conferencia_estoque",
-  "contrato",
   "ganho",
 ] as const;
 
 export const EXECUTION_STAGE_ORDER = [
+  "contrato",
   "pedido_confirmado",
   "liberacao_financeira",
   "liberacao_medidas",
