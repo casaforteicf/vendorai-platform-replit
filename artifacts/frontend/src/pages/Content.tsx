@@ -1781,7 +1781,7 @@ export default function Content() {
           <TabsContent key={key} value={key} className="mt-4">
             {(key === "youtube" || key === "linkedin") && (
               <div className="mb-4">
-                <SocialIntegrationsPanel providers={[key]} />
+                <SocialIntegrationsPanel providers={[key]} mode="publish" />
               </div>
             )}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

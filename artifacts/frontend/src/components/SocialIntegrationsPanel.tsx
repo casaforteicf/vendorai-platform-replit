@@ -16,7 +16,9 @@ type Connection = {
 
 const labels: Record<Provider, string> = { youtube: "YouTube", linkedin: "LinkedIn", tiktok: "TikTok" };
 
-export function SocialIntegrationsPanel({ providers: providersFilter }: { providers?: Provider[] } = {}) {
+type Mode = "connect" | "publish";
+
+export function SocialIntegrationsPanel({ providers: providersFilter, mode = "connect" }: { providers?: Provider[]; mode?: Mode } = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const tenantId = user?.tenantId;
@@ -93,52 +95,68 @@ export function SocialIntegrationsPanel({ providers: providersFilter }: { provid
     }
   }
 
+  const filtered = connections.filter((item) => !providersFilter || providersFilter.includes(item.provider));
+
   return (
     <div className="rounded-xl border bg-card p-6 space-y-5">
       <div>
-        <h2 className="font-semibold text-base">Canais sociais e conversas</h2>
+        <h2 className="font-semibold text-base">{mode === "publish" ? "Publicar" : "Canais sociais e conversas"}</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Centralize contas, publicações, métricas, comentários e respostas. Mensagens diretas só aparecem quando a API oficial da plataforma oferece esse acesso.
+          {mode === "publish"
+            ? "Publique diretamente nas contas conectadas. Para conectar ou desconectar contas, use Configurações → Integrações."
+            : "Conecte suas contas para centralizar publicações, métricas, comentários e respostas."}
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        {connections.filter((item) => !providersFilter || providersFilter.includes(item.provider)).map((item) => (
+        {filtered.map((item) => (
           <div key={item.provider} className="rounded-lg border p-4 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <strong>{labels[item.provider]}</strong>
               <span className={`text-xs ${item.connected ? "text-emerald-600" : "text-muted-foreground"}`}>{item.connected ? "Conectado" : "Desconectado"}</span>
             </div>
             {item.accountName && <p className="text-sm">{item.accountName}</p>}
-            <p className="text-xs text-muted-foreground">
-              Publicações e métricas{item.capabilities.reply ? ", comentários e respostas" : ""}{item.capabilities.ads ? ", anúncios mediante aprovação" : ""}.
-            </p>
-            {!item.configured && <p className="text-xs text-amber-700">Credenciais OAuth pendentes no servidor.</p>}
-            <div className="flex gap-2">
-              <Button size="sm" variant={item.connected ? "outline" : "default"} disabled={busy === item.provider} onClick={() => item.connected ? disconnect(item) : connect(item)}>
-                {busy === item.provider ? "Aguarde…" : item.connected ? "Desconectar" : `Conectar ${labels[item.provider]}`}
-              </Button>
-              {item.connected && item.capabilities.publish && (
-                <Button size="sm" variant="secondary" onClick={() => setPublishOpen(publishOpen === item.provider ? null : item.provider)}>
-                  Publicar
+
+            {mode === "connect" && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Publicações e métricas{item.capabilities.reply ? ", comentários e respostas" : ""}{item.capabilities.ads ? ", anúncios mediante aprovação" : ""}.
+                </p>
+                {!item.configured && <p className="text-xs text-amber-700">Credenciais OAuth pendentes no servidor.</p>}
+                <Button size="sm" variant={item.connected ? "outline" : "default"} disabled={busy === item.provider} onClick={() => item.connected ? disconnect(item) : connect(item)}>
+                  {busy === item.provider ? "Aguarde…" : item.connected ? "Desconectar" : `Conectar ${labels[item.provider]}`}
                 </Button>
-              )}
-            </div>
-            {publishOpen === item.provider && (
-              <div className="space-y-2 pt-2 border-t">
-                <Input
-                  placeholder={item.provider === "youtube" ? "URL do vídeo (mp4/mov público)" : "URL da mídia (opcional)"}
-                  value={publishMediaUrl}
-                  onChange={(e) => setPublishMediaUrl(e.target.value)}
-                />
-                <Input
-                  placeholder="Título/legenda"
-                  value={publishText}
-                  onChange={(e) => setPublishText(e.target.value)}
-                />
-                <Button size="sm" className="w-full" disabled={busy === `publish-${item.provider}`} onClick={() => publish(item)}>
-                  {busy === `publish-${item.provider}` ? "Publicando…" : "Confirmar publicação"}
-                </Button>
-              </div>
+              </>
+            )}
+
+            {mode === "publish" && (
+              !item.connected ? (
+                <p className="text-xs text-muted-foreground">Conta não conectada. Vá em Configurações → Integrações para conectar.</p>
+              ) : !item.capabilities.publish ? (
+                <p className="text-xs text-muted-foreground">Publicação não disponível para esta conta.</p>
+              ) : (
+                <>
+                  <Button size="sm" variant="secondary" onClick={() => setPublishOpen(publishOpen === item.provider ? null : item.provider)}>
+                    {publishOpen === item.provider ? "Fechar" : "Publicar"}
+                  </Button>
+                  {publishOpen === item.provider && (
+                    <div className="space-y-2 pt-2 border-t">
+                      <Input
+                        placeholder={item.provider === "youtube" ? "URL do vídeo (mp4/mov público)" : "URL da mídia (opcional)"}
+                        value={publishMediaUrl}
+                        onChange={(e) => setPublishMediaUrl(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Título/legenda"
+                        value={publishText}
+                        onChange={(e) => setPublishText(e.target.value)}
+                      />
+                      <Button size="sm" className="w-full" disabled={busy === `publish-${item.provider}`} onClick={() => publish(item)}>
+                        {busy === `publish-${item.provider}` ? "Publicando…" : "Confirmar publicação"}
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )
             )}
           </div>
         ))}
@@ -146,4 +164,3 @@ export function SocialIntegrationsPanel({ providers: providersFilter }: { provid
     </div>
   );
 }
-

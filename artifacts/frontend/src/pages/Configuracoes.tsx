@@ -8,6 +8,7 @@ import * as z from "zod";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { SocialIntegrationsPanel } from "@/components/SocialIntegrationsPanel";
 
 function getToken(): string | null {
   return localStorage.getItem("vendorai_token");
@@ -4133,7 +4134,7 @@ Body:
               )}
             </div>
 
-            {/* Painel de conexões sociais movido para a aba Conteúdo (YouTube/LinkedIn) */}
+            <SocialIntegrationsPanel mode="connect" />
 
             {/* Meta Ads — OAuth por tenant, mesma estrutura do Google Ads acima */}
             <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
