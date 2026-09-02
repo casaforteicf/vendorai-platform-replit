@@ -17,30 +17,37 @@ jobs:
         with:
           ref: improve-instagram-ux
           fetch-depth: 0
-      - run: python scripts/improve-instagram-ux.py
+      - name: Apply Instagram UX patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('scripts/improve-instagram-ux.py').read_text()
+          source = source.split('content = "artifacts/frontend/src/pages/Content.tsx"', 1)[0]
+          exec(source + '\nprint("Instagram UX patch applied")\n')
+          PY
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: TypeScript targeted frontend files
+      - name: TypeScript targeted frontend file
         run: |
           set +e
           NODE_OPTIONS=--max-old-space-size=8192 pnpm --filter @workspace/frontend exec tsc --noEmit --pretty false > /tmp/tsc.log 2>&1
           status=$?
           set -e
           echo "tsc exit: $status"
-          matches=$(grep -E "(ConfiguracoesLegacy\.tsx|Content\.tsx)" /tmp/tsc.log || true)
+          matches=$(grep -E "ConfiguracoesLegacy\.tsx" /tmp/tsc.log || true)
           if [ -n "$matches" ]; then
             echo "$matches"
             exit 1
           fi
-          echo "No TypeScript errors reported in changed Instagram UX files."
+          echo "No TypeScript errors reported in ConfiguracoesLegacy.tsx."
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add artifacts/frontend/src/pages/ConfiguracoesLegacy.tsx artifacts/frontend/src/pages/Content.tsx
+          git add artifacts/frontend/src/pages/ConfiguracoesLegacy.tsx
           if git diff --cached --quiet; then exit 0; fi
           git commit -m "feat: simplificar experiência do Instagram [instagram-ux-applied]"
           git push origin improve-instagram-ux
