@@ -1,0 +1,39 @@
+name: Fix Google Ads OAuth production callback
+
+on:
+  push:
+    branches:
+      - fix/google-ads-oauth-production
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/google-ads-oauth-production
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply focused patch
+        run: python .github/scripts/fix_google_ads_oauth_production.py
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck API
+        run: pnpm --filter @workspace/api-server typecheck
+      - name: Validate diff and commit
+        run: |
+          git rm .github/workflows/fix-google-ads-oauth-production.yml .github/scripts/fix_google_ads_oauth_production.py
+          git add artifacts/api-server/src/services/google-ads-oauth.ts
+          git diff --check
+          git diff --cached --name-only
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(google-ads): usar callback de produção correto"
+          git push origin HEAD:fix/google-ads-oauth-production
