@@ -38,7 +38,7 @@ import {
   ChevronUp,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   useGetTenantDashboard,
@@ -352,10 +352,30 @@ function StatCardSkeleton() {
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [, navigate] = useLocation();
   const [mostrarAnalise, setMostrarAnalise] = useState(false);
+  const [official, setOfficial] = useState<any>(null);
+  const [officialLoading, setOfficialLoading] = useState(false);
+
+  useEffect(() => {
+    if (!tenantId || !token) return;
+    let cancelled = false;
+    setOfficialLoading(true);
+    fetch(`/api/tenants/${tenantId}/dashboard/command-center`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Falha ao carregar métricas oficiais");
+        return response.json();
+      })
+      .then((data) => { if (!cancelled) setOfficial(data); })
+      .catch(() => { if (!cancelled) setOfficial(null); })
+      .finally(() => { if (!cancelled) setOfficialLoading(false); });
+    return () => { cancelled = true; };
+  }, [tenantId, token]);
 
   const { data: dashboard, isLoading } = useGetTenantDashboard(tenantId, {
     query: {
@@ -429,7 +449,15 @@ export default function Dashboard() {
       {/* Setup checklist — shown while installation is incomplete */}
       {tenantId && <SetupChecklist tenantId={tenantId} />}
 
-      {/* KPI Row 1 — Pipeline e conversão */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border bg-muted/20 px-4 py-3">
+        <div>
+          <p className="text-sm font-semibold flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Centro de Métricas Oficiais</p>
+          <p className="text-xs text-muted-foreground">Somente dados reais do banco. Métricas sem fonte confirmada permanecem sem valor.</p>
+        </div>
+        <Badge variant="outline" className="w-fit">Fonte transacional · tempo real</Badge>
+      </div>
+
+      {/* KPI Row 1 — métricas oficiais */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
@@ -438,43 +466,37 @@ export default function Dashboard() {
             <Card data-testid="card-total-leads" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Total de Leads
+                  Leads novos
                 </CardTitle>
                 <div className="p-1.5 rounded-md bg-blue-500/10">
                   <Users className="h-4 w-4 text-blue-500" />
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">{dashboard?.leads.total ?? 0}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {dashboard?.leads.novosUltimos30Dias ?? 0} novos nos últimos 30 dias
-                </p>
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">{official?.commercial?.newLeads ?? (officialLoading ? "…" : "—")}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">criados no período oficial</p>
               </CardContent>
             </Card>
 
             <Card data-testid="card-valor-negociacao" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/deals")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Valor em Pipeline
+                  Oportunidades ativas
                 </CardTitle>
                 <div className="p-1.5 rounded-md bg-emerald-500/10">
                   <DollarSign className="h-4 w-4 text-emerald-500" />
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
-                  {formatCurrency(dashboard?.deals.totalEmNegociacao)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {dashboard?.deals.totalDeals ?? 0} negócios ativos
-                </p>
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">{official?.commercial?.activeOpportunities ?? (officialLoading ? "…" : "—")}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">deals comerciais não encerrados</p>
               </CardContent>
             </Card>
 
             <Card data-testid="card-ganhos-mes" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/relatorios/ganhos-mes")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Ganhos este mês
+                  Receita vendida
                 </CardTitle>
                 <div className="p-1.5 rounded-md bg-teal-500/10">
                   <Trophy className="h-4 w-4 text-teal-500" />
@@ -482,12 +504,9 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold text-teal-600">
-                  {formatCurrency(dashboard?.ganhosMes?.somaValor)}
+                  {official ? formatCurrency(official.commercial?.soldRevenue) : (officialLoading ? "…" : "—")}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {dashboard?.ganhosMes?.count ?? 0}{" "}
-                  {(dashboard?.ganhosMes?.count ?? 0) === 1 ? "negócio fechado" : "negócios fechados"}
-                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">{official?.commercial?.confirmedSales ?? 0} vendas confirmadas no período</p>
               </CardContent>
             </Card>
 
@@ -502,14 +521,23 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
-                  {formatPercent(dashboard?.deals.taxaConversao)}
+                  {official?.commercial?.commercialConversion == null ? "—" : `${(official.commercial.commercialConversion * 100).toFixed(1)}%`}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">ganhos / total de deals</p>
+                <p className="text-xs text-muted-foreground mt-0.5">ganhos da coorte / oportunidades criadas</p>
               </CardContent>
             </Card>
           </>
         )}
       </div>
+
+      {official && (
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wide text-muted-foreground">Execução ativa</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{official.operation?.executionActive ?? 0}</p><p className="text-xs text-muted-foreground">cards operacionais ativos</p></CardContent></Card>
+          <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wide text-muted-foreground">Suporte ativo</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{official.operation?.supportActive ?? 0}</p><p className="text-xs text-muted-foreground">assistências em andamento</p></CardContent></Card>
+          <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wide text-muted-foreground">Tarefas vencidas</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{official.operation?.overdueTasks ?? 0}</p><p className="text-xs text-muted-foreground">pendentes + planejadas</p></CardContent></Card>
+          <Card><CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wide text-muted-foreground">Qualidade dos dados</CardTitle></CardHeader><CardContent><p className="text-xl font-bold">{official.dataQuality?.score == null ? "—" : `${official.dataQuality.score}%`}</p><p className="text-xs text-muted-foreground">completude da base válida</p></CardContent></Card>
+        </div>
+      )}
 
       {/* Botão pra revelar o resto -- pedido real: dashboard tinha
           demais informação visível de cara (3 fileiras de KPI, funil,
