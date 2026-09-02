@@ -38,6 +38,7 @@ import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { tryIngestTechnicianSupportMessage } from "../services/support-whatsapp-ingest.js";
 
 const objectStorage = new ObjectStorageService();
 
@@ -195,6 +196,13 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
 
   // ── 3. Find or create lead by phone (dedup-aware) ────────────────────
   const normalized = storePhone(telefone);
+  const supportIngest = await tryIngestTechnicianSupportMessage({
+    tenantId, phone: telefone, text: mensagem, mediaType: "texto", provider: "normalized", log: req.log,
+  });
+  if (supportIngest.handled) {
+    res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
   const match = await findLeadByDedup(tenantId, telefone, null, null);
 
   let lead: typeof leadsTable.$inferSelect;
@@ -445,7 +453,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   // identify content. Instead, check which content sub-object is present.
 
   let mensagem = "";
-  let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+  let tipoConteudo: "texto" | "audio" | "imagem" | "video" | "documento" = "texto";
 
   if (payload.audio?.audioUrl) {
     // ── Audio / PTT ──────────────────────────────────────────────────────────
@@ -500,6 +508,11 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       return;
     }
 
+  } else if (payload.video?.videoUrl) {
+    // ── Video ────────────────────────────────────────────────────────────────
+    mensagem = payload.video.caption?.trim() || "Vídeo enviado pelo WhatsApp";
+    tipoConteudo = "video";
+
   } else if (payload.text?.message || payload.body) {
     // ── Text ─────────────────────────────────────────────────────────────────
     mensagem = payload.text?.message ?? payload.body ?? "";
@@ -521,6 +534,37 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   }
 
   const telefone = normalizeZapiPhone(payload.phone);
+  const zapiMediaUrl =
+    tipoConteudo === "audio" ? payload.audio?.audioUrl :
+    tipoConteudo === "imagem" ? payload.image?.imageUrl :
+    tipoConteudo === "video" ? payload.video?.videoUrl :
+    tipoConteudo === "documento" ? payload.document?.documentUrl : null;
+  const zapiMimeType =
+    tipoConteudo === "audio" ? payload.audio?.mimeType :
+    tipoConteudo === "imagem" ? payload.image?.mimeType :
+    tipoConteudo === "video" ? payload.video?.mimeType :
+    tipoConteudo === "documento" ? payload.document?.mimeType : null;
+  const zapiFileName =
+    tipoConteudo === "audio" ? "audio.ogg" :
+    tipoConteudo === "imagem" ? "foto.jpg" :
+    tipoConteudo === "video" ? "video.mp4" :
+    tipoConteudo === "documento" ? (payload.document?.fileName ?? "documento") : null;
+  const supportIngest = await tryIngestTechnicianSupportMessage({
+    tenantId,
+    phone: telefone,
+    text: mensagem,
+    mediaUrl: zapiMediaUrl,
+    mediaType: tipoConteudo,
+    mimeType: zapiMimeType,
+    fileName: zapiFileName,
+    transcription: tipoConteudo === "audio" ? mensagem : null,
+    provider: "zapi",
+    log: req.log,
+  });
+  if (supportIngest.handled) {
+    res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
   const nome = payload.chatName ?? payload.senderName ?? telefone;
 
   req.log.info({ telefone, nome, tipoConteudo, type: payload.type }, "zapi-webhook: processing message");
@@ -856,7 +900,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
 
   const msg = (data as { message?: Record<string, unknown> }).message ?? {};
   let mensagem = "";
-  let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+  let tipoConteudo: "texto" | "audio" | "imagem" | "video" | "documento" = "texto";
   let midiaUrl: string | null = null;
 
   // Salva o arquivo original no nosso storage sempre que processar mídia --
@@ -918,6 +962,25 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
       res.status(200).json({ ignored: true, reason: "image_processing_failed" });
       return;
     }
+  } else if (msg["videoMessage"]) {
+    const messageId = key.id;
+    if (!messageId) {
+      res.status(200).json({ ignored: true, reason: "video_no_message_id" });
+      return;
+    }
+    const videoMsg = msg["videoMessage"] as { caption?: string; mimetype?: string };
+    try {
+      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
+      const buffer = Buffer.from(media.base64, "base64");
+      mensagem = videoMsg?.caption?.trim() || "Vídeo enviado pelo WhatsApp";
+      tipoConteudo = "video";
+      midiaUrl = await salvarMidiaOriginal(buffer, media.mimetype ?? videoMsg?.mimetype ?? "video/mp4", "video.mp4");
+    } catch (err) {
+      req.log.error({ err, tenantId, remoteJid }, "evolution-webhook: falha ao processar vídeo");
+      res.status(200).json({ ignored: true, reason: "video_processing_failed" });
+      return;
+    }
   } else if (msg["documentMessage"]) {
     const messageId = key.id;
     const docMsg = msg["documentMessage"] as { mimetype?: string; fileName?: string };
@@ -955,6 +1018,33 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   }
 
   const telefone = remoteJid.replace(/@.*$/, "").replace(/\D/g, "");
+  const evolutionFileName =
+    tipoConteudo === "audio" ? "audio.ogg" :
+    tipoConteudo === "imagem" ? "foto.jpg" :
+    tipoConteudo === "video" ? "video.mp4" :
+    tipoConteudo === "documento" ? ((msg["documentMessage"] as { fileName?: string } | undefined)?.fileName ?? "documento") : null;
+  const evolutionMimeType =
+    tipoConteudo === "audio" ? "audio/ogg" :
+    tipoConteudo === "imagem" ? "image/jpeg" :
+    tipoConteudo === "video" ? "video/mp4" :
+    tipoConteudo === "documento" ? ((msg["documentMessage"] as { mimetype?: string } | undefined)?.mimetype ?? "application/octet-stream") : null;
+  const supportIngest = await tryIngestTechnicianSupportMessage({
+    tenantId,
+    phone: telefone,
+    text: mensagem,
+    mediaUrl: midiaUrl,
+    mediaType: tipoConteudo,
+    mimeType: evolutionMimeType,
+    fileName: evolutionFileName,
+    transcription: tipoConteudo === "audio" ? mensagem : null,
+    sourceMessageId: key.id ?? null,
+    provider: "evolution",
+    log: req.log,
+  });
+  if (supportIngest.handled) {
+    res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
   const nome = (data as { pushName?: string }).pushName ?? telefone;
 
   req.log.info({ telefone, nome, tipoConteudo }, "evolution-webhook: processing message");
