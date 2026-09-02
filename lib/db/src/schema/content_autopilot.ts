@@ -13,6 +13,9 @@ export interface ContentAutopilotBrandTone {
 export const CONTENT_AUTOPILOT_CANAIS = ["wordpress", "site_proprio", "praca_ai"] as const;
 export type ContentAutopilotCanal = (typeof CONTENT_AUTOPILOT_CANAIS)[number];
 
+export const CONTENT_AUTOPILOT_AUTOMATION_MODES = ["suggestion", "semi", "automatic"] as const;
+export type ContentAutopilotAutomationMode = (typeof CONTENT_AUTOPILOT_AUTOMATION_MODES)[number];
+
 export const contentAutopilotConfigTable = pgTable("content_autopilot_config", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
@@ -26,6 +29,7 @@ export const contentAutopilotConfigTable = pgTable("content_autopilot_config", {
   artigosPorDia: integer("artigos_por_dia").notNull().default(1),
   tetoGastoMensal: numeric("teto_gasto_mensal", { precision: 10, scale: 2 }),
   gastoAcumulado: numeric("gasto_acumulado", { precision: 10, scale: 4 }).notNull().default("0"),
+  automationMode: text("automation_mode").$type<ContentAutopilotAutomationMode>().notNull().default("suggestion"),
   ativo: boolean("ativo").notNull().default(false),
   ultimaAnaliseSiteEm: timestamp("ultima_analise_site_em"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
