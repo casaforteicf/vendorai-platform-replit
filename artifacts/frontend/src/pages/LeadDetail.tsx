@@ -2213,6 +2213,22 @@ export default function LeadDetail() {
                             {intelligence.nextBestActionReason}
                           </p>
                         )}
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs px-2 gap-1"
+                            onClick={() => openNewActivityDialog(intelligence.nextBestAction ?? "")}
+                            data-testid="btn-criar-atividade-nba"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Criar como Atividade
+                          </Button>
+                          {intelligence.lastAnalyzedAt && (
+                            <span className="text-xs text-muted-foreground">
+                              Atualizado {lastAnalyzedRelative}
+                            </span>
+                          )}
+                        </div>
                       </>
                     ) : (
                       <p className="text-xs text-muted-foreground">
@@ -2279,93 +2295,8 @@ export default function LeadDetail() {
           </Card>
         </div>
 
-        {/* Right column — AI Suggestion + Activities + Conversations */}
+        {/* Right column — Activities + Conversations */}
         <div className="lg:col-span-2 space-y-4">
-
-          {/* ── Sugestão da IA ─────────────────────────────────────── */}
-          <Card data-testid="card-ai-suggestion" className="border-primary/20 bg-primary/[0.03]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center justify-between">
-                <div className="flex items-center gap-2 text-primary">
-                  <Sparkles className="h-4 w-4" />
-                  <span>Sugestão da IA</span>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing || serverAnalysisRunning || ciRefetching}
-                  data-testid="btn-analyze-ia-suggestion"
-                >
-                  {(isAnalyzing || serverAnalysisRunning) ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Brain className="h-3 w-3" />
-                  )}
-                  {(isAnalyzing || serverAnalysisRunning) ? "Analisando…" : "Analisar com IA"}
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {ciLoading ? (
-                <div className="space-y-2">
-                  <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
-                  <div className="h-3 bg-muted animate-pulse rounded w-1/2" />
-                </div>
-              ) : intelligence?.nextBestAction ? (
-                <>
-                  <div className="space-y-1">
-                    <div className="flex items-start gap-2">
-                      <Zap className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                      <p className="text-sm font-medium leading-snug">{intelligence.nextBestAction}</p>
-                    </div>
-                    {intelligence.nextBestActionReason && (
-                      <p className="text-xs text-muted-foreground leading-snug pl-6">
-                        {intelligence.nextBestActionReason}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      className="h-7 text-xs gap-1.5"
-                      onClick={() => openNewActivityDialog(intelligence.nextBestAction ?? "")}
-                      data-testid="btn-criar-atividade-nba"
-                    >
-                      <Plus className="h-3 w-3" />
-                      Criar como Atividade
-                    </Button>
-                    {intelligence.lastAnalyzedAt && (
-                      <span className="text-xs text-muted-foreground">
-                        Atualizado {lastAnalyzedRelative}
-                      </span>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center gap-3 py-1">
-                  {isAnalyzing || serverAnalysisRunning ? (
-                    <Loader2 className="h-8 w-8 text-muted-foreground/30 shrink-0 animate-spin" />
-                  ) : (
-                    <Brain className="h-8 w-8 text-muted-foreground/30 shrink-0" />
-                  )}
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      {isAnalyzing || serverAnalysisRunning
-                        ? "Analisando lead automaticamente…"
-                        : "Nenhuma sugestão disponível ainda."}
-                    </p>
-                    {!isAnalyzing && !serverAnalysisRunning && (
-                      <p className="text-xs text-muted-foreground/70">
-                        Use o botão "Analisar com IA" para gerar uma recomendação de próxima ação.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
           {activeLeadDeal && (
             <Card data-testid="card-commercial-journey">
