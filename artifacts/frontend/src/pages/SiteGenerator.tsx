@@ -104,7 +104,7 @@ async function resilientFetch(url: string, init: RequestInit = {}, maxAttempts =
 function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: string; token?: string | null }) {
   const [html, setHtml] = useState("");
   const [siteName, setSiteName] = useState("");
-  const [sites, setSites] = useState<Array<{ id: string; name?: string; updatedAt?: string; createdAt?: string }>>([]);
+  const [sites, setSites] = useState<Array<{ id: string; name?: string; html?: string; updatedAt?: string; createdAt?: string }>>([]);
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -130,16 +130,20 @@ function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: s
       const currentExists = selectedSiteId && sorted.some((site: any) => site.id === selectedSiteId);
       const requestedExists = requestedSiteId && sorted.some((site: any) => site.id === requestedSiteId);
       const targetId = requestedExists ? requestedSiteId! : currentExists ? selectedSiteId : sorted[0].id;
+      const targetSite = sorted.find((site: any) => site.id === targetId);
 
-      let siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${targetId}/preview`, { headers: headers(token) }, 2);
-      if (siteRes.status === 404) {
-        // Compatibilidade durante deploy escalonado: usa a rota legada se a rota dedicada ainda não chegou ao backend.
-        siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${targetId}`, { headers: headers(token) }, 2);
-      }
-      const body = await siteRes.json().catch(() => ({}));
-      const site = body?.site ?? body;
-      if (!siteRes.ok) {
-        throw new Error(site?.error ?? `Não foi possível carregar o site (${siteRes.status})`);
+      // O endpoint de listagem já devolve o HTML salvo. Isso transforma o preview
+      // em uma única requisição e evita que o segundo GET seja bloqueado pelo
+      // rate limit quando o restante do painel está carregando em paralelo.
+      let site: any = targetSite;
+      if (typeof targetSite?.html !== "string" || !targetSite.html.trim()) {
+        // Compatibilidade temporária enquanto o backend novo termina o deploy.
+        const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${targetId}`, { headers: headers(token) }, 1);
+        const body = await siteRes.json().catch(() => ({}));
+        site = body?.site ?? body;
+        if (!siteRes.ok) {
+          throw new Error(site?.error ?? `Não foi possível carregar o site (${siteRes.status})`);
+        }
       }
       if (typeof site?.html !== "string" || !site.html.trim()) {
         throw new Error("O projeto existe, mas o servidor não devolveu o HTML salvo. O VendorAI preservou o site e você pode tentar novamente.");
