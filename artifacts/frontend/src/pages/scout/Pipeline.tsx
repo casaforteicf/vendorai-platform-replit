@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PipelineNav } from "@/components/PipelineNav";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Bot, ExternalLink, KanbanSquare, Trash2, UserRound } from "lucide-react";
 import { Link } from "wouter";
@@ -102,6 +103,7 @@ export default function ScoutPipeline() {
   );
 
   return <div className="space-y-5">
+    <PipelineNav active="scout" />
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <div><h1 className="text-2xl font-bold flex items-center gap-2"><KanbanSquare className="h-6 w-6" /> Pipeline Revenue Scout</h1>
       <p className="text-sm text-muted-foreground">Somente oportunidades confirmadas. Novos achados precisam ser validados antes de entrar aqui.</p></div>
