@@ -1,6 +1,12 @@
 import React, { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
+
+type TenantNavModule = {
+  moduleKey: string;
+  isEnabled: boolean;
+};
 
 /**
  * Navigation migration shim.
@@ -17,7 +23,53 @@ import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
  * - a missing/broken tenant logo falls back to the company name, never VendorAI.
  */
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
-  const { user, tenantOverride } = useAuth();
+  const { user, tenantOverride, token } = useAuth();
+  const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";
+
+  // Gestão ERP é add-on pago e deve falhar FECHADO: sem confirmação positiva
+  // do entitlement, o menu não aparece. Isso evita que uma indisponibilidade
+  // temporária de /nav-modules (ex.: 502) exponha o ERP novamente.
+  const { data: tenantNavModules = [] } = useQuery<TenantNavModule[]>({
+    queryKey: ["tenant-nav-modules", effectiveTenantId],
+    enabled: !!effectiveTenantId && !!token,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${effectiveTenantId}/nav-modules`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+  });
+
+  const erpEntitled = tenantNavModules.some(
+    (module) => module.moduleKey === "financeiro" && module.isEnabled === true,
+  );
+
+  useEffect(() => {
+    const enforceErpEntitlement = () => {
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/erp"]').forEach((link) => {
+        const nextDisplay = erpEntitled ? "" : "none";
+        if (link.style.display !== nextDisplay) link.style.display = nextDisplay;
+        if (erpEntitled) {
+          link.removeAttribute("aria-hidden");
+          if (link.dataset.erpLocked === "true") {
+            link.removeAttribute("tabindex");
+            delete link.dataset.erpLocked;
+          }
+        } else {
+          link.setAttribute("aria-hidden", "true");
+          link.setAttribute("tabindex", "-1");
+          link.dataset.erpLocked = "true";
+        }
+      });
+    };
+
+    enforceErpEntitlement();
+    const observer = new MutationObserver(enforceErpEntitlement);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [erpEntitled]);
 
   useEffect(() => {
     const relabelSitesEntry = () => {
