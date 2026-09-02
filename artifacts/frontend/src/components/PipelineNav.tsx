@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 
-export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros";
+export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
   { key: "comercial", label: "Comercial", href: "/deals" },
@@ -9,6 +9,7 @@ const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
   { key: "suporte", label: "Suporte / Assistência", href: "/pipeline-operacional/suporte" },
   { key: "aquecimento", label: "Aquecimento", href: "/pipeline-relacionamento/aquecimento" },
   { key: "parceiros", label: "Parceiros", href: "/pipeline-relacionamento/parceiros" },
+  { key: "scout", label: "Scout", href: "/scout/pipeline" },
 ];
 
 export const PIPELINE_COLUMN_CLASS = "flex w-80 shrink-0 flex-col rounded-xl border bg-muted/20 min-h-0";
