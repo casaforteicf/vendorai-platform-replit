@@ -1,0 +1,33 @@
+name: Temp Patch Support AI Intake PR242
+
+on:
+  push:
+    branches:
+      - feat/operational-pipelines-support-deliveries
+    paths:
+      - scripts/patch-support-ai-intake-pr242.py
+      - .github/workflows/temp-patch-support-ai-intake-pr242.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/operational-pipelines-support-deliveries
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply patch
+        run: python scripts/patch-support-ai-intake-pr242.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/api-server/src/services/support-ai-intake.ts artifacts/api-server/src/services/agent-dispatch.ts artifacts/api-server/src/lib/agent-engine.ts
+          git commit -m "feat(support): conectar atendimento IA à abertura automática de assistência"
+          git push origin HEAD:feat/operational-pipelines-support-deliveries
