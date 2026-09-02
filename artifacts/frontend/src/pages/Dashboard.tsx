@@ -562,6 +562,10 @@ export default function Dashboard() {
 
       {mostrarAnalise && (
       <>
+      <div className="flex items-center justify-between rounded-md border border-dashed px-3 py-2">
+        <p className="text-xs text-muted-foreground">Indicadores complementares · fontes reais do CRM, CIH e operação</p>
+        <Badge variant="outline">sem dados simulados</Badge>
+      </div>
       {/* KPI Row 2 — Operacional */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
@@ -579,9 +583,9 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
-                  {dashboard?.ticketMedio ? formatCurrency(dashboard.ticketMedio) : "—"}
+                  {official ? formatCurrency(official.commercial?.averageTicket) : (officialLoading ? "…" : "—")}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">média dos deals ganhos</p>
+                <p className="text-xs text-muted-foreground mt-0.5">média das vendas confirmadas no período</p>
               </CardContent>
             </Card>
 
@@ -613,10 +617,10 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold text-red-500">
-                  {dashboard?.atividadesAtrasadas ?? 0}
+                  {official?.operation?.overdueTasks ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {(dashboard?.atividadesAtrasadas ?? 0) === 1
+                  {(official?.operation?.overdueTasks ?? 0) === 1
                     ? "pendente vencida"
                     : "pendentes vencidas"}
                 </p>
@@ -626,7 +630,7 @@ export default function Dashboard() {
             <Card data-testid="card-novos-leads" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Novos Leads (30d)
+                  Leads novos (período)
                 </CardTitle>
                 <div className="p-1.5 rounded-md bg-sky-500/10">
                   <TrendingUp className="h-4 w-4 text-sky-500" />
@@ -634,7 +638,7 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
-                  {dashboard?.leads.novosUltimos30Dias ?? 0}
+                  {official?.commercial?.newLeads ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">leads criados</p>
               </CardContent>
@@ -704,7 +708,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* Risco de Churn */}
+            {/* Clientes em risco */}
             <Card data-testid="card-churn" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads?filtro=churn")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -716,15 +720,15 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold text-red-500">
-                  {dashboard?.churnRiskDistribuicao?.alto ?? 0}
+                  {official?.intelligence?.customersAtRisk ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {(dashboard?.churnRiskDistribuicao?.alto ?? 0) === 1 ? "lead em alto risco" : "leads em alto risco"}
+                  {(official?.intelligence?.customersAtRisk ?? 0) === 1 ? "cliente em risco" : "clientes em risco"}
                 </p>
               </CardContent>
             </Card>
 
-            {/* Leads Quentes */}
+            {/* Próxima melhor ação */}
             <Card data-testid="card-leads-quentes" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads?filtro=quente")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -736,10 +740,10 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold text-amber-600">
-                  {dashboard?.top5ChurnRisk?.length ?? 0}
+                  {official?.intelligence?.withNextBestAction ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  top leads por risco de churn
+                  perfis com ação recomendada pelo CIH
                 </p>
               </CardContent>
             </Card>
