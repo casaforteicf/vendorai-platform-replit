@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardList, Settings2, Plus, X, Loader2, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Circle, ClipboardList, Settings2, Plus, X, Loader2 } from "lucide-react";
 
 type Pergunta = { id: string; texto: string };
 type Stage = { id: string; key: string; label: string; perguntas?: Pergunta[] | null };
@@ -34,7 +34,7 @@ export function StageQuestionsPanel({
   const updateStage = useUpdatePipelineStage();
 
   const [draft, setDraft] = useState<Record<string, string>>(answers);
-  useEffect(() => { setDraft(answers); }, [stage?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setDraft(answers); }, [stage?.id, answers]);
 
   const [editing, setEditing] = useState(false);
   const [editList, setEditList] = useState<Pergunta[]>(stage?.perguntas ?? []);
@@ -47,7 +47,7 @@ export function StageQuestionsPanel({
 
   function saveQuestionSet() {
     updateStage.mutate(
-      { tenantId, id: stage!.id, data: { perguntas: editList } },
+      { tenantId, id: stage.id, data: { perguntas: editList } },
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
@@ -60,40 +60,47 @@ export function StageQuestionsPanel({
   }
 
   return (
-    <Card data-testid="card-stage-questions" className="border-primary/20">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-primary" />
-            Perguntas desta etapa — {stage.label}
-            {perguntas.length > 0 && (
-              <Badge variant={answeredCount === perguntas.length ? "outline" : "secondary"} className="text-xs ml-1">
-                {answeredCount}/{perguntas.length}
-              </Badge>
-            )}
-          </span>
-          <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => setEditing((v) => !v)}>
+    <Card data-testid="card-stage-questions" className="border-border/70 shadow-sm">
+      <CardHeader className="px-4 pb-2 pt-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+              <ClipboardList className="h-4 w-4 text-primary" />
+              <span>Perguntas da etapa</span>
+              {perguntas.length > 0 && (
+                <Badge variant={answeredCount === perguntas.length ? "outline" : "secondary"} className="h-5 px-1.5 text-[11px]">
+                  {answeredCount}/{perguntas.length}
+                </Badge>
+              )}
+            </CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {stage.label} · registre apenas o necessário para o próximo avanço.
+            </p>
+          </div>
+          <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing((v) => !v)}>
             <Settings2 className="h-3.5 w-3.5" />
             Editar perguntas
           </Button>
-        </CardTitle>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="px-4 pb-3 pt-1">
         {editing ? (
           <div className="space-y-2">
             {editList.map((p, i) => (
               <div key={p.id} className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground">{i + 1}</span>
                 <Input
                   value={p.texto}
                   onChange={(e) => setEditList((prev) => prev.map((q, idx) => idx === i ? { ...q, texto: e.target.value } : q))}
                   className="h-8 text-sm"
                 />
-                <button type="button" onClick={() => setEditList((prev) => prev.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive shrink-0">
+                <button type="button" onClick={() => setEditList((prev) => prev.filter((_, idx) => idx !== i))} className="shrink-0 text-muted-foreground hover:text-destructive">
                   <X className="h-4 w-4" />
                 </button>
               </div>
             ))}
             <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed text-[11px] text-muted-foreground">+</span>
               <Input
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
@@ -107,7 +114,7 @@ export function StageQuestionsPanel({
                 }}
               />
               <Button
-                type="button" size="sm" variant="outline" className="h-8 gap-1 shrink-0"
+                type="button" size="sm" variant="outline" className="h-8 shrink-0 gap-1"
                 disabled={!newQuestion.trim()}
                 onClick={() => { setEditList((prev) => [...prev, { id: slug(newQuestion) + "_" + prev.length, texto: newQuestion.trim() }]); setNewQuestion(""); }}
               >
@@ -116,38 +123,54 @@ export function StageQuestionsPanel({
             </div>
             <div className="flex items-center gap-2 pt-1">
               <Button size="sm" disabled={updateStage.isPending} onClick={saveQuestionSet}>
-                {updateStage.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                {updateStage.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 Salvar perguntas
               </Button>
               <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setEditList(stage.perguntas ?? []); }}>Cancelar</Button>
             </div>
           </div>
         ) : perguntas.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhuma pergunta configurada pra esta etapa ainda. Use "Editar perguntas" pra adicionar.</p>
+          <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+            Nenhuma pergunta configurada para esta etapa. Use “Editar perguntas” para adicionar.
+          </p>
         ) : (
           <>
-            <div className="space-y-3">
-              {perguntas.map((p) => (
-                <div key={p.id} className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">{p.texto}</label>
-                  <Textarea
-                    value={draft[p.id] ?? ""}
-                    onChange={(e) => setDraft((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                    onBlur={() => onSaveAnswers(draft)}
-                    rows={2}
-                    className="text-sm resize-none"
-                    placeholder="Registrar aqui…"
-                  />
-                </div>
-              ))}
+            <div className="space-y-1.5">
+              {perguntas.map((p, index) => {
+                const answered = Boolean(draft[p.id]?.trim());
+                return (
+                  <div key={p.id} className="flex gap-2.5 rounded-lg border border-border/60 bg-background px-2.5 py-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/8 text-[11px] font-semibold text-primary">
+                      {index + 1}
+                    </span>
+                    <span className="pt-1">
+                      {answered
+                        ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        : <Circle className="h-4 w-4 text-muted-foreground/50" />}
+                    </span>
+                    <div className="min-w-0 flex-1 lg:grid lg:grid-cols-[minmax(220px,0.8fr)_minmax(280px,1.2fr)] lg:items-center lg:gap-3">
+                      <label className="mb-1 block text-xs font-medium leading-snug text-foreground lg:mb-0">{p.texto}</label>
+                      <Textarea
+                        value={draft[p.id] ?? ""}
+                        onChange={(e) => setDraft((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        onBlur={(e) => {
+                          const next = { ...draft, [p.id]: e.target.value };
+                          setDraft(next);
+                          onSaveAnswers(next);
+                        }}
+                        rows={1}
+                        className="h-8 min-h-8 resize-none py-1.5 text-sm transition-[height] focus:h-16 focus:min-h-16"
+                        placeholder="Adicionar resposta…"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            {saving && <p className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Salvando…</p>}
-            {answeredCount < perguntas.length && (
-              <p className="text-xs text-amber-600 flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                {perguntas.length - answeredCount} pergunta(s) desta etapa ainda sem resposta.
-              </p>
-            )}
+            <div className="mt-2 flex min-h-4 items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <span>{answeredCount === perguntas.length ? "Etapa respondida." : `${perguntas.length - answeredCount} pendente(s).`}</span>
+              {saving && <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Salvando…</span>}
+            </div>
           </>
         )}
       </CardContent>
