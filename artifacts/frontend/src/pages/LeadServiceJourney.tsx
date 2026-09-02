@@ -13,6 +13,7 @@ import { getListActivitiesQueryKey } from "@workspace/api-client-react";
 
 type JourneyItem = { checked: boolean; note?: string };
 type JourneyChecklist = Record<string, JourneyItem>;
+type LeadServiceJourneyProps = { leadId: string; tenantId: string; lead: any; dealId?: string };
 
 const STAGES = [
   {
@@ -102,7 +103,13 @@ async function readJson(response: Response) {
   return data;
 }
 
-export default function LeadServiceJourney({ leadId, tenantId, lead, dealId }: { leadId: string; tenantId: string; lead: any; dealId?: string }) {
+export default function LeadServiceJourney(props: LeadServiceJourneyProps) {
+  const isWorkCenter = typeof window !== "undefined" && window.location.pathname.startsWith("/trabalho/");
+  if (isWorkCenter) return null;
+  return <LeadServiceJourneyContent {...props} />;
+}
+
+function LeadServiceJourneyContent({ leadId, tenantId, lead, dealId }: LeadServiceJourneyProps) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [stageId, setStageId] = useState<string>(STAGES[0].id);
@@ -130,8 +137,6 @@ export default function LeadServiceJourney({ leadId, tenantId, lead, dealId }: {
     onError: (error: Error) => toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }),
   });
 
-  // Registra a conclusão da atividade no histórico real do lead (não fica
-  // isolado só no checklist) — aparece em Atividades/histórico do lead.
   const logActivity = useMutation({
     mutationFn: (payload: { titulo: string; descricao?: string }) =>
       fetch("/api/activities", {

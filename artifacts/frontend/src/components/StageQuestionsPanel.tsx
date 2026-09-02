@@ -66,7 +66,7 @@ export function StageQuestionsPanel({
           <div className="min-w-0">
             <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-semibold">
               <ClipboardList className="h-4 w-4 text-primary" />
-              <span>Perguntas da etapa</span>
+              <span>Jornada de Atendimento</span>
               {perguntas.length > 0 && (
                 <Badge variant={answeredCount === perguntas.length ? "outline" : "secondary"} className="h-5 px-1.5 text-[11px]">
                   {answeredCount}/{perguntas.length}
@@ -74,7 +74,7 @@ export function StageQuestionsPanel({
               )}
             </CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              {stage.label} · registre apenas o necessário para o próximo avanço.
+              {stage.label} · registre apenas o necessário para avançar o atendimento.
             </p>
           </div>
           <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing((v) => !v)}>
