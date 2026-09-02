@@ -15522,6 +15522,10 @@ components:
           type: string
           nullable: true
           description: Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.
+        profissao:
+          type: string
+          nullable: true
+          description: Profissão do lead para campanhas de datas profissionais.
         dataNascimento:
           type: string
           nullable: true
@@ -15583,7 +15587,11 @@ components:
             properties:
               nome:
                 type: string
-              dataNascimento:
+              profissao:
+          type: string
+          nullable: true
+          description: Profissão do lead para campanhas de datas profissionais.
+        dataNascimento:
                 type: string
               genero:
                 type: string
@@ -15690,7 +15698,11 @@ components:
                 properties:
                   nome:
                     type: string
-                  dataNascimento:
+                  profissao:
+          type: string
+          nullable: true
+          description: Profissão do lead para campanhas de datas profissionais.
+        dataNascimento:
                     type: string
                     nullable: true
                   telefone:
@@ -15790,6 +15802,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        profissao:
+          type: string
+          nullable: true
+          description: Profissão do lead para campanhas de datas profissionais.
         dataNascimento:
           type: string
           nullable: true
@@ -15849,7 +15865,11 @@ components:
             properties:
               nome:
                 type: string
-              dataNascimento:
+              profissao:
+          type: string
+          nullable: true
+          description: Profissão do lead para campanhas de datas profissionais.
+        dataNascimento:
                 type: string
               genero:
                 type: string
@@ -15972,6 +15992,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        profissao:
+          type: string
+          nullable: true
+          description: Profissão do lead para campanhas de datas profissionais.
         dataNascimento:
           type: string
           nullable: true
@@ -16031,7 +16055,11 @@ components:
             properties:
               nome:
                 type: string
-              dataNascimento:
+              profissao:
+          type: string
+          nullable: true
+          description: Profissão do lead para campanhas de datas profissionais.
+        dataNascimento:
                 type: string
               genero:
                 type: string
@@ -18136,6 +18164,7 @@ components:
         blackFridayEnabled: { type: boolean }
         enableSpouseGiftFlow: { type: boolean }
         commercialDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, daysBeforeToSend: { type: integer }, targetGender: { type: string }, movableDate: { type: boolean }, month: { type: integer }, day: { type: integer } }, required: [name, active, daysBeforeToSend] } }
+        professionalDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, month: { type: integer }, day: { type: integer }, professions: { type: array, items: { type: string } } }, required: [name, active, month, day, professions] } }
         customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -18153,6 +18182,7 @@ components:
         blackFridayEnabled: { type: boolean }
         enableSpouseGiftFlow: { type: boolean }
         commercialDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, daysBeforeToSend: { type: integer }, targetGender: { type: string }, movableDate: { type: boolean }, month: { type: integer }, day: { type: integer } }, required: [name, active, daysBeforeToSend] } }
+        professionalDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, month: { type: integer }, day: { type: integer }, professions: { type: array, items: { type: string } } }, required: [name, active, month, day, professions] } }
         customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
 
     UpdateTenantCalendarSettingsBody:
@@ -18167,6 +18197,7 @@ components:
         blackFridayEnabled: { type: boolean }
         enableSpouseGiftFlow: { type: boolean }
         commercialDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, daysBeforeToSend: { type: integer }, targetGender: { type: string }, movableDate: { type: boolean }, month: { type: integer }, day: { type: integer } }, required: [name, active, daysBeforeToSend] } }
+        professionalDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, month: { type: integer }, day: { type: integer }, professions: { type: array, items: { type: string } } }, required: [name, active, month, day, professions] } }
         customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
 
     LeadSpouseConsent:

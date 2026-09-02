@@ -71,7 +71,7 @@ export type SpinQualificationConfig = {
 };
 
 export type RelacionamentoScenario = {
-  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "spouse_welcome" | "inactivity_checkin";
+  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "professional_day" | "spouse_welcome" | "inactivity_checkin";
   dateName?: string;
   recipientName?: string;
   recipientRelation?: string;
@@ -1589,6 +1589,7 @@ export function buildRelacionamentoPrompt(
 
   const isPersonal = s?.type === "birthday_lead" || s?.type === "birthday_family" || s?.type === "deal_anniversary" || s?.type === "spouse_welcome";
   const isCommercial = s?.type === "commercial_date";
+  const isProfessionalDay = s?.type === "professional_day";
   const isInactivity = s?.type === "inactivity_checkin";
 
   if (systemPromptOverride?.trim()) {
@@ -1603,6 +1604,18 @@ export function buildRelacionamentoPrompt(
       "- Pergunte como o cliente está e se precisa de algo, sem tom de cobrança ou venda forçada\n" +
       "- Se houver produtos relevantes no catálogo, sugira de forma leve, sem pressão\n" +
       "- NUNCA invente preços ou produtos que não estejam no catálogo fornecido"
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  } else if (isProfessionalDay) {
+    parts.push(
+      "Você é um especialista em relacionamento e fidelização de clientes.\n" +
+      "Missão: parabenizar genuinamente o cliente pelo dia da profissão dele.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom caloroso, respeitoso e personalizado\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- Mencione a profissão e reconheça sua importância\n" +
+      "- NÃO inclua oferta, promoção ou sugestão de produto\n" +
+      "- Não invente detalhes sobre a carreira do cliente"
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else if (isPersonal) {
@@ -1645,6 +1658,7 @@ export function buildRelacionamentoPrompt(
   const lines = ["## PERFIL DO LEAD"];
   lines.push(`Nome: ${lead.nome}`);
   if (lead.empresa) lines.push(`Empresa: ${lead.empresa}`);
+  if (lead.profissao) lines.push(`Profissão: ${lead.profissao}`);
   if (lead.dataNascimento) lines.push(`Data de nascimento: ${lead.dataNascimento}`);
   if (lead.estadoCivil) lines.push(`Estado civil: ${lead.estadoCivil}`);
   if (lead.conjugeNome) lines.push(`Cônjuge: ${lead.conjugeNome}`);
@@ -1673,6 +1687,7 @@ export function buildRelacionamentoPrompt(
     else if (s.type === "birthday_family") scLines.push(`Hoje é o aniversário de ${s.recipientName ?? "familiar"} (${s.recipientRelation ?? "familiar"}) do lead.`);
     else if (s.type === "deal_anniversary") scLines.push("Hoje é o aniversário de fechamento do deal com o lead!");
     else if (s.type === "commercial_date") scLines.push(`Data comercial: ${s.dateName ?? "data especial"}.`);
+    else if (s.type === "professional_day") scLines.push(`Hoje é ${s.dateName ?? "o dia da profissão do lead"}. Envie somente uma mensagem de parabéns e reconhecimento.`);
     else if (s.type === "spouse_welcome") scLines.push(`Este lead é o cônjuge de ${s.referrerName ?? "um cliente"}. Envie uma mensagem de boas-vindas transparente, mencionando que ${s.referrerName ?? "seu cônjuge"} compartilhou o contato.`);
     else if (s.type === "inactivity_checkin") scLines.push(`Este cliente está sem interação há ${s.daysInactive ?? "vários"} dias. Envie um check-in proativo e cuidadoso.`);
     parts.push(scLines.join("\n"));

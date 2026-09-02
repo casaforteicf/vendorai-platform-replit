@@ -14,6 +14,8 @@
 import cron from "node-cron";
 import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, not, sql } from "drizzle-orm";
 import { runMonthlyBilling } from "../lib/billing.js";
+import { isBirthdayOn, parseBirthdayParts } from "../lib/birthday-date.js";
+import { professionMatches } from "../lib/professional-date.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { runPartnerCommissions } from "./partnerCommission.js";
 import { runPartnerProspectorJob } from "./partnerProspector.js";
@@ -848,6 +850,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
         .limit(1);
 
       const commercialDates = calendarSettings?.commercialDates ?? getDefaultCommercialDates();
+      const professionalDates = calendarSettings?.professionalDates ?? [];
 
       const catalogRows = await db
         .select({
@@ -890,17 +893,16 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
         let scenario: Scenario | null = null;
 
         // Lead birthday
-        if (lead.birthMonth === todayMonth && lead.birthDay === todayDay) {
+        if ((lead.birthMonth === todayMonth && lead.birthDay === todayDay) || isBirthdayOn(lead.dataNascimento, todayMonth, todayDay)) {
           const campaignKey = `birthday-lead-${yearStr}-${todayMonth.toString().padStart(2, "0")}-${todayDay.toString().padStart(2, "0")}`;
           scenario = { type: "birthday_lead", catalog, campaignKey };
         }
 
         // Spouse birthday
         if (!scenario && lead.conjugeDataNascimento) {
-          const parts = lead.conjugeDataNascimento.split("-");
-          if (parts.length >= 3) {
-            const m = parseInt(parts[1], 10);
-            const d = parseInt(parts[2], 10);
+          const birthday = parseBirthdayParts(lead.conjugeDataNascimento);
+          if (birthday) {
+            const { month: m, day: d } = birthday;
             if (m === todayMonth && d === todayDay) {
               const campaignKey = `birthday-family-${yearStr}-${todayMonth.toString().padStart(2, "0")}-${todayDay.toString().padStart(2, "0")}-spouse`;
               scenario = { type: "birthday_family", recipientName: lead.conjugeNome ?? "seu cônjuge", recipientRelation: "cônjuge", catalog, campaignKey };
@@ -913,10 +915,9 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
           for (const f of lead.filhos) {
             let match = false;
             if (f.dataNascimento) {
-              const parts = f.dataNascimento.split("-");
-              if (parts.length >= 3) {
-                const m = parseInt(parts[1], 10);
-                const d = parseInt(parts[2], 10);
+              const birthday = parseBirthdayParts(f.dataNascimento);
+              if (birthday) {
+                const { month: m, day: d } = birthday;
                 if (m === todayMonth && d === todayDay) match = true;
               }
             }
@@ -958,6 +959,23 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
           }
         }
 
+        // Professional dates: congratulate only leads whose registered profession matches.
+        if (!scenario && lead.profissao) {
+          for (const professionalDate of professionalDates) {
+            if (!professionalDate.active) continue;
+            if (professionalDate.month !== todayMonth || professionalDate.day !== todayDay) continue;
+            if (!professionMatches(lead.profissao, professionalDate.professions)) continue;
+
+            const campaignKey = `professional-${professionalDate.name.replace(/\s+/g, "-")}-${yearStr}`;
+            scenario = {
+              type: "professional_day",
+              dateName: professionalDate.name,
+              catalog: [],
+              campaignKey,
+            };
+            break;
+          }
+        }
         // Commercial dates
         if (!scenario) {
           for (const cd of commercialDates) {
@@ -1009,7 +1027,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
           result = await processAgentInternal({
             tenantId: tenant.id,
             leadId: lead.id,
-            mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : "relacionamento"}.`,
+            mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : scenario.type === "professional_day" ? `${scenario.dateName} para ${lead.profissao}` : "relacionamento"}.`,
             forcedAgent: "relacionamento",
             log,
             scenario: {

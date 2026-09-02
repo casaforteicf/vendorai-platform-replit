@@ -59,6 +59,7 @@ export const leadsTable = pgTable("leads", {
   instagramHandle: text("instagram_handle"),
   endereco: text("endereco"),
   dataNascimento: text("data_nascimento"),
+  profissao: text("profissao"),
   estadoCivil: text("estado_civil"),
   conjugeNome: text("conjuge_nome"),
   conjugeTelefone: text("conjuge_telefone"),

@@ -5626,9 +5626,11 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
 
   const [draft, setDraft] = useState<{
     enableSpouseGiftFlow: boolean;
-    commercialDates: Array<{ name: string; active: boolean; daysBeforeToSend: number; movableDate?: boolean; targetGender?: string }>;
+    commercialDates: Array<{ name: string; active: boolean; daysBeforeToSend: number; movableDate?: boolean; targetGender?: string; month?: number; day?: number }>;
+    professionalDates: Array<{ name: string; active: boolean; month: number; day: number; professions: string[] }>;
   }>({
     enableSpouseGiftFlow: false,
+    professionalDates: [],
     commercialDates: [
       { name: "Páscoa", active: true, daysBeforeToSend: 3, movableDate: true },
       { name: "Dia das Mães", active: true, daysBeforeToSend: 3, movableDate: true, targetGender: "feminino" },
@@ -5645,6 +5647,7 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
       setDraft({
         enableSpouseGiftFlow: settings.enableSpouseGiftFlow,
         commercialDates: settings.commercialDates ?? [],
+        professionalDates: ((settings as any).professionalDates ?? []),
       });
     }
   }, [settings]);
@@ -5675,12 +5678,13 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
   function save() {
     const payload = {
       commercialDates: draft.commercialDates,
+      professionalDates: draft.professionalDates,
       enableSpouseGiftFlow: draft.enableSpouseGiftFlow,
     };
     if (settings) {
-      update.mutate({ tenantId, data: payload });
+      update.mutate({ tenantId, data: payload as any });
     } else {
-      create.mutate({ tenantId, data: payload });
+      create.mutate({ tenantId, data: payload as any });
     }
   }
 
@@ -5750,6 +5754,138 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
         </div>
       )}
 
+      <div className="space-y-3 border-t pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="font-medium text-sm">Dias profissionais</p>
+            <p className="text-xs text-muted-foreground">
+              Envie parabéns somente aos leads cuja profissão corresponda à data.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setDraft((prev) => ({
+                ...prev,
+                professionalDates: [
+                  ...prev.professionalDates,
+                  { name: "", active: true, month: 1, day: 1, professions: [] },
+                ],
+              }))
+            }
+          >
+            Adicionar data
+          </Button>
+        </div>
+
+        {draft.professionalDates.length === 0 ? (
+          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            Nenhuma data profissional cadastrada.
+          </p>
+        ) : (
+          draft.professionalDates.map((professionalDate, index) => (
+            <div key={index} className="space-y-3 rounded-lg border p-3">
+              <div className="grid gap-3 sm:grid-cols-[1fr_90px_90px]">
+                <Input
+                  aria-label="Nome da data profissional"
+                  placeholder="Ex: Dia do Médico Veterinário"
+                  value={professionalDate.name}
+                  onChange={(e) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      professionalDates: prev.professionalDates.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, name: e.target.value } : item,
+                      ),
+                    }))
+                  }
+                />
+                <Input
+                  aria-label="Mês"
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={professionalDate.month}
+                  onChange={(e) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      professionalDates: prev.professionalDates.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, month: Number(e.target.value) } : item,
+                      ),
+                    }))
+                  }
+                />
+                <Input
+                  aria-label="Dia"
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={professionalDate.day}
+                  onChange={(e) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      professionalDates: prev.professionalDates.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, day: Number(e.target.value) } : item,
+                      ),
+                    }))
+                  }
+                />
+              </div>
+              <Input
+                aria-label="Profissões relacionadas"
+                placeholder="Profissões separadas por vírgula: veterinário, médica veterinária"
+                value={professionalDate.professions.join(", ")}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    professionalDates: prev.professionalDates.map((item, itemIndex) =>
+                      itemIndex === index
+                        ? {
+                            ...item,
+                            professions: e.target.value
+                              .split(",")
+                              .map((value) => value.trim())
+                              .filter(Boolean),
+                          }
+                        : item,
+                    ),
+                  }))
+                }
+              />
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch
+                    checked={professionalDate.active}
+                    onCheckedChange={(active) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        professionalDates: prev.professionalDates.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, active } : item,
+                        ),
+                      }))
+                    }
+                  />
+                  Ativa
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      professionalDates: prev.professionalDates.filter((_, itemIndex) => itemIndex !== index),
+                    }))
+                  }
+                >
+                  Remover
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
       <div className="flex items-center justify-between rounded-lg border p-3 mt-4">
         <div>
           <p className="font-medium text-sm">Fluxo de Presente para Cônjuge</p>

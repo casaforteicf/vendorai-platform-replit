@@ -270,12 +270,25 @@ router.post("/deals/:id/commercial-review", async (req, res) => {
   res.status(202).json({ status: "pending_approval", agentTaskId: task.id });
 });
 
+const dealHandoffSchema = z.object({
+  responsavelId: z.string().min(1),
+  atividadeTitulo: z.string().trim().min(3).max(200),
+  atividadeDescricao: z.string().trim().max(2000).optional(),
+  dataVencimento: z.coerce.date().optional(),
+  observacaoPassagem: z.string().trim().max(2000).optional(),
+});
 router.patch("/deals/:id", async (req, res) => {
-  const parsed = updateDealSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message });
+  const body = req.body as Record<string, unknown>;
+  const { handoff: rawHandoff, ...dealBody } = body;
+  const parsed = updateDealSchema.safeParse(dealBody);
+  const handoffParsed = rawHandoff === undefined ? null : dealHandoffSchema.safeParse(rawHandoff);
+  if (!parsed.success || (handoffParsed && !handoffParsed.success)) {
+    res.status(422).json({
+      error: !parsed.success ? parsed.error.message : handoffParsed && !handoffParsed.success ? handoffParsed.error.message : "Invalid handoff",
+    });
     return;
   }
+  const handoff = handoffParsed?.success ? handoffParsed.data : null;
 
   const [existing] = await db
     .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa, assignedTo: dealsTable.assignedTo, wonAt: dealsTable.wonAt, vehicleReservationBlocked: dealsTable.vehicleReservationBlocked })
@@ -416,34 +429,59 @@ router.patch("/deals/:id", async (req, res) => {
     }
   }
 
-  // Achado real (Marcos): reatribuição travada -- essa linha SEMPRE
-  // sobrescrevia assignedTo de volta pro valor antigo, mesmo quando o
-  // cliente mandava um responsável novo de propósito (ex: "enviar pro
-  // fulano" ao mover o card). Só cai pro fallback (self/existing) quando
-  // o cliente não mandou nada -- reatribuição explícita agora funciona.
-  const assignedToChanged = "assignedTo" in parsed.data && parsed.data.assignedTo !== existing.assignedTo;
+  if (handoff && (!parsed.data.etapa || parsed.data.etapa === existing.etapa)) {
+    res.status(422).json({ error: "A passagem de responsabilidade exige uma nova etapa" });
+    return;
+  }
+  if (handoff) {
+    const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, handoff.responsavelId), eq(usersTable.tenantId, existing.tenantId))).limit(1);
+    if (!responsavel) {
+      res.status(422).json({ error: "O próximo responsável não pertence a este tenant" });
+      return;
+    }
+  }
+
+  const nextAssignedTo = handoff?.responsavelId ?? ("assignedTo" in parsed.data ? parsed.data.assignedTo : (existing.assignedTo ?? req.user?.sub ?? null));
+  const assignedToChanged = nextAssignedTo !== existing.assignedTo;
   const etapaChanged = Boolean(parsed.data.etapa && parsed.data.etapa !== existing.etapa);
 
-  const [deal] = await db
-    .update(dealsTable)
-    .set({
+  const deal = await db.transaction(async (tx) => {
+    const [updatedDeal] = await tx.update(dealsTable).set({
       ...parsed.data,
-      assignedTo: "assignedTo" in parsed.data ? parsed.data.assignedTo : (existing.assignedTo ?? req.user?.sub ?? null),
-      // O "tempo" (quanto tempo esse negócio está com o responsável atual
-      // na etapa atual) reinicia sempre que a etapa OU o responsável muda
-      // -- mover o card ou repassar pra outra pessoa é sempre um "relógio
-      // novo" pra essa negociação.
+      assignedTo: nextAssignedTo,
       ...((etapaChanged || assignedToChanged) ? { etapaAlteradaEm: new Date() } : {}),
       updatedAt: new Date(),
-    })
-    .where(eq(dealsTable.id, existing.id))
-    .returning();
+    }).where(eq(dealsTable.id, existing.id)).returning();
+    if (!updatedDeal) throw new Error("Deal update failed");
 
-  if (parsed.data.etapa && parsed.data.etapa !== existing.etapa) {
+    if (handoff && updatedDeal.leadId) {
+      await tx.insert(activitiesTable).values({
+        tenantId: existing.tenantId, leadId: updatedDeal.leadId, dealId: updatedDeal.id,
+        tipo: "tarefa", titulo: handoff.atividadeTitulo,
+        descricao: [handoff.atividadeDescricao, handoff.observacaoPassagem ? "Passagem: " + handoff.observacaoPassagem : null].filter(Boolean).join("\n") || null,
+        status: "pendente", dataVencimento: handoff.dataVencimento ?? null, responsavelId: handoff.responsavelId,
+      });
+      await tx.insert(activitiesTable).values({
+        tenantId: existing.tenantId, leadId: updatedDeal.leadId, dealId: updatedDeal.id,
+        tipo: "tarefa",
+        titulo: "Atendimento transferido para " + (DEAL_STAGE_LABELS[updatedDeal.etapa] ?? updatedDeal.etapa),
+        descricao: [
+          "Etapa anterior: " + (DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa) + ".",
+          "Nova etapa: " + (DEAL_STAGE_LABELS[updatedDeal.etapa] ?? updatedDeal.etapa) + ".",
+          handoff.observacaoPassagem ? "Observação: " + handoff.observacaoPassagem : null,
+        ].filter(Boolean).join(" "),
+        status: "concluida", concluidaEm: new Date(), responsavelId: req.user?.sub ?? null,
+      });
+    }
+    return updatedDeal;
+  });
+
+  if (parsed.data.etapa && parsed.data.etapa !== existing.etapa && !handoff) {
     await recordDealJourney({
       tenantId: existing.tenantId, leadId: deal.leadId, dealId: deal.id,
-      title: `Negócio avançou para ${DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa}`,
-      description: `Etapa anterior: ${DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa}.`,
+      title: "Negócio avançou para " + (DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa),
+      description: "Etapa anterior: " + (DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa) + ". Nova etapa: " + (DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa) + ".",
       responsavelId: req.user?.sub,
     });
   }
