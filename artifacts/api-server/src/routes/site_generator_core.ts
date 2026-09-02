@@ -738,6 +738,9 @@ router.get("/tenants/:tenantId/site-generator", async (req, res) => {
       name: generatedSitesTable.name,
       siteType: generatedSitesTable.siteType,
       config: generatedSitesTable.config,
+      html: generatedSitesTable.html,
+      published: generatedSitesTable.published,
+      siteSlug: generatedSitesTable.siteSlug,
       createdAt: generatedSitesTable.createdAt,
       updatedAt: generatedSitesTable.updatedAt,
     })
