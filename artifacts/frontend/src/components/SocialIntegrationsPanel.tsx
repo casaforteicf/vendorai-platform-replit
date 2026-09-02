@@ -137,14 +137,25 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
 
   const filtered = connections.filter((item) => !providersFilter || providersFilter.includes(item.provider));
 
+  const connectTitle = providersFilter?.length === 1 && providersFilter[0] === "youtube"
+    ? "YouTube"
+    : providersFilter && !providersFilter.includes("youtube")
+      ? "Outros canais"
+      : "Canais sociais e conversas";
+  const connectDescription = providersFilter?.length === 1 && providersFilter[0] === "youtube"
+    ? "Canal de vídeo do ecossistema Google para publicações, métricas, comentários e respostas."
+    : providersFilter && !providersFilter.includes("youtube")
+      ? "Canais que não pertencem aos ecossistemas Google ou Meta."
+      : "Conecte suas contas para centralizar publicações, métricas, comentários e respostas.";
+
   return (
     <div className="rounded-xl border bg-card p-6 space-y-5">
       <div>
-        <h2 className="font-semibold text-base">{mode === "publish" ? "Publicar" : "Canais sociais e conversas"}</h2>
+        <h2 className="font-semibold text-base">{mode === "publish" ? "Publicar" : connectTitle}</h2>
         <p className="text-sm text-muted-foreground mt-1">
           {mode === "publish"
             ? "Publique diretamente nas contas conectadas. Para conectar ou desconectar contas, use Configurações → Integrações."
-            : "Conecte suas contas para centralizar publicações, métricas, comentários e respostas."}
+            : connectDescription}
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">

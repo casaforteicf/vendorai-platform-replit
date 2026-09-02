@@ -3597,7 +3597,7 @@ export default function Configuracoes() {
               <div>
                 <p className="text-sm font-semibold">Google</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Calendar e Google Ads agrupados no mesmo ecossistema.
+                  Calendar, Google Ads e YouTube agrupados no mesmo ecossistema.
                 </p>
               </div>
               <div className="space-y-4">
@@ -3836,6 +3836,8 @@ export default function Configuracoes() {
                 </div>
               )}
             </div>
+
+              <SocialIntegrationsPanel providers={["youtube"]} mode="connect" />
 
               </div>
             </section>
@@ -4737,7 +4739,7 @@ Body:
               </p>
             </div>
 
-            <SocialIntegrationsPanel mode="connect" />
+            <SocialIntegrationsPanel providers={["linkedin", "tiktok"]} mode="connect" />
 
             {/* Evolution API — WhatsApp via QR Code (self-hosted, sem custo por cliente) */}
             <EvolutionWhatsAppCard tenantId={tenantId ?? ""} toast={toast} />
