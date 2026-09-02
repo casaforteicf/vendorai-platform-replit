@@ -103,15 +103,22 @@ replace_once(path, old, new, 'agent-dispatch intake hook')
 
 # 3) Prompt de Service: consumir cenário do intake mesmo com prompt customizado.
 path = 'artifacts/api-server/src/lib/agent-engine.ts'
-old = 'export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {'
-new = 'export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {'
-replace_once(path, old, new, 'service prompt signature')
+p = ROOT / path
+text = p.read_text(encoding='utf-8')
+old_sig = 'export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {'
+new_sig = 'export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {'
+if text.count(old_sig) != 1:
+    raise SystemExit(f'service prompt signature: esperado 1 match, encontrado {text.count(old_sig)}')
+text = text.replace(old_sig, new_sig, 1)
 
-old = '''  parts.push(buildLeadSection(lead));
+start = text.index('export function buildServicePrompt')
+end = text.index('export function buildFinanceiroPrompt', start)
+section = text[start:end]
+old_block = '''  parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
 '''
-new = '''  parts.push(buildLeadSection(lead));
+new_block = '''  parts.push(buildLeadSection(lead));
 
   const supportIntake = scenario?.supportIntake as {
     state?: "collecting" | "opened" | "existing" | "unassigned";
@@ -145,6 +152,11 @@ new = '''  parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
 '''
-replace_once(path, old, new, 'service prompt intake scenario')
+count = section.count(old_block)
+if count != 1:
+    raise SystemExit(f'service prompt intake scenario: esperado 1 match dentro de buildServicePrompt, encontrado {count}')
+section = section.replace(old_block, new_block, 1)
+text = text[:start] + section + text[end:]
+p.write_text(text, encoding='utf-8')
 
 print('support AI intake conectado')
