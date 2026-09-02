@@ -160,7 +160,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
         count(*)::int AS valid_leads,
         count(*) FILTER (WHERE COALESCE(trim(nome),'') = '')::int AS missing_name,
         count(*) FILTER (WHERE COALESCE(trim(telefone),'') = '' AND COALESCE(trim(email),'') = '')::int AS missing_contact,
-        count(*) FILTER (WHERE COALESCE(trim(origem),'') = '')::int AS missing_origin
+        count(*) FILTER (WHERE COALESCE(trim(source),'') = '')::int AS missing_origin
       FROM leads
       WHERE tenant_id = ${tenantId} AND nao_lead_tipo IS NULL AND excluido_em IS NULL
     `),
