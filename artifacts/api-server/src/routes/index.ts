@@ -37,6 +37,7 @@ import bloqueiosAgendaRouter from "./bloqueios_agenda";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
 import dashboardRouter from "./dashboard";
+import officialMetricsRouter from "./official_metrics.js";
 import analyticsRouter from "./analytics";
 import knowledgeBaseRouter from "./knowledge_base";
 import rulesRouter from "./rules";
@@ -289,6 +290,7 @@ router.use(tokenPurchasesRouter);
 
 // Executive Intelligence Hub
 router.use(dashboardRouter);
+router.use(officialMetricsRouter);
 router.use(analyticsRouter);
 
 // Knowledge Hub
