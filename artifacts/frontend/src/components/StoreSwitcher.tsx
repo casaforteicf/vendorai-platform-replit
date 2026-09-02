@@ -25,6 +25,7 @@ interface SwitchableTenantsResponse {
 }
 
 const TOKEN_KEY = "vendorai_token";
+const STORE_SWITCHER_ENABLED = import.meta.env.VITE_STORE_SWITCHER_ENABLED === "true";
 
 export function StoreSwitcher() {
   const { token } = useAuth();
@@ -32,7 +33,7 @@ export function StoreSwitcher() {
 
   const { data, isLoading } = useQuery<SwitchableTenantsResponse>({
     queryKey: ["auth", "switchable-tenants"],
-    enabled: !!token,
+    enabled: STORE_SWITCHER_ENABLED && !!token,
     staleTime: 60_000,
     queryFn: async () => {
       const r = await fetch("/api/auth/switchable-tenants", {
@@ -72,7 +73,7 @@ export function StoreSwitcher() {
     }
   }
 
-  if (isLoading || !data || data.tenants.length === 0) return null;
+  if (!STORE_SWITCHER_ENABLED || isLoading || !data || data.tenants.length === 0) return null;
 
   const currentName = data.currentTenant?.name ?? "Loja atual";
 

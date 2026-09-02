@@ -588,8 +588,14 @@ function AppRoutes() {
         <Route path="/negocios">
           <ProtectedRoute component={Deals} />
         </Route>
+        <Route path="/pipeline-operacional/:tab">
+          <ProtectedRoute component={PipelineOperacional} />
+        </Route>
         <Route path="/pipeline-operacional">
           <ProtectedRoute component={PipelineOperacional} />
+        </Route>
+        <Route path="/pipeline-relacionamento/:tab">
+          <ProtectedRoute component={PipelineRelacionamento} />
         </Route>
         <Route path="/pipeline-relacionamento">
           <ProtectedRoute component={PipelineRelacionamento} />

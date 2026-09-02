@@ -148,7 +148,8 @@ export default function PipelineOperacional() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const params = new URLSearchParams(window.location.search);
-  const pipeline: PipelineKind = params.get("tab") === "suporte" ? "suporte" : "execucao";
+  const pathTab = window.location.pathname.split("/").filter(Boolean).at(-1);
+  const pipeline: PipelineKind = pathTab === "suporte" || params.get("tab") === "suporte" ? "suporte" : "execucao";
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<WorkCard | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
@@ -220,8 +221,8 @@ export default function PipelineOperacional() {
 
   function setPipeline(next: PipelineKind | "comercial" | "aquecimento" | "parceiros") {
     if (next === "comercial") navigate("/deals");
-    else if (next === "aquecimento" || next === "parceiros") navigate(`/pipeline-relacionamento?tab=${next}`);
-    else navigate(`/pipeline-operacional?tab=${next}`);
+    else if (next === "aquecimento" || next === "parceiros") navigate(`/pipeline-relacionamento/${next}`);
+    else navigate(`/pipeline-operacional/${next}`);
   }
 
   async function uploadFilesToCard(cardId: string, files: File[], origem = "app") {
