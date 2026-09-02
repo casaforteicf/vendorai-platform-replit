@@ -26,6 +26,10 @@ function getAppUrl(): string {
   return process.env["APP_URL"]?.replace(/\/$/, "") || "http://localhost:3000";
 }
 
+function integrationsRedirect(appUrl: string, params: string): string {
+  return `${appUrl}/configuracoes?tab=integracoes&${params}`;
+}
+
 router.get("/auth/meta-ads", authenticate, async (req, res) => {
   try {
     const userId = req.user?.sub;
@@ -57,7 +61,7 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
 
   if (error || !code || !state) {
     logger.warn({ error, hasCode: !!code, hasState: !!state }, "Callback Meta Ads: parâmetros inválidos");
-    return res.redirect(`${appUrl}/configuracoes?metaAdsError=access_denied`);
+    return res.redirect(integrationsRedirect(appUrl, "metaAdsError=access_denied"));
   }
 
   let tenantId: string;
@@ -68,7 +72,7 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
     exactRedirectUri = decoded.returnTo?.startsWith("https://") ? decoded.returnTo : undefined;
   } catch (err) {
     logger.warn({ err }, "Callback Meta Ads: state inválido, expirado ou reutilizado");
-    return res.redirect(`${appUrl}/configuracoes?metaAdsError=invalid_state`);
+    return res.redirect(integrationsRedirect(appUrl, "metaAdsError=invalid_state"));
   }
 
   try {
@@ -78,7 +82,7 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
       shortToken = await exchangeCodeForToken(code, exactRedirectUri);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao trocar codigo OAuth do Meta Ads");
-      return res.redirect(`${appUrl}/configuracoes?metaAdsError=token_exchange`);
+      return res.redirect(integrationsRedirect(appUrl, "metaAdsError=token_exchange"));
     }
 
     let longLived;
@@ -86,7 +90,7 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
       longLived = await exchangeForLongLivedToken(shortToken.access_token);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao converter token Meta Ads pra long-lived");
-      return res.redirect(`${appUrl}/configuracoes?metaAdsError=token_exchange`);
+      return res.redirect(integrationsRedirect(appUrl, "metaAdsError=token_exchange"));
     }
 
     await saveMetaAdsPendingConnection(tenantId, longLived);
@@ -96,30 +100,30 @@ router.get("/auth/meta-ads/callback", async (req, res) => {
       accounts = await listAccessibleAdAccounts(longLived.access_token);
     } catch (err) {
       logger.error({ err, tenantId }, "Erro ao listar Ad Accounts Meta acessíveis");
-      return res.redirect(`${appUrl}/configuracoes?metaAdsConnected=pending`);
+      return res.redirect(integrationsRedirect(appUrl, "metaAdsConnected=pending"));
     }
 
     if (accounts.length === 0) {
       logger.warn({ tenantId }, "Nenhuma Ad Account Meta acessível para o usuário");
-      return res.redirect(`${appUrl}/configuracoes?metaAdsError=no_account`);
+      return res.redirect(integrationsRedirect(appUrl, "metaAdsError=no_account"));
     }
 
     if (accounts.length === 1 && accounts[0]) {
       try {
         await selectMetaAdsAccount(tenantId, accounts[0]);
         logger.info({ tenantId, adAccountId: accounts[0].adAccountId }, "Meta Ads conectado com sucesso");
-        return res.redirect(`${appUrl}/configuracoes?metaAdsConnected=1`);
+        return res.redirect(integrationsRedirect(appUrl, "metaAdsConnected=1"));
       } catch (err) {
         logger.error({ err, tenantId }, "Erro ao selecionar automaticamente a única Ad Account Meta");
-        return res.redirect(`${appUrl}/configuracoes?metaAdsConnected=pending`);
+        return res.redirect(integrationsRedirect(appUrl, "metaAdsConnected=pending"));
       }
     }
 
     logger.info({ tenantId, count: accounts.length }, "Múltiplas Ad Accounts Meta encontradas, aguardando seleção");
-    return res.redirect(`${appUrl}/configuracoes?metaAdsConnected=pending`);
+    return res.redirect(integrationsRedirect(appUrl, "metaAdsConnected=pending"));
   } catch (err) {
     logger.error({ err, tenantId }, "Erro no callback Meta Ads");
-    return res.redirect(`${appUrl}/configuracoes?metaAdsError=exchange_failed`);
+    return res.redirect(integrationsRedirect(appUrl, "metaAdsError=exchange_failed"));
   }
 });
 
