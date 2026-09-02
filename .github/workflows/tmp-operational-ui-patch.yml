@@ -1,0 +1,38 @@
+name: Temporary operational UI patch
+
+on:
+  push:
+    branches:
+      - feat/operational-pipelines-support-deliveries
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/operational-pipelines-support-deliveries
+          fetch-depth: 0
+      - name: Apply deterministic patch
+        run: python3 tools/tmp_operational_ui_patch.py
+      - name: Remove temporary patch machinery
+        run: |
+          rm -f tools/tmp_operational_ui_patch.py
+          rm -f .github/workflows/tmp-operational-ui-patch.yml
+      - name: Validate diff formatting
+        run: git diff --check
+      - name: Commit patched UI
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "feat(frontend): integrar pipeline operacional e assistência"
+          git push origin HEAD:feat/operational-pipelines-support-deliveries
