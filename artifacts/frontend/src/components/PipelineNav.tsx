@@ -5,10 +5,10 @@ export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" |
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
   { key: "comercial", label: "Comercial", href: "/deals" },
-  { key: "execucao", label: "Execução / Pedidos", href: "/pipeline-operacional?tab=execucao" },
-  { key: "suporte", label: "Suporte / Assistência", href: "/pipeline-operacional?tab=suporte" },
-  { key: "aquecimento", label: "Aquecimento", href: "/pipeline-relacionamento?tab=aquecimento" },
-  { key: "parceiros", label: "Parceiros", href: "/pipeline-relacionamento?tab=parceiros" },
+  { key: "execucao", label: "Execução / Pedidos", href: "/pipeline-operacional/execucao" },
+  { key: "suporte", label: "Suporte / Assistência", href: "/pipeline-operacional/suporte" },
+  { key: "aquecimento", label: "Aquecimento", href: "/pipeline-relacionamento/aquecimento" },
+  { key: "parceiros", label: "Parceiros", href: "/pipeline-relacionamento/parceiros" },
 ];
 
 export const PIPELINE_COLUMN_CLASS = "flex w-80 shrink-0 flex-col rounded-xl border bg-muted/20 min-h-0";

@@ -39,7 +39,8 @@ export default function PipelineRelacionamento() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const params = new URLSearchParams(window.location.search);
-  const tab = params.get("tab") === "parceiros" ? "parceiros" : "aquecimento";
+  const pathTab = window.location.pathname.split("/").filter(Boolean).at(-1);
+  const tab = pathTab === "parceiros" || params.get("tab") === "parceiros" ? "parceiros" : "aquecimento";
   const [draggedId, setDraggedId] = useState<string | null>(null);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
@@ -92,8 +93,8 @@ export default function PipelineRelacionamento() {
 
   const nav = (next: string) => {
     if (next === "comercial") navigate("/deals");
-    else if (next === "execucao" || next === "suporte") navigate(`/pipeline-operacional?tab=${next}`);
-    else navigate(`/pipeline-relacionamento?tab=${next}`);
+    else if (next === "execucao" || next === "suporte") navigate(`/pipeline-operacional/${next}`);
+    else navigate(`/pipeline-relacionamento/${next}`);
   };
 
   function Card({ deal }: { deal: Deal }) {

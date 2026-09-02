@@ -489,7 +489,14 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   function resolveImgUrl(url: string | null | undefined): string | null {
     if (!url) return null;
-    return url.startsWith("/objects/") ? `/api/storage${url}` : url;
+    const value = url.trim();
+    if (!value) return null;
+    if (value.startsWith("/objects/")) return `/api/storage${value}`;
+    if (value.startsWith("objects/")) return `/api/storage/${value}`;
+    if (/^(https?:|data:|blob:)/i.test(value) || value.startsWith("/api/") || value.startsWith("/")) return value;
+    // Valores antigos gravados apenas como UUID/chave não são URLs públicas.
+    // Ignorar evita requests como GET /500dad44-... => 404; o logo VendorAI vira fallback.
+    return null;
   }
 
   function LogoBranding({ size }: { size: "lg" | "md" | "sm" }) {
