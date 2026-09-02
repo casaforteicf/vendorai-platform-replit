@@ -1704,7 +1704,15 @@ export default function Configuracoes() {
       void onConnectInstagram();
       return;
     }
-    if (!metaAdsConnection?.connected || metaAdsConnection.pendingAccountSelection) {
+    if (metaAdsConnection?.pendingAccountSelection) {
+      setShowMetaDetails(true);
+      toast({
+        title: "Escolha a conta Meta Ads",
+        description: "A autorização já foi concluída. Selecione a Ad Account logo abaixo no grupo Meta.",
+      });
+      return;
+    }
+    if (!metaAdsConnection?.connected) {
       void onConnectMetaAds();
       return;
     }
@@ -3584,6 +3592,15 @@ export default function Configuracoes() {
           ) : (
           <div className="flex flex-col gap-6">
 
+            {/* Provider group — Google */}
+            <section className="rounded-2xl border bg-muted/10 p-4 sm:p-5 space-y-4">
+              <div>
+                <p className="text-sm font-semibold">Google</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Calendar e Google Ads agrupados no mesmo ecossistema.
+                </p>
+              </div>
+              <div className="space-y-4">
             {/* Google Calendar — OAuth */}
             <div className="rounded-xl border bg-card p-6 space-y-5">
               <div className="flex items-start justify-between gap-4">
@@ -3671,320 +3688,6 @@ export default function Configuracoes() {
                   <CalendarCheck className="h-7 w-7 text-muted-foreground mx-auto" />
                   <p className="text-sm text-muted-foreground">Nenhuma agenda cadastrada.</p>
                   <p className="text-xs text-muted-foreground">Crie uma agenda na página Agenda primeiro.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Webhook de entrada — WhatsApp Omnichannel (integração técnica no final da aba) */}
-            <div className="order-last rounded-xl border bg-card p-6 space-y-5">
-              <div>
-                <h2 className="font-semibold text-base flex items-center gap-2">
-                  <Webhook className="h-4 w-4 text-primary" />
-                  Webhook de entrada — WhatsApp Omnichannel
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Configure o n8n (ou qualquer gateway) para enviar mensagens recebidas do WhatsApp para
-                  este endpoint. Use o <strong>Tenant ID</strong> na URL e o <strong>Webhook Secret</strong> no header
-                  <code className="text-xs bg-muted px-1 py-0.5 rounded mx-1">X-Webhook-Secret</code>.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                {/* Tenant ID */}
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Tenant ID</label>
-                  <div className="flex gap-2">
-                    <div className="flex-1 flex items-center rounded-md border bg-muted/50 px-3 py-2 font-mono text-sm text-muted-foreground select-all">
-                      {tenantId}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      title="Copiar Tenant ID"
-                      onClick={() => {
-                        navigator.clipboard.writeText(tenantId ?? "");
-                        toast({ title: "Tenant ID copiado." });
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Webhook Secret */}
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Webhook Secret</label>
-                  {agentQuery.isLoading ? (
-                    <div className="h-10 bg-muted rounded-md animate-pulse" />
-                  ) : agentQuery.data?.webhookSecret ? (
-                    <div className="flex gap-2">
-                      <div className="flex-1 flex items-center rounded-md border bg-muted/50 px-3 py-2 font-mono text-sm">
-                        {showWebhookSecret
-                          ? agentQuery.data.webhookSecret
-                          : "whs_" + "•".repeat(32)}
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setShowWebhookSecret((v) => !v)}
-                        title={showWebhookSecret ? "Ocultar" : "Mostrar"}
-                      >
-                        {showWebhookSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        title="Copiar secret"
-                        onClick={() => {
-                          navigator.clipboard.writeText(agentQuery.data?.webhookSecret ?? "");
-                          toast({ title: "Webhook secret copiado." });
-                        }}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed p-4 text-center space-y-1">
-                      <Key className="h-7 w-7 text-muted-foreground mx-auto" />
-                      <p className="text-sm text-muted-foreground">Nenhum secret gerado ainda.</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant={agentQuery.data?.webhookSecret ? "outline" : "default"}
-                    disabled={regenerateWebhookSecretMutation.isPending || !agentQuery.data?.id}
-                    onClick={() => {
-                      if (!agentQuery.data?.id) return;
-                      regenerateWebhookSecretMutation.mutate(
-                        { id: agentQuery.data.id },
-                        {
-                          onSuccess: (updated) => {
-                            queryClient.setQueryData(
-                              getGetAgentConfigByTenantQueryKey(tenantId ?? ""),
-                              updated,
-                            );
-                            toast({ title: "Webhook secret gerado com sucesso." });
-                          },
-                          onError: () => toast({ title: "Erro ao gerar secret.", variant: "destructive" }),
-                        },
-                      );
-                    }}
-                    className="gap-2"
-                  >
-                    <RefreshCw className={cn("h-4 w-4", regenerateWebhookSecretMutation.isPending && "animate-spin")} />
-                    {regenerateWebhookSecretMutation.isPending
-                      ? "Gerando…"
-                      : agentQuery.data?.webhookSecret
-                      ? "Regenerar secret"
-                      : "Gerar secret"}
-                  </Button>
-                  {agentQuery.data?.webhookSecret && (
-                    <p className="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3 shrink-0" />
-                      Ao regenerar, o secret anterior é invalidado. Atualize o n8n antes.
-                    </p>
-                  )}
-                </div>
-
-                {/* Endpoint reference */}
-                <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Endpoint n8n → Vendor.ai</p>
-                  <code className="text-xs block text-muted-foreground">
-                    POST /api/tenants/{tenantId}/webhooks/whatsapp
-                  </code>
-                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-2">
-{`Headers:
-  X-Webhook-Secret: <seu-webhook-secret>
-  Content-Type: application/json
-
-Body:
-{
-  "telefone": "5511999998888",
-  "mensagem": "Olá, quero saber mais",
-  "nome": "João Silva"
-}`}
-                  </pre>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-1">
-              <p className="text-sm font-semibold">Conexões recomendadas</p>
-              <p className="text-sm text-muted-foreground">
-                Para WhatsApp, priorize a integração oficial via Meta ou a conexão rápida por QR Code.
-                Configurações manuais e provedores alternativos continuam disponíveis em Opções avançadas.
-              </p>
-            </div>
-
-            {/* Hub Meta Business — fluxo principal unificado; cards individuais abaixo preservam detalhes e manutenção */}
-            <div className="rounded-xl border-2 border-blue-200 dark:border-blue-900 bg-gradient-to-br from-blue-50/70 to-card dark:from-blue-950/20 p-6 space-y-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="font-semibold text-lg flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-blue-600" />
-                    Meta Business
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Uma entrada para conectar e acompanhar Facebook, Instagram, anúncios e WhatsApp oficial.
-                    A Meta pode solicitar confirmações adicionais conforme cada produto.
-                  </p>
-                </div>
-                {igConnection.data?.connected &&
-                 metaAdsConnection?.connected &&
-                 !metaAdsConnection.pendingAccountSelection &&
-                 waConnection.data?.connected ? (
-                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400">
-                    <CheckCircle2 className="h-3 w-3 mr-1" /> Completo
-                  </Badge>
-                ) : (
-                  <Badge variant="outline">Configuração em andamento</Badge>
-                )}
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {[
-                  { label: "Instagram profissional", connected: Boolean(igConnection.data?.connected) },
-                  { label: "Facebook / Página", connected: Boolean(igConnection.data?.connected && igConnection.data.pageId) },
-                  { label: "Meta Ads", connected: Boolean(metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection) },
-                  { label: "WhatsApp oficial", connected: Boolean(waConnection.data?.connected) },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-lg border bg-background/80 px-3 py-2.5">
-                    <span className="text-sm font-medium">{item.label}</span>
-                    <span className={cn(
-                      "text-xs font-medium",
-                      item.connected ? "text-green-600 dark:text-green-400" : "text-muted-foreground",
-                    )}>
-                      {item.connected ? "Conectado" : "Pendente"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  onClick={onConnectMetaBusiness}
-                  disabled={metaAdsConnecting || whatsappConnecting}
-                  className="gap-2"
-                >
-                  {(metaAdsConnecting || whatsappConnecting) && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {!igConnection.data?.connected
-                    ? "Conectar Instagram — etapa 1"
-                    : !metaAdsConnection?.connected || metaAdsConnection.pendingAccountSelection
-                      ? "Conectar Meta Ads — etapa 2"
-                      : !waConnection.data?.connected
-                        ? "Conectar WhatsApp — etapa 3"
-                        : "Gerenciar conexão Meta"}
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  O VendorAI continua automaticamente pelo próximo serviço que ainda estiver pendente.
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowMetaDetails((current) => !current)}
-                  className="gap-1 text-muted-foreground"
-                >
-                  {showMetaDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  {showMetaDetails ? "Ocultar detalhes avançados" : "Detalhes avançados"}
-                </Button>
-              </div>
-            </div>
-
-            {/* WhatsApp — OAuth via Meta */}
-            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="font-semibold text-base flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-green-500" />
-                    WhatsApp — Meta Cloud API (oficial)
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Conecte sua conta WhatsApp Business via Meta OAuth para enviar e receber mensagens diretamente pelo VendorAI.
-                  </p>
-                </div>
-                {waConnection.data?.connected && (
-                  <div className="shrink-0">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
-                      <CheckCircle2 className="h-3 w-3" /> Conectado
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {waConnection.isLoading ? (
-                <div className="space-y-2">
-                  <div className="h-10 bg-muted rounded-md animate-pulse" />
-                </div>
-              ) : waConnection.data?.connected ? (
-                <div className="space-y-4">
-                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Número:</span>
-                      <span className="text-sm font-semibold text-foreground">{waConnection.data.displayPhoneNumber}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">WABA ID:</span>
-                      <code className="text-sm font-mono text-muted-foreground">{waConnection.data.wabaId}</code>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Phone Number ID:</span>
-                      <code className="text-sm font-mono text-muted-foreground">{waConnection.data.phoneNumberId}</code>
-                    </div>
-                    {waConnection.data.tokenExpiresAt && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Token expira em:</span>
-                        <span className="text-sm text-muted-foreground">
-                          {format(new Date(waConnection.data.tokenExpiresAt), "dd/MM/yyyy HH:mm")}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <Button
-                      onClick={onConnectWhatsapp}
-                      variant="outline"
-                      className="gap-2"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Reconectar
-                    </Button>
-                    <Button
-                      onClick={onRefreshWhatsapp}
-                      variant="outline"
-                      disabled={refreshWa.isPending}
-                      className="gap-2"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      {refreshWa.isPending ? "Renovando…" : "Renovar token"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={onDisconnectWhatsappOAuth}
-                      disabled={disconnectWa.isPending}
-                      className="gap-2 text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {disconnectWa.isPending ? "Desconectando…" : "Desconectar"}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Clique no botão abaixo para autorizar a conexão com sua conta WhatsApp Business via Meta.
-                  </p>
-                  <Button
-                    onClick={onConnectWhatsapp}
-                    disabled={whatsappConnecting}
-                    className="gap-2"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    {whatsappConnecting ? "Redirecionando…" : "Conectar WhatsApp"}
-                  </Button>
                 </div>
               )}
             </div>
@@ -4134,10 +3837,97 @@ Body:
               )}
             </div>
 
-            <SocialIntegrationsPanel mode="connect" />
+              </div>
+            </section>
+
+            {/* Provider group — Meta */}
+            <section className="rounded-2xl border-2 border-blue-200/70 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/10 p-4 sm:p-5 space-y-4">
+              <div>
+                <p className="text-sm font-semibold">Meta</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Instagram, Facebook, Meta Ads, WhatsApp e Messenger ficam juntos neste grupo.
+                </p>
+              </div>
+              <div className="space-y-4">
+            {/* Hub Meta Business — fluxo principal unificado; cards individuais abaixo preservam detalhes e manutenção */}
+            <div className="rounded-xl border-2 border-blue-200 dark:border-blue-900 bg-gradient-to-br from-blue-50/70 to-card dark:from-blue-950/20 p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-lg flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                    Meta Business
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Uma entrada para conectar e acompanhar Facebook, Instagram, anúncios e WhatsApp oficial.
+                    A Meta pode solicitar confirmações adicionais conforme cada produto.
+                  </p>
+                </div>
+                {igConnection.data?.connected &&
+                 metaAdsConnection?.connected &&
+                 !metaAdsConnection.pendingAccountSelection &&
+                 waConnection.data?.connected ? (
+                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400">
+                    <CheckCircle2 className="h-3 w-3 mr-1" /> Completo
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">Configuração em andamento</Badge>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { label: "Instagram profissional", connected: Boolean(igConnection.data?.connected) },
+                  { label: "Facebook / Página", connected: Boolean(igConnection.data?.connected && igConnection.data.pageId) },
+                  { label: "Meta Ads", connected: Boolean(metaAdsConnection?.connected && !metaAdsConnection.pendingAccountSelection) },
+                  { label: "WhatsApp oficial", connected: Boolean(waConnection.data?.connected) },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between rounded-lg border bg-background/80 px-3 py-2.5">
+                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className={cn(
+                      "text-xs font-medium",
+                      item.connected ? "text-green-600 dark:text-green-400" : "text-muted-foreground",
+                    )}>
+                      {item.connected ? "Conectado" : "Pendente"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  onClick={onConnectMetaBusiness}
+                  disabled={metaAdsConnecting || whatsappConnecting}
+                  className="gap-2"
+                >
+                  {(metaAdsConnecting || whatsappConnecting) && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {!igConnection.data?.connected
+                    ? "Conectar Instagram — etapa 1"
+                    : metaAdsConnection?.pendingAccountSelection
+                      ? "Escolher conta Meta Ads — etapa 2"
+                      : !metaAdsConnection?.connected
+                        ? "Conectar Meta Ads — etapa 2"
+                        : !waConnection.data?.connected
+                          ? "Conectar WhatsApp — etapa 3"
+                          : "Gerenciar conexão Meta"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  O VendorAI continua automaticamente pelo próximo serviço que ainda estiver pendente.
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowMetaDetails((current) => !current)}
+                  className="gap-1 text-muted-foreground"
+                >
+                  {showMetaDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {showMetaDetails ? "Ocultar detalhes avançados" : "Detalhes avançados"}
+                </Button>
+              </div>
+            </div>
 
             {/* Meta Ads — OAuth por tenant, mesma estrutura do Google Ads acima */}
-            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && !metaAdsConnection?.pendingAccountSelection && "hidden")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
@@ -4278,6 +4068,323 @@ Body:
                     <TrendingUp className="h-4 w-4" />
                     {metaAdsConnecting ? "Redirecionando…" : "Conectar Meta Ads"}
                   </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Instagram DM — OAuth via Meta */}
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
+                    </svg>
+                    Instagram DM — Omnichannel
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Conecte sua página do Instagram Business via Meta OAuth para enviar e receber DMs diretamente pelo VendorAI.
+                  </p>
+                </div>
+                {igConnection.data?.connected && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 className="h-3 w-3" /> Conectado
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {igConnection.isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : igConnection.data?.connected ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Conta:</span>
+                      <span className="text-sm font-semibold text-foreground">@{igConnection.data.username}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Page ID:</span>
+                      <code className="text-sm font-mono text-muted-foreground">{igConnection.data.pageId}</code>
+                    </div>
+                    {igConnection.data.tokenExpiresAt && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Token expira em:</span>
+                        <span className="text-sm text-muted-foreground">
+                          {format(new Date(igConnection.data.tokenExpiresAt), "dd/MM/yyyy HH:mm")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onConnectInstagram}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Reconectar
+                    </Button>
+                    <Button
+                      onClick={onRefreshInstagram}
+                      variant="outline"
+                      disabled={refreshIg.isPending}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      {refreshIg.isPending ? "Renovando…" : "Renovar token"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onDisconnectInstagramOAuth}
+                      disabled={disconnectIg.isPending}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {disconnectIg.isPending ? "Desconectando…" : "Desconectar"}
+                    </Button>
+                  </div>
+
+                  <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Webhook de entrada — DMs recebidas</p>
+                    <p className="text-xs text-muted-foreground">Configure o n8n para encaminhar DMs recebidas do Instagram para:</p>
+                    <code className="text-xs block text-muted-foreground">
+                      POST /api/tenants/{tenantId}/webhooks/instagram
+                    </code>
+                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-1">
+{`Headers:
+  X-Webhook-Secret: <seu-webhook-secret>
+  Content-Type: application/json
+
+Body:
+{
+  "igsid": "123456789",
+  "mensagem": "Olá, quero saber mais",
+  "nome": "João Silva"
+}`}
+                    </pre>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Clique no botão abaixo para autorizar a conexão com sua conta do Instagram Business via Meta.
+                  </p>
+                  <Button
+                    onClick={onConnectInstagram}
+                    className="gap-2"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
+                    </svg>
+                    Conectar Instagram
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* WhatsApp — OAuth via Meta */}
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-green-500" />
+                    WhatsApp — Meta Cloud API (oficial)
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Conecte sua conta WhatsApp Business via Meta OAuth para enviar e receber mensagens diretamente pelo VendorAI.
+                  </p>
+                </div>
+                {waConnection.data?.connected && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 className="h-3 w-3" /> Conectado
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {waConnection.isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : waConnection.data?.connected ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Número:</span>
+                      <span className="text-sm font-semibold text-foreground">{waConnection.data.displayPhoneNumber}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">WABA ID:</span>
+                      <code className="text-sm font-mono text-muted-foreground">{waConnection.data.wabaId}</code>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Phone Number ID:</span>
+                      <code className="text-sm font-mono text-muted-foreground">{waConnection.data.phoneNumberId}</code>
+                    </div>
+                    {waConnection.data.tokenExpiresAt && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Token expira em:</span>
+                        <span className="text-sm text-muted-foreground">
+                          {format(new Date(waConnection.data.tokenExpiresAt), "dd/MM/yyyy HH:mm")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onConnectWhatsapp}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Reconectar
+                    </Button>
+                    <Button
+                      onClick={onRefreshWhatsapp}
+                      variant="outline"
+                      disabled={refreshWa.isPending}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      {refreshWa.isPending ? "Renovando…" : "Renovar token"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onDisconnectWhatsappOAuth}
+                      disabled={disconnectWa.isPending}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {disconnectWa.isPending ? "Desconectando…" : "Desconectar"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Clique no botão abaixo para autorizar a conexão com sua conta WhatsApp Business via Meta.
+                  </p>
+                  <Button
+                    onClick={onConnectWhatsapp}
+                    disabled={whatsappConnecting}
+                    className="gap-2"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    {whatsappConnecting ? "Redirecionando…" : "Conectar WhatsApp"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Messenger — Facebook Page Access Token */}
+            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-blue-600" />
+                    Messenger (Facebook)
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Conecte sua Página do Facebook pra receber e responder mensagens do Messenger. Gere o token de acesso da página no Meta for Developers.
+                  </p>
+                </div>
+                {(agentQuery.data as any)?.messengerPageAccessToken && (
+                  <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Conectado
+                  </span>
+                )}
+              </div>
+
+              {agentQuery.isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Page ID</label>
+                    <Input
+                      placeholder="ID numérico da Página do Facebook"
+                      value={messengerPageIdInput}
+                      onChange={(e) => setMessengerPageIdInput(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Page Access Token</label>
+                    <Input
+                      type="password"
+                      placeholder="Token de acesso da página (Meta for Developers)"
+                      value={messengerTokenInput}
+                      onChange={(e) => setMessengerTokenInput(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">Gerado no painel do App no Meta for Developers, com permissão pages_messaging.</p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onSaveMessenger}
+                      disabled={messengerSaving || !agentQuery.data?.id || !messengerTokenInput.trim() || !messengerPageIdInput.trim()}
+                      className="gap-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      {messengerSaving ? "Salvando…" : (agentQuery.data as any)?.messengerPageAccessToken ? "Atualizar credenciais" : "Conectar Messenger"}
+                    </Button>
+                    {(agentQuery.data as any)?.messengerPageAccessToken && (
+                      <Button
+                        variant="outline"
+                        onClick={onDisconnectMessenger}
+                        disabled={messengerSaving}
+                        className="gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Desconectar
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Webhook de entrada — URL Messenger */}
+                  {(agentQuery.data as any)?.messengerPageAccessToken && tenantId && (
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                      <p className="text-sm font-semibold flex items-center gap-1.5">
+                        <span className="text-base">📥</span>
+                        Webhook de entrada (receber mensagens)
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        No Meta for Developers, configure o webhook do Messenger com a URL abaixo (mesmo verify token usado no WhatsApp/Instagram Meta).
+                      </p>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground font-medium">URL do webhook:</p>
+                        <div className="flex gap-2 items-center">
+                          <code className="flex-1 text-xs break-all bg-muted border rounded px-2 py-1.5 text-foreground/80">
+                            {`https://${window.location.hostname}/api/webhooks/meta/messenger`}
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="shrink-0 h-7 w-7"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`https://${window.location.hostname}/api/webhooks/meta/messenger`);
+                              toast({ title: "URL copiada." });
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -4484,6 +4591,154 @@ Body:
               )}
             </div>
 
+              </div>
+            </section>
+
+            {/* Webhook de entrada — WhatsApp Omnichannel (integração técnica no final da aba) */}
+            <div className="order-last rounded-xl border bg-card p-6 space-y-5">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-primary" />
+                  Webhook de entrada — WhatsApp Omnichannel
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Configure o n8n (ou qualquer gateway) para enviar mensagens recebidas do WhatsApp para
+                  este endpoint. Use o <strong>Tenant ID</strong> na URL e o <strong>Webhook Secret</strong> no header
+                  <code className="text-xs bg-muted px-1 py-0.5 rounded mx-1">X-Webhook-Secret</code>.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {/* Tenant ID */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Tenant ID</label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 flex items-center rounded-md border bg-muted/50 px-3 py-2 font-mono text-sm text-muted-foreground select-all">
+                      {tenantId}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      title="Copiar Tenant ID"
+                      onClick={() => {
+                        navigator.clipboard.writeText(tenantId ?? "");
+                        toast({ title: "Tenant ID copiado." });
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Webhook Secret */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Webhook Secret</label>
+                  {agentQuery.isLoading ? (
+                    <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  ) : agentQuery.data?.webhookSecret ? (
+                    <div className="flex gap-2">
+                      <div className="flex-1 flex items-center rounded-md border bg-muted/50 px-3 py-2 font-mono text-sm">
+                        {showWebhookSecret
+                          ? agentQuery.data.webhookSecret
+                          : "whs_" + "•".repeat(32)}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setShowWebhookSecret((v) => !v)}
+                        title={showWebhookSecret ? "Ocultar" : "Mostrar"}
+                      >
+                        {showWebhookSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title="Copiar secret"
+                        onClick={() => {
+                          navigator.clipboard.writeText(agentQuery.data?.webhookSecret ?? "");
+                          toast({ title: "Webhook secret copiado." });
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-4 text-center space-y-1">
+                      <Key className="h-7 w-7 text-muted-foreground mx-auto" />
+                      <p className="text-sm text-muted-foreground">Nenhum secret gerado ainda.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant={agentQuery.data?.webhookSecret ? "outline" : "default"}
+                    disabled={regenerateWebhookSecretMutation.isPending || !agentQuery.data?.id}
+                    onClick={() => {
+                      if (!agentQuery.data?.id) return;
+                      regenerateWebhookSecretMutation.mutate(
+                        { id: agentQuery.data.id },
+                        {
+                          onSuccess: (updated) => {
+                            queryClient.setQueryData(
+                              getGetAgentConfigByTenantQueryKey(tenantId ?? ""),
+                              updated,
+                            );
+                            toast({ title: "Webhook secret gerado com sucesso." });
+                          },
+                          onError: () => toast({ title: "Erro ao gerar secret.", variant: "destructive" }),
+                        },
+                      );
+                    }}
+                    className="gap-2"
+                  >
+                    <RefreshCw className={cn("h-4 w-4", regenerateWebhookSecretMutation.isPending && "animate-spin")} />
+                    {regenerateWebhookSecretMutation.isPending
+                      ? "Gerando…"
+                      : agentQuery.data?.webhookSecret
+                      ? "Regenerar secret"
+                      : "Gerar secret"}
+                  </Button>
+                  {agentQuery.data?.webhookSecret && (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      Ao regenerar, o secret anterior é invalidado. Atualize o n8n antes.
+                    </p>
+                  )}
+                </div>
+
+                {/* Endpoint reference */}
+                <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Endpoint n8n → Vendor.ai</p>
+                  <code className="text-xs block text-muted-foreground">
+                    POST /api/tenants/{tenantId}/webhooks/whatsapp
+                  </code>
+                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-2">
+{`Headers:
+  X-Webhook-Secret: <seu-webhook-secret>
+  Content-Type: application/json
+
+Body:
+{
+  "telefone": "5511999998888",
+  "mensagem": "Olá, quero saber mais",
+  "nome": "João Silva"
+}`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-1">
+              <p className="text-sm font-semibold">Conexões recomendadas</p>
+              <p className="text-sm text-muted-foreground">
+                Para WhatsApp, priorize a integração oficial via Meta ou a conexão rápida por QR Code.
+                Configurações manuais e provedores alternativos continuam disponíveis em Opções avançadas.
+              </p>
+            </div>
+
+            <SocialIntegrationsPanel mode="connect" />
+
             {/* Evolution API — WhatsApp via QR Code (self-hosted, sem custo por cliente) */}
             <EvolutionWhatsAppCard tenantId={tenantId ?? ""} toast={toast} />
 
@@ -4621,227 +4876,6 @@ Body:
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-            </div>
-
-            {/* Messenger — Facebook Page Access Token */}
-            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="font-semibold text-base flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-blue-600" />
-                    Messenger (Facebook)
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Conecte sua Página do Facebook pra receber e responder mensagens do Messenger. Gere o token de acesso da página no Meta for Developers.
-                  </p>
-                </div>
-                {(agentQuery.data as any)?.messengerPageAccessToken && (
-                  <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Conectado
-                  </span>
-                )}
-              </div>
-
-              {agentQuery.isLoading ? (
-                <div className="space-y-2">
-                  <div className="h-10 bg-muted rounded-md animate-pulse" />
-                  <div className="h-10 bg-muted rounded-md animate-pulse" />
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Page ID</label>
-                    <Input
-                      placeholder="ID numérico da Página do Facebook"
-                      value={messengerPageIdInput}
-                      onChange={(e) => setMessengerPageIdInput(e.target.value)}
-                      className="font-mono text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Page Access Token</label>
-                    <Input
-                      type="password"
-                      placeholder="Token de acesso da página (Meta for Developers)"
-                      value={messengerTokenInput}
-                      onChange={(e) => setMessengerTokenInput(e.target.value)}
-                      className="font-mono text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground">Gerado no painel do App no Meta for Developers, com permissão pages_messaging.</p>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <Button
-                      onClick={onSaveMessenger}
-                      disabled={messengerSaving || !agentQuery.data?.id || !messengerTokenInput.trim() || !messengerPageIdInput.trim()}
-                      className="gap-2"
-                    >
-                      <Save className="h-4 w-4" />
-                      {messengerSaving ? "Salvando…" : (agentQuery.data as any)?.messengerPageAccessToken ? "Atualizar credenciais" : "Conectar Messenger"}
-                    </Button>
-                    {(agentQuery.data as any)?.messengerPageAccessToken && (
-                      <Button
-                        variant="outline"
-                        onClick={onDisconnectMessenger}
-                        disabled={messengerSaving}
-                        className="gap-2 text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Desconectar
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Webhook de entrada — URL Messenger */}
-                  {(agentQuery.data as any)?.messengerPageAccessToken && tenantId && (
-                    <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                      <p className="text-sm font-semibold flex items-center gap-1.5">
-                        <span className="text-base">📥</span>
-                        Webhook de entrada (receber mensagens)
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        No Meta for Developers, configure o webhook do Messenger com a URL abaixo (mesmo verify token usado no WhatsApp/Instagram Meta).
-                      </p>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground font-medium">URL do webhook:</p>
-                        <div className="flex gap-2 items-center">
-                          <code className="flex-1 text-xs break-all bg-muted border rounded px-2 py-1.5 text-foreground/80">
-                            {`https://${window.location.hostname}/api/webhooks/meta/messenger`}
-                          </code>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="shrink-0 h-7 w-7"
-                            onClick={() => {
-                              navigator.clipboard.writeText(`https://${window.location.hostname}/api/webhooks/meta/messenger`);
-                              toast({ title: "URL copiada." });
-                            }}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Instagram DM — OAuth via Meta */}
-            <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="font-semibold text-base flex items-center gap-2">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
-                    </svg>
-                    Instagram DM — Omnichannel
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Conecte sua página do Instagram Business via Meta OAuth para enviar e receber DMs diretamente pelo VendorAI.
-                  </p>
-                </div>
-                {igConnection.data?.connected && (
-                  <div className="shrink-0">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
-                      <CheckCircle2 className="h-3 w-3" /> Conectado
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {igConnection.isLoading ? (
-                <div className="space-y-2">
-                  <div className="h-10 bg-muted rounded-md animate-pulse" />
-                </div>
-              ) : igConnection.data?.connected ? (
-                <div className="space-y-4">
-                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Conta:</span>
-                      <span className="text-sm font-semibold text-foreground">@{igConnection.data.username}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Page ID:</span>
-                      <code className="text-sm font-mono text-muted-foreground">{igConnection.data.pageId}</code>
-                    </div>
-                    {igConnection.data.tokenExpiresAt && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Token expira em:</span>
-                        <span className="text-sm text-muted-foreground">
-                          {format(new Date(igConnection.data.tokenExpiresAt), "dd/MM/yyyy HH:mm")}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <Button
-                      onClick={onConnectInstagram}
-                      variant="outline"
-                      className="gap-2"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Reconectar
-                    </Button>
-                    <Button
-                      onClick={onRefreshInstagram}
-                      variant="outline"
-                      disabled={refreshIg.isPending}
-                      className="gap-2"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      {refreshIg.isPending ? "Renovando…" : "Renovar token"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={onDisconnectInstagramOAuth}
-                      disabled={disconnectIg.isPending}
-                      className="gap-2 text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {disconnectIg.isPending ? "Desconectando…" : "Desconectar"}
-                    </Button>
-                  </div>
-
-                  <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Webhook de entrada — DMs recebidas</p>
-                    <p className="text-xs text-muted-foreground">Configure o n8n para encaminhar DMs recebidas do Instagram para:</p>
-                    <code className="text-xs block text-muted-foreground">
-                      POST /api/tenants/{tenantId}/webhooks/instagram
-                    </code>
-                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-1">
-{`Headers:
-  X-Webhook-Secret: <seu-webhook-secret>
-  Content-Type: application/json
-
-Body:
-{
-  "igsid": "123456789",
-  "mensagem": "Olá, quero saber mais",
-  "nome": "João Silva"
-}`}
-                    </pre>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Clique no botão abaixo para autorizar a conexão com sua conta do Instagram Business via Meta.
-                  </p>
-                  <Button
-                    onClick={onConnectInstagram}
-                    className="gap-2"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
-                    </svg>
-                    Conectar Instagram
-                  </Button>
                 </div>
               )}
             </div>
