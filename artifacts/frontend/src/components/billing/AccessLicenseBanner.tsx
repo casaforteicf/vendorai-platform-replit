@@ -89,11 +89,13 @@ export function AccessLicenseBanner() {
     queryKey: ["access-license", user?.tenantId],
     enabled,
     refetchInterval: 60_000,
+    staleTime: 50_000,
+    retry: (failureCount, error) => !String(error).includes("429") && failureCount < 2,
     queryFn: async () => {
       const response = await fetch("/api/access-license/status", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error("Não foi possível consultar a licença.");
+      if (!response.ok) throw new Error(response.status === 429 ? "429: too many requests" : "Não foi possível consultar a licença.");
       return response.json();
     },
   });

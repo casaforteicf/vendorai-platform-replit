@@ -33,8 +33,14 @@ export function NovidadesBell() {
 
   const { data: unread } = useQuery<{ count: number }>({
     queryKey: ["changelog-unread"],
-    queryFn: () => fetch("/api/changelog/unread-count", { headers: authHeaders() }).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch("/api/changelog/unread-count", { headers: authHeaders() });
+      if (!r.ok) throw new Error(`unread-count failed: ${r.status}`);
+      return r.json();
+    },
     refetchInterval: 5 * 60_000,
+    staleTime: 4 * 60_000,
+    retry: (failureCount, error) => !String(error).includes("429") && failureCount < 2,
   });
 
   const { data: entries = [], isLoading } = useQuery<ChangelogEntry[]>({
