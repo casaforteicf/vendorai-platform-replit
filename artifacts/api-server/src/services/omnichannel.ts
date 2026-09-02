@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   db,
   leadsTable,
@@ -8,6 +8,7 @@ import {
   activitiesTable,
   notificationsTable,
   tenantsTable,
+  whatsappConnectionsTable,
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
@@ -726,6 +727,22 @@ export async function sendOutgoingMessage(
 
   if (!lead) throw new LeadNotFoundError(leadId);
 
+  let selectedWhatsappConnection: typeof whatsappConnectionsTable.$inferSelect | null = null;
+  if (canal === "whatsapp") {
+    const [latestConversation] = await db.select({ whatsappConnectionId: conversationsTable.whatsappConnectionId })
+      .from(conversationsTable)
+      .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, leadId), eq(conversationsTable.channel, "whatsapp")))
+      .orderBy(desc(conversationsTable.ultimaMensagemEm))
+      .limit(1);
+    const connections = await db.select().from(whatsappConnectionsTable)
+      .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active")));
+    selectedWhatsappConnection =
+      connections.find((connection) => connection.id === latestConversation?.whatsappConnectionId) ??
+      connections.find((connection) => connection.assignedUserId === lead.assignedTo) ??
+      connections.find((connection) => connection.isDefault) ??
+      connections[0] ??
+      null;
+  }
   // ── 2. WhatsApp: pick provider (Z-API takes priority over Meta) + send
   if (canal === "whatsapp") {
     const [config] = await db
@@ -747,9 +764,12 @@ export async function sendOutgoingMessage(
       throw new WhatsAppPhoneMissingError(leadId);
     }
 
-    const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
-    const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
-    const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
+    const hasZapi = !selectedWhatsappConnection && !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
+    const evolutionInstance = selectedWhatsappConnection?.provider === "evolution" ? selectedWhatsappConnection.evolutionInstanceName : config?.evolutionInstanceName;
+    const hasEvolution = !!evolutionInstance;
+    const metaPhoneNumberId = selectedWhatsappConnection?.provider === "meta" ? selectedWhatsappConnection.phoneNumberId : config?.metaPhoneNumberId;
+    const metaAccessToken = selectedWhatsappConnection?.provider === "meta" ? selectedWhatsappConnection.accessToken : config?.metaAccessToken;
+    const hasMeta = !!(metaPhoneNumberId && metaAccessToken);
 
     if (!hasZapi && !hasEvolution && !hasMeta) {
       throw new WhatsAppNotConnectedError();
@@ -777,9 +797,9 @@ export async function sendOutgoingMessage(
       // ── Evolution API path (self-hosted, sem restrição de janela de 24h) ──
       if (input.midia) {
         const buffer = await fetchMidiaBuffer(input.midia.objectPath);
-        await sendEvolutionMedia(config!.evolutionInstanceName!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, conteudo, log);
+        await sendEvolutionMedia(evolutionInstance!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, conteudo, log);
       } else {
-        await sendEvolutionWhatsAppMessage(config!.evolutionInstanceName!, lead.telefone, conteudo, log);
+        await sendEvolutionWhatsAppMessage(evolutionInstance!, lead.telefone, conteudo, log);
       }
     } else {
       // ── Meta Cloud API path (24h window enforced) ─────────────────────────
@@ -811,12 +831,12 @@ export async function sendOutgoingMessage(
           const templateId = config!.whatsappTemplateId;
           if (templateId) {
             const normalizedPhone = lead.telefone.replace(/\D/g, "").replace(/^0+/, "");
-            const tplUrl = `https://graph.facebook.com/v20.0/${config!.metaPhoneNumberId}/messages`;
+            const tplUrl = `https://graph.facebook.com/v20.0/${metaPhoneNumberId}/messages`;
             const tplRes = await fetch(tplUrl, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${config!.metaAccessToken}`,
+                Authorization: `Bearer ${metaAccessToken}`,
               },
               body: JSON.stringify({
                 messaging_product: "whatsapp",
@@ -858,11 +878,11 @@ export async function sendOutgoingMessage(
       if (!skipTextSend) {
         if (input.midia) {
           const buffer = await fetchMidiaBuffer(input.midia.objectPath);
-          await sendMetaMediaByBuffer(config!.metaPhoneNumberId!, config!.metaAccessToken!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, log);
+          await sendMetaMediaByBuffer(metaPhoneNumberId!, metaAccessToken!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, log);
         } else {
           await sendMetaWhatsAppMessage(
-            config!.metaPhoneNumberId!,
-            config!.metaAccessToken!,
+            metaPhoneNumberId!,
+            metaAccessToken!,
             lead.telefone,
             conteudo,
             log,
@@ -943,7 +963,8 @@ export async function sendOutgoingMessage(
       and(
         eq(conversationsTable.tenantId, tenantId),
         eq(conversationsTable.leadId, leadId),
-        eq(conversationsTable.channel, canal)
+        eq(conversationsTable.channel, canal),
+        ...(canal === "whatsapp" && selectedWhatsappConnection ? [eq(conversationsTable.whatsappConnectionId, selectedWhatsappConnection.id)] : [])
       )
     )
     .limit(1);
@@ -951,7 +972,7 @@ export async function sendOutgoingMessage(
   if (!conversation) {
     [conversation] = await db
       .insert(conversationsTable)
-      .values({ tenantId, leadId, channel: canal, status: "open", naoLidas: 0 })
+      .values({ tenantId, leadId, channel: canal, status: "open", naoLidas: 0, assignedTo: canal === "whatsapp" ? selectedWhatsappConnection?.assignedUserId ?? lead.assignedTo : null, whatsappConnectionId: canal === "whatsapp" ? selectedWhatsappConnection?.id ?? null : null })
       .returning();
     log.info(
       { conversationId: conversation.id, canal },

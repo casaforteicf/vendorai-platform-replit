@@ -4285,6 +4285,12 @@ Body:
               )}
             </div>
 
+            <WhatsappNumbersManager
+              tenantId={tenantId ?? ""}
+              users={teamQuery.data ?? []}
+              onAddMeta={onConnectWhatsapp}
+              toast={toast}
+            />
             {/* Messenger — Facebook Page Access Token */}
             <div className={cn("rounded-xl border bg-card p-6 space-y-5", !showMetaDetails && "hidden")}>
               <div className="flex items-start justify-between gap-4">
@@ -6579,6 +6585,122 @@ function ContractSettingsSection({ tenantId }: { tenantId: string }) {
   );
 }
 
+
+// ── Gestão unificada dos números WhatsApp ─────────────────────────────────────
+type WhatsappConnectionItem = {
+  id: string;
+  provider: "meta" | "evolution" | string;
+  displayPhoneNumber: string | null;
+  businessName: string | null;
+  assignedUserId: string | null;
+  isDefault: boolean;
+  status: string;
+};
+
+function WhatsappNumbersManager({
+  tenantId,
+  users,
+  onAddMeta,
+  toast,
+}: {
+  tenantId: string;
+  users: Array<{ id: string; name?: string | null; email?: string | null; active?: boolean }>;
+  onAddMeta: () => void;
+  toast: (opts: { title: string; description?: string; variant?: "destructive" }) => void;
+}) {
+  const [connections, setConnections] = useState<WhatsappConnectionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const headers = (): Record<string, string> => ({
+    Authorization: "Bearer " + localStorage.getItem("vendorai_token"),
+    "Content-Type": "application/json",
+  });
+
+  async function loadConnections() {
+    if (!tenantId) return;
+    try {
+      const response = await fetch("/api/tenants/" + tenantId + "/whatsapp-connections", { headers: headers() });
+      if (!response.ok) throw new Error("Não foi possível carregar os números.");
+      setConnections(await response.json());
+    } catch (error) {
+      toast({ title: "Erro ao carregar números", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadConnections(); }, [tenantId]);
+
+  async function updateConnection(connectionId: string, data: { assignedUserId?: string | null; isDefault?: boolean }) {
+    const response = await fetch("/api/tenants/" + tenantId + "/whatsapp-connections/" + connectionId, {
+      method: "PATCH",
+      headers: headers(),
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      toast({ title: "Não foi possível atualizar o número.", variant: "destructive" });
+      return;
+    }
+    const updated = await response.json() as WhatsappConnectionItem;
+    setConnections((current) => current.map((item) =>
+      item.id === updated.id ? updated : data.isDefault ? { ...item, isDefault: false } : item
+    ));
+    toast({ title: data.isDefault ? "Número padrão atualizado." : "Responsável atualizado." });
+  }
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-base">Números e responsáveis</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Cada número recebe suas próprias conversas e direciona os leads ao usuário escolhido.
+          </p>
+        </div>
+        <Button variant="outline" onClick={onAddMeta} className="gap-2">
+          <MessageCircle className="h-4 w-4" /> Adicionar número oficial
+        </Button>
+      </div>
+      {loading ? (
+        <div className="h-20 rounded-md bg-muted animate-pulse" />
+      ) : connections.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhum número conectado. Use a Meta ou o QR Code para adicionar o primeiro.</p>
+      ) : (
+        <div className="space-y-3">
+          {connections.map((connection) => (
+            <div key={connection.id} className="grid gap-3 rounded-lg border p-4 md:grid-cols-[1fr_240px_auto] md:items-center">
+              <div>
+                <div className="font-medium">{connection.displayPhoneNumber || connection.businessName || "Aguardando leitura do QR Code"}</div>
+                <div className="text-xs text-muted-foreground">
+                  {connection.provider === "meta" ? "Meta oficial" : "QR Code / Evolution"} · {connection.status}
+                </div>
+              </div>
+              <Select
+                value={connection.assignedUserId ?? "unassigned"}
+                onValueChange={(value) => void updateConnection(connection.id, { assignedUserId: value === "unassigned" ? null : value })}
+              >
+                <SelectTrigger aria-label="Responsável pelo número"><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Sem responsável</SelectItem>
+                  {users.filter((user) => user.active !== false).map((user) => (
+                    <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant={connection.isDefault ? "default" : "outline"}
+                disabled={connection.isDefault}
+                onClick={() => void updateConnection(connection.id, { isDefault: true })}
+              >
+                {connection.isDefault ? "Padrão" : "Definir padrão"}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 // ── Evolution API — WhatsApp via QR Code ──────────────────────────────────────
 // Card separado (não faz parte do componente principal) porque tem seu
 // próprio ciclo de polling do QR Code — evita re-renderizar a tela
@@ -6589,16 +6711,17 @@ function EvolutionWhatsAppCard({ tenantId, toast }: { tenantId: string; toast: (
   const [connecting, setConnecting] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [connectionId, setConnectionId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function authHeaders(): Record<string, string> {
     return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
   }
 
-  async function loadStatus() {
+  async function loadStatus(targetConnectionId: string | null = connectionId) {
     if (!tenantId) return;
     try {
-      const res = await fetch(`/api/tenants/${tenantId}/evolution-whatsapp/status`, { headers: authHeaders() });
+      const res = await fetch(`/api/tenants/${tenantId}/evolution-whatsapp/status${targetConnectionId ? "?connectionId=" + encodeURIComponent(targetConnectionId) : ""}`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
@@ -6627,9 +6750,10 @@ function EvolutionWhatsAppCard({ tenantId, toast }: { tenantId: string; toast: (
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao conectar");
+      if (data.connectionId) setConnectionId(data.connectionId);
       if (data.alreadyConnected) {
         toast({ title: "WhatsApp já estava conectado." });
-        await loadStatus();
+        await loadStatus(data.connectionId ?? null);
       } else if (data.qrCodeBase64) {
         setQrCode(data.qrCodeBase64);
         // Escaneou o QR? Confere o status a cada 3s até conectar (ou até
@@ -6637,7 +6761,7 @@ function EvolutionWhatsAppCard({ tenantId, toast }: { tenantId: string; toast: (
         let attempts = 0;
         pollRef.current = setInterval(async () => {
           attempts++;
-          await loadStatus();
+          await loadStatus(data.connectionId ?? null);
           if (attempts >= 40 && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
         }, 3000);
       } else {
@@ -6654,7 +6778,7 @@ function EvolutionWhatsAppCard({ tenantId, toast }: { tenantId: string; toast: (
     if (!tenantId) return;
     setDisconnecting(true);
     try {
-      await fetch(`/api/tenants/${tenantId}/evolution-whatsapp/disconnect`, { method: "POST", headers: authHeaders() });
+      await fetch(`/api/tenants/${tenantId}/evolution-whatsapp/disconnect${connectionId ? "?connectionId=" + encodeURIComponent(connectionId) : ""}`, { method: "POST", headers: authHeaders() });
       setQrCode(null);
       await loadStatus();
       toast({ title: "WhatsApp desconectado." });

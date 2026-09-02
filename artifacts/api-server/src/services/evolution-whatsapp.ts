@@ -20,8 +20,8 @@ function assertConfigured() {
   }
 }
 
-function instanceNameFor(tenantId: string): string {
-  return `vendorai-${tenantId}`;
+function instanceNameFor(tenantId: string, connectionId?: string): string {
+  return connectionId ? `vendorai-${tenantId}-${connectionId.slice(0, 8)}` : `vendorai-${tenantId}`;
 }
 
 async function evoFetch(path: string, init: RequestInit = {}): Promise<any> {
@@ -37,18 +37,19 @@ async function evoFetch(path: string, init: RequestInit = {}): Promise<any> {
   return body;
 }
 
-function webhookUrlFor(tenantId: string, webhookSecret: string): string {
+function webhookUrlFor(tenantId: string, webhookSecret: string, connectionId?: string): string {
   // Mesmo domínio já usado nos outros webhooks de entrada (WhatsApp
   // Meta, N8N) — confirmado funcionando em produção.
-  return `https://app.appvendorai.com/api/tenants/${tenantId}/webhooks/evolution?secret=${encodeURIComponent(webhookSecret)}`;
+  const connection = connectionId ? "&connectionId=" + encodeURIComponent(connectionId) : "";
+  return `https://app.appvendorai.com/api/tenants/${tenantId}/webhooks/evolution?secret=${encodeURIComponent(webhookSecret)}${connection}`;
 }
 
 // Cria a instância se ainda não existir (idempotente — Evolution API
 // retorna 403 "already in use" se já existe, tratado como sucesso) e
 // configura o webhook pra apontar pro nosso endpoint. Retorna o QR code
 // em base64 pra exibir na tela.
-export async function connectInstance(tenantId: string, webhookSecret: string, log?: Logger): Promise<{ qrCodeBase64: string | null; alreadyConnected: boolean }> {
-  const instanceName = instanceNameFor(tenantId);
+export async function connectInstance(tenantId: string, webhookSecret: string, log?: Logger, connectionId?: string): Promise<{ qrCodeBase64: string | null; alreadyConnected: boolean; instanceName: string }> {
+  const instanceName = instanceNameFor(tenantId, connectionId);
 
   try {
     await evoFetch("/instance/create", {
@@ -58,7 +59,7 @@ export async function connectInstance(tenantId: string, webhookSecret: string, l
         qrcode: true,
         integration: "WHATSAPP-BAILEYS",
         webhook: {
-          url: webhookUrlFor(tenantId, webhookSecret),
+          url: webhookUrlFor(tenantId, webhookSecret, connectionId),
           events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
         },
       }),
@@ -79,15 +80,15 @@ export async function connectInstance(tenantId: string, webhookSecret: string, l
   // Se já estiver conectada, a Evolution API não retorna base64 (nada
   // pra escanear) — nesse caso o status já reflete "open".
   if (connectRes?.instance?.state === "open" || connectRes?.state === "open") {
-    return { qrCodeBase64: null, alreadyConnected: true };
+    return { qrCodeBase64: null, alreadyConnected: true, instanceName };
   }
 
   const qrCodeBase64 = connectRes?.base64 ?? connectRes?.qrcode?.base64 ?? null;
-  return { qrCodeBase64, alreadyConnected: false };
+  return { qrCodeBase64, alreadyConnected: false, instanceName };
 }
 
-export async function getConnectionState(tenantId: string): Promise<"open" | "connecting" | "close"> {
-  const instanceName = instanceNameFor(tenantId);
+export async function getConnectionState(tenantId: string, instanceOverride?: string): Promise<"open" | "connecting" | "close"> {
+  const instanceName = instanceOverride || instanceNameFor(tenantId);
   try {
     const res = await evoFetch(`/instance/connectionState/${instanceName}`);
     const state = res?.instance?.state ?? res?.state;
@@ -112,8 +113,8 @@ export interface EvolutionMediaResult {
 // versão (base64 ausente mesmo com a opção ativada); esse endpoint
 // dedicado busca sob demanda e é o caminho documentado como mais
 // confiável.
-export async function getBase64FromMediaMessage(tenantId: string, messageId: string): Promise<EvolutionMediaResult> {
-  const instanceName = instanceNameFor(tenantId);
+export async function getBase64FromMediaMessage(tenantId: string, messageId: string, instanceOverride?: string): Promise<EvolutionMediaResult> {
+  const instanceName = instanceOverride || instanceNameFor(tenantId);
   const body = await evoFetch(`/chat/getBase64FromMediaMessage/${instanceName}`, {
     method: "POST",
     body: JSON.stringify({ message: { key: { id: messageId } } }),
@@ -126,8 +127,8 @@ export async function getBase64FromMediaMessage(tenantId: string, messageId: str
   };
 }
 
-export async function disconnectInstance(tenantId: string, log?: Logger): Promise<void> {
-  const instanceName = instanceNameFor(tenantId);
+export async function disconnectInstance(tenantId: string, log?: Logger, instanceOverride?: string): Promise<void> {
+  const instanceName = instanceOverride || instanceNameFor(tenantId);
   try {
     await evoFetch(`/instance/logout/${instanceName}`, { method: "DELETE" });
   } catch (err) {

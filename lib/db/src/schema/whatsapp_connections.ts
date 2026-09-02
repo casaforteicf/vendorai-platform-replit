@@ -1,7 +1,8 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { usersTable } from "./users";
 
 export const whatsappConnectionsTable = pgTable("whatsapp_connections", {
   id: text("id")
@@ -10,12 +11,17 @@ export const whatsappConnectionsTable = pgTable("whatsapp_connections", {
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("meta"),
+  assignedUserId: text("assigned_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  isDefault: boolean("is_default").notNull().default(false),
+  label: text("label"),
   wabaId: text("waba_id"),
   phoneNumberId: text("phone_number_id"),
   businessName: text("business_name"),
   displayPhoneNumber: text("display_phone_number"),
   accessToken: text("access_token"),
   tokenExpiresAt: timestamp("token_expires_at"),
+  evolutionInstanceName: text("evolution_instance_name"),
   status: text("status").notNull().default("active"),
   connectedAt: timestamp("connected_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
