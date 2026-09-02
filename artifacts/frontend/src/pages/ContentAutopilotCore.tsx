@@ -1,418 +1,264 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
+import ContentAutopilotLegacyUI from "./ContentAutopilotLegacyUI";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Loader2, Search, Check, X, Wand2, ExternalLink, Globe, EyeOff } from "lucide-react";
-import { getContentAutopilotBlogPostUrl } from "@/lib/contentAutopilotBlogUrl";
+import {
+  Bot,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  FileText,
+  Lightbulb,
+  Loader2,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Wand2,
+} from "lucide-react";
+
+type AutopilotMode = "suggestion" | "semi" | "automatic";
+
+type SitePlan = {
+  generatedAt: string;
+  summary: {
+    sites: number;
+    publishedSites: number;
+    keywords: number;
+    discoveredKeywords: number;
+    approvedKeywords: number;
+    articles: number;
+    publishedArticles: number;
+    reviewArticles: number;
+    lowSeoArticles: number;
+    autopilotActive: boolean;
+    siteConnected: boolean;
+  };
+  opportunities: Array<{
+    id: string;
+    priority: "alta" | "media" | "baixa";
+    area: "site" | "seo" | "conteudo" | "autopilot";
+    title: string;
+    description: string;
+    action: string;
+  }>;
+  weeks: Array<{ week: number; focus: string; action: string }>;
+};
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-interface Config {
-  siteUrl: string | null;
-  canalPublicacao: string;
-  artigosPorDia: number;
-  tetoGastoMensal: string | null;
-  gastoAcumulado: string;
-  ativo: boolean;
-  brandTone: unknown;
-}
-interface Keyword {
-  id: string; termo: string; volumeBusca: number | null; status: string;
-}
-interface Article {
-  id: string; titulo: string | null; status: string; seoScore: number | null;
-  imagens: { url: string; altText: string }[]; createdAt: string;
-}
-interface BlogPost {
-  id: string; slug: string; titulo: string; imagemCapaUrl: string | null;
-  publicado: boolean; publicadoEm: string | null;
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  descoberta: "Descoberta", aprovada: "Aprovada", em_uso: "Em uso", descartada: "Descartada",
-  pesquisando: "Pesquisando", gerando: "Gerando", otimizando: "Otimizando",
-  pronto_revisao: "Pronto p/ revisão", publicado: "Publicado", erro: "Erro",
+const MODE_COPY: Record<AutopilotMode, { title: string; description: string }> = {
+  suggestion: {
+    title: "Sugestão",
+    description: "A IA identifica oportunidades e propõe alterações. Nada é produzido ou publicado automaticamente.",
+  },
+  semi: {
+    title: "Semiautomático",
+    description: "A IA prepara conteúdos e melhorias para revisão. A publicação continua dependendo de aprovação.",
+  },
+  automatic: {
+    title: "Automático",
+    description: "O job contínuo do Autopilot fica ativo para produzir a partir de oportunidades aprovadas.",
+  },
 };
 
-export default function ContentAutopilot() {
+function priorityVariant(priority: "alta" | "media" | "baixa") {
+  if (priority === "alta") return "destructive" as const;
+  if (priority === "media") return "secondary" as const;
+  return "outline" as const;
+}
+
+export default function ContentAutopilotCore() {
   const { user } = useAuth();
   const tenantId = (user as any)?.tenantId ?? "";
-  const qc = useQueryClient();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const storageKey = `vendorai_site_autopilot_mode:${tenantId}`;
+  const [mode, setMode] = useState<AutopilotMode>(() => {
+    const saved = localStorage.getItem(storageKey) as AutopilotMode | null;
+    return saved && ["suggestion", "semi", "automatic"].includes(saved) ? saved : "suggestion";
+  });
+  const [savingMode, setSavingMode] = useState(false);
 
-  const [siteUrl, setSiteUrl] = useState("");
-  const [seedInput, setSeedInput] = useState("");
-
-  const { data, isLoading } = useQuery<{ config: Config | null; dataForSeoConfigured: boolean }>({
-    queryKey: ["content-autopilot-config", tenantId],
-    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { headers: authHeaders() }).then((r) => r.json()),
+  const { data: plan, isLoading, refetch } = useQuery<SitePlan>({
+    queryKey: ["content-autopilot-site-plan", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/site-plan`, { headers: authHeaders() });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível montar o plano do site");
+      return body;
+    },
     enabled: !!tenantId,
   });
-  const config = data?.config;
-  const dataForSeoConfigured = data?.dataForSeoConfigured ?? false;
 
-  const { data: keywordsData } = useQuery<{ keywords: Keyword[] }>({
-    queryKey: ["content-autopilot-keywords", tenantId],
-    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/keywords`, { headers: authHeaders() }).then((r) => r.json()),
-    enabled: !!tenantId,
-  });
-  const keywords = keywordsData?.keywords ?? [];
+  useEffect(() => {
+    if (!plan) return;
+    const saved = localStorage.getItem(storageKey);
+    if (!saved && plan.summary.autopilotActive) setMode("automatic");
+  }, [plan, storageKey]);
 
-  const { data: articlesData } = useQuery<{ articles: Article[] }>({
-    queryKey: ["content-autopilot-articles", tenantId],
-    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/articles`, { headers: authHeaders() }).then((r) => r.json()),
-    enabled: !!tenantId,
-  });
-  const articles = articlesData?.articles ?? [];
-
-  const { data: blogPostsData } = useQuery<{ posts: BlogPost[] }>({
-    queryKey: ["content-autopilot-blog-posts", tenantId],
-    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/site-blog-posts`, { headers: authHeaders() }).then((r) => r.json()),
-    enabled: !!tenantId,
-  });
-  const blogPosts = blogPostsData?.posts ?? [];
-
-  const saveConfigMutation = useMutation({
-    mutationFn: (payload: Partial<Config>) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(payload) })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao salvar"); return r.json(); }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] }); toast({ title: "Configuração salva" }); },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const analyzeSiteMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/analyze-site`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao analisar site"); return r.json(); }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] }); toast({ title: "Tom de marca extraído!" }); },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const runNowMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/run-now`, { method: "POST", headers: authHeaders() })
-        .then(async (r) => {
-          const body = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error((body as { error?: string }).error ?? "Erro ao executar o Autopilot");
-          return body as { artigosGerados: number; erros: string[] };
-        }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
-      qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] });
-      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
-      toast({
-        title: `Autopilot executado: ${res.artigosGerados} artigo${res.artigosGerados === 1 ? "" : "s"} gerado${res.artigosGerados === 1 ? "" : "s"}`,
-        description: res.erros?.length ? `${res.erros.length} item(ns) com erro — consulte os logs.` : undefined,
+  async function changeMode(next: AutopilotMode) {
+    if (!tenantId) return;
+    setSavingMode(true);
+    try {
+      // O backend existente já possui o controle operacional `ativo`.
+      // Sugestão e Semiautomático mantêm o job recorrente pausado; Automático o ativa.
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/config`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ ativo: next === "automatic" }),
       });
-    },
-    onError: (e: Error) => toast({ title: "Erro ao executar Autopilot", description: e.message, variant: "destructive" }),
-  });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível alterar o modo");
+      setMode(next);
+      localStorage.setItem(storageKey, next);
+      queryClient.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] });
+      queryClient.invalidateQueries({ queryKey: ["content-autopilot-site-plan", tenantId] });
+      toast({ title: `Modo ${MODE_COPY[next].title} ativado` });
+    } catch (error: any) {
+      toast({ title: "Erro ao alterar modo", description: error.message, variant: "destructive" });
+    } finally {
+      setSavingMode(false);
+    }
+  }
 
-  const researchMutation = useMutation({
-    mutationFn: (seedKeywords: string[]) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/keywords/research`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ seedKeywords }) })
-        .then((r) => { if (!r.ok) throw new Error("Erro na pesquisa"); return r.json(); }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] });
-      toast({ title: `${res.inseridas} keywords novas encontradas`, description: `Custo: US$ ${res.custoUsd?.toFixed(4)}` });
-      setSeedInput("");
-    },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const patchKeywordMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/keywords/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] }),
-  });
-
-  const generateArticleMutation = useMutation({
-    mutationFn: (keywordId: string) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/keywords/${keywordId}/generate-article`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao gerar artigo"); return r.json(); }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
-      qc.invalidateQueries({ queryKey: ["content-autopilot-keywords", tenantId] });
-      toast({ title: "Artigo gerado!" });
-    },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const optimizeMutation = useMutation({
-    mutationFn: (articleId: string) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/articles/${articleId}/optimize`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao otimizar"); return r.json(); }),
-    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] }); toast({ title: `Score SEO: ${res.seoScore}/100` }); },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const publishNativeMutation = useMutation({
-    mutationFn: (articleId: string) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/articles/${articleId}/publish-native`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao publicar"); return r.json(); }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
-      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
-      toast({ title: "Rascunho criado — vá na aba Posts do Blog pra colocar no ar" });
-    },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  const togglePublishMutation = useMutation({
-    mutationFn: ({ id, publish }: { id: string; publish: boolean }) =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/site-blog-posts/${id}/${publish ? "publish" : "unpublish"}`, { method: "PATCH", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao atualizar publicação"); return r.json(); }),
-    onSuccess: (_res, vars) => {
-      qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
-      toast({ title: vars.publish ? "Post publicado — já está no ar!" : "Post despublicado" });
-    },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
-  });
-
-  if (isLoading) {
-    return <div className="space-y-3"><Skeleton className="h-10 w-64" /><Skeleton className="h-40 w-full" /></div>;
+  function openProduction() {
+    document.getElementById("content-autopilot-production")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Sparkles className="h-5 w-5" /> Content Autopilot
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">Pesquisa, gera e publica conteúdo SEO automaticamente.</p>
+      <Card className="border-primary/20">
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg"><Bot className="h-5 w-5 text-primary" /> Autopilot do Site</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Motor editorial e de crescimento conectado ao Gerador de Sites, SEO e conteúdo real do tenant.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={plan?.summary.autopilotActive ? "default" : "secondary"}>{plan?.summary.autopilotActive ? "Ativo" : "Job pausado"}</Badge>
+              <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isLoading}>
+                {isLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}Atualizar diagnóstico
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nível de automação</p>
+            <div className="grid gap-3 md:grid-cols-3">
+              {(Object.keys(MODE_COPY) as AutopilotMode[]).map((item) => {
+                const active = mode === item;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => changeMode(item)}
+                    disabled={savingMode}
+                    className={`rounded-xl border p-4 text-left transition-all ${active ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:border-primary/40"}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-semibold">{MODE_COPY[item].title}</span>
+                      {active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{MODE_COPY[item].description}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Conteúdo bloqueado ou aprovado continua protegido; ativar o job não autoriza reescrever elementos travados do site.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4" /> Plano de Conteúdo do Site</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {isLoading && (
+            <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Analisando sites, keywords e conteúdos reais...</div>
+          )}
+
+          {plan && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Sites / LPs</p><p className="mt-1 text-xl font-bold">{plan.summary.sites}</p><p className="text-[11px] text-muted-foreground">{plan.summary.publishedSites} publicados</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Keywords</p><p className="mt-1 text-xl font-bold">{plan.summary.keywords}</p><p className="text-[11px] text-muted-foreground">{plan.summary.approvedKeywords} aprovadas</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Artigos</p><p className="mt-1 text-xl font-bold">{plan.summary.articles}</p><p className="text-[11px] text-muted-foreground">{plan.summary.publishedArticles} publicados</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Aguardando revisão</p><p className="mt-1 text-xl font-bold">{plan.summary.reviewArticles}</p><p className="text-[11px] text-muted-foreground">conteúdos reais</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">SEO abaixo de 70</p><p className="mt-1 text-xl font-bold">{plan.summary.lowSeoArticles}</p><p className="text-[11px] text-muted-foreground">itens a otimizar</p></div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between"><p className="text-sm font-semibold">Oportunidades encontradas</p><Badge variant="secondary">{plan.opportunities.length}</Badge></div>
+                  {plan.opportunities.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma pendência estrutural detectada com os dados atuais. Continue acompanhando desempenho e novas demandas.</div>
+                  ) : (
+                    plan.opportunities.map((opportunity) => (
+                      <div key={opportunity.id} className="rounded-lg border p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2"><Badge variant={priorityVariant(opportunity.priority)} className="text-[10px]">{opportunity.priority}</Badge><span className="text-[10px] uppercase text-muted-foreground">{opportunity.area}</span></div>
+                            <p className="mt-2 text-sm font-semibold">{opportunity.title}</p>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{opportunity.description}</p>
+                          </div>
+                          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                        </div>
+                        <button type="button" onClick={openProduction} className="mt-3 text-xs font-medium text-primary hover:underline">{opportunity.action}</button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">Plano sugerido — próximos 30 dias</p>
+                  {plan.weeks.map((week) => (
+                    <div key={week.week} className="flex gap-3 rounded-lg border p-4">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">S{week.week}</div>
+                      <div><p className="text-sm font-semibold">{week.focus}</p><p className="mt-1 text-xs text-muted-foreground">{week.action}</p></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-start gap-3">
+                  <Lightbulb className="mt-0.5 h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-sm font-semibold">Ciclo integrado</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">CRM e dúvidas recorrentes devem alimentar oportunidades → conteúdo → site/LP → SEO → leads → oportunidades → vendas → AI Marketing Manager → próximo conteúdo. Esta tela começa pela parte que já possui dados reais: sites, keywords e artigos.</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <div id="content-autopilot-production" className="scroll-mt-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Wand2 className="h-4 w-4 text-primary" />
+          <div><p className="text-sm font-semibold">Produção, SEO e publicação</p><p className="text-xs text-muted-foreground">Ferramentas existentes preservadas: configuração, keywords, geração, otimização e posts do blog.</p></div>
+        </div>
+        <ContentAutopilotLegacyUI />
       </div>
 
-      <Tabs defaultValue="config">
-        <TabsList>
-          <TabsTrigger value="config">Configuração</TabsTrigger>
-          <TabsTrigger value="keywords">Keywords ({keywords.length})</TabsTrigger>
-          <TabsTrigger value="articles">Artigos ({articles.length})</TabsTrigger>
-          <TabsTrigger value="posts">Posts do Blog ({blogPosts.length})</TabsTrigger>
-        </TabsList>
-
-        {/* ── Configuração ─────────────────────────────────────────── */}
-        <TabsContent value="config" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium">Módulo ativo (roda sozinho todo dia às 05h)</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">Só processa keywords já aprovadas por você na aba Keywords.</p>
-                </div>
-                <Switch
-                  checked={config?.ativo ?? false}
-                  onCheckedChange={(v) => saveConfigMutation.mutate({ ativo: v })}
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
-                <div className="flex items-center gap-2 text-xs">
-                  <Badge variant={dataForSeoConfigured ? "outline" : "destructive"}>
-                    DataForSEO {dataForSeoConfigured ? "conectado" : "não configurado"}
-                  </Badge>
-                  <span className="text-muted-foreground">
-                    {config?.ativo ? "Automação diária ativa" : "Automação diária pausada"}
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => runNowMutation.mutate()}
-                  disabled={!config?.ativo || runNowMutation.isPending}
-                >
-                  {runNowMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                  Executar agora
-                </Button>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>URL do site</Label>
-                <div className="flex gap-2">
-                  <Input placeholder="https://seusite.com" value={siteUrl || config?.siteUrl || ""} onChange={(e) => setSiteUrl(e.target.value)} />
-                  <Button variant="outline" onClick={() => saveConfigMutation.mutate({ siteUrl })} disabled={!siteUrl || saveConfigMutation.isPending}>
-                    Salvar
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => analyzeSiteMutation.mutate()} disabled={!config?.siteUrl || analyzeSiteMutation.isPending}>
-                  {analyzeSiteMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                  Analisar tom de marca
-                </Button>
-                {config?.brandTone ? <Badge variant="outline" className="text-xs">Tom já extraído</Badge> : null}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t">
-                <div>
-                  <p className="text-xs text-muted-foreground">Gasto acumulado</p>
-                  <p className="text-sm font-semibold">US$ {Number(config?.gastoAcumulado ?? 0).toFixed(4)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Teto mensal</p>
-                  <p className="text-sm font-semibold">{config?.tetoGastoMensal ? `US$ ${config.tetoGastoMensal}` : "Sem teto definido"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Keywords ─────────────────────────────────────────────── */}
-        <TabsContent value="keywords" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="p-4 space-y-2">
-              <Label className="text-sm">Pesquisar novas keywords (Pesquisador — custo real via DataForSEO)</Label>
-              <div className="flex gap-2">
-                <Input placeholder="Termos separados por vírgula" value={seedInput} onChange={(e) => setSeedInput(e.target.value)} />
-                <Button
-                  onClick={() => researchMutation.mutate(seedInput.split(",").map((s) => s.trim()).filter(Boolean))}
-                  disabled={!seedInput.trim() || researchMutation.isPending || !dataForSeoConfigured}
-                >
-                  {researchMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-                  Pesquisar
-                </Button>
-              </div>
-              {!dataForSeoConfigured && (
-                <p className="text-xs text-amber-600">
-                  Pesquisa de keywords indisponível até as credenciais DataForSEO serem configuradas pela plataforma.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {keywords.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhuma keyword descoberta ainda.</div>
-          ) : (
-            <div className="space-y-1.5">
-              {keywords.map((k) => (
-                <Card key={k.id}>
-                  <CardContent className="p-3 flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex-1 min-w-[160px]">
-                      <p className="text-sm font-medium">{k.termo}</p>
-                      <p className="text-xs text-muted-foreground">{k.volumeBusca != null ? `${k.volumeBusca} buscas/mês` : "volume desconhecido"}</p>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{STATUS_LABEL[k.status] ?? k.status}</Badge>
-                    {k.status === "descoberta" && (
-                      <div className="flex gap-1.5">
-                        <Button size="sm" variant="outline" onClick={() => patchKeywordMutation.mutate({ id: k.id, status: "aprovada" })}>
-                          <Check className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => patchKeywordMutation.mutate({ id: k.id, status: "descartada" })}>
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    )}
-                    {k.status === "aprovada" && (
-                      <Button size="sm" onClick={() => generateArticleMutation.mutate(k.id)} disabled={generateArticleMutation.isPending}>
-                        {generateArticleMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
-                        Gerar artigo agora
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* ── Artigos ──────────────────────────────────────────────── */}
-        <TabsContent value="articles" className="space-y-2 mt-4">
-          {articles.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum artigo gerado ainda.</div>
-          ) : (
-            articles.map((a) => (
-              <Card key={a.id}>
-                <CardContent className="p-4 flex gap-4 flex-wrap items-center">
-                  {a.imagens?.[0]?.url && (
-                    <img src={a.imagens[0].url} alt="" className="w-20 h-14 object-cover rounded-md shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-[200px]">
-                    <p className="text-sm font-medium">{a.titulo ?? "(gerando...)"}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-xs">{STATUS_LABEL[a.status] ?? a.status}</Badge>
-                      {a.seoScore != null && <Badge variant="outline" className="text-xs">SEO {a.seoScore}/100</Badge>}
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    {a.status === "otimizando" && (
-                      <Button size="sm" variant="outline" onClick={() => optimizeMutation.mutate(a.id)} disabled={optimizeMutation.isPending}>
-                        Otimizar
-                      </Button>
-                    )}
-                    {a.status === "pronto_revisao" && (
-                      <Button size="sm" onClick={() => publishNativeMutation.mutate(a.id)} disabled={publishNativeMutation.isPending}>
-                        <Globe className="h-3.5 w-3.5 mr-1.5" /> Publicar rascunho
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        {/* ── Posts do Blog ────────────────────────────────────────── */}
-        <TabsContent value="posts" className="space-y-2 mt-4">
-          <p className="text-xs text-muted-foreground">
-            "Publicar" aqui é a única forma de um post ficar visível de verdade em {config?.siteUrl ? new URL(config.siteUrl).hostname : "seu site"}/api/sites/.../blog — o sistema nunca publica sozinho.
-          </p>
-          {blogPosts.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum post ainda. Gere e publique um artigo na aba Artigos primeiro.</div>
-          ) : (
-            blogPosts.map((p) => {
-              const publicPostUrl = getContentAutopilotBlogPostUrl(config?.siteUrl, p.slug);
-              return (
-              <Card key={p.id}>
-                <CardContent className="p-4 flex gap-4 flex-wrap items-center">
-                  {p.imagemCapaUrl && <img src={p.imagemCapaUrl} alt="" className="w-20 h-14 object-cover rounded-md shrink-0" />}
-                  <div className="flex-1 min-w-[200px]">
-                    <p className="text-sm font-medium">{p.titulo}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant={p.publicado ? "default" : "outline"} className="text-xs">
-                        {p.publicado ? "No ar" : "Rascunho (não visível)"}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    {p.publicado ? (
-                      <>
-                        {publicPostUrl ? (
-                          <Button size="sm" variant="outline" asChild>
-                            <a href={publicPostUrl} target="_blank" rel="noreferrer">
-                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Ver
-                            </a>
-                          </Button>
-                        ) : null}
-                        <Button size="sm" variant="ghost" onClick={() => togglePublishMutation.mutate({ id: p.id, publish: false })} disabled={togglePublishMutation.isPending}>
-                          <EyeOff className="h-3.5 w-3.5" />
-                        </Button>
-                      </>
-                    ) : (
-                      <Button size="sm" onClick={() => togglePublishMutation.mutate({ id: p.id, publish: true })} disabled={togglePublishMutation.isPending}>
-                        {togglePublishMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Globe className="h-3.5 w-3.5 mr-1.5" />}
-                        Publicar
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              );
-            })
-          )}
-        </TabsContent>
-      </Tabs>
+      <Card className="border-dashed">
+        <CardContent className="grid gap-3 p-4 md:grid-cols-3">
+          <div className="flex gap-2"><Search className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-xs font-semibold">SEO</p><p className="text-[11px] text-muted-foreground">Palavras-chave e otimização orientam novas páginas e artigos.</p></div></div>
+          <div className="flex gap-2"><FileText className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-xs font-semibold">Conteúdo</p><p className="text-[11px] text-muted-foreground">Artigos publicados entram no blog nativo do site gerado.</p></div></div>
+          <div className="flex gap-2"><Target className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-xs font-semibold">Conversão</p><p className="text-[11px] text-muted-foreground">O próximo estágio conecta conteúdo a origem, lead, oportunidade e venda.</p></div></div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
