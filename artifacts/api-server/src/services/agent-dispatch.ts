@@ -40,6 +40,7 @@ import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js
 import { detectBotPattern, BOT_SIGNAL_THRESHOLD } from "./bot-detection.js";
 import { classifyFinancialIntent } from "./financial-intent.js";
 import { handleDeliveryFeedbackReply } from "./post-venda.js";
+import { prepareSupportAiIntake } from "./support-ai-intake.js";
 import { handleSequenceOfferReply } from "./sequence-offer.js";
 import { generateAgentHandoffSummary } from "./handoff.js";
 import { sendDirectWhatsAppMessage, sendDirectWhatsAppDocument } from "./omnichannel.js";
@@ -865,6 +866,32 @@ export async function processAgentInternal(params: {
     let enrichedScenario: Record<string, unknown> | null = scenario
       ? { ...(scenario as Record<string, unknown>) }
       : null;
+
+    // Cliente já convertido é atendido pelo agente `service`. Antes de gerar a
+    // resposta, classificamos se a conversa realmente exige assistência
+    // operacional. Se sim, o fluxo coleta o mínimo necessário e, quando houver
+    // contexto suficiente, abre o AST de forma determinística, com responsável
+    // real e sem depender de um marcador inventado pelo LLM.
+    if (resolvedAgentName === "service") {
+      try {
+        const supportIntake = await prepareSupportAiIntake({
+          tenantId,
+          lead: ctx.lead,
+          recentMessages: ctx.recentMessages,
+          currentMessage: mensagem,
+          log,
+        });
+        if (supportIntake.state !== "none") {
+          enrichedScenario = { ...(enrichedScenario ?? {}), supportIntake };
+          log.info({ tenantId, leadId, supportIntakeState: supportIntake.state, code: supportIntake.code }, "dispatch: support AI intake prepared");
+        }
+      } catch (err) {
+        // A classificação/abertura não pode derrubar o atendimento principal.
+        // O agente continua respondendo normalmente e o erro fica observável.
+        log.error({ err, tenantId, leadId }, "dispatch: support AI intake failed (non-fatal)");
+      }
+    }
+
     if (resolvedAgentName === "pharmacy") {
       const catalogProductsRaw = await db
         .select({

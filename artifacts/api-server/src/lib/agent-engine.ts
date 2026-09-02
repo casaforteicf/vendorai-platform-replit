@@ -1347,7 +1347,7 @@ export function buildSchedulerPrompt(
   return joinWithCalibration(parts);
 }
 
-export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
+export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
   if (systemPromptOverride?.trim()) {
@@ -1367,6 +1367,36 @@ export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentC
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
   parts.push(buildLeadSection(lead));
+
+  const supportIntake = scenario?.supportIntake as {
+    state?: "collecting" | "opened" | "existing" | "unassigned";
+    code?: string;
+    missingQuestion?: string;
+    category?: string;
+    priority?: string;
+    problemSummary?: string;
+    products?: string[];
+    responsibleName?: string | null;
+    instruction?: string;
+  } | undefined;
+  if (supportIntake?.state && supportIntake.instruction) {
+    const details = [
+      `Estado: ${supportIntake.state}`,
+      supportIntake.code ? `Código AST: ${supportIntake.code}` : null,
+      supportIntake.category ? `Categoria: ${supportIntake.category}` : null,
+      supportIntake.priority ? `Prioridade: ${supportIntake.priority}` : null,
+      supportIntake.problemSummary ? `Problema identificado: ${supportIntake.problemSummary}` : null,
+      supportIntake.products?.length ? `Itens/produtos citados: ${supportIntake.products.join(", ")}` : null,
+      supportIntake.responsibleName ? `Responsável: ${supportIntake.responsibleName}` : null,
+    ].filter(Boolean).join("\n");
+    parts.push(
+      "## FLUXO OPERACIONAL DE ASSISTÊNCIA — INSTRUÇÃO OBRIGATÓRIA\n" +
+      `${details}\n` +
+      `${supportIntake.instruction}\n` +
+      "Não invente código, responsável, prazo, diagnóstico ou solução técnica. Se o estado for collecting, faça somente a pergunta indicada. Se for opened, confirme o registro com o código real. Se for existing, não crie nem prometa novo chamado."
+    );
+  }
+
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
     if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);

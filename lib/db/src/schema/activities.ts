@@ -17,6 +17,7 @@ export const activityTipoEnum = pgEnum("activity_tipo", [
   "escalacao_humano",
   "handoff_agente",
   "feedback_entrega",
+  "assistencia",
 ]);
 
 export const activityStatusEnum = pgEnum("activity_status", [
