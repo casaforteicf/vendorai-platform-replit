@@ -1,6 +1,20 @@
 -- Gestão ERP passa a ser add-on comercial do VendorAI por R$ 299/mês.
 -- Regra de migração: nenhum tenant recebe ERP por padrão. O Super Admin
 -- reativa individualmente após a contratação, sem apagar nenhum dado do ERP.
+--
+-- Produtos comerciais globais da própria plataforma usam tenant_id NULL.
+-- A regra de categoria obrigatória deve continuar valendo para produtos ativos
+-- dos tenants, mas não pode bloquear SKUs globais do VendorAI.
+ALTER TABLE produtos_catalogo
+  DROP CONSTRAINT IF EXISTS produtos_catalogo_categoria_ativa_check;
+
+ALTER TABLE produtos_catalogo
+  ADD CONSTRAINT produtos_catalogo_categoria_ativa_check
+  CHECK (
+    (ativo = FALSE)
+    OR (tenant_id IS NULL)
+    OR (categoria_id IS NOT NULL)
+  ) NOT VALID;
 
 INSERT INTO tenant_nav_modules (id, tenant_id, module_key, is_enabled, updated_at)
 SELECT
