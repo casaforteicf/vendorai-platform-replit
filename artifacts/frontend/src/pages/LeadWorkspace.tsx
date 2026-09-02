@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
+import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import LeadDetail from "@/pages/LeadDetail";
@@ -48,6 +48,7 @@ export default function LeadWorkspace() {
   const { data: activities = [] } = useListActivities(tenantId, { leadId: id }, { request, query: { enabled, queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) } });
   const { data: users = [] } = useListTenantUsers(tenantId, { request, query: { enabled, queryKey: getListTenantUsersQueryKey(tenantId) } });
   const { data: configuredStages = [] } = useListPipelineStages(tenantId, { request, query: { enabled, queryKey: getListPipelineStagesQueryKey(tenantId) } });
+  const createDeal = useCreateDeal({ request });
   const deal = useMemo(() => deals.find((d) => d.id === requestedDealId) ?? deals.find((d) => !["ganho", "perdido", "entregue"].includes(d.etapa)) ?? deals[0] ?? null, [deals, requestedDealId]);
   const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
@@ -64,6 +65,22 @@ export default function LeadWorkspace() {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
+  function startAttendance() {
+    if (!lead) return;
+    createDeal.mutate(
+      { data: { tenantId, leadId: id, titulo: "Atendimento - " + lead.nome, etapa: "novo" } },
+      {
+        onSuccess: async () => {
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+            qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+          ]);
+          toast({ title: "Atendimento iniciado", description: "Defina agora o responsável e a próxima atividade." });
+        },
+        onError: () => toast({ title: "Erro ao iniciar atendimento", variant: "destructive" }),
+      },
+    );
+  }
   function showAdvance() {
     const stage = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
     setNextStage(stage); setOwner(deal?.assignedTo ?? user?.id ?? ""); setTitle(guidance[stage]?.[1] ?? "Dar continuidade ao atendimento"); setOpen(true);
@@ -88,7 +105,7 @@ export default function LeadWorkspace() {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between"><div className="flex items-start gap-3">
         <Button variant="ghost" size="icon" aria-label="Voltar à pipeline" onClick={() => navigate("/deals")}><ArrowLeft className="h-5 w-5" /></Button>
         <div><div className="mb-2 flex gap-2"><Badge>Central de Trabalho</Badge><Badge variant="outline">{currentStage?.label ?? deal?.etapa ?? "Sem negócio"}</Badge></div><h1 className="text-2xl font-semibold">{lead.nome}</h1><p className="text-sm text-muted-foreground">{guidance[deal?.etapa ?? "novo"]?.[0] ?? "Atendimento em andamento"}</p></div>
-      </div>{deal ? <Button onClick={showAdvance}>Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button> : <Button onClick={() => navigate("/trabalho?leadId=" + id)}>Criar negócio</Button>}</div>
+      </div>{deal ? <Button onClick={showAdvance}>Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button> : <Button disabled={createDeal.isPending} onClick={startAttendance}>{createDeal.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Iniciar atendimento</Button>}</div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <Summary label="Responsável atual" value={displayUser(deal?.assignedTo ?? lead.assignedTo)} icon={<UserRound className="h-4 w-4" />} />
         <Summary label="Próxima atividade" value={pending[0]?.titulo ?? "Nenhuma atividade pendente"} icon={<CalendarClock className="h-4 w-4" />} />

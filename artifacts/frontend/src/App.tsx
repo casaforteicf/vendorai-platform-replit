@@ -28,7 +28,7 @@ const NotFound           = lazy(() => import("@/pages/not-found"));
 const Suspended          = lazy(() => import("@/pages/Suspended"));
 
 const Dashboard          = lazy(() => import("@/pages/dashboard/Dashboard"));
-const CentralTrabalho    = lazy(() => import("@/pages/CentralTrabalho"));
+const WorkCenterHome     = lazy(() => import("@/pages/WorkCenterHome"));
 const ComissoesVendedor  = lazy(() => import("@/pages/ComissoesVendedor"));
 const Leads              = lazy(() => import("@/pages/Leads"));
 const ImportConfig       = lazy(() => import("@/pages/leads/import-config"));
@@ -557,7 +557,7 @@ function AppRoutes() {
           <ProtectedRoute component={LeadWorkspace} />
         </Route>
         <Route path="/trabalho">
-          <ProtectedRoute component={CentralTrabalho} />
+          <ProtectedRoute component={WorkCenterHome} />
         </Route>
         <Route path="/leads/import-config">
           <ProtectedRoute component={ImportConfig} />
