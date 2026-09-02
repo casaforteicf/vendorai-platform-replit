@@ -78,7 +78,40 @@ export default function Privacy() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold text-slate-900 mb-3">7. Contato</h2>
+            <h2 className="text-2xl font-bold text-slate-900 mb-3">7. Uso de dados do Google</h2>
+            <p className="text-slate-600 leading-relaxed mb-3">
+              Quando você conecta uma conta Google à VendorAI, acessamos apenas os dados estritamente necessários
+              para a funcionalidade que você ativou, sempre com sua autorização explícita via OAuth 2.0, e você pode
+              revogar o acesso a qualquer momento em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">myaccount.google.com/permissions</a>.
+            </p>
+            <ul className="list-disc pl-6 text-slate-600 space-y-2">
+              <li>
+                <strong>Google Agenda (Calendar):</strong> lemos e criamos eventos na agenda conectada exclusivamente
+                para sincronizar compromissos e agendamentos criados dentro do CRM da VendorAI. Não lemos agendas não
+                conectadas, não compartilhamos esses eventos com terceiros e não usamos esse conteúdo para publicidade.
+              </li>
+              <li>
+                <strong>Google Ads / Data Manager:</strong> usamos o acesso apenas para criar, ler e gerenciar campanhas
+                publicitárias em nome do próprio usuário (ou do tenant que ele administra) dentro do módulo de Anúncios
+                da VendorAI. Não usamos esse acesso para acessar dados de campanhas de terceiros nem para fins alheios
+                à gestão de anúncios solicitada pelo usuário.
+              </li>
+              <li>
+                <strong>YouTube:</strong> usamos o acesso para publicar vídeos e ler métricas básicas (analytics) somente
+                do canal explicitamente conectado pelo usuário, como parte do módulo de conteúdo/marketing da VendorAI.
+                Não baixamos, redistribuímos nem usamos esse conteúdo para treinar modelos de IA.
+              </li>
+            </ul>
+            <p className="text-slate-600 leading-relaxed mt-3">
+              O uso e a transferência de informações recebidas das APIs do Google pela VendorAI aderem à
+              <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline"> Política de Dados do Usuário dos Serviços de API do Google</a>,
+              incluindo os requisitos de Uso Limitado (Limited Use). O uso dos dados obtidos via YouTube API Services
+              está sujeito adicionalmente aos <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Termos de Serviço da API do YouTube</a>.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-bold text-slate-900 mb-3">8. Contato</h2>
             <p className="text-slate-600 leading-relaxed">
               Para exercer seus direitos ou esclarecer dúvidas sobre esta política, entre em contato:
             </p>
