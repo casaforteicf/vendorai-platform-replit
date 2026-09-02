@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2, Upload } from "lucide-react";
 
 type Provider = "youtube" | "linkedin" | "tiktok";
 type Connection = {
@@ -27,6 +28,8 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
   const [publishOpen, setPublishOpen] = useState<Provider | null>(null);
   const [publishMediaUrl, setPublishMediaUrl] = useState("");
   const [publishText, setPublishText] = useState("");
+  const [uploading, setUploading] = useState<Provider | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     if (!tenantId) return;
@@ -95,6 +98,43 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
     }
   }
 
+  async function uploadFile(item: Connection, file: File) {
+    const isVideo = item.provider === "youtube";
+    const allowed = isVideo
+      ? ["video/mp4", "video/quicktime", "video/webm"]
+      : ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime", "video/webm"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Formato inválido", description: isVideo ? "Use MP4, MOV ou WebM." : "Use JPG, PNG, WebP ou vídeo.", variant: "destructive" });
+      return;
+    }
+    const maxBytes = isVideo ? 500 * 1024 * 1024 : 20 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast({ title: "Arquivo muito grande", description: `Máximo ${Math.round(maxBytes / (1024 * 1024))} MB.`, variant: "destructive" });
+      return;
+    }
+    setUploading(item.provider);
+    try {
+      const metaRes = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
+      const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+
+      const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
+
+      const mediaUrl = `${window.location.origin}/api/storage${objectPath}`;
+      setPublishMediaUrl(mediaUrl);
+      toast({ title: "Arquivo enviado.", description: "Pronto para publicar." });
+    } catch (error) {
+      toast({ title: "Erro no upload", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setUploading(null);
+    }
+  }
+
   const filtered = connections.filter((item) => !providersFilter || providersFilter.includes(item.provider));
 
   return (
@@ -140,8 +180,30 @@ export function SocialIntegrationsPanel({ providers: providersFilter, mode = "co
                   </Button>
                   {publishOpen === item.provider && (
                     <div className="space-y-2 pt-2 border-t">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept={item.provider === "youtube" ? "video/mp4,video/quicktime,video/webm" : "image/*,video/*"}
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void uploadFile(item, file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full gap-1.5"
+                        disabled={uploading === item.provider}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {uploading === item.provider ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                        {uploading === item.provider ? "Enviando…" : `Enviar ${item.provider === "youtube" ? "vídeo" : "arquivo"} do dispositivo`}
+                      </Button>
                       <Input
-                        placeholder={item.provider === "youtube" ? "URL do vídeo (mp4/mov público)" : "URL da mídia (opcional)"}
+                        placeholder={item.provider === "youtube" ? "ou cole a URL do vídeo (mp4/mov público)" : "ou cole a URL da mídia (opcional)"}
                         value={publishMediaUrl}
                         onChange={(e) => setPublishMediaUrl(e.target.value)}
                       />
