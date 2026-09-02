@@ -3,9 +3,13 @@ import { db, tenantsTable } from "@workspace/db";
 import { logger } from "./logger.js";
 import { decrypt } from "./crypto.js";
 
-const BASE_URL = process.env.ASAAS_SANDBOX === "true"
-  ? "https://sandbox.asaas.com/api/v3"
-  : "https://www.asaas.com/api/v3";
+const BASE_URL = (process.env.ASAAS_BASE_URL?.trim() || (
+  process.env.ASAAS_SANDBOX === "true"
+    ? "https://api-sandbox.asaas.com/v3"
+    : "https://api.asaas.com/v3"
+)).replace(/\/+$/, "");
+
+const USER_AGENT = process.env.ASAAS_USER_AGENT?.trim() || "VendorAI/1.0 (Node.js)";
 
 function getApiKey(explicit?: string | null): string | null {
   return explicit ?? process.env.ASAAS_API_KEY ?? null;
@@ -49,6 +53,7 @@ async function asaasRequest<T>(
     method,
     headers: {
       "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
       access_token: key,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
