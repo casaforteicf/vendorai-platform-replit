@@ -18,6 +18,25 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+function normalizeSiteUrlForBrowser(raw: string | null | undefined): string | null {
+  const value = (raw ?? "").trim();
+  if (!value) return null;
+  const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  try {
+    const url = new URL(candidate);
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname) return null;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function displaySiteHostname(raw: string | null | undefined): string {
+  const normalized = normalizeSiteUrlForBrowser(raw);
+  if (!normalized) return "seu site";
+  try { return new URL(normalized).hostname; } catch { return "seu site"; }
+}
+
 interface Config {
   siteUrl: string | null;
   canalPublicacao: string;
@@ -241,7 +260,7 @@ export default function ContentAutopilot() {
                 <Label>URL do site</Label>
                 <div className="flex gap-2">
                   <Input placeholder="https://seusite.com" value={siteUrl || config?.siteUrl || ""} onChange={(e) => setSiteUrl(e.target.value)} />
-                  <Button variant="outline" onClick={() => saveConfigMutation.mutate({ siteUrl })} disabled={!siteUrl || saveConfigMutation.isPending}>
+                  <Button variant="outline" onClick={() => saveConfigMutation.mutate({ siteUrl: normalizeSiteUrlForBrowser(siteUrl) })} disabled={!siteUrl || saveConfigMutation.isPending}>
                     Salvar
                   </Button>
                 </div>
@@ -366,7 +385,7 @@ export default function ContentAutopilot() {
         {/* ── Posts do Blog ────────────────────────────────────────── */}
         <TabsContent value="posts" className="space-y-2 mt-4">
           <p className="text-xs text-muted-foreground">
-            "Publicar" aqui é a única forma de um post ficar visível de verdade em {config?.siteUrl ? new URL(config.siteUrl).hostname : "seu site"}/api/sites/.../blog — o sistema nunca publica sozinho.
+            "Publicar" aqui é a única forma de um post ficar visível de verdade em {displaySiteHostname(config?.siteUrl)}/api/sites/.../blog — o sistema nunca publica sozinho.
           </p>
           {blogPosts.length === 0 ? (
             <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum post ainda. Gere e publique um artigo na aba Artigos primeiro.</div>

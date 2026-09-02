@@ -104,16 +104,18 @@ async function resilientFetch(url: string, init: RequestInit = {}, maxAttempts =
 function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: string; token?: string | null }) {
   const [html, setHtml] = useState("");
   const [siteName, setSiteName] = useState("");
+  const [sites, setSites] = useState<Array<{ id: string; name?: string; updatedAt?: string; createdAt?: string }>>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [fullEditor, setFullEditor] = useState(false);
 
-  async function loadPreview() {
+  async function loadPreview(requestedSiteId?: string) {
     if (!tenantId) return;
     setLoading(true);
     setLoadError(null);
     try {
-      const listRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator`, { headers: headers(token) });
+      const listRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator`, { headers: headers(token) }, 2);
       if (!listRes.ok) {
         throw new Error(listRes.status === 429
           ? "O servidor está temporariamente limitando requisições. O VendorAI tentou novamente automaticamente."
@@ -121,17 +123,30 @@ function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: s
       }
       const rows = await listRes.json();
       if (!Array.isArray(rows) || !rows.length) throw new Error("Nenhum site criado ainda");
-      const latest = [...rows].sort((a: any, b: any) =>
-        new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime())[0];
-      const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${latest.id}`, { headers: headers(token) });
-      const site = await siteRes.json().catch(() => ({}));
-      if (!siteRes.ok || !site.html) {
-        throw new Error(site.error ?? (siteRes.status === 429
-          ? "O servidor está temporariamente limitando requisições."
-          : "Não foi possível carregar o site"));
+      const sorted = [...rows].sort((a: any, b: any) =>
+        new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime());
+      setSites(sorted);
+
+      const currentExists = selectedSiteId && sorted.some((site: any) => site.id === selectedSiteId);
+      const requestedExists = requestedSiteId && sorted.some((site: any) => site.id === requestedSiteId);
+      const targetId = requestedExists ? requestedSiteId! : currentExists ? selectedSiteId : sorted[0].id;
+
+      let siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${targetId}/preview`, { headers: headers(token) }, 2);
+      if (siteRes.status === 404) {
+        // Compatibilidade durante deploy escalonado: usa a rota legada se a rota dedicada ainda não chegou ao backend.
+        siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${targetId}`, { headers: headers(token) }, 2);
       }
+      const body = await siteRes.json().catch(() => ({}));
+      const site = body?.site ?? body;
+      if (!siteRes.ok) {
+        throw new Error(site?.error ?? `Não foi possível carregar o site (${siteRes.status})`);
+      }
+      if (typeof site?.html !== "string" || !site.html.trim()) {
+        throw new Error("O projeto existe, mas o servidor não devolveu o HTML salvo. O VendorAI preservou o site e você pode tentar novamente.");
+      }
+      setSelectedSiteId(targetId);
       setHtml(site.html);
-      setSiteName(site.name ?? latest.name ?? "Site");
+      setSiteName(site.name ?? sorted.find((item: any) => item.id === targetId)?.name ?? "Site");
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Não foi possível abrir o preview");
     } finally {
@@ -139,7 +154,10 @@ function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: s
     }
   }
 
-  useEffect(() => { void loadPreview(); }, [tenantId, token]);
+  useEffect(() => {
+    setSelectedSiteId("");
+    void loadPreview();
+  }, [tenantId, token]);
 
   function openInNewTab() {
     if (!html) return;
@@ -160,16 +178,19 @@ function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: s
 
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/20 px-4 py-3">
-      <div><p className="text-sm font-semibold">Site pronto para revisar{siteName ? ` — ${siteName}` : ""}</p><p className="text-xs text-muted-foreground">O preview abre direto do site salvo e não depende do carregamento do editor.</p></div>
-      <div className="flex flex-wrap gap-2">
+      <div><p className="text-sm font-semibold">Site pronto para revisar{siteName ? ` — ${siteName}` : ""}</p><p className="text-xs text-muted-foreground">O preview usa diretamente o HTML salvo. Você pode alternar entre todos os sites gerados sem depender do editor.</p></div>
+      <div className="flex flex-wrap items-center gap-2">
+        {sites.length > 0 && <select aria-label="Selecionar site para visualizar" className="h-9 max-w-[260px] rounded-md border bg-background px-3 text-sm" value={selectedSiteId} onChange={(e) => void loadPreview(e.target.value)} disabled={loading}>
+          {sites.map((site) => <option key={site.id} value={site.id}>{site.name || "Site"}{site.updatedAt || site.createdAt ? ` — ${new Date(site.updatedAt ?? site.createdAt ?? "").toLocaleDateString("pt-BR")}` : ""}</option>)}
+        </select>}
         {html && <Button size="sm" variant="outline" onClick={openInNewTab}><Globe className="mr-2 h-4 w-4" />Abrir em nova aba</Button>}
-        <Button size="sm" variant="outline" onClick={() => void loadPreview()} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
+        <Button size="sm" variant="outline" onClick={() => void loadPreview(selectedSiteId || undefined)} disabled={loading}><RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
         <Button size="sm" onClick={() => setFullEditor((v) => !v)} disabled={!html}>{fullEditor ? "Ocultar editor" : "Editar / SEO / Publicar"}</Button>
         <Button size="sm" variant="outline" onClick={onNew}><Plus className="mr-2 h-4 w-4" />Criar outro</Button>
       </div>
     </div>
-    {loading && <Card><CardContent className="flex items-center gap-2 p-5 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando o site salvo… se houver limitação 429, o VendorAI aguardará e tentará novamente.</CardContent></Card>}
-    {!loading && loadError && <Card className="border-destructive/30"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-5"><div><p className="text-sm font-semibold text-destructive">Não foi possível abrir o preview agora</p><p className="text-xs text-muted-foreground">{loadError}</p></div><Button size="sm" variant="outline" onClick={() => void loadPreview()}>Tentar novamente</Button></CardContent></Card>}
+    {loading && <Card><CardContent className="flex items-center gap-2 p-5 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando o HTML salvo do site…</CardContent></Card>}
+    {!loading && loadError && <Card className="border-destructive/30"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-5"><div><p className="text-sm font-semibold text-destructive">Não foi possível abrir o preview agora</p><p className="text-xs text-muted-foreground">{loadError}</p></div><Button size="sm" variant="outline" onClick={() => void loadPreview(selectedSiteId || undefined)}>Tentar novamente</Button></CardContent></Card>}
     {!loading && html && <div className="overflow-hidden rounded-xl border bg-white"><iframe srcDoc={html} title={`Preview ${siteName || "do site"}`} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" className="block w-full border-0" style={{ height: 720 }} /></div>}
     {fullEditor && <div className="rounded-xl border p-3"><CoreSiteGeneratorTab /></div>}
   </div>;

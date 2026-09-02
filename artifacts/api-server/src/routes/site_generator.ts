@@ -258,6 +258,31 @@ router.post("/tenants/:tenantId/site-generator/remodel-analyze", async (req, res
   }
 });
 
+router.get("/tenants/:tenantId/site-generator/:siteId/preview", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, res, tenantId)) return;
+  const [site] = await db
+    .select({
+      id: generatedSitesTable.id,
+      name: generatedSitesTable.name,
+      html: generatedSitesTable.html,
+      siteType: generatedSitesTable.siteType,
+      published: generatedSitesTable.published,
+      siteSlug: generatedSitesTable.siteSlug,
+      createdAt: generatedSitesTable.createdAt,
+      updatedAt: generatedSitesTable.updatedAt,
+    })
+    .from(generatedSitesTable)
+    .where(and(eq(generatedSitesTable.id, String(req.params.siteId)), eq(generatedSitesTable.tenantId, tenantId)))
+    .limit(1);
+  if (!site) {
+    res.status(404).json({ error: "Site não encontrado" });
+    return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ site });
+});
+
 router.get("/tenants/:tenantId/site-generator/:siteId/sections", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!hasAccess(req, res, tenantId)) return;
