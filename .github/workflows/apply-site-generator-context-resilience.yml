@@ -24,17 +24,17 @@ jobs:
           else
             echo 'skip=false' >> "$GITHUB_OUTPUT"
           fi
-      - name: Apply patch
+      - name: Apply corrected patch
         if: steps.guard.outputs.skip != 'true'
-        run: python scripts/apply-site-generator-context-resilience.py
+        run: python scripts/apply-site-generator-context-resilience-v2.py
       - name: Remove one-shot files
         if: steps.guard.outputs.skip != 'true'
-        run: rm .github/workflows/apply-site-generator-context-resilience.yml scripts/apply-site-generator-context-resilience.py
+        run: rm -f .github/workflows/apply-site-generator-context-resilience.yml scripts/apply-site-generator-context-resilience.py scripts/apply-site-generator-context-resilience-v2.py
       - name: Commit patch
         if: steps.guard.outputs.skip != 'true'
         run: |
           git config user.name 'VendorAI Automation'
           git config user.email 'actions@users.noreply.github.com'
-          git add artifacts/frontend/src/pages/SiteGenerator.tsx artifacts/api-server/src/routes/site_generator.ts artifacts/api-server/src/routes/business_profiles.ts .github/workflows/apply-site-generator-context-resilience.yml scripts/apply-site-generator-context-resilience.py
+          git add -A
           git commit -m 'fix: make site context resilient [site-context-patch]'
           git push origin HEAD:fix/site-generator-context-resilience
