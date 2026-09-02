@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-272",
+    "titulo": "Gestão ERP como add-on de R$ 299/mês",
+    "descricao": "cadastra a Gestão ERP como produto `ERP-ADDON-M` por R$ 299/mês revoga o ERP por padrão para tenants atuais e futuros oculta o menu quando o add-on não está contratado bloqueia acesso direto às telas `/erp` e `/erp/captura`",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-02T21:05:55.000Z",
+    "pullRequest": 272
+  },
+  {
     "id": "pr-271",
     "titulo": "remover jornada duplicada da Central de Trabalho",
     "descricao": "A Central de Trabalho passa a ter uma única Jornada de Atendimento, usando o novo bloco compacto integrado à pipeline, sem duplicidade visual.",
