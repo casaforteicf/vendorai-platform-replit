@@ -12,6 +12,7 @@ export * from "./deals";
 export * from "./pipeline_stages";
 export * from "./activities";
 export * from "./propostas";
+export * from "./orcamento_revisoes";
 export * from "./messages";
 export * from "./customer_intelligence";
 export * from "./agent_tasks";

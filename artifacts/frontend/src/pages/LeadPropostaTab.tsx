@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { OrcamentoRevisoesCard } from "@/components/OrcamentoRevisoesCard";
 import {
   Select,
   SelectContent,
@@ -1091,6 +1092,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           )}
         </CardContent>
       </Card>
+
+      {/* Histórico de revisões de orçamento */}
+      <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} />
 
       {/* Propostas Geradas */}
       <Card data-testid="card-propostas-geradas">
