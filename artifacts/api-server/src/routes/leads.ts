@@ -9,6 +9,7 @@ import {
   conversationsTable,
   messagesTable,
   dealsTable,
+  pipelineStagesTable,
   propostasTable,
   activitiesTable,
   customerIntelligenceTable,
@@ -1137,6 +1138,37 @@ router.post("/leads/:leadId/briefing/summarize", async (req, res) => {
     .map((o: any) => `  • Objeção: ${o.objection} → Resposta dada: ${o.response ?? "—"}`)
     .join("\n") || "Nenhuma registrada";
 
+  // ── Contexto coletado nas perguntas por etapa do funil (Central de
+  // Trabalho) — cobre o que o SPIN não pergunta: pré-contato, o que foi
+  // demonstrado/apresentado, feedback da proposta, objeções e condições
+  // em negociação. Opcional: só entra se o front mandar o dealId.
+  const dealId = typeof req.body?.dealId === "string" ? req.body.dealId : undefined;
+  let stageAnswersText = "";
+  if (dealId) {
+    const [deal] = await db
+      .select({ respostasEtapas: dealsTable.respostasEtapas })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId)));
+    const respostas = (deal?.respostasEtapas ?? {}) as Record<string, Record<string, string>>;
+    if (Object.keys(respostas).length) {
+      const stages = await db
+        .select({ key: pipelineStagesTable.key, label: pipelineStagesTable.label, perguntas: pipelineStagesTable.perguntas })
+        .from(pipelineStagesTable)
+        .where(eq(pipelineStagesTable.tenantId, tenantId));
+      const blocks: string[] = [];
+      for (const stage of stages) {
+        const stageRespostas = respostas[stage.key];
+        if (!stageRespostas) continue;
+        const perguntas = (stage.perguntas ?? []) as { id: string; texto: string }[];
+        const lines = perguntas
+          .filter((p) => stageRespostas[p.id]?.trim())
+          .map((p) => `  - P: ${p.texto}\n    R: ${stageRespostas[p.id]}`);
+        if (lines.length) blocks.push(`[${stage.label}]\n${lines.join("\n")}`);
+      }
+      if (blocks.length) stageAnswersText = blocks.join("\n\n");
+    }
+  }
+
   const prompt = `Você é um coach de vendas especialista em fechamento. Analise o briefing abaixo e produza um resumo executivo do cliente para o vendedor usar na próxima abordagem de fechamento.
 
 EMPRESA VENDEDORA: ${profile?.nomeFantasia ?? "nossa empresa"} | Segmento: ${profile?.vertical ?? "—"} | Diferencial: ${profile?.diferenciais ?? "—"} | Produtos: ${produtosDesc}
@@ -1165,6 +1197,9 @@ Termômetro de necessidade: ${briefing?.needThermometer ?? "—"}
 
 OBJEÇÕES:
 ${objecoesText}
+
+CONTEXTO REGISTRADO PELO VENDEDOR AO LONGO DO FUNIL (pré-contato, demonstração, negociação):
+${stageAnswersText || "Nenhum registrado ainda"}
 
 PRÓXIMO PASSO COMBINADO: ${briefing?.nextStepType ?? "não definido"} | Data: ${briefing?.nextStepDate ?? "—"}
 

@@ -2705,7 +2705,7 @@ export default function LeadDetail() {
           </TabsList>
 
           <TabsContent value="atendimento" className="mt-4">
-            <LeadServiceJourney leadId={id} tenantId={tenantId} lead={lead} />
+            <LeadServiceJourney leadId={id} tenantId={tenantId} lead={lead} dealId={activeLeadDeal?.id} />
           </TabsContent>
 
           <TabsContent value="proposta" className="mt-4">

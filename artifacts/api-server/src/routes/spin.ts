@@ -15,6 +15,7 @@ import {
   leadsTable,
   leadBriefingsTable,
   dealsTable,
+  pipelineStagesTable,
   messagesTable,
   businessProfilesTable,
 } from "@workspace/db";
@@ -66,12 +67,37 @@ export async function generateSpinForActivity(
   let deal = null;
   if (activity.dealId) {
     const [d] = await db
-      .select({ titulo: dealsTable.titulo, valor: dealsTable.valor, etapa: dealsTable.etapa, aiBriefing: dealsTable.aiBriefing })
+      .select({ titulo: dealsTable.titulo, valor: dealsTable.valor, etapa: dealsTable.etapa, aiBriefing: dealsTable.aiBriefing, respostasEtapas: dealsTable.respostasEtapas })
       .from(dealsTable)
       .where(eq(dealsTable.id, activity.dealId))
       .limit(1);
     deal = d ?? null;
   }
+
+  // Contexto coletado nas perguntas por etapa do funil (Central de
+  // Trabalho) — cobre o que o SPIN não pergunta: pré-contato, o que foi
+  // demonstrado/apresentado, feedback da proposta, objeções e condições
+  // em negociação já registradas pelo vendedor nesta etapa e nas anteriores.
+  let stageAnswersText = "";
+  const respostasEtapas = (deal?.respostasEtapas ?? {}) as Record<string, Record<string, string>>;
+  if (Object.keys(respostasEtapas).length) {
+    const stages = await db
+      .select({ key: pipelineStagesTable.key, label: pipelineStagesTable.label, perguntas: pipelineStagesTable.perguntas })
+      .from(pipelineStagesTable)
+      .where(eq(pipelineStagesTable.tenantId, tenantId));
+    const blocks: string[] = [];
+    for (const stage of stages) {
+      const stageRespostas = respostasEtapas[stage.key];
+      if (!stageRespostas) continue;
+      const perguntas = (stage.perguntas ?? []) as { id: string; texto: string }[];
+      const lines = perguntas
+        .filter((p) => stageRespostas[p.id]?.trim())
+        .map((p) => `  - P: ${p.texto}\n    R: ${stageRespostas[p.id]}`);
+      if (lines.length) blocks.push(`[${stage.label}]\n${lines.join("\n")}`);
+    }
+    if (blocks.length) stageAnswersText = blocks.join("\n\n");
+  }
+
 
   const recentMessages = await db
     .select({ direcao: messagesTable.direcao, conteudo: messagesTable.conteudo, createdAt: messagesTable.createdAt })
@@ -180,6 +206,9 @@ ${deal?.aiBriefing ? `\nBriefing IA do deal:\n${deal.aiBriefing}` : ""}
 
 ## Briefing SPIN coletado
 ${briefingTexto}
+
+## Contexto registrado pelo vendedor ao longo do funil (pré-contato, demonstração, negociação)
+${stageAnswersText || "Nenhum registrado ainda"}
 
 ## Histórico de contatos anteriores com este lead
 ${historicalContext ?? "Primeiro contato/roteiro para este lead — sem histórico anterior."}

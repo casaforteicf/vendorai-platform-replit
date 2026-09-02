@@ -145,6 +145,7 @@ interface LeadBriefingTabProps {
   leadId: string;
   tenantId: string;
   lead?: any;
+  dealId?: string;
   /** Quando true, oculta a aba Briefing SPIN e mostra só o Roteiro de Reunião. */
   roteiroOnly?: boolean;
 }
@@ -232,7 +233,7 @@ function SpinSection({
   );
 }
 
-export default function LeadBriefingTab({ leadId, tenantId, lead, roteiroOnly }: LeadBriefingTabProps) {
+export default function LeadBriefingTab({ leadId, tenantId, lead, dealId, roteiroOnly }: LeadBriefingTabProps) {
   const { user } = useAuth();
   const hints = getSegmentHints(user?.tenantVertical);
   const { toast } = useToast();
@@ -556,7 +557,8 @@ export default function LeadBriefingTab({ leadId, tenantId, lead, roteiroOnly }:
     try {
       const res = await fetch(`/api/leads/${leadId}/briefing/summarize`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ dealId: dealId || undefined }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
