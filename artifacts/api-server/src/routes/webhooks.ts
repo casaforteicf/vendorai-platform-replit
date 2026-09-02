@@ -39,6 +39,7 @@ import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { tryIngestTechnicianSupportMessage } from "../services/support-whatsapp-ingest.js";
+import { tryHandleSupportFeedbackMessage } from "../services/support-feedback.js";
 
 const objectStorage = new ObjectStorageService();
 
@@ -201,6 +202,11 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   });
   if (supportIngest.handled) {
     res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
+  const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone: telefone, text: mensagem, log: req.log });
+  if (supportFeedback.handled) {
+    res.status(200).json({ supportFeedback: true, ...supportFeedback });
     return;
   }
   const match = await findLeadByDedup(tenantId, telefone, null, null);
@@ -563,6 +569,11 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   });
   if (supportIngest.handled) {
     res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
+  const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone: telefone, text: mensagem, log: req.log });
+  if (supportFeedback.handled) {
+    res.status(200).json({ supportFeedback: true, ...supportFeedback });
     return;
   }
   const nome = payload.chatName ?? payload.senderName ?? telefone;
@@ -1043,6 +1054,11 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   });
   if (supportIngest.handled) {
     res.status(200).json({ supportTechnicianUpdate: true, ...supportIngest });
+    return;
+  }
+  const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone: telefone, text: mensagem, log: req.log });
+  if (supportFeedback.handled) {
+    res.status(200).json({ supportFeedback: true, ...supportFeedback });
     return;
   }
   const nome = (data as { pushName?: string }).pushName ?? telefone;
@@ -1789,6 +1805,11 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
           });
           if (supportIngest.handled) {
             req.log.info({ supportIngest, phone }, "meta-webhook: atualização de técnico absorvida pela assistência");
+            continue;
+          }
+          const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone, text: mensagem, log: req.log });
+          if (supportFeedback.handled) {
+            req.log.info({ supportFeedback, phone }, "meta-webhook: feedback da assistência processado");
             continue;
           }
 

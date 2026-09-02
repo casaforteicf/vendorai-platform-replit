@@ -59,9 +59,44 @@ const objectStorageService = new ObjectStorageService();
 
 const DEAL_STAGE_LABELS: Record<string, string> = {
   em_aquecimento: "Em aquecimento", novo: "Novo", qualificado: "Qualificado",
-  proposta: "Proposta", negociacao: "Negociação", conferencia_estoque: "Conferência de estoque",
-  ganho: "Ganho", em_execucao: "Em execução", entregue: "Entregue", perdido: "Perdido", parceiro: "Parceiro",
+  proposta: "Orçamento", negociacao: "Negociação", conferencia_estoque: "Fechamento",
+  contrato: "Contrato", ganho: "Pedido", em_execucao: "Em execução", entregue: "Entregue", perdido: "Perdido", parceiro: "Parceiro",
 };
+
+const COMMERCIAL_STAGE_TASKS: Record<string, string> = {
+  novo: "Fazer primeiro contato e qualificar",
+  qualificado: "Preparar orçamento e próximos passos",
+  proposta: "Acompanhar orçamento enviado",
+  negociacao: "Conduzir negociação e registrar condições",
+  conferencia_estoque: "Confirmar condições finais de fechamento",
+  contrato: "Providenciar e acompanhar contrato",
+  ganho: "Confirmar pedido e transferir para execução",
+};
+
+async function ensureCommercialStageTask(deal: typeof dealsTable.$inferSelect) {
+  if (!deal.leadId || !deal.assignedTo) return;
+  const taskTitle = COMMERCIAL_STAGE_TASKS[deal.etapa];
+  if (!taskTitle) return;
+  const title = `${taskTitle} — ${deal.titulo}`;
+  const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+    eq(activitiesTable.tenantId, deal.tenantId),
+    eq(activitiesTable.leadId, deal.leadId),
+    eq(activitiesTable.titulo, title),
+    eq(activitiesTable.status, "planejado"),
+  )).limit(1);
+  if (existingTask) return;
+  await db.insert(activitiesTable).values({
+    tenantId: deal.tenantId,
+    leadId: deal.leadId,
+    dealId: deal.id,
+    tipo: "tarefa",
+    titulo: title,
+    descricao: `Tarefa criada automaticamente ao entrar na etapa ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}.`,
+    status: "planejado",
+    responsavelId: deal.assignedTo,
+    dataVencimento: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+}
 
 async function recordDealJourney(input: {
   tenantId: string; leadId: string | null; dealId: string; title: string; description: string; responsavelId?: string | null;
@@ -446,6 +481,7 @@ router.patch("/deals/:id", async (req, res) => {
       description: `Etapa anterior: ${DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa}.`,
       responsavelId: req.user?.sub,
     });
+      await ensureCommercialStageTask(deal);
   }
 
   // Notifica quando o negócio é repassado pra OUTRA pessoa (não pra si

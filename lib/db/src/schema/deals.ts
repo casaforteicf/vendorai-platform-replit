@@ -87,6 +87,7 @@ export const dealsTable = pgTable("deals", {
   // manualmente pelo financeiro (fallback esperado, não um erro).
   cobrancaTipo: dealCobrancaTipoEnum("cobranca_tipo"),
   aquecimentoTipo: text("aquecimento_tipo"),
+  relationshipStage: text("relationship_stage"),
   // Briefing gerado automaticamente pela IA no momento da prospecção
   aiBriefing: text("ai_briefing"),
   aiBriefingGeneratedAt: timestamp("ai_briefing_generated_at"),

@@ -76,7 +76,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // Plano Start (grátis) só vê o essencial pra operar e vender no Praça.ai —
   // o resto do sistema (agentes de IA, CRM avançado, ERP...) fica visível
   // só a partir de um plano pago. Super admin nunca é restringido por isso.
-  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/pipeline-operacional", "/base-conhecimento", "/configuracoes", "/faq"]);
+  const START_PLAN_HREFS = new Set(["/", "/trabalho", "/catalogo", "/varejo/produtos", "/supermercado/produtos", "/farmacia", "/farmacia/produtos", "/deals", "/pipeline-operacional", "/pipeline-relacionamento", "/base-conhecimento", "/configuracoes", "/faq"]);
   const isTenantAdmin = isEffectiveAdmin;
   // Todos os modelos comerciais entregam a experiência completa; a licença controla apenas o período ativo.
   const isStartPlan = false;
@@ -117,7 +117,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   });
   const MODULE_TO_HREFS: Record<string, string[]> = {
     dashboard:  ["/", "/trabalho"],
-    leads:      ["/leads", "/deals", "/pipeline-operacional"],
+    leads:      ["/leads", "/deals", "/pipeline-operacional", "/pipeline-relacionamento"],
     prospector: ["/app/prospector"],
     scheduler:  ["/agenda"],
     revenue:    ["/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline", "/scout/seguros/renovacoes"],
@@ -316,7 +316,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Não-Leads",     href: "/contacts-nonleads", icon: UserCog,     sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Prospector",    href: "/app/prospector", icon: Search,         sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm", fn: ["vendedor", "entrega", "administrador", "outro"] as UserFunction[] },
-    { name: "Pipeline Execução / Suporte", href: "/pipeline-operacional", icon: KanbanSquare, sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Pipelines", href: "/pipeline-operacional", icon: KanbanSquare, sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Operação Praça.ai", href: "/entregas-praca", icon: Truck, sellerHidden: false, section: "crm", fn: ["entrega"] as UserFunction[] },

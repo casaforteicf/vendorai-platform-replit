@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SupportReportPanel } from "@/components/SupportReportPanel";
 import {
   AlertTriangle,
   CalendarDays,
@@ -209,8 +210,9 @@ export default function PipelineOperacional() {
   const stages = pipeline === "suporte" ? SUPPORT_STAGES : EXECUTION_STAGES;
   const cards = cardsQuery.data ?? [];
 
-  function setPipeline(next: PipelineKind | "comercial") {
+  function setPipeline(next: PipelineKind | "comercial" | "aquecimento" | "parceiros") {
     if (next === "comercial") navigate("/deals");
+    else if (next === "aquecimento" || next === "parceiros") navigate(`/pipeline-relacionamento?tab=${next}`);
     else navigate(`/pipeline-operacional?tab=${next}`);
   }
 
@@ -252,7 +254,7 @@ export default function PipelineOperacional() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
-          <p className="text-sm text-muted-foreground">Comercial, execução de pedidos e suporte ligados ao mesmo cliente.</p>
+          <p className="text-sm text-muted-foreground">Comercial, execução, suporte, aquecimento e parceiros ligados à mesma base de clientes.</p>
         </div>
         <div className="flex gap-2">
           {pipeline === "execucao" ? (
@@ -267,6 +269,8 @@ export default function PipelineOperacional() {
         <Button size="sm" variant="ghost" onClick={() => setPipeline("comercial")}>Comercial</Button>
         <Button size="sm" variant={pipeline === "execucao" ? "default" : "ghost"} onClick={() => setPipeline("execucao")}>Execução / Pedidos</Button>
         <Button size="sm" variant={pipeline === "suporte" ? "default" : "ghost"} onClick={() => setPipeline("suporte")}>Suporte / Assistência</Button>
+        <Button size="sm" variant="ghost" onClick={() => setPipeline("aquecimento")}>Aquecimento</Button>
+        <Button size="sm" variant="ghost" onClick={() => setPipeline("parceiros")}>Parceiros</Button>
       </div>
 
       <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-3">
@@ -369,6 +373,18 @@ export default function PipelineOperacional() {
                 </div>
 
                 {selectedCard.descricao && <div className="rounded-lg border bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Relato / observações</p><p className="mt-1 whitespace-pre-wrap text-sm">{selectedCard.descricao}</p></div>}
+
+                {selectedCard.pipeline === "suporte" && (
+                  <SupportReportPanel
+                    card={selectedCard}
+                    token={token ?? ""}
+                    onChanged={async () => {
+                      const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
+                      setSelectedCard(fresh);
+                      await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
+                    }}
+                  />
+                )}
 
                 {safeItems(selectedCard).length > 0 && (
                   <div className="space-y-2">

@@ -23,6 +23,8 @@ import { buildUserFunctionFilter } from "../middlewares/auth.js";
 import { checkTurnoCapacity, dispatchPendingEntregas, pickNextMotorista } from "../lib/entregas.js";
 import { triggerDeliveryFeedbackRequest } from "../services/post-venda.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { generateSupportReportDraft } from "../services/support-report.js";
+import { requestSupportFeedback } from "../services/support-feedback.js";
 
 const router: IRouter = Router();
 
@@ -245,6 +247,86 @@ async function recordWorkHistory(input: {
       anexoTamanho: input.anexo.tamanho ?? null,
       anexoCategoria: input.anexo.mimeType?.startsWith("image/") ? "imagem" : "documento",
     } : {}),
+  });
+}
+
+const WORK_STAGE_TASKS: Record<string, string> = {
+  pedido_confirmado: "Revisar pedido confirmado",
+  liberacao_financeira: "Validar liberação financeira",
+  liberacao_medidas: "Providenciar e confirmar medidas",
+  projeto: "Desenvolver/aprovar projeto",
+  producao_a_iniciar: "Preparar início da produção",
+  producao_em_andamento: "Acompanhar produção",
+  producao_finalizada: "Confirmar produção finalizada",
+  aguardando_liberacao: "Acompanhar liberação do lote",
+  liberado: "Preparar expedição do lote liberado",
+  agenda_entrega: "Agendar e confirmar entrega",
+  em_transporte: "Acompanhar entrega em transporte",
+  instalacao_a_iniciar: "Preparar instalação",
+  instalacao_em_andamento: "Acompanhar instalação",
+  instalacao_finalizada: "Validar instalação finalizada",
+  entrega_obra: "Realizar entrega/aceite da obra",
+  pos_venda: "Realizar pós-venda e validar conclusão operacional",
+  chamado_cliente: "Triar chamado e confirmar informações",
+  agendamento_assistencia: "Agendar assistência",
+  execucao_assistencia: "Executar assistência",
+  relatorio_assistencia: "Gerar e confirmar relatório da assistência",
+  feedback_cliente: "Acompanhar feedback do cliente",
+  fechamento_assistencia: "Fechar assistência",
+};
+
+async function ensureWorkStageTask(card: typeof workCardsTable.$inferSelect) {
+  if (!card.leadId || !card.responsavelId) return;
+  const base = WORK_STAGE_TASKS[card.etapa];
+  if (!base) return;
+  const title = `${base} — ${card.codigo}`;
+  const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+    eq(activitiesTable.tenantId, card.tenantId),
+    eq(activitiesTable.leadId, card.leadId),
+    eq(activitiesTable.titulo, title),
+    eq(activitiesTable.status, "planejado"),
+  )).limit(1);
+  if (existingTask) return;
+  await db.insert(activitiesTable).values({
+    tenantId: card.tenantId,
+    leadId: card.leadId,
+    dealId: card.dealId,
+    tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
+    titulo: title,
+    descricao: `Tarefa automática da etapa ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
+    status: "planejado",
+    responsavelId: card.responsavelId,
+    dataVencimento: card.dataFimPrevista ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+}
+
+async function maybeCompleteOrder(parentOrChild: typeof workCardsTable.$inferSelect) {
+  const parentId = parentOrChild.tipo === "pedido" ? parentOrChild.id : parentOrChild.parentCardId;
+  if (!parentId) return;
+  const [parent] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, parentId)).limit(1);
+  if (!parent || parent.pipeline !== "execucao" || parent.tipo !== "pedido" || parent.etapa !== "pos_venda" || !parent.dealId) return;
+
+  const children = await db.select().from(workCardsTable).where(and(
+    eq(workCardsTable.tenantId, parent.tenantId),
+    eq(workCardsTable.parentCardId, parent.id),
+  ));
+  const relevantChildren = children.filter((c) => c.pipeline === "execucao" && c.etapa !== "cancelado");
+  const childDone = relevantChildren.every((c) => ["concluido", "instalacao_finalizada"].includes(c.etapa));
+  const balance = await getDeliveryBalance(parent.tenantId, parent.dealId, parent.propostaId);
+  const itemsDone = balance.proposal ? balance.items.every((item) => Number(item.saldoEntregar ?? 0) <= 0) : true;
+  if (!childDone || !itemsDone) return;
+
+  const now = new Date();
+  await db.update(workCardsTable).set({ etapa: "concluido", dataFimEfetiva: now, updatedAt: now }).where(eq(workCardsTable.id, parent.id));
+  await db.update(dealsTable).set({ etapa: "entregue", updatedAt: now }).where(and(eq(dealsTable.id, parent.dealId), eq(dealsTable.tenantId, parent.tenantId)));
+  await recordWorkHistory({
+    tenantId: parent.tenantId,
+    leadId: parent.leadId,
+    dealId: parent.dealId,
+    tipo: "tarefa",
+    titulo: `${parent.codigo}: pedido operacionalmente concluído`,
+    descricao: "Todos os lotes/itens estão concluídos e o pedido já passou pelo Pós-venda.",
+    responsavelId: parent.responsavelId,
   });
 }
 
@@ -597,6 +679,7 @@ router.patch("/entregas/:id", async (req, res) => {
     });
   }
 
+  if (linkedCard) await maybeCompleteOrder(linkedCard);
   res.json(entrega);
 });
 
@@ -844,9 +927,78 @@ router.patch("/work-cards/:id", async (req, res) => {
       descricao: `Etapa anterior: ${WORK_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
       responsavelId: card.responsavelId,
     });
+    await ensureWorkStageTask(card);
+    if (card.pipeline === "suporte" && card.etapa === "feedback_cliente") {
+      void requestSupportFeedback(card.tenantId, card.id, req.log);
+    }
+    if (card.pipeline === "execucao") await maybeCompleteOrder(card);
   }
 
   res.json(card);
+});
+
+const supportReportSchema = z.object({
+  problemaRelatado: z.string().trim().min(1).max(10000),
+  diagnostico: z.string().max(10000).default(""),
+  servicoExecutado: z.string().max(10000).default(""),
+  materiaisUtilizados: z.array(z.string().trim().min(1)).max(100).default([]),
+  situacaoFinal: z.enum(["resolvido", "parcial", "nao_resolvido", "aguardando_peca", "aguardando_retorno"]),
+  clienteAcompanhou: z.boolean().nullable().default(null),
+  recomendacoes: z.string().max(10000).default(""),
+  observacoes: z.string().max(10000).default(""),
+});
+
+router.post("/work-cards/:id/support-report/draft", async (req, res) => {
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "suporte") { res.status(404).json({ error: "Assistência não encontrada" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
+  try {
+    const draft = await generateSupportReportDraft(card.tenantId, card.id, req.log);
+    res.json({ draft });
+  } catch (error) {
+    req.log.error({ err: error, workCardId: card.id }, "support-report: falha ao gerar rascunho");
+    res.status(500).json({ error: "Não foi possível gerar o relatório da assistência" });
+  }
+});
+
+router.post("/work-cards/:id/support-report/confirm", async (req, res) => {
+  const parsed = supportReportSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "suporte") { res.status(404).json({ error: "Assistência não encontrada" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
+
+  const solved = parsed.data.situacaoFinal === "resolvido";
+  const nextStage = solved ? "feedback_cliente" : "execucao_assistencia";
+  const [updated] = await db.update(workCardsTable).set({
+    etapa: nextStage,
+    metadata: {
+      ...(card.metadata ?? {}),
+      supportReport: parsed.data,
+      supportReportConfirmed: true,
+      supportReportConfirmedAt: new Date().toISOString(),
+      supportReportConfirmedBy: req.user?.sub ?? null,
+      ...(solved ? {} : { substatus: parsed.data.situacaoFinal }),
+    },
+    updatedAt: new Date(),
+  }).where(eq(workCardsTable.id, card.id)).returning();
+
+  await recordWorkHistory({
+    tenantId: card.tenantId,
+    leadId: card.leadId,
+    dealId: card.dealId,
+    tipo: "assistencia",
+    titulo: `${card.codigo}: relatório da assistência confirmado`,
+    descricao: `Diagnóstico: ${parsed.data.diagnostico || "não informado"}
+Serviço: ${parsed.data.servicoExecutado || "não informado"}
+Situação: ${parsed.data.situacaoFinal}.`,
+    responsavelId: card.responsavelId,
+  });
+  await ensureWorkStageTask(updated);
+  if (solved) void requestSupportFeedback(card.tenantId, card.id, req.log);
+  res.json({ card: updated, feedbackRequested: solved });
 });
 
 router.get("/work-cards/:id/attachments", async (req, res) => {

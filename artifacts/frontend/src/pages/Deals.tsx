@@ -88,32 +88,30 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const ETAPAS: { value: DealEtapa; label: string; color: string; bg: string }[] = [
-  { value: "em_aquecimento", label: "Em Aquecimento", color: "text-orange-600",  bg: "bg-orange-100" },
-  { value: "novo",           label: "Novo",           color: "text-slate-600",   bg: "bg-slate-100" },
-  { value: "qualificado",    label: "Qualificado",    color: "text-blue-600",    bg: "bg-blue-100" },
-  { value: "proposta",       label: "Orçamento",      color: "text-violet-600",  bg: "bg-violet-100" },
-  { value: "negociacao",     label: "Negociação",     color: "text-amber-600",   bg: "bg-amber-100" },
-  { value: "conferencia_estoque", label: "Conf. Estoque", color: "text-indigo-600", bg: "bg-indigo-100" },
-  { value: "ganho",          label: "Ganho",          color: "text-emerald-600", bg: "bg-emerald-100" },
-  { value: "em_execucao",    label: "Em Execução",    color: "text-cyan-600",    bg: "bg-cyan-100" },
-  { value: "entregue",       label: "Entregue",       color: "text-teal-600",    bg: "bg-teal-100" },
-  { value: "perdido",        label: "Perdido",        color: "text-red-600",     bg: "bg-red-100" },
-  { value: "parceiro",       label: "Parceiros",      color: "text-purple-600",  bg: "bg-purple-100" },
+const ETAPAS: { value: string; label: string; color: string; bg: string }[] = [
+  { value: "novo",                label: "Novo",        color: "text-slate-600",   bg: "bg-slate-100" },
+  { value: "qualificado",         label: "Qualificado", color: "text-blue-600",    bg: "bg-blue-100" },
+  { value: "proposta",            label: "Orçamento",   color: "text-violet-600",  bg: "bg-violet-100" },
+  { value: "negociacao",          label: "Negociação",  color: "text-amber-600",   bg: "bg-amber-100" },
+  { value: "conferencia_estoque", label: "Fechamento",  color: "text-indigo-600",  bg: "bg-indigo-100" },
+  { value: "contrato",            label: "Contrato",    color: "text-sky-600",     bg: "bg-sky-100" },
+  { value: "ganho",               label: "Pedido",      color: "text-emerald-600", bg: "bg-emerald-100" },
+  { value: "perdido",             label: "Perdido",     color: "text-red-600",     bg: "bg-red-100" },
 ];
 
-const ETAPA_PROBABILIDADE: Record<DealEtapa, number> = {
+const ETAPA_PROBABILIDADE: Record<string, number> = {
   em_aquecimento: 5,
-  novo:           10,
-  qualificado:    25,
-  proposta:       50,
-  negociacao:     75,
-  conferencia_estoque: 85,
-  ganho:          100,
-  em_execucao:    100,
-  entregue:       100,
-  perdido:        0,
-  parceiro:       5,
+  novo: 10,
+  qualificado: 25,
+  proposta: 50,
+  negociacao: 70,
+  conferencia_estoque: 82,
+  contrato: 92,
+  ganho: 100,
+  em_execucao: 100,
+  entregue: 100,
+  perdido: 0,
+  parceiro: 5,
 };
 
 // ─── Kanban Column Definitions ────────────────────────────────────────────────
@@ -128,120 +126,18 @@ interface KanbanColumnDef {
   bg: string;
   order: number;       // position in normal flow; -1 = special (no restriction)
   isSpecial: boolean;  // perdido / parceiro — can receive from anywhere
-  onDrop: { etapa: DealEtapa; aquecimentoTipo?: string | null };
+  onDrop: { etapa: string; aquecimentoTipo?: string | null };
 }
 
 const KANBAN_COLUMNS: KanbanColumnDef[] = [
-  {
-    dropId: "parceiro",
-    label: "Parceiros",
-    color: "text-purple-600",
-    bg: "bg-purple-100",
-    order: -1,
-    isSpecial: true,
-    onDrop: { etapa: "parceiro" },
-  },
-  {
-    dropId: "aquecimento_nao_cliente",
-    label: "Aquecimento",
-    sublabel: "Leads",
-    color: "text-orange-600",
-    bg: "bg-orange-100",
-    order: 0,
-    isSpecial: false,
-    onDrop: { etapa: "em_aquecimento", aquecimentoTipo: "nao_cliente" },
-  },
-  {
-    dropId: "aquecimento_cliente",
-    label: "Aquecimento",
-    sublabel: "Clientes",
-    color: "text-rose-600",
-    bg: "bg-rose-100",
-    order: 0,
-    isSpecial: false,
-    onDrop: { etapa: "em_aquecimento", aquecimentoTipo: "cliente" },
-  },
-  {
-    dropId: "novo",
-    label: "Novo",
-    color: "text-slate-600",
-    bg: "bg-slate-100",
-    order: 1,
-    isSpecial: false,
-    onDrop: { etapa: "novo" },
-  },
-  {
-    dropId: "qualificado",
-    label: "Qualificado",
-    color: "text-blue-600",
-    bg: "bg-blue-100",
-    order: 2,
-    isSpecial: false,
-    onDrop: { etapa: "qualificado" },
-  },
-  {
-    dropId: "proposta",
-    label: "Orçamento",
-    color: "text-violet-600",
-    bg: "bg-violet-100",
-    order: 3,
-    isSpecial: false,
-    onDrop: { etapa: "proposta" },
-  },
-  {
-    dropId: "negociacao",
-    label: "Negociação",
-    color: "text-amber-600",
-    bg: "bg-amber-100",
-    order: 4,
-    isSpecial: false,
-    onDrop: { etapa: "negociacao" },
-  },
-  {
-    dropId: "conferencia_estoque",
-    label: "Conf. Estoque",
-    color: "text-indigo-600",
-    bg: "bg-indigo-100",
-    order: 5,
-    isSpecial: false,
-    onDrop: { etapa: "conferencia_estoque" },
-  },
-  {
-    dropId: "ganho",
-    label: "Ganho",
-    color: "text-emerald-600",
-    bg: "bg-emerald-100",
-    order: 6,
-    isSpecial: false,
-    onDrop: { etapa: "ganho" },
-  },
-  {
-    dropId: "em_execucao",
-    label: "Em Execução",
-    color: "text-cyan-600",
-    bg: "bg-cyan-100",
-    order: 7,
-    isSpecial: false,
-    onDrop: { etapa: "em_execucao" },
-  },
-  {
-    dropId: "entregue",
-    label: "Entregue",
-    color: "text-teal-600",
-    bg: "bg-teal-100",
-    order: 8,
-    isSpecial: false,
-    onDrop: { etapa: "entregue" },
-  },
-  {
-    dropId: "perdido",
-    label: "Perdido",
-    color: "text-red-600",
-    bg: "bg-red-100",
-    order: -1,
-    isSpecial: true,
-    onDrop: { etapa: "perdido" },
-  },
+  { dropId: "novo", label: "Novo", color: "text-slate-600", bg: "bg-slate-100", order: 1, isSpecial: false, onDrop: { etapa: "novo" } },
+  { dropId: "qualificado", label: "Qualificado", color: "text-blue-600", bg: "bg-blue-100", order: 2, isSpecial: false, onDrop: { etapa: "qualificado" } },
+  { dropId: "proposta", label: "Orçamento", color: "text-violet-600", bg: "bg-violet-100", order: 3, isSpecial: false, onDrop: { etapa: "proposta" } },
+  { dropId: "negociacao", label: "Negociação", color: "text-amber-600", bg: "bg-amber-100", order: 4, isSpecial: false, onDrop: { etapa: "negociacao" } },
+  { dropId: "conferencia_estoque", label: "Fechamento", color: "text-indigo-600", bg: "bg-indigo-100", order: 5, isSpecial: false, onDrop: { etapa: "conferencia_estoque" } },
+  { dropId: "contrato", label: "Contrato", color: "text-sky-600", bg: "bg-sky-100", order: 6, isSpecial: false, onDrop: { etapa: "contrato" } },
+  { dropId: "ganho", label: "Pedido", color: "text-emerald-600", bg: "bg-emerald-100", order: 7, isSpecial: false, onDrop: { etapa: "ganho" } },
+  { dropId: "perdido", label: "Perdido", color: "text-red-600", bg: "bg-red-100", order: -1, isSpecial: true, onDrop: { etapa: "perdido" } },
 ];
 
 /** Map deals to their visual column ID (handles the two aquecimento virtual splits). */
@@ -271,7 +167,7 @@ function dealsForColumn(col: KanbanColumnDef, deals: Deal[]): Deal[] {
   return deals.filter((d) => d.etapa === col.onDrop.etapa);
 }
 
-const TERMINAL_ETAPAS = new Set<string>(["ganho", "entregue", "perdido", "parceiro"]);
+const TERMINAL_ETAPAS = new Set<string>(["ganho", "entregue", "perdido"]);
 
 const ETAPAS_SAAS: { value: DealEtapaSaas; label: string; color: string; bg: string; icon: React.ElementType }[] = [
   { value: "lead_qualificado",  label: "Lead Qualificado",  color: "text-slate-600",   bg: "bg-slate-50",    icon: User },
@@ -2384,24 +2280,15 @@ export default function Deals() {
       const sourceCol = kanbanColumns.find((c) => c.dropId === sourceColId);
       const sourceOrder = sourceCol?.order ?? -1;
       const targetOrder = targetCol.order;
-      const isGanhoToAquecimento =
-        sourceColId === "ganho" &&
-        (targetCol.dropId === "aquecimento_nao_cliente" || targetCol.dropId === "aquecimento_cliente");
-      const isNovoToAquecimento =
-        sourceColId === "novo" &&
-        (targetCol.dropId === "aquecimento_nao_cliente" || targetCol.dropId === "aquecimento_cliente");
-
-      if (
+            if (
         !targetCol.isSpecial &&
         sourceOrder !== -1 &&
         targetOrder !== -1 &&
         targetOrder < sourceOrder &&
-        !isGanhoToAquecimento &&
-        !isNovoToAquecimento
       ) {
         toast({
           title: "Movimento não permitido",
-          description: "Cards só podem avançar no funil. Retroceder é permitido de Novo → Aquecimento e Ganho → Aquecimento.",
+          description: "Cards só podem avançar no funil comercial. Aquecimento e Parceiros possuem pipelines próprias.",
           variant: "destructive",
         });
         return;
@@ -2617,12 +2504,12 @@ export default function Deals() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Negócios</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {deals.length} negócios no pipeline
+            {deals.filter((d) => !["em_aquecimento", "parceiro", "em_execucao", "entregue"].includes(d.etapa)).length} negócios na pipeline comercial
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" className="gap-2" onClick={() => navigate("/pipeline-operacional")}><KanbanSquare className="h-4 w-4" /> Execução / Suporte</Button>
+        <Button variant="outline" className="gap-2" onClick={() => navigate("/pipeline-operacional")}><KanbanSquare className="h-4 w-4" /> Pipelines</Button>
         {isAdmin && <Dialog open={isStagesOpen} onOpenChange={setIsStagesOpen}>
           <DialogTrigger asChild><Button variant="outline"><Settings2 className="h-4 w-4 mr-2" /> Etapas</Button></DialogTrigger>
           <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
