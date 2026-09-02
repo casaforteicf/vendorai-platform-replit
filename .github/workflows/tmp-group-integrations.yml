@@ -1,0 +1,179 @@
+name: Temporary integration grouping
+
+on:
+  push:
+    branches:
+      - fix/group-integrations-by-provider
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/group-integrations-by-provider
+          fetch-depth: 0
+      - name: Group integrations by provider
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('artifacts/frontend/src/pages/Configuracoes.tsx')
+          s = path.read_text()
+
+          if 'Provider group — Google' in s:
+              print('Already grouped; nothing to do.')
+              raise SystemExit(0)
+
+          markers = {
+              'cal': '            {/* Google Calendar — OAuth */}',
+              'webhook_in': '            {/* Webhook de entrada — WhatsApp Omnichannel (integração técnica no final da aba) */}',
+              'meta_hub': '            {/* Hub Meta Business — fluxo principal unificado; cards individuais abaixo preservam detalhes e manutenção */}',
+              'wa': '            {/* WhatsApp — OAuth via Meta */}',
+              'gads': '            {/* Google Ads — OAuth por tenant (cada lojista com a própria conta) */}',
+              'social': '            <SocialIntegrationsPanel mode="connect" />',
+              'mads': '            {/* Meta Ads — OAuth por tenant, mesma estrutura do Google Ads acima */}',
+              'meta_legacy': '            {/* Meta WhatsApp Cloud API — Legacy Manual */}',
+              'evolution': '            {/* Evolution API — WhatsApp via QR Code (self-hosted, sem custo por cliente) */}',
+              'messenger': '            {/* Messenger — Facebook Page Access Token */}',
+              'instagram': '            {/* Instagram DM — OAuth via Meta */}',
+              'webhook_out': '            {/* Webhook de saída */}',
+          }
+          for name, marker in markers.items():
+              count = s.count(marker)
+              if count != 1:
+                  raise RuntimeError(f'Marker {name!r} expected once, found {count}')
+
+          def chunk(start, end):
+              i = s.index(start)
+              j = s.index(end, i)
+              return s[i:j]
+
+          cal = chunk(markers['cal'], markers['webhook_in'])
+          meta_hub = chunk(markers['meta_hub'], markers['wa'])
+          wa = chunk(markers['wa'], markers['gads'])
+          gads = chunk(markers['gads'], markers['social'])
+          mads = chunk(markers['mads'], markers['meta_legacy'])
+          meta_legacy = chunk(markers['meta_legacy'], markers['evolution'])
+          messenger = chunk(markers['messenger'], markers['instagram'])
+          instagram = chunk(markers['instagram'], markers['webhook_out'])
+
+          # Pending Meta Ads is a required step, not an advanced detail: always show it.
+          hidden = '!showMetaDetails && "hidden"'
+          replacement = '!showMetaDetails && !metaAdsConnection?.pendingAccountSelection && "hidden"'
+          if hidden not in mads:
+              raise RuntimeError('Meta Ads hidden-state expression not found')
+          mads = mads.replace(hidden, replacement, 1)
+
+          # Remove the provider-specific cards from their old scattered positions.
+          for block in (cal, meta_hub, wa, gads, chunk(markers['mads'], markers['meta_legacy']), meta_legacy, messenger, instagram):
+              if s.count(block) != 1:
+                  raise RuntimeError('Expected provider block exactly once before moving it')
+              s = s.replace(block, '', 1)
+
+          google_group = '''            {/* Provider group — Google */}
+            <section className="rounded-2xl border bg-muted/10 p-4 sm:p-5 space-y-4">
+              <div>
+                <p className="text-sm font-semibold">Google</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Calendar e Google Ads agrupados no mesmo ecossistema.
+                </p>
+              </div>
+              <div className="space-y-4">
+''' + cal + gads + '''              </div>
+            </section>
+
+'''
+
+          meta_group = '''            {/* Provider group — Meta */}
+            <section className="rounded-2xl border-2 border-blue-200/70 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/10 p-4 sm:p-5 space-y-4">
+              <div>
+                <p className="text-sm font-semibold">Meta</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Instagram, Facebook, Meta Ads, WhatsApp e Messenger ficam juntos neste grupo.
+                </p>
+              </div>
+              <div className="space-y-4">
+''' + meta_hub + mads + instagram + wa + messenger + meta_legacy + '''              </div>
+            </section>
+
+'''
+
+          # Put provider groups at the top of the unlocked integrations area.
+          anchor = markers['webhook_in']
+          s = s.replace(anchor, google_group + meta_group + anchor, 1)
+
+          old_flow = '''  function onConnectMetaBusiness() {
+    if (!igConnection.data?.connected) {
+      void onConnectInstagram();
+      return;
+    }
+    if (!metaAdsConnection?.connected || metaAdsConnection.pendingAccountSelection) {
+      void onConnectMetaAds();
+      return;
+    }
+    if (!waConnection.data?.connected) {
+'''
+          new_flow = '''  function onConnectMetaBusiness() {
+    if (!igConnection.data?.connected) {
+      void onConnectInstagram();
+      return;
+    }
+    if (metaAdsConnection?.pendingAccountSelection) {
+      setShowMetaDetails(true);
+      toast({
+        title: "Escolha a conta Meta Ads",
+        description: "A autorização já foi concluída. Selecione a Ad Account logo abaixo no grupo Meta.",
+      });
+      return;
+    }
+    if (!metaAdsConnection?.connected) {
+      void onConnectMetaAds();
+      return;
+    }
+    if (!waConnection.data?.connected) {
+'''
+          if old_flow not in s:
+              raise RuntimeError('Meta Business connect flow not found')
+          s = s.replace(old_flow, new_flow, 1)
+
+          old_label = '''                  {!igConnection.data?.connected
+                    ? "Conectar Instagram — etapa 1"
+                    : !metaAdsConnection?.connected || metaAdsConnection.pendingAccountSelection
+                      ? "Conectar Meta Ads — etapa 2"
+                      : !waConnection.data?.connected
+                        ? "Conectar WhatsApp — etapa 3"
+                        : "Gerenciar conexão Meta"}
+'''
+          new_label = '''                  {!igConnection.data?.connected
+                    ? "Conectar Instagram — etapa 1"
+                    : metaAdsConnection?.pendingAccountSelection
+                      ? "Escolher conta Meta Ads — etapa 2"
+                      : !metaAdsConnection?.connected
+                        ? "Conectar Meta Ads — etapa 2"
+                        : !waConnection.data?.connected
+                          ? "Conectar WhatsApp — etapa 3"
+                          : "Gerenciar conexão Meta"}
+'''
+          if old_label not in s:
+              raise RuntimeError('Meta Business button label expression not found')
+          s = s.replace(old_label, new_label, 1)
+
+          path.write_text(s)
+          print('Integration grouping applied successfully.')
+          PY
+
+      - name: Remove temporary workflow and commit result
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-group-integrations.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/pages/Configuracoes.tsx .github/workflows/tmp-group-integrations.yml
+          git commit -m "refactor(integrations): agrupar conexões por provedor"
+          git push origin HEAD:fix/group-integrations-by-provider
