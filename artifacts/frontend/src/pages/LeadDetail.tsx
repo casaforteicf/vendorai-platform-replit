@@ -9,9 +9,7 @@ import { VendidoModal } from "@/components/VendidoModal";
 import { AgendarReuniaoModal } from "@/components/AgendarReuniaoModal";
 import LeadServiceJourney from "./LeadServiceJourney";
 import LeadPropostaTab from "./LeadPropostaTab";
-import { OportunidadesPrevistasCard } from "@/components/OportunidadesPrevistasCard";
 import LeadProductPresentationTab from "./LeadProductPresentationTab";
-import LeadDuplicatasTab from "./LeadDuplicatasTab";
 import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
 import {
   useGetLead,
@@ -97,7 +95,6 @@ import {
   Trash2,
   UserCog,
   FileText,
-  Printer,
   Video,
   Paperclip,
   FileUp,
@@ -2772,123 +2769,10 @@ export default function LeadDetail() {
         {/* Proposta Gerada */}
         <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
 
-        {/* Oportunidades futuras previstas pelo vendedor */}
-        <OportunidadesPrevistasCard leadId={id!} summaryOnly />
-
-        {/* Orçamentos do Lead */}
-        <Card data-testid="card-orcamentos">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Orçamentos
-                {leadPropostas && leadPropostas.length > 0 && (
-                  <Badge variant="outline" className="text-xs ml-1">{leadPropostas.length}</Badge>
-                )}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1"
-                onClick={() => setPropostaModalOpen(true)}
-              >
-                <Plus className="h-3 w-3" />
-                Novo
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {propostasLoading ? (
-              <div className="space-y-2">
-                {[1, 2].map((i) => (
-                  <div key={i} className="h-12 bg-muted animate-pulse rounded" />
-                ))}
-              </div>
-            ) : !leadPropostas?.length ? (
-              <div className="py-6 text-center space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Nenhum orçamento para este lead.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1"
-                  onClick={() => setPropostaModalOpen(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Gerar primeiro orçamento
-                </Button>
-              </div>
-            ) : (
-              <div className="divide-y divide-border">
-                {[...leadPropostas].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((p) => {
-                  const statusColors: Record<string, string> = {
-                    rascunho: "bg-gray-100 text-gray-600 border-gray-200",
-                    enviada:  "bg-blue-100 text-blue-700 border-blue-200",
-                    pendente: "bg-violet-100 text-violet-700 border-violet-200",
-                    aceita:   "bg-emerald-100 text-emerald-700 border-emerald-200",
-                    rejeitada:"bg-red-100 text-red-600 border-red-200",
-                    expirada: "bg-orange-100 text-orange-700 border-orange-200",
-                  };
-                  const statusLabels: Record<string, string> = {
-                    rascunho: "Rascunho", enviada: "Enviada", pendente: "Pendente", aceita: "Aceita", rejeitada: "Rejeitada", expirada: "Expirada",
-                  };
-                  const total = p.valorTotal
-                    ? parseFloat(p.valorTotal)
-                    : p.itens.reduce((s: number, i: { quantidade: number; valorUnitario: number }) => s + i.quantidade * i.valorUnitario, 0);
-                  return (
-                    <div key={p.id} className="py-3 px-1 flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {p.numero && (
-                            <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                              {p.numero}
-                            </span>
-                          )}
-                          <Badge variant="outline" className={`text-xs ${statusColors[p.status] ?? ""}`}>
-                            {statusLabels[p.status] ?? p.status}
-                          </Badge>
-                        </div>
-                        <p className="text-sm font-medium mt-1 truncate">{p.titulo}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(p.createdAt))}
-                          {p.validadeAte && ` · válido até ${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(p.validadeAte))}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <div className="text-right">
-                          <p className="text-sm font-semibold font-mono">
-                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(total)}
-                          </p>
-                          {p.recorrente && p.valorMensal && (
-                            <p className="text-xs text-violet-600 font-medium">
-                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(p.valorMensal))}/mês
-                            </p>
-                          )}
-                        </div>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          title="Imprimir / Gerar PDF"
-                          onClick={() => setLocation(`/propostas/${p.id}/print`)}
-                        >
-                          <Printer className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Apresentações de Produto */}
         <LeadProductPresentationTab leadId={id} tenantId={tenantId} lead={lead} />
 
-        {/* Duplicatas */}
-        {/* Imagens da Proposta */}
+        {/* Galeria de Renderizações salvas (distinto das imagens específicas da proposta, acima) */}
         {(() => {
           const renderImages = (activities ?? []).filter(
             (a) => a.anexoCategoria === "imagem" && a.anexoUrl
@@ -2898,7 +2782,7 @@ export default function LeadDetail() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <Image className="h-4 w-4" />
-                  Imagens da Proposta
+                  Galeria de Renderizações
                   {renderImages.length > 0 && (
                     <Badge variant="outline" className="text-xs ml-1">{renderImages.length}</Badge>
                   )}
@@ -2957,8 +2841,6 @@ export default function LeadDetail() {
             </Card>
           );
         })()}
-
-        <LeadDuplicatasTab leadId={id} tenantId={tenantId} />
 
       </div>
 
