@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-268",
+    "titulo": "melhorar Central de Trabalho com pipeline e perguntas compactas",
+    "descricao": "alinha o fluxo visual da Central de Trabalho à pipeline comercial real (Novo, Qualificado, Orçamento, Negociação, Fechamento, Contrato, Pedido e Perdido) mantém as etapas configuradas pelo tenant e destaca apenas a etapa atual reduz bastante a altura do bloco de perguntas respostas ficam compactas e expandem somente durante a edição",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-02T20:45:53.000Z",
+    "pullRequest": 268
+  },
+  {
     "id": "pr-252",
     "titulo": "WhatsApp: múltiplos números por tenant e responsável",
     "descricao": "permite vários números WhatsApp por tenant via Meta oficial e QR Code/Evolution vincula cada número a um usuário responsável e permite definir o número padrão registra a conexão usada na conversa e mantém as mensagens na tela Conversas e no card do lead direciona leads, negócios e conversas recebidos ao responsável do número",
