@@ -1,0 +1,44 @@
+name: Patch Dashboard Official KPIs
+on:
+  push:
+    branches: [fix/dashboard-remove-legacy-kpi-mismatch]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dashboard-remove-legacy-kpi-mismatch
+      - name: Replace mismatched legacy KPI cards
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('artifacts/frontend/src/pages/Dashboard.tsx')
+          s=p.read_text()
+          s=s.replace('{dashboard?.ticketMedio ? formatCurrency(dashboard.ticketMedio) : "—"}', '{official ? formatCurrency(official.commercial?.averageTicket) : (officialLoading ? "…" : "—")}')
+          s=s.replace('média dos deals ganhos', 'média das vendas confirmadas no período', 1)
+          s=s.replace('{dashboard?.atividadesAtrasadas ?? 0}', '{official?.operation?.overdueTasks ?? 0}', 1)
+          s=s.replace('{(dashboard?.atividadesAtrasadas ?? 0) === 1', '{(official?.operation?.overdueTasks ?? 0) === 1', 1)
+          s=s.replace('Novos Leads (30d)', 'Leads novos (período)', 1)
+          s=s.replace('{dashboard?.leads.novosUltimos30Dias ?? 0}', '{official?.commercial?.newLeads ?? 0}', 1)
+          s=s.replace('Risco de Churn', 'Clientes em risco', 1)
+          s=s.replace('{dashboard?.churnRiskDistribuicao?.alto ?? 0}', '{official?.intelligence?.customersAtRisk ?? 0}', 1)
+          s=s.replace('{(dashboard?.churnRiskDistribuicao?.alto ?? 0) === 1 ? "lead em alto risco" : "leads em alto risco"}', '{(official?.intelligence?.customersAtRisk ?? 0) === 1 ? "cliente em risco" : "clientes em risco"}', 1)
+          s=s.replace('Leads Quentes', 'Próxima melhor ação', 1)
+          s=s.replace('{dashboard?.top5ChurnRisk?.length ?? 0}', '{official?.intelligence?.withNextBestAction ?? 0}', 1)
+          s=s.replace('top leads por risco de churn', 'perfis com ação recomendada pelo CIH', 1)
+          marker='''      {mostrarAnalise && (\n      <>\n      {/* KPI Row 2 — Operacional */}'''
+          repl='''      {mostrarAnalise && (\n      <>\n      <div className="flex items-center justify-between rounded-md border border-dashed px-3 py-2">\n        <p className="text-xs text-muted-foreground">Indicadores complementares · fontes reais do CRM, CIH e operação</p>\n        <Badge variant="outline">sem dados simulados</Badge>\n      </div>\n      {/* KPI Row 2 — Operacional */}'''
+          if marker not in s: raise SystemExit('marker not found')
+          s=s.replace(marker,repl,1)
+          p.write_text(s)
+          PY
+          rm .github/workflows/patch-dashboard-official-kpis.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(dashboard): remover divergências de KPIs legados"
+          git push origin HEAD:fix/dashboard-remove-legacy-kpi-mismatch
