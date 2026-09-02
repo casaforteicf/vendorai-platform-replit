@@ -115,8 +115,8 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
         p.sla_minutes,
         count(*) FILTER (WHERE e.exited_at IS NOT NULL AND e.origin <> 'backfill_current_state')::int AS completed_samples,
         round(avg(e.duration_seconds) FILTER (WHERE e.duration_seconds IS NOT NULL AND e.origin <> 'backfill_current_state'))::int AS avg_duration_seconds,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY e.duration_seconds)
-          FILTER (WHERE e.duration_seconds IS NOT NULL AND e.origin <> 'backfill_current_state')::int AS median_duration_seconds,
+        (percentile_cont(0.5) WITHIN GROUP (ORDER BY e.duration_seconds)
+          FILTER (WHERE e.duration_seconds IS NOT NULL AND e.origin <> 'backfill_current_state'))::int AS median_duration_seconds,
         count(*) FILTER (
           WHERE e.duration_seconds IS NOT NULL
             AND e.origin <> 'backfill_current_state'
