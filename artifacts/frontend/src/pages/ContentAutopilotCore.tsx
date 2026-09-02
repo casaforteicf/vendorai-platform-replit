@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import ContentAutopilotLegacyUI from "./ContentAutopilotLegacyUI";
@@ -14,6 +14,7 @@ import {
   FileText,
   Lightbulb,
   Loader2,
+  MessageSquareText,
   Search,
   ShieldCheck,
   Sparkles,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 
 type AutopilotMode = "suggestion" | "semi" | "automatic";
+type SourceType = "site" | "article" | "product";
 
 type SitePlan = {
   generatedAt: string;
@@ -48,6 +50,37 @@ type SitePlan = {
   }>;
   weeks: Array<{ week: number; focus: string; action: string }>;
 };
+
+type ContentSignal = {
+  id: string;
+  question: string;
+  occurrences: number;
+  channels: string[];
+  lastSeen: string;
+  recommendations: string[];
+};
+
+type SignalsResponse = {
+  analyzedIncomingMessages: number;
+  signals: ContentSignal[];
+};
+
+type SimpleSource = { id: string; label: string };
+type RepurposeOutput = { channel: string; title?: string; content: string };
+
+const REPURPOSE_CHANNELS = [
+  ["article", "Artigo"],
+  ["instagram", "Instagram"],
+  ["facebook", "Facebook"],
+  ["linkedin", "LinkedIn"],
+  ["reels", "Reels"],
+  ["video_script", "Roteiro de vídeo"],
+  ["email", "E-mail"],
+  ["whatsapp", "WhatsApp"],
+  ["meta_ad", "Anúncio Meta"],
+  ["google_ads", "Google Ads"],
+  ["landing_page", "Landing Page"],
+] as const;
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
@@ -86,6 +119,11 @@ export default function ContentAutopilotCore() {
     return saved && ["suggestion", "semi", "automatic"].includes(saved) ? saved : "suggestion";
   });
   const [savingMode, setSavingMode] = useState(false);
+  const [sourceType, setSourceType] = useState<SourceType>("site");
+  const [sourceId, setSourceId] = useState("");
+  const [selectedChannels, setSelectedChannels] = useState<string[]>(["instagram", "reels", "whatsapp", "meta_ad", "landing_page"]);
+  const [generatingKit, setGeneratingKit] = useState(false);
+  const [outputs, setOutputs] = useState<RepurposeOutput[]>([]);
 
   const { data: plan, isLoading, refetch } = useQuery<SitePlan>({
     queryKey: ["content-autopilot-site-plan", tenantId],
@@ -98,18 +136,73 @@ export default function ContentAutopilotCore() {
     enabled: !!tenantId,
   });
 
+  const signalsQuery = useQuery<SignalsResponse>({
+    queryKey: ["content-autopilot-crm-signals", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/site-generator/content-signals`, { headers: authHeaders() });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível ler os sinais do CRM");
+      return body;
+    },
+    enabled: !!tenantId,
+  });
+
+  const sitesQuery = useQuery<any[]>({
+    queryKey: ["autopilot-repurpose-sites", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/site-generator`, { headers: authHeaders() });
+      if (!response.ok) return [];
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!tenantId,
+  });
+
+  const articlesQuery = useQuery<{ articles?: any[] }>({
+    queryKey: ["autopilot-repurpose-articles", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/articles`, { headers: authHeaders() });
+      if (!response.ok) return { articles: [] };
+      return response.json();
+    },
+    enabled: !!tenantId,
+  });
+
+  const productsQuery = useQuery<any[]>({
+    queryKey: ["autopilot-repurpose-products", tenantId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: authHeaders() });
+      if (!response.ok) return [];
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!tenantId,
+  });
+
+  const sources = useMemo<SimpleSource[]>(() => {
+    if (sourceType === "site") {
+      return (sitesQuery.data ?? []).map((site) => ({ id: site.id, label: site.name ?? "Site" }));
+    }
+    if (sourceType === "article") {
+      return (articlesQuery.data?.articles ?? []).map((article) => ({ id: article.id, label: article.titulo ?? "Artigo sem título" }));
+    }
+    return (productsQuery.data ?? []).map((product) => ({ id: product.id, label: product.nome ?? product.name ?? "Produto" }));
+  }, [sourceType, sitesQuery.data, articlesQuery.data, productsQuery.data]);
+
   useEffect(() => {
     if (!plan) return;
     const saved = localStorage.getItem(storageKey);
     if (!saved && plan.summary.autopilotActive) setMode("automatic");
   }, [plan, storageKey]);
 
+  useEffect(() => {
+    setSourceId((current) => sources.some((source) => source.id === current) ? current : sources[0]?.id ?? "");
+  }, [sources]);
+
   async function changeMode(next: AutopilotMode) {
     if (!tenantId) return;
     setSavingMode(true);
     try {
-      // O backend existente já possui o controle operacional `ativo`.
-      // Sugestão e Semiautomático mantêm o job recorrente pausado; Automático o ativa.
       const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/config`, {
         method: "PUT",
         headers: authHeaders(),
@@ -133,6 +226,36 @@ export default function ContentAutopilotCore() {
     document.getElementById("content-autopilot-production")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function toggleChannel(channel: string) {
+    setSelectedChannels((current) => current.includes(channel) ? current.filter((item) => item !== channel) : [...current, channel]);
+  }
+
+  async function generateKit() {
+    if (!sourceId || selectedChannels.length === 0) {
+      toast({ title: "Escolha uma fonte e ao menos um canal", variant: "destructive" });
+      return;
+    }
+    setGeneratingKit(true);
+    setOutputs([]);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/site-generator/repurpose`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ sourceType, sourceId, channels: selectedChannels }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível gerar o kit");
+      setOutputs(Array.isArray(body.outputs) ? body.outputs : []);
+      toast({ title: "Kit multicanal gerado", description: `${Array.isArray(body.outputs) ? body.outputs.length : 0} entregas criadas a partir da mesma fonte.` });
+    } catch (error: any) {
+      toast({ title: "Erro ao gerar kit", description: error.message, variant: "destructive" });
+    } finally {
+      setGeneratingKit(false);
+    }
+  }
+
+  const signals = signalsQuery.data?.signals ?? [];
+
   return (
     <div className="space-y-6">
       <Card className="border-primary/20">
@@ -140,11 +263,11 @@ export default function ContentAutopilotCore() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-lg"><Bot className="h-5 w-5 text-primary" /> Autopilot do Site</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">Motor editorial e de crescimento conectado ao Gerador de Sites, SEO e conteúdo real do tenant.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Motor editorial e de crescimento conectado ao Gerador de Sites, CRM, SEO, conteúdo e desempenho comercial.</p>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant={plan?.summary.autopilotActive ? "default" : "secondary"}>{plan?.summary.autopilotActive ? "Ativo" : "Job pausado"}</Badge>
-              <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isLoading}>
+              <Button size="sm" variant="outline" onClick={() => { void refetch(); void signalsQuery.refetch(); }} disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}Atualizar diagnóstico
               </Button>
             </div>
@@ -173,7 +296,7 @@ export default function ContentAutopilotCore() {
                 );
               })}
             </div>
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Conteúdo bloqueado ou aprovado continua protegido; ativar o job não autoriza reescrever elementos travados do site.</p>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Seções bloqueadas no Gerador são preservadas mesmo quando a IA refina o restante do site.</p>
           </div>
         </CardContent>
       </Card>
@@ -199,8 +322,8 @@ export default function ContentAutopilotCore() {
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between"><p className="text-sm font-semibold">Oportunidades encontradas</p><Badge variant="secondary">{plan.opportunities.length}</Badge></div>
-                  {plan.opportunities.length === 0 ? (
+                  <div className="flex items-center justify-between"><p className="text-sm font-semibold">Oportunidades encontradas</p><Badge variant="secondary">{plan.opportunities.length + signals.length}</Badge></div>
+                  {plan.opportunities.length === 0 && signals.length === 0 ? (
                     <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma pendência estrutural detectada com os dados atuais. Continue acompanhando desempenho e novas demandas.</div>
                   ) : (
                     plan.opportunities.map((opportunity) => (
@@ -229,17 +352,102 @@ export default function ContentAutopilotCore() {
                   ))}
                 </div>
               </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                <div className="flex items-start gap-3">
-                  <Lightbulb className="mt-0.5 h-4 w-4 text-primary" />
-                  <div>
-                    <p className="text-sm font-semibold">Ciclo integrado</p>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">CRM e dúvidas recorrentes devem alimentar oportunidades → conteúdo → site/LP → SEO → leads → oportunidades → vendas → AI Marketing Manager → próximo conteúdo. Esta tela começa pela parte que já possui dados reais: sites, keywords e artigos.</p>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base"><MessageSquareText className="h-4 w-4 text-primary" /> Dúvidas reais do CRM → oportunidades de conteúdo</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">O VendorAI analisa perguntas recebidas de leads reais, excluindo contatos classificados como não-lead.</p>
+            </div>
+            <Badge variant="secondary">{signalsQuery.data?.analyzedIncomingMessages ?? 0} perguntas analisadas</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {signalsQuery.isLoading ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Analisando conversas...</div>
+          ) : signals.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Ainda não há uma dúvida recorrente com repetição suficiente para virar recomendação automática.</div>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {signals.map((signal) => (
+                <div key={signal.id} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">“{signal.question}”</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Detectada {signal.occurrences} vezes · {signal.channels.join(", ")}</p>
+                    </div>
+                    <Badge>{signal.occurrences}x</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {signal.recommendations.map((item) => <Badge key={item} variant="outline" className="text-[10px]">{item}</Badge>)}
                   </div>
                 </div>
-              </div>
-            </>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><Wand2 className="h-4 w-4 text-primary" /> Criar campanha a partir deste conteúdo</CardTitle>
+          <p className="text-xs text-muted-foreground">Escolha um site, artigo ou produto e gere vários materiais preservando a mesma oferta, público, posicionamento e CTA.</p>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 md:grid-cols-[180px_1fr]">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium">Fonte</label>
+              <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={sourceType} onChange={(event) => { setSourceType(event.target.value as SourceType); setOutputs([]); }}>
+                <option value="site">Site / Landing Page</option>
+                <option value="article">Artigo</option>
+                <option value="product">Produto</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium">Conteúdo de origem</label>
+              <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={sourceId} onChange={(event) => { setSourceId(event.target.value); setOutputs([]); }}>
+                {sources.length === 0 && <option value="">Nenhum item disponível</option>}
+                {sources.map((source) => <option key={source.id} value={source.id}>{source.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-medium">Gerar para</p>
+            <div className="flex flex-wrap gap-2">
+              {REPURPOSE_CHANNELS.map(([channel, label]) => {
+                const active = selectedChannels.includes(channel);
+                return (
+                  <button key={channel} type="button" onClick={() => toggleChannel(channel)} className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/40"}`}>
+                    {active && "✓ "}{label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Button onClick={generateKit} disabled={generatingKit || !sourceId || selectedChannels.length === 0}>
+            {generatingKit ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            Gerar kit multicanal
+          </Button>
+
+          {outputs.length > 0 && (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {outputs.map((output, index) => (
+                <div key={`${output.channel}-${index}`} className="rounded-xl border p-4">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{output.title || REPURPOSE_CHANNELS.find(([channel]) => channel === output.channel)?.[1] || output.channel}</p>
+                    <Badge variant="secondary">{output.channel}</Badge>
+                  </div>
+                  <div className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{output.content}</div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -255,10 +463,20 @@ export default function ContentAutopilotCore() {
       <Card className="border-dashed">
         <CardContent className="grid gap-3 p-4 md:grid-cols-3">
           <div className="flex gap-2"><Search className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-xs font-semibold">SEO</p><p className="text-[11px] text-muted-foreground">Palavras-chave e otimização orientam novas páginas e artigos.</p></div></div>
-          <div className="flex gap-2"><FileText className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-xs font-semibold">Conteúdo</p><p className="text-[11px] text-muted-foreground">Artigos publicados entram no blog nativo do site gerado.</p></div></div>
-          <div className="flex gap-2"><Target className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-xs font-semibold">Conversão</p><p className="text-[11px] text-muted-foreground">O próximo estágio conecta conteúdo a origem, lead, oportunidade e venda.</p></div></div>
+          <div className="flex gap-2"><FileText className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-xs font-semibold">CRM → Conteúdo</p><p className="text-[11px] text-muted-foreground">Perguntas reais viram FAQ, artigos, comparativos, vídeos e campanhas.</p></div></div>
+          <div className="flex gap-2"><Target className="mt-0.5 h-4 w-4 text-primary" /><div><p className="text-xs font-semibold">Conversão</p><p className="text-[11px] text-muted-foreground">Comportamento do site e atribuição comercial alimentam o próximo ciclo.</p></div></div>
         </CardContent>
       </Card>
+
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+        <div className="flex items-start gap-3">
+          <Lightbulb className="mt-0.5 h-4 w-4 text-primary" />
+          <div>
+            <p className="text-sm font-semibold">Ciclo fechado</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">CRM → dúvidas reais → conteúdo → site/LP → SEO e campanhas → comportamento → lead → oportunidade → venda → AI Marketing Manager → próximo conteúdo melhor.</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
