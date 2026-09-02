@@ -26,3 +26,5 @@ jobs:
         run: pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit
       - name: Frontend typecheck
         run: pnpm --filter @workspace/frontend typecheck
+
+# one-shot validation trigger
