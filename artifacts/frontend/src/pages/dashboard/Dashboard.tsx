@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter";
+import BusinessGoalsDialog from "@/components/dashboard/BusinessGoalsDialog";
 
 type CommandCenterProps = Parameters<typeof OfficialCommandCenter>[0];
 type OfficialMetrics = CommandCenterProps["data"];
@@ -82,12 +83,17 @@ export default function Dashboard() {
   }, [tenantId, token, refreshKey]);
 
   return (
-    <OfficialCommandCenter
-      data={official}
-      executive={executive}
-      loading={loading}
-      userName={user?.name ?? ""}
-      onRefresh={refresh}
-    />
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <BusinessGoalsDialog onChanged={refresh} />
+      </div>
+      <OfficialCommandCenter
+        data={official}
+        executive={executive}
+        loading={loading}
+        userName={user?.name ?? ""}
+        onRefresh={refresh}
+      />
+    </div>
   );
 }

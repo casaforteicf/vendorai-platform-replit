@@ -29,8 +29,99 @@ const KPI_DICTIONARY = [
   { key: "marketing_roas", label: "ROAS", source: "Meta/Google Ads + atribuição", formula: "Receita atribuída / investimento confirmado", availability: "integration" },
 ] as const;
 
-const TERMINAL_EXECUTION = ["concluido", "cancelado"];
-const TERMINAL_SUPPORT = ["fechamento_assistencia", "cancelado"];
+type GoalRow = {
+  id: string;
+  metric_key: string;
+  label: string;
+  period_type: string;
+  target_value: string | number;
+  unit: string;
+  starts_at: Date | string;
+  ends_at: Date | string;
+  responsible_id: string | null;
+  team_key: string | null;
+  responsible_name?: string | null;
+};
+
+async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<number | null> {
+  const start = new Date(goal.starts_at);
+  const end = new Date(goal.ends_at);
+  const responsibleId = goal.responsible_id ?? null;
+
+  if (goal.metric_key === "new_leads") {
+    const result = await db.execute(sql`
+      SELECT count(*)::int AS actual
+      FROM leads l
+      WHERE l.tenant_id = ${tenantId}
+        AND l.nao_lead_tipo IS NULL
+        AND l.excluido_em IS NULL
+        AND l.created_at >= ${start} AND l.created_at <= ${end}
+        AND (${responsibleId}::text IS NULL OR l.assigned_to = ${responsibleId})
+    `);
+    return Number((result.rows[0] as any)?.actual ?? 0);
+  }
+
+  if (goal.metric_key === "active_opportunities") {
+    const result = await db.execute(sql`
+      SELECT count(*)::int AS actual
+      FROM deals d
+      WHERE d.tenant_id = ${tenantId}
+        AND d.etapa NOT IN ('ganho', 'perdido')
+        AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
+    `);
+    return Number((result.rows[0] as any)?.actual ?? 0);
+  }
+
+  if (["confirmed_sales", "sold_revenue", "average_ticket"].includes(goal.metric_key)) {
+    const result = await db.execute(sql`
+      WITH won AS (
+        SELECT d.*, COALESCE(d.data_fechamento, d.won_at, d.updated_at) AS closed_at
+        FROM deals d
+        WHERE d.tenant_id = ${tenantId}
+          AND d.etapa = 'ganho'
+          AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
+      )
+      SELECT
+        count(*) FILTER (WHERE closed_at >= ${start} AND closed_at <= ${end})::int AS confirmed_sales,
+        COALESCE(sum(valor) FILTER (WHERE closed_at >= ${start} AND closed_at <= ${end}), 0)::numeric AS sold_revenue,
+        COALESCE(avg(valor) FILTER (WHERE closed_at >= ${start} AND closed_at <= ${end} AND valor IS NOT NULL), 0)::numeric AS average_ticket
+      FROM won
+    `);
+    const row = (result.rows[0] ?? {}) as any;
+    if (goal.metric_key === "confirmed_sales") return Number(row.confirmed_sales ?? 0);
+    if (goal.metric_key === "sold_revenue") return Number(row.sold_revenue ?? 0);
+    return Number(row.average_ticket ?? 0);
+  }
+
+  if (goal.metric_key === "commercial_conversion") {
+    const result = await db.execute(sql`
+      SELECT
+        count(*)::int AS total,
+        count(*) FILTER (WHERE etapa = 'ganho')::int AS won
+      FROM deals d
+      WHERE d.tenant_id = ${tenantId}
+        AND d.created_at >= ${start} AND d.created_at <= ${end}
+        AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
+    `);
+    const row = (result.rows[0] ?? {}) as any;
+    const total = Number(row.total ?? 0);
+    return total > 0 ? (Number(row.won ?? 0) / total) * 100 : 0;
+  }
+
+  if (goal.metric_key === "ai_actions_executed") {
+    if (responsibleId) return null;
+    const result = await db.execute(sql`
+      SELECT count(*)::int AS actual
+      FROM agent_actions_log
+      WHERE tenant_id = ${tenantId}
+        AND status = 'executed'
+        AND created_at >= ${start} AND created_at <= ${end}
+    `);
+    return Number((result.rows[0] as any)?.actual ?? 0);
+  }
+
+  return null;
+}
 
 router.get("/tenants/:tenantId/dashboard/metric-definitions", async (req, res) => {
   const tenantId = String(req.params.tenantId);
@@ -53,8 +144,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
   const [core, operational, intelligence, ai, stageRows, goals, feedback, integrations, dataQuality] = await Promise.all([
     db.execute(sql`
       WITH won AS (
-        SELECT d.*,
-          COALESCE(d.data_fechamento, d.won_at, d.updated_at) AS closed_at
+        SELECT d.*, COALESCE(d.data_fechamento, d.won_at, d.updated_at) AS closed_at
         FROM deals d
         WHERE d.tenant_id = ${tenantId} AND d.etapa = 'ganho'
       ), created_deals AS (
@@ -132,12 +222,13 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
       ORDER BY e.pipeline, COALESCE(p.position, 999), e.to_stage
     `),
     db.execute(sql`
-      SELECT id, metric_key, label, period_type, target_value, unit, starts_at, ends_at,
-             responsible_id, team_key
-      FROM business_goals
-      WHERE tenant_id = ${tenantId} AND active = true
-        AND starts_at <= ${periodEnd} AND ends_at >= ${periodStart}
-      ORDER BY starts_at DESC
+      SELECT g.id, g.metric_key, g.label, g.period_type, g.target_value, g.unit, g.starts_at, g.ends_at,
+             g.responsible_id, g.team_key, u.name AS responsible_name
+      FROM business_goals g
+      LEFT JOIN users u ON u.id = g.responsible_id AND u.tenant_id = g.tenant_id
+      WHERE g.tenant_id = ${tenantId} AND g.active = true
+        AND g.starts_at <= ${periodEnd} AND g.ends_at >= ${periodStart}
+      ORDER BY g.starts_at DESC
     `),
     db.execute(sql`
       SELECT
@@ -189,16 +280,8 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
     ? Math.max(0, 100 - (incomplete / (validLeads * 3)) * 100)
     : null;
 
-  const actualByMetric: Record<string, number | null> = {
-    new_leads: Number(c.new_leads ?? 0),
-    confirmed_sales: Number(c.confirmed_sales ?? 0),
-    sold_revenue: Number(c.sold_revenue ?? 0),
-    active_opportunities: Number(c.active_opportunities ?? 0),
-    ai_actions_executed: Number(a.executed ?? 0),
-  };
-
-  const goalRows = (goals.rows as any[]).map((g) => {
-    const actual = actualByMetric[g.metric_key] ?? null;
+  const goalRows = await Promise.all((goals.rows as GoalRow[]).map(async (g) => {
+    const actual = await calculateGoalActual(tenantId, g);
     const target = Number(g.target_value ?? 0);
     return {
       id: g.id,
@@ -211,10 +294,12 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
       target,
       actual,
       progress: actual != null && target > 0 ? actual / target : null,
+      scope: g.responsible_id ? "seller" : g.team_key ? "team" : "company",
       responsibleId: g.responsible_id,
+      responsibleName: g.responsible_name ?? null,
       teamKey: g.team_key,
     };
-  });
+  }));
 
   const stageMetrics = (stageRows.rows as any[]).map((row) => ({
     pipeline: row.pipeline,
@@ -293,7 +378,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
 });
 
 const goalSchema = z.object({
-  metricKey: z.enum(["new_leads", "confirmed_sales", "sold_revenue", "active_opportunities", "ai_actions_executed"]),
+  metricKey: z.enum(["new_leads", "confirmed_sales", "sold_revenue", "active_opportunities", "average_ticket", "commercial_conversion", "ai_actions_executed"]),
   label: z.string().min(2).max(120),
   targetValue: z.number().nonnegative(),
   unit: z.enum(["count", "currency", "percent"]).default("count"),
@@ -308,7 +393,11 @@ router.get("/tenants/:tenantId/business-goals", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const result = await db.execute(sql`
-    SELECT * FROM business_goals WHERE tenant_id = ${tenantId} ORDER BY starts_at DESC
+    SELECT g.*, u.name AS responsible_name
+    FROM business_goals g
+    LEFT JOIN users u ON u.id = g.responsible_id AND u.tenant_id = g.tenant_id
+    WHERE g.tenant_id = ${tenantId}
+    ORDER BY g.active DESC, g.starts_at DESC
   `);
   return res.json(result.rows);
 });
@@ -320,6 +409,33 @@ router.post("/tenants/:tenantId/business-goals", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   if (parsed.data.endsAt <= parsed.data.startsAt) return res.status(422).json({ error: "endsAt deve ser posterior a startsAt" });
   const g = parsed.data;
+
+  if (g.responsibleId) {
+    const seller = await db.execute(sql`
+      SELECT id FROM users
+      WHERE id = ${g.responsibleId}
+        AND tenant_id = ${tenantId}
+        AND active = true
+        AND user_function = 'vendedor'
+      LIMIT 1
+    `);
+    if (!seller.rows[0]) return res.status(422).json({ error: "Vendedor inválido ou inativo para este tenant" });
+    if (g.metricKey === "ai_actions_executed") return res.status(422).json({ error: "Ações de IA não possuem apuração individual por vendedor" });
+  }
+
+  const duplicate = await db.execute(sql`
+    SELECT id FROM business_goals
+    WHERE tenant_id = ${tenantId}
+      AND metric_key = ${g.metricKey}
+      AND starts_at = ${g.startsAt}
+      AND ends_at = ${g.endsAt}
+      AND COALESCE(responsible_id, '') = COALESCE(${g.responsibleId ?? null}, '')
+      AND COALESCE(team_key, '') = COALESCE(${g.teamKey ?? null}, '')
+      AND active = true
+    LIMIT 1
+  `);
+  if (duplicate.rows[0]) return res.status(409).json({ error: "Já existe uma meta ativa para este indicador, escopo e período" });
+
   const result = await db.execute(sql`
     INSERT INTO business_goals (
       tenant_id, metric_key, label, period_type, target_value, unit,
