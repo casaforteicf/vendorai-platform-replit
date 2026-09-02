@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
-import { eq } from "drizzle-orm";
-import { db, agentConfigsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
+import { db, agentConfigsTable, whatsappConnectionsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -40,8 +40,14 @@ router.post("/tenants/:tenantId/evolution-whatsapp/connect", authenticate, async
   if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   try {
     const webhookSecret = await ensureWebhookSecret(tenantId);
-    const result = await connectInstance(tenantId, webhookSecret, req.log);
-    return res.json(result);
+    const connectionId = crypto.randomUUID();
+    const result = await connectInstance(tenantId, webhookSecret, req.log, connectionId);
+    await db.insert(whatsappConnectionsTable).values({
+      id: connectionId, tenantId, provider: "evolution", assignedUserId: req.user?.sub ?? null,
+      evolutionInstanceName: result.instanceName, status: result.alreadyConnected ? "active" : "connecting",
+      isDefault: false, connectedAt: new Date(), updatedAt: new Date(),
+    });
+    return res.json({ ...result, connectionId });
   } catch (err) {
     if (err instanceof EvolutionApiError) return res.status(502).json({ error: err.message });
     logger.error({ err, tenantId }, "evolution-whatsapp: erro ao conectar");
@@ -58,7 +64,9 @@ router.get("/tenants/:tenantId/evolution-whatsapp/status", authenticate, async (
     .from(agentConfigsTable)
     .where(eq(agentConfigsTable.tenantId, tenantId));
 
-  const state = await getConnectionState(tenantId);
+  const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : null;
+  const [connection] = connectionId ? await db.select().from(whatsappConnectionsTable).where(and(eq(whatsappConnectionsTable.id, connectionId), eq(whatsappConnectionsTable.tenantId, tenantId))).limit(1) : [null];
+  const state = await getConnectionState(tenantId, connection?.evolutionInstanceName ?? undefined);
   // O webhook connection.update é a fonte de verdade principal, mas
   // consultamos o estado ao vivo também — cobre o caso da instância
   // desconectar sem o webhook chegar a tempo (rede instável etc).
@@ -69,13 +77,16 @@ router.get("/tenants/:tenantId/evolution-whatsapp/status", authenticate, async (
     await db.update(agentConfigsTable).set({ evolutionConnected: false }).where(eq(agentConfigsTable.tenantId, tenantId));
   }
 
-  return res.json({ connected: state === "open", state, phone: config?.evolutionPhone ?? null });
+  return res.json({ connected: state === "open", state, phone: connection?.displayPhoneNumber ?? config?.evolutionPhone ?? null });
 });
 
 router.post("/tenants/:tenantId/evolution-whatsapp/disconnect", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!assertTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
-  await disconnectInstance(tenantId, req.log);
+  const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : null;
+  const [connection] = connectionId ? await db.select().from(whatsappConnectionsTable).where(and(eq(whatsappConnectionsTable.id, connectionId), eq(whatsappConnectionsTable.tenantId, tenantId))).limit(1) : [null];
+  await disconnectInstance(tenantId, req.log, connection?.evolutionInstanceName ?? undefined);
+  if (connection) await db.update(whatsappConnectionsTable).set({ status: "disconnected", disconnectedAt: new Date(), updatedAt: new Date() }).where(eq(whatsappConnectionsTable.id, connection.id));
   return res.json({ success: true });
 });
 

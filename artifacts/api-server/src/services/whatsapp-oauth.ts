@@ -1,5 +1,5 @@
-import { and, eq, isNull, ne } from "drizzle-orm";
-import { db, whatsappConnectionsTable, agentConfigsTable } from "@workspace/db";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
+import { db, whatsappConnectionsTable, agentConfigsTable, usersTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
 const dedicatedWhatsappAppId = process.env["WHATSAPP_APP_ID"]?.trim();
@@ -188,12 +188,21 @@ export async function findWhatsappPhoneNumber(
   return null;
 }
 
+export async function findAllWhatsappPhoneNumbers(wabas: WabaAccount[], accessToken: string): Promise<Array<{ waba: WabaAccount; phone: PhoneNumber }>> {
+  const selections: Array<{ waba: WabaAccount; phone: PhoneNumber }> = [];
+  for (const waba of wabas) {
+    try { for (const phone of await fetchPhoneNumbers(waba.id, accessToken)) selections.push({ waba, phone }); }
+    catch (err) { logger.warn({ err, wabaId: waba.id }, "Nao foi possivel consultar os telefones desta WABA"); }
+  }
+  return selections;
+}
 export async function saveWhatsappConnection(
   tenantId: string,
   wabaId: string,
   phoneNumber: PhoneNumber,
   longLivedToken: string,
-  expiresIn?: number
+  expiresIn?: number,
+  assignedUserId?: string | null
 ): Promise<string> {
   const now = new Date();
   const expiresAt = expiresIn ? new Date(now.getTime() + expiresIn * 1000) : null;
@@ -215,7 +224,7 @@ export async function saveWhatsappConnection(
   const [existing] = await db
     .select()
     .from(whatsappConnectionsTable)
-    .where(eq(whatsappConnectionsTable.tenantId, tenantId));
+    .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.phoneNumberId, phoneNumber.id)));
 
   let connectionId: string;
 
@@ -223,6 +232,8 @@ export async function saveWhatsappConnection(
     await db
       .update(whatsappConnectionsTable)
       .set({
+        provider: "meta",
+        assignedUserId: assignedUserId ?? existing.assignedUserId,
         wabaId,
         phoneNumberId: phoneNumber.id,
         businessName: phoneNumber.verified_name,
@@ -242,6 +253,8 @@ export async function saveWhatsappConnection(
       .insert(whatsappConnectionsTable)
       .values({
         tenantId,
+        provider: "meta",
+        assignedUserId: assignedUserId ?? null,
         wabaId,
         phoneNumberId: phoneNumber.id,
         businessName: phoneNumber.verified_name,
@@ -371,4 +384,31 @@ export async function disconnectWhatsapp(tenantId: string): Promise<void> {
     .where(eq(agentConfigsTable.tenantId, tenantId));
 
   logger.info({ tenantId, connectionId: conn.id }, "WhatsApp disconnected");
+}
+
+export async function listWhatsappConnections(tenantId: string) {
+  return db.select().from(whatsappConnectionsTable)
+    .where(eq(whatsappConnectionsTable.tenantId, tenantId))
+    .orderBy(asc(whatsappConnectionsTable.connectedAt));
+}
+
+export async function updateWhatsappConnectionRouting(
+  tenantId: string,
+  connectionId: string,
+  input: { assignedUserId?: string | null; isDefault?: boolean; label?: string | null },
+) {
+  if (input.assignedUserId) {
+    const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(and(eq(usersTable.id, input.assignedUserId), eq(usersTable.tenantId, tenantId))).limit(1);
+    if (!user) throw new Error("Assigned user does not belong to this tenant");
+  }
+  if (input.isDefault) {
+    await db.update(whatsappConnectionsTable)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(whatsappConnectionsTable.tenantId, tenantId));
+  }
+  const [updated] = await db.update(whatsappConnectionsTable)
+    .set({ ...input, updatedAt: new Date() })
+    .where(and(eq(whatsappConnectionsTable.id, connectionId), eq(whatsappConnectionsTable.tenantId, tenantId)))
+    .returning();
+  return updated ?? null;
 }

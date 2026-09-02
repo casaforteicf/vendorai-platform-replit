@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { usersTable } from "./users";
+import { whatsappConnectionsTable } from "./whatsapp_connections";
 
 export const conversationsTable = pgTable("conversations", {
   id: text("id")
@@ -22,6 +23,7 @@ export const conversationsTable = pgTable("conversations", {
   ultimaMensagemEm: timestamp("ultima_mensagem_em"),
   naoLidas: integer("nao_lidas").notNull().default(0),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
+  whatsappConnectionId: text("whatsapp_connection_id").references(() => whatsappConnectionsTable.id, { onDelete: "set null" }),
   lastInboundAt: timestamp("last_inbound_at"),
   currentAgent: text("current_agent"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

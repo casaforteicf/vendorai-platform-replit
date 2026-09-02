@@ -8,10 +8,13 @@ import {
   exchangeForLongLivedToken,
   fetchWabaAccounts,
   findWhatsappPhoneNumber,
+  findAllWhatsappPhoneNumbers,
   saveWhatsappConnection,
   refreshWhatsappToken,
   disconnectWhatsapp,
   getWhatsappConnectionByTenantId,
+  listWhatsappConnections,
+  updateWhatsappConnectionRouting,
 } from "../services/whatsapp-oauth.js";
 
 const router: IRouter = Router();
@@ -64,9 +67,11 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
   }
 
   let tenantId: string;
+  let userId: string;
   try {
     const decoded = consumeOAuthState(state, "whatsapp");
     tenantId = decoded.tenantId;
+    userId = decoded.userId;
   } catch (err) {
     logger.warn({ err }, "Callback WhatsApp: state inválido, expirado ou reutilizado");
     return res.redirect(`${appUrl}/configuracoes?whatsappError=invalid_state`);
@@ -102,22 +107,12 @@ router.get("/auth/whatsapp/callback", async (req, res) => {
       return res.redirect(`${appUrl}/configuracoes?whatsappError=no_waba`);
     }
 
-    let selection;
-    try {
-      selection = await findWhatsappPhoneNumber(wabas, longLived.access_token);
-    } catch (err) {
-      logger.error({ err, tenantId }, "Erro ao localizar numero do WhatsApp");
-      return res.redirect(`${appUrl}/configuracoes?whatsappError=phone_lookup`);
+    const selections = await findAllWhatsappPhoneNumbers(wabas, longLived.access_token);
+    if (selections.length === 0) return res.redirect(appUrl + "/configuracoes?whatsappError=no_phone");
+    for (const { waba, phone } of selections) {
+      await saveWhatsappConnection(tenantId, waba.id, phone, longLived.access_token, longLived.expires_in, userId);
     }
-    if (!selection) {
-      logger.warn({ tenantId, wabaIds: wabas.map(({ id }) => id) }, "Nenhum numero de telefone encontrado");
-      return res.redirect(`${appUrl}/configuracoes?whatsappError=no_phone`);
-    }
-
-    const { waba, phone } = selection;
-    await saveWhatsappConnection(tenantId, waba.id, phone, longLived.access_token, longLived.expires_in);
-
-    logger.info({ tenantId, wabaId: waba.id, phone: phone.display_phone_number }, "WhatsApp conectado com sucesso");
+    logger.info({ tenantId, count: selections.length }, "Numeros do WhatsApp conectados com sucesso");
     return res.redirect(`${appUrl}/configuracoes?whatsappConnected=1`);
   } catch (err) {
     logger.error({ err, tenantId }, "Erro no callback WhatsApp");
@@ -154,6 +149,23 @@ router.get("/tenants/:tenantId/whatsapp-connection", authenticate, async (req, r
   }
 });
 
+router.get("/tenants/:tenantId/whatsapp-connections", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Forbidden" });
+  const connections = await listWhatsappConnections(tenantId);
+  return res.json(connections.map(({ accessToken: _accessToken, ...connection }) => connection));
+});
+router.patch("/tenants/:tenantId/whatsapp-connections/:connectionId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Forbidden" });
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+  const assignedUserId = typeof req.body?.assignedUserId === "string" ? req.body.assignedUserId : req.body?.assignedUserId === null ? null : undefined;
+  const isDefault = typeof req.body?.isDefault === "boolean" ? req.body.isDefault : undefined;
+  const updated = await updateWhatsappConnectionRouting(tenantId, String(req.params.connectionId), { assignedUserId, isDefault });
+  if (!updated) return res.status(404).json({ error: "Connection not found" });
+  const { accessToken: _accessToken, ...safe } = updated;
+  return res.json(safe);
+});
 router.post("/tenants/:tenantId/whatsapp-connection/refresh", authenticate, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId);

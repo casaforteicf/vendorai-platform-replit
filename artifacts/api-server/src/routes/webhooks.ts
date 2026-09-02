@@ -749,12 +749,26 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   const body = req.body as { event?: string; instance?: string; data?: Record<string, unknown> };
   const event = body.event ?? "";
   const data = body.data ?? {};
+  const requestedConnectionId = typeof req.query["connectionId"] === "string" ? req.query["connectionId"] : null;
+  const [evolutionConnection] = await db.select().from(whatsappConnectionsTable).where(and(
+    eq(whatsappConnectionsTable.tenantId, tenantId),
+    requestedConnectionId
+      ? eq(whatsappConnectionsTable.id, requestedConnectionId)
+      : eq(whatsappConnectionsTable.evolutionInstanceName, body.instance ?? "")
+  )).limit(1);
 
   // ── connection.update: reflete o estado da conexão (QR escaneado, caiu etc) ──
   if (event === "connection.update" || event === "CONNECTION_UPDATE") {
     const state = (data as { state?: string }).state;
     const phone = (data as { wuid?: string; number?: string }).wuid ?? (data as { number?: string }).number ?? null;
     const connected = state === "open";
+    if (evolutionConnection) {
+      await db.update(whatsappConnectionsTable).set({
+        status: connected ? "active" : "disconnected",
+        displayPhoneNumber: connected && phone ? phone.replace(/@.*$/, "").replace(/\D/g, "") : evolutionConnection.displayPhoneNumber,
+        disconnectedAt: connected ? null : new Date(), updatedAt: new Date(),
+      }).where(eq(whatsappConnectionsTable.id, evolutionConnection.id));
+    }
     await db
       .update(agentConfigsTable)
       .set({
@@ -799,7 +813,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     async function baixarEArmazenarMidia(mimeTypeFallback: string, fileNameFallback: string): Promise<string | null> {
       const messageIdOut = key.id;
       if (!messageIdOut) return null;
-      const media = await getBase64FromMediaMessage(tenantId, messageIdOut);
+      const media = await getBase64FromMediaMessage(tenantId, messageIdOut, body.instance);
       if (!media.base64) return null;
       const buffer = Buffer.from(media.base64, "base64");
       const objectPath = await objectStorage.savePrivateBuffer(buffer, media.mimetype ?? mimeTypeFallback, fileNameFallback);
@@ -941,7 +955,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     }
     req.log.info({ tenantId, remoteJid }, "evolution-webhook: audio — buscando base64 e transcrevendo");
     try {
-      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      const media = await getBase64FromMediaMessage(tenantId, messageId, body.instance);
       if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
       const buffer = Buffer.from(media.base64, "base64");
       mensagem = await transcribeAudioBuffer(buffer, tenantId, req.log);
@@ -961,7 +975,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     const caption = (msg["imageMessage"] as { caption?: string })?.caption;
     req.log.info({ tenantId, remoteJid }, "evolution-webhook: imagem — buscando base64 e interpretando");
     try {
-      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      const media = await getBase64FromMediaMessage(tenantId, messageId, body.instance);
       if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
       const buffer = Buffer.from(media.base64, "base64");
       const dataUrl = `data:${media.mimetype ?? "image/jpeg"};base64,${media.base64}`;
@@ -981,7 +995,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     }
     const videoMsg = msg["videoMessage"] as { caption?: string; mimetype?: string };
     try {
-      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      const media = await getBase64FromMediaMessage(tenantId, messageId, body.instance);
       if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
       const buffer = Buffer.from(media.base64, "base64");
       mensagem = videoMsg?.caption?.trim() || "Vídeo enviado pelo WhatsApp";
@@ -1006,7 +1020,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     }
     req.log.info({ tenantId, remoteJid, fileName }, "evolution-webhook: documento — buscando base64 e extraindo texto");
     try {
-      const media = await getBase64FromMediaMessage(tenantId, messageId);
+      const media = await getBase64FromMediaMessage(tenantId, messageId, body.instance);
       if (!media.base64) throw new Error("base64 vazio retornado pela Evolution API");
       const buffer = Buffer.from(media.base64, "base64");
       mensagem = await interpretPdfBuffer(buffer, fileName, req.log);
@@ -1074,19 +1088,19 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
 
     if (match.found) {
       lead = match.lead;
-      await db.update(leadsTable).set({ updatedAt: new Date() }).where(eq(leadsTable.id, lead.id));
+      await db.update(leadsTable).set({ updatedAt: new Date(), ...(evolutionConnection?.assignedUserId ? { assignedTo: evolutionConnection.assignedUserId } : {}) }).where(eq(leadsTable.id, lead.id));
     } else {
       [lead] = await db
         .insert(leadsTable)
-        .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp" })
+        .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp", assignedTo: evolutionConnection?.assignedUserId ?? null })
         .returning();
-      await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
+      await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento", assignedTo: evolutionConnection?.assignedUserId ?? null });
     }
 
     const [existingConv] = await db
       .select()
       .from(conversationsTable)
-      .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, lead.id), eq(conversationsTable.channel, "whatsapp")))
+      .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, lead.id), eq(conversationsTable.channel, "whatsapp"), evolutionConnection ? eq(conversationsTable.whatsappConnectionId, evolutionConnection.id) : isNull(conversationsTable.whatsappConnectionId)))
       .limit(1);
 
     if (existingConv) {
@@ -1094,7 +1108,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     } else {
       [conversation] = await db
         .insert(conversationsTable)
-        .values({ tenantId, leadId: lead.id, channel: "whatsapp", status: "open", naoLidas: 0 })
+        .values({ tenantId, leadId: lead.id, channel: "whatsapp", status: "open", naoLidas: 0, assignedTo: evolutionConnection?.assignedUserId ?? null, whatsappConnectionId: evolutionConnection?.id ?? null })
         .returning();
     }
 
@@ -1118,6 +1132,7 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
       .update(conversationsTable)
       .set({
         ultimaMensagemEm: new Date(),
+        assignedTo: evolutionConnection?.assignedUserId ?? conversation.assignedTo,
         lastInboundAt: new Date(),
         naoLidas: sql`${conversationsTable.naoLidas} + 1`,
         updatedAt: new Date(),
@@ -1655,7 +1670,9 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
         // O app Meta e compartilhado, mas cada numero e token pertencem a um tenant.
         const [whatsappConnection] = await db
           .select({
+            id: whatsappConnectionsTable.id,
             tenantId: whatsappConnectionsTable.tenantId,
+            assignedUserId: whatsappConnectionsTable.assignedUserId,
             metaAccessToken: whatsappConnectionsTable.accessToken,
           })
           .from(whatsappConnectionsTable)
@@ -1823,7 +1840,7 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             lead = match.lead;
             await db
               .update(leadsTable)
-              .set({ updatedAt: new Date() })
+              .set({ updatedAt: new Date(), ...(whatsappConnection.assignedUserId ? { assignedTo: whatsappConnection.assignedUserId } : {}) })
               .where(eq(leadsTable.id, lead.id));
             req.log.info({ leadId: lead.id, phone: normalized, matchBy: match.matchBy }, "meta-webhook: existing lead found (dedup)");
           } else {
@@ -1833,11 +1850,12 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
               telefone: normalized,
               status: "novo",
               source: "whatsapp",
+              assignedTo: whatsappConnection.assignedUserId,
               possivelDuplicata: match.similar ? true : false,
               leadSimilarId: match.similar?.id ?? null,
             }).returning();
             req.log.info({ leadId: lead.id, phone: normalized }, "meta-webhook: new lead created");
-            await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
+            await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento", assignedTo: whatsappConnection.assignedUserId });
           }
 
           await attributeWhatsAppLeadFromCampaignCode(tenantId, lead.id, mensagem);
@@ -1849,7 +1867,8 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             .where(and(
               eq(conversationsTable.tenantId, tenantId),
               eq(conversationsTable.leadId, lead.id),
-              eq(conversationsTable.channel, "whatsapp")
+              eq(conversationsTable.channel, "whatsapp"),
+              eq(conversationsTable.whatsappConnectionId, whatsappConnection.id)
             ))
             .limit(1);
 
@@ -1860,6 +1879,8 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
               channel: "whatsapp",
               status: "open",
               naoLidas: 0,
+              assignedTo: whatsappConnection.assignedUserId,
+              whatsappConnectionId: whatsappConnection.id,
             }).returning();
           }
 
@@ -1879,6 +1900,7 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
 
           // Update conversation counters + last inbound timestamp
           await db.update(conversationsTable).set({
+            assignedTo: whatsappConnection.assignedUserId,
             naoLidas: sql`${conversationsTable.naoLidas} + 1`,
             ultimaMensagemEm: new Date(),
             lastInboundAt: new Date(),
