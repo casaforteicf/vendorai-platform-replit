@@ -1,23 +1,14 @@
-import { Router, type IRouter } from "express";
-import { eq, and, desc } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
-  db,
+  contentAutopilotArticlesTable,
   contentAutopilotConfigTable,
   contentAutopilotKeywordsTable,
-  contentAutopilotArticlesTable,
-  insertContentAutopilotConfigSchema,
-  updateContentAutopilotConfigSchema,
+  db,
+  generatedSitesTable,
 } from "@workspace/db";
-import { z } from "zod/v4";
-import { analyzeSiteTone, discoverKeywords, researchCompetitors, getConfig, OrcamentoExcedidoError } from "../services/contentAutopilot.js";
-import { generateArticle } from "../services/contentAutopilotCriador.js";
-import { optimizeArticle } from "../services/contentAutopilotOtimizador.js";
-import { processTenant as runContentAutopilotForTenant } from "../services/contentAutopilotJob.js";
-import { isDataForSeoConfigured } from "../lib/dataforseoClient.js";
+import router from "./content_autopilot_core.js";
 
-const router: IRouter = Router();
-
-function checkAccess(req: any, res: any, tenantId: string): boolean {
+function checkSitePlanAccess(req: any, res: any, tenantId: string): boolean {
   const user = req.user;
   if (!user) {
     res.status(401).json({ error: "Unauthorized" });
@@ -30,254 +21,240 @@ function checkAccess(req: any, res: any, tenantId: string): boolean {
   return true;
 }
 
-// ── GET /tenants/:tenantId/content-autopilot/config ─────────────────────────
-router.get("/tenants/:tenantId/content-autopilot/config", async (req, res) => {
+type PlanOpportunity = {
+  id: string;
+  priority: "alta" | "media" | "baixa";
+  area: "site" | "seo" | "conteudo" | "autopilot";
+  title: string;
+  description: string;
+  action: string;
+};
+
+/**
+ * GET /tenants/:tenantId/content-autopilot/site-plan
+ *
+ * Plano editorial/comercial do site calculado apenas com dados reais já
+ * existentes no tenant. Não cria métricas artificiais: sites, keywords,
+ * artigos e estado do Autopilot são a fonte de verdade.
+ */
+router.get("/tenants/:tenantId/content-autopilot/site-plan", async (req, res) => {
   const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  const config = await getConfig(tenantId);
-  res.json({ config, dataForSeoConfigured: isDataForSeoConfigured() });
-});
-
-// ── PUT /tenants/:tenantId/content-autopilot/config ──────────────────────────
-// Cria ou atualiza a config (upsert por tenant_id, que já é unique index).
-router.put("/tenants/:tenantId/content-autopilot/config", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  const parsed = updateContentAutopilotConfigSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: "Payload inválido", issues: parsed.error.issues });
-    return;
-  }
-
-  const existing = await getConfig(tenantId);
-  if (existing) {
-    const [updated] = await db
-      .update(contentAutopilotConfigTable)
-      .set({ ...parsed.data, updatedAt: new Date() } as any)
-      .where(eq(contentAutopilotConfigTable.tenantId, tenantId))
-      .returning();
-    res.json({ config: updated });
-    return;
-  }
-
-  const insertParsed = insertContentAutopilotConfigSchema.safeParse({ tenantId, ...parsed.data });
-  if (!insertParsed.success) {
-    res.status(422).json({ error: "Payload inválido pra criação", issues: insertParsed.error.issues });
-    return;
-  }
-  const [created] = await db.insert(contentAutopilotConfigTable).values(insertParsed.data as any).returning();
-  res.status(201).json({ config: created });
-});
-
-// ── POST /tenants/:tenantId/content-autopilot/analyze-site ──────────────────
-// Faz scrape do site_url já salvo na config e extrai o tom de marca via Claude.
-router.post("/tenants/:tenantId/content-autopilot/analyze-site", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  const config = await getConfig(tenantId);
-  if (!config?.siteUrl) {
-    res.status(422).json({ error: "Configure site_url antes de analisar" });
-    return;
-  }
+  if (!checkSitePlanAccess(req, res, tenantId)) return;
 
   try {
-    const brandTone = await analyzeSiteTone(tenantId, config.siteUrl);
-    res.json({ brandTone });
-  } catch (err) {
-    req.log?.error({ err, tenantId }, "content-autopilot/analyze-site: falhou");
-    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao analisar o site" });
-  }
-});
+    const [sites, keywords, articles, configs] = await Promise.all([
+      db
+        .select({
+          id: generatedSitesTable.id,
+          name: generatedSitesTable.name,
+          siteType: generatedSitesTable.siteType,
+          published: generatedSitesTable.published,
+          updatedAt: generatedSitesTable.updatedAt,
+        })
+        .from(generatedSitesTable)
+        .where(eq(generatedSitesTable.tenantId, tenantId))
+        .orderBy(desc(generatedSitesTable.updatedAt)),
+      db
+        .select({
+          id: contentAutopilotKeywordsTable.id,
+          termo: contentAutopilotKeywordsTable.termo,
+          status: contentAutopilotKeywordsTable.status,
+          volumeBusca: contentAutopilotKeywordsTable.volumeBusca,
+        })
+        .from(contentAutopilotKeywordsTable)
+        .where(eq(contentAutopilotKeywordsTable.tenantId, tenantId)),
+      db
+        .select({
+          id: contentAutopilotArticlesTable.id,
+          status: contentAutopilotArticlesTable.status,
+          seoScore: contentAutopilotArticlesTable.seoScore,
+          keywordId: contentAutopilotArticlesTable.keywordId,
+          titulo: contentAutopilotArticlesTable.titulo,
+        })
+        .from(contentAutopilotArticlesTable)
+        .where(eq(contentAutopilotArticlesTable.tenantId, tenantId))
+        .orderBy(desc(contentAutopilotArticlesTable.createdAt)),
+      db
+        .select({
+          ativo: contentAutopilotConfigTable.ativo,
+          siteUrl: contentAutopilotConfigTable.siteUrl,
+          brandTone: contentAutopilotConfigTable.brandTone,
+        })
+        .from(contentAutopilotConfigTable)
+        .where(eq(contentAutopilotConfigTable.tenantId, tenantId))
+        .limit(1),
+    ]);
 
-// ── POST /tenants/:tenantId/content-autopilot/keywords/research ─────────────
-// Body: { seedKeywords: string[] } — descobre keywords relacionadas via DataForSEO.
-const researchKeywordsSchema = z.object({ seedKeywords: z.array(z.string().min(1)).min(1).max(20) });
+    const config = configs[0] ?? null;
+    const publishedSites = sites.filter((site) => site.published);
+    const discoveredKeywords = keywords.filter((keyword) => keyword.status === "descoberta");
+    const approvedKeywords = keywords.filter((keyword) => keyword.status === "aprovada");
+    const activeKeywordIds = new Set(
+      articles.map((article) => article.keywordId).filter((id): id is string => Boolean(id)),
+    );
+    const approvedWithoutArticle = approvedKeywords.filter((keyword) => !activeKeywordIds.has(keyword.id));
+    const reviewArticles = articles.filter((article) => article.status === "pronto_revisao");
+    const lowSeoArticles = articles.filter(
+      (article) => typeof article.seoScore === "number" && article.seoScore < 70,
+    );
+    const publishedArticles = articles.filter((article) => article.status === "publicado");
 
-router.post("/tenants/:tenantId/content-autopilot/keywords/research", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
+    const opportunities: PlanOpportunity[] = [];
 
-  const parsed = researchKeywordsSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: "Payload inválido — esperado { seedKeywords: string[] }", issues: parsed.error.issues });
-    return;
-  }
-
-  try {
-    const result = await discoverKeywords(tenantId, parsed.data.seedKeywords);
-    res.json(result);
-  } catch (err) {
-    if (err instanceof OrcamentoExcedidoError) {
-      res.status(402).json({ error: err.message });
-      return;
+    if (sites.length === 0) {
+      opportunities.push({
+        id: "create-site",
+        priority: "alta",
+        area: "site",
+        title: "Criar o primeiro ativo digital",
+        description: "O tenant ainda não possui site ou landing page no Gerador de Sites.",
+        action: "Abrir Gerador de Sites",
+      });
+    } else if (publishedSites.length === 0) {
+      opportunities.push({
+        id: "publish-site",
+        priority: "alta",
+        area: "site",
+        title: "Publicar um site ou landing page",
+        description: `${sites.length} projeto${sites.length === 1 ? " está" : "s estão"} criado${sites.length === 1 ? "" : "s"}, mas nenhum está publicado.`,
+        action: "Revisar e publicar",
+      });
     }
-    req.log?.error({ err, tenantId }, "content-autopilot/keywords/research: falhou");
-    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao pesquisar keywords" });
-  }
-});
 
-// ── GET /tenants/:tenantId/content-autopilot/keywords ────────────────────────
-router.get("/tenants/:tenantId/content-autopilot/keywords", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  const statusFilter = typeof req.query.status === "string" ? req.query.status : undefined;
-  const rows = await db
-    .select()
-    .from(contentAutopilotKeywordsTable)
-    .where(
-      statusFilter
-        ? and(eq(contentAutopilotKeywordsTable.tenantId, tenantId), eq(contentAutopilotKeywordsTable.status, statusFilter as any))
-        : eq(contentAutopilotKeywordsTable.tenantId, tenantId),
-    )
-    .orderBy(desc(contentAutopilotKeywordsTable.volumeBusca));
-  res.json({ keywords: rows });
-});
-
-// ── PATCH /tenants/:tenantId/content-autopilot/keywords/:id ─────────────────
-// Só pra aprovar/descartar por enquanto (status). Demais campos vêm só do Pesquisador.
-const patchKeywordSchema = z.object({ status: z.enum(["descoberta", "aprovada", "em_uso", "descartada"]) });
-
-router.patch("/tenants/:tenantId/content-autopilot/keywords/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  const parsed = patchKeywordSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: "Payload inválido — esperado { status }", issues: parsed.error.issues });
-    return;
-  }
-
-  const [updated] = await db
-    .update(contentAutopilotKeywordsTable)
-    .set({ status: parsed.data.status })
-    .where(and(eq(contentAutopilotKeywordsTable.id, req.params.id as string), eq(contentAutopilotKeywordsTable.tenantId, tenantId)))
-    .returning();
-
-  if (!updated) {
-    res.status(404).json({ error: "Keyword não encontrada" });
-    return;
-  }
-  res.json({ keyword: updated });
-});
-
-// ── POST /tenants/:tenantId/content-autopilot/keywords/:id/research-competitors ──
-router.post("/tenants/:tenantId/content-autopilot/keywords/:id/research-competitors", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  try {
-    const result = await researchCompetitors(tenantId, req.params.id as string);
-    res.json(result);
-  } catch (err) {
-    if (err instanceof OrcamentoExcedidoError) {
-      res.status(402).json({ error: err.message });
-      return;
+    if (!config?.siteUrl) {
+      opportunities.push({
+        id: "connect-site-url",
+        priority: "alta",
+        area: "autopilot",
+        title: "Conectar o site ao Content Autopilot",
+        description: "Defina a URL principal para o Autopilot analisar tom de marca e orientar o conteúdo.",
+        action: "Configurar URL do site",
+      });
+    } else if (!config.brandTone) {
+      opportunities.push({
+        id: "analyze-brand-tone",
+        priority: "media",
+        area: "autopilot",
+        title: "Analisar o tom de marca",
+        description: "A URL já está conectada, mas o tom de marca ainda não foi extraído do site.",
+        action: "Analisar site",
+      });
     }
-    req.log?.error({ err, tenantId, keywordId: req.params.id }, "content-autopilot/research-competitors: falhou");
-    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao pesquisar concorrência" });
-  }
-});
 
-// ── POST /tenants/:tenantId/content-autopilot/keywords/:id/generate-article ──
-// Aciona o Criador: escreve o artigo completo + gera imagem de capa. Síncrono
-// (pode levar 20-40s — texto + imagem); grava status "otimizando" ao final.
-router.post("/tenants/:tenantId/content-autopilot/keywords/:id/generate-article", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
+    if (keywords.length === 0) {
+      opportunities.push({
+        id: "discover-keywords",
+        priority: "alta",
+        area: "seo",
+        title: "Mapear oportunidades de busca",
+        description: "Ainda não existem keywords no plano editorial deste tenant.",
+        action: "Pesquisar keywords",
+      });
+    } else if (discoveredKeywords.length > 0) {
+      opportunities.push({
+        id: "review-keywords",
+        priority: "media",
+        area: "seo",
+        title: "Revisar novas oportunidades SEO",
+        description: `${discoveredKeywords.length} keyword${discoveredKeywords.length === 1 ? " aguarda" : "s aguardam"} aprovação ou descarte.`,
+        action: "Revisar keywords",
+      });
+    }
 
-  try {
-    const result = await generateArticle(tenantId, req.params.id as string);
-    res.status(201).json(result);
+    if (approvedWithoutArticle.length > 0) {
+      const topTerms = approvedWithoutArticle.slice(0, 3).map((keyword) => keyword.termo).join(", ");
+      opportunities.push({
+        id: "generate-approved-content",
+        priority: "alta",
+        area: "conteudo",
+        title: "Transformar demanda aprovada em conteúdo",
+        description: `${approvedWithoutArticle.length} keyword${approvedWithoutArticle.length === 1 ? " aprovada ainda não possui" : "s aprovadas ainda não possuem"} artigo. Prioridades: ${topTerms}.`,
+        action: "Gerar artigos",
+      });
+    }
+
+    if (reviewArticles.length > 0) {
+      opportunities.push({
+        id: "review-articles",
+        priority: "alta",
+        area: "conteudo",
+        title: "Conteúdos aguardando revisão",
+        description: `${reviewArticles.length} artigo${reviewArticles.length === 1 ? " está" : "s estão"} pronto${reviewArticles.length === 1 ? "" : "s"} para revisão antes da publicação.`,
+        action: "Revisar artigos",
+      });
+    }
+
+    if (lowSeoArticles.length > 0) {
+      opportunities.push({
+        id: "improve-seo",
+        priority: "media",
+        area: "seo",
+        title: "Melhorar conteúdos com SEO abaixo de 70",
+        description: `${lowSeoArticles.length} artigo${lowSeoArticles.length === 1 ? " precisa" : "s precisam"} de otimização antes de ganhar mais distribuição.`,
+        action: "Otimizar SEO",
+      });
+    }
+
+    if (!config?.ativo && keywords.some((keyword) => keyword.status === "aprovada")) {
+      opportunities.push({
+        id: "activate-autopilot",
+        priority: "media",
+        area: "autopilot",
+        title: "Ativar o ciclo contínuo de conteúdo",
+        description: "Há oportunidades aprovadas, mas o Content Autopilot está pausado.",
+        action: "Ativar Autopilot",
+      });
+    }
+
+    const ordered = opportunities.sort((a, b) => {
+      const rank = { alta: 0, media: 1, baixa: 2 } as const;
+      return rank[a.priority] - rank[b.priority];
+    });
+
+    const weeks = [
+      {
+        week: 1,
+        focus: sites.length === 0 ? "Base digital" : "Diagnóstico e intenção",
+        action: sites.length === 0 ? "Criar o site/LP inicial" : keywords.length === 0 ? "Pesquisar e selecionar keywords" : "Revisar oportunidades prioritárias",
+      },
+      {
+        week: 2,
+        focus: "Produção",
+        action: approvedWithoutArticle.length > 0 ? "Criar conteúdo para keywords aprovadas" : "Expandir páginas, FAQ e conteúdos prioritários",
+      },
+      {
+        week: 3,
+        focus: "Otimização",
+        action: lowSeoArticles.length > 0 ? "Otimizar conteúdos abaixo de 70 SEO" : "Revisar SEO, links internos e clareza das ofertas",
+      },
+      {
+        week: 4,
+        focus: "Publicação e aprendizado",
+        action: publishedArticles.length === 0 ? "Publicar e iniciar medição" : "Revisar desempenho e alimentar o próximo ciclo",
+      },
+    ];
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      summary: {
+        sites: sites.length,
+        publishedSites: publishedSites.length,
+        keywords: keywords.length,
+        discoveredKeywords: discoveredKeywords.length,
+        approvedKeywords: approvedKeywords.length,
+        articles: articles.length,
+        publishedArticles: publishedArticles.length,
+        reviewArticles: reviewArticles.length,
+        lowSeoArticles: lowSeoArticles.length,
+        autopilotActive: Boolean(config?.ativo),
+        siteConnected: Boolean(config?.siteUrl),
+      },
+      opportunities: ordered,
+      weeks,
+    });
   } catch (err) {
-    req.log?.error({ err, tenantId, keywordId: req.params.id }, "content-autopilot/generate-article: falhou");
-    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao gerar artigo" });
-  }
-});
-
-// ── GET /tenants/:tenantId/content-autopilot/articles ────────────────────────
-router.get("/tenants/:tenantId/content-autopilot/articles", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  const rows = await db
-    .select()
-    .from(contentAutopilotArticlesTable)
-    .where(eq(contentAutopilotArticlesTable.tenantId, tenantId))
-    .orderBy(desc(contentAutopilotArticlesTable.createdAt));
-  res.json({ articles: rows });
-});
-
-// ── GET /tenants/:tenantId/content-autopilot/articles/:id ────────────────────
-router.get("/tenants/:tenantId/content-autopilot/articles/:id", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  const [article] = await db
-    .select()
-    .from(contentAutopilotArticlesTable)
-    .where(and(eq(contentAutopilotArticlesTable.id, req.params.id as string), eq(contentAutopilotArticlesTable.tenantId, tenantId)));
-
-  if (!article) {
-    res.status(404).json({ error: "Artigo não encontrado" });
-    return;
-  }
-  res.json({ article });
-});
-
-// ── POST /tenants/:tenantId/content-autopilot/articles/:id/optimize ─────────
-// Aciona o Otimizador: score de SEO (determinístico) + linkagem interna por
-// embedding. Precisa do artigo já ter passado pelo Criador (título/meta/corpo).
-router.post("/tenants/:tenantId/content-autopilot/articles/:id/optimize", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  const [article] = await db
-    .select({ keywordId: contentAutopilotArticlesTable.keywordId })
-    .from(contentAutopilotArticlesTable)
-    .where(and(eq(contentAutopilotArticlesTable.id, req.params.id as string), eq(contentAutopilotArticlesTable.tenantId, tenantId)));
-  if (!article) {
-    res.status(404).json({ error: "Artigo não encontrado" });
-    return;
-  }
-  if (!article.keywordId) {
-    res.status(422).json({ error: "Artigo sem keyword associada — não dá pra calcular densidade" });
-    return;
-  }
-  const [keyword] = await db
-    .select({ termo: contentAutopilotKeywordsTable.termo })
-    .from(contentAutopilotKeywordsTable)
-    .where(eq(contentAutopilotKeywordsTable.id, article.keywordId));
-  if (!keyword) {
-    res.status(422).json({ error: "Keyword do artigo não encontrada" });
-    return;
-  }
-
-  try {
-    const result = await optimizeArticle(tenantId, req.params.id as string, keyword.termo);
-    res.json(result);
-  } catch (err) {
-    req.log?.error({ err, tenantId, articleId: req.params.id }, "content-autopilot/optimize: falhou");
-    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao otimizar artigo" });
-  }
-});
-
-// ── POST /tenants/:tenantId/content-autopilot/run-now ────────────────────────
-// Dispara manualmente a mesma rotina do job diário (05:00 BRT) — útil pra
-// testar sem esperar o cron. Só processa keywords com status "aprovada".
-router.post("/tenants/:tenantId/content-autopilot/run-now", async (req, res) => {
-  const tenantId = req.params.tenantId as string;
-  if (!checkAccess(req, res, tenantId)) return;
-
-  try {
-    const result = await runContentAutopilotForTenant(tenantId, (req.log as any) ?? console);
-    res.json(result);
-  } catch (err) {
-    req.log?.error({ err, tenantId }, "content-autopilot/run-now: falhou");
-    res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao rodar o job" });
+    req.log?.error({ err, tenantId }, "content-autopilot/site-plan: falhou");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Falha ao montar plano de conteúdo do site" });
   }
 });
 

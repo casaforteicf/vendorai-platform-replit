@@ -1,17 +1,12 @@
 /**
- * Job diário do Content Autopilot — roda a cadeia completa (Criador →
- * Otimizador → Publicador) pra tenants com `content_autopilot_config.ativo
- * = true`, gerando até `artigos_por_dia` artigos por tenant a partir de
- * keywords já aprovadas por humano (status "aprovada" — nunca inventa
- * keyword nova nem publica sem essa aprovação prévia).
+ * Job diário do Content Autopilot — roda a cadeia completa para tenants cuja
+ * automação está habilitada, sempre consumindo somente keywords aprovadas.
  *
- * NÃO chama o Pesquisador sozinho: descobrir keyword nova exige termos-
- * semente que só um humano decide (ver POST .../keywords/research). Esse
- * job só consome keywords que já passaram por aprovação manual.
- *
- * Publicador: só o canal "site_proprio" está implementado — WordPress fica
- * pra depois. Artigo sempre sai como rascunho (publicado=false); nunca
- * publica de verdade sozinho, mesmo rodando todo dia.
+ * Modos persistidos:
+ * - suggestion: não gera nem publica automaticamente;
+ * - semi: gera + otimiza + cria rascunho para aprovação humana;
+ * - automatic: gera + otimiza + publica no site próprio, mas somente a partir
+ *   de keyword explicitamente aprovada.
  */
 import { db, contentAutopilotConfigTable, contentAutopilotKeywordsTable, contentAutopilotRunsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
@@ -25,7 +20,13 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
   let artigosGerados = 0;
 
   const [config] = await db.select().from(contentAutopilotConfigTable).where(eq(contentAutopilotConfigTable.tenantId, tenantId));
-  if (!config || !config.ativo) return { artigosGerados: 0, erros: [] };
+  if (!config) return { artigosGerados: 0, erros: [] };
+
+  const automationMode = config.automationMode ?? (config.ativo ? "semi" : "suggestion");
+  if (!config.ativo || automationMode === "suggestion") {
+    log.info({ tenantId, automationMode }, "content-autopilot/job: modo sugestão ou automação pausada, pulando tenant");
+    return { artigosGerados: 0, erros: [] };
+  }
 
   if (config.tetoGastoMensal != null && Number(config.gastoAcumulado) >= Number(config.tetoGastoMensal)) {
     log.info({ tenantId }, "content-autopilot/job: teto de gasto mensal atingido, pulando tenant");
@@ -40,7 +41,7 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
     .limit(config.artigosPorDia);
 
   if (keywords.length === 0) {
-    log.info({ tenantId }, "content-autopilot/job: nenhuma keyword aprovada disponível");
+    log.info({ tenantId, automationMode }, "content-autopilot/job: nenhuma keyword aprovada disponível");
     return { artigosGerados: 0, erros: [] };
   }
 
@@ -48,15 +49,20 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
     try {
       const { articleId } = await generateArticle(tenantId, keyword.id);
       await optimizeArticle(tenantId, articleId, keyword.termo);
+
       if (config.canalPublicacao === "site_proprio") {
-        await publishToNativeSite(tenantId, articleId);
+        await publishToNativeSite(tenantId, articleId, { publish: automationMode === "automatic" });
       }
+
       artigosGerados++;
-      log.info({ tenantId, keywordId: keyword.id, articleId }, "content-autopilot/job: artigo gerado com sucesso");
+      log.info(
+        { tenantId, keywordId: keyword.id, articleId, automationMode, autoPublished: automationMode === "automatic" && config.canalPublicacao === "site_proprio" },
+        "content-autopilot/job: artigo processado com sucesso",
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       erros.push(`keyword ${keyword.termo}: ${msg}`);
-      log.error({ err, tenantId, keywordId: keyword.id }, "content-autopilot/job: falha ao processar keyword");
+      log.error({ err, tenantId, keywordId: keyword.id, automationMode }, "content-autopilot/job: falha ao processar keyword");
     }
   }
 
@@ -67,11 +73,13 @@ export async function runContentAutopilotJob(log: Logger): Promise<void> {
   log.info("content-autopilot/job: iniciando rodada diária");
 
   const activeConfigs = await db
-    .select({ tenantId: contentAutopilotConfigTable.tenantId })
+    .select({ tenantId: contentAutopilotConfigTable.tenantId, automationMode: contentAutopilotConfigTable.automationMode })
     .from(contentAutopilotConfigTable)
     .where(eq(contentAutopilotConfigTable.ativo, true));
 
-  for (const { tenantId } of activeConfigs) {
+  const executableConfigs = activeConfigs.filter((config) => config.automationMode !== "suggestion");
+
+  for (const { tenantId, automationMode } of executableConfigs) {
     const iniciadoEm = new Date();
     let artigosGerados = 0;
     let erros: string[] = [];
@@ -82,7 +90,7 @@ export async function runContentAutopilotJob(log: Logger): Promise<void> {
       erros = result.erros;
     } catch (err) {
       erros.push(err instanceof Error ? err.message : String(err));
-      log.error({ err, tenantId }, "content-autopilot/job: tenant falhou (non-fatal)");
+      log.error({ err, tenantId, automationMode }, "content-autopilot/job: tenant falhou (non-fatal)");
     }
 
     await db.insert(contentAutopilotRunsTable).values({
@@ -94,5 +102,5 @@ export async function runContentAutopilotJob(log: Logger): Promise<void> {
     });
   }
 
-  log.info({ tenants: activeConfigs.length }, "content-autopilot/job: rodada diária concluída");
+  log.info({ tenants: executableConfigs.length }, "content-autopilot/job: rodada diária concluída");
 }

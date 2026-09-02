@@ -1,11 +1,10 @@
 /**
- * Publicador — quarto e último agente do Content Autopilot (ver briefing
- * /areas/content-autopilot). Esse arquivo cobre só o canal "site_proprio"
- * (blog nativo do Vendor.ai, ver schema/site_blog_posts.ts) — WordPress
- * externo fica pra depois.
+ * Publicador — quarto e último agente do Content Autopilot.
  *
- * Sempre cria o post com publicado=false (rascunho) — nunca publica sozinho.
- * A revisão humana (PATCH .../publish) é quem decide colocar no ar.
+ * O modo de publicação é decidido pelo orquestrador:
+ * - Semiautomático: cria/atualiza rascunho para revisão humana.
+ * - Automático: publica somente depois de a keyword ter sido aprovada e o
+ *   artigo ter passado por geração + otimização.
  */
 import { db, siteBlogPostsTable, contentAutopilotArticlesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -26,23 +25,35 @@ function slugify(title: string): string {
 export interface PublishNativeResult {
   postId: string;
   slug: string;
+  published: boolean;
 }
 
-/** Cria (ou atualiza, se já existir post pra esse artigo) o rascunho de blog no site próprio. */
-export async function publishToNativeSite(tenantId: string, articleId: string): Promise<PublishNativeResult> {
+export interface PublishNativeOptions {
+  publish?: boolean;
+}
+
+/** Cria ou atualiza o post nativo, respeitando o nível de automação autorizado. */
+export async function publishToNativeSite(
+  tenantId: string,
+  articleId: string,
+  options: PublishNativeOptions = {},
+): Promise<PublishNativeResult> {
+  const publish = options.publish === true;
+  const now = new Date();
+
   const [article] = await db
     .select()
     .from(contentAutopilotArticlesTable)
     .where(and(eq(contentAutopilotArticlesTable.id, articleId), eq(contentAutopilotArticlesTable.tenantId, tenantId)));
   if (!article) throw new Error("Artigo não encontrado pra esse tenant");
   if (!article.titulo || !article.conteudoMd) {
-    throw new Error("Artigo sem título/conteúdo — rode o Criador (e idealmente o Otimizador) primeiro");
+    throw new Error("Artigo sem título/conteúdo — rode o Criador e o Otimizador primeiro");
   }
 
   const [existing] = await db
-    .select({ id: siteBlogPostsTable.id })
+    .select({ id: siteBlogPostsTable.id, slug: siteBlogPostsTable.slug })
     .from(siteBlogPostsTable)
-    .where(eq(siteBlogPostsTable.articleId, articleId));
+    .where(and(eq(siteBlogPostsTable.articleId, articleId), eq(siteBlogPostsTable.tenantId, tenantId)));
 
   const baseSlug = article.slug || slugify(article.titulo);
   const imagemCapaUrl = article.imagens?.[0]?.url ?? null;
@@ -55,15 +66,30 @@ export async function publishToNativeSite(tenantId: string, articleId: string): 
         metaDescription: article.metaDescription,
         conteudoMd: article.conteudoMd,
         imagemCapaUrl,
-        updatedAt: new Date(),
+        publicado: publish,
+        publicadoEm: publish ? now : null,
+        updatedAt: now,
       })
-      .where(eq(siteBlogPostsTable.id, existing.id));
-    logger.info({ tenantId, articleId, postId: existing.id }, "content-autopilot: Publicador (site_proprio) — rascunho atualizado");
-    return { postId: existing.id, slug: baseSlug };
+      .where(and(eq(siteBlogPostsTable.id, existing.id), eq(siteBlogPostsTable.tenantId, tenantId)));
+
+    await db
+      .update(contentAutopilotArticlesTable)
+      .set({
+        status: publish ? "publicado" : "pronto_revisao",
+        publicadoEm: publish ? now : null,
+      })
+      .where(and(eq(contentAutopilotArticlesTable.id, articleId), eq(contentAutopilotArticlesTable.tenantId, tenantId)));
+
+    logger.info(
+      { tenantId, articleId, postId: existing.id, published: publish },
+      publish
+        ? "content-autopilot: Publicador — post atualizado e publicado automaticamente"
+        : "content-autopilot: Publicador — rascunho atualizado para revisão",
+    );
+    return { postId: existing.id, slug: existing.slug || baseSlug, published: publish };
   }
 
-  // Garante slug único por tenant — se colidir (raro, mesmo título gerado 2x),
-  // acrescenta sufixo curto em vez de falhar.
+  // Garante slug único por tenant.
   let slug = baseSlug;
   let attempt = 0;
   while (true) {
@@ -86,10 +112,24 @@ export async function publishToNativeSite(tenantId: string, articleId: string): 
       metaDescription: article.metaDescription,
       conteudoMd: article.conteudoMd,
       imagemCapaUrl,
-      publicado: false,
+      publicado: publish,
+      publicadoEm: publish ? now : null,
     })
     .returning({ id: siteBlogPostsTable.id });
 
-  logger.info({ tenantId, articleId, postId: created.id, slug }, "content-autopilot: Publicador (site_proprio) — rascunho criado");
-  return { postId: created.id, slug };
+  await db
+    .update(contentAutopilotArticlesTable)
+    .set({
+      status: publish ? "publicado" : "pronto_revisao",
+      publicadoEm: publish ? now : null,
+    })
+    .where(and(eq(contentAutopilotArticlesTable.id, articleId), eq(contentAutopilotArticlesTable.tenantId, tenantId)));
+
+  logger.info(
+    { tenantId, articleId, postId: created.id, slug, published: publish },
+    publish
+      ? "content-autopilot: Publicador — post publicado automaticamente"
+      : "content-autopilot: Publicador — rascunho criado para revisão",
+  );
+  return { postId: created.id, slug, published: publish };
 }
