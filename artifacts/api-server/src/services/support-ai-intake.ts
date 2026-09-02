@@ -163,6 +163,9 @@ export async function prepareSupportAiIntake(input: {
 }): Promise<SupportAiIntakeScenario> {
   if (input.lead.status !== "cliente") return { state: "none" };
 
+  const classification = await classifySupportNeed(input);
+  if (!classification.isSupportRequest) return { state: "none", isSupportRequest: false };
+
   const existingCards = await db.select().from(workCardsTable).where(and(
     eq(workCardsTable.tenantId, input.tenantId),
     eq(workCardsTable.pipeline, "suporte"),
@@ -176,13 +179,11 @@ export async function prepareSupportAiIntake(input: {
       code: activeCard.codigo,
       category: String((activeCard.metadata as Record<string, unknown> | null)?.categoria ?? "outro"),
       priority: activeCard.prioridade,
-      problemSummary: activeCard.descricao ?? undefined,
-      instruction: `Já existe a assistência ${activeCard.codigo} ativa para este cliente. Não abra outro chamado. Continue o atendimento mencionando o código quando for útil e informe que novas informações serão vinculadas ao chamado existente.`,
+      problemSummary: classification.problemSummary || activeCard.descricao || undefined,
+      products: classification.products,
+      instruction: `Já existe a assistência ${activeCard.codigo} ativa para este cliente. Não abra outro chamado. Continue o atendimento mencionando o código quando for útil e informe que as novas informações serão vinculadas ao chamado existente.`,
     };
   }
-
-  const classification = await classifySupportNeed(input);
-  if (!classification.isSupportRequest) return { state: "none", isSupportRequest: false };
 
   if (!classification.readyToOpen) {
     return {
