@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Target, Trash2 } from "lucide-react";
 
 type GoalMetric = {
@@ -330,7 +329,6 @@ export default function BusinessGoalsDialog({ onChanged }: { onChanged: () => vo
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => deactivateGoal(goal.id)} title="Desativar meta"><Trash2 className="h-4 w-4" /></Button>
                     </div>
                     <div className="mt-3 flex items-center justify-between text-xs"><span className="text-muted-foreground">Meta</span><strong>{formatGoalValue(target, goal.unit)}</strong></div>
-                    <Progress value={0} className="mt-2 h-1.5" />
                   </div>
                 );
               })}
