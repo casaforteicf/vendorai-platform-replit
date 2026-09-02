@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter";
-import DashboardLegacy from "./DashboardLegacy";
+import DashboardAnalysis from "./DashboardAnalysis";
 
 type OfficialMetrics = Parameters<typeof OfficialCommandCenter>[0]["data"];
 
@@ -61,21 +61,21 @@ export default function Dashboard() {
 
       <OfficialCommandCenter data={official} loading={officialLoading} />
 
-      <div className="dashboard-legacy-details">
-        <DashboardLegacy />
+      <div className="dashboard-analysis">
+        <DashboardAnalysis />
       </div>
 
       <style>{`
-        .dashboard-legacy-details > div > div:first-child {
+        .dashboard-analysis > div > div:first-child {
           display: none;
         }
-        .dashboard-legacy-details > div > div:has(+ div > [data-testid="card-total-leads"]) {
+        .dashboard-analysis > div > div:has(+ div > [data-testid="card-total-leads"]) {
           display: none;
         }
-        .dashboard-legacy-details div:has(> [data-testid="card-total-leads"]) {
+        .dashboard-analysis div:has(> [data-testid="card-total-leads"]) {
           display: none;
         }
-        .dashboard-legacy-details div:has(> [data-testid="card-total-leads"]) + .grid {
+        .dashboard-analysis div:has(> [data-testid="card-total-leads"]) + .grid {
           display: none;
         }
       `}</style>
