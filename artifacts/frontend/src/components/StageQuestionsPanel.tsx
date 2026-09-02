@@ -140,7 +140,7 @@ export function StageQuestionsPanel({
                 const answered = Boolean(draft[p.id]?.trim());
                 return (
                   <div key={p.id} className="flex gap-2.5 rounded-lg border border-border/60 bg-background px-2.5 py-2">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/8 text-[11px] font-semibold text-primary">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/[0.08] text-[11px] font-semibold text-primary">
                       {index + 1}
                     </span>
                     <span className="pt-1">
