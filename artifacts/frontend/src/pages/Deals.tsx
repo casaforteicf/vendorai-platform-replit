@@ -2284,7 +2284,7 @@ export default function Deals() {
         !targetCol.isSpecial &&
         sourceOrder !== -1 &&
         targetOrder !== -1 &&
-        targetOrder < sourceOrder &&
+        targetOrder < sourceOrder
       ) {
         toast({
           title: "Movimento não permitido",
