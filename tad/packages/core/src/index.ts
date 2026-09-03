@@ -19,6 +19,7 @@ export * from './strategy/ema-ribbon';
 export * from './strategy/rsi-reversal';
 export * from './strategy/range-scalp';
 export * from './strategy/liquidity-sweep';
+export * from './strategy/registry';
 export * from './audit/strategy-metrics';
 export * from './backtest/engine';
 export * from './regime/performance';
