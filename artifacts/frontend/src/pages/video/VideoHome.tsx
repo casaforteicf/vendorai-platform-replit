@@ -1,8 +1,10 @@
+import { lazy, Suspense, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowRight, Mic2, ShoppingBag, Scissors, Clapperboard, LayoutGrid, Sparkles, Captions } from "lucide-react";
+import { ArrowRight, Mic2, ShoppingBag, Scissors, Clapperboard, LayoutGrid, Sparkles, Captions, Settings2, WandSparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import BrandVideoKitPanel from "@/components/video/BrandVideoKitPanel";
-import VideoGeneratePanel from "@/components/video/VideoGeneratePanel";
+
+const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
+const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
 
 interface VideoCard {
   title: string;
@@ -78,8 +80,18 @@ const CARDS: VideoCard[] = [
   },
 ];
 
+function LoadingPanel({ label }: { label: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-8 text-center text-sm text-gray-400">
+      {label}
+    </div>
+  );
+}
+
 export default function VideoHome() {
   const [, navigate] = useLocation();
+  const [showGenerator, setShowGenerator] = useState(false);
+  const [showBrandKit, setShowBrandKit] = useState(false);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0f0b1e] via-[#1a1040] to-[#0a0818] text-[#e8e4f8]">
@@ -97,7 +109,34 @@ export default function VideoHome() {
           </p>
         </div>
 
-        <VideoGeneratePanel />
+        <section className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.10] to-cyan-500/[0.06] p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-purple-500/20 p-2.5 text-purple-300">
+                <WandSparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-white">Criar vídeo do zero com IA</h2>
+                <p className="mt-1 text-xs text-gray-400">
+                  Abra o gerador somente quando for usar. Isso mantém o hub leve e evita travamentos do navegador.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowGenerator((value) => !value)}
+              className="shrink-0 rounded-xl border border-purple-400/30 bg-purple-500/15 px-4 py-2.5 text-xs font-bold text-purple-100 transition-colors hover:bg-purple-500/25"
+            >
+              {showGenerator ? "Fechar gerador" : "Abrir gerador"}
+            </button>
+          </div>
+        </section>
+
+        {showGenerator && (
+          <Suspense fallback={<LoadingPanel label="Carregando gerador de vídeo…" />}>
+            <VideoGeneratePanel />
+          </Suspense>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {CARDS.map((card) => {
@@ -142,7 +181,32 @@ export default function VideoHome() {
           })}
         </div>
 
-        <BrandVideoKitPanel />
+        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-cyan-500/10 p-2.5 text-cyan-300">
+                <Settings2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-white">Brand Video Kit</h2>
+                <p className="mt-1 text-xs text-gray-400">Logo, abertura, encerramento, trilha e padrões de marca usados nos vídeos.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowBrandKit((value) => !value)}
+              className="shrink-0 rounded-xl border border-white/10 px-4 py-2.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              {showBrandKit ? "Fechar configurações" : "Configurar"}
+            </button>
+          </div>
+        </section>
+
+        {showBrandKit && (
+          <Suspense fallback={<LoadingPanel label="Carregando Brand Video Kit…" />}>
+            <BrandVideoKitPanel />
+          </Suspense>
+        )}
       </div>
     </div>
   );
