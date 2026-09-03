@@ -16,6 +16,7 @@ function hit(side:Side,c:Candle,level:number,kind:'STOP'|'TARGET'){
 }
 
 function returnPct(side:Side,entry:number,exit:number){return (side==='LONG'?(exit-entry):(entry-exit))/entry*100;}
+function withExitSlip(side:Side,price:number,slippagePct:number){return price*(side==='LONG'?1-slippagePct/100:1+slippagePct/100);}
 
 function closeManaged(params:{signal:StrategySignal;candles:Candle[];startIndex:number;maxBars:number;costs:BacktestCostModel;regime?:string}):ManagedBacktestTrade|null{
   const {signal,candles,startIndex,maxBars,costs,regime}=params;
@@ -36,7 +37,7 @@ function closeManaged(params:{signal:StrategySignal;candles:Candle[];startIndex:
     if(stopHit){exit=stop;exitTime=c.closeTime;reason='STOP';break;}
     if(!partial&&hit(signal.side,c,tp1,'TARGET')){
       partial=true;
-      partialReturn=returnPct(signal.side,entry,tp1)*0.5;
+      partialReturn=returnPct(signal.side,entry,withExitSlip(signal.side,tp1,costs.slippagePct))*0.5;
       stop=entry;
       if(hit(signal.side,c,tp2,'TARGET')){exit=tp2;exitTime=c.closeTime;reason='TP2';break;}
       continue;
@@ -49,7 +50,7 @@ function closeManaged(params:{signal:StrategySignal;candles:Candle[];startIndex:
     }
     if(i===last){exit=c.close;exitTime=c.closeTime;reason=i===candles.length-1?'END':'TIMEOUT';}
   }
-  const exitWithSlip=exit*(signal.side==='LONG'?1-costs.slippagePct/100:1+costs.slippagePct/100);
+  const exitWithSlip=withExitSlip(signal.side,exit,costs.slippagePct);
   const remainderWeight=partial?0.5:1;
   const grossReturnPct=partialReturn+returnPct(signal.side,entry,exitWithSlip)*remainderWeight;
   const entries=1,exits=partial?2:1;
