@@ -71,6 +71,29 @@ type SiteAnalytics = {
 
 const VIEWS: HubView[] = ["overview", "generator", "autopilot", "seo", "analytics", "settings"];
 
+const SITE_SETUP_LINKS = [
+  {
+    label: "Google Ads — Conversões",
+    helper: "Localize o ID AW da tag/conversão",
+    href: "https://ads.google.com/aw/conversions",
+  },
+  {
+    label: "Meta — Pixel / Eventos",
+    helper: "Abra o Gerenciador de Eventos e escolha o Pixel",
+    href: "https://business.facebook.com/events_manager2/list/pixel/",
+  },
+  {
+    label: "Cloudflare — Registros DNS",
+    helper: "Abra diretamente a área de registros DNS",
+    href: "https://dash.cloudflare.com/?to=/:account/:zone/dns/records",
+  },
+  {
+    label: "Google Search Console",
+    helper: "Abra a propriedade do site no Search Console",
+    href: "https://search.google.com/search-console",
+  },
+] as const;
+
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -106,6 +129,40 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
 }
 
+function SiteSetupQuickLinks() {
+  return (
+    <Card className="mb-5 border-dashed bg-muted/20">
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-sm font-semibold">Onde encontrar os dados para conectar</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Enquanto alguma configuração estiver pendente, use estes atalhos. Cada opção abre diretamente o serviço externo em uma nova aba.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {SITE_SETUP_LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex min-h-16 items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2.5 transition-colors hover:border-primary/40 hover:bg-muted/30"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-foreground">{link.label}</span>
+                  <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{link.helper}</span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+              </a>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SiteSettingsBridge() {
   const [ready, setReady] = useState(false);
 
@@ -121,14 +178,17 @@ function SiteSettingsBridge() {
   if (!ready) return null;
 
   return (
-    <div className="vendor-site-settings-bridge">
-      <style>{`
-        .vendor-site-settings-bridge > div > div:first-child { display: none; }
-        .vendor-site-settings-bridge [role="tablist"] { display: none !important; }
-        .vendor-site-settings-bridge [role="tabpanel"] > div:first-child { display: none; }
-      `}</style>
-      <ConfiguracoesLegacy />
-    </div>
+    <>
+      <SiteSetupQuickLinks />
+      <div className="vendor-site-settings-bridge">
+        <style>{`
+          .vendor-site-settings-bridge > div > div:first-child { display: none; }
+          .vendor-site-settings-bridge [role="tablist"] { display: none !important; }
+          .vendor-site-settings-bridge [role="tabpanel"] > div:first-child { display: none; }
+        `}</style>
+        <ConfiguracoesLegacy />
+      </div>
+    </>
   );
 }
 
