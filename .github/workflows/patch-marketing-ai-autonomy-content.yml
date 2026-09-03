@@ -1,0 +1,41 @@
+name: Patch marketing AI autonomy content
+
+on:
+  push:
+    branches:
+      - feat/marketing-ai-autonomy-content
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/marketing-ai-autonomy-content
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply focused patch
+        run: python .github/scripts/patch_marketing_ai_autonomy_content.py
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck API
+        run: pnpm --filter @workspace/api-server typecheck
+      - name: Typecheck frontend
+        run: pnpm --filter @workspace/frontend typecheck
+      - name: Validate and commit
+        run: |
+          git rm .github/workflows/patch-marketing-ai-autonomy-content.yml .github/scripts/patch_marketing_ai_autonomy_content.py
+          git add artifacts/api-server/src/routes/content.ts artifacts/api-server/src/routes/content_autopilot_core.ts artifacts/frontend/src/pages/ContentAutopilotCore.tsx
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(marketing): liberar publicação automática pela IA"
+          git push origin HEAD:feat/marketing-ai-autonomy-content
