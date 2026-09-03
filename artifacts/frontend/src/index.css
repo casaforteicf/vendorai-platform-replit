@@ -343,3 +343,51 @@ main + aside video[controls] {
   margin-inline: auto;
   object-fit: contain;
 }
+
+/* Central de Trabalho: Atendimento/Proposta usam a área principal da tela.
+   O LeadDetail mantém a inteligência do lead na coluna esquerda. No desktop,
+   as abas ficam no topo da área de trabalho (2/3 à direita), em vez de virar
+   uma nova linha estreita abaixo de todo o conteúdo. */
+@media (min-width: 1024px) {
+  div:has(> #lead-workspace-tabs) {
+    align-items: start;
+  }
+
+  div:has(> #lead-workspace-tabs) > #lead-workspace-tabs {
+    grid-column: 2 / -1;
+    grid-row: 1;
+    min-width: 0;
+    z-index: 2;
+  }
+
+  div:has(> #lead-workspace-tabs) > div:has(> [data-testid="card-activities"]) {
+    grid-column: 2 / -1;
+    grid-row: 1;
+    min-width: 0;
+    padding-top: 3.25rem;
+  }
+
+  /* No work center a antiga Jornada de Atendimento já retorna null.
+     Removemos o painel vazio para a aba Atendimento representar diretamente
+     Atividades + Conversas, sem criar um bloco extra abaixo. */
+  #lead-workspace-tabs > [role="tabpanel"]:nth-child(2) {
+    display: none;
+  }
+
+  /* Ao abrir Proposta, ela substitui a área operacional da direita e ocupa
+     toda a largura disponível; Atividades/Conversas voltam ao trocar para Atendimento. */
+  div:has(> #lead-workspace-tabs > [role="tabpanel"]:nth-child(3)[data-state="active"])
+    > div:has(> [data-testid="card-activities"]) {
+    display: none;
+  }
+
+  #lead-workspace-tabs > [role="tablist"] {
+    width: min(100%, 32rem);
+    max-width: none;
+  }
+
+  #lead-workspace-tabs > [role="tabpanel"]:nth-child(3)[data-state="active"] {
+    min-width: 0;
+    margin-top: 1rem;
+  }
+}
