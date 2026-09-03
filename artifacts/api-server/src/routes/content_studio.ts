@@ -3,7 +3,11 @@ import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
-import { startProductPhotoVideo } from "../services/media-product-video.js";
+import {
+  resolveProductVideoLibraryImages,
+  startProductPhotoVideo,
+  type ProductVideoImage,
+} from "../services/media-product-video.js";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -21,6 +25,17 @@ function buildPrompt(tab: Tab, input: string, referencePatterns: string): string
     script:   `Escreva um script de Reel sobre "${input}" com: GANCHO (0-2s), DESENVOLVIMENTO (3-25s) e CTA (26-30s). Máximo 30 segundos.`,
   };
   return prompts[tab] + referencePatterns;
+}
+
+function parseImageAssetIds(value: unknown): string[] {
+  if (!value) return [];
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()))];
+  } catch {
+    throw new Error("imageAssetIds inválido");
+  }
 }
 
 router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
@@ -92,28 +107,63 @@ router.post(
       res.status(422).json({ error: "Nome do produto é obrigatório" }); return;
     }
 
+    let imageAssetIds: string[];
+    try {
+      imageAssetIds = parseImageAssetIds(req.body?.imageAssetIds);
+    } catch (error) {
+      res.status(422).json({ error: error instanceof Error ? error.message : "imageAssetIds inválido" });
+      return;
+    }
+
+    if (imageAssetIds.length > 8) {
+      res.status(422).json({ error: "Selecione no máximo 8 fotos da Biblioteca" });
+      return;
+    }
+
     const fileFields = (!Array.isArray(req.files) && req.files ? req.files : {}) as Record<string, UploadedProductImage[]>;
-    const productImages = [
+    const uploadedImages = [
       ...(fileFields["image"] ?? []),
       ...(fileFields["images"] ?? []),
-    ].slice(0, 8);
+    ];
+
+    if (uploadedImages.length + imageAssetIds.length > 8) {
+      res.status(422).json({ error: "Use no máximo 8 fotos no total" });
+      return;
+    }
+
+    const renderMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+    if (uploadedImages.some((file) => !renderMimeTypes.has(file.mimetype.toLowerCase()))) {
+      res.status(422).json({ error: "Para gerar o vídeo, use somente fotos JPG, PNG ou WebP" });
+      return;
+    }
+    if (uploadedImages.some((file) => file.size > 20 * 1024 * 1024)) {
+      res.status(422).json({ error: "Cada foto deve ter no máximo 20 MB" });
+      return;
+    }
+
+    let libraryImages: ProductVideoImage[] = [];
+    try {
+      libraryImages = await resolveProductVideoLibraryImages(tenantId, imageAssetIds);
+    } catch (error) {
+      res.status(422).json({ error: error instanceof Error ? error.message : "Falha ao carregar fotos da Biblioteca" });
+      return;
+    }
+
+    const productImages: ProductVideoImage[] = [
+      ...libraryImages,
+      ...uploadedImages.map((file) => ({
+        buffer: file.buffer,
+        mimeType: file.mimetype,
+        originalName: file.originalname,
+        size: file.size,
+      })),
+    ];
     const shouldRender = renderVideo === "true";
     const resolvedFormat = format === "story" ? "story" : "reel";
 
-    if (shouldRender) {
-      if (!productImages.length) {
-        res.status(422).json({ error: "Envie ao menos uma foto para gerar o vídeo do produto" });
-        return;
-      }
-      const renderMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-      if (productImages.some((file) => !renderMimeTypes.has(file.mimetype.toLowerCase()))) {
-        res.status(422).json({ error: "Para gerar o vídeo, use somente fotos JPG, PNG ou WebP" });
-        return;
-      }
-      if (productImages.some((file) => file.size > 20 * 1024 * 1024)) {
-        res.status(422).json({ error: "Cada foto deve ter no máximo 20 MB" });
-        return;
-      }
+    if (shouldRender && !productImages.length) {
+      res.status(422).json({ error: "Selecione ou envie ao menos uma foto para gerar o vídeo do produto" });
+      return;
     }
 
     const formatLabel = resolvedFormat === "story"
@@ -163,7 +213,7 @@ Ao final, sugira:
             type: "image" as const,
             source: {
               type: "base64" as const,
-              media_type: (referenceImage.mimetype || "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+              media_type: (referenceImage.mimeType || "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
               data: referenceImage.buffer.toString("base64"),
             },
           }]
@@ -202,12 +252,7 @@ Ao final, sugira:
         cta,
         format: resolvedFormat,
         storyboard: result,
-        images: productImages.map((file) => ({
-          buffer: file.buffer,
-          mimeType: file.mimetype,
-          originalName: file.originalname,
-          size: file.size,
-        })),
+        images: productImages,
       });
 
       res.status(202).json({
