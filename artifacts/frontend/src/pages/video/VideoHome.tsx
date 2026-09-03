@@ -1,7 +1,19 @@
 import { lazy, Suspense, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowRight, Mic2, ShoppingBag, Scissors, Clapperboard, LayoutGrid, Sparkles, Captions, Settings2, WandSparkles } from "lucide-react";
+import {
+  ArrowRight,
+  Captions,
+  Clapperboard,
+  LayoutGrid,
+  Mic2,
+  Settings2,
+  ShoppingBag,
+  Sparkles,
+  Scissors,
+  WandSparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
 const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
@@ -10,79 +22,58 @@ interface VideoCard {
   title: string;
   description: string;
   icon: React.ElementType;
-  gradient: string;
-  iconBg: string;
   route: string;
-  badge?: string;
-  badgeColor?: string;
+  action: string;
 }
 
 const CARDS: VideoCard[] = [
   {
     title: "Pessoas & Vozes",
-    description: "Cadastre pessoas ou personas autorizadas, referências de voz e permissões de uso no Media Engine.",
+    description: "Cadastre pessoas, personas autorizadas, referências de voz e permissões de uso.",
     icon: Mic2,
-    gradient: "from-purple-600/30 via-violet-500/20 to-purple-900/10",
-    iconBg: "bg-purple-500/20 text-purple-300",
     route: "/content-studio/video/avatar",
-    badge: "Disponível",
-    badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+    action: "Gerenciar",
   },
   {
     title: "Vídeo de Produto",
-    description: "Transforme 1–8 fotos reais do produto em Reel ou Stories, com storyboard e MP4 final.",
+    description: "Transforme fotos reais do produto em vídeos para Reels, Stories e campanhas.",
     icon: ShoppingBag,
-    gradient: "from-amber-600/30 via-orange-500/20 to-amber-900/10",
-    iconBg: "bg-amber-500/20 text-amber-300",
     route: "/content-studio/video/produto",
-    badge: "Disponível",
-    badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+    action: "Criar vídeo",
   },
   {
     title: "Edição automática",
-    description: "Suba um vídeo bruto e a IA remove silêncios e palavras de preenchimento.",
+    description: "Envie um vídeo bruto e deixe a IA remover silêncios e trechos desnecessários.",
     icon: Scissors,
-    gradient: "from-emerald-600/30 via-teal-500/20 to-emerald-900/10",
-    iconBg: "bg-emerald-500/20 text-emerald-300",
     route: "/content-studio/video/edicao",
-    badge: "Disponível",
-    badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+    action: "Editar vídeo",
   },
   {
     title: "Legendagem automática",
-    description: "Suba um vídeo gravado e a IA transcreve e queima a legenda, no ritmo de leitura de Reels.",
+    description: "Transcreva e aplique legendas prontas para conteúdo de redes sociais.",
     icon: Captions,
-    gradient: "from-cyan-600/30 via-sky-500/20 to-cyan-900/10",
-    iconBg: "bg-cyan-500/20 text-cyan-300",
     route: "/content-studio/video/legenda",
-    badge: "Disponível",
-    badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
+    action: "Gerar legenda",
   },
   {
     title: "Clipes automáticos",
-    description: "Transforme vídeos longos em 2–4 clipes curtos no formato 9:16 para Reels e Stories.",
+    description: "Transforme vídeos longos em cortes curtos no formato vertical para redes sociais.",
     icon: Clapperboard,
-    gradient: "from-rose-600/30 via-pink-500/20 to-rose-900/10",
-    iconBg: "bg-rose-500/20 text-rose-300",
     route: "/content-studio/video/clipes",
-    badge: "Disponível",
-    badgeColor: "bg-rose-500/20 text-rose-300 border-rose-500/30",
+    action: "Criar clipes",
   },
   {
     title: "Vídeo em lote",
-    description: "Gere dezenas de vídeos personalizados de uma vez a partir de uma planilha de leads.",
+    description: "Gere vários vídeos personalizados de uma vez usando dados estruturados.",
     icon: LayoutGrid,
-    gradient: "from-blue-600/30 via-indigo-500/20 to-blue-900/10",
-    iconBg: "bg-blue-500/20 text-blue-300",
     route: "/content-studio/video/lote",
-    badge: "Disponível",
-    badgeColor: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    action: "Iniciar lote",
   },
 ];
 
 function LoadingPanel({ label }: { label: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-8 text-center text-sm text-gray-400">
+    <div className="rounded-xl border border-border bg-card px-5 py-10 text-center text-sm text-muted-foreground shadow-sm">
       {label}
     </div>
   );
@@ -94,120 +85,140 @@ export default function VideoHome() {
   const [showBrandKit, setShowBrandKit] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0f0b1e] via-[#1a1040] to-[#0a0818] text-[#e8e4f8]">
-      <div className="max-w-4xl mx-auto px-4 py-8 space-y-7">
-
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="h-5 w-5 text-purple-400" />
-            <h1 className="text-2xl font-extrabold bg-gradient-to-r from-[#A78BFA] to-[#22D3EE] bg-clip-text text-transparent">
-              Vídeo com IA
-            </h1>
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card shadow-sm">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vídeo com IA</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Crie, edite e padronize vídeos com o VendorAI Media Engine.
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-gray-400 ml-7">
-            Crie do zero, transforme fotos, edite, legende e personalize vídeos no VendorAI Media Engine
-          </p>
         </div>
 
-        <section className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/[0.10] to-cyan-500/[0.06] p-4 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-purple-500/20 p-2.5 text-purple-300">
-                <WandSparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-white">Criar vídeo do zero com IA</h2>
-                <p className="mt-1 text-xs text-gray-400">
-                  Abra o gerador somente quando for usar. Isso mantém o hub leve e evita travamentos do navegador.
-                </p>
-              </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => setShowBrandKit((value) => !value)}>
+            <Settings2 className="mr-2 h-4 w-4" />
+            Brand Kit
+          </Button>
+          <Button onClick={() => setShowGenerator((value) => !value)}>
+            <WandSparkles className="mr-2 h-4 w-4" />
+            {showGenerator ? "Fechar gerador" : "Novo vídeo"}
+          </Button>
+        </div>
+      </header>
+
+      <section className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <WandSparkles className="h-5 w-5" />
             </div>
-            <button
-              type="button"
-              onClick={() => setShowGenerator((value) => !value)}
-              className="shrink-0 rounded-xl border border-purple-400/30 bg-purple-500/15 px-4 py-2.5 text-xs font-bold text-purple-100 transition-colors hover:bg-purple-500/25"
-            >
-              {showGenerator ? "Fechar gerador" : "Abrir gerador"}
-            </button>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-foreground">Criar vídeo do zero</h2>
+                <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  Media Engine
+                </span>
+              </div>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                Descreva a ideia, escolha formato e duração. O gerador abre somente quando necessário para manter a tela leve.
+              </p>
+            </div>
           </div>
-        </section>
+          <Button
+            variant={showGenerator ? "outline" : "default"}
+            onClick={() => setShowGenerator((value) => !value)}
+            className="shrink-0"
+          >
+            {showGenerator ? "Fechar" : "Abrir gerador"}
+          </Button>
+        </div>
+      </section>
 
-        {showGenerator && (
-          <Suspense fallback={<LoadingPanel label="Carregando gerador de vídeo…" />}>
-            <VideoGeneratePanel />
-          </Suspense>
-        )}
+      {showGenerator && (
+        <Suspense fallback={<LoadingPanel label="Carregando gerador de vídeo…" />}>
+          <VideoGeneratePanel />
+        </Suspense>
+      )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Ferramentas de vídeo</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Escolha o fluxo conforme o material que você já possui.</p>
+          </div>
+          <span className="hidden text-xs text-muted-foreground sm:inline">6 ferramentas disponíveis</span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {CARDS.map((card) => {
             const Icon = card.icon;
-            const isAvailable = card.badge === "Disponível";
             return (
               <button
                 key={card.route}
+                type="button"
                 onClick={() => navigate(card.route)}
-                disabled={!isAvailable}
                 className={cn(
-                  "group relative text-left rounded-2xl border p-5 transition-all duration-200",
-                  "bg-gradient-to-br border-white/10",
-                  card.gradient,
-                  isAvailable
-                    ? "hover:border-white/25 hover:scale-[1.02] hover:shadow-lg hover:shadow-purple-900/20 cursor-pointer"
-                    : "opacity-60 cursor-not-allowed"
+                  "group flex min-h-[190px] flex-col rounded-xl border border-border bg-card p-5 text-left shadow-sm",
+                  "transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 )}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className={cn("p-2.5 rounded-xl", card.iconBg)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
                     <Icon className="h-5 w-5" />
                   </div>
-                  {card.badge && (
-                    <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", card.badgeColor)}>
-                      {card.badge}
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Disponível
+                  </span>
                 </div>
 
-                <h3 className="font-bold text-white mb-1.5 text-sm">{card.title}</h3>
-                <p className="text-xs text-gray-400 leading-relaxed mb-4">{card.description}</p>
+                <div className="mt-4 flex-1">
+                  <h3 className="text-sm font-semibold text-foreground">{card.title}</h3>
+                  <p className="mt-1.5 text-sm leading-5 text-muted-foreground">{card.description}</p>
+                </div>
 
-                {isAvailable && (
-                  <div className="flex items-center gap-1 text-xs font-semibold text-gray-300 group-hover:text-white transition-colors">
-                    Abrir
-                    <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
-                  </div>
-                )}
+                <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-primary">
+                  {card.action}
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                </div>
               </button>
             );
           })}
         </div>
+      </section>
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-cyan-500/10 p-2.5 text-cyan-300">
-                <Settings2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-white">Brand Video Kit</h2>
-                <p className="mt-1 text-xs text-gray-400">Logo, abertura, encerramento, trilha e padrões de marca usados nos vídeos.</p>
-              </div>
+      <section className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <Settings2 className="h-5 w-5" />
             </div>
-            <button
-              type="button"
-              onClick={() => setShowBrandKit((value) => !value)}
-              className="shrink-0 rounded-xl border border-white/10 px-4 py-2.5 text-xs font-semibold text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
-            >
-              {showBrandKit ? "Fechar configurações" : "Configurar"}
-            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Brand Video Kit</h2>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                Defina logo, abertura, encerramento, trilha e padrão de legendas usados automaticamente nos vídeos.
+              </p>
+            </div>
           </div>
-        </section>
+          <Button variant="outline" onClick={() => setShowBrandKit((value) => !value)} className="shrink-0">
+            {showBrandKit ? "Fechar configurações" : "Configurar"}
+          </Button>
+        </div>
+      </section>
 
-        {showBrandKit && (
-          <Suspense fallback={<LoadingPanel label="Carregando Brand Video Kit…" />}>
-            <BrandVideoKitPanel />
-          </Suspense>
-        )}
-      </div>
+      {showBrandKit && (
+        <Suspense fallback={<LoadingPanel label="Carregando Brand Video Kit…" />}>
+          <BrandVideoKitPanel />
+        </Suspense>
+      )}
     </div>
   );
 }
