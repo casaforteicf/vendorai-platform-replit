@@ -7,6 +7,7 @@ import { emaRibbonSignal } from './ema-ribbon';
 import { rsiReversalSignal } from './rsi-reversal';
 import { rangeScalpSignal } from './range-scalp';
 import { liquiditySweepSignal } from './liquidity-sweep';
+import { applyStrategyTiming, STRATEGY_TIMING_PROFILES } from './timing-profile';
 
 export const STRATEGY_IDS=['MOMENTUM_V1','TREND_PULLBACK_V1','VWAP_REVERSION_V1','BREAKOUT_V1','EMA_RIBBON_V1','RSI_REVERSAL_V1','RANGE_SCALP_V1','LIQUIDITY_SWEEP_V1'] as const;
 export type StrategyId=typeof STRATEGY_IDS[number];
@@ -22,7 +23,7 @@ export const STRATEGY_CATALOG:Record<StrategyId,{name:string;family:string;descr
   LIQUIDITY_SWEEP_V1:{name:'Liquidity Sweep',family:'Price Action',description:'Captura varredura de máxima/mínima seguida de reentrada na faixa.',preferredRegime:'Reversão/volatilidade'},
 };
 
-export function strategySignal(strategy:StrategyId,m:MarketSnapshot,mtf:MultiTimeframeSnapshot,candles:Candle[]=[]):StrategySignal|null {
+function rawStrategySignal(strategy:StrategyId,m:MarketSnapshot,mtf:MultiTimeframeSnapshot,candles:Candle[]=[]):StrategySignal|null {
   if(strategy==='MOMENTUM_V1') return momentumSignal(m);
   if(strategy==='TREND_PULLBACK_V1') return trendPullbackSignal(m,mtf);
   if(strategy==='VWAP_REVERSION_V1') return vwapReversionSignal(m,mtf);
@@ -33,6 +34,14 @@ export function strategySignal(strategy:StrategyId,m:MarketSnapshot,mtf:MultiTim
   return liquiditySweepSignal(m,mtf,candles);
 }
 
+export function strategySignal(strategy:StrategyId,m:MarketSnapshot,mtf:MultiTimeframeSnapshot,candles:Candle[]=[]):StrategySignal|null {
+  return applyStrategyTiming(rawStrategySignal(strategy,m,mtf,candles),mtf);
+}
+
 export function strategyCandidates(m:MarketSnapshot,mtf:MultiTimeframeSnapshot,candles:Candle[]=[]):Array<StrategySignal|null>{
   return STRATEGY_IDS.map(id=>strategySignal(id,m,mtf,candles));
+}
+
+export function strategyTimingProfile(strategy:StrategyId){
+  return STRATEGY_TIMING_PROFILES[strategy]??null;
 }
