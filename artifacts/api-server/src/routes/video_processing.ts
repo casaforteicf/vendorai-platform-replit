@@ -15,6 +15,11 @@ import {
   updateMediaJob,
   type MediaJobResultItem,
 } from "../services/media-jobs.js";
+import {
+  createProcessingMediaProject,
+  registerGeneratedMediaOutput,
+  setMediaProjectStatus,
+} from "../services/media-library.js";
 
 const execFileAsync = promisify(execFile);
 const router: IRouter = Router();
@@ -71,15 +76,31 @@ router.post(
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
     const tenantId = String(req.params["tenantId"]);
+    const userId = req.user?.sub ?? null;
     const { removeSilence = "true", speed = "1.0", normalize = "false" } = req.body as Record<string, string>;
     const jobId = randomUUID();
+    const projectId = await createProcessingMediaProject({
+      tenantId,
+      userId,
+      title: `Edição de vídeo — ${req.file.originalname}`,
+      operation: "video_edit",
+      context: {
+        originalFilename: req.file.originalname,
+        mimeType: req.file.mimetype,
+        fileSize: req.file.size,
+        removeSilence,
+        speed,
+        normalize,
+      },
+    });
     await createMediaJob({
       id: jobId,
       tenantId,
+      projectId,
       operation: "video_edit",
       input: { removeSilence, speed, normalize },
     });
-    res.json({ jobId });
+    res.json({ jobId, projectId });
 
     // ── async processing ─────────────────────────────────────────────────────
     void (async () => {
@@ -135,8 +156,23 @@ router.post(
 
         const buf = await readFile(outPath);
         const objPath = await saveToBucket(buf, "video/mp4", `edited-${jobId}.mp4`);
+        await registerGeneratedMediaOutput({
+          tenantId,
+          projectId,
+          userId,
+          storageUrl: objPath,
+          mimeType: "video/mp4",
+          originalFilename: `edited-${req.file!.originalname}`,
+          operation: "video_edit",
+          label: "Vídeo editado",
+          metadata: { jobId, removeSilence, speed, normalize },
+        }).catch(async (libraryError) => {
+          req.log.error({ err: libraryError, tenantId, projectId, jobId }, "media-library: failed to register edited video");
+          await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
+        });
         await updateMediaJob(jobId, tenantId, { status: "done", videoUrl: `/api/storage${objPath}` });
       } catch (err) {
+        await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         await updateMediaJob(jobId, tenantId, {
           status: "error",
           error: err instanceof Error ? err.message : "Erro no processamento",
@@ -159,16 +195,32 @@ router.post(
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
     const tenantId = String(req.params["tenantId"]);
+    const userId = req.user?.sub ?? null;
     const { clipDuration = "60", maxClips = "4", convertTo9x16 = "false" } = req.body as Record<string, string>;
     const jobId = randomUUID();
+    const projectId = await createProcessingMediaProject({
+      tenantId,
+      userId,
+      title: `Clipes automáticos — ${req.file.originalname}`,
+      operation: "video_clips",
+      context: {
+        originalFilename: req.file.originalname,
+        mimeType: req.file.mimetype,
+        fileSize: req.file.size,
+        clipDuration,
+        maxClips,
+        convertTo9x16,
+      },
+    });
     await createMediaJob({
       id: jobId,
       tenantId,
+      projectId,
       operation: "video_clips",
       input: { clipDuration, maxClips, convertTo9x16 },
       snapshot: { status: "running", progress: 0, total: 0 },
     });
-    res.json({ jobId });
+    res.json({ jobId, projectId });
 
     void (async () => {
       const tmpDir = tmpdir();
@@ -214,9 +266,24 @@ router.post(
           const objPath = await saveToBucket(buf, "video/mp4", `clip-${jobId}-${i}.mp4`);
           clipUrls.push(`/api/storage${objPath}`);
 
+          await registerGeneratedMediaOutput({
+            tenantId,
+            projectId,
+            userId,
+            storageUrl: objPath,
+            mimeType: "video/mp4",
+            originalFilename: `clip-${i + 1}-${req.file!.originalname}`,
+            operation: "video_clip",
+            label: `Clipe ${i + 1}`,
+            metadata: { jobId, clipIndex: i, start, duration: clipSec, convertTo9x16 },
+          }).catch((libraryError) => {
+            req.log.error({ err: libraryError, tenantId, projectId, jobId, clipIndex: i }, "media-library: failed to register clip");
+          });
+
           await updateMediaJob(jobId, tenantId, { status: "running", progress: i + 1, total: nClips });
         }
 
+        await setMediaProjectStatus(tenantId, projectId, clipUrls.length > 0 ? "ready" : "draft").catch(() => undefined);
         await updateMediaJob(jobId, tenantId, {
           status: "done",
           clips: clipUrls,
@@ -224,6 +291,7 @@ router.post(
           total: nClips,
         });
       } catch (err) {
+        await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         await updateMediaJob(jobId, tenantId, {
           status: "error",
           error: err instanceof Error ? err.message : "Erro no processamento",
@@ -428,9 +496,21 @@ router.post(
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
     const tenantId = String(req.params["tenantId"]);
+    const userId = req.user?.sub ?? null;
     const jobId = randomUUID();
-    await createMediaJob({ id: jobId, tenantId, operation: "video_caption" });
-    res.json({ jobId });
+    const projectId = await createProcessingMediaProject({
+      tenantId,
+      userId,
+      title: `Vídeo legendado — ${req.file.originalname}`,
+      operation: "video_caption",
+      context: {
+        originalFilename: req.file.originalname,
+        mimeType: req.file.mimetype,
+        fileSize: req.file.size,
+      },
+    });
+    await createMediaJob({ id: jobId, tenantId, projectId, operation: "video_caption" });
+    res.json({ jobId, projectId });
 
     void (async () => {
       const tmpDir    = tmpdir();
@@ -451,6 +531,7 @@ router.post(
           language: "pt",
         });
         if (words.length === 0) {
+          await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
           await updateMediaJob(jobId, tenantId, {
             status: "error",
             error: "Não foi possível identificar fala no vídeo — confirme se o áudio está audível.",
@@ -475,8 +556,23 @@ router.post(
 
         const buf = await readFile(outPath);
         const objPath = await saveToBucket(buf, "video/mp4", `captioned-${jobId}.mp4`);
+        await registerGeneratedMediaOutput({
+          tenantId,
+          projectId,
+          userId,
+          storageUrl: objPath,
+          mimeType: "video/mp4",
+          originalFilename: `captioned-${req.file!.originalname}`,
+          operation: "video_caption",
+          label: "Vídeo legendado",
+          metadata: { jobId, captionChunks: chunks.length, language: "pt" },
+        }).catch(async (libraryError) => {
+          req.log.error({ err: libraryError, tenantId, projectId, jobId }, "media-library: failed to register captioned video");
+          await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
+        });
         await updateMediaJob(jobId, tenantId, { status: "done", videoUrl: `/api/storage${objPath}` });
       } catch (err) {
+        await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         await updateMediaJob(jobId, tenantId, {
           status: "error",
           error: err instanceof Error ? err.message : "Erro no processamento",
