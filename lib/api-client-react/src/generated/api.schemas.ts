@@ -95,38 +95,35 @@ export interface RegisterBody {
   password: string;
 }
 
-export type UserRole = typeof UserRole[keyof typeof UserRole];
-
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
 export const UserRole = {
-  admin: 'admin',
-  member: 'member',
+  admin: "admin",
+  member: "member",
 } as const;
 
-export type PlatformRole = typeof PlatformRole[keyof typeof PlatformRole];
-
+export type PlatformRole = (typeof PlatformRole)[keyof typeof PlatformRole];
 
 export const PlatformRole = {
-  super_admin: 'super_admin',
-  tenant_admin: 'tenant_admin',
-  tenant_seller: 'tenant_seller',
-  partner: 'partner',
-  member: 'member',
+  super_admin: "super_admin",
+  tenant_admin: "tenant_admin",
+  tenant_seller: "tenant_seller",
+  partner: "partner",
+  member: "member",
 } as const;
 
 /**
  * Função/tipo do usuário dentro do tenant
  */
-export type UserFunction = typeof UserFunction[keyof typeof UserFunction];
-
+export type UserFunction = (typeof UserFunction)[keyof typeof UserFunction];
 
 export const UserFunction = {
-  vendedor: 'vendedor',
-  financeiro: 'financeiro',
-  suporte: 'suporte',
-  entrega: 'entrega',
-  administrador: 'administrador',
-  outro: 'outro',
+  vendedor: "vendedor",
+  financeiro: "financeiro",
+  suporte: "suporte",
+  entrega: "entrega",
+  administrador: "administrador",
+  outro: "outro",
 } as const;
 
 export interface User {
@@ -162,13 +159,12 @@ export interface HealthStatus {
   status: string;
 }
 
-export type TenantStatus = typeof TenantStatus[keyof typeof TenantStatus];
-
+export type TenantStatus = (typeof TenantStatus)[keyof typeof TenantStatus];
 
 export const TenantStatus = {
-  active: 'active',
-  suspended: 'suspended',
-  cancelled: 'cancelled',
+  active: "active",
+  suspended: "suspended",
+  cancelled: "cancelled",
 } as const;
 
 export type UsageSummaryMessages = {
@@ -218,7 +214,7 @@ export type TenantDashboardLeads = {
 /**
  * Map of etapa → count (only stages with at least one deal present)
  */
-export type TenantDashboardDealsPorEtapa = {[key: string]: number};
+export type TenantDashboardDealsPorEtapa = { [key: string]: number };
 
 export type TenantDashboardDeals = {
   /** Map of etapa → count (only stages with at least one deal present) */
@@ -256,7 +252,7 @@ export type TenantDashboardPropostas = {
 /**
  * Map of tipoFechamento → count for all deals
  */
-export type TenantDashboardDealsPorTipoFechamento = {[key: string]: number};
+export type TenantDashboardDealsPorTipoFechamento = { [key: string]: number };
 
 export type TenantDashboardFaixaEtaria = {
   naoInformado: number;
@@ -270,7 +266,7 @@ export type TenantDashboardFaixaEtaria = {
 /**
  * Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months
  */
-export type TenantDashboardDiasSemanaGanhos = {[key: string]: number};
+export type TenantDashboardDiasSemanaGanhos = { [key: string]: number };
 
 export type TenantDashboardNegocioPerfilProdutosItem = {
   nome: string;
@@ -297,9 +293,13 @@ export type TenantDashboardPerfilCompraDoresPrincipaisItem = {
   count: number;
 };
 
-export type TenantDashboardPerfilCompraUrgenciaDistribuicao = {[key: string]: number};
+export type TenantDashboardPerfilCompraUrgenciaDistribuicao = {
+  [key: string]: number;
+};
 
-export type TenantDashboardPerfilCompraOrcamentoDistribuicao = {[key: string]: number};
+export type TenantDashboardPerfilCompraOrcamentoDistribuicao = {
+  [key: string]: number;
+};
 
 export type TenantDashboardPerfilCompraB2bVsB2c = {
   b2b: number;
@@ -311,7 +311,9 @@ export type TenantDashboardPerfilCompraMotivosPerdaItem = {
   count: number;
 };
 
-export type TenantDashboardPerfilCompraPlanosRecomendados = {[key: string]: number};
+export type TenantDashboardPerfilCompraPlanosRecomendados = {
+  [key: string]: number;
+};
 
 /**
  * Aggregated purchase profile metrics for AI analysis
@@ -353,13 +355,14 @@ export interface TenantDashboard {
 /**
  * Which source the displayed valor came from, or null if none available
  */
-export type RunningAgentRowValorOrigem = typeof RunningAgentRowValorOrigem[keyof typeof RunningAgentRowValorOrigem] | null;
-
+export type RunningAgentRowValorOrigem =
+  | (typeof RunningAgentRowValorOrigem)[keyof typeof RunningAgentRowValorOrigem]
+  | null;
 
 export const RunningAgentRowValorOrigem = {
-  proposta: 'proposta',
-  deal: 'deal',
-  orcamento: 'orcamento',
+  proposta: "proposta",
+  deal: "deal",
+  orcamento: "orcamento",
 } as const;
 
 /**
@@ -381,23 +384,23 @@ export interface RunningAgentRow {
   dealEtapa: string | null;
 }
 
-export type SubscriptionPlano = typeof SubscriptionPlano[keyof typeof SubscriptionPlano];
-
+export type SubscriptionPlano =
+  (typeof SubscriptionPlano)[keyof typeof SubscriptionPlano];
 
 export const SubscriptionPlano = {
-  starter: 'starter',
-  growth: 'growth',
-  enterprise: 'enterprise',
+  starter: "starter",
+  growth: "growth",
+  enterprise: "enterprise",
 } as const;
 
-export type SubscriptionStatus = typeof SubscriptionStatus[keyof typeof SubscriptionStatus];
-
+export type SubscriptionStatus =
+  (typeof SubscriptionStatus)[keyof typeof SubscriptionStatus];
 
 export const SubscriptionStatus = {
-  trial: 'trial',
-  ativa: 'ativa',
-  inadimplente: 'inadimplente',
-  cancelada: 'cancelada',
+  trial: "trial",
+  ativa: "ativa",
+  inadimplente: "inadimplente",
+  cancelada: "cancelada",
 } as const;
 
 export interface Subscription {
@@ -435,23 +438,22 @@ export interface UpdateSubscriptionBody {
   proximaCobranca?: string;
 }
 
-export type InvoiceStatus = typeof InvoiceStatus[keyof typeof InvoiceStatus];
-
+export type InvoiceStatus = (typeof InvoiceStatus)[keyof typeof InvoiceStatus];
 
 export const InvoiceStatus = {
-  pendente: 'pendente',
-  paga: 'paga',
-  atrasada: 'atrasada',
-  cancelada: 'cancelada',
+  pendente: "pendente",
+  paga: "paga",
+  atrasada: "atrasada",
+  cancelada: "cancelada",
 } as const;
 
-export type InvoiceFormaPagamento = typeof InvoiceFormaPagamento[keyof typeof InvoiceFormaPagamento];
-
+export type InvoiceFormaPagamento =
+  (typeof InvoiceFormaPagamento)[keyof typeof InvoiceFormaPagamento];
 
 export const InvoiceFormaPagamento = {
-  pix: 'pix',
-  cartao: 'cartao',
-  boleto: 'boleto',
+  pix: "pix",
+  cartao: "cartao",
+  boleto: "boleto",
 } as const;
 
 export interface PaymentMethod {
@@ -538,27 +540,25 @@ export interface UpdateKnowledgeBaseBody {
   ativo?: boolean;
 }
 
-export type RuleTrigger = typeof RuleTrigger[keyof typeof RuleTrigger];
-
+export type RuleTrigger = (typeof RuleTrigger)[keyof typeof RuleTrigger];
 
 export const RuleTrigger = {
-  lead_criado: 'lead_criado',
-  churn_risk_alto: 'churn_risk_alto',
-  proposta_enviada: 'proposta_enviada',
-  agendamento_proximo: 'agendamento_proximo',
-  sem_atividade_x_dias: 'sem_atividade_x_dias',
-  deal_ganho: 'deal_ganho',
-  deal_perdido: 'deal_perdido',
+  lead_criado: "lead_criado",
+  churn_risk_alto: "churn_risk_alto",
+  proposta_enviada: "proposta_enviada",
+  agendamento_proximo: "agendamento_proximo",
+  sem_atividade_x_dias: "sem_atividade_x_dias",
+  deal_ganho: "deal_ganho",
+  deal_perdido: "deal_perdido",
 } as const;
 
-export type RuleAcao = typeof RuleAcao[keyof typeof RuleAcao];
-
+export type RuleAcao = (typeof RuleAcao)[keyof typeof RuleAcao];
 
 export const RuleAcao = {
-  criar_agent_task: 'criar_agent_task',
-  criar_campanha: 'criar_campanha',
-  notificar_usuario: 'notificar_usuario',
-  criar_atividade: 'criar_atividade',
+  criar_agent_task: "criar_agent_task",
+  criar_campanha: "criar_campanha",
+  notificar_usuario: "notificar_usuario",
+  criar_atividade: "criar_atividade",
 } as const;
 
 export interface RuleCondicao {
@@ -610,25 +610,25 @@ export interface UpdateRuleBody {
   ativo?: boolean;
 }
 
-export type AgendamentoTipo = typeof AgendamentoTipo[keyof typeof AgendamentoTipo];
-
+export type AgendamentoTipo =
+  (typeof AgendamentoTipo)[keyof typeof AgendamentoTipo];
 
 export const AgendamentoTipo = {
-  reuniao: 'reuniao',
-  visita: 'visita',
-  consulta: 'consulta',
-  instalacao: 'instalacao',
+  reuniao: "reuniao",
+  visita: "visita",
+  consulta: "consulta",
+  instalacao: "instalacao",
 } as const;
 
-export type AgendamentoStatus = typeof AgendamentoStatus[keyof typeof AgendamentoStatus];
-
+export type AgendamentoStatus =
+  (typeof AgendamentoStatus)[keyof typeof AgendamentoStatus];
 
 export const AgendamentoStatus = {
-  agendado: 'agendado',
-  confirmado: 'confirmado',
-  concluido: 'concluido',
-  cancelado: 'cancelado',
-  no_show: 'no_show',
+  agendado: "agendado",
+  confirmado: "confirmado",
+  concluido: "concluido",
+  cancelado: "cancelado",
+  no_show: "no_show",
 } as const;
 
 export interface Agenda {
@@ -718,31 +718,29 @@ export interface AgendamentoDisponibilidade {
   conflitos: Agendamento[];
 }
 
-export type EntregaModo = typeof EntregaModo[keyof typeof EntregaModo];
-
+export type EntregaModo = (typeof EntregaModo)[keyof typeof EntregaModo];
 
 export const EntregaModo = {
-  agendada: 'agendada',
-  assincrona: 'assincrona',
+  agendada: "agendada",
+  assincrona: "assincrona",
 } as const;
 
-export type EntregaStatus = typeof EntregaStatus[keyof typeof EntregaStatus];
-
+export type EntregaStatus = (typeof EntregaStatus)[keyof typeof EntregaStatus];
 
 export const EntregaStatus = {
-  aguardando: 'aguardando',
-  agendada: 'agendada',
-  em_transito: 'em_transito',
-  entregue: 'entregue',
-  cancelada: 'cancelada',
+  aguardando: "aguardando",
+  agendada: "agendada",
+  em_transito: "em_transito",
+  entregue: "entregue",
+  cancelada: "cancelada",
 } as const;
 
-export type EntregaPeriodo = typeof EntregaPeriodo[keyof typeof EntregaPeriodo];
-
+export type EntregaPeriodo =
+  (typeof EntregaPeriodo)[keyof typeof EntregaPeriodo];
 
 export const EntregaPeriodo = {
-  manha: 'manha',
-  tarde: 'tarde',
+  manha: "manha",
+  tarde: "tarde",
 } as const;
 
 export interface EntregaItem {
@@ -751,14 +749,14 @@ export interface EntregaItem {
   sku?: string;
 }
 
-export type EntregaFeedbackStatus = typeof EntregaFeedbackStatus[keyof typeof EntregaFeedbackStatus];
-
+export type EntregaFeedbackStatus =
+  (typeof EntregaFeedbackStatus)[keyof typeof EntregaFeedbackStatus];
 
 export const EntregaFeedbackStatus = {
-  aguardando_resposta: 'aguardando_resposta',
-  aguardando_motivo: 'aguardando_motivo',
-  positivo: 'positivo',
-  negativo: 'negativo',
+  aguardando_resposta: "aguardando_resposta",
+  aguardando_motivo: "aguardando_motivo",
+  positivo: "positivo",
+  negativo: "negativo",
 } as const;
 
 export interface Entrega {
@@ -815,13 +813,13 @@ export interface UpdateEntregaBody {
   observacoes?: string;
 }
 
-export type BloqueioPeriodo = typeof BloqueioPeriodo[keyof typeof BloqueioPeriodo];
-
+export type BloqueioPeriodo =
+  (typeof BloqueioPeriodo)[keyof typeof BloqueioPeriodo];
 
 export const BloqueioPeriodo = {
-  dia_inteiro: 'dia_inteiro',
-  manha: 'manha',
-  tarde: 'tarde',
+  dia_inteiro: "dia_inteiro",
+  manha: "manha",
+  tarde: "tarde",
 } as const;
 
 export interface BloqueioAgenda {
@@ -850,25 +848,26 @@ export interface CreateBloqueioAgendaBody {
 /**
  * Recurrence type — "mensal" or "anual", null for one-time
  */
-export type ProdutoCatalogoRecorrencia = typeof ProdutoCatalogoRecorrencia[keyof typeof ProdutoCatalogoRecorrencia] | null;
-
+export type ProdutoCatalogoRecorrencia =
+  | (typeof ProdutoCatalogoRecorrencia)[keyof typeof ProdutoCatalogoRecorrencia]
+  | null;
 
 export const ProdutoCatalogoRecorrencia = {
-  mensal: 'mensal',
-  anual: 'anual',
+  mensal: "mensal",
+  anual: "anual",
 } as const;
 
 /**
  * Product classification — saas_plan/saas_addon hide stock quantity in UI
  */
-export type ProdutoCatalogoProductType = typeof ProdutoCatalogoProductType[keyof typeof ProdutoCatalogoProductType];
-
+export type ProdutoCatalogoProductType =
+  (typeof ProdutoCatalogoProductType)[keyof typeof ProdutoCatalogoProductType];
 
 export const ProdutoCatalogoProductType = {
-  physical: 'physical',
-  service: 'service',
-  saas_plan: 'saas_plan',
-  saas_addon: 'saas_addon',
+  physical: "physical",
+  service: "service",
+  saas_plan: "saas_plan",
+  saas_addon: "saas_addon",
 } as const;
 
 export interface ProdutoCatalogo {
@@ -911,12 +910,13 @@ export interface ProdutoCatalogo {
 /**
  * Recurrence type — "mensal" or "anual", null for one-time
  */
-export type CreateProdutoCatalogoBodyRecorrencia = typeof CreateProdutoCatalogoBodyRecorrencia[keyof typeof CreateProdutoCatalogoBodyRecorrencia] | null;
-
+export type CreateProdutoCatalogoBodyRecorrencia =
+  | (typeof CreateProdutoCatalogoBodyRecorrencia)[keyof typeof CreateProdutoCatalogoBodyRecorrencia]
+  | null;
 
 export const CreateProdutoCatalogoBodyRecorrencia = {
-  mensal: 'mensal',
-  anual: 'anual',
+  mensal: "mensal",
+  anual: "anual",
 } as const;
 
 export interface CreateProdutoCatalogoBody {
@@ -947,12 +947,13 @@ export interface CreateProdutoCatalogoBody {
 /**
  * Recurrence type — "mensal" or "anual", null for one-time
  */
-export type UpdateProdutoCatalogoBodyRecorrencia = typeof UpdateProdutoCatalogoBodyRecorrencia[keyof typeof UpdateProdutoCatalogoBodyRecorrencia] | null;
-
+export type UpdateProdutoCatalogoBodyRecorrencia =
+  | (typeof UpdateProdutoCatalogoBodyRecorrencia)[keyof typeof UpdateProdutoCatalogoBodyRecorrencia]
+  | null;
 
 export const UpdateProdutoCatalogoBodyRecorrencia = {
-  mensal: 'mensal',
-  anual: 'anual',
+  mensal: "mensal",
+  anual: "anual",
 } as const;
 
 export interface UpdateProdutoCatalogoBody {
@@ -982,18 +983,18 @@ export interface ImportProdutosCatalogoBody {
   csv: string;
 }
 
-export type CategoriaProdutoNivel = typeof CategoriaProdutoNivel[keyof typeof CategoriaProdutoNivel];
-
+export type CategoriaProdutoNivel =
+  (typeof CategoriaProdutoNivel)[keyof typeof CategoriaProdutoNivel];
 
 export const CategoriaProdutoNivel = {
-  categoria: 'categoria',
-  subcategoria: 'subcategoria',
-  nicho: 'nicho',
-  linha: 'linha',
-  aplicacao: 'aplicacao',
-  sublinha: 'sublinha',
-  utilidade: 'utilidade',
-  familia: 'familia',
+  categoria: "categoria",
+  subcategoria: "subcategoria",
+  nicho: "nicho",
+  linha: "linha",
+  aplicacao: "aplicacao",
+  sublinha: "sublinha",
+  utilidade: "utilidade",
+  familia: "familia",
 } as const;
 
 export interface CategoriaProduto {
@@ -1041,30 +1042,30 @@ export type CreatePropostaFromCatalogoBodyItensItem = {
   quantidade: number;
 };
 
-export type FormaPagamentoProposta = typeof FormaPagamentoProposta[keyof typeof FormaPagamentoProposta];
-
+export type FormaPagamentoProposta =
+  (typeof FormaPagamentoProposta)[keyof typeof FormaPagamentoProposta];
 
 export const FormaPagamentoProposta = {
-  pix: 'pix',
-  boleto: 'boleto',
-  cartao_credito: 'cartao_credito',
-  cartao_debito: 'cartao_debito',
-  transferencia: 'transferencia',
-  dinheiro: 'dinheiro',
-  a_combinar: 'a_combinar',
+  pix: "pix",
+  boleto: "boleto",
+  cartao_credito: "cartao_credito",
+  cartao_debito: "cartao_debito",
+  transferencia: "transferencia",
+  dinheiro: "dinheiro",
+  a_combinar: "a_combinar",
 } as const;
 
-export type PaymentCompositionLineForma = typeof PaymentCompositionLineForma[keyof typeof PaymentCompositionLineForma];
-
+export type PaymentCompositionLineForma =
+  (typeof PaymentCompositionLineForma)[keyof typeof PaymentCompositionLineForma];
 
 export const PaymentCompositionLineForma = {
-  pix: 'pix',
-  cartao_credito: 'cartao_credito',
-  cartao_debito: 'cartao_debito',
-  dinheiro: 'dinheiro',
-  boleto: 'boleto',
-  transferencia: 'transferencia',
-  outro: 'outro',
+  pix: "pix",
+  cartao_credito: "cartao_credito",
+  cartao_debito: "cartao_debito",
+  dinheiro: "dinheiro",
+  boleto: "boleto",
+  transferencia: "transferencia",
+  outro: "outro",
 } as const;
 
 export interface PaymentCompositionLine {
@@ -1099,12 +1100,12 @@ export interface CreatePropostaFromCatalogoBody {
   skipAsaasBilling?: boolean;
 }
 
-export type PropostaTemplateCycle = typeof PropostaTemplateCycle[keyof typeof PropostaTemplateCycle];
-
+export type PropostaTemplateCycle =
+  (typeof PropostaTemplateCycle)[keyof typeof PropostaTemplateCycle];
 
 export const PropostaTemplateCycle = {
-  monthly: 'monthly',
-  annual: 'annual',
+  monthly: "monthly",
+  annual: "annual",
 } as const;
 
 export type PropostaTemplateItensItem = {
@@ -1144,33 +1145,34 @@ export interface CreatePropostaFromTemplateBody {
   extraItens?: CreatePropostaFromTemplateBodyExtraItensItem[];
 }
 
-export type CampaignTipo = typeof CampaignTipo[keyof typeof CampaignTipo];
-
+export type CampaignTipo = (typeof CampaignTipo)[keyof typeof CampaignTipo];
 
 export const CampaignTipo = {
-  whatsapp: 'whatsapp',
-  email: 'email',
-  instagram: 'instagram',
+  whatsapp: "whatsapp",
+  email: "email",
+  instagram: "instagram",
 } as const;
 
-export type CampaignStatus = typeof CampaignStatus[keyof typeof CampaignStatus];
-
+export type CampaignStatus =
+  (typeof CampaignStatus)[keyof typeof CampaignStatus];
 
 export const CampaignStatus = {
-  rascunho: 'rascunho',
-  agendada: 'agendada',
-  enviando: 'enviando',
-  concluida: 'concluida',
-  pausada: 'pausada',
+  rascunho: "rascunho",
+  agendada: "agendada",
+  enviando: "enviando",
+  concluida: "concluida",
+  pausada: "pausada",
 } as const;
 
-export type NumericFilter = number | {
-  gt?: number;
-  gte?: number;
-  lt?: number;
-  lte?: number;
-  eq?: number;
-};
+export type NumericFilter =
+  | number
+  | {
+      gt?: number;
+      gte?: number;
+      lt?: number;
+      lte?: number;
+      eq?: number;
+    };
 
 export interface SegmentoFiltro {
   churnRisk?: NumericFilter;
@@ -1184,7 +1186,7 @@ export interface SegmentoFiltro {
 /**
  * Per-pipeline-stage message overrides (etapa → mensagem)
  */
-export type CampaignMensagensEtapa = {[key: string]: string} | null;
+export type CampaignMensagensEtapa = { [key: string]: string } | null;
 
 export interface Campaign {
   id: string;
@@ -1203,7 +1205,7 @@ export interface Campaign {
   updatedAt: string;
 }
 
-export type CreateCampaignBodyMensagensEtapa = {[key: string]: string} | null;
+export type CreateCampaignBodyMensagensEtapa = { [key: string]: string } | null;
 
 export interface CreateCampaignBody {
   tenantId: string;
@@ -1216,7 +1218,7 @@ export interface CreateCampaignBody {
   agendadaPara?: string;
 }
 
-export type UpdateCampaignBodyMensagensEtapa = {[key: string]: string} | null;
+export type UpdateCampaignBodyMensagensEtapa = { [key: string]: string } | null;
 
 export interface UpdateCampaignBody {
   nome?: string;
@@ -1247,29 +1249,29 @@ export interface CampaignAudiencePreview {
   sample: CampaignAudiencePreviewSampleItem[];
 }
 
-export type AgentTaskAgentName = typeof AgentTaskAgentName[keyof typeof AgentTaskAgentName];
-
+export type AgentTaskAgentName =
+  (typeof AgentTaskAgentName)[keyof typeof AgentTaskAgentName];
 
 export const AgentTaskAgentName = {
-  sdr: 'sdr',
-  closer: 'closer',
-  followup: 'followup',
-  reactivation: 'reactivation',
-  scheduler: 'scheduler',
-  service: 'service',
-  onboarding: 'onboarding',
+  sdr: "sdr",
+  closer: "closer",
+  followup: "followup",
+  reactivation: "reactivation",
+  scheduler: "scheduler",
+  service: "service",
+  onboarding: "onboarding",
 } as const;
 
-export type AgentTaskStatus = typeof AgentTaskStatus[keyof typeof AgentTaskStatus];
-
+export type AgentTaskStatus =
+  (typeof AgentTaskStatus)[keyof typeof AgentTaskStatus];
 
 export const AgentTaskStatus = {
-  pendente_aprovacao: 'pendente_aprovacao',
-  aprovado: 'aprovado',
-  executando: 'executando',
-  concluido: 'concluido',
-  rejeitado: 'rejeitado',
-  erro: 'erro',
+  pendente_aprovacao: "pendente_aprovacao",
+  aprovado: "aprovado",
+  executando: "executando",
+  concluido: "concluido",
+  rejeitado: "rejeitado",
+  erro: "erro",
 } as const;
 
 export type AgentTaskPayload = { [key: string]: unknown } | null;
@@ -1322,17 +1324,20 @@ export interface UpdateAgentTaskBody {
 /**
  * Detected behavioral patterns (free-form JSON)
  */
-export type CustomerIntelligenceBehaviorScore = { [key: string]: unknown } | null;
+export type CustomerIntelligenceBehaviorScore = {
+  [key: string]: unknown;
+} | null;
 
 /**
  * Who last edited the churn reasons — "ai" for AI-generated, "rep" for manual edit
  */
-export type CustomerIntelligenceChurnReasonsEditedBy = typeof CustomerIntelligenceChurnReasonsEditedBy[keyof typeof CustomerIntelligenceChurnReasonsEditedBy] | null;
-
+export type CustomerIntelligenceChurnReasonsEditedBy =
+  | (typeof CustomerIntelligenceChurnReasonsEditedBy)[keyof typeof CustomerIntelligenceChurnReasonsEditedBy]
+  | null;
 
 export const CustomerIntelligenceChurnReasonsEditedBy = {
-  ai: 'ai',
-  rep: 'rep',
+  ai: "ai",
+  rep: "rep",
 } as const;
 
 export interface CustomerIntelligence {
@@ -1350,9 +1355,9 @@ export interface CustomerIntelligence {
   /** Array of detected future opportunities */
   opportunities?: unknown[] | null;
   /**
-     * @minimum 0
-     * @maximum 100
-     */
+   * @minimum 0
+   * @maximum 100
+   */
   churnRisk?: number | null;
   churnReasons?: unknown[] | null;
   nextBestAction?: string | null;
@@ -1366,14 +1371,16 @@ export interface CustomerIntelligence {
   updatedAt: string;
 }
 
-export type CreateCustomerIntelligenceBodyBehaviorScore = { [key: string]: unknown };
+export type CreateCustomerIntelligenceBodyBehaviorScore = {
+  [key: string]: unknown;
+};
 
-export type CreateCustomerIntelligenceBodyChurnReasonsEditedBy = typeof CreateCustomerIntelligenceBodyChurnReasonsEditedBy[keyof typeof CreateCustomerIntelligenceBodyChurnReasonsEditedBy];
-
+export type CreateCustomerIntelligenceBodyChurnReasonsEditedBy =
+  (typeof CreateCustomerIntelligenceBodyChurnReasonsEditedBy)[keyof typeof CreateCustomerIntelligenceBodyChurnReasonsEditedBy];
 
 export const CreateCustomerIntelligenceBodyChurnReasonsEditedBy = {
-  ai: 'ai',
-  rep: 'rep',
+  ai: "ai",
+  rep: "rep",
 } as const;
 
 export interface CreateCustomerIntelligenceBody {
@@ -1385,9 +1392,9 @@ export interface CreateCustomerIntelligenceBody {
   journeyStage?: string;
   opportunities?: unknown[];
   /**
-     * @minimum 0
-     * @maximum 100
-     */
+   * @minimum 0
+   * @maximum 100
+   */
   churnRisk?: number;
   churnReasons?: unknown[];
   nextBestAction?: string;
@@ -1397,14 +1404,16 @@ export interface CreateCustomerIntelligenceBody {
   lastAnalyzedAt?: string;
 }
 
-export type UpdateCustomerIntelligenceBodyBehaviorScore = { [key: string]: unknown };
+export type UpdateCustomerIntelligenceBodyBehaviorScore = {
+  [key: string]: unknown;
+};
 
-export type UpdateCustomerIntelligenceBodyChurnReasonsEditedBy = typeof UpdateCustomerIntelligenceBodyChurnReasonsEditedBy[keyof typeof UpdateCustomerIntelligenceBodyChurnReasonsEditedBy];
-
+export type UpdateCustomerIntelligenceBodyChurnReasonsEditedBy =
+  (typeof UpdateCustomerIntelligenceBodyChurnReasonsEditedBy)[keyof typeof UpdateCustomerIntelligenceBodyChurnReasonsEditedBy];
 
 export const UpdateCustomerIntelligenceBodyChurnReasonsEditedBy = {
-  ai: 'ai',
-  rep: 'rep',
+  ai: "ai",
+  rep: "rep",
 } as const;
 
 export interface UpdateCustomerIntelligenceBody {
@@ -1414,9 +1423,9 @@ export interface UpdateCustomerIntelligenceBody {
   journeyStage?: string;
   opportunities?: unknown[];
   /**
-     * @minimum 0
-     * @maximum 100
-     */
+   * @minimum 0
+   * @maximum 100
+   */
   churnRisk?: number;
   churnReasons?: unknown[];
   /** @maxLength 300 */
@@ -1427,7 +1436,9 @@ export interface UpdateCustomerIntelligenceBody {
   lastAnalyzedAt?: string;
 }
 
-export type AnalyzeLeadIntelligenceResponseRulesResultsItem = { [key: string]: unknown };
+export type AnalyzeLeadIntelligenceResponseRulesResultsItem = {
+  [key: string]: unknown;
+};
 
 export interface AnalyzeLeadIntelligenceResponse {
   intelligence: CustomerIntelligence;
@@ -1442,52 +1453,50 @@ export interface AnalyzeLeadIntelligenceResponse {
   aiSuggestedChurnReasons?: string[];
 }
 
-export type MessageDirecao = typeof MessageDirecao[keyof typeof MessageDirecao];
-
+export type MessageDirecao =
+  (typeof MessageDirecao)[keyof typeof MessageDirecao];
 
 export const MessageDirecao = {
-  entrada: 'entrada',
-  saida: 'saida',
+  entrada: "entrada",
+  saida: "saida",
 } as const;
 
-export type MessageCanal = typeof MessageCanal[keyof typeof MessageCanal];
-
+export type MessageCanal = (typeof MessageCanal)[keyof typeof MessageCanal];
 
 export const MessageCanal = {
-  whatsapp: 'whatsapp',
-  instagram: 'instagram',
-  email: 'email',
-  chat: 'chat',
+  whatsapp: "whatsapp",
+  instagram: "instagram",
+  email: "email",
+  chat: "chat",
 } as const;
 
-export type MessageTipoConteudo = typeof MessageTipoConteudo[keyof typeof MessageTipoConteudo];
-
+export type MessageTipoConteudo =
+  (typeof MessageTipoConteudo)[keyof typeof MessageTipoConteudo];
 
 export const MessageTipoConteudo = {
-  texto: 'texto',
-  imagem: 'imagem',
-  audio: 'audio',
-  documento: 'documento',
-  video: 'video',
+  texto: "texto",
+  imagem: "imagem",
+  audio: "audio",
+  documento: "documento",
+  video: "video",
 } as const;
 
-export type MessageEnviadoPor = typeof MessageEnviadoPor[keyof typeof MessageEnviadoPor];
-
+export type MessageEnviadoPor =
+  (typeof MessageEnviadoPor)[keyof typeof MessageEnviadoPor];
 
 export const MessageEnviadoPor = {
-  lead: 'lead',
-  agente_ia: 'agente_ia',
-  humano: 'humano',
+  lead: "lead",
+  agente_ia: "agente_ia",
+  humano: "humano",
 } as const;
 
-export type MessageStatus = typeof MessageStatus[keyof typeof MessageStatus];
-
+export type MessageStatus = (typeof MessageStatus)[keyof typeof MessageStatus];
 
 export const MessageStatus = {
-  enviado: 'enviado',
-  entregue: 'entregue',
-  lido: 'lido',
-  erro: 'erro',
+  enviado: "enviado",
+  entregue: "entregue",
+  lido: "lido",
+  erro: "erro",
 } as const;
 
 export interface Message {
@@ -1544,16 +1553,16 @@ export interface UpdateMessageBody {
   agentName?: string;
 }
 
-export type PropostaStatus = typeof PropostaStatus[keyof typeof PropostaStatus];
-
+export type PropostaStatus =
+  (typeof PropostaStatus)[keyof typeof PropostaStatus];
 
 export const PropostaStatus = {
-  rascunho: 'rascunho',
-  enviada: 'enviada',
-  pendente: 'pendente',
-  aceita: 'aceita',
-  rejeitada: 'rejeitada',
-  expirada: 'expirada',
+  rascunho: "rascunho",
+  enviada: "enviada",
+  pendente: "pendente",
+  aceita: "aceita",
+  rejeitada: "rejeitada",
+  expirada: "expirada",
 } as const;
 
 export interface PropostaItem {
@@ -1651,36 +1660,35 @@ export interface UpdatePropostaBody {
   skipAsaasBilling?: boolean | null;
 }
 
-export type ActivityTipo = typeof ActivityTipo[keyof typeof ActivityTipo];
-
+export type ActivityTipo = (typeof ActivityTipo)[keyof typeof ActivityTipo];
 
 export const ActivityTipo = {
-  ligacao: 'ligacao',
-  whatsapp: 'whatsapp',
-  email: 'email',
-  visita: 'visita',
-  tarefa: 'tarefa',
-  reuniao: 'reuniao',
+  ligacao: "ligacao",
+  whatsapp: "whatsapp",
+  email: "email",
+  visita: "visita",
+  tarefa: "tarefa",
+  reuniao: "reuniao",
 } as const;
 
-export type ActivityStatus = typeof ActivityStatus[keyof typeof ActivityStatus];
-
+export type ActivityStatus =
+  (typeof ActivityStatus)[keyof typeof ActivityStatus];
 
 export const ActivityStatus = {
-  pendente: 'pendente',
-  planejado: 'planejado',
-  concluida: 'concluida',
-  cancelada: 'cancelada',
+  pendente: "pendente",
+  planejado: "planejado",
+  concluida: "concluida",
+  cancelada: "cancelada",
 } as const;
 
-export type AnexoCategoria = typeof AnexoCategoria[keyof typeof AnexoCategoria];
-
+export type AnexoCategoria =
+  (typeof AnexoCategoria)[keyof typeof AnexoCategoria];
 
 export const AnexoCategoria = {
-  projeto: 'projeto',
-  imagem: 'imagem',
-  documento: 'documento',
-  outras_informacoes: 'outras_informacoes',
+  projeto: "projeto",
+  imagem: "imagem",
+  documento: "documento",
+  outras_informacoes: "outras_informacoes",
 } as const;
 
 export interface Activity {
@@ -1761,30 +1769,29 @@ export type DealEtapa = string;
 /**
  * Etapa no funil SaaS/TI
  */
-export type DealEtapaSaas = typeof DealEtapaSaas[keyof typeof DealEtapaSaas];
-
+export type DealEtapaSaas = (typeof DealEtapaSaas)[keyof typeof DealEtapaSaas];
 
 export const DealEtapaSaas = {
-  lead_qualificado: 'lead_qualificado',
-  demo_agendada: 'demo_agendada',
-  trial_ativo: 'trial_ativo',
-  proposta_enviada: 'proposta_enviada',
-  fechamento: 'fechamento',
-  onboarding: 'onboarding',
-  expansao: 'expansao',
+  lead_qualificado: "lead_qualificado",
+  demo_agendada: "demo_agendada",
+  trial_ativo: "trial_ativo",
+  proposta_enviada: "proposta_enviada",
+  fechamento: "fechamento",
+  onboarding: "onboarding",
+  expansao: "expansao",
 } as const;
 
 /**
  * Define o comportamento ao marcar o negócio como Ganho. 'pedido' gera apenas uma confirmação simples (sem assinatura). 'contrato' inicia o fluxo completo de assinatura eletrônica. 'pedido_e_contrato' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.
 
  */
-export type TipoFechamento = typeof TipoFechamento[keyof typeof TipoFechamento];
-
+export type TipoFechamento =
+  (typeof TipoFechamento)[keyof typeof TipoFechamento];
 
 export const TipoFechamento = {
-  pedido: 'pedido',
-  contrato: 'contrato',
-  pedido_e_contrato: 'pedido_e_contrato',
+  pedido: "pedido",
+  contrato: "contrato",
+  pedido_e_contrato: "pedido_e_contrato",
 } as const;
 
 export interface Funil {
@@ -1841,12 +1848,13 @@ export interface UpdateFunilBody {
 /**
  * Tipo de cobrança - automático via Asaas ou manual (quando o tenant não tem Asaas configurado)
  */
-export type DealCobrancaTipo = typeof DealCobrancaTipo[keyof typeof DealCobrancaTipo] | null;
-
+export type DealCobrancaTipo =
+  | (typeof DealCobrancaTipo)[keyof typeof DealCobrancaTipo]
+  | null;
 
 export const DealCobrancaTipo = {
-  automatico: 'automatico',
-  manual: 'manual',
+  automatico: "automatico",
+  manual: "manual",
 } as const;
 
 export interface Deal {
@@ -1859,9 +1867,9 @@ export interface Deal {
   etapa: DealEtapa;
   funilId?: string | null;
   /**
-     * @minimum 0
-     * @maximum 100
-     */
+   * @minimum 0
+   * @maximum 100
+   */
   probabilidade?: number | null;
   dataFechamentoPrevista?: string | null;
   /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
@@ -1882,10 +1890,10 @@ export interface Deal {
   /** Data de renovação do contrato */
   dataRenovacao?: string | null;
   /**
-     * Probabilidade de churn (0-100%)
-     * @minimum 0
-     * @maximum 100
-     */
+   * Probabilidade de churn (0-100%)
+   * @minimum 0
+   * @maximum 100
+   */
   probChurn?: number | null;
   /** Path of the imported quote file stored in object storage (/objects/...) */
   quoteFileUrl?: string | null;
@@ -1927,7 +1935,7 @@ export interface Deal {
   updatedAt: string;
 }
 
-export type DealUpdateResponse = Deal & ({
+export type DealUpdateResponse = Deal & {
   /** Whether an onboarding invite was automatically sent on deal win */
   inviteSent?: boolean;
   /** The email address the invite was sent to */
@@ -1952,7 +1960,7 @@ export type DealUpdateResponse = Deal & ({
   onboardingSent?: boolean;
   /** Why onboarding was not sent */
   onboardingSkipReason?: string | null;
-});
+};
 
 export interface CreateDealBody {
   tenantId: string;
@@ -1962,9 +1970,9 @@ export interface CreateDealBody {
   etapa?: DealEtapa;
   funilId?: string;
   /**
-     * @minimum 0
-     * @maximum 100
-     */
+   * @minimum 0
+   * @maximum 100
+   */
   probabilidade?: number;
   dataFechamentoPrevista?: string;
   /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
@@ -1979,9 +1987,9 @@ export interface CreateDealBody {
   planoContratado?: string;
   dataRenovacao?: string;
   /**
-     * @minimum 0
-     * @maximum 100
-     */
+   * @minimum 0
+   * @maximum 100
+   */
   probChurn?: number;
   skipAsaasBilling?: boolean | null;
   /** Subtipo de aquecimento ('cliente' ou 'nao_cliente') */
@@ -1991,16 +1999,17 @@ export interface CreateDealBody {
 /**
  * Override contract status (e.g. retry after failure)
  */
-export type UpdateDealBodyContractStatus = typeof UpdateDealBodyContractStatus[keyof typeof UpdateDealBodyContractStatus] | null;
-
+export type UpdateDealBodyContractStatus =
+  | (typeof UpdateDealBodyContractStatus)[keyof typeof UpdateDealBodyContractStatus]
+  | null;
 
 export const UpdateDealBodyContractStatus = {
-  pending: 'pending',
-  sent: 'sent',
-  signed: 'signed',
-  failed: 'failed',
-  skipped: 'skipped',
-  na: 'na',
+  pending: "pending",
+  sent: "sent",
+  signed: "signed",
+  failed: "failed",
+  skipped: "skipped",
+  na: "na",
 } as const;
 
 export interface UpdateDealBody {
@@ -2010,9 +2019,9 @@ export interface UpdateDealBody {
   etapa?: DealEtapa;
   funilId?: string;
   /**
-     * @minimum 0
-     * @maximum 100
-     */
+   * @minimum 0
+   * @maximum 100
+   */
   probabilidade?: number;
   dataFechamentoPrevista?: string;
   /** (deprecated) Use lostReason instead */
@@ -2032,9 +2041,9 @@ export interface UpdateDealBody {
   planoContratado?: string;
   dataRenovacao?: string;
   /**
-     * @minimum 0
-     * @maximum 100
-     */
+   * @minimum 0
+   * @maximum 100
+   */
   probChurn?: number;
   quoteFileUrl?: string | null;
   /** Override contract status (e.g. retry after failure) */
@@ -2304,13 +2313,14 @@ export type TenantAgentsEnabled = { [key: string]: unknown };
 /**
  * How this tenant was created.
  */
-export type TenantProvisioningMethod = typeof TenantProvisioningMethod[keyof typeof TenantProvisioningMethod] | null;
-
+export type TenantProvisioningMethod =
+  | (typeof TenantProvisioningMethod)[keyof typeof TenantProvisioningMethod]
+  | null;
 
 export const TenantProvisioningMethod = {
-  self_service: 'self_service',
-  manual: 'manual',
-  trial: 'trial',
+  self_service: "self_service",
+  manual: "manual",
+  trial: "trial",
 } as const;
 
 export interface Tenant {
@@ -2374,6 +2384,8 @@ export interface Tenant {
   /** ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.
    */
   metaPixelId?: string | null;
+  linkedinInsightTagId?: string | null;
+  tiktokPixelId?: string | null;
   /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
    */
   confirmarEstoqueAntesFinanceiro?: boolean;
@@ -2463,6 +2475,8 @@ export interface UpdateTenantBody {
   /** ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.
    */
   metaPixelId?: string | null;
+  linkedinInsightTagId?: string | null;
+  tiktokPixelId?: string | null;
   /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
    */
   confirmarEstoqueAntesFinanceiro?: boolean;
@@ -2471,22 +2485,22 @@ export interface UpdateTenantBody {
   usuarioConferenciaEstoqueId?: string | null;
 }
 
-export type BillingEventType = typeof BillingEventType[keyof typeof BillingEventType];
-
+export type BillingEventType =
+  (typeof BillingEventType)[keyof typeof BillingEventType];
 
 export const BillingEventType = {
-  initial: 'initial',
-  monthly: 'monthly',
+  initial: "initial",
+  monthly: "monthly",
 } as const;
 
-export type BillingEventStatus = typeof BillingEventStatus[keyof typeof BillingEventStatus];
-
+export type BillingEventStatus =
+  (typeof BillingEventStatus)[keyof typeof BillingEventStatus];
 
 export const BillingEventStatus = {
-  pending: 'pending',
-  paid: 'paid',
-  overdue: 'overdue',
-  cancelled: 'cancelled',
+  pending: "pending",
+  paid: "paid",
+  overdue: "overdue",
+  cancelled: "cancelled",
 } as const;
 
 export interface BillingEvent {
@@ -2571,13 +2585,13 @@ export interface LeadBriefing {
   updatedAt: string;
 }
 
-export type UpsertLeadBriefingBodyContactType = typeof UpsertLeadBriefingBodyContactType[keyof typeof UpsertLeadBriefingBodyContactType];
-
+export type UpsertLeadBriefingBodyContactType =
+  (typeof UpsertLeadBriefingBodyContactType)[keyof typeof UpsertLeadBriefingBodyContactType];
 
 export const UpsertLeadBriefingBodyContactType = {
-  call: 'call',
-  visit: 'visit',
-  whatsapp: 'whatsapp',
+  call: "call",
+  visit: "visit",
+  whatsapp: "whatsapp",
 } as const;
 
 export type UpsertLeadBriefingBodySituationAnswersItem = {
@@ -2600,13 +2614,13 @@ export type UpsertLeadBriefingBodyNeedAnswersItem = {
   answer?: string;
 };
 
-export type UpsertLeadBriefingBodyNeedThermometer = typeof UpsertLeadBriefingBodyNeedThermometer[keyof typeof UpsertLeadBriefingBodyNeedThermometer];
-
+export type UpsertLeadBriefingBodyNeedThermometer =
+  (typeof UpsertLeadBriefingBodyNeedThermometer)[keyof typeof UpsertLeadBriefingBodyNeedThermometer];
 
 export const UpsertLeadBriefingBodyNeedThermometer = {
-  hot: 'hot',
-  warm: 'warm',
-  cold: 'cold',
+  hot: "hot",
+  warm: "warm",
+  cold: "cold",
 } as const;
 
 export type UpsertLeadBriefingBodyObjectionsItem = {
@@ -2614,22 +2628,22 @@ export type UpsertLeadBriefingBodyObjectionsItem = {
   response?: string;
 };
 
-export type UpsertLeadBriefingBodyProspectSize = typeof UpsertLeadBriefingBodyProspectSize[keyof typeof UpsertLeadBriefingBodyProspectSize];
-
+export type UpsertLeadBriefingBodyProspectSize =
+  (typeof UpsertLeadBriefingBodyProspectSize)[keyof typeof UpsertLeadBriefingBodyProspectSize];
 
 export const UpsertLeadBriefingBodyProspectSize = {
-  small_digital: 'small_digital',
-  medium_regional: 'medium_regional',
-  large_multichannel: 'large_multichannel',
+  small_digital: "small_digital",
+  medium_regional: "medium_regional",
+  large_multichannel: "large_multichannel",
 } as const;
 
-export type UpsertLeadBriefingBodyNextStepType = typeof UpsertLeadBriefingBodyNextStepType[keyof typeof UpsertLeadBriefingBodyNextStepType];
-
+export type UpsertLeadBriefingBodyNextStepType =
+  (typeof UpsertLeadBriefingBodyNextStepType)[keyof typeof UpsertLeadBriefingBodyNextStepType];
 
 export const UpsertLeadBriefingBodyNextStepType = {
-  meeting_scheduled: 'meeting_scheduled',
-  callback: 'callback',
-  open_door: 'open_door',
+  meeting_scheduled: "meeting_scheduled",
+  callback: "callback",
+  open_door: "open_door",
 } as const;
 
 export type UpsertLeadBriefingBodyAiSummaryComoContornarObjecoesItem = {
@@ -2671,15 +2685,15 @@ export interface UpsertLeadBriefingBody {
 
 export type LeadProposalJsonContent = { [key: string]: unknown } | null;
 
-export type LeadProposalStatus = typeof LeadProposalStatus[keyof typeof LeadProposalStatus];
-
+export type LeadProposalStatus =
+  (typeof LeadProposalStatus)[keyof typeof LeadProposalStatus];
 
 export const LeadProposalStatus = {
-  draft: 'draft',
-  generated: 'generated',
-  sent: 'sent',
-  accepted: 'accepted',
-  rejected: 'rejected',
+  draft: "draft",
+  generated: "generated",
+  sent: "sent",
+  accepted: "accepted",
+  rejected: "rejected",
 } as const;
 
 export type LeadProposalTheme = { [key: string]: unknown } | null;
@@ -2730,13 +2744,13 @@ export interface GenerateLeadProposalBody {
   refinementNotes?: string | null;
 }
 
-export type ProductPresentationStatus = typeof ProductPresentationStatus[keyof typeof ProductPresentationStatus];
-
+export type ProductPresentationStatus =
+  (typeof ProductPresentationStatus)[keyof typeof ProductPresentationStatus];
 
 export const ProductPresentationStatus = {
-  draft: 'draft',
-  reviewed: 'reviewed',
-  sent: 'sent',
+  draft: "draft",
+  reviewed: "reviewed",
+  sent: "sent",
 } as const;
 
 export type ProductPresentationJsonContent = { [key: string]: unknown } | null;
@@ -2825,16 +2839,16 @@ export interface ProspectorConfigBody {
   /** Cidade alvo da busca */
   cidade?: string | null;
   /**
-     * Raio em km ao redor da cidade
-     * @minimum 1
-     * @maximum 100
-     */
+   * Raio em km ao redor da cidade
+   * @minimum 1
+   * @maximum 100
+   */
   raioKm?: number | null;
   /**
-     * Quantidade de leads abordados por dia
-     * @minimum 1
-     * @maximum 500
-     */
+   * Quantidade de leads abordados por dia
+   * @minimum 1
+   * @maximum 500
+   */
   ritmoDiario?: number;
   /** Ativar busca automática diária */
   ativo?: boolean;
@@ -2861,20 +2875,20 @@ export interface ProspectorConfigResponse {
 
 export interface ProspectorSearchBody {
   /**
-     * Atividade comercial (ex. "restaurantes", "clínicas odontológicas")
-     * @minLength 2
-     */
+   * Atividade comercial (ex. "restaurantes", "clínicas odontológicas")
+   * @minLength 2
+   */
   atividade: string;
   /**
-     * Cidade/bairro/região (ex. "Curitiba, PR")
-     * @minLength 2
-     */
+   * Cidade/bairro/região (ex. "Curitiba, PR")
+   * @minLength 2
+   */
   localidade: string;
   /**
-     * Número máximo de empresas a retornar (1–20, padrão 10)
-     * @minimum 1
-     * @maximum 20
-     */
+   * Número máximo de empresas a retornar (1–20, padrão 10)
+   * @minimum 1
+   * @maximum 20
+   */
   maxResults?: number;
   /** Required when caller is a super_admin */
   tenantId?: string;
@@ -2940,13 +2954,13 @@ export interface ProspectorApprovalsListResponse {
   items: ProspectorApprovalItem[];
 }
 
-export type ProspectorPatchApprovalBodyAction = typeof ProspectorPatchApprovalBodyAction[keyof typeof ProspectorPatchApprovalBodyAction];
-
+export type ProspectorPatchApprovalBodyAction =
+  (typeof ProspectorPatchApprovalBodyAction)[keyof typeof ProspectorPatchApprovalBodyAction];
 
 export const ProspectorPatchApprovalBodyAction = {
-  approved: 'approved',
-  edited: 'edited',
-  rejected: 'rejected',
+  approved: "approved",
+  edited: "edited",
+  rejected: "rejected",
 } as const;
 
 export interface ProspectorPatchApprovalBody {
@@ -2968,11 +2982,11 @@ export interface ErrorResponse {
   error: string;
 }
 
-export type TenantAnalyticsAgentsPeriodo = typeof TenantAnalyticsAgentsPeriodo[keyof typeof TenantAnalyticsAgentsPeriodo];
-
+export type TenantAnalyticsAgentsPeriodo =
+  (typeof TenantAnalyticsAgentsPeriodo)[keyof typeof TenantAnalyticsAgentsPeriodo];
 
 export const TenantAnalyticsAgentsPeriodo = {
-  '30d': '30d',
+  "30d": "30d",
 } as const;
 
 export type TenantAnalyticsAgentsAgentsItemActions = {
@@ -3014,11 +3028,11 @@ export interface TenantAnalyticsAgents {
   dealConversionsBySource: TenantAnalyticsAgentsDealConversionsBySourceItem[];
 }
 
-export type TenantAnalyticsChannelsPeriodo = typeof TenantAnalyticsChannelsPeriodo[keyof typeof TenantAnalyticsChannelsPeriodo];
-
+export type TenantAnalyticsChannelsPeriodo =
+  (typeof TenantAnalyticsChannelsPeriodo)[keyof typeof TenantAnalyticsChannelsPeriodo];
 
 export const TenantAnalyticsChannelsPeriodo = {
-  '30d': '30d',
+  "30d": "30d",
 } as const;
 
 export type TenantAnalyticsChannelsLeadsBySourceItem = {
@@ -3216,16 +3230,17 @@ export interface UpdateUserBody {
   limiteEntregasPorTurno?: string | number;
 }
 
-export type LeadNaoLeadTipo = typeof LeadNaoLeadTipo[keyof typeof LeadNaoLeadTipo] | null;
-
+export type LeadNaoLeadTipo =
+  | (typeof LeadNaoLeadTipo)[keyof typeof LeadNaoLeadTipo]
+  | null;
 
 export const LeadNaoLeadTipo = {
-  colaborador: 'colaborador',
-  fornecedor: 'fornecedor',
-  parceiro: 'parceiro',
-  familiar: 'familiar',
-  amigo: 'amigo',
-  outro: 'outro',
+  colaborador: "colaborador",
+  fornecedor: "fornecedor",
+  parceiro: "parceiro",
+  familiar: "familiar",
+  amigo: "amigo",
+  outro: "outro",
 } as const;
 
 export type LeadFilhosItem = {
@@ -3349,16 +3364,17 @@ export interface Lead {
   updatedAt: string;
 }
 
-export type CreateLeadBodyNaoLeadTipo = typeof CreateLeadBodyNaoLeadTipo[keyof typeof CreateLeadBodyNaoLeadTipo] | null;
-
+export type CreateLeadBodyNaoLeadTipo =
+  | (typeof CreateLeadBodyNaoLeadTipo)[keyof typeof CreateLeadBodyNaoLeadTipo]
+  | null;
 
 export const CreateLeadBodyNaoLeadTipo = {
-  colaborador: 'colaborador',
-  fornecedor: 'fornecedor',
-  parceiro: 'parceiro',
-  familiar: 'familiar',
-  amigo: 'amigo',
-  outro: 'outro',
+  colaborador: "colaborador",
+  fornecedor: "fornecedor",
+  parceiro: "parceiro",
+  familiar: "familiar",
+  amigo: "amigo",
+  outro: "outro",
 } as const;
 
 export type CreateLeadBodyFilhosItem = {
@@ -3435,16 +3451,17 @@ export interface DeleteLeadBody {
   motivo?: string;
 }
 
-export type UpdateLeadBodyNaoLeadTipo = typeof UpdateLeadBodyNaoLeadTipo[keyof typeof UpdateLeadBodyNaoLeadTipo] | null;
-
+export type UpdateLeadBodyNaoLeadTipo =
+  | (typeof UpdateLeadBodyNaoLeadTipo)[keyof typeof UpdateLeadBodyNaoLeadTipo]
+  | null;
 
 export const UpdateLeadBodyNaoLeadTipo = {
-  colaborador: 'colaborador',
-  fornecedor: 'fornecedor',
-  parceiro: 'parceiro',
-  familiar: 'familiar',
-  amigo: 'amigo',
-  outro: 'outro',
+  colaborador: "colaborador",
+  fornecedor: "fornecedor",
+  parceiro: "parceiro",
+  familiar: "familiar",
+  amigo: "amigo",
+  outro: "outro",
 } as const;
 
 export type UpdateLeadBodyFilhosItem = {
@@ -3570,14 +3587,14 @@ export interface UpdateConversationBody {
   metadata?: UpdateConversationBodyMetadata;
 }
 
-export type AgentActionStatus = typeof AgentActionStatus[keyof typeof AgentActionStatus];
-
+export type AgentActionStatus =
+  (typeof AgentActionStatus)[keyof typeof AgentActionStatus];
 
 export const AgentActionStatus = {
-  pending: 'pending',
-  approved: 'approved',
-  executed: 'executed',
-  rejected: 'rejected',
+  pending: "pending",
+  approved: "approved",
+  executed: "executed",
+  rejected: "rejected",
 } as const;
 
 export type AgentActionLogPayload = { [key: string]: unknown } | null;
@@ -3646,7 +3663,9 @@ export interface IntelligenceAnalysisLogTriggeredByStat {
   tokens: number;
 }
 
-export type IntelligenceAnalysisLogStatsByTriggeredBy = {[key: string]: IntelligenceAnalysisLogTriggeredByStat};
+export type IntelligenceAnalysisLogStatsByTriggeredBy = {
+  [key: string]: IntelligenceAnalysisLogTriggeredByStat;
+};
 
 export interface IntelligenceAnalysisLogStats {
   totalCalls: number;
@@ -3723,13 +3742,13 @@ export interface UpdateInventoryItemBody {
   unidade?: string;
 }
 
-export type InventoryMovementTipo = typeof InventoryMovementTipo[keyof typeof InventoryMovementTipo];
-
+export type InventoryMovementTipo =
+  (typeof InventoryMovementTipo)[keyof typeof InventoryMovementTipo];
 
 export const InventoryMovementTipo = {
-  entrada: 'entrada',
-  saida: 'saida',
-  ajuste: 'ajuste',
+  entrada: "entrada",
+  saida: "saida",
+  ajuste: "ajuste",
 } as const;
 
 export interface InventoryMovement {
@@ -3744,13 +3763,13 @@ export interface InventoryMovement {
   createdAt: string;
 }
 
-export type CreateInventoryMovementBodyTipo = typeof CreateInventoryMovementBodyTipo[keyof typeof CreateInventoryMovementBodyTipo];
-
+export type CreateInventoryMovementBodyTipo =
+  (typeof CreateInventoryMovementBodyTipo)[keyof typeof CreateInventoryMovementBodyTipo];
 
 export const CreateInventoryMovementBodyTipo = {
-  entrada: 'entrada',
-  saida: 'saida',
-  ajuste: 'ajuste',
+  entrada: "entrada",
+  saida: "saida",
+  ajuste: "ajuste",
 } as const;
 
 export interface CreateInventoryMovementBody {
@@ -3769,13 +3788,13 @@ export interface InventoryMovementResult {
   item: InventoryItem;
 }
 
-export type SiteConfigTemplate = typeof SiteConfigTemplate[keyof typeof SiteConfigTemplate];
-
+export type SiteConfigTemplate =
+  (typeof SiteConfigTemplate)[keyof typeof SiteConfigTemplate];
 
 export const SiteConfigTemplate = {
-  padrao: 'padrao',
-  moderno: 'moderno',
-  minimalista: 'minimalista',
+  padrao: "padrao",
+  moderno: "moderno",
+  minimalista: "minimalista",
 } as const;
 
 export interface SiteConfig {
@@ -3791,13 +3810,13 @@ export interface SiteConfig {
   updatedAt: string;
 }
 
-export type CreateSiteConfigBodyTemplate = typeof CreateSiteConfigBodyTemplate[keyof typeof CreateSiteConfigBodyTemplate];
-
+export type CreateSiteConfigBodyTemplate =
+  (typeof CreateSiteConfigBodyTemplate)[keyof typeof CreateSiteConfigBodyTemplate];
 
 export const CreateSiteConfigBodyTemplate = {
-  padrao: 'padrao',
-  moderno: 'moderno',
-  minimalista: 'minimalista',
+  padrao: "padrao",
+  moderno: "moderno",
+  minimalista: "minimalista",
 } as const;
 
 export interface CreateSiteConfigBody {
@@ -3810,13 +3829,13 @@ export interface CreateSiteConfigBody {
   ativo?: boolean;
 }
 
-export type UpdateSiteConfigBodyTemplate = typeof UpdateSiteConfigBodyTemplate[keyof typeof UpdateSiteConfigBodyTemplate];
-
+export type UpdateSiteConfigBodyTemplate =
+  (typeof UpdateSiteConfigBodyTemplate)[keyof typeof UpdateSiteConfigBodyTemplate];
 
 export const UpdateSiteConfigBodyTemplate = {
-  padrao: 'padrao',
-  moderno: 'moderno',
-  minimalista: 'minimalista',
+  padrao: "padrao",
+  moderno: "moderno",
+  minimalista: "minimalista",
 } as const;
 
 export interface UpdateSiteConfigBody {
@@ -3857,7 +3876,7 @@ export interface PublicSiteResponse {
   siteConfig: SiteConfig;
 }
 
-export type SegmentTemplatePromptsSugeridos = {[key: string]: string};
+export type SegmentTemplatePromptsSugeridos = { [key: string]: string };
 
 export interface SegmentTemplate {
   id: string;
@@ -3877,12 +3896,13 @@ export interface ApplyTemplateResponse {
   promptsApplied: string[];
 }
 
-export type IntegrationSettingsIntegrationType = typeof IntegrationSettingsIntegrationType[keyof typeof IntegrationSettingsIntegrationType] | null;
-
+export type IntegrationSettingsIntegrationType =
+  | (typeof IntegrationSettingsIntegrationType)[keyof typeof IntegrationSettingsIntegrationType]
+  | null;
 
 export const IntegrationSettingsIntegrationType = {
-  n8n: 'n8n',
-  api: 'api',
+  n8n: "n8n",
+  api: "api",
 } as const;
 
 export interface IntegrationSettings {
@@ -3891,12 +3911,13 @@ export interface IntegrationSettings {
   integrationType: IntegrationSettingsIntegrationType;
 }
 
-export type UpdateIntegrationSettingsBodyIntegrationType = typeof UpdateIntegrationSettingsBodyIntegrationType[keyof typeof UpdateIntegrationSettingsBodyIntegrationType] | null;
-
+export type UpdateIntegrationSettingsBodyIntegrationType =
+  | (typeof UpdateIntegrationSettingsBodyIntegrationType)[keyof typeof UpdateIntegrationSettingsBodyIntegrationType]
+  | null;
 
 export const UpdateIntegrationSettingsBodyIntegrationType = {
-  n8n: 'n8n',
-  api: 'api',
+  n8n: "n8n",
+  api: "api",
 } as const;
 
 export interface UpdateIntegrationSettingsBody {
@@ -3913,9 +3934,9 @@ export type SyncInventoryBodyItemsItem = {
 
 export interface SyncInventoryBody {
   /**
-     * @minItems 1
-     * @maxItems 500
-     */
+   * @minItems 1
+   * @maxItems 500
+   */
   items: SyncInventoryBodyItemsItem[];
 }
 
@@ -3930,23 +3951,23 @@ export interface SyncInventoryResponse {
   errors: SyncInventoryResponseErrorsItem[];
 }
 
-export type GenerateContentBodyType = typeof GenerateContentBodyType[keyof typeof GenerateContentBodyType];
-
+export type GenerateContentBodyType =
+  (typeof GenerateContentBodyType)[keyof typeof GenerateContentBodyType];
 
 export const GenerateContentBodyType = {
-  feed: 'feed',
-  stories: 'stories',
-  reels: 'reels',
+  feed: "feed",
+  stories: "stories",
+  reels: "reels",
 } as const;
 
-export type GenerateContentBodyProductSource = typeof GenerateContentBodyProductSource[keyof typeof GenerateContentBodyProductSource];
-
+export type GenerateContentBodyProductSource =
+  (typeof GenerateContentBodyProductSource)[keyof typeof GenerateContentBodyProductSource];
 
 export const GenerateContentBodyProductSource = {
-  catalog: 'catalog',
-  varejo: 'varejo',
-  supermercado: 'supermercado',
-  insumo: 'insumo',
+  catalog: "catalog",
+  varejo: "varejo",
+  supermercado: "supermercado",
+  insumo: "insumo",
 } as const;
 
 export interface GenerateContentBody {
@@ -3955,14 +3976,14 @@ export interface GenerateContentBody {
   productId?: string | null;
   productSource?: GenerateContentBodyProductSource;
   /**
-     * @minimum 1
-     * @maximum 3
-     */
+   * @minimum 1
+   * @maximum 3
+   */
   variations?: number;
   /**
-     * @minimum 1
-     * @maximum 10
-     */
+   * @minimum 1
+   * @maximum 10
+   */
   imageCount?: number;
   imageUrl?: string | null;
 }
@@ -3998,13 +4019,13 @@ export interface ContentGenerationResult {
   variations: ContentVariation[];
 }
 
-export type ContentGenerationType = typeof ContentGenerationType[keyof typeof ContentGenerationType];
-
+export type ContentGenerationType =
+  (typeof ContentGenerationType)[keyof typeof ContentGenerationType];
 
 export const ContentGenerationType = {
-  feed: 'feed',
-  stories: 'stories',
-  reels: 'reels',
+  feed: "feed",
+  stories: "stories",
+  reels: "reels",
 } as const;
 
 export interface ContentGeneration {
@@ -4027,19 +4048,19 @@ export interface ListContentResponse {
 
 export interface UploadUrlRequest {
   /**
-     * Original file name.
-     * @minLength 1
-     */
+   * Original file name.
+   * @minLength 1
+   */
   name: string;
   /**
-     * File size in bytes.
-     * @minimum 1
-     */
+   * File size in bytes.
+   * @minimum 1
+   */
   size: number;
   /**
-     * MIME type of the file (e.g. image/jpeg).
-     * @minLength 1
-     */
+   * MIME type of the file (e.g. image/jpeg).
+   * @minLength 1
+   */
   contentType: string;
 }
 
@@ -4378,31 +4399,31 @@ export interface EstoqueCentralItem {
   insumo?: Insumo;
 }
 
-export type MovimentacaoEstoqueInputTipo = typeof MovimentacaoEstoqueInputTipo[keyof typeof MovimentacaoEstoqueInputTipo];
-
+export type MovimentacaoEstoqueInputTipo =
+  (typeof MovimentacaoEstoqueInputTipo)[keyof typeof MovimentacaoEstoqueInputTipo];
 
 export const MovimentacaoEstoqueInputTipo = {
-  entrada: 'entrada',
-  saida: 'saida',
-  alocacao: 'alocacao',
-  devolucao: 'devolucao',
-  transferencia: 'transferencia',
+  entrada: "entrada",
+  saida: "saida",
+  alocacao: "alocacao",
+  devolucao: "devolucao",
+  transferencia: "transferencia",
 } as const;
 
-export type MovimentacaoEstoqueInputOrigemTipo = typeof MovimentacaoEstoqueInputOrigemTipo[keyof typeof MovimentacaoEstoqueInputOrigemTipo];
-
+export type MovimentacaoEstoqueInputOrigemTipo =
+  (typeof MovimentacaoEstoqueInputOrigemTipo)[keyof typeof MovimentacaoEstoqueInputOrigemTipo];
 
 export const MovimentacaoEstoqueInputOrigemTipo = {
-  central: 'central',
-  obra: 'obra',
+  central: "central",
+  obra: "obra",
 } as const;
 
-export type MovimentacaoEstoqueInputDestinoTipo = typeof MovimentacaoEstoqueInputDestinoTipo[keyof typeof MovimentacaoEstoqueInputDestinoTipo];
-
+export type MovimentacaoEstoqueInputDestinoTipo =
+  (typeof MovimentacaoEstoqueInputDestinoTipo)[keyof typeof MovimentacaoEstoqueInputDestinoTipo];
 
 export const MovimentacaoEstoqueInputDestinoTipo = {
-  central: 'central',
-  obra: 'obra',
+  central: "central",
+  obra: "obra",
 } as const;
 
 export interface MovimentacaoEstoqueInput {
@@ -4537,24 +4558,24 @@ export interface CompraObraUpdate {
   observacoes?: string;
 }
 
-export type VarejoColecaoTemporada = typeof VarejoColecaoTemporada[keyof typeof VarejoColecaoTemporada];
-
+export type VarejoColecaoTemporada =
+  (typeof VarejoColecaoTemporada)[keyof typeof VarejoColecaoTemporada];
 
 export const VarejoColecaoTemporada = {
-  verao: 'verao',
-  inverno: 'inverno',
-  outono: 'outono',
-  primavera: 'primavera',
-  especial: 'especial',
+  verao: "verao",
+  inverno: "inverno",
+  outono: "outono",
+  primavera: "primavera",
+  especial: "especial",
 } as const;
 
-export type VarejoColecaoStatus = typeof VarejoColecaoStatus[keyof typeof VarejoColecaoStatus];
-
+export type VarejoColecaoStatus =
+  (typeof VarejoColecaoStatus)[keyof typeof VarejoColecaoStatus];
 
 export const VarejoColecaoStatus = {
-  planejamento: 'planejamento',
-  ativa: 'ativa',
-  encerrada: 'encerrada',
+  planejamento: "planejamento",
+  ativa: "ativa",
+  encerrada: "encerrada",
 } as const;
 
 export interface VarejoColecao {
@@ -4571,24 +4592,24 @@ export interface VarejoColecao {
   updatedAt: string;
 }
 
-export type CreateVarejoColecaoBodyTemporada = typeof CreateVarejoColecaoBodyTemporada[keyof typeof CreateVarejoColecaoBodyTemporada];
-
+export type CreateVarejoColecaoBodyTemporada =
+  (typeof CreateVarejoColecaoBodyTemporada)[keyof typeof CreateVarejoColecaoBodyTemporada];
 
 export const CreateVarejoColecaoBodyTemporada = {
-  verao: 'verao',
-  inverno: 'inverno',
-  outono: 'outono',
-  primavera: 'primavera',
-  especial: 'especial',
+  verao: "verao",
+  inverno: "inverno",
+  outono: "outono",
+  primavera: "primavera",
+  especial: "especial",
 } as const;
 
-export type CreateVarejoColecaoBodyStatus = typeof CreateVarejoColecaoBodyStatus[keyof typeof CreateVarejoColecaoBodyStatus];
-
+export type CreateVarejoColecaoBodyStatus =
+  (typeof CreateVarejoColecaoBodyStatus)[keyof typeof CreateVarejoColecaoBodyStatus];
 
 export const CreateVarejoColecaoBodyStatus = {
-  planejamento: 'planejamento',
-  ativa: 'ativa',
-  encerrada: 'encerrada',
+  planejamento: "planejamento",
+  ativa: "ativa",
+  encerrada: "encerrada",
 } as const;
 
 export interface CreateVarejoColecaoBody {
@@ -4601,24 +4622,24 @@ export interface CreateVarejoColecaoBody {
   ativo?: boolean;
 }
 
-export type UpdateVarejoColecaoBodyTemporada = typeof UpdateVarejoColecaoBodyTemporada[keyof typeof UpdateVarejoColecaoBodyTemporada];
-
+export type UpdateVarejoColecaoBodyTemporada =
+  (typeof UpdateVarejoColecaoBodyTemporada)[keyof typeof UpdateVarejoColecaoBodyTemporada];
 
 export const UpdateVarejoColecaoBodyTemporada = {
-  verao: 'verao',
-  inverno: 'inverno',
-  outono: 'outono',
-  primavera: 'primavera',
-  especial: 'especial',
+  verao: "verao",
+  inverno: "inverno",
+  outono: "outono",
+  primavera: "primavera",
+  especial: "especial",
 } as const;
 
-export type UpdateVarejoColecaoBodyStatus = typeof UpdateVarejoColecaoBodyStatus[keyof typeof UpdateVarejoColecaoBodyStatus];
-
+export type UpdateVarejoColecaoBodyStatus =
+  (typeof UpdateVarejoColecaoBodyStatus)[keyof typeof UpdateVarejoColecaoBodyStatus];
 
 export const UpdateVarejoColecaoBodyStatus = {
-  planejamento: 'planejamento',
-  ativa: 'ativa',
-  encerrada: 'encerrada',
+  planejamento: "planejamento",
+  ativa: "ativa",
+  encerrada: "encerrada",
 } as const;
 
 export interface UpdateVarejoColecaoBody {
@@ -4685,34 +4706,36 @@ export interface UpdateVarejoFornecedorBody {
 /**
  * @nullable
  */
-export type VarejoProdutoCategoria = typeof VarejoProdutoCategoria[keyof typeof VarejoProdutoCategoria] | null;
-
+export type VarejoProdutoCategoria =
+  | (typeof VarejoProdutoCategoria)[keyof typeof VarejoProdutoCategoria]
+  | null;
 
 export const VarejoProdutoCategoria = {
-  camiseta: 'camiseta',
-  calca: 'calca',
-  vestido: 'vestido',
-  short: 'short',
-  jaqueta: 'jaqueta',
-  blazer: 'blazer',
-  saia: 'saia',
-  acessorio: 'acessorio',
-  calcado: 'calcado',
-  bolsa: 'bolsa',
-  outro: 'outro',
+  camiseta: "camiseta",
+  calca: "calca",
+  vestido: "vestido",
+  short: "short",
+  jaqueta: "jaqueta",
+  blazer: "blazer",
+  saia: "saia",
+  acessorio: "acessorio",
+  calcado: "calcado",
+  bolsa: "bolsa",
+  outro: "outro",
 } as const;
 
 /**
  * @nullable
  */
-export type VarejoProdutoGenero = typeof VarejoProdutoGenero[keyof typeof VarejoProdutoGenero] | null;
-
+export type VarejoProdutoGenero =
+  | (typeof VarejoProdutoGenero)[keyof typeof VarejoProdutoGenero]
+  | null;
 
 export const VarejoProdutoGenero = {
-  masculino: 'masculino',
-  feminino: 'feminino',
-  unissex: 'unissex',
-  infantil: 'infantil',
+  masculino: "masculino",
+  feminino: "feminino",
+  unissex: "unissex",
+  infantil: "infantil",
 } as const;
 
 export interface VarejoGrade {
@@ -4754,31 +4777,31 @@ export interface VarejoProduto {
   colecao?: VarejoColecao;
 }
 
-export type CreateVarejoProdutoBodyCategoria = typeof CreateVarejoProdutoBodyCategoria[keyof typeof CreateVarejoProdutoBodyCategoria];
-
+export type CreateVarejoProdutoBodyCategoria =
+  (typeof CreateVarejoProdutoBodyCategoria)[keyof typeof CreateVarejoProdutoBodyCategoria];
 
 export const CreateVarejoProdutoBodyCategoria = {
-  camiseta: 'camiseta',
-  calca: 'calca',
-  vestido: 'vestido',
-  short: 'short',
-  jaqueta: 'jaqueta',
-  blazer: 'blazer',
-  saia: 'saia',
-  acessorio: 'acessorio',
-  calcado: 'calcado',
-  bolsa: 'bolsa',
-  outro: 'outro',
+  camiseta: "camiseta",
+  calca: "calca",
+  vestido: "vestido",
+  short: "short",
+  jaqueta: "jaqueta",
+  blazer: "blazer",
+  saia: "saia",
+  acessorio: "acessorio",
+  calcado: "calcado",
+  bolsa: "bolsa",
+  outro: "outro",
 } as const;
 
-export type CreateVarejoProdutoBodyGenero = typeof CreateVarejoProdutoBodyGenero[keyof typeof CreateVarejoProdutoBodyGenero];
-
+export type CreateVarejoProdutoBodyGenero =
+  (typeof CreateVarejoProdutoBodyGenero)[keyof typeof CreateVarejoProdutoBodyGenero];
 
 export const CreateVarejoProdutoBodyGenero = {
-  masculino: 'masculino',
-  feminino: 'feminino',
-  unissex: 'unissex',
-  infantil: 'infantil',
+  masculino: "masculino",
+  feminino: "feminino",
+  unissex: "unissex",
+  infantil: "infantil",
 } as const;
 
 export interface CreateVarejoProdutoBody {
@@ -4795,31 +4818,31 @@ export interface CreateVarejoProdutoBody {
   ativo?: boolean;
 }
 
-export type UpdateVarejoProdutoBodyCategoria = typeof UpdateVarejoProdutoBodyCategoria[keyof typeof UpdateVarejoProdutoBodyCategoria];
-
+export type UpdateVarejoProdutoBodyCategoria =
+  (typeof UpdateVarejoProdutoBodyCategoria)[keyof typeof UpdateVarejoProdutoBodyCategoria];
 
 export const UpdateVarejoProdutoBodyCategoria = {
-  camiseta: 'camiseta',
-  calca: 'calca',
-  vestido: 'vestido',
-  short: 'short',
-  jaqueta: 'jaqueta',
-  blazer: 'blazer',
-  saia: 'saia',
-  acessorio: 'acessorio',
-  calcado: 'calcado',
-  bolsa: 'bolsa',
-  outro: 'outro',
+  camiseta: "camiseta",
+  calca: "calca",
+  vestido: "vestido",
+  short: "short",
+  jaqueta: "jaqueta",
+  blazer: "blazer",
+  saia: "saia",
+  acessorio: "acessorio",
+  calcado: "calcado",
+  bolsa: "bolsa",
+  outro: "outro",
 } as const;
 
-export type UpdateVarejoProdutoBodyGenero = typeof UpdateVarejoProdutoBodyGenero[keyof typeof UpdateVarejoProdutoBodyGenero];
-
+export type UpdateVarejoProdutoBodyGenero =
+  (typeof UpdateVarejoProdutoBodyGenero)[keyof typeof UpdateVarejoProdutoBodyGenero];
 
 export const UpdateVarejoProdutoBodyGenero = {
-  masculino: 'masculino',
-  feminino: 'feminino',
-  unissex: 'unissex',
-  infantil: 'infantil',
+  masculino: "masculino",
+  feminino: "feminino",
+  unissex: "unissex",
+  infantil: "infantil",
 } as const;
 
 export interface UpdateVarejoProdutoBody {
@@ -4851,15 +4874,15 @@ export interface UpdateVarejoGradeBody {
   estoqueMinimo?: number;
 }
 
-export type VarejoPedidoCompraStatus = typeof VarejoPedidoCompraStatus[keyof typeof VarejoPedidoCompraStatus];
-
+export type VarejoPedidoCompraStatus =
+  (typeof VarejoPedidoCompraStatus)[keyof typeof VarejoPedidoCompraStatus];
 
 export const VarejoPedidoCompraStatus = {
-  rascunho: 'rascunho',
-  enviado: 'enviado',
-  confirmado: 'confirmado',
-  entregue: 'entregue',
-  cancelado: 'cancelado',
+  rascunho: "rascunho",
+  enviado: "enviado",
+  confirmado: "confirmado",
+  entregue: "entregue",
+  cancelado: "cancelado",
 } as const;
 
 export interface VarejoPedidoCompraItem {
@@ -4897,15 +4920,15 @@ export interface VarejoPedidoCompra {
   itens?: VarejoPedidoCompraItem[];
 }
 
-export type CreateVarejoPedidoCompraBodyStatus = typeof CreateVarejoPedidoCompraBodyStatus[keyof typeof CreateVarejoPedidoCompraBodyStatus];
-
+export type CreateVarejoPedidoCompraBodyStatus =
+  (typeof CreateVarejoPedidoCompraBodyStatus)[keyof typeof CreateVarejoPedidoCompraBodyStatus];
 
 export const CreateVarejoPedidoCompraBodyStatus = {
-  rascunho: 'rascunho',
-  enviado: 'enviado',
-  confirmado: 'confirmado',
-  entregue: 'entregue',
-  cancelado: 'cancelado',
+  rascunho: "rascunho",
+  enviado: "enviado",
+  confirmado: "confirmado",
+  entregue: "entregue",
+  cancelado: "cancelado",
 } as const;
 
 export interface CreateVarejoPedidoCompraBody {
@@ -4919,15 +4942,15 @@ export interface CreateVarejoPedidoCompraBody {
   observacoes?: string;
 }
 
-export type UpdateVarejoPedidoCompraBodyStatus = typeof UpdateVarejoPedidoCompraBodyStatus[keyof typeof UpdateVarejoPedidoCompraBodyStatus];
-
+export type UpdateVarejoPedidoCompraBodyStatus =
+  (typeof UpdateVarejoPedidoCompraBodyStatus)[keyof typeof UpdateVarejoPedidoCompraBodyStatus];
 
 export const UpdateVarejoPedidoCompraBodyStatus = {
-  rascunho: 'rascunho',
-  enviado: 'enviado',
-  confirmado: 'confirmado',
-  entregue: 'entregue',
-  cancelado: 'cancelado',
+  rascunho: "rascunho",
+  enviado: "enviado",
+  confirmado: "confirmado",
+  entregue: "entregue",
+  cancelado: "cancelado",
 } as const;
 
 export interface UpdateVarejoPedidoCompraBody {
@@ -4948,14 +4971,14 @@ export interface CreateVarejoPedidoCompraItemBody {
   precoUnitario: string;
 }
 
-export type VarejoFidelidadeNivel = typeof VarejoFidelidadeNivel[keyof typeof VarejoFidelidadeNivel];
-
+export type VarejoFidelidadeNivel =
+  (typeof VarejoFidelidadeNivel)[keyof typeof VarejoFidelidadeNivel];
 
 export const VarejoFidelidadeNivel = {
-  bronze: 'bronze',
-  prata: 'prata',
-  ouro: 'ouro',
-  diamante: 'diamante',
+  bronze: "bronze",
+  prata: "prata",
+  ouro: "ouro",
+  diamante: "diamante",
 } as const;
 
 export interface VarejoFidelidade {
@@ -4975,14 +4998,14 @@ export interface VarejoFidelidade {
   leadTelefone?: string;
 }
 
-export type UpsertVarejoFidelidadeBodyNivel = typeof UpsertVarejoFidelidadeBodyNivel[keyof typeof UpsertVarejoFidelidadeBodyNivel];
-
+export type UpsertVarejoFidelidadeBodyNivel =
+  (typeof UpsertVarejoFidelidadeBodyNivel)[keyof typeof UpsertVarejoFidelidadeBodyNivel];
 
 export const UpsertVarejoFidelidadeBodyNivel = {
-  bronze: 'bronze',
-  prata: 'prata',
-  ouro: 'ouro',
-  diamante: 'diamante',
+  bronze: "bronze",
+  prata: "prata",
+  ouro: "ouro",
+  diamante: "diamante",
 } as const;
 
 export interface UpsertVarejoFidelidadeBody {
@@ -5084,22 +5107,23 @@ export interface UpsertSupermercadoConfigBody {
 /**
  * @nullable
  */
-export type SupermercadoProdutoCategoria = typeof SupermercadoProdutoCategoria[keyof typeof SupermercadoProdutoCategoria] | null;
-
+export type SupermercadoProdutoCategoria =
+  | (typeof SupermercadoProdutoCategoria)[keyof typeof SupermercadoProdutoCategoria]
+  | null;
 
 export const SupermercadoProdutoCategoria = {
-  hortifruti: 'hortifruti',
-  carnes: 'carnes',
-  frios_laticinios: 'frios_laticinios',
-  padaria: 'padaria',
-  bebidas: 'bebidas',
-  limpeza: 'limpeza',
-  higiene: 'higiene',
-  mercearia: 'mercearia',
-  congelados: 'congelados',
-  petshop: 'petshop',
-  outros: 'outros',
-  null: 'null',
+  hortifruti: "hortifruti",
+  carnes: "carnes",
+  frios_laticinios: "frios_laticinios",
+  padaria: "padaria",
+  bebidas: "bebidas",
+  limpeza: "limpeza",
+  higiene: "higiene",
+  mercearia: "mercearia",
+  congelados: "congelados",
+  petshop: "petshop",
+  outros: "outros",
+  null: "null",
 } as const;
 
 export interface SupermercadoProduto {
@@ -5125,21 +5149,21 @@ export interface SupermercadoProduto {
   updatedAt: string;
 }
 
-export type CreateSupermercadoProdutoBodyCategoria = typeof CreateSupermercadoProdutoBodyCategoria[keyof typeof CreateSupermercadoProdutoBodyCategoria];
-
+export type CreateSupermercadoProdutoBodyCategoria =
+  (typeof CreateSupermercadoProdutoBodyCategoria)[keyof typeof CreateSupermercadoProdutoBodyCategoria];
 
 export const CreateSupermercadoProdutoBodyCategoria = {
-  hortifruti: 'hortifruti',
-  carnes: 'carnes',
-  frios_laticinios: 'frios_laticinios',
-  padaria: 'padaria',
-  bebidas: 'bebidas',
-  limpeza: 'limpeza',
-  higiene: 'higiene',
-  mercearia: 'mercearia',
-  congelados: 'congelados',
-  petshop: 'petshop',
-  outros: 'outros',
+  hortifruti: "hortifruti",
+  carnes: "carnes",
+  frios_laticinios: "frios_laticinios",
+  padaria: "padaria",
+  bebidas: "bebidas",
+  limpeza: "limpeza",
+  higiene: "higiene",
+  mercearia: "mercearia",
+  congelados: "congelados",
+  petshop: "petshop",
+  outros: "outros",
 } as const;
 
 export interface CreateSupermercadoProdutoBody {
@@ -5157,21 +5181,21 @@ export interface CreateSupermercadoProdutoBody {
   destaqueWhatsapp?: boolean;
 }
 
-export type UpdateSupermercadoProdutoBodyCategoria = typeof UpdateSupermercadoProdutoBodyCategoria[keyof typeof UpdateSupermercadoProdutoBodyCategoria];
-
+export type UpdateSupermercadoProdutoBodyCategoria =
+  (typeof UpdateSupermercadoProdutoBodyCategoria)[keyof typeof UpdateSupermercadoProdutoBodyCategoria];
 
 export const UpdateSupermercadoProdutoBodyCategoria = {
-  hortifruti: 'hortifruti',
-  carnes: 'carnes',
-  frios_laticinios: 'frios_laticinios',
-  padaria: 'padaria',
-  bebidas: 'bebidas',
-  limpeza: 'limpeza',
-  higiene: 'higiene',
-  mercearia: 'mercearia',
-  congelados: 'congelados',
-  petshop: 'petshop',
-  outros: 'outros',
+  hortifruti: "hortifruti",
+  carnes: "carnes",
+  frios_laticinios: "frios_laticinios",
+  padaria: "padaria",
+  bebidas: "bebidas",
+  limpeza: "limpeza",
+  higiene: "higiene",
+  mercearia: "mercearia",
+  congelados: "congelados",
+  petshop: "petshop",
+  outros: "outros",
 } as const;
 
 export interface UpdateSupermercadoProdutoBody {
@@ -5188,25 +5212,25 @@ export interface UpdateSupermercadoProdutoBody {
   destaqueWhatsapp?: boolean;
 }
 
-export type SupermercadoPedidoOrigem = typeof SupermercadoPedidoOrigem[keyof typeof SupermercadoPedidoOrigem];
-
+export type SupermercadoPedidoOrigem =
+  (typeof SupermercadoPedidoOrigem)[keyof typeof SupermercadoPedidoOrigem];
 
 export const SupermercadoPedidoOrigem = {
-  whatsapp: 'whatsapp',
-  app: 'app',
-  balcao: 'balcao',
+  whatsapp: "whatsapp",
+  app: "app",
+  balcao: "balcao",
 } as const;
 
-export type SupermercadoPedidoStatus = typeof SupermercadoPedidoStatus[keyof typeof SupermercadoPedidoStatus];
-
+export type SupermercadoPedidoStatus =
+  (typeof SupermercadoPedidoStatus)[keyof typeof SupermercadoPedidoStatus];
 
 export const SupermercadoPedidoStatus = {
-  aguardando_confirmacao: 'aguardando_confirmacao',
-  confirmado: 'confirmado',
-  em_separacao: 'em_separacao',
-  saiu_para_entrega: 'saiu_para_entrega',
-  entregue: 'entregue',
-  cancelado: 'cancelado',
+  aguardando_confirmacao: "aguardando_confirmacao",
+  confirmado: "confirmado",
+  em_separacao: "em_separacao",
+  saiu_para_entrega: "saiu_para_entrega",
+  entregue: "entregue",
+  cancelado: "cancelado",
 } as const;
 
 export interface SupermercadoPedido {
@@ -5238,19 +5262,19 @@ export interface SupermercadoPedidoItem {
   subtotal: string;
 }
 
-export type SupermercadoPedidoDetalhe = SupermercadoPedido & ({
+export type SupermercadoPedidoDetalhe = SupermercadoPedido & {
   itens: SupermercadoPedidoItem[];
   /** @nullable */
   leadNome?: string | null;
-});
+};
 
-export type CreateSupermercadoPedidoBodyOrigem = typeof CreateSupermercadoPedidoBodyOrigem[keyof typeof CreateSupermercadoPedidoBodyOrigem];
-
+export type CreateSupermercadoPedidoBodyOrigem =
+  (typeof CreateSupermercadoPedidoBodyOrigem)[keyof typeof CreateSupermercadoPedidoBodyOrigem];
 
 export const CreateSupermercadoPedidoBodyOrigem = {
-  whatsapp: 'whatsapp',
-  app: 'app',
-  balcao: 'balcao',
+  whatsapp: "whatsapp",
+  app: "app",
+  balcao: "balcao",
 } as const;
 
 export type CreateSupermercadoPedidoBodyItensItem = {
@@ -5269,16 +5293,16 @@ export interface CreateSupermercadoPedidoBody {
   itens?: CreateSupermercadoPedidoBodyItensItem[];
 }
 
-export type UpdateSupermercadoPedidoBodyStatus = typeof UpdateSupermercadoPedidoBodyStatus[keyof typeof UpdateSupermercadoPedidoBodyStatus];
-
+export type UpdateSupermercadoPedidoBodyStatus =
+  (typeof UpdateSupermercadoPedidoBodyStatus)[keyof typeof UpdateSupermercadoPedidoBodyStatus];
 
 export const UpdateSupermercadoPedidoBodyStatus = {
-  aguardando_confirmacao: 'aguardando_confirmacao',
-  confirmado: 'confirmado',
-  em_separacao: 'em_separacao',
-  saiu_para_entrega: 'saiu_para_entrega',
-  entregue: 'entregue',
-  cancelado: 'cancelado',
+  aguardando_confirmacao: "aguardando_confirmacao",
+  confirmado: "confirmado",
+  em_separacao: "em_separacao",
+  saiu_para_entrega: "saiu_para_entrega",
+  entregue: "entregue",
+  cancelado: "cancelado",
 } as const;
 
 export interface UpdateSupermercadoPedidoBody {
@@ -5288,26 +5312,26 @@ export interface UpdateSupermercadoPedidoBody {
   erpPedidoId?: string;
 }
 
-export type SupermercadoCampanhaTipo = typeof SupermercadoCampanhaTipo[keyof typeof SupermercadoCampanhaTipo];
-
+export type SupermercadoCampanhaTipo =
+  (typeof SupermercadoCampanhaTipo)[keyof typeof SupermercadoCampanhaTipo];
 
 export const SupermercadoCampanhaTipo = {
-  promocao: 'promocao',
-  receita: 'receita',
-  dica: 'dica',
-  data_comemorativa: 'data_comemorativa',
-  reativacao: 'reativacao',
+  promocao: "promocao",
+  receita: "receita",
+  dica: "dica",
+  data_comemorativa: "data_comemorativa",
+  reativacao: "reativacao",
 } as const;
 
-export type SupermercadoCampanhaStatus = typeof SupermercadoCampanhaStatus[keyof typeof SupermercadoCampanhaStatus];
-
+export type SupermercadoCampanhaStatus =
+  (typeof SupermercadoCampanhaStatus)[keyof typeof SupermercadoCampanhaStatus];
 
 export const SupermercadoCampanhaStatus = {
-  rascunho: 'rascunho',
-  agendada: 'agendada',
-  enviando: 'enviando',
-  concluida: 'concluida',
-  pausada: 'pausada',
+  rascunho: "rascunho",
+  agendada: "agendada",
+  enviando: "enviando",
+  concluida: "concluida",
+  pausada: "pausada",
 } as const;
 
 export interface SupermercadoCampanha {
@@ -5330,15 +5354,15 @@ export interface SupermercadoCampanha {
   updatedAt: string;
 }
 
-export type CreateSupermercadoCampanhaBodyTipo = typeof CreateSupermercadoCampanhaBodyTipo[keyof typeof CreateSupermercadoCampanhaBodyTipo];
-
+export type CreateSupermercadoCampanhaBodyTipo =
+  (typeof CreateSupermercadoCampanhaBodyTipo)[keyof typeof CreateSupermercadoCampanhaBodyTipo];
 
 export const CreateSupermercadoCampanhaBodyTipo = {
-  promocao: 'promocao',
-  receita: 'receita',
-  dica: 'dica',
-  data_comemorativa: 'data_comemorativa',
-  reativacao: 'reativacao',
+  promocao: "promocao",
+  receita: "receita",
+  dica: "dica",
+  data_comemorativa: "data_comemorativa",
+  reativacao: "reativacao",
 } as const;
 
 export interface CreateSupermercadoCampanhaBody {
@@ -5351,26 +5375,26 @@ export interface CreateSupermercadoCampanhaBody {
   geradoPorIa?: boolean;
 }
 
-export type UpdateSupermercadoCampanhaBodyTipo = typeof UpdateSupermercadoCampanhaBodyTipo[keyof typeof UpdateSupermercadoCampanhaBodyTipo];
-
+export type UpdateSupermercadoCampanhaBodyTipo =
+  (typeof UpdateSupermercadoCampanhaBodyTipo)[keyof typeof UpdateSupermercadoCampanhaBodyTipo];
 
 export const UpdateSupermercadoCampanhaBodyTipo = {
-  promocao: 'promocao',
-  receita: 'receita',
-  dica: 'dica',
-  data_comemorativa: 'data_comemorativa',
-  reativacao: 'reativacao',
+  promocao: "promocao",
+  receita: "receita",
+  dica: "dica",
+  data_comemorativa: "data_comemorativa",
+  reativacao: "reativacao",
 } as const;
 
-export type UpdateSupermercadoCampanhaBodyStatus = typeof UpdateSupermercadoCampanhaBodyStatus[keyof typeof UpdateSupermercadoCampanhaBodyStatus];
-
+export type UpdateSupermercadoCampanhaBodyStatus =
+  (typeof UpdateSupermercadoCampanhaBodyStatus)[keyof typeof UpdateSupermercadoCampanhaBodyStatus];
 
 export const UpdateSupermercadoCampanhaBodyStatus = {
-  rascunho: 'rascunho',
-  agendada: 'agendada',
-  enviando: 'enviando',
-  concluida: 'concluida',
-  pausada: 'pausada',
+  rascunho: "rascunho",
+  agendada: "agendada",
+  enviando: "enviando",
+  concluida: "concluida",
+  pausada: "pausada",
 } as const;
 
 export interface UpdateSupermercadoCampanhaBody {
@@ -5608,15 +5632,15 @@ export interface AdminAIUsage {
   featureBreakdown: AdminAIUsageFeatureBreakdownItem[];
 }
 
-export type ArqProjectStatus = typeof ArqProjectStatus[keyof typeof ArqProjectStatus];
-
+export type ArqProjectStatus =
+  (typeof ArqProjectStatus)[keyof typeof ArqProjectStatus];
 
 export const ArqProjectStatus = {
-  DRAFT: 'DRAFT',
-  IN_PROGRESS: 'IN_PROGRESS',
-  REVIEW: 'REVIEW',
-  APPROVED: 'APPROVED',
-  ARCHIVED: 'ARCHIVED',
+  DRAFT: "DRAFT",
+  IN_PROGRESS: "IN_PROGRESS",
+  REVIEW: "REVIEW",
+  APPROVED: "APPROVED",
+  ARCHIVED: "ARCHIVED",
 } as const;
 
 export interface ArqProject {
@@ -5642,15 +5666,15 @@ export interface CreateArqProjectBody {
   totalArea?: number;
 }
 
-export type UpdateArqProjectBodyStatus = typeof UpdateArqProjectBodyStatus[keyof typeof UpdateArqProjectBodyStatus];
-
+export type UpdateArqProjectBodyStatus =
+  (typeof UpdateArqProjectBodyStatus)[keyof typeof UpdateArqProjectBodyStatus];
 
 export const UpdateArqProjectBodyStatus = {
-  DRAFT: 'DRAFT',
-  IN_PROGRESS: 'IN_PROGRESS',
-  REVIEW: 'REVIEW',
-  APPROVED: 'APPROVED',
-  ARCHIVED: 'ARCHIVED',
+  DRAFT: "DRAFT",
+  IN_PROGRESS: "IN_PROGRESS",
+  REVIEW: "REVIEW",
+  APPROVED: "APPROVED",
+  ARCHIVED: "ARCHIVED",
 } as const;
 
 export interface UpdateArqProjectBody {
@@ -5671,9 +5695,9 @@ export interface ArqObject {
   finish?: string | null;
   color?: string | null;
   /**
-     * @minimum 0
-     * @maximum 1
-     */
+   * @minimum 0
+   * @maximum 1
+   */
   visualWeight?: number | null;
   description?: string | null;
   componentId?: string | null;
@@ -5690,17 +5714,17 @@ export interface ArqMaterial {
   usedByObjects?: string[];
 }
 
-export type ArqComponentType = typeof ArqComponentType[keyof typeof ArqComponentType];
-
+export type ArqComponentType =
+  (typeof ArqComponentType)[keyof typeof ArqComponentType];
 
 export const ArqComponentType = {
-  FURNITURE: 'FURNITURE',
-  FIXTURE: 'FIXTURE',
-  STRUCTURAL: 'STRUCTURAL',
-  DECORATIVE: 'DECORATIVE',
-  LIGHTING: 'LIGHTING',
-  TEXTILE: 'TEXTILE',
-  OTHER: 'OTHER',
+  FURNITURE: "FURNITURE",
+  FIXTURE: "FIXTURE",
+  STRUCTURAL: "STRUCTURAL",
+  DECORATIVE: "DECORATIVE",
+  LIGHTING: "LIGHTING",
+  TEXTILE: "TEXTILE",
+  OTHER: "OTHER",
 } as const;
 
 export type ArqComponentSpecifications = { [key: string]: unknown } | null;
@@ -5759,15 +5783,15 @@ export interface CreatePromptVariationBody {
   parameters?: CreatePromptVariationBodyParameters;
 }
 
-export type RenderJobStatus = typeof RenderJobStatus[keyof typeof RenderJobStatus];
-
+export type RenderJobStatus =
+  (typeof RenderJobStatus)[keyof typeof RenderJobStatus];
 
 export const RenderJobStatus = {
-  QUEUED: 'QUEUED',
-  PROCESSING: 'PROCESSING',
-  COMPLETED: 'COMPLETED',
-  FAILED: 'FAILED',
-  CANCELLED: 'CANCELLED',
+  QUEUED: "QUEUED",
+  PROCESSING: "PROCESSING",
+  COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
 } as const;
 
 export type RenderJobParameters = { [key: string]: unknown } | null;
@@ -5802,9 +5826,9 @@ export interface RenderReview {
   id: string;
   jobId: string;
   /**
-     * @minimum 1
-     * @maximum 5
-     */
+   * @minimum 1
+   * @maximum 5
+   */
   rating: number;
   comment?: string | null;
   approved?: boolean;
@@ -5814,9 +5838,9 @@ export interface RenderReview {
 
 export interface CreateRenderReviewBody {
   /**
-     * @minimum 1
-     * @maximum 5
-     */
+   * @minimum 1
+   * @maximum 5
+   */
   rating: number;
   comment?: string;
   approved: boolean;
@@ -5824,15 +5848,15 @@ export interface CreateRenderReviewBody {
 }
 
 export type InstagramOAuthCallbackParams = {
-code?: string;
-state?: string;
-error?: string;
+  code?: string;
+  state?: string;
+  error?: string;
 };
 
 export type WhatsappOAuthCallbackParams = {
-code?: string;
-state?: string;
-error?: string;
+  code?: string;
+  state?: string;
+  error?: string;
 };
 
 export type DeletePipelineStage200 = {
@@ -5840,20 +5864,20 @@ export type DeletePipelineStage200 = {
 };
 
 export type ListDealsParams = {
-etapa?: DealEtapa;
-funilId?: string;
-leadId?: string;
+  etapa?: DealEtapa;
+  funilId?: string;
+  leadId?: string;
 };
 
 export type ListActivitiesParams = {
-leadId?: string;
-dealId?: string;
-status?: ActivityStatus;
+  leadId?: string;
+  dealId?: string;
+  status?: ActivityStatus;
 };
 
 export type ListPropostasParams = {
-leadId?: string;
-dealId?: string;
+  leadId?: string;
+  dealId?: string;
 };
 
 export type UpdatePropostaStatusBody = {
@@ -5861,8 +5885,8 @@ export type UpdatePropostaStatusBody = {
 };
 
 export type ListMessagesParams = {
-conversationId?: string;
-leadId?: string;
+  conversationId?: string;
+  leadId?: string;
 };
 
 export type GeneratePerfilInsight200 = {
@@ -5882,32 +5906,32 @@ export type CompleteOnboarding200 = {
 };
 
 export type ListInvoicesParams = {
-status?: InvoiceStatus;
+  status?: InvoiceStatus;
 };
 
 export type ListKnowledgeBaseParams = {
-/**
- * Full-text search on titulo and conteudo
- */
-q?: string;
-categoria?: string;
-/**
- * Comma-separated list of tags (must all match)
- */
-tags?: string;
+  /**
+   * Full-text search on titulo and conteudo
+   */
+  q?: string;
+  categoria?: string;
+  /**
+   * Comma-separated list of tags (must all match)
+   */
+  tags?: string;
 };
 
 export type ListRulesParams = {
-trigger?: RuleTrigger;
-ativo?: ListRulesAtivo;
+  trigger?: RuleTrigger;
+  ativo?: ListRulesAtivo;
 };
 
-export type ListRulesAtivo = typeof ListRulesAtivo[keyof typeof ListRulesAtivo];
-
+export type ListRulesAtivo =
+  (typeof ListRulesAtivo)[keyof typeof ListRulesAtivo];
 
 export const ListRulesAtivo = {
-  true: 'true',
-  false: 'false',
+  true: "true",
+  false: "false",
 } as const;
 
 export type GetAgendaGoogleAuthUrl200 = {
@@ -5915,65 +5939,65 @@ export type GetAgendaGoogleAuthUrl200 = {
 };
 
 export type ListAgendamentosParams = {
-leadId?: string;
-status?: AgendamentoStatus;
-/**
- * ISO 8601 datetime — filter dataHoraInicio >= from
- */
-from?: string;
-/**
- * ISO 8601 datetime — filter dataHoraInicio <= to
- */
-to?: string;
-/**
- * Filter by agenda ID
- */
-agendaId?: string;
+  leadId?: string;
+  status?: AgendamentoStatus;
+  /**
+   * ISO 8601 datetime — filter dataHoraInicio >= from
+   */
+  from?: string;
+  /**
+   * ISO 8601 datetime — filter dataHoraInicio <= to
+   */
+  to?: string;
+  /**
+   * Filter by agenda ID
+   */
+  agendaId?: string;
 };
 
 export type CheckAgendamentoDisponibilidadeParams = {
-responsavelId: string;
-/**
- * Start of the window to check (ISO 8601)
- */
-from: string;
-/**
- * End of the window to check (ISO 8601)
- */
-to: string;
+  responsavelId: string;
+  /**
+   * Start of the window to check (ISO 8601)
+   */
+  from: string;
+  /**
+   * End of the window to check (ISO 8601)
+   */
+  to: string;
 };
 
 export type ListEntregasParams = {
-dealId?: string;
-status?: EntregaStatus;
-assignedTo?: string;
+  dealId?: string;
+  status?: EntregaStatus;
+  assignedTo?: string;
 };
 
 export type ListBloqueiosAgendaParams = {
-responsavelId?: string;
+  responsavelId?: string;
 };
 
 export type ExportIntelligenceAnalysisLogParams = {
-/**
- * Start of date range (ISO 8601, inclusive)
- */
-from?: string;
-/**
- * End of date range (ISO 8601, inclusive)
- */
-to?: string;
+  /**
+   * Start of date range (ISO 8601, inclusive)
+   */
+  from?: string;
+  /**
+   * End of date range (ISO 8601, inclusive)
+   */
+  to?: string;
 };
 
 export type ListIntelligenceAnalysisLogParams = {
-/**
- * @minimum 1
- */
-page?: number;
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
+  /**
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
 };
 
 export type ConfigureAnthropicAIKeyBody = {
@@ -5985,18 +6009,18 @@ export type RemoveAnthropicAIKey200 = {
 };
 
 export type ListTenantLeadsParams = {
-/**
- * Omitido = só ativos (padrão). 'apenas' = só os excluídos (aba Excluídos). 'incluir' = ativos + excluídos juntos.
- */
-incluirExcluidos?: ListTenantLeadsIncluirExcluidos;
+  /**
+   * Omitido = só ativos (padrão). 'apenas' = só os excluídos (aba Excluídos). 'incluir' = ativos + excluídos juntos.
+   */
+  incluirExcluidos?: ListTenantLeadsIncluirExcluidos;
 };
 
-export type ListTenantLeadsIncluirExcluidos = typeof ListTenantLeadsIncluirExcluidos[keyof typeof ListTenantLeadsIncluirExcluidos];
-
+export type ListTenantLeadsIncluirExcluidos =
+  (typeof ListTenantLeadsIncluirExcluidos)[keyof typeof ListTenantLeadsIncluirExcluidos];
 
 export const ListTenantLeadsIncluirExcluidos = {
-  apenas: 'apenas',
-  incluir: 'incluir',
+  apenas: "apenas",
+  incluir: "incluir",
 } as const;
 
 export type ListTenantDuplicateLeads200Item = {
@@ -6029,25 +6053,25 @@ export type DeleteLeadProduct200 = {
 };
 
 export type ListInventoryMovementsParams = {
-inventoryItemId?: string;
+  inventoryItemId?: string;
 };
 
-export type GenerateContentStrategyBodyContentType = typeof GenerateContentStrategyBodyContentType[keyof typeof GenerateContentStrategyBodyContentType];
-
+export type GenerateContentStrategyBodyContentType =
+  (typeof GenerateContentStrategyBodyContentType)[keyof typeof GenerateContentStrategyBodyContentType];
 
 export const GenerateContentStrategyBodyContentType = {
-  feed: 'feed',
-  stories: 'stories',
-  reels: 'reels',
+  feed: "feed",
+  stories: "stories",
+  reels: "reels",
 } as const;
 
 export type GenerateContentStrategyBody = {
   command: string;
   contentType?: GenerateContentStrategyBodyContentType;
   /**
-     * @minimum 1
-     * @maximum 5
-     */
+   * @minimum 1
+   * @maximum 5
+   */
   variations?: number;
 };
 
@@ -6056,39 +6080,39 @@ export type DeleteContentGeneration200 = {
 };
 
 export type ListObrasParams = {
-status?: string;
+  status?: string;
 };
 
 export type ListInsumosParams = {
-q?: string;
-categoria?: string;
+  q?: string;
+  categoria?: string;
 };
 
 export type ListComposicoesParams = {
-q?: string;
+  q?: string;
 };
 
 export type ListVarejoProdutosParams = {
-colecaoId?: string;
-fornecedorId?: string;
-categoria?: string;
-genero?: string;
+  colecaoId?: string;
+  fornecedorId?: string;
+  categoria?: string;
+  genero?: string;
 };
 
 export type ListVarejoPedidosCompraParams = {
-status?: string;
-fornecedorId?: string;
+  status?: string;
+  fornecedorId?: string;
 };
 
 export type ListVarejoFidelidadeParams = {
-nivel?: string;
-search?: string;
+  nivel?: string;
+  search?: string;
 };
 
 export type ListSupermercadoProdutosParams = {
-categoria?: string;
-destaque?: boolean;
-q?: string;
+  categoria?: string;
+  destaque?: boolean;
+  q?: string;
 };
 
 export type SyncSupermercadoProdutos200 = {
@@ -6097,13 +6121,13 @@ export type SyncSupermercadoProdutos200 = {
 };
 
 export type ListSupermercadoPedidosParams = {
-status?: string;
-origem?: string;
+  status?: string;
+  origem?: string;
 };
 
 export type ListSupermercadoCampanhasParams = {
-tipo?: string;
-status?: string;
+  tipo?: string;
+  status?: string;
 };
 
 export type DispararSupermercadoCampanha200 = {
@@ -6111,15 +6135,15 @@ export type DispararSupermercadoCampanha200 = {
   total: number;
 };
 
-export type GerarConteudoSupermercadoCampanhaBodyTipo = typeof GerarConteudoSupermercadoCampanhaBodyTipo[keyof typeof GerarConteudoSupermercadoCampanhaBodyTipo];
-
+export type GerarConteudoSupermercadoCampanhaBodyTipo =
+  (typeof GerarConteudoSupermercadoCampanhaBodyTipo)[keyof typeof GerarConteudoSupermercadoCampanhaBodyTipo];
 
 export const GerarConteudoSupermercadoCampanhaBodyTipo = {
-  promocao: 'promocao',
-  receita: 'receita',
-  dica: 'dica',
-  data_comemorativa: 'data_comemorativa',
-  reativacao: 'reativacao',
+  promocao: "promocao",
+  receita: "receita",
+  dica: "dica",
+  data_comemorativa: "data_comemorativa",
+  reativacao: "reativacao",
 } as const;
 
 export type GerarConteudoSupermercadoCampanhaBody = {
@@ -6133,17 +6157,17 @@ export type GerarConteudoSupermercadoCampanha200 = {
 };
 
 export type ProspectorExportParams = {
-/**
- * Required when caller is a super_admin
- */
-tenantId?: string;
+  /**
+   * Required when caller is a super_admin
+   */
+  tenantId?: string;
 };
 
 export type ProspectorListApprovalsParams = {
-/**
- * Required when caller is a super_admin
- */
-tenantId?: string;
+  /**
+   * Required when caller is a super_admin
+   */
+  tenantId?: string;
 };
 
 export type UpsertArqObjectsBody = {
@@ -6153,4 +6177,3 @@ export type UpsertArqObjectsBody = {
 export type UpsertArqMaterialsBody = {
   materials: ArqMaterial[];
 };
-

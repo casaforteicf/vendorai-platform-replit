@@ -5,9 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { TenantStatus } from './tenantStatus';
-import type { TipoFechamento } from './tipoFechamento';
-import type { UpdateTenantBodyAgentsEnabled } from './updateTenantBodyAgentsEnabled';
+import type { TenantStatus } from "./tenantStatus";
+import type { TipoFechamento } from "./tipoFechamento";
+import type { UpdateTenantBodyAgentsEnabled } from "./updateTenantBodyAgentsEnabled";
 
 export interface UpdateTenantBody {
   name?: string;
@@ -54,6 +54,8 @@ export interface UpdateTenantBody {
   /** ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.
    */
   metaPixelId?: string | null;
+  linkedinInsightTagId?: string | null;
+  tiktokPixelId?: string | null;
   /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
    */
   confirmarEstoqueAntesFinanceiro?: boolean;

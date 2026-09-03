@@ -1,4 +1,15 @@
-import { pgTable, text, integer, numeric, timestamp, boolean, pgEnum, json, check, varchar } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  integer,
+  numeric,
+  timestamp,
+  boolean,
+  pgEnum,
+  json,
+  check,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -38,7 +49,9 @@ export const tenantsTable = pgTable(
     // cliente que chamou nunca são bloqueadas por isso, só o disparo
     // espontâneo do sistema. Horas em fuso America/Sao_Paulo (produto
     // 100% Brasil); domingo sempre fora do expediente.
-    horarioComercialInicio: integer("horario_comercial_inicio").notNull().default(8),
+    horarioComercialInicio: integer("horario_comercial_inicio")
+      .notNull()
+      .default(8),
     horarioComercialFim: integer("horario_comercial_fim").notNull().default(18),
     analysisStalenessHours: integer("analysis_staleness_hours"),
     analysisMessageThreshold: integer("analysis_message_threshold"),
@@ -46,13 +59,21 @@ export const tenantsTable = pgTable(
     webhookEstoqueUrl: text("webhook_estoque_url"),
     apiKeyEstoque: text("api_key_estoque"),
     integrationType: text("integration_type").default("api"),
-    tipoFechamentoDefault: text("tipo_fechamento_default").$type<"pedido" | "contrato" | "pedido_e_contrato">(),
+    tipoFechamentoDefault: text("tipo_fechamento_default").$type<
+      "pedido" | "contrato" | "pedido_e_contrato"
+    >(),
     mensalidadeValor: numeric("mensalidade_valor", { precision: 10, scale: 2 }),
     tokenCredits: integer("token_credits").notNull().default(0),
-    partnerId: text("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
-    indicadoPor: text("indicado_por").references(() => partnersTable.id, { onDelete: "set null" }),
+    partnerId: text("partner_id").references(() => partnersTable.id, {
+      onDelete: "set null",
+    }),
+    indicadoPor: text("indicado_por").references(() => partnersTable.id, {
+      onDelete: "set null",
+    }),
     subdomainSlug: text("subdomain_slug").unique(),
-    planId: text("plan_id").references(() => plansTable.id, { onDelete: "set null" }),
+    planId: text("plan_id").references(() => plansTable.id, {
+      onDelete: "set null",
+    }),
     billingCycle: text("billing_cycle").$type<"monthly" | "annual">(),
     planStartedAt: timestamp("plan_started_at"),
     isDemo: boolean("is_demo").notNull().default(false),
@@ -64,25 +85,39 @@ export const tenantsTable = pgTable(
     anthropicApiKeyEncrypted: text("anthropic_api_key_encrypted"),
     anthropicKeyConfiguredAt: timestamp("anthropic_key_configured_at"),
     anthropicKeyStatus: text("anthropic_key_status").default("nao_configurada"),
-    aiCreditsUsd: numeric("ai_credits_usd", { precision: 12, scale: 6 }).notNull().default("0"),
-    aiDailySpendUsd: numeric("ai_daily_spend_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+    aiCreditsUsd: numeric("ai_credits_usd", { precision: 12, scale: 6 })
+      .notNull()
+      .default("0"),
+    aiDailySpendUsd: numeric("ai_daily_spend_usd", { precision: 12, scale: 6 })
+      .notNull()
+      .default("0"),
     aiDailySpendResetAt: timestamp("ai_daily_spend_reset_at"),
     prospectStatus: text("prospect_status").notNull().default("learning"),
     suspendedReason: text("suspended_reason"),
     planMigratedFrom: text("plan_migrated_from"),
     planMigratedAt: timestamp("plan_migrated_at"),
     extraUserSlots: integer("extra_user_slots").notNull().default(0),
-    provisioningMethod: text("provisioning_method").$type<"self_service" | "manual" | "trial">(),
+    provisioningMethod: text("provisioning_method").$type<
+      "self_service" | "manual" | "trial"
+    >(),
     createdByAdminId: text("created_by_admin_id"),
     accessSentAt: timestamp("access_sent_at"),
     firstLoginAt: timestamp("first_login_at"),
     internalNotes: text("internal_notes"),
-    onboardingConcluido: boolean("onboarding_concluido").notNull().default(false),
-    integracoesConcluido: boolean("integracoes_concluido").notNull().default(false),
+    onboardingConcluido: boolean("onboarding_concluido")
+      .notNull()
+      .default(false),
+    integracoesConcluido: boolean("integracoes_concluido")
+      .notNull()
+      .default(false),
     // Confirmação de estoque antes do financeiro: quando true, o fechamento
     // pausa em deals.etapa="conferencia_estoque" (novo agent_task tipo
     // "conferencia_estoque") antes de disparar contrato/cobrança.
-    confirmarEstoqueAntesFinanceiro: boolean("confirmar_estoque_antes_financeiro").notNull().default(false),
+    confirmarEstoqueAntesFinanceiro: boolean(
+      "confirmar_estoque_antes_financeiro",
+    )
+      .notNull()
+      .default(false),
     // FK para users.id — sem .references() para evitar import circular
     // (users.ts já importa tenantsTable). Escolha livre do tenant, não
     // amarrado a uma função/cargo específico.
@@ -91,14 +126,18 @@ export const tenantsTable = pgTable(
     asaasApiKey: text("asaas_api_key"),
     googleReviewLink: text("google_review_link"),
     zapsignApiKey: text("zapsign_api_key"),
-    whatsappProvider: varchar("whatsapp_provider", { length: 20 }).default("zapi"),
-    instagramProvider: varchar("instagram_provider", { length: 20 }).default("meta"),
-    nomeEmpresa:  varchar("nome_empresa",  { length: 255 }),
-    segmento:     varchar("segmento",      { length: 100 }),
-    logoUrl:      varchar("logo_url",      { length: 500 }),
-    corPrimaria:  varchar("cor_primaria",  { length: 7   }).default("#A78BFA"),
-    site:         varchar("site",          { length: 255 }),
-    descricao:    text("descricao"),
+    whatsappProvider: varchar("whatsapp_provider", { length: 20 }).default(
+      "zapi",
+    ),
+    instagramProvider: varchar("instagram_provider", { length: 20 }).default(
+      "meta",
+    ),
+    nomeEmpresa: varchar("nome_empresa", { length: 255 }),
+    segmento: varchar("segmento", { length: 100 }),
+    logoUrl: varchar("logo_url", { length: 500 }),
+    corPrimaria: varchar("cor_primaria", { length: 7 }).default("#A78BFA"),
+    site: varchar("site", { length: 255 }),
+    descricao: text("descricao"),
     proposalStyleMemory: json("proposal_style_memory").$type<{
       toneNotes?: string;
       structureNotes?: string;
@@ -110,7 +149,10 @@ export const tenantsTable = pgTable(
     // FK para organizacoes.id — nullable; sem .references() para evitar import circular.
     // Preencher via BLOCO 14 ao vincular tenant a uma organização (rede de lojas).
     organizacaoId: text("organizacao_id"),
-    comissaoPadraoPercentual: numeric("comissao_padrao_percentual", { precision: 5, scale: 2 }).default("0"),
+    comissaoPadraoPercentual: numeric("comissao_padrao_percentual", {
+      precision: 5,
+      scale: 2,
+    }).default("0"),
     // Praça.ai (marketplace) — colunas já existiam no banco (criadas via
     // migration direta antes deste schema ser atualizado), adicionadas aqui
     // pra bater com a realidade do banco de produção.
@@ -121,7 +163,9 @@ export const tenantsTable = pgTable(
     // filtradas pelas categorias que ele escolhe. Nunca visibilidade
     // aberta — só cotações endereçadas especificamente a ele.
     parceiroRedeAtivo: boolean("parceiro_rede_ativo").notNull().default(false),
-    parceiroCategorias: json("parceiro_categorias").$type<string[]>().default([]),
+    parceiroCategorias: json("parceiro_categorias")
+      .$type<string[]>()
+      .default([]),
     // Programa de marca (white-label) — ex: "arqdor". Independente da
     // vertical: tanto o negócio principal do programa quanto os
     // fornecedores/parceiros que vendem pra esse público entram aqui.
@@ -130,13 +174,27 @@ export const tenantsTable = pgTable(
     programaMarca: text("programa_marca"),
     // Copiado do programa quando aplicado — true esconde "Vendor.ai"
     // completamente da experiência desse tenant (só a marca do programa).
-    whiteLabelCompleto: boolean("white_label_completo").notNull().default(false),
-    freteMesmaCidade: numeric("frete_mesma_cidade", { precision: 10, scale: 2 }).default("0"),
-    freteOutraCidade: numeric("frete_outra_cidade", { precision: 10, scale: 2 }).default("15.90"),
-    freteGratisAcimaDe: numeric("frete_gratis_acima_de", { precision: 10, scale: 2 }).default("79.00"),
+    whiteLabelCompleto: boolean("white_label_completo")
+      .notNull()
+      .default(false),
+    freteMesmaCidade: numeric("frete_mesma_cidade", {
+      precision: 10,
+      scale: 2,
+    }).default("0"),
+    freteOutraCidade: numeric("frete_outra_cidade", {
+      precision: 10,
+      scale: 2,
+    }).default("15.90"),
+    freteGratisAcimaDe: numeric("frete_gratis_acima_de", {
+      precision: 10,
+      scale: 2,
+    }).default("79.00"),
     // Comissão da Praça.ai sobre venda originada de lá (distinta de
     // comissaoPadraoPercentual, que é do módulo de rede de parceiros/revenda).
-    comissaoPracaAiPercentual: numeric("comissao_praca_ai_percentual", { precision: 5, scale: 2 }).default("8.00"),
+    comissaoPracaAiPercentual: numeric("comissao_praca_ai_percentual", {
+      precision: 5,
+      scale: 2,
+    }).default("8.00"),
     // Código de embaixador do Praça.ai usado no cadastro (?ref=CODIGO) —
     // guardado pra rastreabilidade, mesmo que a chamada de indicação em si
     // já tenha sido disparada no momento do signup.
@@ -147,6 +205,8 @@ export const tenantsTable = pgTable(
     // googleAdsConversionId = "AW-XXXXXXXXX", metaPixelId = ID numérico do Meta.
     googleAdsConversionId: varchar("google_ads_conversion_id", { length: 40 }),
     metaPixelId: varchar("meta_pixel_id", { length: 40 }),
+    linkedinInsightTagId: varchar("linkedin_insight_tag_id", { length: 40 }),
+    tiktokPixelId: varchar("tiktok_pixel_id", { length: 80 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -172,10 +232,7 @@ const positiveIntOrNull = z
   .nullable()
   .optional();
 
-const billingCycleOrNull = z
-  .enum(["monthly", "annual"])
-  .nullable()
-  .optional();
+const billingCycleOrNull = z.enum(["monthly", "annual"]).nullable().optional();
 
 const tipoFechamentoOrNull = z
   .enum(["pedido", "contrato", "pedido_e_contrato"])

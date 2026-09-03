@@ -19,9 +19,16 @@ import {
   AGENT_TYPES,
   type AgentsMap,
   brandProgramsTable,
+  generatedSitesTable,
+  tenantDomainsTable,
+  searchConsoleConnectionsTable,
+  socialConnectionsTable,
 } from "@workspace/db";
 import { buildAuthUrl } from "../lib/google-calendar.js";
-import { authenticate, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
+import {
+  authenticate,
+  requireSameTenanOrSuperAdmin,
+} from "../middlewares/auth.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
@@ -59,7 +66,14 @@ const onboardingCompleteSchema = z.object({
 type WizardData = z.infer<typeof onboardingCompleteSchema>;
 
 // ── Agent behavioral templates (function-specific, combined with tenant context) ──
-type AgentName = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding";
+type AgentName =
+  | "sdr"
+  | "closer"
+  | "followup"
+  | "reactivation"
+  | "scheduler"
+  | "service"
+  | "onboarding";
 
 const AGENT_BEHAVIOR_TEMPLATES: Record<AgentName, string> = {
   sdr: `Você é um SDR (Sales Development Representative) da empresa mencionada no contexto abaixo.
@@ -159,20 +173,31 @@ function buildTenantContext(data: WizardData): string {
   const extra = data.discoveryData ?? {};
 
   // Structured audience segments (richer than publicoAlvo free text)
-  if (Array.isArray(extra["audienceSegments"]) && (extra["audienceSegments"] as unknown[]).length > 0) {
-    type Seg = { nome: string; descricao?: string; dores?: string; motivacoes?: string };
+  if (
+    Array.isArray(extra["audienceSegments"]) &&
+    (extra["audienceSegments"] as unknown[]).length > 0
+  ) {
+    type Seg = {
+      nome: string;
+      descricao?: string;
+      dores?: string;
+      motivacoes?: string;
+    };
     const segs = extra["audienceSegments"] as Seg[];
-    const segLines = segs.map((s) => {
-      const parts: string[] = [`• ${s.nome}`];
-      if (s.descricao) parts.push(`Perfil: ${s.descricao}`);
-      if (s.dores) parts.push(`Dores: ${s.dores}`);
-      if (s.motivacoes) parts.push(`Motivações: ${s.motivacoes}`);
-      return parts.join(" | ");
-    }).join("\n");
+    const segLines = segs
+      .map((s) => {
+        const parts: string[] = [`• ${s.nome}`];
+        if (s.descricao) parts.push(`Perfil: ${s.descricao}`);
+        if (s.dores) parts.push(`Dores: ${s.dores}`);
+        if (s.motivacoes) parts.push(`Motivações: ${s.motivacoes}`);
+        return parts.join(" | ");
+      })
+      .join("\n");
     lines.push(`Segmentos de audiência:\n${segLines}`);
   }
 
-  if (data.diferenciais) lines.push(`Diferencial competitivo: ${data.diferenciais}`);
+  if (data.diferenciais)
+    lines.push(`Diferencial competitivo: ${data.diferenciais}`);
 
   const produtosValidos = (data.produtos ?? []).filter((p) => p.nome.trim());
   if (produtosValidos.length > 0) {
@@ -205,7 +230,7 @@ function buildTenantContext(data: WizardData): string {
 function buildAgentPrompt(
   agentKey: AgentName,
   data: WizardData,
-  segmentTip?: string
+  segmentTip?: string,
 ): string {
   const behavior = AGENT_BEHAVIOR_TEMPLATES[agentKey];
   const context = buildTenantContext(data);
@@ -243,7 +268,9 @@ function buildAboutContent(data: WizardData): string {
 
 function buildProductsContent(data: WizardData): string {
   const produtos = data.produtos ?? [];
-  const lines = [`Principais produtos e serviços da **${data.nomeFantasia}**:\n`];
+  const lines = [
+    `Principais produtos e serviços da **${data.nomeFantasia}**:\n`,
+  ];
   for (const p of produtos) {
     let line = `- **${p.nome}**`;
     if (p.descricao) line += `: ${p.descricao}`;
@@ -261,7 +288,7 @@ function buildStrategyContent(data: WizardData): string {
     parts.push(`**Público-alvo ideal:** ${data.publicoAlvo}`);
   if (data.concorrentes?.length) {
     parts.push(
-      `**Principais concorrentes:**\n${data.concorrentes.map((c) => `- ${c}`).join("\n")}`
+      `**Principais concorrentes:**\n${data.concorrentes.map((c) => `- ${c}`).join("\n")}`,
     );
   }
   if (data.canaisVenda?.length)
@@ -289,16 +316,16 @@ router.post(
         mimeType: f.mimetype,
         originalName: f.originalname,
       })),
-      tenantId
+      tenantId,
     );
 
     req.log.info(
       { tenantId, filesCount: files.length, confianca: result.confianca },
-      "Onboarding: documents analyzed"
+      "Onboarding: documents analyzed",
     );
 
     res.json(result);
-  }
+  },
 );
 
 // ── POST /tenants/:tenantId/onboarding/complete ──────────────────────────────
@@ -331,9 +358,11 @@ router.post(
     // Extract dedicated-column fields from discoveryData if provided
     const dd = data.discoveryData ?? {};
     const cnpjVal = typeof dd["cnpj"] === "string" ? dd["cnpj"] : null;
-    const telefoneVal = typeof dd["telefone"] === "string" ? dd["telefone"] : null;
+    const telefoneVal =
+      typeof dd["telefone"] === "string" ? dd["telefone"] : null;
     const emailVal = typeof dd["email"] === "string" ? dd["email"] : null;
-    const enderecoVal = typeof dd["endereco"] === "string" ? dd["endereco"] : null;
+    const enderecoVal =
+      typeof dd["endereco"] === "string" ? dd["endereco"] : null;
 
     const profileUpdate = {
       nomeFantasia: data.nomeFantasia,
@@ -377,16 +406,23 @@ router.post(
       .from(tenantsTable)
       .where(eq(tenantsTable.id, tenantId));
 
-    const subdomainSlug = tenantBefore?.subdomainSlug
-      ?? (await generateSubdomainSlug(data.nomeFantasia));
+    const subdomainSlug =
+      tenantBefore?.subdomainSlug ??
+      (await generateSubdomainSlug(data.nomeFantasia));
 
     const [tenant] = await db
       .update(tenantsTable)
       .set({ setupCompletedAt: now, subdomainSlug, updatedAt: now })
       .where(eq(tenantsTable.id, tenantId))
-      .returning({ setupCompletedAt: tenantsTable.setupCompletedAt, subdomainSlug: tenantsTable.subdomainSlug });
+      .returning({
+        setupCompletedAt: tenantsTable.setupCompletedAt,
+        subdomainSlug: tenantsTable.subdomainSlug,
+      });
 
-    req.log.info({ tenantId, subdomainSlug }, "Onboarding: profile saved, setup marked complete, subdomain assigned");
+    req.log.info(
+      { tenantId, subdomainSlug },
+      "Onboarding: profile saved, setup marked complete, subdomain assigned",
+    );
     // ── 2. Auto-config IA via segment template ─────────────────────────────
     const promptsApplied: string[] = [];
     let funilCriado = false;
@@ -397,8 +433,8 @@ router.post(
       .where(
         and(
           eq(segmentTemplatesTable.nome, data.vertical),
-          eq(segmentTemplatesTable.ativo, true)
-        )
+          eq(segmentTemplatesTable.ativo, true),
+        ),
       );
 
     // Segment template: used for funil + optional segment-specific prompt tips
@@ -424,7 +460,13 @@ router.post(
       .where(eq(agentConfigsTable.tenantId, tenantId));
 
     const agentNames: AgentName[] = [
-      "sdr", "closer", "followup", "reactivation", "scheduler", "service", "onboarding",
+      "sdr",
+      "closer",
+      "followup",
+      "reactivation",
+      "scheduler",
+      "service",
+      "onboarding",
     ];
 
     // Respect agentesAtivos from discoveryData to set enabled flags
@@ -433,14 +475,17 @@ router.post(
       : [];
 
     if (existingConfig) {
-      const currentAgents: AgentsMap = (existingConfig.agents as AgentsMap) ?? {};
+      const currentAgents: AgentsMap =
+        (existingConfig.agents as AgentsMap) ?? {};
       const updatedAgents: AgentsMap = { ...currentAgents };
 
       for (const agentKey of agentNames) {
         const existing = currentAgents[agentKey];
         if (!existing?.prompt) {
           updatedAgents[agentKey] = {
-            enabled: agentesAtivos.includes(agentKey) ? true : (existing?.enabled ?? false),
+            enabled: agentesAtivos.includes(agentKey)
+              ? true
+              : (existing?.enabled ?? false),
             prompt: buildAgentPrompt(agentKey, data, segmentTips[agentKey]),
           };
           promptsApplied.push(agentKey);
@@ -451,7 +496,7 @@ router.post(
       }
 
       const enabledChanged = (Object.keys(updatedAgents) as AgentName[]).some(
-        (k) => updatedAgents[k]?.enabled !== currentAgents[k]?.enabled
+        (k) => updatedAgents[k]?.enabled !== currentAgents[k]?.enabled,
       );
       if (promptsApplied.length > 0 || enabledChanged) {
         await db
@@ -468,7 +513,14 @@ router.post(
         };
         promptsApplied.push(agentKey);
       }
-      await db.insert(agentConfigsTable).values({ tenantId, agents, setupCompletedAt: new Date(), autonomyEnabledAt: new Date() });
+      await db
+        .insert(agentConfigsTable)
+        .values({
+          tenantId,
+          agents,
+          setupCompletedAt: new Date(),
+          autonomyEnabledAt: new Date(),
+        });
     }
 
     if (template) {
@@ -492,7 +544,7 @@ router.post(
 
     req.log.info(
       { tenantId, promptsApplied, funilCriado },
-      "Onboarding: AI auto-config applied"
+      "Onboarding: AI auto-config applied",
     );
 
     // ── 3. Populate Knowledge Base ─────────────────────────────────────────
@@ -544,7 +596,7 @@ router.post(
 
     req.log.info(
       { tenantId, kbArtigosGerados: kbArticles.length },
-      "Onboarding: knowledge base populated"
+      "Onboarding: knowledge base populated",
     );
 
     res.json({
@@ -553,7 +605,7 @@ router.post(
       funilCriado,
       kbArtigosGerados: kbArticles.length,
     });
-  }
+  },
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -577,20 +629,26 @@ const step1Schema = z.object({
   segmento: z.string().min(1, "segmento obrigatório"),
   site: z.string().optional(),
   descricao: z.string().optional(),
-  corPrimaria: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  corPrimaria: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .optional(),
 });
 
 const step2Schema = z.object({
   metaPhoneNumberId: z.string().min(1),
-  metaAccessToken:   z.string().min(1),
-  metaWabaId:        z.string().optional(),
-  numeroWhatsapp:    z.string().min(1),
+  metaAccessToken: z.string().min(1),
+  metaWabaId: z.string().optional(),
+  numeroWhatsapp: z.string().min(1),
 });
 
 // ── GET /onboarding ───────────────────────────────────────────────────────────
 router.get("/onboarding", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+  if (!tenantId) {
+    res.status(403).json({ error: "Tenant não identificado" });
+    return;
+  }
 
   const [existing] = await db
     .select()
@@ -613,7 +671,10 @@ router.get("/onboarding", authenticate, async (req, res) => {
 // ── PATCH /onboarding/step/1 ──────────────────────────────────────────────────
 router.patch("/onboarding/step/1", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+  if (!tenantId) {
+    res.status(403).json({ error: "Tenant não identificado" });
+    return;
+  }
 
   const parsed = step1Schema.safeParse(req.body);
   if (!parsed.success) {
@@ -633,16 +694,28 @@ router.patch("/onboarding/step/1", authenticate, async (req, res) => {
     "Arquitetura & Design": "arqdor",
   };
   const programaMarca = SEGMENTO_TO_PROGRAM[segmento] ?? null;
-  let brandDefaults: { logoUrl?: string; corPrimaria?: string; whiteLabelCompleto?: boolean } = {};
+  let brandDefaults: {
+    logoUrl?: string;
+    corPrimaria?: string;
+    whiteLabelCompleto?: boolean;
+  } = {};
   if (programaMarca && !corPrimaria) {
-    const [program] = await db.select().from(brandProgramsTable).where(eq(brandProgramsTable.id, programaMarca));
+    const [program] = await db
+      .select()
+      .from(brandProgramsTable)
+      .where(eq(brandProgramsTable.id, programaMarca));
     if (program) {
       // Não sobrescreve um logo que o próprio usuário já subiu nesse
       // mesmo passo (via POST /onboarding/step/1/logo, que roda antes
       // desse PATCH quando ele escolhe um arquivo).
-      const [currentTenant] = await db.select({ logoUrl: tenantsTable.logoUrl }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+      const [currentTenant] = await db
+        .select({ logoUrl: tenantsTable.logoUrl })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId));
       brandDefaults = {
-        ...(program.logoUrl && !currentTenant?.logoUrl ? { logoUrl: program.logoUrl } : {}),
+        ...(program.logoUrl && !currentTenant?.logoUrl
+          ? { logoUrl: program.logoUrl }
+          : {}),
         ...(program.corPrimaria ? { corPrimaria: program.corPrimaria } : {}),
         whiteLabelCompleto: program.whiteLabelCompleto,
       };
@@ -708,7 +781,10 @@ router.post(
   uploadLogo.single("logo"),
   async (req, res) => {
     const tenantId = req.user!.tenantId;
-    if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+    if (!tenantId) {
+      res.status(403).json({ error: "Tenant não identificado" });
+      return;
+    }
 
     const file = req.file;
     if (!file) {
@@ -730,7 +806,10 @@ router.post(
 
     const bucket = objectStorageClient.bucket(bucketName!);
     const gcsFile = bucket.file(objectName!);
-    await gcsFile.save(file.buffer, { contentType: file.mimetype, resumable: false });
+    await gcsFile.save(file.buffer, {
+      contentType: file.mimetype,
+      resumable: false,
+    });
 
     const logoUrl = `/api/storage/objects/logos/${tenantId}/logo.${ext}`;
 
@@ -741,13 +820,16 @@ router.post(
 
     req.log.info({ tenantId, logoUrl }, "Onboarding: logo uploaded");
     res.json({ logoUrl });
-  }
+  },
 );
 
 // ── PATCH /onboarding/step/2 ──────────────────────────────────────────────────
 router.patch("/onboarding/step/2", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+  if (!tenantId) {
+    res.status(403).json({ error: "Tenant não identificado" });
+    return;
+  }
 
   const parsed = step2Schema.safeParse(req.body);
   if (!parsed.success) {
@@ -755,7 +837,8 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
     return;
   }
 
-  const { metaPhoneNumberId, metaAccessToken, metaWabaId, numeroWhatsapp } = parsed.data;
+  const { metaPhoneNumberId, metaAccessToken, metaWabaId, numeroWhatsapp } =
+    parsed.data;
 
   const now = new Date();
 
@@ -768,14 +851,26 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
   if (existingConfig) {
     await db
       .update(agentConfigsTable)
-      .set({ metaPhoneNumberId, metaAccessToken, metaWabaId: metaWabaId ?? null, updatedAt: now })
+      .set({
+        metaPhoneNumberId,
+        metaAccessToken,
+        metaWabaId: metaWabaId ?? null,
+        updatedAt: now,
+      })
       .where(eq(agentConfigsTable.id, existingConfig.id));
   } else {
     await db
       .insert(agentConfigsTable)
       // setupCompletedAt/autonomyEnabledAt na criação -- ver comentário
       // em agent_configs.ts (rota POST /agent-configs).
-      .values({ tenantId, metaPhoneNumberId, metaAccessToken, metaWabaId: metaWabaId ?? null, setupCompletedAt: now, autonomyEnabledAt: now });
+      .values({
+        tenantId,
+        metaPhoneNumberId,
+        metaAccessToken,
+        metaWabaId: metaWabaId ?? null,
+        setupCompletedAt: now,
+        autonomyEnabledAt: now,
+      });
   }
 
   // Save phone to business profile
@@ -808,7 +903,10 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
       tenantId,
       step2Completo: true,
       stepAtual: nextStep,
-      dadosStep2: { metaPhoneNumberId, metaWabaId, numeroWhatsapp } as Record<string, unknown>,
+      dadosStep2: { metaPhoneNumberId, metaWabaId, numeroWhatsapp } as Record<
+        string,
+        unknown
+      >,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -816,20 +914,29 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
       set: {
         step2Completo: true,
         stepAtual: nextStep,
-        dadosStep2: { metaPhoneNumberId, metaWabaId, numeroWhatsapp } as Record<string, unknown>,
+        dadosStep2: { metaPhoneNumberId, metaWabaId, numeroWhatsapp } as Record<
+          string,
+          unknown
+        >,
         updatedAt: now,
       },
     })
     .returning();
 
-  req.log.info({ tenantId, metaPhoneNumberId }, "Onboarding step 2 saved (Meta)");
+  req.log.info(
+    { tenantId, metaPhoneNumberId },
+    "Onboarding step 2 saved (Meta)",
+  );
   res.json(progress);
 });
 
 // ── PATCH /onboarding/step/3 ──────────────────────────────────────────────────
 router.patch("/onboarding/step/3", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+  if (!tenantId) {
+    res.status(403).json({ error: "Tenant não identificado" });
+    return;
+  }
 
   const step3Schema = z.object({
     agentKey: z.enum(AGENT_TYPES),
@@ -862,7 +969,10 @@ router.patch("/onboarding/step/3", authenticate, async (req, res) => {
     };
     await db
       .update(agentConfigsTable)
-      .set({ agents: { ...currentAgents, [agentKey]: updatedEntry }, updatedAt: now })
+      .set({
+        agents: { ...currentAgents, [agentKey]: updatedEntry },
+        updatedAt: now,
+      })
       .where(eq(agentConfigsTable.id, existingConfig.id));
   } else {
     const newEntry = {
@@ -914,7 +1024,10 @@ router.patch("/onboarding/step/3", authenticate, async (req, res) => {
 // ── PATCH /onboarding/step/4 ──────────────────────────────────────────────────
 router.patch("/onboarding/step/4", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+  if (!tenantId) {
+    res.status(403).json({ error: "Tenant não identificado" });
+    return;
+  }
 
   const step4Schema = z.object({
     planoId: z.string().min(1).optional(),
@@ -953,7 +1066,11 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
 
   // Look up the plan
   let [plan] = planoId
-    ? await db.select().from(plansTable).where(eq(plansTable.id, planoId)).limit(1)
+    ? await db
+        .select()
+        .from(plansTable)
+        .where(eq(plansTable.id, planoId))
+        .limit(1)
     : [];
   let planRepaired = false;
 
@@ -966,7 +1083,8 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
 
     if (!plan) {
       res.status(409).json({
-        error: "Plano inicial indisponível. Solicite ao administrador a configuração do plano Start.",
+        error:
+          "Plano inicial indisponível. Solicite ao administrador a configuração do plano Start.",
       });
       return;
     }
@@ -979,15 +1097,17 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
     planRepaired = true;
   }
 
-  const priceCents = billingCycle === "annual"
-    ? (plan.monthlyPriceAnnualCents ?? plan.monthlyPriceCents ?? 0)
-    : (plan.monthlyPriceCents ?? 0);
+  const priceCents =
+    billingCycle === "annual"
+      ? (plan.monthlyPriceAnnualCents ?? plan.monthlyPriceCents ?? 0)
+      : (plan.monthlyPriceCents ?? 0);
 
   // Try to create Asaas charge if configured
   let asaasChargeId: string | null = null;
   let invoiceUrl: string | null = null;
 
-  const { isAsaasConfigured, createOrGetCustomer, createCharge } = await import("../lib/asaas.js");
+  const { isAsaasConfigured, createOrGetCustomer, createCharge } =
+    await import("../lib/asaas.js");
 
   if (parsed.data.planoId && (await isAsaasConfigured()) && priceCents > 0) {
     try {
@@ -996,7 +1116,12 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
       const [adminUser] = await db
         .select({ name: usersTable.name, email: usersTable.email })
         .from(usersTable)
-        .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.platformRole, "tenant_admin")))
+        .where(
+          and(
+            eq(usersTable.tenantId, tenantId),
+            eq(usersTable.platformRole, "tenant_admin"),
+          ),
+        )
         .limit(1);
 
       const customer = await createOrGetCustomer({
@@ -1020,7 +1145,10 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
       asaasChargeId = charge.id;
       invoiceUrl = charge.invoiceUrl;
     } catch (err) {
-      req.log.warn({ err, tenantId, planoId }, "Onboarding step 4: Asaas charge failed (non-fatal)");
+      req.log.warn(
+        { err, tenantId, planoId },
+        "Onboarding step 4: Asaas charge failed (non-fatal)",
+      );
     }
   }
 
@@ -1059,14 +1187,26 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
       },
     });
 
-  req.log.info({ tenantId, planoId, billingCycle, asaasChargeId }, "Onboarding step 4 complete");
-  res.json({ success: true, redirectTo: "/dashboard", asaasChargeId, invoiceUrl, planRepaired });
+  req.log.info(
+    { tenantId, planoId, billingCycle, asaasChargeId },
+    "Onboarding step 4 complete",
+  );
+  res.json({
+    success: true,
+    redirectTo: "/dashboard",
+    asaasChargeId,
+    invoiceUrl,
+    planRepaired,
+  });
 });
 
 // ── GET /onboarding/whatsapp/test ─────────────────────────────────────────────
 router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+  if (!tenantId) {
+    res.status(403).json({ error: "Tenant não identificado" });
+    return;
+  }
 
   const [config] = await db
     .select({
@@ -1087,16 +1227,22 @@ router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
       {
         headers: { Authorization: `Bearer ${config.metaAccessToken}` },
         signal: AbortSignal.timeout(8000),
-      }
+      },
     );
 
     if (!metaRes.ok) {
-      res.json({ conectado: false, erro: `Meta Cloud API HTTP ${metaRes.status}` });
+      res.json({
+        conectado: false,
+        erro: `Meta Cloud API HTTP ${metaRes.status}`,
+      });
       return;
     }
 
-    const data = await metaRes.json() as Record<string, unknown>;
-    const numero = typeof data["display_phone_number"] === "string" ? data["display_phone_number"] : undefined;
+    const data = (await metaRes.json()) as Record<string, unknown>;
+    const numero =
+      typeof data["display_phone_number"] === "string"
+        ? data["display_phone_number"]
+        : undefined;
 
     res.json({ conectado: true, numero });
   } catch (err) {
@@ -1111,55 +1257,126 @@ router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
 // etapas como concluídas — apenas acompanha e explica o setup.
 router.post("/onboarding/assistant", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado" });
+  if (!tenantId)
+    return res.status(403).json({ error: "Tenant não identificado" });
 
-  const parsed = z.object({ message: z.string().trim().min(1).max(2000) }).safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: "Mensagem inválida" });
+  const parsed = z
+    .object({ message: z.string().trim().min(1).max(2000) })
+    .safeParse(req.body);
+  if (!parsed.success)
+    return res.status(422).json({ error: "Mensagem inválida" });
 
   const [[tenant], [profile], [config], [leadCountRow]] = await Promise.all([
-    db.select({
-      name: tenantsTable.name,
-      isDemo: tenantsTable.isDemo,
-      setupCompletedAt: tenantsTable.setupCompletedAt,
-      onboardingConcluido: tenantsTable.onboardingConcluido,
-    }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
-    db.select({ id: businessProfilesTable.id, produtos: businessProfilesTable.produtos })
-      .from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
-    db.select({
-      setupCompletedAt: agentConfigsTable.setupCompletedAt,
-      autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
-      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
-      metaAccessToken: agentConfigsTable.metaAccessToken,
-      evolutionConnected: agentConfigsTable.evolutionConnected,
-      instagramPageId: agentConfigsTable.instagramPageId,
-      instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
-      webhookSecret: agentConfigsTable.webhookSecret,
-    }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
-    db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId)),
+    db
+      .select({
+        name: tenantsTable.name,
+        isDemo: tenantsTable.isDemo,
+        setupCompletedAt: tenantsTable.setupCompletedAt,
+        onboardingConcluido: tenantsTable.onboardingConcluido,
+      })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1),
+    db
+      .select({
+        id: businessProfilesTable.id,
+        produtos: businessProfilesTable.produtos,
+      })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1),
+    db
+      .select({
+        setupCompletedAt: agentConfigsTable.setupCompletedAt,
+        autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
+        metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+        metaAccessToken: agentConfigsTable.metaAccessToken,
+        evolutionConnected: agentConfigsTable.evolutionConnected,
+        instagramPageId: agentConfigsTable.instagramPageId,
+        instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
+        webhookSecret: agentConfigsTable.webhookSecret,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1),
+    db
+      .select({ value: count() })
+      .from(leadsTable)
+      .where(eq(leadsTable.tenantId, tenantId)),
   ]);
 
   if (!tenant) return res.status(404).json({ error: "Tenant não encontrado" });
 
-  const productsConfigured = Array.isArray(profile?.produtos) && profile.produtos.length > 0;
+  const productsConfigured =
+    Array.isArray(profile?.produtos) && profile.produtos.length > 0;
   const whatsappConnected = !!(
-    (config?.metaPhoneNumberId && config?.metaAccessToken) || config?.evolutionConnected
+    (config?.metaPhoneNumberId && config?.metaAccessToken) ||
+    config?.evolutionConnected
   );
   const steps = [
-    { key: "onboarding", label: "Concluir o onboarding inicial", done: !!(tenant.setupCompletedAt || tenant.onboardingConcluido), href: "/onboarding" },
-    { key: "perfil", label: "Configurar o perfil da empresa", done: !!profile, href: "/configuracoes" },
-    { key: "produtos", label: "Cadastrar produtos ou serviços", done: productsConfigured, href: "/estoque" },
-    { key: "agentes", label: "Configurar os agentes de IA", done: !!config?.setupCompletedAt, href: "/configuracoes" },
-    { key: "whatsapp", label: "Conectar o WhatsApp", done: whatsappConnected, href: "/onboarding/integracoes" },
-    { key: "webhook", label: "Ativar o webhook de entrada", done: !!config?.webhookSecret, href: "/configuracoes" },
-    { key: "instagram", label: "Conectar o Instagram", done: !!(config?.instagramPageId && config?.instagramPageAccessToken), href: "/onboarding/integracoes" },
-    { key: "lead", label: "Cadastrar o primeiro lead real", done: Number(leadCountRow?.value ?? 0) > 0, href: "/leads" },
-    { key: "autonomia", label: "Habilitar a autonomia dos agentes", done: !!config?.autonomyEnabledAt, href: "/configuracoes" },
+    {
+      key: "onboarding",
+      label: "Concluir o onboarding inicial",
+      done: !!(tenant.setupCompletedAt || tenant.onboardingConcluido),
+      href: "/onboarding",
+    },
+    {
+      key: "perfil",
+      label: "Configurar o perfil da empresa",
+      done: !!profile,
+      href: "/configuracoes",
+    },
+    {
+      key: "produtos",
+      label: "Cadastrar produtos ou serviços",
+      done: productsConfigured,
+      href: "/estoque",
+    },
+    {
+      key: "agentes",
+      label: "Configurar os agentes de IA",
+      done: !!config?.setupCompletedAt,
+      href: "/configuracoes",
+    },
+    {
+      key: "whatsapp",
+      label: "Conectar o WhatsApp",
+      done: whatsappConnected,
+      href: "/onboarding/integracoes",
+    },
+    {
+      key: "webhook",
+      label: "Ativar o webhook de entrada",
+      done: !!config?.webhookSecret,
+      href: "/configuracoes",
+    },
+    {
+      key: "instagram",
+      label: "Conectar o Instagram",
+      done: !!(config?.instagramPageId && config?.instagramPageAccessToken),
+      href: "/onboarding/integracoes",
+    },
+    {
+      key: "lead",
+      label: "Cadastrar o primeiro lead real",
+      done: Number(leadCountRow?.value ?? 0) > 0,
+      href: "/leads",
+    },
+    {
+      key: "autonomia",
+      label: "Habilitar a autonomia dos agentes",
+      done: !!config?.autonomyEnabledAt,
+      href: "/configuracoes",
+    },
   ];
   const nextAction = steps.find((step) => !step.done) ?? null;
   const completed = steps.filter((step) => step.done).length;
 
-  const statusText = steps.map((step) => `${step.done ? "✓" : "○"} ${step.label}`).join("\n");
-  const systemPrompt = `${AGENT_BEHAVIOR_TEMPLATES.onboarding}
+  const statusText = steps
+    .map((step) => `${step.done ? "✓" : "○"} ${step.label}`)
+    .join("\n");
+  const systemPrompt =
+    `${AGENT_BEHAVIOR_TEMPLATES.onboarding}
 
 ` +
     `Você também é o Agente de Implantação do VendorAI. Sua missão é acompanhar a configuração do sistema com base EXCLUSIVAMENTE no status real fornecido. ` +
@@ -1184,30 +1401,55 @@ router.post("/onboarding/assistant", authenticate, async (req, res) => {
     return res.json({
       resposta: result.content,
       progress: { completed, total: steps.length },
-      nextAction: nextAction ? { key: nextAction.key, label: nextAction.label, href: nextAction.href } : null,
+      nextAction: nextAction
+        ? {
+            key: nextAction.key,
+            label: nextAction.label,
+            href: nextAction.href,
+          }
+        : null,
     });
   } catch (error) {
     req.log.warn({ error, tenantId }, "onboarding assistant failed");
-    return res.status(502).json({ error: error instanceof Error ? error.message : "Não foi possível consultar o Agente de Implantação." });
+    return res
+      .status(502)
+      .json({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Não foi possível consultar o Agente de Implantação.",
+      });
   }
 });
 
 // ── GET /onboarding/integracoes ────────────────────────────────────────────────
 router.get("/onboarding/integracoes", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
+  if (!tenantId) {
+    return res.status(403).json({ error: "Tenant não identificado" });
+  }
 
   const [tenant] = await db
-    .select({ step: tenantsTable.integracoesStep, concluido: tenantsTable.integracoesConcluido })
-    .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    .select({
+      step: tenantsTable.integracoesStep,
+      concluido: tenantsTable.integracoesConcluido,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
 
   const [waConn] = await db
-    .select({ displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber, status: whatsappConnectionsTable.status })
+    .select({
+      displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber,
+      status: whatsappConnectionsTable.status,
+    })
     .from(whatsappConnectionsTable)
     .where(and(eq(whatsappConnectionsTable.tenantId, tenantId)));
 
   const [evolutionConn] = await db
-    .select({ connected: agentConfigsTable.evolutionConnected, phone: agentConfigsTable.evolutionPhone })
+    .select({
+      connected: agentConfigsTable.evolutionConnected,
+      phone: agentConfigsTable.evolutionPhone,
+    })
     .from(agentConfigsTable)
     .where(eq(agentConfigsTable.tenantId, tenantId));
 
@@ -1217,25 +1459,73 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     .where(eq(instagramConnectionsTable.tenantId, tenantId));
 
   const [gcAgenda] = await db
-    .select({ id: agendasTable.id, googleCalendarId: agendasTable.googleCalendarId })
+    .select({
+      id: agendasTable.id,
+      googleCalendarId: agendasTable.googleCalendarId,
+    })
     .from(agendasTable)
     .where(and(eq(agendasTable.tenantId, tenantId)));
 
   const googleAdsConn = await getGoogleAdsConnectionByTenantId(tenantId);
+  const [publishedSite] = await db
+    .select({ id: generatedSitesTable.id })
+    .from(generatedSitesTable)
+    .where(
+      and(
+        eq(generatedSitesTable.tenantId, tenantId),
+        eq(generatedSitesTable.published, true),
+      ),
+    )
+    .limit(1);
+
+  const [domain] = await db
+    .select({
+      domain: tenantDomainsTable.domain,
+      status: tenantDomainsTable.status,
+    })
+    .from(tenantDomainsTable)
+    .where(eq(tenantDomainsTable.tenantId, tenantId))
+    .limit(1);
+
+  const [searchConsole] = await db
+    .select({
+      status: searchConsoleConnectionsTable.status,
+      verified: searchConsoleConnectionsTable.verified,
+    })
+    .from(searchConsoleConnectionsTable)
+    .where(eq(searchConsoleConnectionsTable.tenantId, tenantId))
+    .limit(1);
+
+  const socialConnections = await db
+    .select({
+      provider: socialConnectionsTable.provider,
+      status: socialConnectionsTable.status,
+    })
+    .from(socialConnectionsTable)
+    .where(eq(socialConnectionsTable.tenantId, tenantId));
 
   const [tenantData] = await db
-    .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey })
-    .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    .select({
+      asaasApiKey: tenantsTable.asaasApiKey,
+      zapsignApiKey: tenantsTable.zapsignApiKey,
+      googleAdsConversionId: tenantsTable.googleAdsConversionId,
+      metaPixelId: tenantsTable.metaPixelId,
+      linkedinInsightTagId: tenantsTable.linkedinInsightTagId,
+      tiktokPixelId: tenantsTable.tiktokPixelId,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
 
   return res.json({
     step: tenant?.step ?? 0,
     concluido: tenant?.concluido ?? false,
     whatsapp: {
-      connected: waConn?.status === "active" || evolutionConn?.connected === true,
+      connected:
+        waConn?.status === "active" || evolutionConn?.connected === true,
       phone: waConn?.displayPhoneNumber ?? evolutionConn?.phone ?? null,
     },
     googleCalendar: {
-      connected: !!(gcAgenda?.googleCalendarId),
+      connected: !!gcAgenda?.googleCalendarId,
       agendaId: gcAgenda?.id ?? null,
     },
     instagram: {
@@ -1243,100 +1533,182 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
       username: igConn?.username ?? null,
     },
     googleAds: {
-      connected: !!googleAdsConn && googleAdsConn.status !== "disconnected" && !googleAdsConn.disconnectedAt,
-      pendingAccountSelection: googleAdsConn?.status === "pending_account_selection",
+      connected:
+        !!googleAdsConn &&
+        googleAdsConn.status !== "disconnected" &&
+        !googleAdsConn.disconnectedAt,
+      pendingAccountSelection:
+        googleAdsConn?.status === "pending_account_selection",
       customerId: googleAdsConn?.customerId ?? null,
       descriptiveName: googleAdsConn?.descriptiveName ?? null,
     },
     asaas: { connected: !!tenantData?.asaasApiKey },
     zapsign: { connected: !!tenantData?.zapsignApiKey },
+    site: { published: !!publishedSite },
+    domain: {
+      configured: !!domain,
+      active: domain?.status === "active",
+      name: domain?.domain ?? null,
+      status: domain?.status ?? null,
+    },
+    searchConsole: {
+      connected: !!searchConsole && searchConsole.status !== "disconnected",
+      verified: searchConsole?.verified === true,
+    },
+    tracking: {
+      googleAds: !!tenantData?.googleAdsConversionId,
+      metaPixel: !!tenantData?.metaPixelId,
+      linkedinInsightTag: !!tenantData?.linkedinInsightTagId,
+      tiktokPixel: !!tenantData?.tiktokPixelId,
+    },
+    social: {
+      linkedin: socialConnections.some(
+        (connection) =>
+          connection.provider === "linkedin" && connection.status === "active",
+      ),
+      tiktok: socialConnections.some(
+        (connection) =>
+          connection.provider === "tiktok" && connection.status === "active",
+      ),
+    },
   });
 });
 
 // ── PATCH /onboarding/integracoes/step ─────────────────────────────────────────
 router.patch("/onboarding/integracoes/step", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
-  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
-  const { step } = z.object({ step: z.number().int().min(0).max(6) }).parse(req.body);
-  await db.update(tenantsTable).set({ integracoesStep: step }).where(eq(tenantsTable.id, tenantId));
+  if (!tenantId) {
+    return res.status(403).json({ error: "Tenant não identificado" });
+  }
+  const { step } = z
+    .object({ step: z.number().int().min(0).max(6) })
+    .parse(req.body);
+  await db
+    .update(tenantsTable)
+    .set({ integracoesStep: step })
+    .where(eq(tenantsTable.id, tenantId));
   return res.json({ ok: true });
 });
 
 // ── POST /onboarding/integracoes/complete ──────────────────────────────────────
-router.post("/onboarding/integracoes/complete", authenticate, async (req, res) => {
-  const tenantId = req.user!.tenantId;
-  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
-  await db.update(tenantsTable)
-    .set({ integracoesConcluido: true })
-    .where(eq(tenantsTable.id, tenantId));
-  return res.json({ ok: true, redirectTo: "/dashboard" });
-});
+router.post(
+  "/onboarding/integracoes/complete",
+  authenticate,
+  async (req, res) => {
+    const tenantId = req.user!.tenantId;
+    if (!tenantId) {
+      return res.status(403).json({ error: "Tenant não identificado" });
+    }
+    await db
+      .update(tenantsTable)
+      .set({ integracoesConcluido: true })
+      .where(eq(tenantsTable.id, tenantId));
+    return res.json({ ok: true, redirectTo: "/dashboard" });
+  },
+);
 
 // ── POST /onboarding/integracoes/validate-asaas ────────────────────────────────
-router.post("/onboarding/integracoes/validate-asaas", authenticate, async (req, res) => {
-  const tenantId = req.user!.tenantId;
-  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
-  const { apiKey } = z.object({ apiKey: z.string().min(1) }).parse(req.body);
+router.post(
+  "/onboarding/integracoes/validate-asaas",
+  authenticate,
+  async (req, res) => {
+    const tenantId = req.user!.tenantId;
+    if (!tenantId) {
+      return res.status(403).json({ error: "Tenant não identificado" });
+    }
+    const { apiKey } = z.object({ apiKey: z.string().min(1) }).parse(req.body);
 
-  try {
-    const r = await fetch("https://api.asaas.com/api/v3/myAccount", {
-      headers: { access_token: apiKey },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!r.ok) { return res.json({ valid: false, error: `Asaas retornou HTTP ${r.status}` }); }
-    const data = await r.json() as { name?: string };
-    await db.update(tenantsTable).set({ asaasApiKey: encrypt(apiKey) }).where(eq(tenantsTable.id, tenantId));
-    return res.json({ valid: true, name: data.name });
-  } catch {
-    return res.json({ valid: false, error: "Timeout ou chave inválida" });
-  }
-});
+    try {
+      const r = await fetch("https://api.asaas.com/api/v3/myAccount", {
+        headers: { access_token: apiKey },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) {
+        return res.json({
+          valid: false,
+          error: `Asaas retornou HTTP ${r.status}`,
+        });
+      }
+      const data = (await r.json()) as { name?: string };
+      await db
+        .update(tenantsTable)
+        .set({ asaasApiKey: encrypt(apiKey) })
+        .where(eq(tenantsTable.id, tenantId));
+      return res.json({ valid: true, name: data.name });
+    } catch {
+      return res.json({ valid: false, error: "Timeout ou chave inválida" });
+    }
+  },
+);
 
 // ── POST /onboarding/integracoes/validate-zapsign ──────────────────────────────
-router.post("/onboarding/integracoes/validate-zapsign", authenticate, async (req, res) => {
-  const tenantId = req.user!.tenantId;
-  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
-  const { apiKey } = z.object({ apiKey: z.string().min(1) }).parse(req.body);
+router.post(
+  "/onboarding/integracoes/validate-zapsign",
+  authenticate,
+  async (req, res) => {
+    const tenantId = req.user!.tenantId;
+    if (!tenantId) {
+      return res.status(403).json({ error: "Tenant não identificado" });
+    }
+    const { apiKey } = z.object({ apiKey: z.string().min(1) }).parse(req.body);
 
-  try {
-    const r = await fetch("https://api.zapsign.com.br/api/v1/users/me/", {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!r.ok) { return res.json({ valid: false, error: `ZapSign retornou HTTP ${r.status}` }); }
-    const data = await r.json() as { name?: string; email?: string };
-    await db.update(tenantsTable).set({ zapsignApiKey: apiKey }).where(eq(tenantsTable.id, tenantId));
-    return res.json({ valid: true, name: data.name ?? data.email });
-  } catch {
-    return res.json({ valid: false, error: "Timeout ou chave inválida" });
-  }
-});
+    try {
+      const r = await fetch("https://api.zapsign.com.br/api/v1/users/me/", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) {
+        return res.json({
+          valid: false,
+          error: `ZapSign retornou HTTP ${r.status}`,
+        });
+      }
+      const data = (await r.json()) as { name?: string; email?: string };
+      await db
+        .update(tenantsTable)
+        .set({ zapsignApiKey: apiKey })
+        .where(eq(tenantsTable.id, tenantId));
+      return res.json({ valid: true, name: data.name ?? data.email });
+    } catch {
+      return res.json({ valid: false, error: "Timeout ou chave inválida" });
+    }
+  },
+);
 
 // ── GET /onboarding/integracoes/google-url ─────────────────────────────────────
-router.get("/onboarding/integracoes/google-url", authenticate, async (req, res) => {
-  const tenantId = req.user!.tenantId;
-  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
-  if (!process.env["GOOGLE_CLIENT_ID"]) {
-    return res.status(503).json({ error: "Google Calendar não configurado" });
-  }
+router.get(
+  "/onboarding/integracoes/google-url",
+  authenticate,
+  async (req, res) => {
+    const tenantId = req.user!.tenantId;
+    if (!tenantId) {
+      return res.status(403).json({ error: "Tenant não identificado" });
+    }
+    if (!process.env["GOOGLE_CLIENT_ID"]) {
+      return res.status(503).json({ error: "Google Calendar não configurado" });
+    }
 
-  let [agenda] = await db
-    .select({ id: agendasTable.id })
-    .from(agendasTable)
-    .where(eq(agendasTable.tenantId, tenantId))
-    .limit(1);
+    let [agenda] = await db
+      .select({ id: agendasTable.id })
+      .from(agendasTable)
+      .where(eq(agendasTable.tenantId, tenantId))
+      .limit(1);
 
-  if (!agenda) {
-    const [created] = await db.insert(agendasTable).values({
-      tenantId,
-      nome: "Agenda Principal",
-    }).returning({ id: agendasTable.id });
-    agenda = created!;
-  }
+    if (!agenda) {
+      const [created] = await db
+        .insert(agendasTable)
+        .values({
+          tenantId,
+          nome: "Agenda Principal",
+        })
+        .returning({ id: agendasTable.id });
+      agenda = created!;
+    }
 
-  const url = buildAuthUrl(agenda.id, "/onboarding/integracoes");
-  return res.json({ url });
-});
+    const url = buildAuthUrl(agenda.id, "/onboarding/integracoes");
+    return res.json({ url });
+  },
+);
 
 // ── GET /onboarding/plans ──────────────────────────────────────────────────────
 router.get("/onboarding/plans", authenticate, async (req, res) => {
