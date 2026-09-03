@@ -26,6 +26,9 @@ export type VendorAiMediaCapability =
   | "image_convert"
   | "image_remove_background"
   | "image_variations"
+  | "image_replace_background"
+  | "image_remove_object"
+  | "image_outpaint"
   | "photo_video"
   | "media_batch";
 
@@ -36,11 +39,7 @@ export interface VendorAiMediaEngineCapabilities {
 }
 
 export type VendorAiWorkerKind = "voice" | "lipsync" | "music";
-export type VendorAiWorkerStatus = {
-  configured: boolean;
-  ready: boolean;
-  checkedAt: string;
-};
+export type VendorAiWorkerStatus = { configured: boolean; ready: boolean; checkedAt: string };
 
 export const vendorAiWorkerStatus: Record<VendorAiWorkerKind, VendorAiWorkerStatus> = {
   voice: { configured: Boolean(process.env["VENDORAI_MEDIA_WORKER_URL"]), ready: false, checkedAt: new Date(0).toISOString() },
@@ -66,7 +65,8 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     video_edit: "ready", video_clips: "ready", video_caption: "ready", video_batch: "building", video_compose: "ready",
     voice_profile: "ready", voice_synthesize: "building", persona_profile: "ready", avatar_lipsync: "building", music_generate: "building",
     video_generate: "ready", image_resize: "ready", image_crop: "ready", image_optimize: "ready", image_enhance: "ready", image_convert: "ready",
-    image_remove_background: "ready", image_variations: "ready", photo_video: "ready", media_batch: "ready",
+    image_remove_background: "ready", image_variations: "ready", image_replace_background: "ready", image_remove_object: "ready", image_outpaint: "ready",
+    photo_video: "ready", media_batch: "ready",
   },
 };
 
@@ -78,15 +78,11 @@ export async function refreshVendorAiWorkerCapabilities(): Promise<void> {
     music: process.env["VENDORAI_MUSIC_WORKER_URL"],
   };
   const [voiceReady, lipSyncReady, musicReady] = await Promise.all([
-    workerHealthReady(urls.voice, "voice"),
-    workerHealthReady(urls.lipsync, "lipsync"),
-    workerHealthReady(urls.music, "music"),
+    workerHealthReady(urls.voice, "voice"), workerHealthReady(urls.lipsync, "lipsync"), workerHealthReady(urls.music, "music"),
   ]);
-
   vendorAiWorkerStatus.voice = { configured: Boolean(urls.voice), ready: voiceReady, checkedAt };
   vendorAiWorkerStatus.lipsync = { configured: Boolean(urls.lipsync), ready: lipSyncReady, checkedAt };
   vendorAiWorkerStatus.music = { configured: Boolean(urls.music), ready: musicReady, checkedAt };
-
   vendorAiMediaEngineCapabilities.capabilities.voice_synthesize = voiceReady ? "ready" : "building";
   vendorAiMediaEngineCapabilities.capabilities.avatar_lipsync = lipSyncReady ? "ready" : "building";
   vendorAiMediaEngineCapabilities.capabilities.video_batch = voiceReady && lipSyncReady ? "ready" : "building";
@@ -100,7 +96,6 @@ workerHealthTimer.unref?.();
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [];
 }
-
 function mediaBatchItems(value: unknown): MediaBatchItem[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)).map((item) => ({
@@ -109,10 +104,7 @@ function mediaBatchItems(value: unknown): MediaBatchItem[] {
     options: item["options"] && typeof item["options"] === "object" && !Array.isArray(item["options"]) ? item["options"] as MediaBatchItem["options"] : undefined,
   }));
 }
-
-function optionalString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
+function optionalString(value: unknown): string | null { return typeof value === "string" && value.trim() ? value.trim() : null; }
 
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string; userId?: string | null; title: string; operation: VendorAiMediaCapability; context?: Record<string, unknown>;
@@ -127,7 +119,7 @@ export async function createVendorAiMediaGenerationJob(input: {
   if (input.operation === "media_batch") {
     return startVendorAiMediaBatch({ tenantId: input.tenantId, userId: input.userId ?? null, title: input.title, items: mediaBatchItems(context["items"]) });
   }
-  if (input.operation === "image_remove_background" || input.operation === "image_variations") {
+  if (["image_remove_background", "image_variations", "image_replace_background", "image_remove_object", "image_outpaint"].includes(input.operation)) {
     const rawSize = String(context["size"] ?? "1024x1024");
     const size = rawSize === "1024x1536" || rawSize === "1536x1024" ? rawSize : "1024x1024";
     return startVendorAiAiImageTool({
@@ -135,34 +127,17 @@ export async function createVendorAiMediaGenerationJob(input: {
       userId: input.userId ?? null,
       title: input.title,
       assetId: String(context["assetId"] ?? ""),
-      operation: input.operation,
+      operation: input.operation as "image_remove_background" | "image_variations" | "image_replace_background" | "image_remove_object" | "image_outpaint",
       prompt: typeof context["prompt"] === "string" ? context["prompt"] : undefined,
       count: Number(context["count"] ?? 2),
       size,
     });
   }
   if (input.operation === "music_generate") {
-    return generateVendorAiMusic({
-      tenantId: input.tenantId,
-      userId: input.userId ?? null,
-      title: input.title,
-      prompt: String(context["prompt"] ?? ""),
-      durationSeconds: Number(context["durationSeconds"] ?? 30),
-      style: optionalString(context["style"]),
-      mood: optionalString(context["mood"]),
-      energy: optionalString(context["energy"]),
-      instrumental: context["instrumental"] !== false,
-    });
+    return generateVendorAiMusic({ tenantId: input.tenantId, userId: input.userId ?? null, title: input.title, prompt: String(context["prompt"] ?? ""), durationSeconds: Number(context["durationSeconds"] ?? 30), style: optionalString(context["style"]), mood: optionalString(context["mood"]), energy: optionalString(context["energy"]), instrumental: context["instrumental"] !== false });
   }
   if (input.operation === "avatar_lipsync") {
-    return generateVendorAiLipSync({
-      tenantId: input.tenantId,
-      userId: input.userId ?? null,
-      title: input.title,
-      identityId: String(context["identityId"] ?? ""),
-      audioAssetId: String(context["audioAssetId"] ?? ""),
-      bboxShift: Number(context["bboxShift"] ?? 0),
-    });
+    return generateVendorAiLipSync({ tenantId: input.tenantId, userId: input.userId ?? null, title: input.title, identityId: String(context["identityId"] ?? ""), audioAssetId: String(context["audioAssetId"] ?? ""), bboxShift: Number(context["bboxShift"] ?? 0) });
   }
 
   const projectId = await createProcessingMediaProject({ tenantId: input.tenantId, userId: input.userId ?? null, title: input.title, operation: input.operation, context: { ...context, engine: "vendorai", externalAvatarProvider: false } });
