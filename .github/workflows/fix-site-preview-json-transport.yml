@@ -207,35 +207,11 @@ jobs:
           assert count == 1, f'previewLatest replacements={count}'
           frontend.write_text(text, encoding='utf-8')
 
-          legacy = Path('artifacts/frontend/src/pages/SiteGeneratorCore.tsx')
-          text = legacy.read_text(encoding='utf-8')
-          text = text.replace('`/api/tenants/${tenantId}/site-generator`', '`/api/tenants/${tenantId}/site-generator?includeHtml=0`')
-          old = dedent('''
-                const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}`, { headers: authHeaders });
-                if (!res.ok) return;
-                const site = await res.json();
-                const originalHtml = site.html ?? "";
-          ''').strip()
-          new = dedent('''
-                const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}?includeHtml=0`, { headers: authHeaders });
-                if (!res.ok) return;
-                const site = await res.json();
-                const previewRes = await fetch(`/api/tenants/${tenantId}/site-generator/${id}/preview?format=html`, {
-                  headers: { ...authHeaders, Accept: "text/html" },
-                });
-                if (!previewRes.ok) return;
-                const originalHtml = await previewRes.text();
-          ''').strip()
-          assert old in text, 'legacy loadSite anchor not found'
-          text = text.replace(old, new, 1)
-          legacy.write_text(text, encoding='utf-8')
-
       - name: Validate focused patch
         run: |
           git diff --check
           grep -F 'site-generator?includeHtml=0' artifacts/frontend/src/pages/SiteGenerator.tsx
           grep -F 'preview?format=html' artifacts/frontend/src/pages/SiteGenerator.tsx
-          grep -F 'includeHtml=0' artifacts/frontend/src/pages/SiteGeneratorCore.tsx
           grep -F 'req.query.includeHtml === "0"' artifacts/api-server/src/routes/site_generator_core.ts
           grep -F 'req.query.format === "html"' artifacts/api-server/src/routes/site_generator.ts
 
@@ -258,6 +234,6 @@ jobs:
           rm .github/workflows/fix-site-preview-json-transport.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add artifacts/api-server/src/routes/site_generator.ts artifacts/api-server/src/routes/site_generator_core.ts artifacts/frontend/src/pages/SiteGenerator.tsx artifacts/frontend/src/pages/SiteGeneratorCore.tsx .github/workflows/fix-site-preview-json-transport.yml
+          git add artifacts/api-server/src/routes/site_generator.ts artifacts/api-server/src/routes/site_generator_core.ts artifacts/frontend/src/pages/SiteGenerator.tsx .github/workflows/fix-site-preview-json-transport.yml
           git commit -m "fix(site-generator): evitar JSON corrompido no preview"
           git push origin HEAD:fix/site-preview-json-transport
