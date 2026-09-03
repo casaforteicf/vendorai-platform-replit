@@ -22,31 +22,14 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
+          from textwrap import dedent
 
           core = Path('artifacts/api-server/src/routes/site_generator_core.ts')
           text = core.read_text(encoding='utf-8')
 
-          old = '''// GET /tenants/:tenantId/site-generator — list generated sites
-          router.get("/tenants/:tenantId/site-generator", async (req, res) => {
-            const { tenantId } = req.params;
-            const rows = await db
-              .select({
-                id: generatedSitesTable.id,
-                name: generatedSitesTable.name,
-                siteType: generatedSitesTable.siteType,
-                config: generatedSitesTable.config,
-                html: generatedSitesTable.html,
-                published: generatedSitesTable.published,
-                siteSlug: generatedSitesTable.siteSlug,
-                createdAt: generatedSitesTable.createdAt,
-                updatedAt: generatedSitesTable.updatedAt,
-              })
-              .from(generatedSitesTable)
-              .where(eq(generatedSitesTable.tenantId, tenantId))
-              .orderBy(desc(generatedSitesTable.createdAt));
-            return res.json(rows);
-          });'''.replace('          ', '')
-          new = '''// GET /tenants/:tenantId/site-generator — list generated sites
+          list_block = dedent('''
+          // GET /tenants/:tenantId/site-generator — list generated sites
           router.get("/tenants/:tenantId/site-generator", async (req, res) => {
             const { tenantId } = req.params;
 
@@ -87,25 +70,14 @@ jobs:
               .where(eq(generatedSitesTable.tenantId, tenantId))
               .orderBy(desc(generatedSitesTable.createdAt));
             return res.json(rows);
-          });'''.replace('          ', '')
-          assert old in text, 'list route anchor not found'
-          text = text.replace(old, new, 1)
+          });
+          ''').strip()
+          pattern = re.compile(r'// GET /tenants/:tenantId/site-generator — list generated sites\nrouter\.get\("/tenants/:tenantId/site-generator", async \(req, res\) => \{[\s\S]*?\n\}\);\n\n(?=// GET /tenants/:tenantId/site-generator/:siteId)')
+          text, count = pattern.subn(list_block + '\n\n', text, count=1)
+          assert count == 1, f'list route replacements={count}'
 
-          old = '''// GET /tenants/:tenantId/site-generator/:siteId — get single site with html
-          router.get("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
-            const { tenantId, siteId } = req.params;
-            const [row] = await db
-              .select()
-              .from(generatedSitesTable)
-              .where(eq(generatedSitesTable.id, siteId));
-
-            if (!row || row.tenantId !== tenantId) {
-              res.status(404).json({ error: "Site not found" });
-              return;
-            }
-            return res.json(row);
-          });'''.replace('          ', '')
-          new = '''// GET /tenants/:tenantId/site-generator/:siteId — get single site with html
+          detail_block = dedent('''
+          // GET /tenants/:tenantId/site-generator/:siteId — get single site with html
           router.get("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
             const { tenantId, siteId } = req.params;
 
@@ -144,32 +116,59 @@ jobs:
               return;
             }
             return res.json(row);
-          });'''.replace('          ', '')
-          assert old in text, 'detail route anchor not found'
-          text = text.replace(old, new, 1)
+          });
+          ''').strip()
+          pattern = re.compile(r'// GET /tenants/:tenantId/site-generator/:siteId — get single site with html\nrouter\.get\("/tenants/:tenantId/site-generator/:siteId", async \(req, res\) => \{[\s\S]*?\n\}\);\n\n(?=// ─── Async generation logic)')
+          text, count = pattern.subn(detail_block + '\n\n', text, count=1)
+          assert count == 1, f'detail route replacements={count}'
 
           old = '  return res.json({ status: job.status, result: job.result, error: job.error });'
-          new = '''  const result = req.query.includeHtml === "0" && job.result && typeof job.result === "object" && !Array.isArray(job.result)
-            ? Object.fromEntries(Object.entries(job.result as Record<string, unknown>).filter(([key]) => key !== "html"))
-            : job.result;
-          return res.json({ status: job.status, result, error: job.error });'''
+          new = dedent('''
+            const result = req.query.includeHtml === "0" && job.result && typeof job.result === "object" && !Array.isArray(job.result)
+              ? Object.fromEntries(Object.entries(job.result as Record<string, unknown>).filter(([key]) => key !== "html"))
+              : job.result;
+            return res.json({ status: job.status, result, error: job.error });
+          ''').strip('\n')
           assert old in text, 'job response anchor not found'
           text = text.replace(old, new, 1)
           core.write_text(text, encoding='utf-8')
 
           routes = Path('artifacts/api-server/src/routes/site_generator.ts')
           text = routes.read_text(encoding='utf-8')
-          old = '''  res.setHeader("Cache-Control", "no-store");
-          res.json({ site });'''.replace('          ', '')
-          new = '''  res.setHeader("Cache-Control", "no-store");
-          if (req.query.format === "html") {
-            res.setHeader("Content-Type", "text/html; charset=utf-8");
-            res.send(site.html);
-            return;
-          }
-          res.json({ site });'''.replace('          ', '')
-          assert old in text, 'preview response anchor not found'
-          text = text.replace(old, new, 1)
+          preview_block = dedent('''
+          router.get("/tenants/:tenantId/site-generator/:siteId/preview", async (req, res) => {
+            const tenantId = String(req.params.tenantId);
+            if (!hasAccess(req, res, tenantId)) return;
+            const [site] = await db
+              .select({
+                id: generatedSitesTable.id,
+                name: generatedSitesTable.name,
+                html: generatedSitesTable.html,
+                siteType: generatedSitesTable.siteType,
+                published: generatedSitesTable.published,
+                siteSlug: generatedSitesTable.siteSlug,
+                createdAt: generatedSitesTable.createdAt,
+                updatedAt: generatedSitesTable.updatedAt,
+              })
+              .from(generatedSitesTable)
+              .where(and(eq(generatedSitesTable.id, String(req.params.siteId)), eq(generatedSitesTable.tenantId, tenantId)))
+              .limit(1);
+            if (!site) {
+              res.status(404).json({ error: "Site não encontrado" });
+              return;
+            }
+            res.setHeader("Cache-Control", "no-store");
+            if (req.query.format === "html") {
+              res.setHeader("Content-Type", "text/html; charset=utf-8");
+              res.send(site.html);
+              return;
+            }
+            res.json({ site });
+          });
+          ''').strip()
+          pattern = re.compile(r'router\.get\("/tenants/:tenantId/site-generator/:siteId/preview", async \(req, res\) => \{[\s\S]*?\n\}\);\n\n(?=router\.get\("/tenants/:tenantId/site-generator/:siteId/sections")')
+          text, count = pattern.subn(preview_block + '\n\n', text, count=1)
+          assert count == 1, f'preview route replacements={count}'
           routes.write_text(text, encoding='utf-8')
 
           frontend = Path('artifacts/frontend/src/pages/SiteGenerator.tsx')
@@ -177,26 +176,9 @@ jobs:
           text = text.replace('`/api/tenants/${tenantId}/site-generator`', '`/api/tenants/${tenantId}/site-generator?includeHtml=0`')
           text = text.replace('`/api/tenants/${tenantId}/site-generator/jobs/${jobId}?t=${Date.now()}`', '`/api/tenants/${tenantId}/site-generator/jobs/${jobId}?t=${Date.now()}&includeHtml=0`')
 
-          old = '''      // O endpoint de listagem já devolve o HTML salvo. Isso transforma o preview
-                // em uma única requisição e evita que o segundo GET seja bloqueado pelo
-                // rate limit quando o restante do painel está carregando em paralelo.
-                let site: any = targetSite;
-                if (typeof targetSite?.html !== "string" || !targetSite.html.trim()) {
-                  // Compatibilidade temporária enquanto o backend novo termina o deploy.
-                  const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${targetId}`, { headers: headers(token) }, 1);
-                  const body = await siteRes.json().catch(() => ({}));
-                  site = body?.site ?? body;
-                  if (!siteRes.ok) {
-                    throw new Error(site?.error ?? `Não foi possível carregar o site (${siteRes.status})`);
-                  }
-                }
-                if (typeof site?.html !== "string" || !site.html.trim()) {
-                  throw new Error("O projeto existe, mas o servidor não devolveu o HTML salvo. O VendorAI preservou o site e você pode tentar novamente.");
-                }
-                setSelectedSiteId(targetId);
-                setHtml(site.html);
-                setSiteName(site.name ?? sorted.find((item: any) => item.id === targetId)?.name ?? "Site");'''.replace('                ', '')
-          new = '''      // O HTML é transportado como texto, não dentro de JSON. Sites de 50–100 KB
+          pattern = re.compile(r'      // O endpoint de listagem já devolve o HTML salvo\.[\s\S]*?      setSiteName\(site\.name \?\? sorted\.find\(\(item: any\) => item\.id === targetId\)\?\.name \?\? "Site"\);')
+          replacement = dedent('''
+                // O HTML é transportado como texto, não dentro de JSON. Sites de 50–100 KB
                 // deixavam o JSON vulnerável a corte/corrupção no proxy Vercel -> Railway.
                 const previewRes = await resilientFetch(
                   `/api/tenants/${tenantId}/site-generator/${targetId}/preview?format=html`,
@@ -209,37 +191,41 @@ jobs:
                 }
                 setSelectedSiteId(targetId);
                 setHtml(siteHtml);
-                setSiteName(targetSite?.name ?? sorted.find((item: any) => item.id === targetId)?.name ?? "Site");'''.replace('                ', '')
-          assert old in text, 'CoreEditor preview anchor not found'
-          text = text.replace(old, new, 1)
+                setSiteName(targetSite?.name ?? sorted.find((item: any) => item.id === targetId)?.name ?? "Site");
+          ''').rstrip()
+          text, count = pattern.subn(replacement, text, count=1)
+          assert count == 1, f'CoreEditor replacements={count}'
 
-          old = '''      const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${latest.id}`, { headers: headers(token), cache: "no-store" });
-                const site = await siteRes.json().catch(() => ({}));
-                if (!siteRes.ok || !site.html) throw new Error(site.error ?? "Não foi possível carregar o site");
-                const blob = new Blob([site.html], { type: "text/html;charset=utf-8" });'''.replace('                ', '')
-          new = '''      const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${latest.id}/preview?format=html`, { headers: { ...headers(token), Accept: "text/html" }, cache: "no-store" });
+          pattern = re.compile(r'      const siteRes = await resilientFetch\(`/api/tenants/\$\{tenantId\}/site-generator/\$\{latest\.id\}`, \{ headers: headers\(token\), cache: "no-store" \}\);\n      const site = await siteRes\.json\(\)\.catch\(\(\) => \(\{\}\)\);\n      if \(!siteRes\.ok \|\| !site\.html\) throw new Error\(site\.error \?\? "Não foi possível carregar o site"\);\n      const blob = new Blob\(\[site\.html\], \{ type: "text/html;charset=utf-8" \}\);')
+          replacement = dedent('''
+                const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${latest.id}/preview?format=html`, { headers: { ...headers(token), Accept: "text/html" }, cache: "no-store" });
                 const siteHtml = await siteRes.text();
                 if (!siteRes.ok || !siteHtml.trim()) throw new Error(`Não foi possível carregar o site (${siteRes.status})`);
-                const blob = new Blob([siteHtml], { type: "text/html;charset=utf-8" });'''.replace('                ', '')
-          assert old in text, 'previewLatest anchor not found'
-          text = text.replace(old, new, 1)
+                const blob = new Blob([siteHtml], { type: "text/html;charset=utf-8" });
+          ''').rstrip()
+          text, count = pattern.subn(replacement, text, count=1)
+          assert count == 1, f'previewLatest replacements={count}'
           frontend.write_text(text, encoding='utf-8')
 
           legacy = Path('artifacts/frontend/src/pages/SiteGeneratorCore.tsx')
           text = legacy.read_text(encoding='utf-8')
           text = text.replace('`/api/tenants/${tenantId}/site-generator`', '`/api/tenants/${tenantId}/site-generator?includeHtml=0`')
-          old = '''      const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}`, { headers: authHeaders });
+          old = dedent('''
+                const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}`, { headers: authHeaders });
                 if (!res.ok) return;
                 const site = await res.json();
-                const originalHtml = site.html ?? "";'''.replace('                ', '')
-          new = '''      const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}?includeHtml=0`, { headers: authHeaders });
+                const originalHtml = site.html ?? "";
+          ''').strip()
+          new = dedent('''
+                const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}?includeHtml=0`, { headers: authHeaders });
                 if (!res.ok) return;
                 const site = await res.json();
                 const previewRes = await fetch(`/api/tenants/${tenantId}/site-generator/${id}/preview?format=html`, {
                   headers: { ...authHeaders, Accept: "text/html" },
                 });
                 if (!previewRes.ok) return;
-                const originalHtml = await previewRes.text();'''.replace('                ', '')
+                const originalHtml = await previewRes.text();
+          ''').strip()
           assert old in text, 'legacy loadSite anchor not found'
           text = text.replace(old, new, 1)
           legacy.write_text(text, encoding='utf-8')
@@ -249,6 +235,7 @@ jobs:
           git diff --check
           grep -F 'site-generator?includeHtml=0' artifacts/frontend/src/pages/SiteGenerator.tsx
           grep -F 'preview?format=html' artifacts/frontend/src/pages/SiteGenerator.tsx
+          grep -F 'includeHtml=0' artifacts/frontend/src/pages/SiteGeneratorCore.tsx
           grep -F 'req.query.includeHtml === "0"' artifacts/api-server/src/routes/site_generator_core.ts
           grep -F 'req.query.format === "html"' artifacts/api-server/src/routes/site_generator.ts
 
