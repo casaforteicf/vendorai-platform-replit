@@ -10,9 +10,20 @@ function authHeader(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function numberSetting(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 type JobStatus = "idle" | "starting" | "processing" | "done" | "error";
 type EditorTab = "edit" | "music";
-type MusicSourceMode = "upload" | "library" | "ai";
+type MusicSourceMode = "brand" | "upload" | "library" | "ai";
 
 interface LibraryTrack {
   id: string;
@@ -32,6 +43,13 @@ interface LibraryTrack {
     paidAdsAllowed: boolean;
     reasons: string[];
   };
+}
+
+interface BrandKitPayload {
+  brandKit?: {
+    default_music_asset_id?: string | null;
+    audio_config?: Record<string, unknown> | null;
+  } | null;
 }
 
 const EDIT_OPTIONS = [
@@ -93,13 +111,16 @@ export default function VideoEdicaoPage() {
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLInputElement>(null);
 
-  const [musicSourceMode, setMusicSourceMode] = useState<MusicSourceMode>("upload");
+  const [musicSourceMode, setMusicSourceMode] = useState<MusicSourceMode>("brand");
   const [musicFile, setMusicFile] = useState<File | null>(null);
   const musicRef = useRef<HTMLInputElement>(null);
   const [tracks, setTracks] = useState<LibraryTrack[]>([]);
   const [tracksLoading, setTracksLoading] = useState(false);
   const [tracksError, setTracksError] = useState("");
   const [selectedTrackId, setSelectedTrackId] = useState("");
+  const [brandKitLoading, setBrandKitLoading] = useState(false);
+  const [brandKitError, setBrandKitError] = useState("");
+  const [brandDefaultMusicAssetId, setBrandDefaultMusicAssetId] = useState("");
   const [musicVolume, setMusicVolume] = useState(0.18);
   const [originalVolume, setOriginalVolume] = useState(1);
   const [fadeIn, setFadeIn] = useState(1);
@@ -121,6 +142,30 @@ export default function VideoEdicaoPage() {
     setErrorMsg("");
   };
 
+  const loadBrandKit = async () => {
+    if (!tenantId) return;
+    setBrandKitLoading(true);
+    setBrandKitError("");
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media-engine/brand-kit`, { headers: authHeader() });
+      const data = await response.json() as BrandKitPayload & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao carregar Brand Video Kit");
+
+      const kit = data.brandKit ?? null;
+      const audioConfig = asRecord(kit?.audio_config);
+      setBrandDefaultMusicAssetId(kit?.default_music_asset_id ?? "");
+      setMusicVolume(numberSetting(audioConfig["musicVolume"], 0.18));
+      setOriginalVolume(numberSetting(audioConfig["originalVolume"], 1));
+      setFadeIn(numberSetting(audioConfig["fadeIn"], 1));
+      setFadeOut(numberSetting(audioConfig["fadeOut"], 1.5));
+    } catch (error) {
+      setBrandKitError(error instanceof Error ? error.message : "Falha ao carregar Brand Video Kit");
+      setBrandDefaultMusicAssetId("");
+    } finally {
+      setBrandKitLoading(false);
+    }
+  };
+
   const loadTracks = async () => {
     if (!tenantId) return;
     setTracksLoading(true);
@@ -138,7 +183,13 @@ export default function VideoEdicaoPage() {
   };
 
   useEffect(() => {
-    if (activeTab === "music" && musicSourceMode === "library") void loadTracks();
+    void loadBrandKit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (activeTab === "music" && (musicSourceMode === "library" || musicSourceMode === "brand")) void loadTracks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, musicSourceMode, tenantId]);
 
   const pollJob = async (jobId: string) => {
@@ -177,6 +228,7 @@ export default function VideoEdicaoPage() {
 
   const handleMusicCompose = async () => {
     if (!videoFile || !tenantId) return;
+    if (musicSourceMode === "brand" && !brandDefaultMusicAssetId) return;
     if (musicSourceMode === "upload" && !musicFile) return;
     if (musicSourceMode === "library" && !selectedTrackId) return;
     if (musicSourceMode === "ai") return;
@@ -184,7 +236,7 @@ export default function VideoEdicaoPage() {
     const form = new FormData();
     form.append("video", videoFile);
     if (musicSourceMode === "library") form.append("musicAssetId", selectedTrackId);
-    else if (musicFile) form.append("music", musicFile);
+    else if (musicSourceMode === "upload" && musicFile) form.append("music", musicFile);
     form.append("musicVolume", String(musicVolume));
     form.append("originalVolume", String(originalVolume));
     form.append("fadeIn", String(fadeIn));
@@ -224,13 +276,16 @@ export default function VideoEdicaoPage() {
   };
 
   const isProcessing = jobStatus === "starting" || jobStatus === "processing";
-  const hasMusicSelection = musicSourceMode === "library"
-    ? Boolean(selectedTrackId)
-    : musicSourceMode === "upload"
-      ? Boolean(musicFile)
-      : false;
-  const generateDisabled = !videoFile || isProcessing || (activeTab === "music" && !hasMusicSelection);
+  const hasMusicSelection = musicSourceMode === "brand"
+    ? Boolean(brandDefaultMusicAssetId)
+    : musicSourceMode === "library"
+      ? Boolean(selectedTrackId)
+      : musicSourceMode === "upload"
+        ? Boolean(musicFile)
+        : false;
+  const generateDisabled = !videoFile || isProcessing || brandKitLoading || (activeTab === "music" && !hasMusicSelection);
   const selectedTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
+  const brandDefaultTrack = tracks.find((track) => track.id === brandDefaultMusicAssetId) ?? null;
 
   const EditContent = (
     <div className="space-y-5 h-full flex flex-col">
@@ -291,23 +346,25 @@ export default function VideoEdicaoPage() {
     <div className="space-y-4 h-full flex flex-col">
       <div>
         <p className="text-xs text-gray-400 font-medium mb-2">Origem da trilha</p>
-        <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
           <button
             type="button"
             onClick={() => {
-              setMusicSourceMode("upload");
+              setMusicSourceMode("brand");
+              setMusicFile(null);
               setSelectedTrackId("");
               resetResult();
+              void loadBrandKit();
             }}
             className={cn(
               "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
-              musicSourceMode === "upload"
-                ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
+              musicSourceMode === "brand"
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
                 : "border-white/10 text-gray-400 hover:border-white/20",
             )}
           >
-            <Upload className="h-3.5 w-3.5" />
-            Enviar
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Padrão da marca
           </button>
           <button
             type="button"
@@ -329,6 +386,23 @@ export default function VideoEdicaoPage() {
           <button
             type="button"
             onClick={() => {
+              setMusicSourceMode("upload");
+              setSelectedTrackId("");
+              resetResult();
+            }}
+            className={cn(
+              "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
+              musicSourceMode === "upload"
+                ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
+                : "border-white/10 text-gray-400 hover:border-white/20",
+            )}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Enviar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setMusicSourceMode("ai");
               setMusicFile(null);
               setSelectedTrackId("");
@@ -346,7 +420,36 @@ export default function VideoEdicaoPage() {
           </button>
         </div>
 
-        {musicSourceMode === "upload" ? (
+        {musicSourceMode === "brand" ? (
+          <div className="space-y-2">
+            {brandKitLoading ? (
+              <div className="rounded-xl border border-white/10 p-4 flex items-center gap-2 text-xs text-gray-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando padrão da marca…
+              </div>
+            ) : brandKitError ? (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{brandKitError}</div>
+            ) : brandDefaultMusicAssetId ? (
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-300 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-emerald-200">Brand Video Kit ativo</p>
+                    <p className="text-xs text-gray-300 truncate mt-0.5">
+                      {brandDefaultTrack?.original_filename ?? "Trilha padrão configurada"}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-1">Logo, B-roll, intro/outro e parâmetros de áudio do kit continuam sendo aplicados pelo Media Engine.</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-200">
+                Nenhuma trilha padrão foi configurada. Defina uma no Brand Video Kit em Vídeo com IA ou escolha Biblioteca, Enviar ou Gerar IA.
+              </div>
+            )}
+          </div>
+        ) : musicSourceMode === "upload" ? (
           <>
             {musicFile ? (
               <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3">
@@ -482,6 +585,12 @@ export default function VideoEdicaoPage() {
         )}
       </div>
 
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-gray-400 font-medium">Mixagem</p>
+        {musicSourceMode === "brand" && brandDefaultMusicAssetId && (
+          <span className="text-[10px] text-emerald-300">Valores carregados do Brand Kit · ajustes abaixo valem para esta geração</span>
+        )}
+      </div>
       <SliderField label="Volume da música" value={musicVolume} min={0} max={1} step={0.01} onChange={setMusicVolume} />
       <SliderField label="Volume do áudio original" value={originalVolume} min={0} max={2} step={0.05} onChange={setOriginalVolume} />
 
@@ -621,7 +730,7 @@ export default function VideoEdicaoPage() {
       onGenerate={handleGenerate}
       onTabChange={(tabId) => setActiveTab(tabId === "music" ? "music" : "edit")}
       generating={isProcessing}
-      generateLabel={activeTab === "music" ? "Adicionar trilha" : "Editar vídeo"}
+      generateLabel={activeTab === "music" ? musicSourceMode === "brand" ? "Aplicar padrão da marca" : "Adicionar trilha" : "Editar vídeo"}
       generateDisabled={generateDisabled}
     />
   );
