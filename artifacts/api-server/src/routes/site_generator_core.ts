@@ -6,6 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { SITE_GENERATOR_SYSTEM_PROMPT, extractHtmlDocument, prepareSiteHtml, validateSiteHtml } from "../lib/site-html-quality.js";
 import { computeSiteSeoScore } from "../lib/site-seo-analysis.js";
+import { ensureRequiredImagesInHtml, normalizeRequiredImageUrls } from "../lib/site-required-images.js";
 
 // Prefer Anthropic when available; fallback to OpenAI
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -290,8 +291,6 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
       body: "'Nunito', sans-serif",
       googleUrl: "https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap",
     },
-    // Opções extras — o modelo escolhe a que melhor caracteriza o
-    // negócio específico, não fica preso ao mapeamento 1-tom-1-par.
     tecnico: {
       display: "'Space Grotesk', sans-serif",
       body: "'IBM Plex Sans', sans-serif",
@@ -316,13 +315,13 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 
   const hasRealImages = products.some((p) => p.imageUrl);
   const imagesBlock = images.length > 0
-    ? `\nFOTOS REAIS DA EMPRESA (${images.length} foto${images.length > 1 ? "s" : ""} — USE-AS no site, não invente imagens externas):\n${images.map((url, i) => `- Foto ${i + 1}: ${url}`).join("\n")}\nUse estas fotos nas seções de hero, galeria, serviços ou sobre. Tag: <img src="URL_AQUI" alt="${name}" loading="lazy" style="width:100%;height:240px;object-fit:cover;border-radius:12px">`
+    ? `\
+FOTOS REAIS DA EMPRESA — USO OBRIGATÓRIO (${images.length} foto${images.length > 1 ? "s" : ""}):\
+${images.map((url, i) => `- Foto ${i + 1}: ${url}`).join("\
+")}\
+REGRA INEGOCIÁVEL: cada URL acima deve aparecer pelo menos uma vez no HTML final, em uma tag <img src="URL_EXATA"> visível. Use TODAS as fotos anexadas, sem omitir, substituir, inventar URL externa ou usar apenas uma parte delas. Distribua-as naturalmente entre hero, galeria, serviços ou sobre. Antes de responder, confira uma a uma as ${images.length} URLs. Tag sugerida: <img src="URL_AQUI" alt="${name}" loading="lazy" style="width:100%;height:240px;object-fit:cover;border-radius:12px">`
     : "";
-  // Vídeo — YouTube/Vimeo viram iframe embed (extrai o ID da URL
-  // colada), qualquer outra URL é tratada como arquivo direto (.mp4 etc)
-  // e vira <video>. O modelo escolhe ONDE encaixar (hero, seção
-  // dedicada "veja em ação", depoimento em vídeo) conforme o tipo/tom do
-  // negócio — não força posição fixa.
+
   function videoEmbedHtml(url: string): string {
     const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{6,})/);
     if (yt) return `<div style="position:relative;padding-top:56.25%;border-radius:var(--radius);overflow:hidden"><iframe src="https://www.youtube.com/embed/${yt[1]}" title="Vídeo" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
@@ -331,14 +330,21 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
     return `<video src="${url}" controls preload="metadata" style="width:100%;border-radius:var(--radius);display:block" playsinline></video>`;
   }
   const videosBlock = videos.length > 0
-    ? `\nVÍDEOS FORNECIDOS PELO CLIENTE (${videos.length} — USE-OS, é conteúdo real, não decorativo):\n${videos.map((url, i) => `- Vídeo ${i + 1}: ${url} → HTML pronto: ${videoEmbedHtml(url)}`).join("\n")}\nDecida ONDE cada vídeo faz mais sentido (hero como demonstração ao vivo, seção "veja em ação", depoimento em vídeo) — cole o HTML pronto acima exatamente como está, sem reescrever a tag.`
+    ? `\
+VÍDEOS FORNECIDOS PELO CLIENTE (${videos.length} — USE-OS, é conteúdo real, não decorativo):\
+${videos.map((url, i) => `- Vídeo ${i + 1}: ${url} → HTML pronto: ${videoEmbedHtml(url)}`).join("\
+")}\
+Decida ONDE cada vídeo faz mais sentido (hero como demonstração ao vivo, seção "veja em ação", depoimento em vídeo) — cole o HTML pronto acima exatamente como está, sem reescrever a tag.`
     : "";
   const servicosBlock = servicos
-    ? `\nServiços/produtos principais: ${servicos}`
+    ? `\
+Serviços/produtos principais: ${servicos}`
     : "";
   const productsBlock =
     type === "ecommerce" && products.length
-      ? `\nPRODUTOS DO ESTOQUE (${products.length} itens — use EXATAMENTE estes produtos, na mesma ordem):\n${products.map((p) => {
+      ? `\
+PRODUTOS DO ESTOQUE (${products.length} itens — use EXATAMENTE estes produtos, na mesma ordem):\
+${products.map((p) => {
           const img = p.imageUrl ? ` | imagem: ${p.imageUrl}` : "";
           const desc = p.description ? ` | ${p.description}` : "";
           const marca = p.marca ? ` | Marca: ${p.marca}` : "";
@@ -346,11 +352,10 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
           const stock = p.inStock !== undefined ? (p.inStock ? ` | ✓ em estoque (${p.stockQty ?? ""})` : " | ✗ fora de estoque") : "";
           const feat = p.featured ? " ⭐DESTAQUE" : "";
           return `- ${p.name}${feat} | ${p.price}${desc}${marca}${sku}${stock}${img}`;
-        }).join("\n")}`
+        }).join("\
+")}`
       : "";
 
-  // Product-focused landing page: describe the single product in depth —
-  // this page must sell ONLY it, not the business in general.
   const produtoFocoBlock =
     type === "product" && products.length === 1
       ? (() => {
@@ -374,7 +379,13 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
             p.quantidadePacote && `Peças por pacote: ${p.quantidadePacote}`,
             p.precoPacote && `Preço do pacote: R$ ${p.precoPacote}`,
           ].filter(Boolean).join(" | ");
-          return `\nPRODUTO EM FOCO — esta página deve vender EXCLUSIVAMENTE este produto, não a empresa como um todo:\nNome: ${p.name}\nPreço: ${p.price}${p.description ? `\nDescrição: ${p.description}` : ""}${specs ? `\nEspecificações reais (use exatamente estes dados, não invente números): ${specs}` : ""}${p.imageUrl ? `\nImagem real do produto (use-a, não invente outra): ${p.imageUrl}` : ""}`;
+          return `\
+PRODUTO EM FOCO — esta página deve vender EXCLUSIVAMENTE este produto, não a empresa como um todo:\
+Nome: ${p.name}\
+Preço: ${p.price}${p.description ? `\
+Descrição: ${p.description}` : ""}${specs ? `\
+Especificações reais (use exatamente estes dados, não invente números): ${specs}` : ""}${p.imageUrl ? `\
+Imagem real do produto (use-a, não invente outra): ${p.imageUrl}` : ""}`;
         })()
       : "";
 
@@ -430,8 +441,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 7. FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, copyright${igHandle ? `, ícone do Instagram (HTML exato: ${igHtml})` : ""}`,
   };
 
-  void logoInstruction; // referenced via structureByType strings above
-
+  void logoInstruction;
   const structure = structureByType[type] || structureByType.landing;
 
   return `Você é um diretor de design (e copywriter) de um estúdio pequeno conhecido por dar a cada cliente uma identidade visual que não poderia ser confundida com a de mais ninguém. Este cliente já rejeitou propostas que pareciam "templates genéricos" — está pagando por um ponto de vista visual distinto. Gere um site HTML autocontido de QUALIDADE PROFISSIONAL — comparável aos melhores sites de agência — pro negócio abaixo.
@@ -449,7 +459,8 @@ Maior dor do cliente-alvo: ${pain || "ineficiência e falta de resultados"}
 Tom de voz: ${TONE_LABELS[tone] || tone}
 Cor-âncora escolhida pelo cliente (use como base da paleta, é uma decisão dele — não ignore, mas também não a trate como a única cor do site): ${color} (RGB: ${rgb})
 CTA principal: ${ctaText}
-WhatsApp de contato: wa.me/${waNumber}${igHandle ? `\nInstagram: ${igUrl} (handle: @${igHandle})` : ""}
+WhatsApp de contato: wa.me/${waNumber}${igHandle ? `\
+Instagram: ${igUrl} (handle: @${igHandle})` : ""}
 ${productsBlock}${produtoFocoBlock}${imagesBlock}${videosBlock}
 
 ═══════════════════════════════════════
@@ -460,7 +471,8 @@ Antes de gerar o HTML, monte mentalmente um plano de design compacto específico
 
 1. PALETA — descreva 4 a 6 cores nomeadas em hex, ancoradas na cor escolhida pelo cliente (${color}) mas expandidas com intenção: uma cor de destaque/acento que conversa com ela, tons de fundo que fazem sentido pro setor "${sector || name}" (nem sempre branco+cinza-claro é a resposta certa — considere se um fundo mais quente, mais escuro ou mais saturado serve melhor a esse negócio específico).
 2. TIPOGRAFIA — escolha DENTRE OS PARES ABAIXO (são os únicos com URL do Google Fonts verificada — não invente outro par) o que melhor caracteriza ESTE negócio, não apenas o "tom" genérico:
-${Object.entries(FONT_PAIRS).map(([key, f]) => `   - "${key}": display ${f.display} + corpo ${f.body}`).join("\n")}
+${Object.entries(FONT_PAIRS).map(([key, f]) => `   - "${key}": display ${f.display} + corpo ${f.body}`).join("\
+")}
    Tom sugerido pelo cliente: "${tone}" — mas escolha o par que melhor serve o SETOR e a PERSONALIDADE do negócio, não só o tom em isolado. Justifique mentalmente a escolha antes de seguir.
 3. ASSINATURA — qual é o UM elemento visual memorável desse site, específico pro mundo desse negócio (não genérico)? Pode ser a forma do hero, um padrão decorativo, um jeito particular de mostrar números, etc. Gaste sua ousadia nesse UM lugar; mantenha o resto disciplinado.
 
@@ -551,18 +563,21 @@ COPY — OBRIGATÓRIO:
 QUALIDADE OBRIGATÓRIA:
 ✓ Visual profissional — equivalente a sites feitos por agências de marketing digital
 ✓ Imagens externas SOMENTE as fornecidas no briefing; demais elementos decorativos: gradientes CSS, SVGs inline, iniciais em círculo
+✓ TODAS as fotos anexadas no briefing devem aparecer de forma visível no HTML final, cada URL pelo menos uma vez; não omita nenhuma
 ✓ VÍDEO (quando fornecido no briefing): use o HTML pronto exatamente como está — não decorativo, é conteúdo real do cliente
 ✓ GALERIA DE FOTOS (quando presente): use SOMENTE as URLs reais fornecidas no briefing, com tags <img>, alt descritivo, loading="lazy", aspect-ratio e object-fit — nunca invente URLs; sem fotos fornecidas, use SVG/CSS decorativo sem fingir que é uma galeria real
 ✓ 100% responsivo — mobile impecável
 ✓ Smooth scroll, hover states, animações sutis
 ✓ Formulário de contato com validação JS básica (campos obrigatórios)
-✓ WhatsApp CTA abre wa.me/${waNumber}${igHandle ? `\n✓ Instagram no footer: link clicável para ${igUrl} com ícone SVG inline e @${igHandle}` : ""}
+✓ WhatsApp CTA abre wa.me/${waNumber}${igHandle ? `\
+✓ Instagram no footer: link clicável para ${igUrl} com ícone SVG inline e @${igHandle}` : ""}
 ✓ Acessibilidade: alt em imagens, aria-labels, foco visível
 
 REVISÃO FINAL OBRIGATÓRIA ANTES DE RESPONDER:
 ✓ Verifique cada combinação de texto e fundo, inclusive cards, links, botões, placeholders e seções escuras; texto normal precisa de contraste mínimo 4.5:1.
 ✓ Verifique que nenhum elemento visível depende de cor herdada sem contraste, opacity 0, visibility hidden, display none ou font-size 0.
 ✓ Verifique que toda imagem tem URL fornecida e dimensões estáveis; não use placeholder remoto, URL inventada ou imagem sem tratamento de erro.
+✓ Verifique visualmente que TODAS as ${images.length} fotos anexadas estão presentes quando houver anexos.
 ✓ Verifique que o HTML fecha corretamente e que o mesmo documento funciona no preview e como arquivo baixado, sem scripts/estilos que dependam do editor.
 ✓ Verifique visualmente as larguras 360px, 768px e 1440px: sem overflow horizontal, cartões gigantes, áreas vazias desproporcionais, links/botões nativos ou títulos que estouram a tela.
 
@@ -652,10 +667,6 @@ async function callAI(
       }
       return { content, provider: "anthropic", model: "claude-sonnet-4-6" };
     } catch (err) {
-      // Erro de billing/conta (ex: "credit balance too low") não deve derrubar
-      // a geração do site inteira — cai pro OpenAI em vez de propagar o erro.
-      // Erros de "resposta truncada" (max_tokens) continuam subindo, porque
-      // trocar de provedor não resolveria o problema real (site complexo demais).
       if ((err as any)?.truncated) throw err;
       log.info({ err, provider: "anthropic" }, "Anthropic falhou (provavelmente billing) — caindo pro OpenAI");
     }
@@ -667,12 +678,6 @@ async function callAI(
     { role: "system" as const, content: systemPrompt },
     ...messages.map((message) => ({ role: message.role, content: message.content })),
   ];
-  // gpt-5.6-terra é a geração atual da OpenAI (gpt-4o-mini foi aposentado
-  // em fev/2026) -- "terra" é o nível equilibrado (não o "sol", que é modelo
-  // de raciocínio pesado, minutos de latência, arriscado demais pra essa
-  // troca sem poder testar direto). reasoning_effort baixo porque gerar
-  // HTML/CSS é trabalho criativo, não uma cadeia de raciocínio lógico --
-  // não faz sentido gastar tempo/token "pensando" fundo nisso.
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5.6-terra",
@@ -683,9 +688,6 @@ async function callAI(
     const finishReason = response.choices[0]?.finish_reason;
     const content = response.choices[0]?.message?.content ?? "";
     if (finishReason === "length" && content.length < 500) {
-      // Sinal do problema que a doc da OpenAI avisa: tokens todos gastos em
-      // raciocínio interno, resposta final vazia/truncada demais pra ser
-      // um HTML válido -- cai pro modelo antigo, que não tem esse risco.
       throw new Error(`gpt-5.6-terra: resposta vazia/truncada (finish_reason=length, ${content.length} chars) -- provável esgotamento de tokens em raciocínio interno`);
     }
     return { content, provider: "openai", model: "gpt-5.6-terra" };
@@ -703,9 +705,6 @@ async function callAI(
         model: "gpt-4o-mini",
       };
     } catch (err) {
-      // Anthropic já falhou antes (billing) e o OpenAI também falhou aqui —
-      // sem isso, o erro cru do SDK da OpenAI (ex: "429 Rate limit
-      // reached...") vazava direto pra tela sem nenhuma tradução.
       log.info({ err, provider: "openai" }, "OpenAI também falhou — nenhum provedor de IA disponível");
       throw new Error("Nenhum provedor de IA disponível no momento (Anthropic e OpenAI falharam). Tente novamente em alguns minutos — se persistir, pode ser limite de uso da conta.");
     }
@@ -819,7 +818,6 @@ async function runGenerateSite(
   log: import("pino").Logger,
 ) {
   try {
-    // Fallback to business_profile for missing fields
     const [bp] = await db
       .select({
         nomeFantasia: businessProfilesTable.nomeFantasia,
@@ -842,8 +840,6 @@ async function runGenerateSite(
       return;
     }
 
-    // For "product" pages: fetch the single selected catalog product,
-    // including its m²-calculation fields, instead of business-wide data.
     let focusProduct: (SiteGeneratorProduct & Record<string, unknown>) | null = null;
     if (config.type === "product") {
       const produtoId = (config as unknown as { produtoId?: string }).produtoId;
@@ -854,21 +850,21 @@ async function runGenerateSite(
 
       const [row] = await db
         .select({
-          nome:             produtosCatalogoTable.nome,
-          precoBase:        produtosCatalogoTable.precoBase,
-          descricao:        produtosCatalogoTable.descricao,
-          imagemUrl:        produtosCatalogoTable.imagemUrl,
-          imagens:          produtosCatalogoTable.imagens,
-          sku:              produtosCatalogoTable.sku,
-          marca:            produtosCatalogoTable.marca,
-          unidade:          produtosCatalogoTable.unidade,
-          colecao:          produtosCatalogoTable.colecao,
-          cor:              produtosCatalogoTable.cor,
-          tipoCalculo:      produtosCatalogoTable.tipoCalculo,
+          nome: produtosCatalogoTable.nome,
+          precoBase: produtosCatalogoTable.precoBase,
+          descricao: produtosCatalogoTable.descricao,
+          imagemUrl: produtosCatalogoTable.imagemUrl,
+          imagens: produtosCatalogoTable.imagens,
+          sku: produtosCatalogoTable.sku,
+          marca: produtosCatalogoTable.marca,
+          unidade: produtosCatalogoTable.unidade,
+          colecao: produtosCatalogoTable.colecao,
+          cor: produtosCatalogoTable.cor,
+          tipoCalculo: produtosCatalogoTable.tipoCalculo,
           fechamentoPacote: produtosCatalogoTable.fechamentoPacote,
           quantidadePacote: produtosCatalogoTable.quantidadePacote,
-          precoPacote:      produtosCatalogoTable.precoPacote,
-          larguraPecaM:     produtosCatalogoTable.larguraPecaM,
+          precoPacote: produtosCatalogoTable.precoPacote,
+          larguraPecaM: produtosCatalogoTable.larguraPecaM,
         })
         .from(produtosCatalogoTable)
         .where(and(eq(produtosCatalogoTable.id, produtoId), eq(produtosCatalogoTable.tenantId, tenantId)))
@@ -899,20 +895,19 @@ async function runGenerateSite(
       log.info({ tenantId, produtoId, produtoNome: row.nome }, "Site generator: single product fetched for product-focused page");
     }
 
-    // For ecommerce: auto-populate products from tenant's catalog + inventory stock
     let catalogProducts: SiteGeneratorProduct[] = [];
     if (config.type === "ecommerce") {
       const rows = await db
         .select({
-          nome:             produtosCatalogoTable.nome,
-          precoBase:        produtosCatalogoTable.precoBase,
-          descricao:        produtosCatalogoTable.descricao,
-          imagemUrl:        produtosCatalogoTable.imagemUrl,
-          imagens:          produtosCatalogoTable.imagens,
-          sku:              produtosCatalogoTable.sku,
-          destaque:         produtosCatalogoTable.destaque,
-          marca:            produtosCatalogoTable.marca,
-          quantidadeAtual:  inventoryItemsTable.quantidadeAtual,
+          nome: produtosCatalogoTable.nome,
+          precoBase: produtosCatalogoTable.precoBase,
+          descricao: produtosCatalogoTable.descricao,
+          imagemUrl: produtosCatalogoTable.imagemUrl,
+          imagens: produtosCatalogoTable.imagens,
+          sku: produtosCatalogoTable.sku,
+          destaque: produtosCatalogoTable.destaque,
+          marca: produtosCatalogoTable.marca,
+          quantidadeAtual: inventoryItemsTable.quantidadeAtual,
         })
         .from(produtosCatalogoTable)
         .leftJoin(inventoryItemsTable, eq(inventoryItemsTable.produtoId, produtosCatalogoTable.id))
@@ -946,8 +941,6 @@ async function runGenerateSite(
         ? [...catalogProducts, ...(config.products ?? [])]
         : (config.products ?? []);
 
-    // Normalize all relative URLs → absolute so downloaded HTML files work offline.
-    // Object-storage paths are stored as /objects/... and need the /api/storage prefix.
     const toAbsolute = (url?: string) => {
       if (!url) return url;
       if (url.startsWith("/objects/")) return `${baseOrigin}/api/storage${url}`;
@@ -956,7 +949,7 @@ async function runGenerateSite(
     };
 
     const absoluteLogoUrl = toAbsolute(logoUrl);
-    const absoluteImages = (config.images ?? []).map((url) => toAbsolute(url) ?? url);
+    const absoluteImages = normalizeRequiredImageUrls((config.images ?? []).map((url) => toAbsolute(url) ?? url));
     const absoluteVideos = (config.videos ?? []).map((url) => toAbsolute(url) ?? url);
     const absoluteProducts = allProducts.map((p) => ({
       ...p,
@@ -1006,9 +999,15 @@ async function runGenerateSite(
     }
     html = prepared.html;
 
-    // Product pages are addressed and named after the product itself, not
-    // the business — that's what makes each product's LP its own distinct,
-    // meaningful site when a tenant has several of them live at once.
+    const requiredImagesResult = ensureRequiredImagesInHtml(html, absoluteImages, enrichedConfig.name);
+    if (requiredImagesResult.injected.length > 0) {
+      log.warn(
+        { tenantId, injectedCount: requiredImagesResult.injected.length, requiredCount: absoluteImages.length },
+        "Site generator: IA omitted attached images; deterministic required-images gallery injected",
+      );
+    }
+    html = requiredImagesResult.html;
+
     const siteDisplayName = focusProduct?.name ?? enrichedConfig.name;
     const siteSlug = await generateUniqueSiteSlug(siteDisplayName, config.type);
 
@@ -1025,8 +1024,6 @@ async function runGenerateSite(
       })
       .returning();
 
-    // D-005: análise de SEO/legibilidade/qualidade -- roda automaticamente
-    // pra toda página gerada, sem precisar de ação manual.
     let siteComScore = site;
     try {
       const { score, checklist } = computeSiteSeoScore(html);
@@ -1073,7 +1070,6 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     baseOrigin,
   });
   activeGenerationJobs.add(jobId);
-  // Fire-and-forget — does not block the HTTP response
   void runGenerateSite(jobId, tenantId, config, baseOrigin, req.log);
 
   return res.status(202).json({ jobId });
@@ -1099,10 +1095,10 @@ router.get("/tenants/:tenantId/site-generator/jobs/:jobId", async (req, res) => 
     activeGenerationJobs.add(job.id);
     void runGenerateSite(job.id, job.tenantId, job.config, job.baseOrigin, req.log);
   }
-const result = req.query.includeHtml === "0" && job.result && typeof job.result === "object" && !Array.isArray(job.result)
-  ? Object.fromEntries(Object.entries(job.result as Record<string, unknown>).filter(([key]) => key !== "html"))
-  : job.result;
-return res.json({ status: job.status, result, error: job.error });
+  const result = req.query.includeHtml === "0" && job.result && typeof job.result === "object" && !Array.isArray(job.result)
+    ? Object.fromEntries(Object.entries(job.result as Record<string, unknown>).filter(([key]) => key !== "html"))
+    : job.result;
+  return res.json({ status: job.status, result, error: job.error });
 });
 
 // POST /tenants/:tenantId/site-generator/:siteId/refine — refine via chat
@@ -1149,8 +1145,6 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
   let rawText = result.content;
   let html = extractHtml(rawText);
 
-  // Alguns modelos ocasionalmente devolvem o HTML sem aplicar o pedido. Não
-  // confirme sucesso ao usuário nesse caso: faça uma segunda tentativa explícita.
   if (isValidHtml(html) && !htmlChanged(existing.html ?? "", html)) {
     req.log.info({ tenantId, siteId }, "Site refinement returned unchanged HTML; retrying");
     try {
@@ -1196,8 +1190,6 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
     return;
   }
 
-  // D-005: recalcula o score de SEO/qualidade -- o refinamento muda o
-  // HTML, o score anterior fica desatualizado se não recalcular.
   const { score: seoScore, checklist: seoChecklist } = computeSiteSeoScore(html);
 
   await db
@@ -1313,8 +1305,6 @@ router.patch("/tenants/:tenantId/site-generator/:siteId/html", async (req, res) 
     return;
   }
 
-  // D-005: recalcula o score de SEO/qualidade -- edição manual muda o
-  // HTML, o score anterior fica desatualizado se não recalcular.
   const { score: seoScore, checklist: seoChecklist } = computeSiteSeoScore(prepared.html);
 
   const [updated] = await db
