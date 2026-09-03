@@ -1,23 +1,24 @@
 import * as React from "react";
 
-// Temporário: sem isso, um erro de render deixa a tela toda branca sem
-// nenhuma pista do que quebrou. Mostra a mensagem e o stack na tela mesmo
-// em produção, só até acharmos e corrigirmos o bug real — depois disso dá
-// pra tirar ou trocar por um design mais bonito.
-const CHUNK_ERROR_PATTERN = /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
-const RELOAD_FLAG_KEY = "vendorai_chunk_reload_at";
-const RELOAD_COOLDOWN_MS = 10_000;
+const CHUNK_ERROR_PATTERN =
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html/i;
+const RELOAD_FLAG_PREFIX = "vendorai_error_boundary_recovered_bundle";
 
-// Depois de um deploy novo, o navegador pode ter a página velha aberta
-// tentando buscar um arquivo JS com hash antigo que não existe mais —
-// isso não é bug de código, é só cache desatualizado. Em vez de mostrar
-// erro pro usuário, recarrega sozinho uma vez. Se falhar de novo rápido
-// (menos de 10s), desiste e mostra o erro normal — evita loop infinito.
+function currentBundleReloadKey() {
+  const entryScript = Array.from(document.scripts).find((script) =>
+    script.type === "module" && /\/assets\/index-[^/]+\.js(?:$|\?)/.test(script.src),
+  );
+  return `${RELOAD_FLAG_PREFIX}:${entryScript?.src || "bootstrap"}`;
+}
+
+// A sessão pode permanecer aberta enquanto um novo deploy troca os hashes dos
+// chunks. Recuperamos automaticamente uma vez por bundle de entrada. Se o mesmo
+// bundle falhar novamente, paramos e mostramos o erro em vez de criar um loop.
 function tentarRecuperarDeChunkAntigo(error: Error): boolean {
   if (!CHUNK_ERROR_PATTERN.test(error.message)) return false;
-  const lastAttempt = Number(sessionStorage.getItem(RELOAD_FLAG_KEY) ?? 0);
-  if (Date.now() - lastAttempt < RELOAD_COOLDOWN_MS) return false;
-  sessionStorage.setItem(RELOAD_FLAG_KEY, String(Date.now()));
+  const key = currentBundleReloadKey();
+  if (sessionStorage.getItem(key) === "1") return false;
+  sessionStorage.setItem(key, "1");
   window.location.reload();
   return true;
 }
@@ -46,18 +47,33 @@ export class ErrorBoundary extends React.Component<
     if (this.state.reloading) {
       return (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "sans-serif", color: "#666" }}>
-          Atualizando...
+          Carregando a versão atual do VendorAI...
         </div>
       );
     }
     if (this.state.error) {
       return (
-        <div style={{ padding: 24, fontFamily: "monospace", background: "#1a1a1a", color: "#ff6b6b", minHeight: "100vh" }}>
-          <h1 style={{ color: "#fff", fontSize: 18 }}>Erro ao carregar a tela</h1>
-          <p style={{ whiteSpace: "pre-wrap", marginTop: 12 }}>{this.state.error.message}</p>
-          <pre style={{ whiteSpace: "pre-wrap", marginTop: 12, fontSize: 12, color: "#999" }}>
-            {this.state.error.stack}
-          </pre>
+        <div style={{ padding: 24, fontFamily: "sans-serif", background: "#f8fafc", color: "#334155", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ maxWidth: 520, width: "100%", background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, boxShadow: "0 10px 30px rgba(15,23,42,.08)" }}>
+            <h1 style={{ color: "#0f172a", fontSize: 18, margin: 0 }}>Não foi possível carregar esta tela</h1>
+            <p style={{ marginTop: 10, fontSize: 14, lineHeight: 1.5 }}>
+              O VendorAI interrompeu o erro em vez de deixar a tela carregando indefinidamente.
+            </p>
+            <button
+              type="button"
+              style={{ marginTop: 16, border: 0, borderRadius: 8, padding: "10px 14px", fontWeight: 600, cursor: "pointer", background: "#D9673E", color: "white" }}
+              onClick={() => {
+                sessionStorage.removeItem(currentBundleReloadKey());
+                window.location.reload();
+              }}
+            >
+              Carregar versão atual
+            </button>
+            <details style={{ marginTop: 16, fontSize: 12, color: "#64748b" }}>
+              <summary>Detalhes técnicos</summary>
+              <p style={{ whiteSpace: "pre-wrap" }}>{this.state.error.message}</p>
+            </details>
+          </div>
         </div>
       );
     }
