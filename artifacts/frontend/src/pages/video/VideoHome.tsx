@@ -2,6 +2,7 @@ import { useLocation } from "wouter";
 import { ArrowRight, Mic2, ShoppingBag, Scissors, Clapperboard, LayoutGrid, Sparkles, Captions } from "lucide-react";
 import { cn } from "@/lib/utils";
 import BrandVideoKitPanel from "@/components/video/BrandVideoKitPanel";
+import VideoGeneratePanel from "@/components/video/VideoGeneratePanel";
 
 interface VideoCard {
   title: string;
@@ -27,7 +28,7 @@ const CARDS: VideoCard[] = [
   },
   {
     title: "Vídeo de Produto",
-    description: "Gere storyboard e roteiro completo para apresentar um produto em Stories ou Reels.",
+    description: "Transforme 1–8 fotos reais do produto em Reel ou Stories, com storyboard e MP4 final.",
     icon: ShoppingBag,
     gradient: "from-amber-600/30 via-orange-500/20 to-amber-900/10",
     iconBg: "bg-amber-500/20 text-amber-300",
@@ -92,9 +93,11 @@ export default function VideoHome() {
             </h1>
           </div>
           <p className="text-sm text-gray-400 ml-7">
-            Escolha o tipo de vídeo que você quer criar para sua empresa
+            Crie do zero, transforme fotos, edite, legende e personalize vídeos no VendorAI Media Engine
           </p>
         </div>
+
+        <VideoGeneratePanel />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {CARDS.map((card) => {
