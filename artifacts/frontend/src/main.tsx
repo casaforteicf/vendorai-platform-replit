@@ -9,6 +9,7 @@ import { MediaSitesBridge } from "./components/media/MediaSitesBridge";
 import { MediaCatalogBridge } from "./components/media/MediaCatalogBridge";
 import { MediaContentStudioBridge } from "./components/media/MediaContentStudioBridge";
 import { MediaMarketingContentBridge } from "./components/media/MediaMarketingContentBridge";
+import { MediaConversationsBridge } from "./components/media/MediaConversationsBridge";
 import "./index.css";
 import "./site-generator-fix.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
@@ -58,6 +59,7 @@ createRoot(document.getElementById("root")!).render(
         <MediaCatalogBridge />
         <MediaContentStudioBridge />
         <MediaMarketingContentBridge />
+        <MediaConversationsBridge />
       </>
     )}
   </ErrorBoundary>,

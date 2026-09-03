@@ -1,9 +1,10 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { and, eq, asc } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   messagesTable,
+  mediaAssetsTable,
   insertMessageSchema,
   updateMessageSchema,
 } from "@workspace/db";
@@ -22,12 +23,68 @@ const router: IRouter = Router();
 // Anexo do botão de anexar do chat interno — não faz parte da tabela
 // messages em si (midiaUrl na tabela é preenchido pelo omnichannel
 // depois do envio), então valida separado do insertMessageSchema.
-const midiaSchema = z.object({
+const uploadedMidiaSchema = z.object({
   url: z.string().min(1),
   objectPath: z.string().min(1),
   mimeType: z.string().min(1),
   fileName: z.string().min(1),
 });
+
+// A Biblioteca envia somente o ID do ativo. O servidor resolve os demais
+// campos dentro do tenant para impedir referência cruzada entre clientes e
+// evitar confiar em objectPath/URL enviados pelo navegador.
+const libraryMidiaSchema = z.object({
+  mediaAssetId: z.string().min(1),
+});
+
+const midiaSchema = z.union([uploadedMidiaSchema, libraryMidiaSchema]);
+
+type ResolvedMidia = z.infer<typeof uploadedMidiaSchema>;
+
+function requestBaseOrigin(req: Request): string {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0]?.trim();
+  const forwardedHost = String(req.headers["x-forwarded-host"] ?? "").split(",")[0]?.trim();
+  const protocol = forwardedProto || req.protocol || "https";
+  const host = forwardedHost || req.get("host") || "localhost";
+  return `${protocol}://${host}`;
+}
+
+async function resolveMidia(
+  req: Request,
+  tenantId: string,
+  rawMidia: unknown,
+): Promise<ResolvedMidia | undefined> {
+  const parsed = midiaSchema.safeParse(rawMidia);
+  if (!parsed.success) return undefined;
+
+  if ("url" in parsed.data) return parsed.data;
+
+  const [asset] = await db
+    .select({
+      id: mediaAssetsTable.id,
+      storageUrl: mediaAssetsTable.storageUrl,
+      mimeType: mediaAssetsTable.mimeType,
+      originalFilename: mediaAssetsTable.originalFilename,
+    })
+    .from(mediaAssetsTable)
+    .where(
+      and(
+        eq(mediaAssetsTable.id, parsed.data.mediaAssetId),
+        eq(mediaAssetsTable.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!asset) throw new Error("MEDIA_ASSET_NOT_FOUND");
+  if (!asset.storageUrl?.startsWith("/objects/")) throw new Error("MEDIA_ASSET_NOT_INTERNAL");
+
+  return {
+    url: `${requestBaseOrigin(req)}/api/storage${asset.storageUrl}`,
+    objectPath: asset.storageUrl,
+    mimeType: asset.mimeType || "application/octet-stream",
+    fileName: asset.originalFilename || `midia-${asset.id}`,
+  };
+}
 
 router.post("/messages", async (req, res): Promise<void> => {
   const parsed = insertMessageSchema.safeParse(req.body);
@@ -35,12 +92,25 @@ router.post("/messages", async (req, res): Promise<void> => {
     res.status(422).json({ error: parsed.error.message });
     return;
   }
-  const midiaParsed = midiaSchema.safeParse(req.body?.midia);
-  const midia = midiaParsed.success ? midiaParsed.data : undefined;
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
+  }
+
+  let midia: ResolvedMidia | undefined;
+  try {
+    midia = await resolveMidia(req, parsed.data.tenantId, req.body?.midia);
+  } catch (error) {
+    if (error instanceof Error && error.message === "MEDIA_ASSET_NOT_FOUND") {
+      res.status(404).json({ error: "Mídia da Biblioteca não encontrada neste tenant." });
+      return;
+    }
+    if (error instanceof Error && error.message === "MEDIA_ASSET_NOT_INTERNAL") {
+      res.status(422).json({ error: "Esta mídia ainda não possui arquivo interno reutilizável no Object Storage." });
+      return;
+    }
+    throw error;
   }
 
   const { tenantId, leadId, canal, direcao, conteudo } = parsed.data;
