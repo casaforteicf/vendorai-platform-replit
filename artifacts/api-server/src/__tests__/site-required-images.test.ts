@@ -11,10 +11,16 @@ describe("site required images", () => {
       .toEqual(["https://cdn.test/a.jpg", "https://cdn.test/b.jpg"]);
   });
 
-  it("accepts URLs encoded with HTML ampersands", () => {
+  it("accepts URLs encoded with HTML ampersands inside img src", () => {
     const url = "https://cdn.test/a.jpg?x=1&y=2";
     const html = '<html><body><img src="https://cdn.test/a.jpg?x=1&amp;y=2"></body></html>';
     expect(findMissingRequiredImages(html, [url])).toEqual([]);
+  });
+
+  it("does not count a URL mentioned only in text or comments as an image in use", () => {
+    const url = "https://cdn.test/a.jpg";
+    const html = `<html><body><!-- ${url} --><p>${url}</p></body></html>`;
+    expect(findMissingRequiredImages(html, [url])).toEqual([url]);
   });
 
   it("injects every omitted attachment as visible site content", () => {
