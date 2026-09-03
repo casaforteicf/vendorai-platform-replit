@@ -53,7 +53,7 @@ export function assessMicrostructureQuality(snapshot:Awaited<ReturnType<typeof l
   if(reasons.some(r=>['MICROSTRUCTURE_EMPTY','LAST_TRADE_STALE','TRADE_SAMPLE_CRITICAL'].includes(r)))return {status:'BLOCKED',approved:false,reasons,freshnessMs,binding:true};
   if(snapshot.tradeCount<100)reasons.push('TRADE_SAMPLE_LOW');
   if(snapshot.window.durationSec>900)reasons.push('ACTIVITY_WINDOW_TOO_LONG');
-  if(snapshot.latest15s.tradeCount<3)reasons.push('LATEST_15S_THIN');
+  if((snapshot.latest15s?.tradeCount??0)<3)reasons.push('LATEST_15S_THIN');
   if(snapshot.microVolatilityPct>1.5)reasons.push('MICRO_VOLATILITY_EXTREME');
   return {status:reasons.length?'DEGRADED':'HEALTHY',approved:true,reasons:reasons.length?reasons:['MICROSTRUCTURE_HEALTHY'],freshnessMs,binding:true};
 }
