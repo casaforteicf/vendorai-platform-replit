@@ -8,6 +8,12 @@ import {
   type VendorAiMediaCapability,
 } from "../services/vendorai-media-engine.js";
 import {
+  MediaImageAssetNotFoundError,
+  MediaImageToolValidationError,
+  processVendorAiImageTool,
+  type VendorAiNativeImageOperation,
+} from "../services/vendorai-image-tools.js";
+import {
   synthesizeVendorAiVoice,
   VoiceConsentError,
   VoiceEngineNotReadyError,
@@ -16,6 +22,13 @@ import {
 
 const router: IRouter = Router();
 
+const NATIVE_IMAGE_OPERATIONS = new Set<VendorAiNativeImageOperation>([
+  "image_resize",
+  "image_crop",
+  "image_optimize",
+  "image_enhance",
+  "image_convert",
+]);
 const KNOWN_OPERATIONS = new Set<VendorAiMediaCapability>([
   "video_edit",
   "video_clips",
@@ -27,6 +40,15 @@ const KNOWN_OPERATIONS = new Set<VendorAiMediaCapability>([
   "persona_profile",
   "avatar_lipsync",
   "video_generate",
+  "image_resize",
+  "image_crop",
+  "image_optimize",
+  "image_enhance",
+  "image_convert",
+  "image_remove_background",
+  "image_variations",
+  "photo_video",
+  "media_batch",
 ]);
 const IDENTITY_KINDS = new Set(["person", "persona"]);
 const IDENTITY_STATUSES = new Set(["draft", "active", "blocked", "archived"]);
@@ -358,6 +380,45 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/authorize", 
   }));
   const missingScopes = checks.filter((check) => !check.authorized).map((check) => check.scope);
   res.json({ identityId, authorized: missingScopes.length === 0, scopes: checks, missingScopes });
+});
+
+router.post("/tenants/:tenantId/media-engine/image-tools", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const operation = String(req.body?.operation ?? "") as VendorAiNativeImageOperation;
+  const assetId = nonEmptyString(req.body?.assetId);
+  const title = nonEmptyString(req.body?.title) ?? "Tratamento de imagem";
+  const options = asRecord(req.body?.options);
+
+  if (!NATIVE_IMAGE_OPERATIONS.has(operation)) {
+    res.status(422).json({ error: "Operação nativa de imagem inválida" });
+    return;
+  }
+  if (!assetId) {
+    res.status(422).json({ error: "assetId é obrigatório" });
+    return;
+  }
+
+  try {
+    const result = await processVendorAiImageTool({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      assetId,
+      title,
+      operation,
+      options,
+    });
+    res.status(201).json({ ...result, provider: "vendorai" });
+  } catch (error) {
+    if (error instanceof MediaImageAssetNotFoundError) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+    if (error instanceof MediaImageToolValidationError) {
+      res.status(422).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.post("/tenants/:tenantId/media-engine/jobs", async (req, res) => {
