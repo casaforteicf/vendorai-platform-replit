@@ -13,7 +13,6 @@ import {
   supermercadoProdutoTable,
   insumosTable,
   subscriptionsTable,
-  instagramConnectionsTable,
 } from "@workspace/db";
 import {
   generateFeedContent,
@@ -27,35 +26,12 @@ import {
   describeImage,
   improveVariationText,
 } from "../lib/content-generation.js";
-import { InstagramApiError, publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
+import { InstagramApiError } from "../lib/instagram-publish.js";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
-import { ObjectStorageService } from "../lib/objectStorage.js";
-import { registerPublishedPost, buildOwnPerformancePromptBlock } from "../services/content-performance.js";
-import type { FeedVariation, StoriesVariation } from "@workspace/db";
+import { publishContentGenerationToInstagram, SocialPublicationError } from "../services/contentSocialPublisher.js";
+import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
 
 const router: IRouter = Router();
-const contentObjectStorage = new ObjectStorageService();
-
-async function resolveInstagramMediaUrl(rawUrl: string): Promise<string> {
-  const parsed = new URL(rawUrl, "https://vendorai.local");
-  const storagePrefixes = ["/api/storage/objects/", "/storage/objects/"];
-  const storagePrefix = storagePrefixes.find((prefix) => parsed.pathname.startsWith(prefix));
-
-  if (storagePrefix) {
-    const entityPath = `/objects/${decodeURIComponent(parsed.pathname.slice(storagePrefix.length))}`;
-    const objectFile = await contentObjectStorage.getObjectEntityFile(entityPath);
-    return objectFile.getPublicUrl();
-  }
-
-  if (/^https:\/\//i.test(rawUrl)) return rawUrl;
-
-  const publicBase = (
-    process.env["FRONTEND_APP_URL"] ||
-    process.env["APP_URL"] ||
-    "https://app.appvendorai.com"
-  ).replace(/\/$/, "");
-  return new URL(rawUrl, `${publicBase}/`).toString();
-}
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 20,
@@ -517,109 +493,21 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     return;
   }
 
-  const [gen] = await db
-    .select()
-    .from(contentGenerationsTable)
-    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
-    .limit(1);
-
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
-  if (gen.type === "reels") {
-    res.status(400).json({ error: "Publicação de Reels ainda não é suportada via API." });
-    return;
-  }
-
-  const generatedVariations = Array.isArray(gen.result?.variations) ? gen.result.variations : [];
-  const variation = generatedVariations[body.data.variationIndex];
-  if (!variation) {
-    res.status(400).json({ error: "Este conteúdo antigo não possui uma variação publicável. Gere uma nova versão." });
-    return;
-  }
-
-  const imageUrl = (variation as { imageUrl?: string }).imageUrl;
-  if (!imageUrl) {
-    res.status(400).json({
-      error: "Imagem não disponível. Imagens do DALL-E expiram em ~1h após a geração — regere o conteúdo para publicar.",
-    });
-    return;
-  }
-
-  // A publicação usa primeiro a conexão OAuth direta atual. O fallback
-  // legado preserva tenants antigos durante a migração, sem exigir que o
-  // usuário copie Page Access Token ou Page ID manualmente.
-  const [[directConnection], [legacyConfig]] = await Promise.all([
-    db
-      .select({
-        accessToken: instagramConnectionsTable.pageAccessToken,
-        accountId: instagramConnectionsTable.accountId,
-        disconnectedAt: instagramConnectionsTable.disconnectedAt,
-        tokenExpiresAt: instagramConnectionsTable.tokenExpiresAt,
-      })
-      .from(instagramConnectionsTable)
-      .where(eq(instagramConnectionsTable.tenantId, tenantId))
-      .limit(1),
-    db
-      .select({
-        accessToken: agentConfigsTable.instagramPageAccessToken,
-        accountId: agentConfigsTable.instagramPageId,
-      })
-      .from(agentConfigsTable)
-      .where(eq(agentConfigsTable.tenantId, tenantId))
-      .limit(1),
-  ]);
-
-  const directTokenExpired = Boolean(
-    directConnection?.tokenExpiresAt && directConnection.tokenExpiresAt <= new Date(),
-  );
-  const directPublishReady = Boolean(
-    directConnection && !directConnection.disconnectedAt && !directTokenExpired,
-  );
-  const instagramAccessToken = directPublishReady ? directConnection?.accessToken : null;
-  const instagramAccountId = directPublishReady ? directConnection?.accountId : null;
-  const publishAccessToken = instagramAccessToken || legacyConfig?.accessToken;
-  const publishAccountId = instagramAccountId || legacyConfig?.accountId;
-
-  if (!publishAccessToken || !publishAccountId) {
-    res.status(400).json({
-      error: directTokenExpired
-        ? "A conexão do Instagram expirou. Reconecte a conta em Configurações → Integrações."
-        : "Instagram sem credenciais de publicação. Reconecte sua conta profissional em Configurações → Integrações.",
-    });
-    return;
-  }
-
   try {
-    const publicImageUrl = await resolveInstagramMediaUrl(imageUrl);
-    let postId: string;
-    if (gen.type === "feed") {
-      const v = variation as FeedVariation;
-      const caption = body.data.captionOverride ?? `${v.caption}\n\n${(v.hashtags ?? []).join(" ")}`;
-      postId = await publishFeedPost(publishAccountId, publishAccessToken, caption, publicImageUrl, req.log);
-      await registerPublishedPost({
-        tenantId,
-        contentGenerationId: gen.id,
-        variationIndex: body.data.variationIndex,
-        instagramMediaId: postId,
-        contentType: "feed",
-        theme: gen.theme,
-        captionOuTexto: caption,
-      }).catch((err) => req.log.error({ err }, "content-performance: falha ao registrar post publicado"));
-    } else {
-      const v = variation as StoriesVariation;
-      postId = await publishStoriesPost(publishAccountId, publishAccessToken, publicImageUrl, req.log);
-      await registerPublishedPost({
-        tenantId,
-        contentGenerationId: gen.id,
-        variationIndex: body.data.variationIndex,
-        instagramMediaId: postId,
-        contentType: "stories",
-        theme: gen.theme,
-        captionOuTexto: v.text,
-      }).catch((err) => req.log.error({ err }, "content-performance: falha ao registrar post publicado"));
-    }
-    res.json({ success: true, postId });
+    const published = await publishContentGenerationToInstagram({
+      tenantId,
+      contentId,
+      variationIndex: body.data.variationIndex,
+      captionOverride: body.data.captionOverride,
+      log: req.log,
+    });
+    res.json({ success: true, postId: published.postId, contentType: published.contentType });
   } catch (err) {
     req.log.error({ err }, "instagram-publish: route failed");
+    if (err instanceof SocialPublicationError) {
+      res.status(err.status).json({ code: "INSTAGRAM_CONTENT_NOT_READY", error: err.message });
+      return;
+    }
     if (err instanceof InstagramApiError) {
       const metaCode = err.graph?.code;
       const tokenInvalid = metaCode === 190;
@@ -786,6 +674,10 @@ router.post("/tenants/:tenantId/content/improve", async (req, res) => {
   if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
   try {
     const { type, variation, theme } = parsed.data;
+    if (type === "tiktok") {
+      res.status(422).json({ error: "Melhoria de texto para TikTok ainda não é suportada por este motor." });
+      return;
+    }
     const { variation: improved, tokensUsed } = await improveVariationText(
       tenantId, type, variation as Parameters<typeof improveVariationText>[2], theme ?? undefined,
     );

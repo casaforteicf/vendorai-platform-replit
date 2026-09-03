@@ -36,6 +36,25 @@ async function gFetch(url: string, init?: RequestInit): Promise<unknown> {
   return json;
 }
 
+async function waitForVideoContainer(containerId: string, token: string, log: Logger): Promise<void> {
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    const url = new URL(`${GRAPH}/${encodeURIComponent(containerId)}`);
+    url.searchParams.set("fields", "status_code,status");
+    url.searchParams.set("access_token", token);
+    const status = (await gFetch(url.toString())) as { status_code?: string; status?: string };
+
+    if (status.status_code === "FINISHED") return;
+    if (status.status_code === "ERROR" || status.status_code === "EXPIRED") {
+      throw new InstagramApiError(status.status || "O Instagram não conseguiu processar o vídeo do Reel.", 422);
+    }
+
+    log.info({ containerId, attempt, statusCode: status.status_code }, "instagram-publish: waiting for reel processing");
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  }
+
+  throw new InstagramApiError("O Instagram demorou demais para processar o vídeo do Reel. Tente novamente.", 504);
+}
+
 export async function publishFeedPost(
   instagramAccountId: string,
   token: string,
@@ -86,5 +105,38 @@ export async function publishStoriesPost(
   })) as { id: string };
 
   log.info({ postId: published.id }, "instagram-publish: stories post published");
+  return published.id;
+}
+
+export async function publishReelPost(
+  instagramAccountId: string,
+  token: string,
+  caption: string,
+  videoUrl: string,
+  log: Logger,
+): Promise<string> {
+  log.info({ instagramAccountId }, "instagram-publish: creating reel media container");
+
+  const container = (await gFetch(`${GRAPH}/${encodeURIComponent(instagramAccountId)}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      media_type: "REELS",
+      video_url: videoUrl,
+      caption,
+      share_to_feed: "true",
+      access_token: token,
+    }).toString(),
+  })) as { id: string };
+
+  await waitForVideoContainer(container.id, token, log);
+
+  const published = (await gFetch(`${GRAPH}/${encodeURIComponent(instagramAccountId)}/media_publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ creation_id: container.id, access_token: token }).toString(),
+  })) as { id: string };
+
+  log.info({ postId: published.id }, "instagram-publish: reel published");
   return published.id;
 }

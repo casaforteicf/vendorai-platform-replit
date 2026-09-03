@@ -1,25 +1,34 @@
 /**
  * Job diário do Content Autopilot — roda a cadeia completa para tenants cuja
- * automação está habilitada, sempre consumindo somente keywords aprovadas.
+ * automação está habilitada.
  *
  * Modos persistidos:
  * - suggestion: não gera nem publica automaticamente;
- * - semi: gera + otimiza + cria rascunho para aprovação humana;
- * - automatic: gera + otimiza + publica no site próprio, mas somente a partir
- *   de keyword explicitamente aprovada.
+ * - semi: gera + otimiza usando keywords aprovadas e mantém revisão humana;
+ * - automatic: a autorização específica do Marketing permite que a IA escolha
+ *   oportunidades descobertas, gere, otimize e publique sem aprovação manual.
  */
-import { db, contentAutopilotConfigTable, contentAutopilotKeywordsTable, contentAutopilotRunsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import {
+  contentAutopilotConfigTable,
+  contentAutopilotKeywordsTable,
+  contentAutopilotRunsTable,
+  db,
+} from "@workspace/db";
+import { and, desc, eq, or } from "drizzle-orm";
 import type { Logger } from "pino";
 import { generateArticle } from "./contentAutopilotCriador.js";
 import { optimizeArticle } from "./contentAutopilotOtimizador.js";
 import { publishToNativeSite } from "./contentAutopilotPublicador.js";
+import { createAndPublishAutonomousFeed } from "./contentSocialPublisher.js";
 
 export async function processTenant(tenantId: string, log: Logger): Promise<{ artigosGerados: number; erros: string[] }> {
   const erros: string[] = [];
   let artigosGerados = 0;
 
-  const [config] = await db.select().from(contentAutopilotConfigTable).where(eq(contentAutopilotConfigTable.tenantId, tenantId));
+  const [config] = await db
+    .select()
+    .from(contentAutopilotConfigTable)
+    .where(eq(contentAutopilotConfigTable.tenantId, tenantId));
   if (!config) return { artigosGerados: 0, erros: [] };
 
   const automationMode = config.automationMode ?? (config.ativo ? "semi" : "suggestion");
@@ -33,15 +42,28 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
     return { artigosGerados: 0, erros: [] };
   }
 
+  const autonomousPublishing = automationMode === "automatic";
+  const statusFilter = autonomousPublishing
+    ? or(
+        eq(contentAutopilotKeywordsTable.status, "aprovada"),
+        eq(contentAutopilotKeywordsTable.status, "descoberta"),
+      )
+    : eq(contentAutopilotKeywordsTable.status, "aprovada");
+
   const keywords = await db
     .select()
     .from(contentAutopilotKeywordsTable)
-    .where(and(eq(contentAutopilotKeywordsTable.tenantId, tenantId), eq(contentAutopilotKeywordsTable.status, "aprovada")))
+    .where(and(eq(contentAutopilotKeywordsTable.tenantId, tenantId), statusFilter))
     .orderBy(desc(contentAutopilotKeywordsTable.volumeBusca))
     .limit(config.artigosPorDia);
 
   if (keywords.length === 0) {
-    log.info({ tenantId, automationMode }, "content-autopilot/job: nenhuma keyword aprovada disponível");
+    log.info(
+      { tenantId, automationMode },
+      autonomousPublishing
+        ? "content-autopilot/job: nenhuma oportunidade descoberta/aprovada disponível"
+        : "content-autopilot/job: nenhuma keyword aprovada disponível",
+    );
     return { artigosGerados: 0, erros: [] };
   }
 
@@ -51,13 +73,37 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
       await optimizeArticle(tenantId, articleId, keyword.termo);
 
       if (config.canalPublicacao === "site_proprio") {
-        await publishToNativeSite(tenantId, articleId, { publish: automationMode === "automatic" });
+        await publishToNativeSite(tenantId, articleId, { publish: autonomousPublishing });
+      }
+
+      let social: Awaited<ReturnType<typeof createAndPublishAutonomousFeed>> | null = null;
+      if (autonomousPublishing) {
+        social = await createAndPublishAutonomousFeed({
+          tenantId,
+          theme: keyword.termo,
+          log,
+        });
+        if (social.warning) {
+          log.warn(
+            { tenantId, articleId, contentGenerationId: social.contentGenerationId, warning: social.warning },
+            "content-autopilot/job: conteúdo social preparado com ressalva",
+          );
+        }
       }
 
       artigosGerados++;
       log.info(
-        { tenantId, keywordId: keyword.id, articleId, automationMode, autoPublished: automationMode === "automatic" && config.canalPublicacao === "site_proprio" },
-        "content-autopilot/job: artigo processado com sucesso",
+        {
+          tenantId,
+          keywordId: keyword.id,
+          articleId,
+          automationMode,
+          autoPublishedSite: autonomousPublishing && config.canalPublicacao === "site_proprio",
+          socialContentGenerationId: social?.contentGenerationId ?? null,
+          instagramPublished: social?.published ?? false,
+          instagramPostId: social?.postId ?? null,
+        },
+        "content-autopilot/job: conteúdo processado com sucesso",
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
