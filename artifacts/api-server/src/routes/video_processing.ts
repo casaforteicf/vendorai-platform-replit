@@ -7,13 +7,11 @@ import { writeFile, readFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { objectStorageClient } from "../lib/objectStorage.js";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { transcribeAudioWithWordTimestamps, type TranscriptionWord } from "../lib/ai-gateway.js";
 import {
   createMediaJob,
   getMediaJob,
   updateMediaJob,
-  type MediaJobResultItem,
 } from "../services/media-jobs.js";
 import {
   createProcessingMediaProject,
@@ -25,13 +23,7 @@ const execFileAsync = promisify(execFile);
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
-const HEYGEN_BASE    = "https://api.heygen.com";
-const HEYGEN_API_KEY = process.env["HEYGEN_API_KEY"];
 const PRIVATE_DIR    = process.env["PRIVATE_OBJECT_DIR"] ?? "";
-
-function heygenHeaders(extra: Record<string, string> = {}) {
-  return { "X-Api-Key": HEYGEN_API_KEY ?? "", ...extra };
-}
 
 function authCheck(req: Parameters<Parameters<typeof router.post>[1]>[0], res: Parameters<Parameters<typeof router.post>[1]>[1]): boolean {
   const tenantId = String(req.params["tenantId"]);
@@ -305,118 +297,16 @@ router.post(
 );
 
 // ── Vídeo em lote ─────────────────────────────────────────────────────────────
-
-interface BatchItem { name: string; topic: string; script?: string }
-
+// O lote será reativado quando video_generate, voice_profile e persona_profile
+// próprios estiverem prontos no VendorAI Media Engine.
 router.post("/tenants/:tenantId/content-studio/video/batch", async (req, res) => {
   if (!authCheck(req, res)) return;
-  if (!HEYGEN_API_KEY) { res.status(503).json({ error: "HEYGEN_API_KEY não configurada" }); return; }
-
-  const tenantId = String(req.params["tenantId"]);
-  const { items, avatarId, voiceId = "pt-BR-FranciscaNeural", quality = "720p", autoScript = true } = req.body as {
-    items?: BatchItem[]; avatarId?: string; voiceId?: string; quality?: string; autoScript?: boolean;
-  };
-
-  if (!items?.length || !avatarId) {
-    res.status(422).json({ error: "items e avatarId são obrigatórios" }); return;
-  }
-  if (items.length > 20) { res.status(422).json({ error: "Máx. 20 vídeos por lote" }); return; }
-
-  const jobId = randomUUID();
-  const results: MediaJobResultItem[] = items.map((it) => ({ name: it.name, status: "pending" }));
-  await createMediaJob({
-    id: jobId,
-    tenantId,
+  res.status(409).json({
+    error: "Vídeo em lote está sendo migrado para o VendorAI Media Engine próprio.",
+    provider: "vendorai",
     operation: "video_batch",
-    provider: "heygen",
-    input: { itemCount: items.length, avatarId, voiceId, quality, autoScript },
-    snapshot: { status: "running", progress: 0, total: items.length, results },
+    status: "building",
   });
-  res.json({ jobId });
-
-  const dimension = quality === "1080p" ? { width: 1920, height: 1080 } : { width: 1280, height: 720 };
-
-  void (async () => {
-    let done = 0;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]!;
-      results[i]!.status = "generating";
-      await updateMediaJob(jobId, tenantId, {
-        status: "running",
-        progress: done,
-        total: items.length,
-        results: [...results],
-      });
-
-      try {
-        let script = item.script?.trim() || "";
-
-        if (autoScript && !script) {
-          const msg = await anthropic.messages.create({
-            model: "claude-3-haiku-20240307",
-            max_tokens: 300,
-            messages: [{
-              role: "user",
-              content: `Escreva um script de vídeo de 30 segundos personalizado para ${item.name} sobre o tópico: "${item.topic}". Tom: profissional e direto. Máx. 200 palavras.`,
-            }],
-          });
-          script = (msg.content[0] as { type: string; text?: string }).text ?? item.topic;
-        }
-
-        if (!script) script = item.topic;
-
-        // Geração atual preservada via HeyGen. O Media Engine passa a registrar
-        // o provider; a troca por um worker próprio entra em PR separado.
-        const vidRes = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
-          method: "POST",
-          headers: heygenHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({
-            video_inputs: [{
-              character: { type: "avatar", avatar_id: avatarId, avatar_style: "normal" },
-              voice: { type: "text", input_text: script.substring(0, 1500), voice_id: voiceId },
-            }],
-            dimension,
-          }),
-        });
-        const vidData = await vidRes.json() as { data?: { video_id?: string }; error?: string };
-        if (!vidRes.ok || !vidData.data?.video_id) throw new Error(vidData.error ?? "Falha ao gerar vídeo");
-
-        // Poll until done (max 10 min per video)
-        const videoId = vidData.data.video_id;
-        let videoUrl = "";
-        for (let poll = 0; poll < 120; poll++) {
-          await new Promise((r) => setTimeout(r, 5000));
-          const stRes  = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${videoId}`, { headers: heygenHeaders() });
-          const stData = await stRes.json() as { data?: { status?: string; video_url?: string; error?: string }; error?: string };
-          if (stData.data?.status === "completed") { videoUrl = stData.data.video_url ?? ""; break; }
-          if (stData.data?.status === "failed") throw new Error(stData.data.error ?? "Geração falhou");
-        }
-
-        results[i]!.status  = "done";
-        results[i]!.videoUrl = videoUrl;
-      } catch (err) {
-        results[i]!.status = "error";
-        results[i]!.error  = err instanceof Error ? err.message : "Erro";
-      }
-
-      done++;
-      await updateMediaJob(jobId, tenantId, {
-        status: "running",
-        progress: done,
-        total: items.length,
-        results: [...results],
-      });
-    }
-
-    const anyError = results.some((r) => r.status === "error");
-    await updateMediaJob(jobId, tenantId, {
-      status: anyError ? "error" : "done",
-      progress: done,
-      total: items.length,
-      results,
-      ...(anyError ? { error: "Um ou mais vídeos do lote falharam" } : {}),
-    }).catch(() => undefined);
-  })();
 });
 
 // ── Legendagem automática ─────────────────────────────────────────────────────

@@ -21,8 +21,8 @@ const CARDS: VideoCard[] = [
     gradient: "from-purple-600/30 via-violet-500/20 to-purple-900/10",
     iconBg: "bg-purple-500/20 text-purple-300",
     route: "/content-studio/video/avatar",
-    badge: "Disponível",
-    badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+    badge: "Em construção",
+    badgeColor: "bg-gray-500/20 text-gray-300 border-gray-500/30",
   },
   {
     title: "Vídeo de Produto",
@@ -71,8 +71,8 @@ const CARDS: VideoCard[] = [
     gradient: "from-blue-600/30 via-indigo-500/20 to-blue-900/10",
     iconBg: "bg-blue-500/20 text-blue-300",
     route: "/content-studio/video/lote",
-    badge: "Disponível",
-    badgeColor: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    badge: "Em construção",
+    badgeColor: "bg-gray-500/20 text-gray-300 border-gray-500/30",
   },
 ];
 
