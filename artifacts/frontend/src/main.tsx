@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import SubdomainSite from "./SubdomainSite";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
 import { MediaMenuInjector } from "./components/media/MediaMenuInjector";
 import "./index.css";
 import "./site-generator-fix.css";
@@ -44,6 +45,7 @@ createRoot(document.getElementById("root")!).render(
       <SubdomainSite slug={tenantSlugForSite} />
     ) : (
       <>
+        <FrontendRecoveryGuard />
         <App />
         <MediaMenuInjector />
       </>
@@ -51,10 +53,7 @@ createRoot(document.getElementById("root")!).render(
   </ErrorBoundary>,
 );
 
-// PWA — só registra pro CRM em si (não pro site público do lojista) e só em
-// produção, pra não gerar cache confuso durante o desenvolvimento local.
-if (import.meta.env.PROD && !tenantSlugForSite && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
-  });
-}
+// O CRM não registra mais service worker. Este produto recebe deploys frequentes e
+// não oferece modo offline, então manter um worker controlando a sessão só aumenta
+// a superfície para estado antigo de frontend. FrontendRecoveryGuard também remove
+// registros legados já instalados no navegador.
