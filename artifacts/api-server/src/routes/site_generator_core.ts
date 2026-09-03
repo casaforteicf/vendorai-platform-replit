@@ -52,8 +52,6 @@ function injectTenantMarketingTags(
     : tagsBlock + html;
 }
 
-// The database is the source of truth. This set only prevents the same API
-// process from resuming one pending job more than once concurrently.
 type GenerationJob =
   | { status: "pending"; createdAt: number }
   | { status: "done"; result: Record<string, unknown>; createdAt: number }
@@ -73,10 +71,8 @@ async function persistGenerationJob(jobId: string, job: GenerationJob) {
     .where(eq(siteGenerationJobsTable.id, jobId));
 }
 
-// ─── Public router (no auth) — serves generated HTML sites ───────────────────
 export const publicSiteGeneratorRouter: IRouter = Router();
 
-// GET /sites/:siteSlug — serve published site by unique subdomain slug
 publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
   const { siteSlug } = req.params;
 
@@ -115,11 +111,6 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
 publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) => {
   const { tenantSlug } = req.params;
 
-  // 1) Try resolving as a specific generated site's own slug first
-  //    (e.g. "windoor-representacoes-lp") — each generated site now gets
-  //    its own subdomain, so this is the primary lookup, and it lets a
-  //    tenant have several sites live at the same time, each with its
-  //    own working address.
   const [siteBySlug] = await db
     .select({
       html: generatedSitesTable.html,
@@ -147,9 +138,6 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
     return;
   }
 
-  // 2) Fallback: legacy tenant-level lookup — most recently published
-  //    site for this tenant, addressed by the tenant's own subdomain
-  //    (kept for sites created before per-site slugs became routable).
   const [tenant] = await db
     .select({ id: tenantsTable.id, googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId })
     .from(tenantsTable)
@@ -194,14 +182,12 @@ const TONE_LABELS: Record<string, string> = {
   descontraido: "descontraído e criativo",
 };
 
-// ── Slug generation ────────────────────────────────────────────────────────────
-
 function toSlugBase(name: string): string {
   return name
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")   // strip accents
-    .replace(/[^a-z0-9\s-]/g, "")      // keep alphanum, space, hyphen
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
     .trim()
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
@@ -217,7 +203,6 @@ const SITE_TYPE_SUFFIX: Record<string, string> = {
 
 async function generateUniqueSiteSlug(name: string, type: string): Promise<string> {
   const base = toSlugBase(name) + (SITE_TYPE_SUFFIX[type] ?? "");
-  // Check for conflict; if taken, append 4 random hex chars
   const [existing] = await db
     .select({ id: generatedSitesTable.id })
     .from(generatedSitesTable)
@@ -248,7 +233,6 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
   const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos, headline, nicheName, productNames = [] } = config;
   const waNumber = whatsapp?.replace(/\D/g, "") || "5511999999999";
 
-  // Instagram: normaliza handle (remove @ e espaços), monta URL e bloco HTML do ícone
   const igHandle = instagram?.replace(/^@/, "").replace(/\s/g, "") || "";
   const igUrl = igHandle ? `https://instagram.com/${igHandle}` : "";
   const igIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>`;
@@ -256,7 +240,6 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
     ? `<a href="${igUrl}" target="_blank" rel="noopener" aria-label="Instagram @${igHandle}" style="display:inline-flex;align-items:center;gap:6px;color:inherit;text-decoration:none;opacity:0.75;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">${igIconSvg}<span style="font-size:0.85rem">@${igHandle}</span></a>`
     : "";
 
-  // Logo HTML block: real image if available, fallback to initial-in-circle
   const logoHtml = logoUrl
     ? `<img src="${logoUrl}" alt="${name}" style="height:40px;width:auto;max-width:160px;object-fit:contain;display:block">`
     : `<span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--primary);color:var(--btn-text);font-weight:800;font-size:1.1rem">${name.charAt(0).toUpperCase()}</span>`;
@@ -315,11 +298,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 
   const hasRealImages = products.some((p) => p.imageUrl);
   const imagesBlock = images.length > 0
-    ? `\
-FOTOS REAIS DA EMPRESA — USO OBRIGATÓRIO (${images.length} foto${images.length > 1 ? "s" : ""}):\
-${images.map((url, i) => `- Foto ${i + 1}: ${url}`).join("\
-")}\
-REGRA INEGOCIÁVEL: cada URL acima deve aparecer pelo menos uma vez no HTML final, em uma tag <img src="URL_EXATA"> visível. Use TODAS as fotos anexadas, sem omitir, substituir, inventar URL externa ou usar apenas uma parte delas. Distribua-as naturalmente entre hero, galeria, serviços ou sobre. Antes de responder, confira uma a uma as ${images.length} URLs. Tag sugerida: <img src="URL_AQUI" alt="${name}" loading="lazy" style="width:100%;height:240px;object-fit:cover;border-radius:12px">`
+    ? `\nFOTOS REAIS DA EMPRESA — USO OBRIGATÓRIO (${images.length} foto${images.length > 1 ? "s" : ""}):\n${images.map((url, i) => `- Foto ${i + 1}: ${url}`).join("\n")}\nREGRA INEGOCIÁVEL: cada URL acima deve aparecer pelo menos uma vez no HTML final, em uma tag <img src="URL_EXATA"> visível. Use TODAS as fotos anexadas, sem omitir, substituir, inventar URL externa ou usar apenas uma parte delas. Distribua-as naturalmente entre hero, galeria, serviços ou sobre. Antes de responder, confira uma a uma as ${images.length} URLs. Tag sugerida: <img src="URL_AQUI" alt="${name}" loading="lazy" style="width:100%;height:240px;object-fit:cover;border-radius:12px">`
     : "";
 
   function videoEmbedHtml(url: string): string {
@@ -330,21 +309,14 @@ REGRA INEGOCIÁVEL: cada URL acima deve aparecer pelo menos uma vez no HTML fina
     return `<video src="${url}" controls preload="metadata" style="width:100%;border-radius:var(--radius);display:block" playsinline></video>`;
   }
   const videosBlock = videos.length > 0
-    ? `\
-VÍDEOS FORNECIDOS PELO CLIENTE (${videos.length} — USE-OS, é conteúdo real, não decorativo):\
-${videos.map((url, i) => `- Vídeo ${i + 1}: ${url} → HTML pronto: ${videoEmbedHtml(url)}`).join("\
-")}\
-Decida ONDE cada vídeo faz mais sentido (hero como demonstração ao vivo, seção "veja em ação", depoimento em vídeo) — cole o HTML pronto acima exatamente como está, sem reescrever a tag.`
+    ? `\nVÍDEOS FORNECIDOS PELO CLIENTE (${videos.length} — USE-OS, é conteúdo real, não decorativo):\n${videos.map((url, i) => `- Vídeo ${i + 1}: ${url} → HTML pronto: ${videoEmbedHtml(url)}`).join("\n")}\nDecida ONDE cada vídeo faz mais sentido (hero como demonstração ao vivo, seção "veja em ação", depoimento em vídeo) — cole o HTML pronto acima exatamente como está, sem reescrever a tag.`
     : "";
   const servicosBlock = servicos
-    ? `\
-Serviços/produtos principais: ${servicos}`
+    ? `\nServiços/produtos principais: ${servicos}`
     : "";
   const productsBlock =
     type === "ecommerce" && products.length
-      ? `\
-PRODUTOS DO ESTOQUE (${products.length} itens — use EXATAMENTE estes produtos, na mesma ordem):\
-${products.map((p) => {
+      ? `\nPRODUTOS DO ESTOQUE (${products.length} itens — use EXATAMENTE estes produtos, na mesma ordem):\n${products.map((p) => {
           const img = p.imageUrl ? ` | imagem: ${p.imageUrl}` : "";
           const desc = p.description ? ` | ${p.description}` : "";
           const marca = p.marca ? ` | Marca: ${p.marca}` : "";
@@ -352,8 +324,7 @@ ${products.map((p) => {
           const stock = p.inStock !== undefined ? (p.inStock ? ` | ✓ em estoque (${p.stockQty ?? ""})` : " | ✗ fora de estoque") : "";
           const feat = p.featured ? " ⭐DESTAQUE" : "";
           return `- ${p.name}${feat} | ${p.price}${desc}${marca}${sku}${stock}${img}`;
-        }).join("\
-")}`
+        }).join("\n")}`
       : "";
 
   const produtoFocoBlock =
@@ -379,13 +350,7 @@ ${products.map((p) => {
             p.quantidadePacote && `Peças por pacote: ${p.quantidadePacote}`,
             p.precoPacote && `Preço do pacote: R$ ${p.precoPacote}`,
           ].filter(Boolean).join(" | ");
-          return `\
-PRODUTO EM FOCO — esta página deve vender EXCLUSIVAMENTE este produto, não a empresa como um todo:\
-Nome: ${p.name}\
-Preço: ${p.price}${p.description ? `\
-Descrição: ${p.description}` : ""}${specs ? `\
-Especificações reais (use exatamente estes dados, não invente números): ${specs}` : ""}${p.imageUrl ? `\
-Imagem real do produto (use-a, não invente outra): ${p.imageUrl}` : ""}`;
+          return `\nPRODUTO EM FOCO — esta página deve vender EXCLUSIVAMENTE este produto, não a empresa como um todo:\nNome: ${p.name}\nPreço: ${p.price}${p.description ? `\nDescrição: ${p.description}` : ""}${specs ? `\nEspecificações reais (use exatamente estes dados, não invente números): ${specs}` : ""}${p.imageUrl ? `\nImagem real do produto (use-a, não invente outra): ${p.imageUrl}` : ""}`;
         })()
       : "";
 
@@ -459,8 +424,7 @@ Maior dor do cliente-alvo: ${pain || "ineficiência e falta de resultados"}
 Tom de voz: ${TONE_LABELS[tone] || tone}
 Cor-âncora escolhida pelo cliente (use como base da paleta, é uma decisão dele — não ignore, mas também não a trate como a única cor do site): ${color} (RGB: ${rgb})
 CTA principal: ${ctaText}
-WhatsApp de contato: wa.me/${waNumber}${igHandle ? `\
-Instagram: ${igUrl} (handle: @${igHandle})` : ""}
+WhatsApp de contato: wa.me/${waNumber}${igHandle ? `\nInstagram: ${igUrl} (handle: @${igHandle})` : ""}
 ${productsBlock}${produtoFocoBlock}${imagesBlock}${videosBlock}
 
 ═══════════════════════════════════════
@@ -471,8 +435,7 @@ Antes de gerar o HTML, monte mentalmente um plano de design compacto específico
 
 1. PALETA — descreva 4 a 6 cores nomeadas em hex, ancoradas na cor escolhida pelo cliente (${color}) mas expandidas com intenção: uma cor de destaque/acento que conversa com ela, tons de fundo que fazem sentido pro setor "${sector || name}" (nem sempre branco+cinza-claro é a resposta certa — considere se um fundo mais quente, mais escuro ou mais saturado serve melhor a esse negócio específico).
 2. TIPOGRAFIA — escolha DENTRE OS PARES ABAIXO (são os únicos com URL do Google Fonts verificada — não invente outro par) o que melhor caracteriza ESTE negócio, não apenas o "tom" genérico:
-${Object.entries(FONT_PAIRS).map(([key, f]) => `   - "${key}": display ${f.display} + corpo ${f.body}`).join("\
-")}
+${Object.entries(FONT_PAIRS).map(([key, f]) => `   - "${key}": display ${f.display} + corpo ${f.body}`).join("\n")}
    Tom sugerido pelo cliente: "${tone}" — mas escolha o par que melhor serve o SETOR e a PERSONALIDADE do negócio, não só o tom em isolado. Justifique mentalmente a escolha antes de seguir.
 3. ASSINATURA — qual é o UM elemento visual memorável desse site, específico pro mundo desse negócio (não genérico)? Pode ser a forma do hero, um padrão decorativo, um jeito particular de mostrar números, etc. Gaste sua ousadia nesse UM lugar; mantenha o resto disciplinado.
 
@@ -569,8 +532,7 @@ QUALIDADE OBRIGATÓRIA:
 ✓ 100% responsivo — mobile impecável
 ✓ Smooth scroll, hover states, animações sutis
 ✓ Formulário de contato com validação JS básica (campos obrigatórios)
-✓ WhatsApp CTA abre wa.me/${waNumber}${igHandle ? `\
-✓ Instagram no footer: link clicável para ${igUrl} com ícone SVG inline e @${igHandle}` : ""}
+✓ WhatsApp CTA abre wa.me/${waNumber}${igHandle ? `\n✓ Instagram no footer: link clicável para ${igUrl} com ícone SVG inline e @${igHandle}` : ""}
 ✓ Acessibilidade: alt em imagens, aria-labels, foco visível
 
 REVISÃO FINAL OBRIGATÓRIA ANTES DE RESPONDER:
@@ -608,7 +570,6 @@ function extractHtml(text: string): string {
   return extractHtmlDocument(text);
 }
 
-/** Safe wrapper that logs for debugging */
 function extractHtmlSafe(text: string, log: { info: (obj: object, msg: string) => void }): string {
   const rawPreview = text.slice(0, 200).replace(/\n/g, "\\n");
   const html = extractHtml(text);
@@ -625,7 +586,6 @@ function htmlChanged(before: string, after: string): boolean {
   return normalize(before) !== normalize(after);
 }
 
-// Unified AI caller with provider logging
 type AiMessage = { role: "user" | "assistant"; content: string };
 
 async function callAI(
@@ -648,15 +608,9 @@ async function callAI(
       const chunks: string[] = [];
       let stopReason: string | null = null;
       for await (const event of stream) {
-        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-          chunks.push(event.delta.text);
-        }
-        if (event.type === "message_stop") {
-          stopReason = "end_turn";
-        }
-        if (event.type === "message_delta" && event.delta?.stop_reason) {
-          stopReason = event.delta.stop_reason;
-        }
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") chunks.push(event.delta.text);
+        if (event.type === "message_stop") stopReason = "end_turn";
+        if (event.type === "message_delta" && event.delta?.stop_reason) stopReason = event.delta.stop_reason;
       }
       const content = chunks.join("");
       if (stopReason === "max_tokens") {
@@ -711,7 +665,6 @@ async function callAI(
   }
 }
 
-// GET /tenants/:tenantId/site-generator/latest — get most recently updated site
 router.get("/tenants/:tenantId/site-generator/latest", async (req, res) => {
   const { tenantId } = req.params;
   const [site] = await db
@@ -728,7 +681,6 @@ router.get("/tenants/:tenantId/site-generator/latest", async (req, res) => {
   return res.json(site);
 });
 
-// GET /tenants/:tenantId/site-generator — list generated sites
 router.get("/tenants/:tenantId/site-generator", async (req, res) => {
   const { tenantId } = req.params;
 
@@ -768,7 +720,6 @@ router.get("/tenants/:tenantId/site-generator", async (req, res) => {
   return res.json(rows);
 });
 
-// GET /tenants/:tenantId/site-generator/:siteId — get single site with html
 router.get("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
   const { tenantId, siteId } = req.params;
 
@@ -809,7 +760,6 @@ router.get("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
   return res.json(row);
 });
 
-// ─── Async generation logic (extracted so it can run without blocking HTTP) ────
 async function runGenerateSite(
   jobId: string,
   tenantId: string,
@@ -1050,7 +1000,6 @@ async function runGenerateSite(
   }
 }
 
-// POST /tenants/:tenantId/site-generator/generate — start async generation, return jobId immediately
 router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
   const { tenantId } = req.params;
   const config: SiteGeneratorConfig = req.body;
@@ -1075,7 +1024,6 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
   return res.status(202).json({ jobId });
 });
 
-// GET /tenants/:tenantId/site-generator/jobs/:jobId — poll generation status
 router.get("/tenants/:tenantId/site-generator/jobs/:jobId", async (req, res) => {
   const [job] = await db
     .select()
@@ -1101,7 +1049,6 @@ router.get("/tenants/:tenantId/site-generator/jobs/:jobId", async (req, res) => 
   return res.json({ status: job.status, result, error: job.error });
 });
 
-// POST /tenants/:tenantId/site-generator/:siteId/refine — refine via chat
 router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res) => {
   const { tenantId, siteId } = req.params;
   const { message, history = [] } = req.body as {
@@ -1125,10 +1072,7 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
   }
 
   const refinePrompt = buildRefinePrompt(existing.html ?? "", message);
-
-  const refineMessages: AiMessage[] = [
-    { role: "user", content: refinePrompt },
-  ];
+  const refineMessages: AiMessage[] = [{ role: "user", content: refinePrompt }];
 
   let result;
   try {
@@ -1200,7 +1144,6 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
   return res.json({ html, seoScore, seoChecklist, _provider: result.provider, _model: result.model });
 });
 
-// DELETE /tenants/:tenantId/site-generator/:siteId
 router.delete("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
   const { tenantId, siteId } = req.params;
 
@@ -1218,7 +1161,6 @@ router.delete("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
   return res.status(204).send();
 });
 
-// POST /tenants/:tenantId/site-generator/:siteId/publish — make site public
 router.post("/tenants/:tenantId/site-generator/:siteId/publish", async (req, res) => {
   const { tenantId, siteId } = req.params;
   const user = (req as any).user;
@@ -1248,7 +1190,6 @@ router.post("/tenants/:tenantId/site-generator/:siteId/publish", async (req, res
   return res.json(updated);
 });
 
-// GET /tenants/:tenantId/site-generator/latest — load most recent site for a tenant
 router.get("/tenants/:tenantId/site-generator/latest", async (req, res) => {
   const { tenantId } = req.params;
   const user = (req as any).user;
@@ -1273,7 +1214,6 @@ router.get("/tenants/:tenantId/site-generator/latest", async (req, res) => {
   return res.json(site);
 });
 
-// PATCH /tenants/:tenantId/site-generator/:siteId/html — save HTML after direct edits (logo/photo injection)
 router.patch("/tenants/:tenantId/site-generator/:siteId/html", async (req, res) => {
   const { tenantId, siteId } = req.params;
   const user = (req as any).user;
@@ -1316,7 +1256,6 @@ router.patch("/tenants/:tenantId/site-generator/:siteId/html", async (req, res) 
   return res.json({ ...updated, html: prepared.html, seoScore, seoChecklist });
 });
 
-// PATCH /tenants/:tenantId/site-generator/:siteId/name — rename a generated site (switcher "Meus sites")
 router.patch("/tenants/:tenantId/site-generator/:siteId/name", async (req, res) => {
   const { tenantId, siteId } = req.params;
   const user = (req as any).user;
