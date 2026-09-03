@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-285",
+    "titulo": "liberar criação e publicação automática pela IA",
+    "descricao": "modo Automático pode consumir oportunidades descobertas além de keywords manualmente aprovadas; mantém o teto mensal do Content Autopilot; gera Feed social usando o mesmo contexto de marca, desempenho próprio e referências do Gerador de Conteúdo; centraliza publicação Instagram em um único serviço real;",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-03T00:21:18.000Z",
+    "pullRequest": 285
+  },
+  {
     "id": "pr-272",
     "titulo": "Gestão ERP como add-on de R$ 299/mês",
     "descricao": "cadastra a Gestão ERP como produto `ERP-ADDON-M` por R$ 299/mês revoga o ERP por padrão para tenants atuais e futuros oculta o menu quando o add-on não está contratado bloqueia acesso direto às telas `/erp` e `/erp/captura`",
