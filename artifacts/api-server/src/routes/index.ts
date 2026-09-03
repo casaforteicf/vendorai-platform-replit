@@ -122,6 +122,7 @@ import contentStudioRouter from "./content_studio";
 import videoProcessingRouter from "./video_processing";
 import mediaLibraryRouter from "./media_library";
 import mediaEngineRouter from "./media_engine";
+import mediaLipSyncRouter from "./media_lipsync";
 import beautyRouter from "./beauty";
 import servicosRouter from "./servicos";
 import clinicRouter from "./clinic";
@@ -335,6 +336,7 @@ router.use(contentStudioRouter);
 router.use(videoProcessingRouter);
 router.use(mediaLibraryRouter);
 router.use(mediaEngineRouter);
+router.use(mediaLipSyncRouter);
 
 // Partner Hub (revendedor dashboard — legacy)
 router.use(partnerRouter);
