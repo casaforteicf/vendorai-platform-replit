@@ -259,6 +259,59 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="border-b border-slate-200 bg-white py-20 md:py-24">
+        <div className="container mx-auto px-4">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">A mesma metodologia que nosso SDR usa pra qualificar seu lead</p>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-slate-950 md:text-5xl">Antes de falar de sistema, vamos falar da sua operação hoje.</h2>
+          </div>
+          <div className="mx-auto mt-14 grid max-w-6xl gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              {
+                letter: "S",
+                label: "Situação",
+                color: "text-blue-600 bg-blue-50",
+                title: "Como funciona hoje",
+                desc: "O WhatsApp da empresa é o pessoal de alguém. Contato fica em planilha, agenda ou na cabeça do vendedor. Cada canal — site, Instagram, indicação — chega numa tela diferente.",
+              },
+              {
+                letter: "P",
+                label: "Problema",
+                color: "text-amber-600 bg-amber-50",
+                title: "O que isso quebra",
+                desc: "Lead que chega às 19h só recebe resposta no dia seguinte — se alguém lembrar. Follow-up depende da memória de quem está ocupado vendendo pra outro cliente.",
+              },
+              {
+                letter: "I",
+                label: "Implicação",
+                color: "text-red-600 bg-red-50",
+                title: "O que isso custa de verdade",
+                desc: "Cada lead sem resposta rápida é anúncio pago e desperdiçado. Cada follow-up esquecido é venda que ia fechar e esfriou sozinha. No fim do mês, ninguém sabe dizer qual campanha realmente gerou receita.",
+              },
+              {
+                letter: "N",
+                label: "Necessidade",
+                color: "text-emerald-600 bg-emerald-50",
+                title: "O que precisa mudar",
+                desc: "Não é mais um app pra abrir. É atendimento, follow-up, proposta e dado de campanha rodando no mesmo lugar — com IA fazendo o que humano esquece de fazer, 24 horas por dia.",
+              },
+            ].map((item) => (
+              <div key={item.letter} className="rounded-[24px] border border-slate-200 bg-white p-6">
+                <div className={`flex h-11 w-11 items-center justify-center rounded-2xl text-lg font-bold ${item.color}`}>{item.letter}</div>
+                <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{item.label}</p>
+                <h3 className="mt-2 text-lg font-semibold text-slate-950">{item.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-10 text-center">
+            <Button asChild size="lg" className="h-14 rounded-xl px-8">
+              <Link href="/demo">Resolver isso na minha operação <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
       <section className="border-b border-slate-200 bg-slate-50 py-20 md:py-24">
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-3xl text-center">
