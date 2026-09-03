@@ -21,7 +21,6 @@ import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
-import AdDataConsentBanner from "@/components/AdDataConsentBanner";
 import {
   captureLaunchAttribution,
   installPublicFormConsentBridge,
@@ -78,7 +77,6 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
-          <AdDataConsentBanner />
           <WhatsAppFloatButton />
         </WouterRouter>
         <Toaster />
