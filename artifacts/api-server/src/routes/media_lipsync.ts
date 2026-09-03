@@ -17,6 +17,10 @@ import {
   assertMediaAudioRightsForUsage,
   MediaRightsEnforcementError,
 } from "../services/media-rights-enforcement.js";
+import {
+  analyzeMediaImage,
+  ImageAdvisorValidationError,
+} from "../services/vendorai-image-advisor.js";
 
 const router: IRouter = Router();
 
@@ -75,9 +79,6 @@ async function enforcePaidMetaMediaRights(req: Express.Request, res: Response, n
     const origemInstagram = asRecord(segmentacao["origemInstagram"]);
     const instagramMediaId = nonEmptyString(origemInstagram["mediaId"]);
 
-    // O guard de áudio pago só se aplica quando a campanha reutiliza uma
-    // publicação/Reel real do Instagram. Campanhas Meta de imagem e criativos
-    // reconstruídos continuam no fluxo atual.
     if (!instagramMediaId) {
       next();
       return;
@@ -136,9 +137,6 @@ async function enforcePaidMetaMediaRights(req: Express.Request, res: Response, n
   }
 }
 
-// Este roteador é montado antes do adsRouter. Revalidamos a licença tanto ao
-// publicar (campanha ainda pausada) quanto ao ativar, porque uma licença pode
-// expirar ou ser revogada entre as duas ações.
 router.post(
   "/tenants/:tenantId/ads/campaigns/:id/publicar",
   requireSameTenanOrSuperAdmin(),
@@ -151,6 +149,22 @@ router.post(
 );
 
 router.use("/tenants/:tenantId/media-engine", requireSameTenanOrSuperAdmin());
+
+router.post("/tenants/:tenantId/media-engine/images/:assetId/analyze", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const assetId = String(req.params["assetId"]);
+  const goal = nonEmptyString(req.body?.goal);
+  try {
+    const analysis = await analyzeMediaImage({ tenantId, assetId, goal });
+    res.json({ provider: "vendorai", operation: "image_analyze", analysis });
+  } catch (error) {
+    if (error instanceof ImageAdvisorValidationError) {
+      res.status(422).json({ error: error.message, code: "IMAGE_ADVISOR_INPUT_INVALID" });
+      return;
+    }
+    throw error;
+  }
+});
 
 function sendLipSyncError(res: Response, error: unknown): boolean {
   if (error instanceof LipSyncEngineNotReadyError) {
