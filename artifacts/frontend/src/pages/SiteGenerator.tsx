@@ -403,21 +403,32 @@ function GeneratorWorkspace() {
 
   async function pollJob(jobId: string, timeoutMs = 12 * 60 * 1000) {
     const end = Date.now() + timeoutMs;
+    let consecutiveFailures = 0;
     const check = async () => {
       const p = await fetch(`/api/tenants/${tenantId}/site-generator/jobs/${jobId}?t=${Date.now()}`, { headers: headers(token), cache: "no-store" });
-      const b = await p.json().catch(() => ({}));
-      if (!p.ok) throw new Error(b.error ?? "Falha ao acompanhar geração");
-      return b;
+      if (!p.ok) {
+        // Falhas transitórias (429/502/503) não devem derrubar o acompanhamento —
+        // só desistimos depois de várias tentativas seguidas ruins.
+        if ([429, 502, 503, 504].includes(p.status) && consecutiveFailures < 5) {
+          consecutiveFailures++;
+          return null;
+        }
+        const b = await p.json().catch(() => ({}));
+        throw new Error(b.error ?? "Falha ao acompanhar geração");
+      }
+      consecutiveFailures = 0;
+      return p.json();
     };
     while (Date.now() < end) {
       await new Promise((r) => window.setTimeout(r, 3000));
       const b = await check();
+      if (!b) continue;
       if (b.status === "done") return b.result;
       if (b.status === "error") throw new Error(b.error ?? "Erro na geração");
     }
     const final = await check();
-    if (final.status === "done") return final.result;
-    if (final.status === "error") throw new Error(final.error ?? "Erro na geração");
+    if (final?.status === "done") return final.result;
+    if (final?.status === "error") throw new Error(final.error ?? "Erro na geração");
     throw new Error("A geração continua em processamento no servidor. Você pode abrir Meus sites depois; o resultado não será perdido.");
   }
 
