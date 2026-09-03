@@ -61,11 +61,15 @@ export function MarketingContextSelector({
   value,
   onChange,
   required = true,
+  compact = false,
+  productsOverride,
 }: {
   tenantId: string;
   value: MarketingContextValue;
   onChange: (value: MarketingContextValue) => void;
   required?: boolean;
+  compact?: boolean;
+  productsOverride?: Product[];
 }) {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
@@ -75,6 +79,8 @@ export function MarketingContextSelector({
   const audienceSegment = value.audienceSegment ?? "";
   const audienceNiche = value.audienceNiche ?? "";
   const campaignGoal = value.campaignGoal ?? "";
+  const availableProducts = productsOverride ?? products;
+  const productsLoading = productsOverride ? false : loading;
 
   const requestedVerticalSlug = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("vertical")?.trim() || ""
@@ -89,13 +95,16 @@ export function MarketingContextSelector({
   const businessVerticalSlug = requestedProfile?.slug || value.businessVerticalSlug || "";
 
   useEffect(() => {
-    if (!tenantId) return;
+    if (!tenantId || productsOverride) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: headers() })
       .then((response) => response.ok ? response.json() : [])
       .then((items) => setProducts(Array.isArray(items) ? items.filter((item) => item.ativo !== false) : []))
       .finally(() => setLoading(false));
-  }, [tenantId]);
+  }, [tenantId, productsOverride]);
 
   useEffect(() => {
     if (!businessVertical) return;
@@ -106,10 +115,6 @@ export function MarketingContextSelector({
       campaignGoal,
     );
 
-    // businessVerticalSlug is optional in the state. When there is no official
-    // profile slug, the derived value is "" while the stored value is undefined.
-    // Comparing those values directly makes this effect emit on every render,
-    // which can trigger React error #185 (maximum update depth exceeded).
     const currentBusinessVerticalSlug = value.businessVerticalSlug ?? "";
     if (
       value.businessVertical === businessVertical &&
@@ -179,6 +184,130 @@ export function MarketingContextSelector({
       productIds: value.productIds.filter((_, itemIndex) => itemIndex !== index),
       productNames: value.productNames.filter((_, itemIndex) => itemIndex !== index),
     });
+  }
+
+  if (compact) {
+    return (
+      <section className="rounded-xl border bg-card p-4 space-y-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 font-semibold">
+              <Target className="h-4 w-4 text-primary" />
+              Estratégia da divulgação
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Informe uma vez a oferta, o público e o objetivo. O mesmo contexto será usado pela IA na criação, publicação e patrocínio.
+            </p>
+          </div>
+          {businessVertical ? (
+            <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+              <Building2 className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] text-muted-foreground">Anunciante</span>
+              <Badge variant="secondary" className="text-xs">{businessVertical}</Badge>
+            </div>
+          ) : (
+            <p className="text-xs text-amber-700">Complete o perfil da empresa para melhorar o contexto da IA.</p>
+          )}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-lg border bg-background p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <PackageSearch className="h-4 w-4 text-primary" />
+              <p className="text-sm font-semibold">1. O que divulgar</p>
+            </div>
+            {availableProducts.length > 0 && (
+              <Select
+                onValueChange={(id) => {
+                  const product = availableProducts.find((item) => item.id === id);
+                  if (product && !value.productIds.includes(product.id)) toggleProduct(product);
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Escolher do catálogo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableProducts.map((product) => (
+                    <SelectItem key={product.id} value={product.id} disabled={value.productIds.includes(product.id)}>
+                      {product.nome}{value.productIds.includes(product.id) ? " ✓" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="flex gap-2">
+              <Input
+                value={customOffer}
+                onChange={(event) => setCustomOffer(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addCustomOffer();
+                  }
+                }}
+                placeholder="Ou escreva uma oferta"
+                className="h-9"
+              />
+              <button
+                type="button"
+                onClick={addCustomOffer}
+                aria-label="Adicionar oferta"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+            {!productsLoading && availableProducts.length === 0 && value.productNames.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">Catálogo vazio — use a oferta manual acima.</p>
+            )}
+            {value.productNames.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {value.productNames.map((name, index) => (
+                  <button key={`${name}-${index}`} type="button" onClick={() => removeOffer(index)} title="Remover oferta">
+                    <Badge variant="secondary" className="text-[11px]">{name} ×</Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border bg-background p-3 space-y-3">
+            <p className="text-sm font-semibold">2. Para quem</p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo de público {required ? "*" : ""}</Label>
+              <Select value={audienceSegment} onValueChange={(item) => emit({ audienceSegment: item })}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Ex.: Empresas (B2B)" /></SelectTrigger>
+                <SelectContent>
+                  {AUDIENCE_SEGMENTS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nicho ou ramo {required ? "*" : ""}</Label>
+              <Input
+                value={audienceNiche}
+                onChange={(event) => emit({ audienceNiche: event.target.value })}
+                placeholder="Ex.: lojas de roupas, indústrias..."
+                className="h-9"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-background p-3 space-y-2">
+            <p className="text-sm font-semibold">3. Objetivo</p>
+            <Label className="text-xs">O que você quer conseguir com esta divulgação?</Label>
+            <Textarea
+              value={campaignGoal}
+              onChange={(event) => emit({ campaignGoal: event.target.value })}
+              placeholder="Ex.: gerar pedidos de orçamento, criar parceria, apresentar lançamento..."
+              rows={4}
+              className="resize-none"
+            />
+            <p className="text-[11px] text-muted-foreground">A IA usa este objetivo para decidir abordagem, dor, CTA e composição.</p>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -284,9 +413,9 @@ export function MarketingContextSelector({
           </button>
         </div>
 
-        {products.length > 0 && (
+        {availableProducts.length > 0 && (
           <div className="max-h-44 overflow-y-auto rounded-lg border bg-background p-2">
-            {products.map((product) => {
+            {availableProducts.map((product) => {
               const selected = value.productIds.includes(product.id);
               return (
                 <button
@@ -303,7 +432,7 @@ export function MarketingContextSelector({
           </div>
         )}
 
-        {!loading && products.length === 0 && (
+        {!productsLoading && availableProducts.length === 0 && (
           <p className="text-xs text-muted-foreground">
             O catálogo está vazio, mas você pode adicionar a oferta manualmente acima.
           </p>
