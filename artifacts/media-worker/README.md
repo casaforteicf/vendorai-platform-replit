@@ -1,6 +1,6 @@
 # VendorAI Media Worker — Voice
 
-Worker GPU oficial do VendorAI Media Engine para síntese/clonagem de voz autorizada. Ele é separado da API principal e não usa HeyGen.
+Worker GPU oficial do VendorAI Media Engine para síntese/clonagem de voz autorizada. Ele é separado da API principal e usa exclusivamente o caminho oficial do Media Engine.
 
 ## Motor
 
