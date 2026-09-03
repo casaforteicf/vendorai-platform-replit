@@ -179,6 +179,73 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return () => observer.disconnect();
   }, []);
 
+  // O hub de vídeo já existe em /content-studio/video, mas o menu legado de
+  // Marketing não tinha uma entrada para ele. Enquanto o menu é migrado para
+  // a nova navegação, mantém a rota oficial visível no mesmo submenu usando o
+  // mesmo padrão de compatibilidade já utilizado acima para "Sites".
+  useEffect(() => {
+    const VIDEO_HREF = "/content-studio/video";
+
+    const ensureMarketingOpenOnVideoRoute = () => {
+      if (!location.startsWith(VIDEO_HREF)) return;
+      if (document.querySelector<HTMLAnchorElement>(`a[href="${VIDEO_HREF}"]`)) return;
+
+      const marketingButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+        button.textContent?.trim().startsWith("Marketing"),
+      );
+      marketingButton?.click();
+    };
+
+    const ensureVideoEntry = () => {
+      ensureMarketingOpenOnVideoRoute();
+
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/content"]').forEach((contentLink) => {
+        const container = contentLink.parentElement;
+        if (!container) return;
+
+        let videoLink = container.querySelector<HTMLAnchorElement>(`a[href="${VIDEO_HREF}"]`);
+        const isActive = location === VIDEO_HREF || location.startsWith(`${VIDEO_HREF}/`);
+
+        if (!videoLink) {
+          videoLink = document.createElement("a");
+          videoLink.href = VIDEO_HREF;
+          videoLink.dataset.mediaVideoMenuEntry = "true";
+          videoLink.setAttribute("aria-label", "Vídeo com IA — VendorAI Media Engine");
+          videoLink.setAttribute("title", "Vídeo com IA — VendorAI Media Engine");
+
+          const icon = contentLink.querySelector("svg")?.cloneNode(true);
+          if (icon) videoLink.appendChild(icon);
+          const label = document.createElement("span");
+          label.textContent = "Vídeo com IA";
+          videoLink.appendChild(label);
+
+          videoLink.addEventListener("click", (event) => {
+            event.preventDefault();
+            setLocation(VIDEO_HREF);
+          });
+
+          contentLink.insertAdjacentElement("afterend", videoLink);
+        }
+
+        videoLink.className = [
+          "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+          isActive
+            ? "bg-primary/10 text-primary font-medium"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        ].join(" ");
+      });
+    };
+
+    ensureVideoEntry();
+    const observer = new MutationObserver(ensureVideoEntry);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      document.querySelectorAll<HTMLAnchorElement>('[data-media-video-menu-entry="true"]').forEach((link) => link.remove());
+    };
+  }, [location, setLocation]);
+
   useEffect(() => {
     if (!user) return;
 
