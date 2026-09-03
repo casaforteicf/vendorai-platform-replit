@@ -19,6 +19,18 @@ MODEL = "musetalk-1.5"
 MAX_FACE_BYTES = 30 * 1024 * 1024
 MAX_AUDIO_BYTES = 80 * 1024 * 1024
 DEFAULT_TIMEOUT_SECONDS = 840
+MODEL_FILES = (
+    "models/musetalkV15/musetalk.json",
+    "models/musetalkV15/unet.pth",
+    "models/sd-vae/config.json",
+    "models/sd-vae/diffusion_pytorch_model.bin",
+    "models/whisper/config.json",
+    "models/whisper/pytorch_model.bin",
+    "models/whisper/preprocessor_config.json",
+    "models/dwpose/dw-ll_ucoco_384.pth",
+    "models/face-parse-bisent/79999_iter.pth",
+    "models/face-parse-bisent/resnet18-5c106cde.pth",
+)
 
 app = FastAPI(title=APP_NAME, version="1.0.0")
 _generation_lock = asyncio.Semaphore(max(1, int(os.getenv("VENDORAI_LIPSYNC_CONCURRENCY", "1"))))
@@ -36,6 +48,24 @@ def _musetalk_root() -> Path:
     if not (root / "scripts" / "inference.py").exists():
         raise RuntimeError(f"MuseTalk não encontrado em {root}")
     return root
+
+
+def _models_ready(root: Path) -> bool:
+    return all((root / relative).is_file() for relative in MODEL_FILES)
+
+
+def _cuda_ready() -> bool:
+    try:
+        completed = subprocess.run(
+            ["nvidia-smi", "-L"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        return completed.returncode == 0 and bool(completed.stdout.strip())
+    except Exception:
+        return False
 
 
 def _clamp_bbox_shift(raw: int) -> int:
@@ -65,7 +95,15 @@ def _find_output_mp4(result_dir: Path) -> Path:
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
-def _run_musetalk(root: Path, config_path: Path, result_dir: Path, timeout_seconds: int) -> Path:
+def _run_musetalk(root: Path, config_path: Path, result_dir: Path, timeout_seconds: int, bbox_shift: int) -> Path:
+    if not _models_ready(root):
+        raise RuntimeError("Pesos completos do MuseTalk 1.5 ainda não estão provisionados")
+    if not _cuda_ready():
+        raise RuntimeError("GPU NVIDIA/CUDA não está disponível para o worker")
+
+    # MuseTalk 1.5 fixa bbox_shift internamente. O ajuste fino do VendorAI é
+    # aplicado em extra_margin, preservando o padrão oficial de 10 pixels.
+    extra_margin = max(0, min(30, 10 + bbox_shift))
     command = [
         sys.executable,
         "-m",
@@ -78,8 +116,17 @@ def _run_musetalk(root: Path, config_path: Path, result_dir: Path, timeout_secon
         str(root / "models" / "musetalkV15" / "unet.pth"),
         "--unet_config",
         str(root / "models" / "musetalkV15" / "musetalk.json"),
+        "--whisper_dir",
+        str(root / "models" / "whisper"),
         "--version",
         "v15",
+        "--fps",
+        "25",
+        "--batch_size",
+        str(max(1, int(os.getenv("VENDORAI_LIPSYNC_BATCH_SIZE", "8")))),
+        "--extra_margin",
+        str(extra_margin),
+        "--use_float16",
         "--ffmpeg_path",
         os.getenv("FFMPEG_PATH", "/usr/bin"),
     ]
@@ -103,14 +150,16 @@ def _run_musetalk(root: Path, config_path: Path, result_dir: Path, timeout_secon
 @app.get("/health")
 async def health() -> dict[str, Any]:
     root = Path(os.getenv("MUSETALK_ROOT", "/opt/MuseTalk"))
-    model_ready = (root / "models" / "musetalkV15" / "unet.pth").exists()
+    models_ready = _models_ready(root)
+    cuda_ready = _cuda_ready()
     return {
-        "status": "ok" if model_ready else "warming",
+        "status": "ok" if models_ready and cuda_ready else "warming",
         "engine": ENGINE,
         "capability": "avatar_lipsync",
         "model": MODEL,
-        "modelReady": model_ready,
-        "cudaVisible": bool(os.getenv("NVIDIA_VISIBLE_DEVICES", "")),
+        "modelReady": models_ready,
+        "cudaVisible": cuda_ready,
+        "ready": models_ready and cuda_ready,
         "concurrency": max(1, int(os.getenv("VENDORAI_LIPSYNC_CONCURRENCY", "1"))),
     }
 
@@ -163,7 +212,6 @@ async def generate_lipsync(
                     "vendorai_job": {
                         "video_path": str(face_path),
                         "audio_path": str(audio_path),
-                        "bbox_shift": bbox,
                     }
                 },
                 sort_keys=False,
@@ -172,7 +220,7 @@ async def generate_lipsync(
         )
 
         async with _generation_lock:
-            output_path = await asyncio.to_thread(_run_musetalk, root, config_path, result_dir, timeout_seconds)
+            output_path = await asyncio.to_thread(_run_musetalk, root, config_path, result_dir, timeout_seconds, bbox)
         video = output_path.read_bytes()
         if not video:
             raise RuntimeError("MP4 de saída vazio")
