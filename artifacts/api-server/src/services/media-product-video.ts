@@ -4,12 +4,14 @@ import { randomUUID } from "crypto";
 import { readFile, unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   db,
   mediaAssetsTable,
   mediaVersionsTable,
 } from "@workspace/db";
 import { objectStorageClient } from "../lib/objectStorage.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import { applyBrandIntroOutro } from "./media-brand-video.js";
 import { createMediaJob, updateMediaJob } from "./media-jobs.js";
 import {
@@ -19,6 +21,7 @@ import {
 } from "./media-library.js";
 
 const execFileAsync = promisify(execFile);
+const objectStorage = new ObjectStorageService();
 const PRIVATE_DIR = process.env["PRIVATE_OBJECT_DIR"] ?? "";
 const WIDTH = 720;
 const HEIGHT = 1280;
@@ -30,6 +33,7 @@ export type ProductVideoImage = {
   mimeType: string;
   originalName: string;
   size: number;
+  sourceAssetId?: string | null;
 };
 
 export type ProductVideoFormat = "reel" | "story";
@@ -46,6 +50,62 @@ export type StartProductVideoInput = {
   format: ProductVideoFormat;
   storyboard?: string;
 };
+
+export async function resolveProductVideoLibraryImages(
+  tenantId: string,
+  assetIds: string[],
+): Promise<ProductVideoImage[]> {
+  if (!assetIds.length) return [];
+
+  const uniqueIds = [...new Set(assetIds)];
+  if (uniqueIds.length > MAX_IMAGES) throw new Error(`Selecione no máximo ${MAX_IMAGES} fotos`);
+
+  const rows = await db
+    .select({
+      id: mediaAssetsTable.id,
+      storageUrl: mediaAssetsTable.storageUrl,
+      mimeType: mediaAssetsTable.mimeType,
+      fileSize: mediaAssetsTable.fileSize,
+      originalFilename: mediaAssetsTable.originalFilename,
+    })
+    .from(mediaAssetsTable)
+    .where(
+      and(
+        eq(mediaAssetsTable.tenantId, tenantId),
+        eq(mediaAssetsTable.type, "image"),
+        inArray(mediaAssetsTable.id, uniqueIds),
+      ),
+    );
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const resolved: ProductVideoImage[] = [];
+  const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+  for (const assetId of uniqueIds) {
+    const row = byId.get(assetId);
+    if (!row) throw new Error("Uma das fotos selecionadas não está disponível na Biblioteca deste tenant");
+
+    const mimeType = String(row.mimeType ?? "").toLowerCase();
+    if (!allowedMimeTypes.has(mimeType)) {
+      throw new Error("Para gerar o vídeo, use somente fotos JPG, PNG ou WebP");
+    }
+
+    const file = await objectStorage.getObjectEntityFile(String(row.storageUrl));
+    const [buffer] = await file.download();
+    if (!buffer.length) throw new Error("Uma das fotos da Biblioteca está vazia");
+    if (buffer.length > 20 * 1024 * 1024) throw new Error("Cada foto deve ter no máximo 20 MB");
+
+    resolved.push({
+      buffer,
+      mimeType,
+      originalName: row.originalFilename ?? `biblioteca-${assetId}.${extensionForMime(mimeType)}`,
+      size: Number(row.fileSize ?? buffer.length),
+      sourceAssetId: assetId,
+    });
+  }
+
+  return resolved;
+}
 
 function extensionForMime(mimeType: string): string {
   const normalized = mimeType.toLowerCase();
@@ -197,6 +257,7 @@ export async function startProductPhotoVideo(input: StartProductVideoInput): Pro
   }
 
   const { sceneCount, sceneDuration, totalDuration } = scenePlan(input.format, input.images.length);
+  const reusedSourceAssetIds = input.images.flatMap((image) => image.sourceAssetId ? [image.sourceAssetId] : []);
   const projectId = await createProcessingMediaProject({
     tenantId: input.tenantId,
     userId: input.userId ?? null,
@@ -211,6 +272,7 @@ export async function startProductPhotoVideo(input: StartProductVideoInput): Pro
       cta: input.cta?.trim() || "Compre agora",
       format: input.format,
       imageCount: input.images.length,
+      reusedSourceAssetIds,
       sceneCount,
       estimatedDuration: totalDuration,
       storyboard: input.storyboard ?? null,
@@ -227,6 +289,7 @@ export async function startProductPhotoVideo(input: StartProductVideoInput): Pro
       productName: input.name.trim(),
       format: input.format,
       imageCount: input.images.length,
+      reusedSourceAssetIds,
       sceneCount,
       storyboard: input.storyboard ?? null,
     },
@@ -253,6 +316,11 @@ export async function startProductPhotoVideo(input: StartProductVideoInput): Pro
         tempPaths.push(sourcePath);
         await writeFile(sourcePath, image.buffer);
         inputPaths.push(sourcePath);
+
+        if (image.sourceAssetId) {
+          sourceAssetIds.push(image.sourceAssetId);
+          continue;
+        }
 
         const storageUrl = await saveObject(image.buffer, image.mimeType, "product-video/sources", ext);
         const assetId = await registerSourceImage({
