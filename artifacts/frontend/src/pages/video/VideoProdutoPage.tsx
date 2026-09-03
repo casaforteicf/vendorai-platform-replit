@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "@/components/media/MediaAssetPicker";
+import { ProductVideoFinalizePanel } from "@/components/video/ProductVideoFinalizePanel";
 import {
   ArrowLeft,
   CheckCheck,
@@ -133,6 +134,7 @@ export default function VideoProdutoPage() {
   const [prodResult, setProdResult] = useState("");
   const [projectId, setProjectId] = useState("");
   const [jobId, setJobId] = useState("");
+  const [generationId, setGenerationId] = useState("");
   const [job, setJob] = useState<ProductVideoJob | null>(null);
   const [polling, setPolling] = useState(false);
 
@@ -228,6 +230,7 @@ export default function VideoProdutoPage() {
     setProdResult("");
     setProjectId("");
     setJobId("");
+    setGenerationId("");
     setJob(null);
   };
 
@@ -259,6 +262,7 @@ export default function VideoProdutoPage() {
       setProdResult(data.result ?? "");
       setProjectId(data.projectId ?? "");
       setJobId(data.jobId ?? "");
+      setGenerationId(data.generationId ?? "");
       toast({
         title: "Render iniciado",
         description: "Storyboard criado. O MP4 está sendo renderizado e será salvo na Biblioteca Audiovisual.",
@@ -477,6 +481,15 @@ export default function VideoProdutoPage() {
                   {job?.output?.outroApplied && <span className="rounded-full border border-emerald-500/20 px-2 py-1">Encerramento aplicado</span>}
                 </div>
               </div>
+            )}
+
+            {videoUrl && generationId && (
+              <ProductVideoFinalizePanel
+                tenantId={tenantId}
+                sourceVideoUrl={videoUrl}
+                generationId={generationId}
+                format={prodFormat}
+              />
             )}
 
             {prodResult && <StoryboardResult text={prodResult} format={prodFormat} />}
