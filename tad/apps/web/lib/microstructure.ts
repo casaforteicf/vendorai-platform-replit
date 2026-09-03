@@ -3,6 +3,7 @@ const PROXY_KEY=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||'sb_publishabl
 
 type AggTrade={a:number;p:string;q:string;f:number;l:number;T:number;m:boolean};
 export type MicroBar={start:number;end:number;open:number;high:number;low:number;close:number;volume:number;aggressiveBuyVolume:number;aggressiveSellVolume:number;tradeCount:number;imbalance:number;returnPct:number};
+export type MicrostructureQuality={status:'HEALTHY'|'DEGRADED'|'BLOCKED';approved:boolean;reasons:string[];freshnessMs:number|null;binding:boolean};
 
 async function proxyFetch(path:string){
   const url=`${PROXY_URL}?forceFunctionRegion=sa-east-1&url=${encodeURIComponent(path)}`;
@@ -40,4 +41,19 @@ export async function loadMicrostructure(symbol:string,limit=1000){
   const flowImbalance=total?clamp((totalBuy-totalSell)/total):0;
   const score=Math.max(0,Math.min(100,Math.round(50+flowImbalance*25+Math.max(-15,Math.min(15,priceVelocityPctPerMin*8)))));
   return {symbol:symbol.toUpperCase(),source:'BINANCE_FUTURES_AGGTRADES',syntheticFrames:true,nativeKlines:false,tradeCount:trades.length,window:{from:trades[0]?.T??null,to:trades.at(-1)?.T??null,durationSec},flow:{aggressiveBuyVolume:totalBuy,aggressiveSellVolume:totalSell,imbalance:flowImbalance},priceVelocityPctPerMin,microVolatilityPct,score,latest15s:latest15,latest30s:latest30,bars15s,bars30s,ts:Date.now()};
+}
+
+export function assessMicrostructureQuality(snapshot:Awaited<ReturnType<typeof loadMicrostructure>>,now=Date.now()):MicrostructureQuality{
+  const reasons:string[]=[];
+  const lastTs=snapshot.window.to;
+  const freshnessMs=lastTs==null?null:Math.max(0,now-lastTs);
+  if(!snapshot.tradeCount||!snapshot.latest15s||!snapshot.latest30s||lastTs==null)reasons.push('MICROSTRUCTURE_EMPTY');
+  if(freshnessMs!=null&&freshnessMs>30_000)reasons.push('LAST_TRADE_STALE');
+  if(snapshot.tradeCount<25)reasons.push('TRADE_SAMPLE_CRITICAL');
+  if(reasons.some(r=>['MICROSTRUCTURE_EMPTY','LAST_TRADE_STALE','TRADE_SAMPLE_CRITICAL'].includes(r)))return {status:'BLOCKED',approved:false,reasons,freshnessMs,binding:true};
+  if(snapshot.tradeCount<100)reasons.push('TRADE_SAMPLE_LOW');
+  if(snapshot.window.durationSec>900)reasons.push('ACTIVITY_WINDOW_TOO_LONG');
+  if(snapshot.latest15s.tradeCount<3)reasons.push('LATEST_15S_THIN');
+  if(snapshot.microVolatilityPct>1.5)reasons.push('MICRO_VOLATILITY_EXTREME');
+  return {status:reasons.length?'DEGRADED':'HEALTHY',approved:true,reasons:reasons.length?reasons:['MICROSTRUCTURE_HEALTHY'],freshnessMs,binding:true};
 }
