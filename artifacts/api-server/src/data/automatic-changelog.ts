@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-288",
+    "titulo": "robustecer geração do plano de mídia",
+    "descricao": "corrige o exemplo inválido de JSON usado no prompt do Plano de Mídia torna o parser tolerante a fences Markdown e texto residual ao redor do objeto JSON valida a estrutura retornada pela IA antes de persistir valida prioridade e percentual de orçamento",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-03T01:16:12.000Z",
+    "pullRequest": 288
+  },
+  {
     "id": "pr-286",
     "titulo": "unificar briefing e gerador de conteúdo",
     "descricao": "briefing único com **Oferta → Público → Objetivo**; contexto do anunciante aparece de forma compacta; usa a lista de produtos real de cada vertical (catálogo, varejo, supermercado ou insumos); remove da área inferior o seletor de produto que repetia a oferta já escolhida;",
