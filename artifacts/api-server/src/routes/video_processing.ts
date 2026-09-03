@@ -3,12 +3,18 @@ import multer from "multer";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
-import { writeFile, readFile, unlink, mkdir } from "fs/promises";
+import { writeFile, readFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { transcribeAudioWithWordTimestamps, type TranscriptionWord } from "../lib/ai-gateway.js";
+import {
+  createMediaJob,
+  getMediaJob,
+  updateMediaJob,
+  type MediaJobResultItem,
+} from "../services/media-jobs.js";
 
 const execFileAsync = promisify(execFile);
 const router: IRouter = Router();
@@ -55,19 +61,6 @@ async function getVideoDuration(filePath: string): Promise<number> {
   return parseFloat(data.format?.duration ?? "0");
 }
 
-// ── In-memory job store ────────────────────────────────────────────────────────
-
-interface VideoJob {
-  status: "running" | "done" | "error";
-  progress?: number;
-  total?: number;
-  videoUrl?: string;
-  clips?: string[];
-  results?: { name: string; status: "pending" | "generating" | "done" | "error"; videoUrl?: string; error?: string }[];
-  error?: string;
-}
-const JOBS = new Map<string, VideoJob>();
-
 // ── Edição automática ─────────────────────────────────────────────────────────
 
 router.post(
@@ -77,9 +70,15 @@ router.post(
     if (!authCheck(req, res)) return;
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
+    const tenantId = String(req.params["tenantId"]);
     const { removeSilence = "true", speed = "1.0", normalize = "false" } = req.body as Record<string, string>;
     const jobId = randomUUID();
-    JOBS.set(jobId, { status: "running" });
+    await createMediaJob({
+      id: jobId,
+      tenantId,
+      operation: "video_edit",
+      input: { removeSilence, speed, normalize },
+    });
     res.json({ jobId });
 
     // ── async processing ─────────────────────────────────────────────────────
@@ -136,9 +135,12 @@ router.post(
 
         const buf = await readFile(outPath);
         const objPath = await saveToBucket(buf, "video/mp4", `edited-${jobId}.mp4`);
-        JOBS.set(jobId, { status: "done", videoUrl: `/api/storage${objPath}` });
+        await updateMediaJob(jobId, tenantId, { status: "done", videoUrl: `/api/storage${objPath}` });
       } catch (err) {
-        JOBS.set(jobId, { status: "error", error: err instanceof Error ? err.message : "Erro no processamento" });
+        await updateMediaJob(jobId, tenantId, {
+          status: "error",
+          error: err instanceof Error ? err.message : "Erro no processamento",
+        }).catch(() => undefined);
       } finally {
         await unlink(inPath).catch(() => {});
         await unlink(outPath).catch(() => {});
@@ -156,9 +158,16 @@ router.post(
     if (!authCheck(req, res)) return;
     if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
 
+    const tenantId = String(req.params["tenantId"]);
     const { clipDuration = "60", maxClips = "4", convertTo9x16 = "false" } = req.body as Record<string, string>;
     const jobId = randomUUID();
-    JOBS.set(jobId, { status: "running", progress: 0, total: 0 });
+    await createMediaJob({
+      id: jobId,
+      tenantId,
+      operation: "video_clips",
+      input: { clipDuration, maxClips, convertTo9x16 },
+      snapshot: { status: "running", progress: 0, total: 0 },
+    });
     res.json({ jobId });
 
     void (async () => {
@@ -175,13 +184,13 @@ router.post(
           Math.floor(duration / clipSec)
         );
 
-        JOBS.set(jobId, { status: "running", progress: 0, total: nClips });
+        await updateMediaJob(jobId, tenantId, { status: "running", progress: 0, total: nClips });
 
         const clipUrls: string[] = [];
 
         for (let i = 0; i < nClips; i++) {
           const start   = i * clipSec;
-          const outPath = join(tmpDir, `vc-clip-${jobId}-${i}.mp4`);
+          const outPath = join(tmpdir(), `vc-clip-${jobId}-${i}.mp4`);
           clipPaths.push(outPath);
 
           const ffmpegArgs: string[] = [
@@ -205,12 +214,20 @@ router.post(
           const objPath = await saveToBucket(buf, "video/mp4", `clip-${jobId}-${i}.mp4`);
           clipUrls.push(`/api/storage${objPath}`);
 
-          JOBS.set(jobId, { status: "running", progress: i + 1, total: nClips });
+          await updateMediaJob(jobId, tenantId, { status: "running", progress: i + 1, total: nClips });
         }
 
-        JOBS.set(jobId, { status: "done", clips: clipUrls, progress: nClips, total: nClips });
+        await updateMediaJob(jobId, tenantId, {
+          status: "done",
+          clips: clipUrls,
+          progress: nClips,
+          total: nClips,
+        });
       } catch (err) {
-        JOBS.set(jobId, { status: "error", error: err instanceof Error ? err.message : "Erro no processamento" });
+        await updateMediaJob(jobId, tenantId, {
+          status: "error",
+          error: err instanceof Error ? err.message : "Erro no processamento",
+        }).catch(() => undefined);
       } finally {
         await unlink(inPath).catch(() => {});
         for (const p of clipPaths) await unlink(p).catch(() => {});
@@ -227,6 +244,7 @@ router.post("/tenants/:tenantId/content-studio/video/batch", async (req, res) =>
   if (!authCheck(req, res)) return;
   if (!HEYGEN_API_KEY) { res.status(503).json({ error: "HEYGEN_API_KEY não configurada" }); return; }
 
+  const tenantId = String(req.params["tenantId"]);
   const { items, avatarId, voiceId = "pt-BR-FranciscaNeural", quality = "720p", autoScript = true } = req.body as {
     items?: BatchItem[]; avatarId?: string; voiceId?: string; quality?: string; autoScript?: boolean;
   };
@@ -237,8 +255,15 @@ router.post("/tenants/:tenantId/content-studio/video/batch", async (req, res) =>
   if (items.length > 20) { res.status(422).json({ error: "Máx. 20 vídeos por lote" }); return; }
 
   const jobId = randomUUID();
-  const results: VideoJob["results"] = items.map((it) => ({ name: it.name, status: "pending" }));
-  JOBS.set(jobId, { status: "running", progress: 0, total: items.length, results });
+  const results: MediaJobResultItem[] = items.map((it) => ({ name: it.name, status: "pending" }));
+  await createMediaJob({
+    id: jobId,
+    tenantId,
+    operation: "video_batch",
+    provider: "heygen",
+    input: { itemCount: items.length, avatarId, voiceId, quality, autoScript },
+    snapshot: { status: "running", progress: 0, total: items.length, results },
+  });
   res.json({ jobId });
 
   const dimension = quality === "1080p" ? { width: 1920, height: 1080 } : { width: 1280, height: 720 };
@@ -248,7 +273,12 @@ router.post("/tenants/:tenantId/content-studio/video/batch", async (req, res) =>
     for (let i = 0; i < items.length; i++) {
       const item = items[i]!;
       results[i]!.status = "generating";
-      JOBS.set(jobId, { status: "running", progress: done, total: items.length, results: [...results] });
+      await updateMediaJob(jobId, tenantId, {
+        status: "running",
+        progress: done,
+        total: items.length,
+        results: [...results],
+      });
 
       try {
         let script = item.script?.trim() || "";
@@ -267,7 +297,8 @@ router.post("/tenants/:tenantId/content-studio/video/batch", async (req, res) =>
 
         if (!script) script = item.topic;
 
-        // Generate video via HeyGen
+        // Geração atual preservada via HeyGen. O Media Engine passa a registrar
+        // o provider; a troca por um worker próprio entra em PR separado.
         const vidRes = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
           method: "POST",
           headers: heygenHeaders({ "Content-Type": "application/json" }),
@@ -301,11 +332,22 @@ router.post("/tenants/:tenantId/content-studio/video/batch", async (req, res) =>
       }
 
       done++;
-      JOBS.set(jobId, { status: "running", progress: done, total: items.length, results: [...results] });
+      await updateMediaJob(jobId, tenantId, {
+        status: "running",
+        progress: done,
+        total: items.length,
+        results: [...results],
+      });
     }
 
     const anyError = results.some((r) => r.status === "error");
-    JOBS.set(jobId, { status: anyError ? "error" : "done", progress: done, total: items.length, results });
+    await updateMediaJob(jobId, tenantId, {
+      status: anyError ? "error" : "done",
+      progress: done,
+      total: items.length,
+      results,
+      ...(anyError ? { error: "Um ou mais vídeos do lote falharam" } : {}),
+    }).catch(() => undefined);
   })();
 });
 
@@ -387,7 +429,7 @@ router.post(
 
     const tenantId = String(req.params["tenantId"]);
     const jobId = randomUUID();
-    JOBS.set(jobId, { status: "running" });
+    await createMediaJob({ id: jobId, tenantId, operation: "video_caption" });
     res.json({ jobId });
 
     void (async () => {
@@ -409,7 +451,10 @@ router.post(
           language: "pt",
         });
         if (words.length === 0) {
-          JOBS.set(jobId, { status: "error", error: "Não foi possível identificar fala no vídeo — confirme se o áudio está audível." });
+          await updateMediaJob(jobId, tenantId, {
+            status: "error",
+            error: "Não foi possível identificar fala no vídeo — confirme se o áudio está audível.",
+          });
           return;
         }
 
@@ -430,9 +475,12 @@ router.post(
 
         const buf = await readFile(outPath);
         const objPath = await saveToBucket(buf, "video/mp4", `captioned-${jobId}.mp4`);
-        JOBS.set(jobId, { status: "done", videoUrl: `/api/storage${objPath}` });
+        await updateMediaJob(jobId, tenantId, { status: "done", videoUrl: `/api/storage${objPath}` });
       } catch (err) {
-        JOBS.set(jobId, { status: "error", error: err instanceof Error ? err.message : "Erro no processamento" });
+        await updateMediaJob(jobId, tenantId, {
+          status: "error",
+          error: err instanceof Error ? err.message : "Erro no processamento",
+        }).catch(() => undefined);
       } finally {
         await unlink(inPath).catch(() => {});
         await unlink(audioPath).catch(() => {});
@@ -447,7 +495,8 @@ router.post(
 
 router.get("/tenants/:tenantId/content-studio/video/job/:jobId", async (req, res) => {
   if (!authCheck(req, res)) return;
-  const job = JOBS.get(req.params["jobId"] ?? "");
+  const tenantId = String(req.params["tenantId"]);
+  const job = await getMediaJob(req.params["jobId"] ?? "", tenantId);
   if (!job) { res.status(404).json({ error: "Job não encontrado" }); return; }
   res.json(job);
 });
