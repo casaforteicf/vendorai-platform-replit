@@ -179,6 +179,54 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return () => observer.disconnect();
   }, []);
 
+  // Restaura a entrada "Vídeo com IA" sem reintroduzir o loop que travava o
+  // renderer. A entrada só é criada quando o submenu Marketing já está aberto;
+  // não há MutationObserver dedicado e nunca há clique programático no menu.
+  useEffect(() => {
+    const VIDEO_HREF = "/content-studio/video";
+
+    const ensureVideoEntry = () => {
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/content"]').forEach((contentLink) => {
+        const container = contentLink.parentElement;
+        if (!container || container.querySelector<HTMLAnchorElement>(`a[href="${VIDEO_HREF}"]`)) return;
+
+        const videoLink = contentLink.cloneNode(true) as HTMLAnchorElement;
+        videoLink.href = VIDEO_HREF;
+        videoLink.dataset.mediaVideoMenuEntry = "true";
+        videoLink.setAttribute("aria-label", "Vídeo com IA — VendorAI Media Engine");
+        videoLink.setAttribute("title", "Vídeo com IA — VendorAI Media Engine");
+
+        const walker = document.createTreeWalker(videoLink, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          if (node.nodeValue?.includes("Gerador de Conteúdo")) {
+            node.nodeValue = node.nodeValue.replace("Gerador de Conteúdo", "Vídeo com IA");
+          }
+          node = walker.nextNode();
+        }
+
+        videoLink.addEventListener("click", (event) => {
+          event.preventDefault();
+          window.location.assign(VIDEO_HREF);
+        });
+
+        contentLink.insertAdjacentElement("afterend", videoLink);
+      });
+    };
+
+    const scheduleEnsure = () => window.requestAnimationFrame(ensureVideoEntry);
+
+    ensureVideoEntry();
+    document.addEventListener("click", scheduleEnsure, true);
+    window.addEventListener("popstate", scheduleEnsure);
+
+    return () => {
+      document.removeEventListener("click", scheduleEnsure, true);
+      window.removeEventListener("popstate", scheduleEnsure);
+      document.querySelectorAll<HTMLAnchorElement>('[data-media-video-menu-entry="true"]').forEach((link) => link.remove());
+    };
+  }, []);
+
   useEffect(() => {
     if (!user) return;
 
