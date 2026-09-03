@@ -219,9 +219,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           label.textContent = "Vídeo com IA";
           videoLink.appendChild(label);
 
-          videoLink.addEventListener("click", (event) => {
-            event.preventDefault();
-            setLocation(VIDEO_HREF);
+          // Esta rota é lazy-loaded e costuma ser aberta em sessões longas do CRM.
+          // Durante um deploy, uma sessão antiga pode manter no bundle um hash de
+          // chunk que já não corresponde ao deployment atual. Fazemos navegação
+          // completa aqui para carregar index + chunks da mesma versão e evitar
+          // o Suspense ficar preso em um spinner por chunk obsoleto.
+          videoLink.addEventListener("click", () => {
+            window.location.assign(VIDEO_HREF);
           });
 
           contentLink.insertAdjacentElement("afterend", videoLink);
@@ -244,7 +248,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       observer.disconnect();
       document.querySelectorAll<HTMLAnchorElement>('[data-media-video-menu-entry="true"]').forEach((link) => link.remove());
     };
-  }, [location, setLocation]);
+  }, [location]);
 
   useEffect(() => {
     if (!user) return;
