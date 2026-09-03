@@ -68,6 +68,7 @@ import adminAgentDefaultsRouter from "./admin_agent_defaults";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
 import accessLicenseRouter, { accessLicensePublicRouter } from "./access_license";
+import publicAgentSimulatorRouter from "./public_agent_simulator";
 import tenantDomainsRouter from "./tenant_domains";
 import notificationsRouter from "./notifications";
 import { intakeRouter } from "./intake";
@@ -191,6 +192,7 @@ router.use(pracaAvaliacoesPublicRouter);
 router.use(pracaPaymentsPublicRouter);
 router.use(pracaDeliveryPublicRouter);
 router.use(accessLicensePublicRouter);
+router.use(publicAgentSimulatorRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
