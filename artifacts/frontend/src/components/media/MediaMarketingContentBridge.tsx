@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Image as ImageIcon, Library, Palette, X } from "lucide-react";
 import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "./MediaAssetPicker";
 
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
 const STORAGE_KEY = "vendorai_marketing_media_assets_v1";
+const INLINE_HOST_ATTR = "data-vendorai-content-media-inline";
 
 type CachedUser = { tenantId?: string | null };
 type CachedOverride = { id?: string | null };
@@ -58,6 +60,7 @@ export function MediaMarketingContentBridge() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const [desktopHost, setDesktopHost] = useState<HTMLElement | null>(null);
   const [assets, setAssets] = useState<MediaPickerAsset[]>(initial.assets);
   const [mode, setMode] = useState<UsageMode>(initial.mode);
   const assetsRef = useRef(assets);
@@ -84,6 +87,41 @@ export function MediaMarketingContentBridge() {
 
   useEffect(() => {
     if (!onContent) setMobilePanelOpen(false);
+  }, [onContent]);
+
+  useEffect(() => {
+    if (!onContent) {
+      setDesktopHost(null);
+      return;
+    }
+
+    let host = document.querySelector<HTMLElement>(`[${INLINE_HOST_ATTR}]`);
+    if (!host) {
+      host = document.createElement("div");
+      host.setAttribute(INLINE_HOST_ATTR, "true");
+    }
+
+    const attachInlineHost = () => {
+      const inputs = Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[type="file"][multiple][accept*="image/jpeg"]'),
+      );
+      const visibleInput = inputs.find((input) => input.offsetParent !== null);
+      const mediaSection = visibleInput?.parentElement;
+      if (!mediaSection || !host) return;
+
+      if (host.parentElement !== mediaSection) {
+        mediaSection.appendChild(host);
+      }
+      setDesktopHost((current) => current === host ? current : host);
+    };
+
+    attachInlineHost();
+    const timer = window.setInterval(attachInlineHost, 500);
+
+    return () => {
+      window.clearInterval(timer);
+      host?.remove();
+    };
   }, [onContent]);
 
   useEffect(() => {
@@ -191,12 +229,15 @@ export function MediaMarketingContentBridge() {
 
   return (
     <>
-      {/* Desktop: mantém o painel auxiliar flutuante. */}
-      <div className="fixed bottom-5 right-5 z-[80] hidden w-[min(380px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur md:block">
-        {renderPanelContent()}
-      </div>
+      {/* Desktop: fica incorporado ao bloco “Imagens do cliente”, sem cartão solto sobre a tela. */}
+      {desktopHost && createPortal(
+        <div className="mt-3 hidden rounded-xl border border-border/60 bg-muted/20 p-3 md:block">
+          {renderPanelContent()}
+        </div>,
+        desktopHost,
+      )}
 
-      {/* Mobile: o painel grande não fica mais aberto por cima do formulário. */}
+      {/* Mobile: mantém acesso compacto sem bloquear o formulário. */}
       <button
         type="button"
         onClick={() => setMobilePanelOpen(true)}
