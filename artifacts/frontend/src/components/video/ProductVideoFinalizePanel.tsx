@@ -18,14 +18,8 @@ type MediaTrack = {
   id: string;
   original_filename?: string | null;
   originalFilename?: string | null;
-  rights?: {
-    status?: string;
-    origin?: string;
-  } | null;
   usage?: {
     organicAllowed?: boolean;
-    paidAdsAllowed?: boolean;
-    reasons?: string[];
   } | null;
 };
 
@@ -90,11 +84,26 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
   const composeProgress = Math.max(0, Math.min(100, Number(composeJob?.progress ?? 0)));
   const composeDone = composeJob?.status === "done";
   const composeFailed = composeJob?.status === "error";
+  const musicReady = !selectedTrackId || (composeDone && Boolean(composedVideoUrl));
 
   const allowedTracks = useMemo(
     () => tracks.filter((track) => track.usage?.organicAllowed === true),
     [tracks],
   );
+
+  const clearMessages = () => {
+    setSaveMessage("");
+    setPublishMessage("");
+    setPublishError("");
+  };
+
+  const resetComposition = () => {
+    setComposeProjectId("");
+    setComposeJobId("");
+    setComposeJob(null);
+    setComposeLoading(false);
+    setComposeError("");
+  };
 
   useEffect(() => {
     if (!tenantId) return;
@@ -159,23 +168,21 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
 
   const useOriginalVideo = () => {
     setSelectedTrackId("");
-    setComposeProjectId("");
-    setComposeJobId("");
-    setComposeJob(null);
-    setComposeError("");
-    setSaveMessage("");
-    setPublishMessage("");
-    setPublishError("");
+    resetComposition();
+    clearMessages();
+  };
+
+  const changeTrack = (trackId: string) => {
+    setSelectedTrackId(trackId);
+    resetComposition();
+    clearMessages();
   };
 
   const applyMusic = async () => {
     if (!selectedTrackId || composeLoading) return;
+    resetComposition();
     setComposeLoading(true);
-    setComposeError("");
-    setSaveMessage("");
-    setPublishMessage("");
-    setPublishError("");
-    setComposeJob(null);
+    clearMessages();
 
     try {
       const sourceResponse = await fetch(sourceVideoUrl, { headers: authHeader() });
@@ -197,9 +204,9 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível aplicar a trilha");
-      setComposeProjectId(String(data.projectId || ""));
-      setComposeJobId(String(data.jobId || ""));
       if (!data.projectId || !data.jobId) throw new Error("A composição não retornou um job válido");
+      setComposeProjectId(String(data.projectId));
+      setComposeJobId(String(data.jobId));
     } catch (error) {
       setComposeLoading(false);
       setComposeError(error instanceof Error ? error.message : "Falha ao aplicar trilha");
@@ -207,6 +214,7 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
   };
 
   const syncFinalVideo = async (): Promise<string> => {
+    if (!musicReady) throw new Error("Aplique a música escolhida antes de salvar ou publicar.");
     const objectPath = storageObjectPath(finalVideoUrl);
     if (!objectPath) {
       throw new Error("O vídeo final não possui um caminho de armazenamento compatível para organização/publicação.");
@@ -225,7 +233,7 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
   };
 
   const saveForLater = async () => {
-    if (saveLoading || publishLoading) return;
+    if (saveLoading || publishLoading || !musicReady) return;
     setSaveLoading(true);
     setSaveMessage("");
     setPublishError("");
@@ -240,7 +248,7 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
   };
 
   const publishNow = async () => {
-    if (format !== "reel" || publishLoading || saveLoading) return;
+    if (format !== "reel" || publishLoading || saveLoading || !musicReady) return;
     setPublishLoading(true);
     setPublishMessage("");
     setPublishError("");
@@ -296,13 +304,7 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
           <>
             <select
               value={selectedTrackId}
-              onChange={(event) => {
-                setSelectedTrackId(event.target.value);
-                setComposeError("");
-                setSaveMessage("");
-                setPublishMessage("");
-                setPublishError("");
-              }}
+              onChange={(event) => changeTrack(event.target.value)}
               className="w-full rounded-xl border border-white/10 bg-[#171329] px-3 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500/50"
             >
               <option value="">Sem música — manter áudio original</option>
@@ -327,7 +329,11 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
               min={5}
               max={60}
               value={musicVolume}
-              onChange={(event) => setMusicVolume(Number(event.target.value))}
+              onChange={(event) => {
+                setMusicVolume(Number(event.target.value));
+                resetComposition();
+                clearMessages();
+              }}
               className="w-full accent-cyan-400"
             />
             <div className="flex flex-wrap gap-2">
@@ -346,6 +352,9 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
                 </button>
               )}
             </div>
+            {!musicReady && !composeLoading && !composeError && (
+              <p className="text-[11px] text-cyan-200">Clique em “Aplicar música ao vídeo” antes de salvar ou publicar.</p>
+            )}
           </div>
         )}
 
@@ -377,7 +386,7 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
           <button
             type="button"
             onClick={() => void saveForLater()}
-            disabled={saveLoading || publishLoading || (Boolean(selectedTrackId) && composeLoading)}
+            disabled={saveLoading || publishLoading || !musicReady}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/15 disabled:opacity-50"
           >
             {saveLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
@@ -388,7 +397,7 @@ export function ProductVideoFinalizePanel({ tenantId, sourceVideoUrl, generation
             <button
               type="button"
               onClick={() => void publishNow()}
-              disabled={publishLoading || saveLoading || (Boolean(selectedTrackId) && composeLoading)}
+              disabled={publishLoading || saveLoading || !musicReady}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-2.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >
               {publishLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
