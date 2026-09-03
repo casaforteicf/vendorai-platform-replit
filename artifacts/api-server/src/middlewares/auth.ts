@@ -1,6 +1,13 @@
 import { type RequestHandler } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
-import { db, tenantsTable, invoicesTable, usersTable } from "@workspace/db";
+import {
+  db,
+  tenantsTable,
+  invoicesTable,
+  usersTable,
+  dealsTable,
+  pipelineStagesTable,
+} from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 declare global {
@@ -131,6 +138,54 @@ const API_MODULE_RULES: Array<[RegExp, string]> = [
   [/^\/farmacia(?:\/|$)/, "pharmacy"],
 ];
 
+type AccessRow = {
+  permissions: string[] | null;
+  userFunction: string | null;
+  customFunctionId: string | null;
+};
+
+async function canExecuteCurrentPipelineStage(
+  req: Express.Request,
+  current: JwtPayload,
+  row: AccessRow | undefined,
+): Promise<boolean> {
+  if (req.method !== "PATCH") return true;
+  const match = req.path.match(/^\/deals\/([^/]+)$/);
+  if (!match) return true;
+
+  const dealId = match[1];
+  const [deal] = await db
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa })
+    .from(dealsTable)
+    .where(eq(dealsTable.id, dealId));
+  if (!deal || deal.tenantId !== current.tenantId) return true;
+
+  const requestedStage =
+    typeof req.body?.etapa === "string" && req.body.etapa.trim()
+      ? req.body.etapa.trim()
+      : deal.etapa;
+
+  const [stage] = await db
+    .select({ responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes })
+    .from(pipelineStagesTable)
+    .where(
+      and(
+        eq(pipelineStagesTable.tenantId, deal.tenantId),
+        eq(pipelineStagesTable.key, requestedStage),
+      ),
+    );
+
+  const responsibleFunctions = stage?.responsaveisFuncoes ?? [];
+  if (responsibleFunctions.length === 0) return true;
+  if (!row) return false;
+
+  const callerFunctions = new Set<string>();
+  if (row.userFunction) callerFunctions.add(`builtin:${row.userFunction}`);
+  if (row.customFunctionId) callerFunctions.add(`custom:${row.customFunctionId}`);
+
+  return responsibleFunctions.some((responsible) => callerFunctions.has(responsible));
+}
+
 /** Enforces explicit per-user module permissions on protected APIs. */
 export const enforceModulePermission: RequestHandler = async (req, res, next) => {
   const current = req.user;
@@ -146,22 +201,37 @@ export const enforceModulePermission: RequestHandler = async (req, res, next) =>
   }
 
   const [row] = await db
-    .select({ permissions: usersTable.permissions })
+    .select({
+      permissions: usersTable.permissions,
+      userFunction: usersTable.userFunction,
+      customFunctionId: usersTable.customFunctionId,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, current.sub));
 
   // NULL means the tenant has not customized this user yet; preserve the
   // existing role/function policy for backwards compatibility.
-  if (row?.permissions == null || row.permissions.includes(requiredModule)) {
-    next();
+  if (row?.permissions != null && !row.permissions.includes(requiredModule)) {
+    res.status(403).json({
+      error: "MODULE_ACCESS_DENIED",
+      message: "Seu usuário não possui acesso a este módulo.",
+      module: requiredModule,
+    });
     return;
   }
 
-  res.status(403).json({
-    error: "MODULE_ACCESS_DENIED",
-    message: "Seu usuário não possui acesso a este módulo.",
-    module: requiredModule,
-  });
+  if (requiredModule === "deals") {
+    const allowedAtStage = await canExecuteCurrentPipelineStage(req, current, row);
+    if (!allowedAtStage) {
+      res.status(403).json({
+        error: "PIPELINE_STAGE_FUNCTION_DENIED",
+        message: "Sua função não é responsável por executar esta etapa da pipeline.",
+      });
+      return;
+    }
+  }
+
+  next();
 };
 
 export function buildUserFunctionFilter(req: Express.Request, table: { tenantId: any; assignedTo: any }): any[] {
