@@ -18,6 +18,7 @@ export interface NativeImageToolOptions {
   width?: number;
   height?: number;
   fit?: "cover" | "contain" | "fill" | "inside" | "outside";
+  position?: "centre" | "north" | "south" | "east" | "west" | "northeast" | "northwest" | "southeast" | "southwest";
   left?: number;
   top?: number;
   quality?: number;
@@ -117,6 +118,7 @@ export async function processVendorAiImageTool(input: {
         width,
         height,
         fit: options.fit ?? "inside",
+        position: options.position ?? "centre",
         withoutEnlargement: false,
       });
       break;
@@ -137,7 +139,7 @@ export async function processVendorAiImageTool(input: {
     }
     case "image_optimize": {
       if (width || height) {
-        pipeline = pipeline.resize({ width, height, fit: options.fit ?? "inside", withoutEnlargement: true });
+        pipeline = pipeline.resize({ width, height, fit: options.fit ?? "inside", position: options.position ?? "centre", withoutEnlargement: true });
       }
       break;
     }
