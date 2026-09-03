@@ -1,4 +1,6 @@
-import { ArrowLeft, ExternalLink, GitCompare, Megaphone, MessageSquare, Package, Send, Sparkles, Video } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Clock3, ExternalLink, GitCompare, History, Megaphone, MessageSquare, Package, Send, Sparkles, Video } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 type MediaType = "image" | "video" | "audio" | "document";
 
@@ -9,6 +11,7 @@ type MediaAsset = {
   originalFilename?: string | null;
   source?: string | null;
   metadata?: Record<string, unknown> | null;
+  createdAt?: string | null;
 };
 
 type Props = {
@@ -24,6 +27,13 @@ function sourceAssetId(asset: MediaAsset): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+}
+
 const targets = [
   { id: "marketing", label: "Marketing", route: "/content", icon: Sparkles },
   { id: "campaign", label: "Campanha", route: "/campanhas-nova", icon: Megaphone },
@@ -34,8 +44,46 @@ const targets = [
 ] as const;
 
 export default function MediaPostGenerationPanel({ asset, originalAsset, mediaUrl, onInspectOriginal, onNavigate }: Props) {
+  const { user, tenantOverride } = useAuth();
+  const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const parentId = sourceAssetId(asset);
   const isDerived = Boolean(parentId) || asset.source === "generated";
+  const [libraryAssets, setLibraryAssets] = useState<MediaAsset[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!tenantId) return;
+    const token = localStorage.getItem("vendorai_token") ?? "";
+    void fetch(`/api/tenants/${tenantId}/media/assets?limit=150`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((body) => {
+        if (!cancelled && body && Array.isArray(body.assets)) setLibraryAssets(body.assets);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [tenantId, asset.id]);
+
+  const lineage = useMemo(() => {
+    if (!libraryAssets.length) return [] as MediaAsset[];
+    const byId = new Map(libraryAssets.map((item) => [item.id, item]));
+    const rootOf = (item: MediaAsset): string => {
+      const seen = new Set<string>();
+      let current = item;
+      while (true) {
+        if (seen.has(current.id)) return current.id;
+        seen.add(current.id);
+        const parent = sourceAssetId(current);
+        if (!parent) return current.id;
+        const parentAsset = byId.get(parent);
+        if (!parentAsset) return parent;
+        current = parentAsset;
+      }
+    };
+    const rootId = rootOf(asset);
+    return libraryAssets
+      .filter((item) => rootOf(item) === rootId)
+      .sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
+  }, [asset, libraryAssets]);
 
   function handoff(route: string, target: string) {
     const payload = {
@@ -74,6 +122,21 @@ export default function MediaPostGenerationPanel({ asset, originalAsset, mediaUr
           <div className="grid grid-cols-2 gap-2 border-t p-2">
             <div><p className="mb-1 text-center text-[10px] font-medium text-muted-foreground">Original</p><div className="aspect-square overflow-hidden rounded-lg bg-muted"><img src={mediaUrl(originalAsset.storageUrl)} alt="Original" className="h-full w-full object-cover" /></div></div>
             <div><p className="mb-1 text-center text-[10px] font-medium text-muted-foreground">Resultado</p><div className="aspect-square overflow-hidden rounded-lg bg-muted"><img src={mediaUrl(asset.storageUrl)} alt="Resultado" className="h-full w-full object-cover" /></div></div>
+          </div>
+        </details>
+      )}
+
+      {lineage.length > 1 && onInspectOriginal && (
+        <details className="rounded-xl border bg-background">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-3 text-xs font-semibold"><span className="flex items-center gap-2"><History className="h-4 w-4 text-primary" /> Histórico de versões</span><span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-normal text-muted-foreground">{lineage.length}</span></summary>
+          <div className="max-h-64 space-y-2 overflow-y-auto border-t p-2">
+            {lineage.map((item, index) => {
+              const active = item.id === asset.id;
+              return <button key={item.id} type="button" onClick={() => onInspectOriginal(item.id)} className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left ${active ? "border-primary/40 bg-primary/[0.05]" : "hover:bg-muted/50"}`}>
+                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md bg-muted">{item.type === "image" ? <img src={mediaUrl(item.storageUrl)} alt="Versão" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Video className="h-4 w-4 text-muted-foreground" /></div>}</div>
+                <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><p className="truncate text-[11px] font-medium">{index === 0 ? "Original" : `Versão ${index}`}</p>{active && <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">Atual</span>}</div><p className="mt-0.5 flex items-center gap-1 text-[9px] text-muted-foreground"><Clock3 className="h-2.5 w-2.5" /> {formatDate(item.createdAt)}</p></div>
+              </button>;
+            })}
           </div>
         </details>
       )}
