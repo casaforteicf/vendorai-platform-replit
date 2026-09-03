@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-387",
+    "titulo": "adicionar seletor universal da Biblioteca",
+    "descricao": "novo componente compartilhado `MediaAssetPicker`; busca assets do tenant atual na Biblioteca; permite filtrar tipos, pesquisar e limitar quantidade; retorna `media_asset` oficial, sem upload nem cópia;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-03T19:06:47.000Z",
+    "pullRequest": 387
+  },
+  {
     "id": "pr-340",
     "titulo": "Marketing: permitir várias imagens no Feed",
     "descricao": "No **Feed**, o botão de upload agora aceita **uma ou várias imagens de uma vez**. O botão passa a mostrar **Adicionar imagens** e exibe o progresso do envio. As imagens são **adicionadas ao post existente**, sem apagar automaticamente as anteriores. Limite de **10 imagens por publicação**.",
