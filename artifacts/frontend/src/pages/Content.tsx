@@ -334,8 +334,8 @@ function FeedCard({
           className="w-full border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 rounded-lg aspect-square max-w-sm mx-auto flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors bg-muted/10 hover:bg-primary/5"
         >
           <Upload className="h-7 w-7" />
-          <span className="text-xs font-medium">Adicionar imagem</span>
-          <span className="text-[10px] opacity-60">Clique para fazer upload</span>
+          <span className="text-xs font-medium">Adicionar imagens</span>
+          <span className="text-[10px] opacity-60">Clique para selecionar uma ou várias</span>
         </button>
       ) : null}
       <div className="flex items-start justify-between gap-2">
@@ -670,17 +670,22 @@ function MediaUploadButton({
   mediaType,
   onUploaded,
   triggerRef,
+  allowMultipleImages = false,
+  currentImageCount = 0,
 }: {
   contentId: string;
   variationIndex: number;
   tenantId: string;
   mediaType: "image" | "video";
-  onUploaded: (mediaUrl: string) => void;
+  onUploaded: (mediaUrl: string, imageUrls?: string[]) => void;
   triggerRef?: React.MutableRefObject<(() => void) | null>;
+  allowMultipleImages?: boolean;
+  currentImageCount?: number;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -698,68 +703,115 @@ function MediaUploadButton({
   const maxBytes = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
   const accept = isVideo ? "video/mp4,video/quicktime,video/webm" : "image/jpeg,image/png,image/webp";
   const field = isVideo ? "videoUrl" : "imageUrl";
+  const maxFeedImages = 10;
 
-  async function handleFile(file: File) {
+  function validateFile(file: File): string | null {
     if (!allowedTypes.includes(file.type)) {
-      toast({
-        title: "Formato inválido",
-        description: isVideo ? "Use MP4, MOV ou WebM." : "Use JPG, PNG ou WebP.",
-        variant: "destructive",
-      });
-      return;
+      return isVideo ? "Use MP4, MOV ou WebM." : "Use JPG, PNG ou WebP.";
     }
     if (file.size > maxBytes) {
+      return `Máximo ${isVideo ? "100" : "10"} MB por arquivo.`;
+    }
+    return null;
+  }
+
+  async function uploadFile(file: File, append: boolean): Promise<{ mediaUrl: string; imageUrls?: string[] }> {
+    const metaRes = await fetch("/api/storage/uploads/request-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+    });
+    if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
+    const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+
+    const putRes = await fetch(uploadURL, {
+      method: "PUT",
+      body: file,
+      headers: { "Content-Type": file.type },
+    });
+    if (!putRes.ok) throw new Error(`Falha ao enviar ${isVideo ? "vídeo" : "imagem"}`);
+
+    const patchRes = await fetch(
+      `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/image`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ objectPath, field, append }),
+      }
+    );
+    const patchData = (await patchRes.json().catch(() => ({}))) as { mediaUrl?: string; imageUrls?: string[]; error?: string };
+    if (!patchRes.ok || !patchData.mediaUrl) {
+      throw new Error(patchData.error ?? `Falha ao salvar ${isVideo ? "vídeo" : "imagem"}`);
+    }
+    return { mediaUrl: patchData.mediaUrl, imageUrls: patchData.imageUrls };
+  }
+
+  async function handleFiles(files: File[]) {
+    if (files.length === 0) return;
+    const selectedFiles = !isVideo && allowMultipleImages ? files : files.slice(0, 1);
+
+    for (const file of selectedFiles) {
+      const validationError = validateFile(file);
+      if (validationError) {
+        toast({
+          title: allowedTypes.includes(file.type) ? `${isVideo ? "Vídeo" : "Imagem"} muito grande` : "Formato inválido",
+          description: validationError,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    if (!isVideo && allowMultipleImages && currentImageCount + selectedFiles.length > maxFeedImages) {
       toast({
-        title: `${isVideo ? "Vídeo" : "Imagem"} muito grande`,
-        description: `Máximo ${isVideo ? "100" : "10"} MB.`,
+        title: "Máximo de 10 imagens",
+        description: `Este post já tem ${currentImageCount} imagem(ns). Remova alguma antes de adicionar ${selectedFiles.length}.`,
         variant: "destructive",
       });
       return;
     }
 
     setUploading(true);
+    setUploadProgress({ current: 0, total: selectedFiles.length });
     try {
-      const metaRes = await fetch("/api/storage/uploads/request-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-      });
-      if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
-      const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+      let lastMediaUrl = "";
+      let latestImageUrls: string[] | undefined;
 
-      const putRes = await fetch(uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
-      });
-      if (!putRes.ok) throw new Error(`Falha ao enviar ${isVideo ? "vídeo" : "imagem"}`);
+      for (let i = 0; i < selectedFiles.length; i++) {
+        setUploadProgress({ current: i + 1, total: selectedFiles.length });
+        const result = await uploadFile(selectedFiles[i]!, !isVideo && allowMultipleImages);
+        lastMediaUrl = result.mediaUrl;
+        if (result.imageUrls) latestImageUrls = result.imageUrls;
+      }
 
-      const patchRes = await fetch(
-        `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/image`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
-          },
-          body: JSON.stringify({ objectPath, field }),
-        }
-      );
-      if (!patchRes.ok) throw new Error(`Falha ao salvar ${isVideo ? "vídeo" : "imagem"}`);
-      const { mediaUrl } = (await patchRes.json()) as { mediaUrl: string };
-
-      onUploaded(mediaUrl);
+      if (lastMediaUrl) onUploaded(lastMediaUrl, latestImageUrls);
       qc.invalidateQueries({ queryKey: ["content", tenantId] });
       toast({
-        title: `${isVideo ? "Vídeo" : "Imagem"} atualizado!`,
-        description: `${isVideo ? "Vídeo" : "Imagem"} salvo e pronto para publicar.`,
+        title: !isVideo && selectedFiles.length > 1
+          ? `${selectedFiles.length} imagens adicionadas!`
+          : `${isVideo ? "Vídeo" : "Imagem"} atualizado!`,
+        description: !isVideo && allowMultipleImages
+          ? "As imagens ficaram salvas no post e podem ser publicadas como carrossel."
+          : `${isVideo ? "Vídeo" : "Imagem"} salvo e pronto para publicar.`,
       });
     } catch (err) {
       toast({ title: "Erro no upload", description: err instanceof Error ? err.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
+
+  const uploadLabel = uploading && uploadProgress
+    ? `Enviando ${uploadProgress.current}/${uploadProgress.total}…`
+    : isVideo
+      ? "Meu vídeo"
+      : allowMultipleImages
+        ? "Adicionar imagens"
+        : "Minha imagem";
 
   return (
     <>
@@ -767,19 +819,24 @@ function MediaUploadButton({
         ref={inputRef}
         type="file"
         accept={accept}
+        multiple={!isVideo && allowMultipleImages}
         className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (files.length > 0) void handleFiles(files);
+          e.target.value = "";
+        }}
       />
       <Button
         variant="outline"
         size="sm"
         onClick={() => inputRef.current?.click()}
-        disabled={uploading}
-        title={isVideo ? "Usar meu vídeo" : "Usar minha imagem"}
+        disabled={uploading || (!isVideo && allowMultipleImages && currentImageCount >= maxFeedImages)}
+        title={isVideo ? "Usar meu vídeo" : allowMultipleImages ? "Adicionar uma ou várias imagens" : "Usar minha imagem"}
         className="h-7 px-2 text-xs gap-1"
       >
         {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-        {uploading ? "Enviando…" : isVideo ? "Meu vídeo" : "Minha imagem"}
+        {uploadLabel}
       </Button>
     </>
   );
@@ -997,7 +1054,6 @@ function VariationCard({
 
   const { toast } = useToast();
 
-  // ── Melhorar texto ────────────────────────────────────────────────────────
   const [improvedVariation, setImprovedVariation] = useState<ContentVariation | null>(null);
 
   const improveMutation = useMutation<{ variation: ContentVariation }, Error, void>({
@@ -1023,7 +1079,6 @@ function VariationCard({
     },
   });
 
-  // ── Salvar na Biblioteca ──────────────────────────────────────────────────
   const [savedToLibrary, setSavedToLibrary] = useState(false);
 
   const saveMutation = useMutation<unknown, Error, void>({
@@ -1092,8 +1147,6 @@ function VariationCard({
     return undefined;
   })();
 
-
-
   function sendToSponsoredAds() {
     if (!contentId) return;
 
@@ -1104,16 +1157,12 @@ function VariationCard({
     if (type === "feed") {
       const v = displayVariation as FeedVariation;
       headlines = [(theme || v.caption || "Conteúdo patrocinado").slice(0, 80)];
-      descriptions = [`${v.caption}${(v.hashtags?.length ?? 0) ? `
-
-${(v.hashtags ?? []).join(" ")}` : ""}`];
+      descriptions = [`${v.caption}${(v.hashtags?.length ?? 0) ? `\n\n${(v.hashtags ?? []).join(" ")}` : ""}`];
       imagens = v.imageUrls?.length ? v.imageUrls : v.imageUrl ? [v.imageUrl] : [];
     } else if (type === "stories") {
       const v = displayVariation as StoriesVariation;
       headlines = [(theme || v.text || "Story patrocinado").slice(0, 80)];
-      descriptions = [`${v.text}${v.cta ? `
-
-CTA: ${v.cta}` : ""}`];
+      descriptions = [`${v.text}${v.cta ? `\n\nCTA: ${v.cta}` : ""}`];
       imagens = v.imageUrls?.length ? v.imageUrls : v.imageUrl ? [v.imageUrl] : [];
     } else {
       const v = displayVariation as ReelsVariation;
@@ -1218,7 +1267,19 @@ CTA: ${v.cta}` : ""}`];
                     variationIndex={index}
                     tenantId={tenantId}
                     mediaType={(type === "reels" || type === "tiktok") ? "video" : "image"}
-                    onUploaded={(type === "reels" || type === "tiktok") ? setLocalVideoUrl : (url) => { setLocalImageUrl(url); setLocalImageUrls(null); }}
+                    allowMultipleImages={type === "feed"}
+                    currentImageCount={type === "feed"
+                      ? ((effectiveVariation as FeedVariation).imageUrls?.length ?? ((effectiveVariation as FeedVariation).imageUrl ? 1 : 0))
+                      : 0}
+                    onUploaded={(type === "reels" || type === "tiktok")
+                      ? (url) => setLocalVideoUrl(url)
+                      : type === "feed"
+                        ? (url, imageUrls) => {
+                            const nextUrls = imageUrls?.length ? imageUrls : [url];
+                            setLocalImageUrls(nextUrls);
+                            setLocalImageUrl(nextUrls[0]);
+                          }
+                        : (url) => { setLocalImageUrl(url); setLocalImageUrls(null); }}
                     triggerRef={(type !== "reels" && type !== "tiktok") ? uploadTriggerRef : undefined}
                   />
                 )}
@@ -1272,13 +1333,12 @@ CTA: ${v.cta}` : ""}`];
             contentId={contentId}
             variationIndex={index}
             tenantId={tenantId}
-            onGenerated={setLocalImageUrl}
+            onGenerated={(url) => { setLocalImageUrl(url); setLocalImageUrls(null); }}
             referenceImageUrl={referenceImageUrl}
             hasImage={hasImage}
           />
         )}
 
-        {/* ── Ações pós-geração ── */}
         {tenantId && (
           <div className="flex items-center gap-2 pt-2 border-t mt-3 flex-wrap">
             <Button
@@ -1358,7 +1418,6 @@ function HistoryItem({
   });
   return (
     <div className="py-3 border-b last:border-0">
-      {/* ── Header row — click to expand ──────────────────────── */}
       <div
         className="flex items-start gap-3 cursor-pointer hover:bg-muted/30 rounded-md -mx-2 px-2 py-1 transition-colors"
         onClick={() => setExpanded((e) => !e)}
@@ -1391,7 +1450,6 @@ function HistoryItem({
         </div>
       </div>
 
-      {/* ── Expanded content ───────────────────────────────────── */}
       {expanded && (
         <div className="mt-3 space-y-3 px-1">
           <div className="flex items-start gap-1.5 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
@@ -1421,7 +1479,6 @@ function verticalToSource(vertical: string | null | undefined): ProductSource {
   return "catalog";
 }
 
-
 export default function Content() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -1436,9 +1493,6 @@ export default function Content() {
   const [produtoInternoId, setProdutoInternoId] = useState<string>("none");
   const [produtosInternos, setProdutosInternos] = useState<{ id: string; categoria: string; nome: string; descricaoUso: string }[]>([]);
 
-  // Catálogo interno de produtos Vendor.ai (Admin → Produtos) -- pedido
-  // real: usar as próprias funcionalidades do sistema como tema de post,
-  // sem descrever tudo na mão de novo a cada campanha.
   useEffect(() => {
     fetch("/api/produtos-internos", { headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` } })
       .then((r) => (r.ok ? r.json() : []))
@@ -1452,7 +1506,6 @@ export default function Content() {
   const [lastResult, setLastResult] = useState<ContentGeneration | null>(null);
   const [zipping, setZipping] = useState(false);
 
-  // Passo 3 — multi-image uploader
   const [uploadedImages, setUploadedImages] = useState<Array<{ id: string; url: string; purpose: "style_reference" | "post_material"; uploading?: boolean }>>([]);
   const [sessionId] = useState(() => crypto.randomUUID());
   const multiUploadRef = useRef<HTMLInputElement>(null);
@@ -1460,12 +1513,10 @@ export default function Content() {
   const contentFormat = activeTab === "stories" ? "stories" : (activeTab === "reels" || activeTab === "tiktok") ? "reels" : feedSubFormat;
   const aspectRatio = contentFormat === "feed_portrait" ? "4:5" : contentFormat === "feed_square" ? "1:1" : "9:16";
 
-  // Simple command mode
   const [simpleCommand, setSimpleCommand] = useState("");
   const [strategyResult, setStrategyResult] = useState<ContentStrategy | null>(null);
   const [strategyMode, setStrategyMode] = useState(false);
 
-  // Campos estratégicos — Passo 2
   const [customerPain, setCustomerPain] = useState("");
   const [postObjective, setPostObjective] = useState("");
   const [voiceTone, setVoiceTone] = useState("");
@@ -1714,7 +1765,6 @@ export default function Content() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-5">
-      {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Criar conteúdo</h1>
@@ -1754,7 +1804,6 @@ export default function Content() {
         }}
       />
 
-      {/* O mesmo gerador pode ser preenchido por detalhes ou por linguagem natural. */}
       <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg border bg-muted/20 px-3 py-2.5">
         <div>
           <p className="text-sm font-medium">Como você quer orientar a IA?</p>
@@ -1778,7 +1827,6 @@ export default function Content() {
         </div>
       </div>
 
-      {/* Main content */}
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as ContentType); setLastResult(null); setStrategyResult(null); }}>
         <TabsList className="grid grid-cols-6 w-full max-w-2xl">
           {(Object.keys(TYPE_CONFIG) as ContentType[]).map((key) => {
@@ -1800,7 +1848,6 @@ export default function Content() {
               </div>
             )}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-              {/* ── Left: form ── */}
               <div className="lg:col-span-2 space-y-4">
                 <Card>
                   <CardHeader className="pb-3">
@@ -1870,8 +1917,6 @@ export default function Content() {
                       </>
                     ) : (
                       <>
-
-
                         <div className="space-y-1.5">
                           <Label>Direção criativa <span className="text-muted-foreground font-normal">(opcional)</span></Label>
                           <Textarea
@@ -1886,7 +1931,6 @@ export default function Content() {
                           />
                         </div>
 
-                        {/* Controles finos permanecem disponíveis, mas não repetem o briefing principal. */}
                         <div className="rounded-lg border border-border/60 bg-muted/20 overflow-hidden">
                           <button
                             type="button"
@@ -1982,7 +2026,6 @@ export default function Content() {
                           )}
                         </div>
 
-                        {/* Passo 2 — Format selector */}
                         {key === "feed" && (
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
@@ -2031,7 +2074,6 @@ export default function Content() {
                           </div>
                         )}
 
-                        {/* Quantidade de imagens — desabilitado para Reels e quando há Material */}
                         {(() => {
                           const hasMaterial = uploadedImages.some((img) => img.purpose === "post_material" && !img.uploading);
                           return (
@@ -2069,7 +2111,6 @@ export default function Content() {
                           );
                         })()}
 
-                        {/* Passo 3 — Multi-image uploader */}
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <Label>Imagens do cliente (opcional)</Label>
@@ -2175,7 +2216,6 @@ export default function Content() {
                 </Card>
               </div>
 
-              {/* ── Right: results ── */}
               <div className="lg:col-span-3 space-y-4">
                 {strategyMode ? (
                   <>
@@ -2339,7 +2379,6 @@ export default function Content() {
         ))}
       </Tabs>
 
-      {/* Biblioteca de Conteúdo */}
       {((library?.items?.length ?? 0) > 0 || libraryLoading) && (
         <div>
           <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
@@ -2398,7 +2437,6 @@ export default function Content() {
         </div>
       )}
 
-      {/* History */}
       <div>
         <h2 className="text-base font-semibold mb-3">Histórico recente</h2>
         <Card>
