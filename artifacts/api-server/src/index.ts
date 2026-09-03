@@ -8,6 +8,7 @@ import { runVendorAiSubscriptionBilling } from "./jobs/vendorAiSubscriptionBilli
 import { runVendorAiSubscriptionPaymentSync } from "./jobs/vendorAiSubscriptionPaymentSync.js";
 import { runServerConversionSync } from "./jobs/serverConversionSync.js";
 import { runGoogleDataManagerConversionSync } from "./jobs/googleDataManagerConversionSync.js";
+import { startMediaVideoBatchRunner } from "./services/media-video-batch.js";
 import { applyPendingMigrations } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
@@ -45,6 +46,7 @@ async function start() {
 
     logger.info({ port }, "Server listening");
     startScheduler(logger);
+    startMediaVideoBatchRunner(logger);
 
     // Lifecycle de aquisição, trial e assinatura: primeiro reconcilia sinais
     // financeiros já persistidos, depois converge CRM/assinatura e só então
