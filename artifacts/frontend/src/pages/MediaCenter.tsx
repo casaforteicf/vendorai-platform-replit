@@ -218,10 +218,31 @@ export default function MediaCenter() {
     const counts = new Map<string, number>();
     for (const asset of assets) {
       const folder = assetFolder(asset);
-      if (folder) counts.set(folder, (counts.get(folder) ?? 0) + 1);
+      if (!folder) continue;
+      const parts = folder.split(" / ").filter(Boolean);
+      for (let index = 1; index <= parts.length; index += 1) {
+        const path = parts.slice(0, index).join(" / ");
+        counts.set(path, (counts.get(path) ?? 0) + 1);
+      }
     }
     return counts;
   }, [assets]);
+
+  const folderRows = useMemo(() => {
+    const paths = new Set<string>();
+    for (const folder of folders) {
+      const parts = folder.split(" / ").filter(Boolean);
+      for (let index = 1; index <= parts.length; index += 1) {
+        paths.add(parts.slice(0, index).join(" / "));
+      }
+    }
+    return Array.from(paths)
+      .sort((a, b) => a.localeCompare(b, "pt-BR"))
+      .map((path) => {
+        const parts = path.split(" / ");
+        return { path, label: parts.at(-1) ?? path, depth: Math.max(0, parts.length - 1) };
+      });
+  }, [folders]);
 
   async function loadAll() {
     if (!tenantId) return;
@@ -412,6 +433,48 @@ export default function MediaCenter() {
     void moveAssetsToFolder(folder);
   }
 
+  async function chooseFolderForAsset(asset: MediaAsset) {
+    if (!tenantId) return;
+    const currentFolder = assetFolder(asset);
+    const suggestion = currentFolder || (folderFilter !== "all" && folderFilter !== "unfiled" ? folderFilter : "");
+    const value = window.prompt(
+      "Digite a pasta. Para subpastas use /, por exemplo: Clientes / Krafht / Obra Chapecó",
+      suggestion,
+    );
+    if (value === null) return;
+    const folder = normalizeFolderPath(value);
+    if (!folder) {
+      toast({ title: "Informe um nome de pasta válido", variant: "destructive" });
+      return;
+    }
+
+    setOrganizing(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/media/assets/${asset.id}`, {
+        method: "PATCH",
+        headers: authHeaders(true),
+        body: JSON.stringify({ metadata: { folderPath: folder } }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Falha ao mover mídia");
+      toast({
+        title: "Mídia organizada",
+        description: `Movida para ${folder}. O arquivo original e a URL foram preservados.`,
+      });
+      setFolderFilter(folder);
+      setSelected([]);
+      await loadAll();
+    } catch (error) {
+      toast({
+        title: "Não foi possível mover a mídia",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setOrganizing(false);
+    }
+  }
+
   async function removeSelectedFromFolder() {
     if (!tenantId || selectedAssets.length === 0) return;
     setOrganizing(true);
@@ -466,8 +529,9 @@ export default function MediaCenter() {
 
   async function runNativeImage(
     operation: "image_resize" | "image_crop" | "image_optimize" | "image_enhance" | "image_convert",
+    targetAsset?: MediaAsset,
   ) {
-    const asset = selectedImages[0] ?? (inspected?.type === "image" ? inspected : null);
+    const asset = targetAsset ?? selectedImages[0] ?? (inspected?.type === "image" ? inspected : null);
     if (!asset || !tenantId) return;
     const defaults: Record<string, Record<string, unknown>> = {
       image_resize: { width: 1080, fit: "inside", quality: 90 },
@@ -523,7 +587,12 @@ export default function MediaCenter() {
         const folder = assetFolder(asset);
         if (contextFilter !== "none" && context?.type !== contextFilter) return false;
         if (folderFilter === "unfiled" && folder) return false;
-        if (folderFilter !== "all" && folderFilter !== "unfiled" && folder !== folderFilter) return false;
+        if (
+          folderFilter !== "all"
+          && folderFilter !== "unfiled"
+          && folder !== folderFilter
+          && !folder.startsWith(`${folderFilter} / `)
+        ) return false;
         const term = search.trim().toLowerCase();
         return !term || [
           asset.originalFilename,
@@ -656,15 +725,19 @@ export default function MediaCenter() {
             <span className="flex min-w-0 items-center gap-3"><FolderKanban className="h-4 w-4 shrink-0" /> Sem pasta</span>
             <span className="text-xs">{unfiledCount}</span>
           </button>
-          {folders.map((folder) => (
+          {folderRows.map((folder) => (
             <button
-              key={folder}
-              onClick={() => { setFolderFilter(folder); setSection("library"); }}
-              title={folder}
-              className={`side-btn justify-between ${folderFilter === folder ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground"}`}
+              key={folder.path}
+              onClick={() => { setFolderFilter(folder.path); setSection("library"); }}
+              title={folder.path}
+              style={{ paddingLeft: `${12 + folder.depth * 14}px` }}
+              className={`side-btn justify-between ${folderFilter === folder.path ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground"}`}
             >
-              <span className="flex min-w-0 items-center gap-3"><FolderKanban className="h-4 w-4 shrink-0" /><span className="truncate">{folder}</span></span>
-              <span className="text-xs">{folderCounts.get(folder) ?? 0}</span>
+              <span className="flex min-w-0 items-center gap-3">
+                <FolderKanban className={`shrink-0 ${folder.depth === 0 ? "h-4 w-4" : "h-3.5 w-3.5"}`} />
+                <span className="truncate">{folder.label}</span>
+              </span>
+              <span className="text-xs">{folderCounts.get(folder.path) ?? 0}</span>
             </button>
           ))}
 
@@ -700,9 +773,14 @@ export default function MediaCenter() {
                 <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
                   <button onClick={() => setFolderFilter("all")} className={`folder-chip ${folderFilter === "all" ? "folder-chip-active" : ""}`}>Todas · {assets.length}</button>
                   <button onClick={() => setFolderFilter("unfiled")} className={`folder-chip ${folderFilter === "unfiled" ? "folder-chip-active" : ""}`}>Sem pasta · {unfiledCount}</button>
-                  {folders.map((folder) => (
-                    <button key={folder} onClick={() => setFolderFilter(folder)} className={`folder-chip ${folderFilter === folder ? "folder-chip-active" : ""}`}>
-                      {folder} · {folderCounts.get(folder) ?? 0}
+                  {folderRows.map((folder) => (
+                    <button
+                      key={folder.path}
+                      title={folder.path}
+                      onClick={() => setFolderFilter(folder.path)}
+                      className={`folder-chip ${folderFilter === folder.path ? "folder-chip-active" : ""}`}
+                    >
+                      {folder.depth > 0 ? "↳ " : ""}{folder.label} · {folderCounts.get(folder.path) ?? 0}
                     </button>
                   ))}
                 </div>
@@ -988,14 +1066,14 @@ export default function MediaCenter() {
               <MediaPostGenerationPanel asset={inspected} originalAsset={inspectedOriginal} mediaUrl={mediaUrl} onInspectOriginal={(assetId) => setInspectedId(assetId)} onNavigate={navigate} />
               <div className="mt-5 border-t pt-4">
                 <p className="mb-3 text-xs font-semibold">Outras ações</p>
-                <button onClick={() => { setSelected([inspected.id]); window.setTimeout(chooseFolderForSelection, 0); }} className="mb-2 wide-action"><FolderKanban className="h-4 w-4" /> Mover para pasta</button>
+                <button disabled={organizing} onClick={() => void chooseFolderForAsset(inspected)} className="mb-2 wide-action"><FolderKanban className="h-4 w-4" /> Mover para pasta</button>
                 {inspected.type === "image" && (
                   <>
                     <div className="grid grid-cols-2 gap-2">
                       <button disabled={!ready("image_remove_background")} onClick={() => void runJob("image_remove_background", { assetId: inspected.id }, "Remover fundo")} className="inspector-action"><Eraser className="h-4 w-4" /> Remover fundo</button>
                       <button disabled={!ready("image_variations")} onClick={() => void runJob("image_variations", { assetId: inspected.id, count: 3 }, "Criar variações")} className="inspector-action"><Sparkles className="h-4 w-4" /> Variações</button>
-                      <button onClick={() => { setSelected([inspected.id]); void runNativeImage("image_resize"); }} className="inspector-action"><Maximize2 className="h-4 w-4" /> Redimensionar</button>
-                      <button onClick={() => { setSelected([inspected.id]); void runNativeImage("image_optimize"); }} className="inspector-action"><Layers3 className="h-4 w-4" /> Otimizar</button>
+                      <button onClick={() => void runNativeImage("image_resize", inspected)} className="inspector-action"><Maximize2 className="h-4 w-4" /> Redimensionar</button>
+                      <button onClick={() => void runNativeImage("image_optimize", inspected)} className="inspector-action"><Layers3 className="h-4 w-4" /> Otimizar</button>
                     </div>
                     <button onClick={() => navigate(`/content-studio/video/produto?mediaAssetIds=${encodeURIComponent(inspected.id)}`)} className="mt-2 wide-action"><Film className="h-4 w-4" /> Usar no Vídeo de Produto <ChevronRight className="ml-auto h-4 w-4" /></button>
                   </>
