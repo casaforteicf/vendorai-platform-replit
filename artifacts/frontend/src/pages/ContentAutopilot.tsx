@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { SiteGeneratorTab } from "./SiteGenerator";
@@ -71,29 +71,6 @@ type SiteAnalytics = {
 
 const VIEWS: HubView[] = ["overview", "generator", "autopilot", "seo", "analytics", "settings"];
 
-const SITE_SETUP_LINKS = [
-  {
-    label: "Google Ads — Conversões",
-    helper: "Localize o ID AW da tag/conversão",
-    href: "https://ads.google.com/aw/conversions",
-  },
-  {
-    label: "Meta — Pixel / Eventos",
-    helper: "Abra o Gerenciador de Eventos e escolha o Pixel",
-    href: "https://business.facebook.com/events_manager2/list/pixel/",
-  },
-  {
-    label: "Cloudflare — Registros DNS",
-    helper: "Abra diretamente a área de registros DNS",
-    href: "https://dash.cloudflare.com/?to=/:account/:zone/dns/records",
-  },
-  {
-    label: "Google Search Console",
-    helper: "Abra a propriedade do site no Search Console",
-    href: "https://search.google.com/search-console",
-  },
-] as const;
-
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -129,42 +106,9 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
 }
 
-function SiteSetupQuickLinks() {
-  return (
-    <Card className="mb-5 border-dashed bg-muted/20">
-      <CardContent className="p-4 sm:p-5">
-        <div className="flex flex-col gap-3">
-          <div>
-            <p className="text-sm font-semibold">Onde encontrar os dados para conectar</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Enquanto alguma configuração estiver pendente, use estes atalhos. Cada opção abre diretamente o serviço externo em uma nova aba.
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {SITE_SETUP_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex min-h-16 items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2.5 transition-colors hover:border-primary/40 hover:bg-muted/30"
-              >
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-foreground">{link.label}</span>
-                  <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{link.helper}</span>
-                </span>
-                <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
-              </a>
-            ))}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function SiteSettingsBridge() {
   const [ready, setReady] = useState(false);
+  const bridgeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -175,20 +119,107 @@ function SiteSettingsBridge() {
     setReady(true);
   }, []);
 
+  useEffect(() => {
+    if (!ready || !bridgeRef.current) return;
+    const root = bridgeRef.current;
+
+    function addFieldHelp(
+      labelText: string,
+      key: string,
+      instruction: string,
+      href: string,
+      linkText: string,
+    ) {
+      const label = Array.from(root.querySelectorAll("label")).find(
+        (item) => item.textContent?.trim() === labelText,
+      );
+      const container = label?.parentElement;
+      if (!container || container.querySelector(`[data-vendor-inline-help="${key}"]`)) return;
+
+      const legacyHelper = Array.from(container.querySelectorAll("p")).find((item) =>
+        item.className.includes("text-xs") && item.className.includes("text-muted-foreground"),
+      ) as HTMLElement | undefined;
+      if (legacyHelper) legacyHelper.style.display = "none";
+
+      const help = document.createElement("div");
+      help.dataset.vendorInlineHelp = key;
+      help.className = "space-y-1 pt-0.5 text-xs text-muted-foreground";
+
+      const text = document.createElement("p");
+      text.textContent = instruction;
+      help.appendChild(text);
+
+      const link = document.createElement("a");
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.className = "inline-flex items-center gap-1 font-medium text-primary hover:underline";
+      link.textContent = `${linkText} ↗`;
+      help.appendChild(link);
+
+      container.appendChild(help);
+    }
+
+    function addDnsHelp() {
+      const dnsBlocks = Array.from(root.querySelectorAll("div.text-xs.text-muted-foreground")).filter((item) =>
+        item.textContent?.includes("Crie um registro CNAME em seu DNS:"),
+      );
+      for (const block of dnsBlocks) {
+        if (block.querySelector('[data-vendor-inline-help="cloudflare-dns"]')) continue;
+        const help = document.createElement("div");
+        help.dataset.vendorInlineHelp = "cloudflare-dns";
+        help.className = "mt-1 space-y-1 text-xs text-muted-foreground";
+
+        const text = document.createElement("p");
+        text.textContent = "No Cloudflare, selecione este domínio → DNS → Registros e crie um CNAME usando exatamente o nome e o destino mostrados acima.";
+        help.appendChild(text);
+
+        const link = document.createElement("a");
+        link.href = "https://dash.cloudflare.com/?to=/:account/:zone/dns/records";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.className = "inline-flex items-center gap-1 font-medium text-primary hover:underline";
+        link.textContent = "Abrir Registros DNS no Cloudflare ↗";
+        help.appendChild(link);
+        block.appendChild(help);
+      }
+    }
+
+    function applyInlineHelp() {
+      addFieldHelp(
+        "ID de conversão do Google Ads",
+        "google-ads-conversion",
+        "No Google Ads, abra Metas → Conversões → Resumo. Selecione uma conversão do site e, em Configuração da tag, copie o ID que começa com AW-.",
+        "https://ads.google.com/aw/conversions",
+        "Abrir Conversões no Google Ads",
+      );
+      addFieldHelp(
+        "ID do Meta Pixel",
+        "meta-pixel",
+        "Na Meta, selecione a empresa correta → Origens de dados e escolha o Pixel/Conjunto de dados do site. Copie o ID numérico exibido nos detalhes.",
+        "https://www.facebook.com/events_manager2/overview",
+        "Abrir Gerenciador de Eventos da Meta",
+      );
+      addDnsHelp();
+    }
+
+    applyInlineHelp();
+    const observer = new MutationObserver(applyInlineHelp);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [ready]);
+
   if (!ready) return null;
 
   return (
-    <>
-      <SiteSetupQuickLinks />
-      <div className="vendor-site-settings-bridge">
-        <style>{`
-          .vendor-site-settings-bridge > div > div:first-child { display: none; }
-          .vendor-site-settings-bridge [role="tablist"] { display: none !important; }
-          .vendor-site-settings-bridge [role="tabpanel"] > div:first-child { display: none; }
-        `}</style>
-        <ConfiguracoesLegacy />
-      </div>
-    </>
+    <div ref={bridgeRef} className="vendor-site-settings-bridge">
+      <style>{`
+        .vendor-site-settings-bridge > div > div:first-child { display: none; }
+        .vendor-site-settings-bridge [role="tablist"] { display: none !important; }
+        .vendor-site-settings-bridge [role="tabpanel"] > div:first-child { display: none; }
+      `}</style>
+      <ConfiguracoesLegacy />
+    </div>
   );
 }
 
