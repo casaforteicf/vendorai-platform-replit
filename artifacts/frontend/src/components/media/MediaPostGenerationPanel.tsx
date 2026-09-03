@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Clock3, ExternalLink, GitCompare, History, Megaphone, MessageSquare, Package, Send, Sparkles, Video } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ImageFormatPresetsPanel from "@/components/media/ImageFormatPresetsPanel";
@@ -51,18 +51,20 @@ export default function MediaPostGenerationPanel({ asset, originalAsset, mediaUr
   const isDerived = Boolean(parentId) || asset.source === "generated";
   const [libraryAssets, setLibraryAssets] = useState<MediaAsset[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshLibraryAssets = useCallback(async () => {
     if (!tenantId) return;
     const token = localStorage.getItem("vendorai_token") ?? "";
-    void fetch(`/api/tenants/${tenantId}/media/assets?limit=150`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (response) => response.ok ? response.json() : null)
-      .then((body) => {
-        if (!cancelled && body && Array.isArray(body.assets)) setLibraryAssets(body.assets);
-      })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [tenantId, asset.id]);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media/assets?limit=150`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) return;
+      const body = await response.json();
+      if (Array.isArray(body.assets)) setLibraryAssets(body.assets);
+    } catch {
+      // O painel principal mantém o fallback manual de atualização da Biblioteca.
+    }
+  }, [tenantId]);
+
+  useEffect(() => { void refreshLibraryAssets(); }, [refreshLibraryAssets, asset.id]);
 
   const lineage = useMemo(() => {
     if (!libraryAssets.length) return [] as MediaAsset[];
@@ -142,7 +144,7 @@ export default function MediaPostGenerationPanel({ asset, originalAsset, mediaUr
         </details>
       )}
 
-      {asset.type === "image" && <ImageFormatPresetsPanel assetId={asset.id} filename={asset.originalFilename} onUpdated={() => window.dispatchEvent(new CustomEvent("vendorai:media-updated"))} />}
+      {asset.type === "image" && <ImageFormatPresetsPanel assetId={asset.id} filename={asset.originalFilename} onUpdated={refreshLibraryAssets} />}
 
       <div className="rounded-xl border bg-background p-3">
         <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold">Usar em</p><p className="mt-0.5 text-[10px] text-muted-foreground">Leve esta mídia para outro módulo sem fazer novo upload.</p></div><ExternalLink className="h-4 w-4 text-muted-foreground" /></div>
