@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import {
   generateVendorAiLipSync,
@@ -23,7 +23,7 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
-function sendLipSyncError(res: Parameters<Parameters<typeof router.post>[1]>[1], error: unknown): boolean {
+function sendLipSyncError(res: Response, error: unknown): boolean {
   if (error instanceof LipSyncEngineNotReadyError) {
     res.status(503).json({ error: error.message, code: "LIPSYNC_WORKER_NOT_READY" });
     return true;
