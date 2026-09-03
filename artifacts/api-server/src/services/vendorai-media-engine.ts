@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { createMediaJob } from "./media-jobs.js";
 import { createProcessingMediaProject } from "./media-library.js";
+import { isVendorAiVoiceWorkerConfigured } from "./vendorai-voice-engine.js";
 
 export type VendorAiMediaCapability =
   | "video_edit"
@@ -9,6 +10,7 @@ export type VendorAiMediaCapability =
   | "video_batch"
   | "video_compose"
   | "voice_profile"
+  | "voice_synthesize"
   | "persona_profile"
   | "avatar_lipsync"
   | "video_generate";
@@ -28,8 +30,9 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     video_caption: "ready",
     video_batch: "building",
     video_compose: "building",
-    voice_profile: "building",
-    persona_profile: "building",
+    voice_profile: "ready",
+    voice_synthesize: isVendorAiVoiceWorkerConfigured() ? "ready" : "building",
+    persona_profile: "ready",
     avatar_lipsync: "building",
     video_generate: "building",
   },
