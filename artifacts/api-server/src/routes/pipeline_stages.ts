@@ -1,16 +1,25 @@
 import { Router, type IRouter } from "express";
-import { and, eq, asc } from "drizzle-orm";
+import { and, eq, asc, inArray } from "drizzle-orm";
 import {
   db,
   pipelineStagesTable,
   SYSTEM_PIPELINE_STAGES,
-  insertPipelineStageSchema,
   updatePipelineStageSchema,
+  tenantUserFunctionsTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
+
+const BUILTIN_FUNCTIONS = new Set([
+  "vendedor",
+  "financeiro",
+  "suporte",
+  "entrega",
+  "administrador",
+  "outro",
+]);
 
 function hasAccess(req: any, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
@@ -18,6 +27,57 @@ function hasAccess(req: any, tenantId: string): boolean {
 
 function isAdmin(req: any): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+}
+
+async function validateResponsibleFunctions(
+  tenantId: string,
+  values: string[] | undefined,
+): Promise<{ values: string[] } | { error: string }> {
+  if (!values) return { values: [] };
+
+  const unique = [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
+  if (unique.length > 50) {
+    return { error: "Uma etapa pode ter no máximo 50 funções responsáveis." };
+  }
+
+  const customIds: string[] = [];
+  for (const value of unique) {
+    if (value.startsWith("builtin:")) {
+      const builtin = value.slice("builtin:".length);
+      if (!BUILTIN_FUNCTIONS.has(builtin)) {
+        return { error: `Função padrão inválida: ${builtin}` };
+      }
+      continue;
+    }
+
+    if (value.startsWith("custom:")) {
+      const id = value.slice("custom:".length);
+      if (!id) return { error: "Referência de função personalizada inválida." };
+      customIds.push(id);
+      continue;
+    }
+
+    return { error: "Função responsável inválida. Use uma função cadastrada no tenant." };
+  }
+
+  if (customIds.length > 0) {
+    const found = await db
+      .select({ id: tenantUserFunctionsTable.id })
+      .from(tenantUserFunctionsTable)
+      .where(
+        and(
+          eq(tenantUserFunctionsTable.tenantId, tenantId),
+          inArray(tenantUserFunctionsTable.id, customIds),
+        ),
+      );
+    const foundIds = new Set(found.map((row) => row.id));
+    const invalidId = customIds.find((id) => !foundIds.has(id));
+    if (invalidId) {
+      return { error: "Uma das funções selecionadas não pertence a esta empresa." };
+    }
+  }
+
+  return { values: unique };
 }
 
 // Cria a chave (slug) de uma etapa nova a partir do label — determinístico,
@@ -80,9 +140,18 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
     color: z.string().optional(),
     bg: z.string().optional(),
     slaMinutos: z.number().int().positive().nullable().optional(),
+    responsaveisFuncoes: z.array(z.string()).optional(),
   });
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const validatedFunctions = await validateResponsibleFunctions(
+    tenantId,
+    parsed.data.responsaveisFuncoes,
+  );
+  if ("error" in validatedFunctions) {
+    return res.status(422).json({ error: validatedFunctions.error });
+  }
 
   const existing = await db
     .select()
@@ -112,6 +181,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
       ordem: maxOrdem + 1,
       isSystem: false,
       slaMinutos: parsed.data.slaMinutos ?? null,
+      responsaveisFuncoes: validatedFunctions.values,
     })
     .returning();
 
@@ -126,9 +196,18 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
   const parsed = updatePipelineStageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
+  let responsaveisFuncoes = parsed.data.responsaveisFuncoes;
+  if (responsaveisFuncoes !== undefined) {
+    const validatedFunctions = await validateResponsibleFunctions(tenantId, responsaveisFuncoes);
+    if ("error" in validatedFunctions) {
+      return res.status(422).json({ error: validatedFunctions.error });
+    }
+    responsaveisFuncoes = validatedFunctions.values;
+  }
+
   const [updated] = await db
     .update(pipelineStagesTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, responsaveisFuncoes, updatedAt: new Date() })
     .where(and(eq(pipelineStagesTable.id, String(req.params.id)), eq(pipelineStagesTable.tenantId, tenantId)))
     .returning();
 
