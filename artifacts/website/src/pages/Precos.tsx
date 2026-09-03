@@ -79,6 +79,20 @@ export default function Precos() {
         </div>
 
         <section className="mt-10 rounded-[28px] border border-slate-200 bg-white p-8 md:p-10">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Opcional</p>
+              <h2 className="mt-1 text-2xl font-semibold text-slate-950">Implantação e Suporte</h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                Se preferir não configurar sozinho: conectamos seus canais, ajustamos os agentes de IA pro seu negócio
+                e treinamos sua equipe. Cobrança única, quando você quiser.
+              </p>
+            </div>
+            <p className="shrink-0 text-3xl font-semibold tracking-[-0.03em] text-slate-950">R$ 1.890</p>
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-[28px] border border-slate-200 bg-white p-8 md:p-10">
           <div className="flex flex-col gap-7 md:flex-row md:items-center md:justify-between">
             <div className="max-w-3xl">
               <div className="flex items-center gap-3">
