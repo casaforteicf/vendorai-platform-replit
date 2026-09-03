@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
 import { useGetBusinessProfileByTenant } from "@workspace/api-client-react";
@@ -8,6 +9,21 @@ type TenantNavModule = {
   moduleKey: string;
   isEnabled: boolean;
 };
+
+const PRACA_AI_PATHS = new Set([
+  "/stories",
+  "/variedades-dia",
+  "/praca-perguntas",
+  "/praca-variedades",
+  "/entregas-praca",
+  "/praca-executivo",
+  "/praca-conciliacao",
+  "/logistica-praca",
+]);
+
+const PRACA_AI_LINK_SELECTOR = Array.from(PRACA_AI_PATHS)
+  .map((href) => `a[href="${href}"]`)
+  .join(",");
 
 /**
  * Navigation migration shim.
@@ -27,12 +43,13 @@ type TenantNavModule = {
  */
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, tenantOverride, token } = useAuth();
+  const [location, setLocation] = useLocation();
   const effectiveTenantId = tenantOverride?.id ?? user?.tenantId ?? "";
 
   // Gestão ERP é add-on pago e deve falhar FECHADO: sem confirmação positiva
   // do entitlement, o menu não aparece. Isso evita que uma indisponibilidade
   // temporária de /nav-modules (ex.: 502) exponha o ERP novamente.
-  const { data: tenantNavModules = [] } = useQuery<TenantNavModule[]>({
+  const { data: tenantNavModules = [], isLoading: tenantNavModulesLoading } = useQuery<TenantNavModule[]>({
     queryKey: ["tenant-nav-modules", effectiveTenantId],
     enabled: !!effectiveTenantId && !!token,
     staleTime: 60_000,
@@ -69,6 +86,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const erpEntitled = tenantNavModules.some(
     (module) => module.moduleKey === "financeiro" && module.isEnabled === true,
   );
+  const pracaAiEntitled = tenantNavModules.some(
+    (module) => module.moduleKey === "praca_ai" && module.isEnabled === true,
+  );
 
   useEffect(() => {
     const enforceErpEntitlement = () => {
@@ -94,6 +114,46 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [erpEntitled]);
+
+  // Praça.AI é um conjunto opcional por tenant. Fica oculto por padrão e
+  // só aparece quando o Super Admin ativa o módulo "Praça.AI" no painel
+  // gerencial do tenant. O bloqueio cobre tanto os itens de Marketing
+  // (Stories/Variedades) quanto os módulos operacionais/logísticos.
+  useEffect(() => {
+    if (!PRACA_AI_LINK_SELECTOR) return;
+
+    const enforcePracaAiEntitlement = () => {
+      document.querySelectorAll<HTMLAnchorElement>(PRACA_AI_LINK_SELECTOR).forEach((link) => {
+        const nextDisplay = pracaAiEntitled ? "" : "none";
+        if (link.style.display !== nextDisplay) link.style.display = nextDisplay;
+        if (pracaAiEntitled) {
+          link.removeAttribute("aria-hidden");
+          if (link.dataset.pracaAiLocked === "true") {
+            link.removeAttribute("tabindex");
+            delete link.dataset.pracaAiLocked;
+          }
+        } else {
+          link.setAttribute("aria-hidden", "true");
+          link.setAttribute("tabindex", "-1");
+          link.dataset.pracaAiLocked = "true";
+        }
+      });
+    };
+
+    enforcePracaAiEntitlement();
+    const observer = new MutationObserver(enforcePracaAiEntitlement);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [pracaAiEntitled]);
+
+  // Também fecha o acesso por URL direta quando o módulo não foi liberado.
+  // Espera a leitura do entitlement terminar para não redirecionar um tenant
+  // que já tem Praça.AI ativo durante o primeiro carregamento da tela.
+  useEffect(() => {
+    if (!effectiveTenantId || tenantNavModulesLoading || pracaAiEntitled) return;
+    const pathname = location.split("?")[0];
+    if (PRACA_AI_PATHS.has(pathname)) setLocation("/");
+  }, [effectiveTenantId, location, pracaAiEntitled, setLocation, tenantNavModulesLoading]);
 
   useEffect(() => {
     const relabelSitesEntry = () => {
