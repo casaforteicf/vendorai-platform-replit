@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DemoBanner } from "@/components/DemoBanner";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   useGetTenant,
   getGetTenantQueryKey,
@@ -209,6 +209,54 @@ function Spinner() {
   );
 }
 
+function RouteContentFallback() {
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), 8_000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (!slow) {
+    return (
+      <div className="min-h-[50vh] w-full flex items-center justify-center">
+        <div className="animate-spin h-7 w-7 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-[50vh] w-full flex items-center justify-center p-6">
+      <div className="w-full max-w-md rounded-2xl border bg-card p-6 text-center shadow-sm">
+        <h2 className="text-base font-semibold">Esta tela demorou mais que o esperado</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          O menu continua disponível. Se houve uma atualização do VendorAI enquanto esta aba estava aberta, carregue a versão atual do sistema.
+        </p>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+          <button
+            type="button"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            onClick={() => window.location.reload()}
+          >
+            Carregar versão atual
+          </button>
+          <button
+            type="button"
+            className="rounded-md border px-4 py-2 text-sm font-medium"
+            onClick={() => { window.location.href = "/dashboard"; }}
+          >
+            Voltar ao painel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RouteContentBoundary({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<RouteContentFallback />}>{children}</Suspense>;
+}
+
 function RedirectPage({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   useEffect(() => {
@@ -284,7 +332,9 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   return (
     <SidebarLayout>
       <DemoBanner />
-      <Component {...rest} />
+      <RouteContentBoundary>
+        <Component {...rest} />
+      </RouteContentBoundary>
     </SidebarLayout>
   );
 }
@@ -301,7 +351,11 @@ function FullscreenProtectedRoute({ component: Component, ...rest }: any) {
 
   if (isLoading || !token || !user) return <Spinner />;
 
-  return <Component {...rest} />;
+  return (
+    <RouteContentBoundary>
+      <Component {...rest} />
+    </RouteContentBoundary>
+  );
 }
 
 function SuperAdminRoute({ component: Component, ...rest }: any) {
@@ -321,7 +375,9 @@ function SuperAdminRoute({ component: Component, ...rest }: any) {
 
   return (
     <SidebarLayout>
-      <Component {...rest} />
+      <RouteContentBoundary>
+        <Component {...rest} />
+      </RouteContentBoundary>
     </SidebarLayout>
   );
 }
@@ -341,7 +397,11 @@ function PartnerRoute({ component: Component }: any) {
   if (isLoading || !token || !user) return <Spinner />;
   if (user.platformRole !== "partner") return null;
 
-  return <Component />;
+  return (
+    <RouteContentBoundary>
+      <Component />
+    </RouteContentBoundary>
+  );
 }
 
 function OnboardingRoute() {
@@ -398,7 +458,9 @@ function VarejoRoute({ component: Component, ...rest }: any) {
 
   return (
     <SidebarLayout>
-      <Component {...rest} />
+      <RouteContentBoundary>
+        <Component {...rest} />
+      </RouteContentBoundary>
     </SidebarLayout>
   );
 }
@@ -424,7 +486,9 @@ function SupermercadoRoute({ component: Component, ...rest }: any) {
 
   return (
     <SidebarLayout>
-      <Component {...rest} />
+      <RouteContentBoundary>
+        <Component {...rest} />
+      </RouteContentBoundary>
     </SidebarLayout>
   );
 }
@@ -450,7 +514,9 @@ function ConstrucaoRoute({ component: Component, ...rest }: any) {
 
   return (
     <SidebarLayout>
-      <Component {...rest} />
+      <RouteContentBoundary>
+        <Component {...rest} />
+      </RouteContentBoundary>
     </SidebarLayout>
   );
 }
