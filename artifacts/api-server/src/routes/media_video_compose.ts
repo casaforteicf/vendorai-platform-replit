@@ -14,6 +14,7 @@ import {
   registerGeneratedMediaOutput,
   setMediaProjectStatus,
 } from "../services/media-library.js";
+import mediaTracksRouter from "./media_tracks.js";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
@@ -261,5 +262,7 @@ router.post(
     })();
   },
 );
+
+router.use(mediaTracksRouter);
 
 export default router;
