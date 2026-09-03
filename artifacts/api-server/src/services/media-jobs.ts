@@ -19,6 +19,7 @@ export interface MediaJobSnapshot {
   clips?: string[];
   results?: MediaJobResultItem[];
   error?: string;
+  [key: string]: unknown;
 }
 
 export interface CreateMediaJobInput {
@@ -32,12 +33,14 @@ export interface CreateMediaJobInput {
   snapshot?: MediaJobSnapshot;
 }
 
+const SNAPSHOT_CONTROL_FIELDS = new Set(["status", "progress", "total", "error"]);
+
 function snapshotOutput(snapshot: MediaJobSnapshot): Record<string, unknown> {
   const output: Record<string, unknown> = {};
-  if (snapshot.videoUrl !== undefined) output.videoUrl = snapshot.videoUrl;
-  if (snapshot.audioUrl !== undefined) output.audioUrl = snapshot.audioUrl;
-  if (snapshot.clips !== undefined) output.clips = snapshot.clips;
-  if (snapshot.results !== undefined) output.results = snapshot.results;
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (SNAPSHOT_CONTROL_FIELDS.has(key) || value === undefined) continue;
+    output[key] = value;
+  }
   return output;
 }
 
@@ -101,15 +104,14 @@ export async function getMediaJob(
 
   const output = (job.output ?? {}) as Record<string, unknown>;
   const status: MediaJobStatus = job.status === "done" || job.status === "error" ? job.status : "running";
-
-  return {
+  const snapshot: MediaJobSnapshot = {
     status,
-    ...(job.progress !== null ? { progress: job.progress } : {}),
-    ...(job.total !== null ? { total: job.total } : {}),
-    ...(typeof output.videoUrl === "string" ? { videoUrl: output.videoUrl } : {}),
-    ...(typeof output.audioUrl === "string" ? { audioUrl: output.audioUrl } : {}),
-    ...(Array.isArray(output.clips) ? { clips: output.clips.filter((value): value is string => typeof value === "string") } : {}),
-    ...(Array.isArray(output.results) ? { results: output.results as MediaJobResultItem[] } : {}),
-    ...(job.error ? { error: job.error } : {}),
+    ...output,
   };
+
+  if (job.progress !== null) snapshot.progress = job.progress;
+  if (job.total !== null) snapshot.total = job.total;
+  if (job.error) snapshot.error = job.error;
+
+  return snapshot;
 }
