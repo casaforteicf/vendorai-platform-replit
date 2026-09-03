@@ -9,6 +9,15 @@
 
 body.vendorai-video-route {
   --video-page-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground));
+}
+
+/* Garante que nenhuma faixa do tema antigo apareça quando o conteúdo é menor
+   que a viewport ou durante o scroll/sticky das ferramentas de vídeo. */
+body.vendorai-video-route #root {
+  min-height: 100vh;
+  background: hsl(var(--background)) !important;
 }
 
 /* Shell antigo das páginas internas: deixa de funcionar como uma aplicação
@@ -24,6 +33,37 @@ body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"][clas
   margin-left: 0 !important;
   margin-right: 0 !important;
   padding: 0 !important;
+}
+
+/* A barra inferior do gerador ainda carregava o degradê preto/roxo do tema
+   legado. Todas as rotas de vídeo passam a usar o mesmo canvas claro e cards
+   do sistema; fundo preto continua reservado exclusivamente ao player. */
+body.vendorai-video-route [class*="sticky"][class*="bottom-0"][class*="bg-gradient-to-t"] {
+  background: linear-gradient(
+    to top,
+    hsl(var(--background)) 0%,
+    hsl(var(--background)) 68%,
+    hsl(var(--background) / 0.96) 84%,
+    transparent 100%
+  ) !important;
+}
+
+body.vendorai-video-route [class*="bg-[#12092a]"],
+body.vendorai-video-route [class*="bg-[#171126]"],
+body.vendorai-video-route [class*="bg-[#1a1040]"] {
+  border-color: hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+body.vendorai-video-route [class*="sticky"][class*="bottom-0"] > [class*="bg-[#12092a]"] {
+  box-shadow: var(--video-page-shadow) !important;
+}
+
+body.vendorai-video-route [class*="sticky"][class*="bottom-0"] button[class*="bg-white/5"] {
+  border-color: hsl(var(--border)) !important;
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
 }
 
 /* Tipografia de cabeçalhos das páginas internas. */
