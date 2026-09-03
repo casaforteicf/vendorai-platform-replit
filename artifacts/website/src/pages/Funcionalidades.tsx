@@ -207,14 +207,14 @@ export default function Funcionalidades() {
           <p className="mb-4 text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Uma licença. Experiência completa.</p>
           <h1 className="text-4xl font-semibold tracking-[-0.045em] md:text-6xl">O sistema inteligente que conecta toda a empresa.</h1>
           <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-slate-300 md:text-xl">
-            VendorAI é a marca. TAD é o sistema: Tecnologia, Automação e Dados reunidos para captar, atender, vender, executar, gerir e acompanhar toda a empresa em uma única operação.
+            Vendor.ai reúne tecnologia, automação e dados numa única operação — captar, atender, vender, executar, gerir e acompanhar toda a empresa.
           </p>
         </div>
       </section>
 
       <section className="container mx-auto px-4 py-16 md:py-20">
         <div className="mx-auto mb-12 max-w-3xl text-center">
-          <h2 className="text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">Tudo o que o VendorAI TAD entrega</h2>
+          <h2 className="text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">Tudo o que o Vendor.ai entrega</h2>
           <p className="mt-4 text-lg leading-8 text-slate-600">
             Uma experiência completa, sem planos reduzidos. Os módulos trabalham conectados e o formato de contratação altera apenas o período de uso.
           </p>
@@ -257,7 +257,7 @@ export default function Funcionalidades() {
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">Mapa completo do sistema</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">As principais funções, sem esconder nenhuma área</h2>
-            <p className="mt-4 text-lg leading-8 text-slate-600">O TAD reúne recursos comerciais, operacionais, administrativos e especializados. Cada empresa utiliza a mesma plataforma completa, configurada para sua realidade.</p>
+            <p className="mt-4 text-lg leading-8 text-slate-600">O Vendor.ai reúne recursos comerciais, operacionais, administrativos e especializados. Cada empresa utiliza a mesma plataforma completa, configurada para sua realidade.</p>
           </div>
           <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {capabilityGroups.map((group) => (
@@ -278,7 +278,7 @@ export default function Funcionalidades() {
 
         <section className="mt-16 rounded-[28px] bg-blue-50 p-8 md:p-12">
           <div className="mx-auto max-w-3xl text-center">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">Benefícios gerados pelo TAD</p>
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">Benefícios gerados pelo Vendor.ai</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">Funções conectadas para gerar resultado real</h2>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -293,9 +293,9 @@ export default function Funcionalidades() {
         </section>
 
         <div className="mt-16 rounded-[28px] bg-slate-950 p-8 text-center text-white md:p-12">
-          <h2 className="text-3xl font-semibold tracking-[-0.035em]">Veja o VendorAI TAD completo na sua operação</h2>
+          <h2 className="text-3xl font-semibold tracking-[-0.035em]">Veja o Vendor.ai completo na sua operação</h2>
           <p className="mx-auto mt-4 max-w-2xl leading-7 text-slate-300">
-            Ative seus 5 dias gratuitos, mantenha todas as informações organizadas e escolha depois entre novas ativações ou a licença oficial.
+            Ative seus 5 dias gratuitos, mantenha todas as informações organizadas e escolha depois entre um bloco avulso de 5 dias ou a assinatura contínua.
           </p>
           <Button size="lg" className="mt-8 h-14 rounded-xl px-8" asChild>
             <Link href="/demo">Começar meus 5 dias gratuitos</Link>

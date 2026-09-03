@@ -9,8 +9,12 @@ import {
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  FileSearch,
   Gauge,
+  Globe,
+  LayoutTemplate,
   Megaphone,
+  Newspaper,
   Radar,
   RefreshCcw,
   Route,
@@ -386,6 +390,59 @@ export default function Home() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-sm font-bold text-blue-700">{String(index + 1).padStart(2, "0")}</div>
                 <h3 className="mt-5 text-lg font-semibold">{title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-slate-950 py-20 text-white md:py-28">
+        <div className="container mx-auto px-4">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-300">Marketing rodando com IA de verdade</p>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] md:text-5xl">Enquanto a operação vende, a IA constrói presença digital sozinha.</h2>
+            <p className="mt-5 text-lg leading-8 text-slate-400">Não é um checklist de funcionalidades. São ferramentas que fazem o trabalho de uma agência inteira, rodando dentro do mesmo sistema que já sabe tudo sobre o seu negócio.</p>
+          </div>
+          <div className="mx-auto mt-14 grid max-w-6xl gap-5 md:grid-cols-2">
+            {[
+              {
+                icon: Globe,
+                title: "Gerador de Sites com IA",
+                desc: "Descreva sua empresa e a IA monta o site completo — textos, estrutura, SEO e identidade visual — pronto pra publicar em minutos, não em semanas de agência.",
+                cta: "Ver o gerador de sites",
+              },
+              {
+                icon: FileSearch,
+                title: "Análise do seu site atual",
+                desc: "Cole a URL do site que você já tem. A IA audita estrutura, conteúdo e SEO, e aponta exatamente o que está custando visita e conversão.",
+                cta: "Ver como funciona a análise",
+              },
+              {
+                icon: Newspaper,
+                title: "Content Autopilot",
+                desc: "A IA pesquisa palavras-chave do seu mercado, escreve artigos de blog otimizados pra SEO e publica sozinha, todo dia — sem você abrir uma tela de redação.",
+                cta: "Ver o Content Autopilot",
+              },
+              {
+                icon: LayoutTemplate,
+                title: "50 landing pages por mercado",
+                desc: "Cada um dos 50 perfis verticais do VendorAI tem sua própria LP, com estrutura de venda SPIN Selling pronta — não é um template genérico reaproveitado.",
+                cta: "Ver as LPs por segmento",
+              },
+            ].map((item) => (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.25 }}
+                className="rounded-[26px] border border-white/10 bg-white/[0.04] p-7"
+              >
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-400/10 text-blue-300"><item.icon className="h-5 w-5" /></div>
+                <h3 className="mt-5 text-xl font-semibold tracking-[-0.02em]">{item.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-400">{item.desc}</p>
+                <Link href="/funcionalidades#sites" className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-300 hover:text-blue-200">
+                  {item.cta} <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
               </motion.div>
             ))}
           </div>
