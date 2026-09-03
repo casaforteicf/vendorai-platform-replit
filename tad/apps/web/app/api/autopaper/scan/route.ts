@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOperatingProfile, selectAutoScannerCandidates } from '@tad/core';
 import { bearerToken } from '../../../../lib/auth';
-import { appendAudit, getAutopilotState, getPaperWallet, listPositions, saveAutopilotState } from '../../../../lib/store';
+import { appendAudit, getAutopilotState, listPositions, saveAutopilotState } from '../../../../lib/store';
 import { getOperatingSettings } from '../../../../lib/operating-settings';
-import { loadMarkets } from '../../../../lib/binance';
+import { scanFuturesUniverse } from '../../../../lib/market-scanner';
 import { POST as paperPost } from '../../paper/route';
 
 function cycleId(now:number){return `CYCLE-${Math.floor(now/(5*60_000))}`;}
@@ -11,7 +11,7 @@ function cycleId(now:number){return `CYCLE-${Math.floor(now/(5*60_000))}`;}
 export async function GET(req:NextRequest){
   const token=bearerToken(req); if(!token)return NextResponse.json({error:'AUTH_REQUIRED'},{status:401});
   const [state,settings]=await Promise.all([getAutopilotState(token),getOperatingSettings(token)]); const profile=getOperatingProfile(settings.profile);
-  return NextResponse.json({mode:'PAPER_AUTOPILOT',state,profile:profile.id,dailyTradeLimit:null,cycleTradeLimit:'AVAILABLE_PROFILE_SLOTS',liveExecution:false});
+  return NextResponse.json({mode:'PAPER_AUTOPILOT',scanner:'DYNAMIC_USDT_PERPETUALS',state,profile:profile.id,dailyTradeLimit:null,cycleTradeLimit:'AVAILABLE_PROFILE_SLOTS',liveExecution:false});
 }
 
 export async function PUT(req:NextRequest){
@@ -27,9 +27,10 @@ export async function POST(req:NextRequest){
   if(!state.enabled)return NextResponse.json({mode:'PAPER_AUTOPILOT',cycleId:cid,status:'DISABLED',profile:profile.id,selected:[],executions:[],liveExecution:false});
   if(!settings.enabledMarkets.includes('CRYPTO'))return NextResponse.json({mode:'PAPER_AUTOPILOT',cycleId:cid,status:'CRYPTO_MARKET_DISABLED',profile:profile.id,selected:[],executions:[],liveExecution:false});
   if(state.lastCycleId===cid)return NextResponse.json({mode:'PAPER_AUTOPILOT',cycleId:cid,status:'IDEMPOTENT_REPLAY_BLOCKED',profile:profile.id,selected:[],executions:[],liveExecution:false});
-  const [markets,positions,wallet]=await Promise.all([loadMarkets(),listPositions(token),getPaperWallet(token)]); const open=positions.filter(p=>p.status==='OPEN'); const openSymbols=new Set(open.map(p=>p.symbol));
+  const [markets,positions]=await Promise.all([scanFuturesUniverse({limit:60}),listPositions(token)]); const open=positions.filter(p=>p.status==='OPEN'); const openSymbols=new Set(open.map(p=>p.symbol));
   const remainingSlots=Math.max(0,profile.riskPolicy.maxOpenPositions-open.length);
-  const rows=markets.map(m=>({symbol:m.symbol,strategyId:'AUTO_BEST',score:m.opportunityScore??0,eligible:!openSymbols.has(m.symbol),allocationWeight:1}));
+  const eligibleMarkets=markets.filter(m=>m.eligible&&!openSymbols.has(m.symbol));
+  const rows=eligibleMarkets.map(m=>({symbol:m.symbol,strategyId:'AUTO_BEST',score:m.scannerScore,eligible:true,allocationWeight:Math.max(.25,m.liquidityScore/100)}));
   const selected=remainingSlots>0?selectAutoScannerCandidates(rows,{enabled:true,minimumScore:state.minimumScore,cooldownMinutes:state.cooldownMinutes,maxNewTradesPerCycle:remainingSlots},state.lastTradeAt,now):[];
   const next={...state,maxNewTradesPerCycle:profile.riskPolicy.maxOpenPositions,lastScanAt:now,lastCycleId:cid,updatedAt:now}; await saveAutopilotState(token,next);
   const executions:any[]=[];
@@ -37,9 +38,9 @@ export async function POST(req:NextRequest){
     const market=markets.find(m=>m.symbol===candidate.symbol); if(!market)continue;
     const key=`${cid}:${candidate.symbol}`;
     const internal=new NextRequest('http://tad.internal/api/paper',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({market,marketId:'CRYPTO',leverage:Math.min(2,profile.riskPolicy.maxLeverage),autopilotKey:key})});
-    const response=await paperPost(internal); const result=await response.json(); executions.push({candidate,status:response.status,result});
+    const response=await paperPost(internal); const result=await response.json(); executions.push({candidate,scanner:{scannerScore:market.scannerScore,liquidityScore:market.liquidityScore,spreadScore:market.spreadScore,volatilityScore:market.volatilityScore,fundingScore:market.fundingScore,quoteVolume24h:market.quoteVolume24h,spreadPct:market.spreadPct,fundingRate:market.fundingRate,intradayRangePct:market.intradayRangePct},status:response.status,result});
     if(response.ok&&result?.approved){next.lastTradeAt={...next.lastTradeAt,[`${candidate.symbol}:AUTO_BEST`]:now}; await saveAutopilotState(token,next);}
   }
-  await appendAudit(token,'AUTOPILOT_CYCLE',{cycleId:cid,profile:profile.id,dailyTradeLimit:null,remainingSlots,selected,executions:executions.map(x=>({candidate:x.candidate,status:x.status,approved:Boolean(x.result?.approved),reason:x.result?.reason??null}))});
-  return NextResponse.json({mode:'PAPER_AUTOPILOT',cycleId:cid,status:'COMPLETED',profile:profile.id,dailyTradeLimit:null,remainingSlots,selected,executions,liveExecution:false,exchangeOrderSent:false});
+  await appendAudit(token,'AUTOPILOT_CYCLE',{cycleId:cid,profile:profile.id,scanner:'DYNAMIC_USDT_PERPETUALS',universeSize:markets.length,eligibleUniverseSize:eligibleMarkets.length,dailyTradeLimit:null,remainingSlots,selected,executions:executions.map(x=>({candidate:x.candidate,scanner:x.scanner,status:x.status,approved:Boolean(x.result?.approved),reason:x.result?.reason??null}))});
+  return NextResponse.json({mode:'PAPER_AUTOPILOT',scanner:'DYNAMIC_USDT_PERPETUALS',cycleId:cid,status:'COMPLETED',profile:profile.id,dailyTradeLimit:null,universeSize:markets.length,eligibleUniverseSize:eligibleMarkets.length,remainingSlots,selected,executions,liveExecution:false,exchangeOrderSent:false});
 }
