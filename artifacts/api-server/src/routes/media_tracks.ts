@@ -235,6 +235,37 @@ router.get("/tenants/:tenantId/media-engine/brand-kit", async (req, res) => {
   });
 });
 
+router.get("/tenants/:tenantId/media-engine/brand-kit/assets", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const limit = clampLimit(req.query["limit"]);
+  const result = await pool.query(
+    `SELECT id, type, role, source, original_filename, metadata, created_at
+       FROM media_assets
+      WHERE tenant_id = $1
+        AND type IN ('image', 'video')
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [tenantId, limit],
+  );
+
+  const assets = result.rows.map((asset) => {
+    const metadata = record(asset.metadata);
+    const metadataTitle = typeof metadata["title"] === "string" ? metadata["title"].trim() : "";
+    const originalFilename = asset.original_filename ? String(asset.original_filename) : null;
+    return {
+      id: String(asset.id),
+      type: asset.type === "image" ? "image" : "video",
+      role: asset.role ? String(asset.role) : null,
+      source: asset.source ? String(asset.source) : null,
+      title: metadataTitle || originalFilename || "Mídia sem nome",
+      originalFilename,
+      createdAt: asset.created_at ?? null,
+    };
+  });
+
+  res.json({ assets });
+});
+
 router.put("/tenants/:tenantId/media-engine/brand-kit", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const body = record(req.body);
