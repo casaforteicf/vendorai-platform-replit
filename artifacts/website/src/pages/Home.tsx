@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -112,6 +112,16 @@ export default function Home() {
   const [ticket, setTicket] = useState(4000);
   const [closeRate, setCloseRate] = useState(5);
   const [structuredFollowup, setStructuredFollowup] = useState(40);
+  const [liveMetrics, setLiveMetrics] = useState<{ leadsAcompanhados: number; oportunidadesAtivas: number; leadsUltimos30dias: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/public/vendorai-live-metrics")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (!cancelled && data) setLiveMetrics(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const profilesInMacro = useMemo(
     () => MARKETING_VERTICALS.filter((profile) => profile.macrosegment === macrosegment),
@@ -167,7 +177,7 @@ export default function Home() {
                 className="h-14 rounded-xl bg-blue-500 px-7 text-base font-semibold text-white shadow-[0_16px_55px_rgba(37,99,235,0.28)] hover:bg-blue-400"
               >
                 <Link href="/demo">
-                  Simular um cliente <ArrowRight className="ml-2 h-5 w-5" />
+                  Testar 5 dias grátis <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
               <Button
@@ -176,7 +186,7 @@ export default function Home() {
                 variant="outline"
                 className="h-14 rounded-xl border-white/15 bg-white/[0.04] px-7 text-base text-white hover:bg-white/[0.09] hover:text-white"
               >
-                <Link href="/demo">Testar 5 dias grátis</Link>
+                <Link href="/funcionalidades">Ver como funciona</Link>
               </Button>
             </div>
             <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-400">
@@ -432,13 +442,22 @@ export default function Home() {
           <div className="grid gap-8 lg:grid-cols-2">
             <div className="rounded-[30px] border border-slate-200 bg-slate-50 p-7 md:p-9">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100"><CircleDollarSign className="h-6 w-6 text-blue-700" /></div>
-              <p className="mt-6 text-sm font-bold uppercase tracking-[0.16em] text-blue-600">Revenue Recovered by AI</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em]">Quanto dinheiro a IA ajudou a recuperar?</h2>
-              <p className="mt-4 text-sm leading-7 text-slate-600">O painel deve medir oportunidades realmente recuperadas, vendas atribuídas à recuperação e receita correspondente. Nada de números fictícios: os indicadores passam a aparecer quando houver dados reais.</p>
+              <p className="mt-6 text-sm font-bold uppercase tracking-[0.16em] text-blue-600">VendorAI vende o VendorAI</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em]">A operação comercial deste próprio site roda no VendorAI.</h2>
+              <p className="mt-4 text-sm leading-7 text-slate-600">Nenhum número fictício: os totais abaixo vêm direto da nossa própria instância, ao vivo, acompanhando todo lead que chega por este site.</p>
               <div className="mt-7 grid gap-3 sm:grid-cols-3">
-                {["Leads recuperados", "Vendas recuperadas", "Receita atribuída"].map((label) => (
-                  <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-sm font-semibold text-slate-900">Dados reais após ativação</p></div>
-                ))}
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs text-slate-500">Leads acompanhados pela IA</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">{liveMetrics ? liveMetrics.leadsAcompanhados : "—"}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs text-slate-500">Oportunidades ativas no pipeline</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">{liveMetrics ? liveMetrics.oportunidadesAtivas : "—"}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs text-slate-500">Novos leads (últimos 30 dias)</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">{liveMetrics ? liveMetrics.leadsUltimos30dias : "—"}</p>
+                </div>
               </div>
             </div>
 

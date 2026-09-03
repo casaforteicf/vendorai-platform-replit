@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, count, gte } from "drizzle-orm";
 import {
   db,
   siteConfigTable,
@@ -9,7 +9,10 @@ import {
   tenantDomainsTable,
   businessProfilesTable,
   produtosCatalogoTable,
+  dealsTable,
+  leadsTable,
 } from "@workspace/db";
+import { count, gte, sql } from "drizzle-orm";
 import type { GeneratedSiteContent } from "@workspace/db";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import express from "express";
@@ -470,6 +473,29 @@ router.delete("/site-config/:id", async (req, res) => {
   }
   await db.delete(siteConfigTable).where(eq(siteConfigTable.id, existing.id));
   res.status(204).send();
+});
+
+// GET /public/vendorai-live-metrics — números reais e honestos do próprio uso
+// do Vendor.ai vendendo o Vendor.ai (dogfooding), pro site institucional.
+// Fixo no tenant institucional; nunca expõe nomes/dados de clientes, só contagens agregadas.
+const INSTITUTIONAL_TENANT_ID = "1d4ea673-58d0-413a-a554-c9aca72a3121";
+publicSiteRouter.get("/public/vendorai-live-metrics", async (_req, res) => {
+  try {
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [[leadsRow], [dealsRow], [recentRow]] = await Promise.all([
+      db.select({ n: count() }).from(leadsTable).where(eq(leadsTable.tenantId, INSTITUTIONAL_TENANT_ID)),
+      db.select({ n: count() }).from(dealsTable).where(eq(dealsTable.tenantId, INSTITUTIONAL_TENANT_ID)),
+      db.select({ n: count() }).from(leadsTable).where(and(eq(leadsTable.tenantId, INSTITUTIONAL_TENANT_ID), gte(leadsTable.createdAt, since30d))),
+    ]);
+    res.set("Cache-Control", "public, max-age=300");
+    res.json({
+      leadsAcompanhados: leadsRow?.n ?? 0,
+      oportunidadesAtivas: dealsRow?.n ?? 0,
+      leadsUltimos30dias: recentRow?.n ?? 0,
+    });
+  } catch {
+    res.json({ leadsAcompanhados: 0, oportunidadesAtivas: 0, leadsUltimos30dias: 0 });
+  }
 });
 
 export default router;

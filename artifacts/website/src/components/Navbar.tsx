@@ -18,7 +18,7 @@ export default function Navbar() {
       <div className="container mx-auto flex h-[72px] items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-[-0.02em]" data-testid="link-home">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-base font-bold text-primary-foreground shadow-[0_8px_30px_hsl(var(--primary)/0.28)]">V</div>
-          <span className="leading-tight"><span className="block text-lg">VendorAI TAD</span><span className="block text-[9px] font-medium uppercase tracking-[0.14em] text-slate-400">Tecnologia, Automação e Dados</span></span>
+          <span className="text-lg leading-tight">Vendor.ai</span>
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">
@@ -38,6 +38,9 @@ export default function Navbar() {
             Testar 5 dias grátis
             <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
           </Link>
+          <a href="https://app.appvendorai.com" className="ml-1 text-sm font-medium text-slate-400 transition-colors hover:text-white" data-testid="link-entrar">
+            Entrar
+          </a>
         </nav>
 
         <button
@@ -73,6 +76,12 @@ export default function Navbar() {
               Testar 5 dias grátis
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
+            <a
+              href="https://app.appvendorai.com"
+              className="mt-1 inline-flex h-12 items-center justify-center rounded-xl border border-white/10 px-5 font-medium text-slate-300"
+            >
+              Já sou cliente — Entrar
+            </a>
           </nav>
         </div>
       )}
