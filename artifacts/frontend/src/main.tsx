@@ -7,6 +7,7 @@ import { MediaMenuInjector } from "./components/media/MediaMenuInjector";
 import { MediaAdsBridge } from "./components/media/MediaAdsBridge";
 import { MediaSitesBridge } from "./components/media/MediaSitesBridge";
 import { MediaCatalogBridge } from "./components/media/MediaCatalogBridge";
+import { MediaContentStudioBridge } from "./components/media/MediaContentStudioBridge";
 import "./index.css";
 import "./site-generator-fix.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
@@ -54,6 +55,7 @@ createRoot(document.getElementById("root")!).render(
         <MediaAdsBridge />
         <MediaSitesBridge />
         <MediaCatalogBridge />
+        <MediaContentStudioBridge />
       </>
     )}
   </ErrorBoundary>,
