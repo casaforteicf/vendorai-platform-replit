@@ -7,7 +7,6 @@
 // amarrada — o admin do tenant pode criar quantas quiser.
 import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
 export const pipelineStagesTable = pgTable("pipeline_stages", {
@@ -22,9 +21,14 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   // Minutos que um deal pode ficar nesta etapa antes do card ficar
   // vermelho no Kanban. Null = sem SLA (nunca fica vermelho).
   slaMinutos: integer("sla_minutos"),
-  // IDs dos usuários habilitados a ser responsável quando um negócio
-  // entra nesta etapa. Null/vazio = qualquer usuário do tenant pode.
+  // Campo legado: IDs de pessoas elegíveis para receber um negócio.
+  // Mantido apenas por compatibilidade; a responsabilidade da etapa é
+  // definida por função em `responsaveisFuncoes`, nunca por pessoa.
   elegiveisUserIds: text("elegiveis_user_ids").array(),
+  // Funções responsáveis por executar/acessar a etapa.
+  // Formato: `builtin:vendedor` ou `custom:<tenant_user_functions.id>`.
+  // Null/vazio = etapa sem restrição por função (compatibilidade).
+  responsaveisFuncoes: text("responsaveis_funcoes").array().notNull().default([]),
   // Perguntas-chave desta etapa (playbook) — aparecem no topo da Central
   // de Trabalho enquanto o negócio está nesta etapa, e alimentam roteiro
   // de reunião / geração de proposta / argumento de venda.
