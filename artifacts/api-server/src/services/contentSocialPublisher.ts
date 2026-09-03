@@ -26,6 +26,10 @@ import {
   registerPublishedPost,
 } from "./content-performance.js";
 import { buildReferencePatternsPromptBlock } from "./content-reference-creators.js";
+import {
+  assertMediaAudioRightsForUsage,
+  MediaRightsEnforcementError,
+} from "./media-rights-enforcement.js";
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 20,
@@ -162,6 +166,18 @@ export async function publishContentGenerationToInstagram(params: {
         "O Reel precisa ter um vídeo anexado antes da publicação automática. O roteiro pode continuar sendo usado para gerar o anúncio patrocinado.",
         400,
       );
+    }
+    try {
+      await assertMediaAudioRightsForUsage({
+        tenantId: params.tenantId,
+        mediaUrl: reel.videoUrl,
+        usage: "organic",
+      });
+    } catch (error) {
+      if (error instanceof MediaRightsEnforcementError) {
+        throw new SocialPublicationError(error.message, error.status);
+      }
+      throw error;
     }
     const publicVideoUrl = await resolveInstagramMediaUrl(reel.videoUrl);
     const caption = params.captionOverride ?? `${reel.title ?? gen.theme}${reel.cta ? `\n\n${reel.cta}` : ""}`;
