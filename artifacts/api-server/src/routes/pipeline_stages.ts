@@ -12,6 +12,75 @@ import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
+export const PIPELINE_KEYS = [
+  "comercial",
+  "execucao",
+  "suporte",
+  "aquecimento",
+  "parceiros",
+  "scout",
+] as const;
+export type PipelineKey = (typeof PIPELINE_KEYS)[number];
+
+type SystemStage = {
+  key: string;
+  label: string;
+  color: string;
+  bg: string;
+  ordem: number;
+  perguntas?: { id: string; texto: string }[];
+};
+
+const simpleStage = (key: string, label: string, ordem: number): SystemStage => ({
+  key,
+  label,
+  ordem,
+  color: "text-slate-600",
+  bg: "bg-slate-100",
+});
+
+// Mantém exatamente as keys que cada pipeline já usa hoje. A configuração
+// de responsáveis apenas governa acesso/execução; não cria um fluxo paralelo.
+export const SYSTEM_STAGES_BY_PIPELINE: Record<PipelineKey, SystemStage[]> = {
+  comercial: SYSTEM_PIPELINE_STAGES,
+  execucao: [
+    simpleStage("aguardando_separacao", "Aguardando separação", 0),
+    simpleStage("separacao", "Separação", 1),
+    simpleStage("conferencia", "Conferência", 2),
+    simpleStage("faturamento", "Faturamento", 3),
+    simpleStage("expedicao", "Expedição", 4),
+    simpleStage("transporte", "Transporte", 5),
+    simpleStage("entregue", "Entregue", 6),
+  ],
+  suporte: [
+    simpleStage("aberto", "Aberto", 0),
+    simpleStage("triagem", "Triagem", 1),
+    simpleStage("aguardando_cliente", "Aguardando cliente", 2),
+    simpleStage("em_atendimento", "Em atendimento", 3),
+    simpleStage("resolvido", "Resolvido", 4),
+    simpleStage("encerrado", "Encerrado", 5),
+  ],
+  aquecimento: [
+    simpleStage("aquecimento_lead", "Leads em aquecimento", 0),
+    simpleStage("aquecimento_cliente", "Clientes em aquecimento", 1),
+  ],
+  parceiros: [
+    simpleStage("prospectando", "Prospectando", 0),
+    simpleStage("conectado", "Conectado", 1),
+    simpleStage("negociando", "Negociando", 2),
+    simpleStage("parceiro", "Parceiro", 3),
+  ],
+  scout: [
+    simpleStage("identificada", "Identificada", 0),
+    simpleStage("em_analise", "Em análise", 1),
+    simpleStage("encaminhada", "Encaminhada", 2),
+    simpleStage("ia_aprovada", "IA aprovada", 3),
+    simpleStage("em_contato", "Em contato", 4),
+    simpleStage("convertida", "Convertida", 5),
+    simpleStage("descartada", "Descartada", 6),
+  ],
+};
+
 const BUILTIN_FUNCTIONS = new Set([
   "vendedor",
   "financeiro",
@@ -27,6 +96,12 @@ function hasAccess(req: any, tenantId: string): boolean {
 
 function isAdmin(req: any): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+}
+
+function parsePipeline(value: unknown): PipelineKey {
+  return typeof value === "string" && PIPELINE_KEYS.includes(value as PipelineKey)
+    ? (value as PipelineKey)
+    : "comercial";
 }
 
 async function validateResponsibleFunctions(
@@ -80,8 +155,6 @@ async function validateResponsibleFunctions(
   return { values: unique };
 }
 
-// Cria a chave (slug) de uma etapa nova a partir do label — determinístico,
-// sem espaço/acento, pra não colidir com as keys do sistema.
 function slugifyStageKey(label: string): string {
   return label
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -92,41 +165,53 @@ function slugifyStageKey(label: string): string {
     .slice(0, 40) || "etapa";
 }
 
-// GET — lista as etapas do tenant, ordenadas. Semeia as 11 etapas do
-// sistema automaticamente na primeira chamada de um tenant que ainda
-// não tem nenhuma configurada (em vez de tocar nos 8 fluxos diferentes
-// que criam tenant — mais seguro, cobre todos, inclusive tenants
-// antigos criados antes dessa feature existir).
+async function listPipelineStages(tenantId: string, pipeline: PipelineKey) {
+  return db
+    .select()
+    .from(pipelineStagesTable)
+    .where(
+      and(
+        eq(pipelineStagesTable.tenantId, tenantId),
+        eq(pipelineStagesTable.pipeline, pipeline),
+      ),
+    )
+    .orderBy(asc(pipelineStagesTable.ordem));
+}
+
+async function ensureSystemStages(tenantId: string, pipeline: PipelineKey) {
+  let stages = await listPipelineStages(tenantId, pipeline);
+  if (stages.length > 0) return stages;
+
+  try {
+    stages = await db
+      .insert(pipelineStagesTable)
+      .values(
+        SYSTEM_STAGES_BY_PIPELINE[pipeline].map((stage) => ({
+          ...stage,
+          tenantId,
+          pipeline,
+          isSystem: true,
+        })),
+      )
+      .returning();
+    stages.sort((a, b) => a.ordem - b.ordem);
+  } catch (err) {
+    // Duas abas podem semear ao mesmo tempo. A unicidade
+    // (tenant_id, pipeline, key) protege contra duplicidade.
+    logger.warn({ err, tenantId, pipeline }, "pipeline-stages: falha ao semear; buscando de novo");
+    stages = await listPipelineStages(tenantId, pipeline);
+  }
+  return stages;
+}
+
+// GET — lista/configura apenas a pipeline solicitada. Sem query mantém
+// `comercial`, preservando todos os consumidores antigos da API.
 router.get("/tenants/:tenantId/pipeline-stages", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  let stages = await db
-    .select()
-    .from(pipelineStagesTable)
-    .where(eq(pipelineStagesTable.tenantId, tenantId))
-    .orderBy(asc(pipelineStagesTable.ordem));
-
-  if (stages.length === 0) {
-    try {
-      stages = await db
-        .insert(pipelineStagesTable)
-        .values(SYSTEM_PIPELINE_STAGES.map((s) => ({ ...s, tenantId, isSystem: true })))
-        .returning();
-      stages.sort((a, b) => a.ordem - b.ordem);
-    } catch (err) {
-      // Corrida rara (duas abas carregando ao mesmo tempo no primeiro
-      // acesso) — UNIQUE(tenant_id, key) rejeita a 2ª inserção. Busca
-      // de novo em vez de falhar a requisição.
-      logger.warn({ err, tenantId }, "pipeline-stages: falha ao semear (provável corrida), buscando de novo");
-      stages = await db
-        .select()
-        .from(pipelineStagesTable)
-        .where(eq(pipelineStagesTable.tenantId, tenantId))
-        .orderBy(asc(pipelineStagesTable.ordem));
-    }
-  }
-
+  const pipeline = parsePipeline(req.query.pipeline);
+  const stages = await ensureSystemStages(tenantId, pipeline);
   return res.json(stages);
 });
 
@@ -135,6 +220,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
   if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   if (!isAdmin(req)) return res.status(403).json({ error: "Apenas administradores podem criar etapas." });
 
+  const pipeline = parsePipeline(req.query.pipeline);
   const bodySchema = z.object({
     label: z.string().min(1),
     color: z.string().optional(),
@@ -145,22 +231,13 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const validatedFunctions = await validateResponsibleFunctions(
-    tenantId,
-    parsed.data.responsaveisFuncoes,
-  );
+  const validatedFunctions = await validateResponsibleFunctions(tenantId, parsed.data.responsaveisFuncoes);
   if ("error" in validatedFunctions) {
     return res.status(422).json({ error: validatedFunctions.error });
   }
 
-  const existing = await db
-    .select()
-    .from(pipelineStagesTable)
-    .where(eq(pipelineStagesTable.tenantId, tenantId));
-
+  const existing = await ensureSystemStages(tenantId, pipeline);
   let key = slugifyStageKey(parsed.data.label);
-  // Evita colidir com uma key já existente (do sistema ou custom) —
-  // acrescenta sufixo numérico até achar uma livre.
   const usedKeys = new Set(existing.map((s) => s.key));
   if (usedKeys.has(key)) {
     let n = 2;
@@ -169,11 +246,11 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
   }
 
   const maxOrdem = existing.reduce((max, s) => Math.max(max, s.ordem), -1);
-
   const [created] = await db
     .insert(pipelineStagesTable)
     .values({
       tenantId,
+      pipeline,
       key,
       label: parsed.data.label,
       color: parsed.data.color ?? "text-gray-600",
@@ -227,7 +304,7 @@ router.delete("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
 
   if (!stage) return res.status(404).json({ error: "Etapa não encontrada." });
   if (stage.isSystem) {
-    return res.status(403).json({ error: "Etapas do sistema não podem ser excluídas — a automação de contrato/cobrança depende delas. Você pode ocultar ou renomear o rótulo." });
+    return res.status(403).json({ error: "Etapas do sistema não podem ser excluídas. Você pode editar o rótulo, SLA e funções responsáveis." });
   }
 
   await db.delete(pipelineStagesTable).where(eq(pipelineStagesTable.id, stage.id));
