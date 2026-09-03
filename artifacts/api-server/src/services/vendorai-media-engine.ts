@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import { createMediaJob } from "./media-jobs.js";
 import { createProcessingMediaProject } from "./media-library.js";
+import { startVendorAiPhotoVideo } from "./vendorai-photo-video.js";
+import { startVendorAiMediaBatch, type MediaBatchItem } from "./vendorai-media-batch.js";
 
 export type VendorAiMediaCapability =
   | "video_edit"
@@ -67,8 +69,8 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     image_convert: "ready",
     image_remove_background: "building",
     image_variations: "building",
-    photo_video: "building",
-    media_batch: "building",
+    photo_video: "ready",
+    media_batch: "ready",
   },
 };
 
@@ -90,6 +92,23 @@ const workerHealthTimer = setInterval(() => {
 }, 30_000);
 workerHealthTimer.unref?.();
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [];
+}
+
+function mediaBatchItems(value: unknown): MediaBatchItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      assetId: String(item["assetId"] ?? ""),
+      operation: String(item["operation"] ?? "") as MediaBatchItem["operation"],
+      options: item["options"] && typeof item["options"] === "object" && !Array.isArray(item["options"])
+        ? item["options"] as MediaBatchItem["options"]
+        : undefined,
+    }));
+}
+
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string;
   userId?: string | null;
@@ -97,13 +116,37 @@ export async function createVendorAiMediaGenerationJob(input: {
   operation: VendorAiMediaCapability;
   context?: Record<string, unknown>;
 }) {
+  const context = input.context ?? {};
+
+  if (input.operation === "photo_video") {
+    const rawFormat = String(context["format"] ?? "16:9");
+    const format = rawFormat === "9:16" || rawFormat === "1:1" ? rawFormat : "16:9";
+    return startVendorAiPhotoVideo({
+      tenantId: input.tenantId,
+      userId: input.userId ?? null,
+      title: input.title,
+      assetIds: stringArray(context["assetIds"]),
+      secondsPerImage: Number(context["secondsPerImage"] ?? 3),
+      format,
+    });
+  }
+
+  if (input.operation === "media_batch") {
+    return startVendorAiMediaBatch({
+      tenantId: input.tenantId,
+      userId: input.userId ?? null,
+      title: input.title,
+      items: mediaBatchItems(context["items"]),
+    });
+  }
+
   const projectId = await createProcessingMediaProject({
     tenantId: input.tenantId,
     userId: input.userId ?? null,
     title: input.title,
     operation: input.operation,
     context: {
-      ...(input.context ?? {}),
+      ...context,
       engine: "vendorai",
       externalAvatarProvider: false,
     },
@@ -117,7 +160,7 @@ export async function createVendorAiMediaGenerationJob(input: {
     operation: input.operation,
     provider: "vendorai",
     input: {
-      ...(input.context ?? {}),
+      ...context,
       userId: input.userId ?? null,
       title: input.title,
     },
