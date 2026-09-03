@@ -57,7 +57,7 @@ export async function POST(req:NextRequest){
     return {signal:s,adaptiveScore,prior,biasMatch,governanceAdjustment,performanceAdjustment:performance.adjustment,performanceSource:performance.source,performanceRow:performance.row,regimePerformanceAdjustment:regimePerformance.adjustment,regimePerformanceSource:regimePerformance.source,regimePerformanceRow:regimePerformance.row,contextLearning,lifecycle};
   }).filter(v=>!governedAutopilot||v.lifecycle.capitalMultiplier>0).sort((a,b)=>b.adaptiveScore-a.adaptiveScore);
   if(!valid.length){await appendAudit(token,'NO_SIGNAL',{market:body.market,technical:technical.mtf,intelligence,profile:profile.id,governedAutopilot,allowedStrategyIds:allowlist?[...allowlist]:null});return NextResponse.json({approved:false,reason:governedAutopilot?'NO_SWEEP_GOVERNANCE_ELIGIBLE_STRATEGY':'NO_VALID_STRATEGY_SIGNAL',technical:technical.mtf,intelligence,profile:profile.id,storage:storageMode()})}
-  const signal=valid[0].signal; const decision=buildConsensus(signal,agentScores(body.market,body.market.opportunityScore??technical.mtf.alignmentScore/100,intelligence));
+  const signal=valid[0].signal; const decision=buildConsensus(signal,agentScores(body.market,technical.mtf.alignmentScore/100,intelligence));
   const strategyMetric:StrategyMetric=metrics.find(m=>m.strategyId===signal.strategyId)??{strategyId:signal.strategyId,trades:0,wins:0,losses:0,winRatePct:0,realizedPnl:0,avgPnl:0,profitFactor:null};
   const lifecycle=valid[0].lifecycle;
   const regimeContext=currentRegimeContext;
