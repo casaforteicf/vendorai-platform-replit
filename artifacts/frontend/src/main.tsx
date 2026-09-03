@@ -11,6 +11,7 @@ import { MediaContentStudioBridge } from "./components/media/MediaContentStudioB
 import { MediaMarketingContentBridge } from "./components/media/MediaMarketingContentBridge";
 import { MediaConversationsBridge } from "./components/media/MediaConversationsBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
+import { I18nProvider } from "./i18n";
 import "./index.css";
 import "./site-generator-fix.css";
 import "./video-route-theme.css";
@@ -49,22 +50,24 @@ const tenantSlugForSite = isAppHost ? null : (tenantSiteMatch?.[1] ?? null);
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    {tenantSlugForSite ? (
-      <SubdomainSite slug={tenantSlugForSite} />
-    ) : (
-      <>
-        <FrontendRecoveryGuard />
-        <VideoRouteThemeSync />
-        <App />
-        <MediaMenuInjector />
-        <MediaAdsBridge />
-        <MediaSitesBridge />
-        <MediaCatalogBridge />
-        <MediaContentStudioBridge />
-        <MediaMarketingContentBridge />
-        <MediaConversationsBridge />
-      </>
-    )}
+    <I18nProvider>
+      {tenantSlugForSite ? (
+        <SubdomainSite slug={tenantSlugForSite} />
+      ) : (
+        <>
+          <FrontendRecoveryGuard />
+          <VideoRouteThemeSync />
+          <App />
+          <MediaMenuInjector />
+          <MediaAdsBridge />
+          <MediaSitesBridge />
+          <MediaCatalogBridge />
+          <MediaContentStudioBridge />
+          <MediaMarketingContentBridge />
+          <MediaConversationsBridge />
+        </>
+      )}
+    </I18nProvider>
   </ErrorBoundary>,
 );
 
