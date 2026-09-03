@@ -1,7 +1,8 @@
-import type { PaperPosition, StrategySignal } from '@tad/core';
+import type { PaperPosition } from '@tad/core';
 
 export type TradingSession='ASIA'|'EUROPE'|'US'|'EUROPE_US_OVERLAP'|'OFF_HOURS';
 export type SessionEdge={session:TradingSession;sampleSize:number;wins:number;winRatePct:number;avgPnl:number;profitFactor:number|null;adjustment:number;confidence:'NONE'|'LOW'|'MEDIUM'|'HIGH';source:string};
+export type SessionCandidate={strategyId:string;symbol:string;side?:'LONG'|'SHORT'};
 
 function clamp(v:number,min:number,max:number){return Math.max(min,Math.min(max,v));}
 export function tradingSession(ts=Date.now()):TradingSession{
@@ -13,10 +14,10 @@ export function tradingSession(ts=Date.now()):TradingSession{
   return 'OFF_HOURS';
 }
 
-export function sessionEdge(positions:PaperPosition[],signal:Pick<StrategySignal,'strategyId'|'symbol'|'side'>,now=Date.now()):SessionEdge{
+export function sessionEdge(positions:PaperPosition[],signal:SessionCandidate,now=Date.now()):SessionEdge{
   const session=tradingSession(now);
   const base=positions.filter(p=>p.status==='CLOSED'&&p.strategyId===signal.strategyId&&tradingSession(p.openedAt)===session);
-  const exact=base.filter(p=>p.symbol===signal.symbol&&p.side===signal.side);
+  const exact=signal.side?base.filter(p=>p.symbol===signal.symbol&&p.side===signal.side):base.filter(p=>p.symbol===signal.symbol);
   const rows=exact.length>=8?exact:base;
   if(rows.length<5)return {session,sampleSize:rows.length,wins:rows.filter(p=>p.realizedPnl>0).length,winRatePct:rows.length?rows.filter(p=>p.realizedPnl>0).length/rows.length*100:0,avgPnl:0,profitFactor:null,adjustment:0,confidence:'NONE',source:'INSUFFICIENT_SESSION_SAMPLE'};
   const wins=rows.filter(p=>p.realizedPnl>0),losses=rows.filter(p=>p.realizedPnl<=0);
@@ -27,7 +28,8 @@ export function sessionEdge(positions:PaperPosition[],signal:Pick<StrategySignal
   const raw=winEdge+pfEdge;
   const confidence:SessionEdge['confidence']=rows.length>=30?'HIGH':rows.length>=12?'MEDIUM':'LOW';
   const mult=confidence==='HIGH'?1:confidence==='MEDIUM'?.7:.4;
-  return {session,sampleSize:rows.length,wins:wins.length,winRatePct:winRate,avgPnl,profitFactor:pf,adjustment:clamp(raw*mult,-2,2),confidence,source:exact.length>=8?'STRATEGY_SYMBOL_SIDE_SESSION':'STRATEGY_SESSION'};
+  const exactSource=signal.side?'STRATEGY_SYMBOL_SIDE_SESSION':'STRATEGY_SYMBOL_SESSION';
+  return {session,sampleSize:rows.length,wins:wins.length,winRatePct:winRate,avgPnl,profitFactor:pf,adjustment:clamp(raw*mult,-2,2),confidence,source:exact.length>=8?exactSource:'STRATEGY_SESSION'};
 }
 
 export function sessionReport(positions:PaperPosition[]){
