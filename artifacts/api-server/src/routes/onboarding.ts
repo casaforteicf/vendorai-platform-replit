@@ -19,6 +19,10 @@ import {
   AGENT_TYPES,
   type AgentsMap,
   brandProgramsTable,
+  generatedSitesTable,
+  tenantDomainsTable,
+  searchConsoleConnectionsTable,
+  socialConnectionsTable,
 } from "@workspace/db";
 import { buildAuthUrl } from "../lib/google-calendar.js";
 import { authenticate, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
@@ -1222,9 +1226,13 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     .where(and(eq(agendasTable.tenantId, tenantId)));
 
   const googleAdsConn = await getGoogleAdsConnectionByTenantId(tenantId);
+  const [publishedSite] = await db.select({ id: generatedSitesTable.id }).from(generatedSitesTable).where(and(eq(generatedSitesTable.tenantId, tenantId), eq(generatedSitesTable.published, true))).limit(1);
+  const [domain] = await db.select({ domain: tenantDomainsTable.domain, status: tenantDomainsTable.status }).from(tenantDomainsTable).where(eq(tenantDomainsTable.tenantId, tenantId)).limit(1);
+  const [searchConsole] = await db.select({ status: searchConsoleConnectionsTable.status, verified: searchConsoleConnectionsTable.verified }).from(searchConsoleConnectionsTable).where(eq(searchConsoleConnectionsTable.tenantId, tenantId)).limit(1);
+  const socialConnections = await db.select({ provider: socialConnectionsTable.provider, status: socialConnectionsTable.status }).from(socialConnectionsTable).where(eq(socialConnectionsTable.tenantId, tenantId));
 
   const [tenantData] = await db
-    .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey })
+    .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey, googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
     .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
 
   return res.json({
@@ -1250,6 +1258,11 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     },
     asaas: { connected: !!tenantData?.asaasApiKey },
     zapsign: { connected: !!tenantData?.zapsignApiKey },
+    site: { published: !!publishedSite },
+    domain: { configured: !!domain, active: domain?.status === "active", name: domain?.domain ?? null, status: domain?.status ?? null },
+    searchConsole: { connected: !!searchConsole && searchConsole.status !== "disconnected", verified: searchConsole?.verified === true },
+    tracking: { googleAds: !!tenantData?.googleAdsConversionId, metaPixel: !!tenantData?.metaPixelId, linkedinInsightTag: /^\d+$/.test(tenantData?.linkedinInsightTagId ?? ""), tiktokPixel: /^[A-Za-z0-9_-]+$/.test(tenantData?.tiktokPixelId ?? "") },
+    social: { linkedin: socialConnections.some((connection) => connection.provider === "linkedin" && connection.status === "active"), tiktok: socialConnections.some((connection) => connection.provider === "tiktok" && connection.status === "active") },
   });
 });
 

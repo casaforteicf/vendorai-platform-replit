@@ -13892,6 +13892,14 @@ components:
           description: >
             ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo
             Vendor.ai para esse tenant.
+        linkedinInsightTagId:
+          type: string
+          nullable: true
+          description: Partner ID do LinkedIn Insight Tag da conta do tenant.
+        tiktokPixelId:
+          type: string
+          nullable: true
+          description: ID do TikTok Pixel da conta do tenant.
         confirmarEstoqueAntesFinanceiro:
           type: boolean
           default: false
@@ -14048,6 +14056,14 @@ components:
           description: >
             ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo
             Vendor.ai para esse tenant.
+        linkedinInsightTagId:
+          type: string
+          nullable: true
+          description: Partner ID do LinkedIn Insight Tag da conta do tenant.
+        tiktokPixelId:
+          type: string
+          nullable: true
+          description: ID do TikTok Pixel da conta do tenant.
         confirmarEstoqueAntesFinanceiro:
           type: boolean
           description: >

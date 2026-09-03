@@ -23,27 +23,41 @@ const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
 // tenant configura ou troca o ID.
 function injectTenantMarketingTags(
   html: string,
-  ids: { googleAdsConversionId?: string | null; metaPixelId?: string | null },
+  ids: {
+    googleAdsConversionId?: string | null;
+    metaPixelId?: string | null;
+    linkedinInsightTagId?: string | null;
+    tiktokPixelId?: string | null;
+  },
 ): string {
-  if (!ids.googleAdsConversionId && !ids.metaPixelId) return html;
+  const googleAdsId = /^AW-\d+$/.test(ids.googleAdsConversionId ?? "") ? ids.googleAdsConversionId : null;
+  const metaPixelId = /^\d+$/.test(ids.metaPixelId ?? "") ? ids.metaPixelId : null;
+  const linkedinId = /^\d+$/.test(ids.linkedinInsightTagId ?? "") ? ids.linkedinInsightTagId : null;
+  const tiktokId = /^[A-Za-z0-9_-]+$/.test(ids.tiktokPixelId ?? "") ? ids.tiktokPixelId : null;
+  if (!googleAdsId && !metaPixelId && !linkedinId && !tiktokId) return html;
 
   const scripts: string[] = [];
-  if (ids.googleAdsConversionId) {
+  if (googleAdsId) {
     scripts.push(
-      `<script async src="https://www.googletagmanager.com/gtag/js?id=${ids.googleAdsConversionId}"></script>` +
+      `<script async src="https://www.googletagmanager.com/gtag/js?id=${googleAdsId}"></script>` +
         `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}` +
-        `gtag('js',new Date());gtag('config','${ids.googleAdsConversionId}');</script>`,
+        `gtag('js',new Date());gtag('config','${googleAdsId}');</script>`,
     );
   }
-  if (ids.metaPixelId) {
+  if (metaPixelId) {
     scripts.push(
       `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?` +
         `n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;` +
         `n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;` +
         `t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}` +
         `(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');` +
-        `fbq('init','${ids.metaPixelId}');fbq('track','PageView');</script>`,
+        `fbq('init','${metaPixelId}');fbq('track','PageView');</script>`,
     );
+  }
+
+  if (linkedinId || tiktokId) {
+    const consentConfig = JSON.stringify({ linkedinId, tiktokId });
+    scripts.push(`<style id="vendorai-consent-style">#vendorai-consent{position:fixed;z-index:2147483647;left:16px;right:16px;bottom:16px;max-width:680px;margin:auto;padding:18px;border-radius:14px;background:#111827;color:#fff;box-shadow:0 12px 40px #0005;font:14px/1.45 system-ui,sans-serif}#vendorai-consent p{margin:0 0 12px}#vendorai-consent-actions{display:flex;gap:8px;flex-wrap:wrap}#vendorai-consent button{border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600}#vendorai-consent-accept{background:#fff;color:#111827}#vendorai-consent-reject{background:#374151;color:#fff}</style><script>(function(c){var key='vendorai_marketing_consent';function load(){if(c.linkedinId){window._linkedin_data_partner_ids=window._linkedin_data_partner_ids||[];window._linkedin_data_partner_ids.push(c.linkedinId);var s=document.createElement('script');s.async=true;s.src='https://snap.licdn.com/li.lms-analytics/insight.min.js';document.head.appendChild(s)}if(c.tiktokId){!function(w,d,t){w.TiktokAnalyticsObject=t;var q=w[t]=w[t]||[];q.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'];q.setAndDefer=function(o,m){o[m]=function(){o.push([m].concat([].slice.call(arguments)))}};for(var i=0;i<q.methods.length;i++)q.setAndDefer(q,q.methods[i]);q.load=function(e){var s=d.createElement('script');s.async=true;s.src='https://analytics.tiktok.com/i18n/pixel/events.js?sdkid='+e+'&lib='+t;d.head.appendChild(s)};q.load(c.tiktokId);q.page()}(window,document,'ttq')}}function remove(){var e=document.getElementById('vendorai-consent');if(e)e.remove()}function choose(v){localStorage.setItem(key,v);remove();if(v==='accepted')load()}function show(){var e=document.createElement('div');e.id='vendorai-consent';e.setAttribute('role','dialog');e.setAttribute('aria-label','Preferências de cookies');e.innerHTML='<p><strong>Cookies de marketing</strong><br>Podemos usar LinkedIn e TikTok para medir visitas e melhorar anúncios. Você decide se permite.</p><div id="vendorai-consent-actions"><button id="vendorai-consent-accept">Aceitar</button><button id="vendorai-consent-reject">Recusar</button></div>';document.body.appendChild(e);document.getElementById('vendorai-consent-accept').onclick=function(){choose('accepted')};document.getElementById('vendorai-consent-reject').onclick=function(){choose('rejected')}}var v=localStorage.getItem(key);if(v==='accepted')load();else if(!v){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show);else show()}})(${consentConfig});</script>`);
   }
 
   const tagsBlock = scripts.join("");
@@ -51,7 +65,8 @@ function injectTenantMarketingTags(
     ? html.replace("</head>", `${tagsBlock}</head>`)
     : tagsBlock + html;
 }
-
+// The database is the source of truth. This set only prevents the same API
+// process from resuming one pending job more than once concurrently.
 type GenerationJob =
   | { status: "pending"; createdAt: number }
   | { status: "done"; result: Record<string, unknown>; createdAt: number }
@@ -98,7 +113,7 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
   }
 
   const [siteTenant] = await db
-    .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId })
+    .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, site.tenantId))
     .limit(1);
@@ -128,7 +143,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
       return;
     }
     const [tenantForSlug] = await db
-      .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId })
+      .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, siteBySlug.tenantId))
       .limit(1);
@@ -139,7 +154,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
   }
 
   const [tenant] = await db
-    .select({ id: tenantsTable.id, googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId })
+    .select({ id: tenantsTable.id, googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
     .from(tenantsTable)
     .where(or(eq(tenantsTable.slug, tenantSlug), eq(tenantsTable.subdomainSlug, tenantSlug)));
 
