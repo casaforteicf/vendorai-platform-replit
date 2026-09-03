@@ -4,33 +4,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import ImageAdvisorPanel from "@/components/media/ImageAdvisorPanel";
 import {
-  Archive,
-  AudioLines,
-  Bot,
-  CheckSquare,
-  ChevronRight,
-  CircleAlert,
-  Clapperboard,
-  Download,
-  Eraser,
-  FileText,
-  Film,
-  FolderKanban,
-  Grid3X3,
-  Image as ImageIcon,
-  Layers3,
-  Link2,
-  Loader2,
-  Maximize2,
-  Music2,
-  RefreshCw,
-  Search,
-  SlidersHorizontal,
-  Sparkles,
-  Square,
-  Upload,
-  WandSparkles,
-  X,
+  Archive, AudioLines, Bot, CheckSquare, ChevronRight, CircleAlert, Clapperboard, Download, Eraser,
+  FileText, Film, FolderKanban, Grid3X3, Image as ImageIcon, Layers3, Link2, Loader2, Maximize2,
+  Music2, RefreshCw, Search, SlidersHorizontal, Sparkles, Square, Upload, WandSparkles, X,
 } from "lucide-react";
 
 type MediaType = "image" | "video" | "audio" | "document";
@@ -55,11 +31,7 @@ type MediaAsset = {
 
 type MediaProject = { id: string; title: string; kind: string; status: string; updatedAt?: string | null; source?: string | null };
 type WorkerStatus = { configured: boolean; ready: boolean; checkedAt: string };
-type Capabilities = {
-  provider: "vendorai";
-  capabilities: Record<string, "ready" | "building">;
-  workers?: Partial<Record<"voice" | "lipsync" | "music", WorkerStatus>>;
-};
+type Capabilities = { provider: "vendorai"; capabilities: Record<string, "ready" | "building">; workers?: Partial<Record<"voice" | "lipsync" | "music", WorkerStatus>> };
 type AssetContext = { type: MediaContextType; label: string };
 
 const CONTEXT_LABELS: Record<MediaContextType, string> = {
@@ -168,19 +140,15 @@ export default function MediaCenter() {
       for (const file of Array.from(files)) {
         const type = inferType(file);
         if (!type) continue;
-        const requestRes = await fetch(`/api/tenants/${tenantId}/media/assets/request-upload`, {
-          method: "POST", headers: authHeaders(true), body: JSON.stringify({ name: file.name, contentType: file.type || "application/octet-stream", type, size: file.size }),
-        });
+        const requestRes = await fetch(`/api/tenants/${tenantId}/media/assets/request-upload`, { method: "POST", headers: authHeaders(true), body: JSON.stringify({ name: file.name, contentType: file.type || "application/octet-stream", type, size: file.size }) });
         const requestBody = await requestRes.json();
         if (!requestRes.ok) throw new Error(requestBody.error || `Falha ao preparar ${file.name}`);
         const uploadRes = await fetch(requestBody.uploadURL, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
         if (!uploadRes.ok) throw new Error(`Falha ao enviar ${file.name}`);
-        const registerRes = await fetch(`/api/tenants/${tenantId}/media/assets`, {
-          method: "POST", headers: authHeaders(true), body: JSON.stringify({
-            type, role: "source", source: "upload", storageUrl: requestBody.objectPath, originalFilename: file.name, mimeType: file.type || null, fileSize: file.size,
-            metadata: { uploadedFrom: "media_hub", uploadedAt: new Date().toISOString(), ...(uploadContextType !== "none" ? { context: { type: uploadContextType, label: contextLabel } } : {}) },
-          }),
-        });
+        const registerRes = await fetch(`/api/tenants/${tenantId}/media/assets`, { method: "POST", headers: authHeaders(true), body: JSON.stringify({
+          type, role: "source", source: "upload", storageUrl: requestBody.objectPath, originalFilename: file.name, mimeType: file.type || null, fileSize: file.size,
+          metadata: { uploadedFrom: "media_hub", uploadedAt: new Date().toISOString(), ...(uploadContextType !== "none" ? { context: { type: uploadContextType, label: contextLabel } } : {}) },
+        }) });
         const registerBody = await registerRes.json();
         if (!registerRes.ok) throw new Error(registerBody.error || `Falha ao registrar ${file.name}`);
         success += 1;
@@ -194,6 +162,7 @@ export default function MediaCenter() {
 
   function toggle(assetId: string) { setSelected((current) => current.includes(assetId) ? current.filter((id) => id !== assetId) : [...current, assetId]); }
   function ready(operation: string): boolean { return capabilities?.capabilities?.[operation] === "ready"; }
+  function useInVideoStudio(asset: MediaAsset) { navigate(`/content-studio/video/edicao?mediaAssetId=${encodeURIComponent(asset.id)}`); }
 
   async function runJob(operation: string, context: Record<string, unknown>, title: string) {
     if (!tenantId) return;
@@ -234,12 +203,9 @@ export default function MediaCenter() {
     const term = search.trim().toLowerCase();
     return !term || [asset.originalFilename, context?.label, asset.role, sourceLabel(asset), TYPE_LABELS[asset.type]].filter(Boolean).some((value) => String(value).toLowerCase().includes(term));
   }), [assets, filter, sourceFilter, contextFilter, search]);
-
   const oneImage = selectedImages.length === 1 && selected.length === 1;
   const multiImages = selectedImages.length >= 2 && selectedImages.length === selected.length;
-  const workerCards = [
-    { key: "voice" as const, label: "Voz IA", icon: AudioLines }, { key: "lipsync" as const, label: "Lip-sync", icon: Clapperboard }, { key: "music" as const, label: "Música IA", icon: Music2 },
-  ];
+  const workerCards = [{ key: "voice" as const, label: "Voz IA", icon: AudioLines }, { key: "lipsync" as const, label: "Lip-sync", icon: Clapperboard }, { key: "music" as const, label: "Música IA", icon: Music2 }];
 
   return <div className="min-h-screen bg-[#f7f8fa] dark:bg-background">
     <div className="border-b bg-background/95 px-5 py-4 backdrop-blur md:px-7">
@@ -287,7 +253,7 @@ export default function MediaCenter() {
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><Info label="Tipo" value={TYPE_LABELS[inspected.type]} /><Info label="Tamanho" value={bytes(inspected.fileSize)} /><Info label="Origem" value={sourceLabel(inspected)} /><Info label="Criado" value={dateLabel(inspected.createdAt)} /></div>
           {assetContext(inspected) && <div className="mt-3 rounded-xl border bg-primary/5 p-3"><div className="flex items-center gap-2 text-xs text-muted-foreground"><Link2 className="h-3.5 w-3.5" /> Vínculo</div><p className="mt-1 text-sm font-medium">{CONTEXT_LABELS[assetContext(inspected)!.type]} · {assetContext(inspected)!.label}</p></div>}
           {inspected.type === "image" && <ImageAdvisorPanel tenantId={tenantId} assetId={inspected.id} filename={inspected.originalFilename} canGenerateAi={ready("image_variations")} onUpdated={loadAll} />}
-          <div className="mt-5 border-t pt-4"><p className="mb-3 text-xs font-semibold">Outras ações</p>{inspected.type === "image" && <div className="grid grid-cols-2 gap-2"><button disabled={!ready("image_remove_background")} onClick={() => void runJob("image_remove_background", { assetId: inspected.id }, "Remover fundo")} className="inspector-action"><Eraser className="h-4 w-4" /> Remover fundo</button><button disabled={!ready("image_variations")} onClick={() => void runJob("image_variations", { assetId: inspected.id, count: 3 }, "Criar variações")} className="inspector-action"><Sparkles className="h-4 w-4" /> Variações</button><button onClick={() => { setSelected([inspected.id]); void runNativeImage("image_resize"); }} className="inspector-action"><Maximize2 className="h-4 w-4" /> Redimensionar</button><button onClick={() => { setSelected([inspected.id]); void runNativeImage("image_optimize"); }} className="inspector-action"><Layers3 className="h-4 w-4" /> Otimizar</button></div>}{inspected.type === "video" && <button onClick={() => navigate("/content-studio/video")} className="wide-action"><Film className="h-4 w-4" /> Abrir no Studio de Vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>}{inspected.type === "audio" && <button onClick={() => navigate("/content-studio/video")} className="wide-action"><Music2 className="h-4 w-4" /> Usar em vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>}<a href={mediaUrl(inspected.storageUrl)} target="_blank" rel="noreferrer" className="mt-2 wide-action"><Download className="h-4 w-4" /> Abrir arquivo</a></div>
+          <div className="mt-5 border-t pt-4"><p className="mb-3 text-xs font-semibold">Outras ações</p>{inspected.type === "image" && <div className="grid grid-cols-2 gap-2"><button disabled={!ready("image_remove_background")} onClick={() => void runJob("image_remove_background", { assetId: inspected.id }, "Remover fundo")} className="inspector-action"><Eraser className="h-4 w-4" /> Remover fundo</button><button disabled={!ready("image_variations")} onClick={() => void runJob("image_variations", { assetId: inspected.id, count: 3 }, "Criar variações")} className="inspector-action"><Sparkles className="h-4 w-4" /> Variações</button><button onClick={() => { setSelected([inspected.id]); void runNativeImage("image_resize"); }} className="inspector-action"><Maximize2 className="h-4 w-4" /> Redimensionar</button><button onClick={() => { setSelected([inspected.id]); void runNativeImage("image_optimize"); }} className="inspector-action"><Layers3 className="h-4 w-4" /> Otimizar</button></div>}{inspected.type === "video" && <button onClick={() => useInVideoStudio(inspected)} className="wide-action"><Film className="h-4 w-4" /> Usar no Studio de Vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>}{inspected.type === "audio" && <button onClick={() => navigate("/content-studio/video")} className="wide-action"><Music2 className="h-4 w-4" /> Usar em vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>}<a href={mediaUrl(inspected.storageUrl)} target="_blank" rel="noreferrer" className="mt-2 wide-action"><Download className="h-4 w-4" /> Abrir arquivo</a></div>
         </div> : <div className="flex min-h-[500px] flex-col items-center justify-center p-8 text-center"><CircleAlert className="h-8 w-8 text-muted-foreground" /><p className="mt-3 text-sm font-medium">Selecione uma mídia</p><p className="mt-1 text-xs text-muted-foreground">Clique em um card para abrir análise, preview e ferramentas.</p></div>}
       </aside>
     </div>
