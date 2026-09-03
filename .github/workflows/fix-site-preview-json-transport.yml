@@ -39,6 +39,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck API and frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: |
           pnpm --filter @workspace/api-server typecheck
           pnpm --filter @workspace/frontend typecheck
