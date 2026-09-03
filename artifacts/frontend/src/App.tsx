@@ -271,6 +271,8 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 
   const isTenantAdmin = user?.platformRole === "tenant_admin";
   const isOnboardingRoute = location === "/onboarding" || location.startsWith("/onboarding/");
+  const isInstallationAction = location.split("?")[0] === "/configuracoes" && new URLSearchParams(window.location.search).get("installation") === "1";
+  const isSetupRoute = isOnboardingRoute || isInstallationAction;
 
   const { data: tenant, isLoading: tenantLoading } = useGetTenant(
     user?.tenantId ?? "",
@@ -281,7 +283,7 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
           !!token &&
           isTenantAdmin &&
           !!user?.tenantId &&
-          !isOnboardingRoute,
+          !isSetupRoute,
         queryKey: getGetTenantQueryKey(user?.tenantId ?? ""),
       },
     }
@@ -297,7 +299,7 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
           !!token &&
           isTenantAdmin &&
           !!user?.tenantId &&
-          !isOnboardingRoute,
+          !isSetupRoute,
         queryKey: getListInvoicesQueryKey(user?.tenantId ?? ""),
       },
     }
@@ -316,11 +318,11 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
     if (tenant.status !== "suspended" && !hasOverdueInvoice) {
       if (!tenant.onboardingConcluido && !tenant.setupCompletedAt) {
         setLocation("/onboarding");
-      } else if (!tenant.integracoesConcluido) {
+      } else if (!tenant.integracoesConcluido && !isInstallationAction) {
         setLocation("/onboarding/integracoes");
       }
     }
-  }, [tenant, tenantLoading, isTenantAdmin, hasOverdueInvoice, setLocation]);
+  }, [tenant, tenantLoading, isTenantAdmin, hasOverdueInvoice, isInstallationAction, setLocation]);
 
   if (isLoading || !token || !user) return <Spinner />;
 

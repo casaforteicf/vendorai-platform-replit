@@ -577,6 +577,7 @@ export default function Configuracoes() {
   const isTenantAdmin = isEffectiveAdmin;
   const isSuperAdmin = user?.platformRole === "super_admin";
   const isSeller = user?.platformRole === "tenant_seller" && user?.userFunction !== "administrador";
+  const isInstallationMode = new URLSearchParams(window.location.search).get("installation") === "1";
   const userFunction = user?.userFunction as UserFunction | undefined;
   const isAdmin = isTenantAdmin || isSuperAdmin;
   const showFaturamento = isAdmin || (userFunction && ["financeiro", "administrador", "outro"].includes(userFunction));
@@ -1041,10 +1042,14 @@ export default function Configuracoes() {
   // ── Marketing: Google Ads / Meta Pixel do site gerado deste tenant ───────
   const [googleAdsConversionIdLocal, setGoogleAdsConversionIdLocal] = useState("");
   const [metaPixelIdLocal, setMetaPixelIdLocal] = useState("");
+  const [linkedinInsightTagIdLocal, setLinkedinInsightTagIdLocal] = useState("");
+  const [tiktokPixelIdLocal, setTiktokPixelIdLocal] = useState("");
   const [syncedMarketingIds, setSyncedMarketingIds] = useState(false);
   if (tenantQuery.data !== undefined && !syncedMarketingIds) {
     setGoogleAdsConversionIdLocal(tenantQuery.data.googleAdsConversionId ?? "");
     setMetaPixelIdLocal(tenantQuery.data.metaPixelId ?? "");
+    setLinkedinInsightTagIdLocal(tenantQuery.data.linkedinInsightTagId ?? "");
+    setTiktokPixelIdLocal(tenantQuery.data.tiktokPixelId ?? "");
     setSyncedMarketingIds(true);
   }
 
@@ -1055,6 +1060,8 @@ export default function Configuracoes() {
         data: {
           googleAdsConversionId: googleAdsConversionIdLocal.trim() || null,
           metaPixelId: metaPixelIdLocal.trim() || null,
+          linkedinInsightTagId: linkedinInsightTagIdLocal.trim() || null,
+          tiktokPixelId: tiktokPixelIdLocal.trim() || null,
         },
       },
       {
@@ -2253,6 +2260,12 @@ export default function Configuracoes() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {isInstallationMode && (
+        <div className="sticky top-3 z-40 flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-background/95 p-3 shadow-sm backdrop-blur">
+          <p className="text-sm text-muted-foreground">Você está executando uma etapa da instalação.</p>
+          <a href="/onboarding/integracoes" className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">Voltar às pendências</a>
+        </div>
+      )}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
         <p className="text-muted-foreground text-sm mt-1">Gerencie o perfil da empresa e as configurações da conta.</p>
@@ -3463,7 +3476,16 @@ export default function Configuracoes() {
                 <p className="text-xs text-muted-foreground">
                   Gerenciador de Eventos do Meta → Origens de dados → Pixel.
                 </p>
+                <div className="space-y-1.5">
+                <label className="text-sm font-medium">Partner ID do LinkedIn Insight Tag</label>
+                <Input placeholder="Ex: 5806284" value={linkedinInsightTagIdLocal} onChange={(e) => setLinkedinInsightTagIdLocal(e.target.value)} onBlur={onSaveMarketingIds} disabled={updateTenant.isPending || tenantQuery.isLoading} />
+                <p className="text-xs text-muted-foreground">Campaign Manager → Analisar → Insight Tag. Ativado somente após consentimento.</p>
               </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">ID do TikTok Pixel</label>
+                <Input placeholder="Ex: CXXXXXXXXXXXXXXXXX" value={tiktokPixelIdLocal} onChange={(e) => setTiktokPixelIdLocal(e.target.value)} onBlur={onSaveMarketingIds} disabled={updateTenant.isPending || tenantQuery.isLoading} />
+                <p className="text-xs text-muted-foreground">TikTok Ads → Ferramentas → Eventos → Fontes de dados → Web. Ativado somente após consentimento.</p>
+              </div>            </div>
             </div>
           </div>
 
