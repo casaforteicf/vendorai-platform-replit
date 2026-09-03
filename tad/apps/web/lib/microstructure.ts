@@ -4,6 +4,7 @@ const PROXY_KEY=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||'sb_publishabl
 type AggTrade={a:number;p:string;q:string;f:number;l:number;T:number;m:boolean};
 export type MicroBar={start:number;end:number;open:number;high:number;low:number;close:number;volume:number;aggressiveBuyVolume:number;aggressiveSellVolume:number;tradeCount:number;imbalance:number;returnPct:number};
 export type MicrostructureQuality={status:'HEALTHY'|'DEGRADED'|'BLOCKED';approved:boolean;reasons:string[];freshnessMs:number|null;binding:boolean};
+export type MicrostructureDirection={status:'CONFIRMED'|'NEUTRAL'|'CONTRADICTED';approved:boolean;side:'LONG'|'SHORT';reasons:string[];score:number;binding:boolean};
 
 async function proxyFetch(path:string){
   const url=`${PROXY_URL}?forceFunctionRegion=sa-east-1&url=${encodeURIComponent(path)}`;
@@ -56,4 +57,25 @@ export function assessMicrostructureQuality(snapshot:Awaited<ReturnType<typeof l
   if((snapshot.latest15s?.tradeCount??0)<3)reasons.push('LATEST_15S_THIN');
   if(snapshot.microVolatilityPct>1.5)reasons.push('MICRO_VOLATILITY_EXTREME');
   return {status:reasons.length?'DEGRADED':'HEALTHY',approved:true,reasons:reasons.length?reasons:['MICROSTRUCTURE_HEALTHY'],freshnessMs,binding:true};
+}
+
+export function assessMicrostructureDirection(snapshot:Awaited<ReturnType<typeof loadMicrostructure>>,side:'LONG'|'SHORT'):MicrostructureDirection{
+  const sign=side==='LONG'?1:-1;
+  const latest15=snapshot.latest15s;
+  const latest30=snapshot.latest30s;
+  if(!latest15||!latest30)return {status:'NEUTRAL',approved:true,side,reasons:['MICRO_DIRECTION_INSUFFICIENT_BARS'],score:50,binding:false};
+  const flow=sign*snapshot.flow.imbalance;
+  const velocity=sign*snapshot.priceVelocityPctPerMin;
+  const shortFlow=sign*latest15.imbalance;
+  const mediumFlow=sign*latest30.imbalance;
+  const score=Math.max(0,Math.min(100,Math.round(50+flow*20+shortFlow*15+mediumFlow*10+Math.max(-10,Math.min(10,velocity*6)))));
+  const reasons:string[]=[];
+  if(flow>=0.12)reasons.push('FLOW_ALIGNED');
+  if(shortFlow>=0.12)reasons.push('LATEST_15S_ALIGNED');
+  if(mediumFlow>=0.10)reasons.push('LATEST_30S_ALIGNED');
+  if(velocity>0)reasons.push('PRICE_VELOCITY_ALIGNED');
+  const stronglyContradicted=(flow<=-0.35&&shortFlow<=-0.25)||(shortFlow<=-0.45&&mediumFlow<=-0.25)||(flow<=-0.25&&velocity<=-0.08);
+  if(stronglyContradicted)return {status:'CONTRADICTED',approved:false,side,reasons:['STRONG_MICRO_FLOW_CONTRADICTION'],score,binding:false};
+  const confirmed=score>=62&&(flow>0||shortFlow>0||mediumFlow>0);
+  return {status:confirmed?'CONFIRMED':'NEUTRAL',approved:true,side,reasons:reasons.length?reasons:['MICRO_DIRECTION_NEUTRAL'],score,binding:false};
 }
