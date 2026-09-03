@@ -7,6 +7,8 @@ import {
   usersTable,
   dealsTable,
   pipelineStagesTable,
+  workCardsTable,
+  scoutOportunidadesTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
@@ -18,6 +20,10 @@ declare global {
       tenantId?: string;  // set by subdomain middleware when request arrives via *.appvendorai.com or custom domain
     }
   }
+}
+
+function isTrustedInternalActor(user?: JwtPayload): boolean {
+  return user?.actorType === "ai" || user?.actorType === "system";
 }
 
 export const authenticate: RequestHandler = (req, res, next) => {
@@ -42,6 +48,10 @@ export function requireRole(...roles: PlatformRole[]): RequestHandler {
   return (req, res, next) => {
     if (!req.user) {
       res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+    if (isTrustedInternalActor(req.user)) {
+      next();
       return;
     }
     const hasRole = roles.includes(req.user.platformRole);
@@ -94,6 +104,10 @@ export function requireUserFunction(...functions: UserFunction[]): RequestHandle
       res.status(401).json({ error: "Unauthenticated" });
       return;
     }
+    if (isTrustedInternalActor(req.user)) {
+      next();
+      return;
+    }
     const userFn = req.user.userFunction as UserFunction | undefined;
     if (!userFn || !functions.includes(userFn)) {
       res.status(403).json({ error: "Função do usuário não permite esta ação" });
@@ -107,6 +121,10 @@ export function requireAdminOrUserFunction(...functions: UserFunction[]): Reques
   return (req, res, next) => {
     if (!req.user) {
       res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+    if (isTrustedInternalActor(req.user)) {
+      next();
       return;
     }
     const isAdmin = req.user.platformRole === "super_admin" || req.user.platformRole === "tenant_admin";
@@ -126,7 +144,7 @@ const API_MODULE_RULES: Array<[RegExp, string]> = [
   [/^\/(?:deals|funis|activities)(?:\/|$)/, "deals"],
   [/^\/(?:conversations|messages)(?:\/|$)/, "conversations"],
   [/^\/(?:agendas|agendamentos|bloqueios-agenda)(?:\/|$)/, "agenda"],
-  [/^\/(?:entregas|fretes)(?:\/|$)/, "deliveries"],
+  [/^\/(?:entregas|fretes|work-cards|support-cases)(?:\/|$)/, "deliveries"],
   [/^\/(?:propostas|lead-proposals|solicitacoes-compra)(?:\/|$)/, "proposals"],
   [/^\/(?:produtos-catalogo|categorias-produto|inventory|varejo)(?:\/|$)/, "catalog"],
   [/^\/(?:erp|invoices|subscriptions)(?:\/|$)/, "erp"],
@@ -134,7 +152,7 @@ const API_MODULE_RULES: Array<[RegExp, string]> = [
   [/^\/knowledge-base(?:\/|$)/, "knowledge"],
   [/^\/(?:analytics|dashboard)(?:\/|$)/, "analytics"],
   [/^\/(?:campaigns|content|content-studio|video-processing)(?:\/|$)/, "content"],
-  [/^\/scout(?:\/|$)/, "revenue_scout"],
+  [/^\/(?:tenants\/[^/]+\/)?scout(?:\/|$)/, "revenue_scout"],
   [/^\/farmacia(?:\/|$)/, "pharmacy"],
 ];
 
@@ -144,56 +162,138 @@ type AccessRow = {
   customFunctionId: string | null;
 };
 
-async function canExecuteCurrentPipelineStage(
-  req: Request,
-  current: JwtPayload,
-  row: AccessRow | undefined,
-): Promise<boolean> {
-  if (req.method !== "PATCH") return true;
-  const match = req.path.match(/^\/deals\/([^/]+)$/);
-  if (!match) return true;
+function callerFunctionRefs(row: AccessRow | undefined): Set<string> {
+  const refs = new Set<string>();
+  if (row?.userFunction) refs.add(`builtin:${row.userFunction}`);
+  if (row?.customFunctionId) refs.add(`custom:${row.customFunctionId}`);
+  return refs;
+}
 
-  const dealId = match[1];
-  const [deal] = await db
-    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa })
-    .from(dealsTable)
-    .where(eq(dealsTable.id, dealId));
-  if (!deal || deal.tenantId !== current.tenantId) return true;
+async function isResponsibleForStage(input: {
+  current: JwtPayload;
+  row: AccessRow | undefined;
+  tenantId: string;
+  pipeline: string;
+  stageKey: string;
+}): Promise<boolean> {
+  const { current, row, tenantId, pipeline, stageKey } = input;
+  if (isTrustedInternalActor(current)) return true;
+  if (current.platformRole === "super_admin" || current.platformRole === "tenant_admin" || current.userFunction === "administrador") return true;
 
-  // A função responsável pela etapa ATUAL pode concluir o trabalho e
-  // encaminhar o negócio para a próxima etapa. Depois do handoff, a função
-  // responsável pela nova etapa passa a controlar as próximas alterações.
   const [stage] = await db
     .select({ responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes })
     .from(pipelineStagesTable)
     .where(
       and(
-        eq(pipelineStagesTable.tenantId, deal.tenantId),
-        eq(pipelineStagesTable.key, deal.etapa),
+        eq(pipelineStagesTable.tenantId, tenantId),
+        eq(pipelineStagesTable.pipeline, pipeline),
+        eq(pipelineStagesTable.key, stageKey),
       ),
     );
 
+  // Ausência de configuração ou lista vazia mantém compatibilidade e acesso atual.
   const responsibleFunctions = stage?.responsaveisFuncoes ?? [];
   if (responsibleFunctions.length === 0) return true;
-  if (!row) return false;
-
-  const callerFunctions = new Set<string>();
-  if (row.userFunction) callerFunctions.add(`builtin:${row.userFunction}`);
-  if (row.customFunctionId) callerFunctions.add(`custom:${row.customFunctionId}`);
-
+  const callerFunctions = callerFunctionRefs(row);
   return responsibleFunctions.some((responsible) => callerFunctions.has(responsible));
 }
 
-/** Enforces explicit per-user module permissions on protected APIs. */
+async function canExecuteCurrentPipelineStage(
+  req: Request,
+  current: JwtPayload,
+  row: AccessRow | undefined,
+): Promise<boolean> {
+  if (isTrustedInternalActor(current)) return true;
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return true;
+
+  // Comercial + relacionamento usam deals. Quando o negócio já está em
+  // Aquecimento ou Parceiros, a responsabilidade é lida da pipeline real,
+  // não da coluna comercial de transição.
+  if (req.method === "PATCH") {
+    const dealMatch = req.path.match(/^\/deals\/([^/]+)$/);
+    if (dealMatch) {
+      const [deal] = await db
+        .select({
+          id: dealsTable.id,
+          tenantId: dealsTable.tenantId,
+          etapa: dealsTable.etapa,
+          aquecimentoTipo: dealsTable.aquecimentoTipo,
+          relationshipStage: dealsTable.relationshipStage,
+        })
+        .from(dealsTable)
+        .where(eq(dealsTable.id, dealMatch[1]));
+      if (!deal || deal.tenantId !== current.tenantId) return true;
+
+      let pipeline = "comercial";
+      let stageKey = deal.etapa;
+      if (deal.etapa === "em_aquecimento") {
+        pipeline = "aquecimento";
+        stageKey = deal.relationshipStage
+          || (deal.aquecimentoTipo === "cliente" ? "aquecimento_cliente" : "aquecimento_lead");
+      } else if (deal.etapa === "parceiro") {
+        pipeline = "parceiros";
+        stageKey = deal.relationshipStage || "parceiro_identificado";
+      }
+
+      return isResponsibleForStage({ current, row, tenantId: deal.tenantId, pipeline, stageKey });
+    }
+  }
+
+  // Execução / Pedidos e Suporte / Assistência compartilham work_cards.
+  // Qualquer ação de execução (mover, confirmar relatório, anexar resultado etc.)
+  // é governada pela função responsável pela etapa atual.
+  const workCardMatch = req.path.match(/^\/(?:tenants\/[^/]+\/)?work-cards\/([^/]+)(?:\/|$)/);
+  if (workCardMatch && req.method !== "DELETE") {
+    const [card] = await db
+      .select({ id: workCardsTable.id, tenantId: workCardsTable.tenantId, pipeline: workCardsTable.pipeline, etapa: workCardsTable.etapa })
+      .from(workCardsTable)
+      .where(eq(workCardsTable.id, workCardMatch[1]));
+    if (!card || card.tenantId !== current.tenantId) return true;
+    if (card.pipeline === "execucao" || card.pipeline === "suporte") {
+      return isResponsibleForStage({ current, row, tenantId: card.tenantId, pipeline: card.pipeline, stageKey: card.etapa });
+    }
+  }
+
+  // Revenue Scout tem ações próprias, fora de deals. Confirmação, encaminhamento,
+  // mudança de etapa e aprovação da IA respeitam a etapa atual para humanos.
+  const scoutMatch = req.path.match(/^\/tenants\/([^/]+)\/scout\/oportunidades\/([^/]+)(?:\/([^/]+))?$/);
+  if (scoutMatch && scoutMatch[1] === current.tenantId) {
+    const action = scoutMatch[3] ?? "";
+    const guardedActions = new Set(["encaminhar", "etapa", "confirmar", "aprovar"]);
+    if (guardedActions.has(action)) {
+      const [opportunity] = await db
+        .select({ tenantId: scoutOportunidadesTable.tenantId, pipelineStage: scoutOportunidadesTable.pipelineStage })
+        .from(scoutOportunidadesTable)
+        .where(and(eq(scoutOportunidadesTable.id, scoutMatch[2]), eq(scoutOportunidadesTable.tenantId, scoutMatch[1])));
+      if (!opportunity) return true;
+      return isResponsibleForStage({
+        current,
+        row,
+        tenantId: opportunity.tenantId,
+        pipeline: "scout",
+        stageKey: opportunity.pipelineStage || "identificada",
+      });
+    }
+  }
+
+  return true;
+}
+
+/** Enforces explicit per-user module permissions and pipeline-stage responsibilities. */
 export const enforceModulePermission: RequestHandler = async (req, res, next) => {
   const current = req.user;
-  if (!current || current.platformRole === "super_admin" || current.platformRole === "tenant_admin" || current.userFunction === "administrador") {
+  if (!current || current.platformRole === "super_admin" || current.platformRole === "tenant_admin" || current.userFunction === "administrador" || isTrustedInternalActor(current)) {
     next();
     return;
   }
 
   const requiredModule = API_MODULE_RULES.find(([pattern]) => pattern.test(req.path))?.[1];
-  if (!requiredModule) {
+  const needsPipelineCheck =
+    (req.method === "PATCH" && /^\/deals\/[^/]+$/.test(req.path))
+    || /^\/(?:tenants\/[^/]+\/)?work-cards\/[^/]+(?:\/|$)/.test(req.path)
+    || /^\/tenants\/[^/]+\/scout\/oportunidades\/[^/]+\/(?:encaminhar|etapa|confirmar|aprovar)$/.test(req.path);
+
+  if (!requiredModule && !needsPipelineCheck) {
     next();
     return;
   }
@@ -209,7 +309,7 @@ export const enforceModulePermission: RequestHandler = async (req, res, next) =>
 
   // NULL means the tenant has not customized this user yet; preserve the
   // existing role/function policy for backwards compatibility.
-  if (row?.permissions != null && !row.permissions.includes(requiredModule)) {
+  if (requiredModule && row?.permissions != null && !row.permissions.includes(requiredModule)) {
     res.status(403).json({
       error: "MODULE_ACCESS_DENIED",
       message: "Seu usuário não possui acesso a este módulo.",
@@ -218,7 +318,7 @@ export const enforceModulePermission: RequestHandler = async (req, res, next) =>
     return;
   }
 
-  if (requiredModule === "deals") {
+  if (needsPipelineCheck) {
     const allowedAtStage = await canExecuteCurrentPipelineStage(req, current, row);
     if (!allowedAtStage) {
       res.status(403).json({
@@ -234,6 +334,8 @@ export const enforceModulePermission: RequestHandler = async (req, res, next) =>
 
 export function buildUserFunctionFilter(req: Express.Request, table: { tenantId: any; assignedTo: any }): any[] {
   const conditions: any[] = [];
+  if (isTrustedInternalActor(req.user)) return conditions;
+
   const userFn = req.user?.userFunction as UserFunction | undefined;
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const isSeller = req.user?.platformRole === "tenant_seller";
