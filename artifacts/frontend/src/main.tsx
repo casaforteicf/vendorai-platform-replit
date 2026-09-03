@@ -5,6 +5,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
 import { MediaMenuInjector } from "./components/media/MediaMenuInjector";
 import { MediaAdsBridge } from "./components/media/MediaAdsBridge";
+import { MediaSitesBridge } from "./components/media/MediaSitesBridge";
 import "./index.css";
 import "./site-generator-fix.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
@@ -50,6 +51,7 @@ createRoot(document.getElementById("root")!).render(
         <App />
         <MediaMenuInjector />
         <MediaAdsBridge />
+        <MediaSitesBridge />
       </>
     )}
   </ErrorBoundary>,
