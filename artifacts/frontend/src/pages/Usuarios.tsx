@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  customFetch,
   useListTenantUsers,
   getListTenantUsersQueryKey,
   useCreateUser,
@@ -14,7 +15,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Dialog,
@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +55,8 @@ import {
   Shield,
   CheckCircle2,
   XCircle,
+  Plus,
+  Loader2,
 } from "lucide-react";
 
 const FUNCAO_LABELS: Record<string, string> = {
@@ -74,25 +77,50 @@ const FUNCAO_BADGES: Record<string, string> = {
   outro: "bg-gray-100 text-gray-800 border-gray-200",
 };
 
+const CUSTOM_FUNCTION_PREFIX = "custom:";
+
+interface TenantUserFunction {
+  id: string;
+  tenantId: string;
+  name: string;
+  permissions: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export default function Usuarios() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const tenantId = user?.tenantId ?? "";
+  const userFunctionsQueryKey = ["tenant-user-functions", tenantId] as const;
 
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [functionDialogOpen, setFunctionDialogOpen] = useState(false);
+  const [newFunctionName, setNewFunctionName] = useState("");
+  const [newFunctionPermissions, setNewFunctionPermissions] = useState<UserModuleKey[]>([]);
+  const [creatingFunction, setCreatingFunction] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     telefone: "",
     userFunction: "outro" as UserFunction,
+    customFunctionId: null as string | null,
     permissions: modulesForFunction("outro") as UserModuleKey[],
     password: "",
   });
 
   const { data: users, isLoading } = useListTenantUsers(tenantId);
+  const { data: tenantFunctions = [] } = useQuery({
+    queryKey: userFunctionsQueryKey,
+    enabled: Boolean(tenantId),
+    queryFn: () =>
+      customFetch<TenantUserFunction[]>(`/api/tenants/${tenantId}/user-functions`, {
+        responseType: "json",
+      }),
+  });
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
@@ -100,8 +128,26 @@ export default function Usuarios() {
   const filteredUsers = users?.filter(
     (u) =>
       u.name?.toLowerCase().includes(search.toLowerCase()) ||
-      u.email?.toLowerCase().includes(search.toLowerCase())
+      u.email?.toLowerCase().includes(search.toLowerCase()),
   );
+
+  function getCustomFunction(customFunctionId?: string | null) {
+    if (!customFunctionId) return undefined;
+    return tenantFunctions.find((item) => item.id === customFunctionId);
+  }
+
+  function getFunctionLabel(targetUser: any) {
+    const customFunction = getCustomFunction(targetUser.customFunctionId);
+    if (customFunction) return customFunction.name;
+    return FUNCAO_LABELS[targetUser.userFunction ?? "outro"] ?? "Outro";
+  }
+
+  function getFunctionBadge(targetUser: any) {
+    if (targetUser.customFunctionId) {
+      return "bg-slate-100 text-slate-800 border-slate-200";
+    }
+    return FUNCAO_BADGES[targetUser.userFunction ?? "outro"] ?? FUNCAO_BADGES.outro;
+  }
 
   function resetForm() {
     setFormData({
@@ -109,25 +155,124 @@ export default function Usuarios() {
       email: "",
       telefone: "",
       userFunction: "outro",
+      customFunctionId: null,
       permissions: modulesForFunction("outro"),
       password: "",
     });
     setEditingUser(null);
   }
 
-  function openEdit(user: any) {
-    setEditingUser(user);
+  function openEdit(targetUser: any) {
+    setEditingUser(targetUser);
     setFormData({
-      name: user.name ?? "",
-      email: user.email ?? "",
-      telefone: user.telefone ?? "",
-      userFunction: user.userFunction ?? "outro",
-      permissions: Array.isArray(user.permissions)
-        ? user.permissions
-        : modulesForFunction(user.userFunction ?? "outro"),
+      name: targetUser.name ?? "",
+      email: targetUser.email ?? "",
+      telefone: targetUser.telefone ?? "",
+      userFunction: targetUser.userFunction ?? "outro",
+      customFunctionId: targetUser.customFunctionId ?? null,
+      permissions: Array.isArray(targetUser.permissions)
+        ? targetUser.permissions
+        : modulesForFunction(targetUser.userFunction ?? "outro"),
       password: "",
     });
     setDialogOpen(true);
+  }
+
+  function openNewFunctionDialog() {
+    setNewFunctionName("");
+    setNewFunctionPermissions([]);
+    setFunctionDialogOpen(true);
+  }
+
+  function handleFunctionChange(value: string) {
+    if (value.startsWith(CUSTOM_FUNCTION_PREFIX)) {
+      const customFunctionId = value.slice(CUSTOM_FUNCTION_PREFIX.length);
+      const customFunction = getCustomFunction(customFunctionId);
+      if (!customFunction) return;
+      setFormData((current) => ({
+        ...current,
+        userFunction: "outro",
+        customFunctionId: customFunction.id,
+        permissions: customFunction.permissions.filter((permission): permission is UserModuleKey =>
+          USER_MODULES.some((module) => module.key === permission),
+        ),
+      }));
+      return;
+    }
+
+    const userFunction = value as UserFunction;
+    setFormData((current) => ({
+      ...current,
+      userFunction,
+      customFunctionId: null,
+      permissions: modulesForFunction(userFunction),
+    }));
+  }
+
+  async function handleCreateFunction() {
+    const name = newFunctionName.trim();
+    if (name.length < 2) {
+      toast({
+        title: "Nome da função obrigatório",
+        description: "Informe um nome com pelo menos 2 caracteres.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newFunctionPermissions.length === 0) {
+      toast({
+        title: "Selecione os acessos",
+        description: "A nova função precisa ter pelo menos um módulo liberado.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreatingFunction(true);
+    try {
+      const created = await customFetch<TenantUserFunction>(
+        `/api/tenants/${tenantId}/user-functions`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            permissions: newFunctionPermissions,
+          }),
+          responseType: "json",
+        },
+      );
+
+      queryClient.setQueryData<TenantUserFunction[]>(userFunctionsQueryKey, (current = []) =>
+        [...current.filter((item) => item.id !== created.id), created].sort((a, b) =>
+          a.name.localeCompare(b.name, "pt-BR"),
+        ),
+      );
+
+      setFormData((current) => ({
+        ...current,
+        userFunction: "outro",
+        customFunctionId: created.id,
+        permissions: created.permissions.filter((permission): permission is UserModuleKey =>
+          USER_MODULES.some((module) => module.key === permission),
+        ),
+      }));
+      setFunctionDialogOpen(false);
+      setNewFunctionName("");
+      setNewFunctionPermissions([]);
+      toast({
+        title: "Função criada",
+        description: `${created.name} já foi selecionada para este usuário.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro ao criar função",
+        description: err?.message || "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingFunction(false);
+    }
   }
 
   async function handleSubmit() {
@@ -156,6 +301,7 @@ export default function Usuarios() {
           email: formData.email,
           telefone: formData.telefone || undefined,
           userFunction: formData.userFunction,
+          customFunctionId: formData.customFunctionId,
           permissions: formData.permissions,
         };
         if (formData.password) payload.password = formData.password;
@@ -176,8 +322,9 @@ export default function Usuarios() {
             password: formData.password,
             telefone: formData.telefone || undefined,
             userFunction: formData.userFunction,
+            customFunctionId: formData.customFunctionId,
             permissions: formData.permissions,
-          },
+          } as any,
         });
         toast({
           title: "Usuário criado",
@@ -217,6 +364,10 @@ export default function Usuarios() {
       });
     }
   }
+
+  const functionSelectValue = formData.customFunctionId
+    ? `${CUSTOM_FUNCTION_PREFIX}${formData.customFunctionId}`
+    : formData.userFunction;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -260,51 +411,67 @@ export default function Usuarios() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Carregando...
-            </div>
+            <div className="text-center py-12 text-muted-foreground">Carregando...</div>
           ) : filteredUsers?.length === 0 ? (
-            <p className="text-center text-muted-foreground py-12 text-sm">Nenhum usuário encontrado</p>
+            <p className="text-center text-muted-foreground py-12 text-sm">
+              Nenhum usuário encontrado
+            </p>
           ) : (
             <>
-              {/* Mobile cards */}
               <div className="divide-y -mx-6 sm:hidden">
                 {filteredUsers?.map((u) => (
-                  <div key={u.id} className="px-6 py-4 space-y-2 cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => openEdit(u)}>
+                  <div
+                    key={u.id}
+                    className="px-6 py-4 space-y-2 cursor-pointer hover:bg-muted/40 transition-colors"
+                    onClick={() => openEdit(u)}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{u.name}</p>
                         <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(u); }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(u);
+                          }}
+                        >
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="text-red-600 hover:text-red-700"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(u.id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(u.id);
+                          }}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={FUNCAO_BADGES[u.userFunction ?? "outro"] ?? FUNCAO_BADGES.outro}
-                      >
+                      <Badge variant="outline" className={getFunctionBadge(u)}>
                         <Shield className="h-3 w-3 mr-1" />
-                        {FUNCAO_LABELS[u.userFunction ?? "outro"]}
+                        {getFunctionLabel(u)}
                       </Badge>
                       {u.active ? (
-                        <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                        <Badge
+                          variant="outline"
+                          className="bg-green-100 text-green-800 border-green-200"
+                        >
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Ativo
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
+                        <Badge
+                          variant="outline"
+                          className="bg-gray-100 text-gray-800 border-gray-200"
+                        >
                           <XCircle className="h-3 w-3 mr-1" />
                           Inativo
                         </Badge>
@@ -320,7 +487,6 @@ export default function Usuarios() {
                 ))}
               </div>
 
-              {/* Desktop table */}
               <div className="hidden sm:block">
                 <Table>
                   <TableHeader>
@@ -335,21 +501,17 @@ export default function Usuarios() {
                   </TableHeader>
                   <TableBody>
                     {filteredUsers?.map((u) => (
-                      <TableRow key={u.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openEdit(u)}>
+                      <TableRow
+                        key={u.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => openEdit(u)}
+                      >
                         <TableCell className="font-medium">{u.name}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {u.email}
-                        </TableCell>
+                        <TableCell className="text-muted-foreground">{u.email}</TableCell>
                         <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={
-                              FUNCAO_BADGES[u.userFunction ?? "outro"] ??
-                              FUNCAO_BADGES.outro
-                            }
-                          >
+                          <Badge variant="outline" className={getFunctionBadge(u)}>
                             <Shield className="h-3 w-3 mr-1" />
-                            {FUNCAO_LABELS[u.userFunction ?? "outro"]}
+                            {getFunctionLabel(u)}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -386,7 +548,10 @@ export default function Usuarios() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={(e) => { e.stopPropagation(); openEdit(u); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEdit(u);
+                              }}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -394,7 +559,10 @@ export default function Usuarios() {
                               variant="ghost"
                               size="sm"
                               className="text-red-600 hover:text-red-700"
-                              onClick={(e) => { e.stopPropagation(); handleDelete(u.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(u.id);
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -413,9 +581,7 @@ export default function Usuarios() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingUser ? "Editar usuário" : "Novo usuário"}
-            </DialogTitle>
+            <DialogTitle>{editingUser ? "Editar usuário" : "Novo usuário"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
@@ -423,9 +589,7 @@ export default function Usuarios() {
               <Label>Nome completo</Label>
               <Input
                 value={formData.name}
-                onChange={(e) =>
-                  setFormData((s) => ({ ...s, name: e.target.value }))
-                }
+                onChange={(e) => setFormData((current) => ({ ...current, name: e.target.value }))}
                 placeholder="Nome do usuário"
               />
             </div>
@@ -434,9 +598,7 @@ export default function Usuarios() {
               <Input
                 type="email"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData((s) => ({ ...s, email: e.target.value }))
-                }
+                onChange={(e) => setFormData((current) => ({ ...current, email: e.target.value }))}
                 placeholder="email@empresa.com"
               />
             </div>
@@ -445,23 +607,26 @@ export default function Usuarios() {
               <Input
                 value={formData.telefone}
                 onChange={(e) =>
-                  setFormData((s) => ({ ...s, telefone: e.target.value }))
+                  setFormData((current) => ({ ...current, telefone: e.target.value }))
                 }
                 placeholder="(11) 98765-4321"
               />
             </div>
-            <div>
-              <Label>Função</Label>
-              <Select
-                value={formData.userFunction}
-                onValueChange={(v) =>
-                  setFormData((s) => ({
-                    ...s,
-                    userFunction: v as UserFunction,
-                    permissions: modulesForFunction(v as UserFunction),
-                  }))
-                }
-              >
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label>Função</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-xs"
+                  onClick={openNewFunctionDialog}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Nova função
+                </Button>
+              </div>
+              <Select value={functionSelectValue} onValueChange={handleFunctionChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione uma função" />
                 </SelectTrigger>
@@ -470,13 +635,23 @@ export default function Usuarios() {
                   <SelectItem value="financeiro">Financeiro</SelectItem>
                   <SelectItem value="suporte">Suporte</SelectItem>
                   <SelectItem value="entrega">Entrega</SelectItem>
-                  <SelectItem value="administrador">
-                    Administrador
-                  </SelectItem>
+                  <SelectItem value="administrador">Administrador</SelectItem>
                   <SelectItem value="outro">Outro</SelectItem>
+                  {tenantFunctions.map((customFunction) => (
+                    <SelectItem
+                      key={customFunction.id}
+                      value={`${CUSTOM_FUNCTION_PREFIX}${customFunction.id}`}
+                    >
+                      {customFunction.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Use uma função padrão ou crie um perfil de acesso reutilizável para sua empresa.
+              </p>
             </div>
+
             <div className="space-y-3 rounded-lg border p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -490,7 +665,12 @@ export default function Usuarios() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setFormData((s) => ({ ...s, permissions: USER_MODULES.map((m) => m.key) }))}
+                    onClick={() =>
+                      setFormData((current) => ({
+                        ...current,
+                        permissions: USER_MODULES.map((module) => module.key),
+                      }))
+                    }
                   >
                     Marcar todos
                   </Button>
@@ -498,7 +678,9 @@ export default function Usuarios() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setFormData((s) => ({ ...s, permissions: [] }))}
+                    onClick={() =>
+                      setFormData((current) => ({ ...current, permissions: [] }))
+                    }
                   >
                     Limpar
                   </Button>
@@ -515,11 +697,11 @@ export default function Usuarios() {
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(value) =>
-                          setFormData((s) => ({
-                            ...s,
+                          setFormData((current) => ({
+                            ...current,
                             permissions: value
-                              ? [...s.permissions, module.key]
-                              : s.permissions.filter((key) => key !== module.key),
+                              ? [...current.permissions, module.key]
+                              : current.permissions.filter((key) => key !== module.key),
                           }))
                         }
                       />
@@ -529,9 +711,10 @@ export default function Usuarios() {
                 })}
               </div>
               <p className="text-xs text-muted-foreground">
-                A função aplica um conjunto recomendado. Você pode personalizar os acessos depois.
+                A função aplica um conjunto recomendado. Você pode personalizar os acessos deste usuário depois.
               </p>
             </div>
+
             {!editingUser && (
               <div>
                 <Label>Senha</Label>
@@ -539,7 +722,7 @@ export default function Usuarios() {
                   type="password"
                   value={formData.password}
                   onChange={(e) =>
-                    setFormData((s) => ({ ...s, password: e.target.value }))
+                    setFormData((current) => ({ ...current, password: e.target.value }))
                   }
                   placeholder="Mínimo 8 caracteres"
                 />
@@ -557,8 +740,102 @@ export default function Usuarios() {
             >
               Cancelar
             </Button>
-            <Button onClick={handleSubmit}>
+            <Button onClick={handleSubmit} disabled={createUser.isPending || updateUser.isPending}>
+              {(createUser.isPending || updateUser.isPending) && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
               {editingUser ? "Salvar alterações" : "Criar usuário"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={functionDialogOpen} onOpenChange={setFunctionDialogOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nova função</DialogTitle>
+            <DialogDescription>
+              Crie um perfil de acesso reutilizável. Ele ficará disponível nos próximos cadastros de usuários desta empresa.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Nome da função</Label>
+              <Input
+                value={newFunctionName}
+                onChange={(e) => setNewFunctionName(e.target.value)}
+                placeholder="Ex.: Gerente comercial"
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Label className="text-base">Acessos padrão</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Defina quais módulos serão aplicados quando esta função for selecionada.
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNewFunctionPermissions(USER_MODULES.map((module) => module.key))}
+                  >
+                    Marcar todos
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setNewFunctionPermissions([])}
+                  >
+                    Limpar
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {USER_MODULES.map((module) => {
+                  const checked = newFunctionPermissions.includes(module.key);
+                  return (
+                    <label
+                      key={module.key}
+                      className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 hover:bg-muted/50"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(value) =>
+                          setNewFunctionPermissions((current) =>
+                            value
+                              ? [...current, module.key]
+                              : current.filter((key) => key !== module.key),
+                          )
+                        }
+                      />
+                      <span className="text-sm font-medium">{module.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setFunctionDialogOpen(false)}
+              disabled={creatingFunction}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleCreateFunction} disabled={creatingFunction}>
+              {creatingFunction && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Criar função
             </Button>
           </DialogFooter>
         </DialogContent>

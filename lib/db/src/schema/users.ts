@@ -2,6 +2,7 @@ import { pgTable, text, boolean, timestamp, pgEnum, numeric, jsonb } from "drizz
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { tenantUserFunctionsTable } from "./tenant_user_functions";
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "member"]);
 
@@ -35,6 +36,9 @@ export const usersTable = pgTable("users", {
   role: userRoleEnum("role").notNull().default("member"),
   platformRole: platformRoleEnum("platform_role").notNull().default("member"),
   userFunction: userFunctionEnum("user_function").default("outro"),
+  customFunctionId: text("custom_function_id").references(() => tenantUserFunctionsTable.id, {
+    onDelete: "set null",
+  }),
   // Null keeps the legacy role-based defaults. Once configured, this array is
   // the user's explicit module allowlist.
   permissions: jsonb("permissions").$type<string[] | null>().default(null),
