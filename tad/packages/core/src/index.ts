@@ -38,6 +38,7 @@ export * from './supervisor/supervisor';
 
 export * from './learning/strategy-lifecycle';
 export * from './learning/shadow-readiness';
+export * from './learning/strategy-performance-matrix';
 export * from './execution/shadow-engine';
 
 export * from './execution/execution-intelligence';
