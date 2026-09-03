@@ -495,17 +495,25 @@ export default function Ads() {
       }
       return r.json();
     },
-    onSuccess: (campaign: AdCampaign) => {
+    onSuccess: (campaign: AdCampaign & { autonomousExecution?: { attempted: boolean; executed: boolean; published?: boolean; activated?: boolean; reason?: string; warning?: string } | null }) => {
       qc.invalidateQueries({ queryKey: ["ad-campaigns", tenantId] });
+      const automation = campaign.autonomousExecution;
       const shouldAutoGenerate =
+        !automation?.attempted &&
         autoGenerateAfterCreate &&
         (campaign.tipoAnuncio === "imagem" || campaign.tipoAnuncio === "rsa_pmax") &&
         !(campaign as any).latestCreative;
       toast({
-        title: sourceDraft ? "Campanha de patrocínio criada" : "Campanha criada",
-        description: sourceDraft
-          ? (campaign.segmentacao?.origemInstagram ? "A publicação existente do Instagram foi vinculada. Revise e aprove antes de publicar." : "O conteúdo do Marketing foi anexado como novo criativo Meta. Revise e aprove antes de publicar.")
-          : shouldAutoGenerate ? "Rascunho criado. A IA está gerando texto e imagem do anúncio." : "Agora gere o criativo antes de aprovar.",
+        title: automation?.activated ? "IA publicou e ativou o patrocínio" : sourceDraft ? "Campanha de patrocínio criada" : "Campanha criada",
+        description: automation?.activated
+          ? "Criativo aprovado, campanha publicada e mídia ativada automaticamente dentro do orçamento e período definidos."
+          : automation?.published
+            ? `A IA publicou a campanha, mas a ativação ficou pendente: ${automation.warning ?? "aguardando a plataforma"}`
+            : automation?.attempted && !automation.executed
+              ? `Campanha preservada como rascunho. A automação não concluiu: ${automation.reason ?? "verifique a conexão da plataforma"}`
+              : sourceDraft
+                ? "O conteúdo do Marketing foi anexado. No modo Automático, a IA executa assim que todos os limites e conexões estiverem válidos."
+                : shouldAutoGenerate ? "Rascunho criado. A IA está gerando texto e imagem do anúncio." : "Campanha criada com os limites definidos.",
       });
       setOpen(false);
       setForm({ ...EMPTY_FORM });

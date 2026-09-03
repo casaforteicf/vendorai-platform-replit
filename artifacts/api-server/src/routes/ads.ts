@@ -15,6 +15,7 @@ import {
   generatedSitesTable,
   contentGenerationsTable,
   contentPublishedPostsTable,
+  contentAutopilotConfigTable,
   adCampaignEventsTable,
 } from "@workspace/db";
 import type { AdCampaign } from "@workspace/db";
@@ -117,6 +118,181 @@ async function buildResumoLivreOuLandingPage(campanha: AdCampaign, tenantId: str
   return partes.length > 0
     ? partes.join("\n")
     : `Campanha institucional/landing page, segmento: ${campanha.vertical}`;
+}
+
+
+class AdAutomationError extends Error {
+  constructor(message: string, readonly status = 422) {
+    super(message);
+    this.name = "AdAutomationError";
+  }
+}
+
+async function isMarketingAutomatic(tenantId: string): Promise<boolean> {
+  const [config] = await db
+    .select({ ativo: contentAutopilotConfigTable.ativo, automationMode: contentAutopilotConfigTable.automationMode })
+    .from(contentAutopilotConfigTable)
+    .where(eq(contentAutopilotConfigTable.tenantId, tenantId))
+    .limit(1);
+  return Boolean(config?.ativo && config.automationMode === "automatic");
+}
+
+function validateAutonomousCampaignControl(campanha: AdCampaign) {
+  const control = campanha.segmentacao?.campaignControl;
+  const dailyBudget = Number(campanha.orcamentoDiario);
+  const totalBudget = Number(control?.totalBudget);
+  if (!control) throw new AdAutomationError("Campanha sem controle de orçamento/período. A IA não pode ativar mídia sem limites definidos.");
+  if (!Number.isFinite(dailyBudget) || dailyBudget <= 0) throw new AdAutomationError("Limite diário inválido para patrocínio automático.");
+  if (!Number.isFinite(totalBudget) || totalBudget < dailyBudget) throw new AdAutomationError("Orçamento total inválido para patrocínio automático.");
+  const start = new Date(`${control.startDate}T00:00:00`);
+  const end = new Date(`${control.endDate}T23:59:59`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+    throw new AdAutomationError("Período inválido para patrocínio automático.");
+  }
+  if (control.automation?.allowBudgetIncrease !== false) {
+    throw new AdAutomationError("A IA só pode patrocinar quando aumento automático de orçamento está bloqueado.");
+  }
+  if (control.conversionTracking?.mode === "platform" && !control.conversionTracking.confirmed) {
+    throw new AdAutomationError("A conversão da plataforma precisa estar confirmada antes da ativação automática.");
+  }
+}
+
+async function generateCreativeForCampaign(tenantId: string, campanha: AdCampaign) {
+  if (campanha.tipoAnuncio !== "rsa_pmax" && campanha.tipoAnuncio !== "imagem") {
+    throw new AdAutomationError("Geração de criativo por IA só se aplica a campanhas rsa_pmax ou imagem.", 400);
+  }
+  if (campanha.itemTipo !== "landing_page" && campanha.itemTipo !== "livre" && !campanha.itemId) {
+    throw new AdAutomationError("Campanha sem item_id; geração por item único não se aplica.", 400);
+  }
+
+  const item = (campanha.itemTipo === "produto" || campanha.itemTipo === "veiculo" || campanha.itemTipo === "imovel")
+    ? await buildResumoItem(campanha.itemTipo, campanha.itemId as string, tenantId)
+    : { itemTipo: campanha.itemTipo, resumo: await buildResumoLivreOuLandingPage(campanha, tenantId), nomeCurto: campanha.itemLabel || campanha.vertical };
+  if (!item) throw new AdAutomationError("Item de origem da campanha não encontrado.", 404);
+
+  const previousRejectionReason = (campanha.segmentacao as any)?.previousRejectionReason;
+  if (previousRejectionReason) {
+    item.resumo += `\nCorreção obrigatória de política: a versão anterior foi recusada por: ${previousRejectionReason}. Crie uma formulação diferente, factual e compatível; não repita o trecho ou alegação problemática.`;
+  }
+
+  if (campanha.tipoAnuncio === "rsa_pmax") {
+    const gerado = await gerarCriativoRSA(item as any, logger, tenantId);
+    if (!gerado) throw new AdAutomationError("Falha ao gerar criativo RSA.", 502);
+    const [creative] = await db.insert(adCreativesTable).values({
+      campaignId: campanha.id,
+      headlines: gerado.headlines,
+      descriptions: gerado.descriptions,
+      imagens: [],
+    }).returning();
+    if (!creative) throw new AdAutomationError("Falha ao persistir criativo RSA.", 500);
+    logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative.id }, "ads: criativo RSA gerado");
+    return creative;
+  }
+
+  const [profile] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
+  if (campanha.imagemEscolhidaUrl) {
+    const gerado = await gerarCriativoImagem(item, tenantId, profile ?? {}, logger, { pularGeracaoDeImagem: true });
+    if (!gerado) throw new AdAutomationError("Falha ao gerar texto do criativo de imagem.", 502);
+    const [creative] = await db.insert(adCreativesTable).values({
+      campaignId: campanha.id,
+      headlines: [gerado.headline, gerado.primaryText],
+      descriptions: gerado.description ? [gerado.description] : [],
+      imagens: [campanha.imagemEscolhidaUrl],
+    }).returning();
+    if (!creative) throw new AdAutomationError("Falha ao persistir criativo de imagem.", 500);
+    logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative.id }, "ads: criativo de imagem gerado com foto existente");
+    return creative;
+  }
+
+  const gerado = await gerarCriativoImagem(item, tenantId, profile ?? {}, logger);
+  if (!gerado) throw new AdAutomationError("Falha ao gerar criativo de imagem.", 502);
+  const [creative] = await db.insert(adCreativesTable).values({
+    campaignId: campanha.id,
+    headlines: [gerado.headline, gerado.primaryText],
+    descriptions: gerado.description ? [gerado.description] : [],
+    imagens: [gerado.imageUrl],
+  }).returning();
+  if (!creative) throw new AdAutomationError("Falha ao persistir criativo de imagem.", 500);
+  logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative.id }, "ads: criativo de imagem gerado");
+  return creative;
+}
+
+async function executeSponsoredContentAutonomously(tenantId: string, campanha: AdCampaign) {
+  if (!campanha.contentGenerationId) {
+    return { attempted: false, executed: false, reason: "Campanha não veio de uma publicação do Marketing." };
+  }
+  if (!(await isMarketingAutomatic(tenantId))) {
+    return { attempted: false, executed: false, reason: "Marketing não está no modo Automático." };
+  }
+  if (campanha.plataforma !== "google" && campanha.plataforma !== "meta") {
+    return { attempted: true, executed: false, reason: `Patrocínio automático ainda não disponível para ${campanha.plataforma}.` };
+  }
+
+  validateAutonomousCampaignControl(campanha);
+
+  let [creative] = await db
+    .select()
+    .from(adCreativesTable)
+    .where(eq(adCreativesTable.campaignId, campanha.id))
+    .orderBy(desc(adCreativesTable.geradoEm))
+    .limit(1);
+
+  if (!creative) creative = await generateCreativeForCampaign(tenantId, campanha);
+
+  if (creative.status !== "aprovado") {
+    const [approved] = await db
+      .update(adCreativesTable)
+      .set({ status: "aprovado", aprovadoPorId: null, aprovadoEm: new Date() })
+      .where(eq(adCreativesTable.id, creative.id))
+      .returning();
+    creative = approved ?? creative;
+    await recordAdCampaignEvent({
+      tenantId,
+      campaignId: campanha.id,
+      eventType: "creative_auto_approved",
+      severity: "success",
+      message: "Criativo aprovado automaticamente pelo Marketing IA.",
+      metadata: { actor: "marketing_ai", creativeId: creative.id },
+    });
+  }
+
+  const published = campanha.plataforma === "google"
+    ? await publishCampaignToGoogleAds(tenantId, campanha.id)
+    : await publishCampaignToMetaAds(tenantId, campanha.id);
+
+  await recordAdCampaignEvent({
+    tenantId,
+    campaignId: campanha.id,
+    eventType: "auto_published",
+    severity: "success",
+    message: "Marketing IA publicou a campanha na plataforma usando os limites configurados.",
+    metadata: { actor: "marketing_ai", plataforma: campanha.plataforma, creativeId: creative.id },
+  });
+
+  try {
+    if (campanha.plataforma === "google") await setGoogleAdsCampaignStatus(tenantId, campanha.id, true);
+    else await setMetaAdsCampaignStatus(tenantId, campanha.id, true);
+    await recordAdCampaignEvent({
+      tenantId,
+      campaignId: campanha.id,
+      eventType: "auto_activated",
+      severity: "success",
+      message: "Marketing IA ativou o patrocínio dentro do orçamento e período configurados.",
+      metadata: { actor: "marketing_ai", plataforma: campanha.plataforma, dailyBudget: campanha.orcamentoDiario, totalBudget: campanha.segmentacao?.campaignControl?.totalBudget },
+    });
+    return { attempted: true, executed: true, published: true, activated: true, creativeId: creative.id, platformResult: published };
+  } catch (error) {
+    const warning = error instanceof Error ? error.message : "A campanha foi publicada, mas a plataforma não aceitou a ativação imediata.";
+    await recordAdCampaignEvent({
+      tenantId,
+      campaignId: campanha.id,
+      eventType: "auto_activation_pending",
+      severity: "warning",
+      message: warning,
+      metadata: { actor: "marketing_ai", plataforma: campanha.plataforma },
+    }).catch(() => null);
+    return { attempted: true, executed: true, published: true, activated: false, creativeId: creative.id, warning, platformResult: published };
+  }
 }
 
 router.get("/tenants/:tenantId/ads/overview", async (req, res) => {
@@ -266,8 +442,26 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
       }).returning();
     }
   }
-  if (row) await recordAdCampaignEvent({ tenantId, campaignId: row.id, userId: (req as any).user?.sub, eventType: "created", message: "Campanha criada como rascunho." });
-  return res.status(201).json({ ...row, latestCreative: importedCreative });
+  let autonomousExecution: Awaited<ReturnType<typeof executeSponsoredContentAutonomously>> | null = null;
+  if (row) {
+    await recordAdCampaignEvent({ tenantId, campaignId: row.id, userId: (req as any).user?.sub, eventType: "created", message: "Campanha criada como rascunho." });
+    try {
+      autonomousExecution = await executeSponsoredContentAutonomously(tenantId, row);
+    } catch (error) {
+      const warning = error instanceof Error ? error.message : "A IA não conseguiu concluir o patrocínio automático.";
+      autonomousExecution = { attempted: true, executed: false, reason: warning };
+      await recordAdCampaignEvent({
+        tenantId,
+        campaignId: row.id,
+        eventType: "autopilot_error",
+        severity: "warning",
+        message: warning,
+        metadata: { actor: "marketing_ai" },
+      }).catch(() => null);
+      req.log.warn({ error, tenantId, campaignId: row.id }, "ads: patrocínio automático não concluído; campanha preservada");
+    }
+  }
+  return res.status(201).json({ ...row, latestCreative: importedCreative, autonomousExecution });
 });
 
 // Cria uma nova versão segura de uma campanha reprovada. A campanha externa
@@ -467,76 +661,14 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/gerar-criativo", async (req, r
     .where(and(eq(adCampaignsTable.id, req.params.id as string), eq(adCampaignsTable.tenantId, tenantId)));
   if (!campanha) return res.status(404).json({ error: "Campanha not found" });
 
-  if (campanha.tipoAnuncio !== "rsa_pmax" && campanha.tipoAnuncio !== "imagem") {
-    return res.status(400).json({ error: "Geração de criativo por IA só se aplica a campanhas do tipo rsa_pmax ou imagem — shopping usa o feed de produto direto" });
-  }
-  if (campanha.itemTipo !== "landing_page" && campanha.itemTipo !== "livre" && !campanha.itemId) {
-    return res.status(400).json({ error: "Campanha sem item_id (modo carrossel por categoria) — geração de criativo por item único não se aplica aqui" });
-  }
-
-  // buildResumoItem só cobre produto/veiculo/imovel — landing_page/livre
-  // não têm registro estruturado de item pra ler, então montam o resumo a
-  // partir do perfil do negócio (+ dados da LP, quando houver uma ligada).
-  const item = (campanha.itemTipo === "produto" || campanha.itemTipo === "veiculo" || campanha.itemTipo === "imovel")
-    ? await buildResumoItem(campanha.itemTipo, campanha.itemId as string, tenantId)
-    : { itemTipo: campanha.itemTipo, resumo: await buildResumoLivreOuLandingPage(campanha, tenantId), nomeCurto: campanha.itemLabel || campanha.vertical };
-  if (!item) return res.status(404).json({ error: "Item de origem da campanha não encontrado" });
-  const previousRejectionReason = (campanha.segmentacao as any)?.previousRejectionReason;
-  if (previousRejectionReason) {
-    item.resumo += `\nCorreção obrigatória de política: a versão anterior foi recusada por: ${previousRejectionReason}. Crie uma formulação diferente, factual e compatível; não repita o trecho ou alegação problemática.`;
-  }
-
-  if (campanha.tipoAnuncio === "rsa_pmax") {
-    const gerado = await gerarCriativoRSA(item as any, logger, tenantId);
-    if (!gerado) return res.status(502).json({ error: "Falha ao gerar criativo — ver logs do servidor. Tente novamente." });
-
-    const [creative] = await db.insert(adCreativesTable).values({
-      campaignId: campanha.id,
-      headlines: gerado.headlines,
-      descriptions: gerado.descriptions,
-      imagens: [],
-    }).returning();
-
-    logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative!.id }, "ads: criativo RSA gerado");
+  try {
+    const creative = await generateCreativeForCampaign(tenantId, campanha);
     return res.status(201).json(creative);
+  } catch (error) {
+    if (error instanceof AdAutomationError) return res.status(error.status).json({ error: error.message });
+    req.log.error({ error, tenantId, campaignId: campanha.id }, "ads: falha inesperada ao gerar criativo");
+    return res.status(500).json({ error: "Falha inesperada ao gerar criativo." });
   }
-
-  // tipoAnuncio === "imagem" (Meta Feed Ads e afins)
-  // Se o usuário escolheu uma foto real do item no formulário
-  // (imagemEscolhidaUrl), usa ela direto — só o texto (headline/corpo)
-  // ainda vem da IA. Sem isso, gera a imagem também via IA como sempre.
-  const [profile] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
-
-  if (campanha.imagemEscolhidaUrl) {
-    const gerado = await gerarCriativoImagem(item, tenantId, profile ?? {}, logger, { pularGeracaoDeImagem: true });
-    if (!gerado) return res.status(502).json({ error: "Falha ao gerar o texto do criativo — ver logs do servidor. Tente novamente." });
-
-    const [creative] = await db.insert(adCreativesTable).values({
-      campaignId: campanha.id,
-      headlines: [gerado.headline, gerado.primaryText],
-      descriptions: gerado.description ? [gerado.description] : [],
-      imagens: [campanha.imagemEscolhidaUrl],
-    }).returning();
-
-    logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative!.id }, "ads: criativo de imagem gerado (foto escolhida pelo usuário)");
-    return res.status(201).json(creative);
-  }
-
-  const gerado = await gerarCriativoImagem(item, tenantId, profile ?? {}, logger);
-  if (!gerado) return res.status(502).json({ error: "Falha ao gerar criativo de imagem — ver logs do servidor. Tente novamente." });
-
-  // Reaproveita headlines[0]=headline, headlines[1]=primaryText,
-  // descriptions[0]=description — evita coluna nova só pra isso, já que
-  // adCreativesTable já tem os 3 arrays genéricos certos pro conteúdo.
-  const [creative] = await db.insert(adCreativesTable).values({
-    campaignId: campanha.id,
-    headlines: [gerado.headline, gerado.primaryText],
-    descriptions: gerado.description ? [gerado.description] : [],
-    imagens: [gerado.imageUrl],
-  }).returning();
-
-  logger.info({ tenantId, campanhaId: campanha.id, creativeId: creative!.id }, "ads: criativo de imagem gerado");
-  return res.status(201).json(creative);
 });
 
 router.post("/tenants/:tenantId/ads/creatives/:id/aprovar", async (req, res) => {
@@ -566,7 +698,7 @@ router.post("/tenants/:tenantId/ads/creatives/:id/aprovar", async (req, res) => 
 // tenant, TUDO pausado (não gasta nada ainda) — o "rascunho aprovado"
 // vira estrutura de verdade na plataforma, esperando revisão.
 // ativar/pausar: única ação que de fato liga/desliga veiculação real.
-// Ambas exigem clique explícito do lojista — nada aqui roda sozinho.
+// As rotas manuais continuam disponíveis; no modo Automático o Marketing IA pode usar os mesmos motores sem aprovação por etapa, sempre dentro dos limites já configurados.
 //
 // As 3 rotas abaixo despacham pro serviço certo (Google ou Meta) de
 // acordo com ad_campaigns.plataforma — mesmo contrato de rota pros dois,
