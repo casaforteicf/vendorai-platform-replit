@@ -161,7 +161,7 @@ function SiteSettingsBridge() {
     }
 
     function addDnsHelp() {
-      const dnsBlocks = Array.from(root.querySelectorAll("div")).filter((item) =>
+      const dnsBlocks = Array.from(root.querySelectorAll("div.text-xs.text-muted-foreground")).filter((item) =>
         item.textContent?.includes("Crie um registro CNAME em seu DNS:"),
       );
       for (const block of dnsBlocks) {
