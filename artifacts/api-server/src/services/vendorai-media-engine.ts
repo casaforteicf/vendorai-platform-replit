@@ -12,6 +12,7 @@ export type VendorAiMediaCapability =
   | "voice_synthesize"
   | "persona_profile"
   | "avatar_lipsync"
+  | "music_generate"
   | "video_generate";
 
 export interface VendorAiMediaEngineCapabilities {
@@ -20,7 +21,7 @@ export interface VendorAiMediaEngineCapabilities {
   capabilities: Record<VendorAiMediaCapability, "ready" | "building">;
 }
 
-async function workerHealthReady(url: string | undefined, kind: "voice" | "lipsync"): Promise<boolean> {
+async function workerHealthReady(url: string | undefined, kind: "voice" | "lipsync" | "music"): Promise<boolean> {
   if (!url) return false;
   try {
     const response = await fetch(`${url.replace(/\/$/, "")}/health`, {
@@ -28,7 +29,7 @@ async function workerHealthReady(url: string | undefined, kind: "voice" | "lipsy
     });
     if (!response.ok) return false;
     const health = await response.json() as Record<string, unknown>;
-    if (kind === "lipsync") return health["ready"] === true;
+    if (kind === "lipsync" || kind === "music") return health["ready"] === true;
     return health["status"] === "ok" && (health["cudaAvailable"] === true || health["device"] === "cpu");
   } catch {
     return false;
@@ -48,17 +49,20 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     voice_synthesize: "building",
     persona_profile: "ready",
     avatar_lipsync: "building",
+    music_generate: "building",
     video_generate: "building",
   },
 };
 
 export async function refreshVendorAiWorkerCapabilities(): Promise<void> {
-  const [voiceReady, lipSyncReady] = await Promise.all([
+  const [voiceReady, lipSyncReady, musicReady] = await Promise.all([
     workerHealthReady(process.env["VENDORAI_MEDIA_WORKER_URL"], "voice"),
     workerHealthReady(process.env["VENDORAI_LIPSYNC_WORKER_URL"], "lipsync"),
+    workerHealthReady(process.env["VENDORAI_MUSIC_WORKER_URL"], "music"),
   ]);
   vendorAiMediaEngineCapabilities.capabilities.voice_synthesize = voiceReady ? "ready" : "building";
   vendorAiMediaEngineCapabilities.capabilities.avatar_lipsync = lipSyncReady ? "ready" : "building";
+  vendorAiMediaEngineCapabilities.capabilities.music_generate = musicReady ? "ready" : "building";
 }
 
 void refreshVendorAiWorkerCapabilities();
