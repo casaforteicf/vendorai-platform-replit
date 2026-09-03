@@ -1,0 +1,70 @@
+name: Patch marketing unified generator
+
+on:
+  push:
+    branches:
+      - feat/marketing-unified-generator
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Capture main frontend type-error baseline
+        shell: bash
+        run: |
+          git fetch origin main
+          cp artifacts/frontend/src/components/marketing/MarketingContextSelector.tsx /tmp/MarketingContextSelector.tsx
+          git checkout origin/main -- artifacts/frontend/src/pages/Content.tsx artifacts/frontend/src/components/marketing/MarketingContextSelector.tsx
+          set +e
+          NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @workspace/frontend typecheck 2>&1 | grep 'error TS' | sort -u > /tmp/baseline-errors.txt
+          set -e
+          git checkout HEAD -- artifacts/frontend/src/pages/Content.tsx artifacts/frontend/src/components/marketing/MarketingContextSelector.tsx
+
+      - name: Apply focused UI patch
+        run: python .github/scripts/patch_marketing_unified_generator.py
+
+      - name: Validate no new frontend type errors
+        shell: bash
+        run: |
+          set +e
+          NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @workspace/frontend typecheck 2>&1 | grep 'error TS' | sort -u > /tmp/patched-errors.txt
+          set -e
+          comm -13 /tmp/baseline-errors.txt /tmp/patched-errors.txt > /tmp/new-errors.txt || true
+          if [ -s /tmp/new-errors.txt ]; then
+            echo 'Novos erros TypeScript introduzidos:'
+            cat /tmp/new-errors.txt
+            exit 1
+          fi
+          git diff --check
+
+      - name: Commit clean production diff
+        shell: bash
+        run: |
+          rm -f .github/scripts/patch_marketing_unified_generator.py
+          rm -f .github/workflows/patch-marketing-unified-generator.yml
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Nenhuma alteração para commit.'
+            exit 0
+          fi
+          git config user.name 'casaforteicf'
+          git config user.email 'marcosreisdorfer@gmail.com'
+          git commit -m 'refactor(marketing): unificar briefing e geração de conteúdo'
+          git push origin HEAD:feat/marketing-unified-generator
