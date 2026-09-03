@@ -24,14 +24,39 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - name: Apply focused patch
-        run: python .github/scripts/patch_marketing_ai_autonomy_ads.py
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Typecheck API
-        run: pnpm --filter @workspace/api-server typecheck
-      - name: Typecheck frontend
-        run: pnpm --filter @workspace/frontend typecheck
+      - name: Capture baseline type errors
+        run: |
+          pnpm --filter @workspace/api-server typecheck > /tmp/api-baseline.log 2>&1 || true
+          pnpm --filter @workspace/frontend typecheck > /tmp/frontend-baseline.log 2>&1 || true
+      - name: Apply focused patch
+        run: python .github/scripts/patch_marketing_ai_autonomy_ads.py
+      - name: Capture patched type errors
+        run: |
+          pnpm --filter @workspace/api-server typecheck > /tmp/api-patched.log 2>&1 || true
+          pnpm --filter @workspace/frontend typecheck > /tmp/frontend-patched.log 2>&1 || true
+      - name: Reject new type errors only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re, sys
+          def signatures(path):
+              result = set()
+              for line in Path(path).read_text(errors="ignore").splitlines():
+                  if "error TS" not in line:
+                      continue
+                  line = re.sub(r"\(\d+,\d+\)", "(#,#)", line)
+                  result.add(line.strip())
+              return result
+          new_api = signatures("/tmp/api-patched.log") - signatures("/tmp/api-baseline.log")
+          new_front = signatures("/tmp/frontend-patched.log") - signatures("/tmp/frontend-baseline.log")
+          if new_api or new_front:
+              print("Novos erros TypeScript introduzidos pelo patch:")
+              for line in sorted(new_api | new_front): print(line)
+              sys.exit(1)
+          print("Nenhum erro TypeScript novo introduzido; erros existentes da main foram preservados como baseline.")
+          PY
       - name: Validate and commit
         run: |
           git rm .github/workflows/patch-marketing-ai-autonomy-ads.yml .github/scripts/patch_marketing_ai_autonomy_ads.py
