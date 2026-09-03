@@ -22,6 +22,7 @@ export * from './strategy/liquidity-sweep';
 export * from './strategy/registry';
 export * from './audit/strategy-metrics';
 export * from './backtest/engine';
+export * from './backtest/managed-engine';
 export * from './regime/performance';
 export * from './intelligence/market-intelligence';
 export * from './allocation/adaptive';

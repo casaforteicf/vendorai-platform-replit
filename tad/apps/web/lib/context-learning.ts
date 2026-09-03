@@ -1,4 +1,5 @@
 import type { PaperPosition, StrategySignal } from '@tad/core';
+import { sessionEdge } from './session-intelligence';
 
 type AuditRecord={type:string;payload:any;ts:number};
 type RegimeLike={label?:string};
@@ -11,6 +12,7 @@ export type ContextLearningResult={
   avgPnl:number|null;
   confidence:'NONE'|'LOW'|'MEDIUM'|'HIGH';
   dimensions:{symbol:boolean;side:boolean;hourBucket:boolean;regime:boolean};
+  session?:ReturnType<typeof sessionEdge>;
 };
 
 function bucket(ts:number){return Math.floor(new Date(ts).getUTCHours()/4)*4;}
@@ -23,6 +25,7 @@ export function contextualLearning(
   regime:RegimeLike,
   now=Date.now(),
 ):ContextLearningResult{
+  const session=sessionEdge(positions,signal,now);
   const decisions=new Map<string,any>();
   for(const event of audit){
     if(event.type==='DECISION'&&event.payload?.decision?.decisionId){
@@ -33,7 +36,7 @@ export function contextualLearning(
     const d=decisions.get(p.decisionId);
     return {p,regime:String(d?.regimeContext?.label??''),hourBucket:bucket(p.openedAt)};
   });
-  if(rows.length<3)return {sampleSize:rows.length,matchedSamples:0,adjustment:0,winRatePct:null,avgPnl:null,confidence:'NONE',dimensions:{symbol:false,side:false,hourBucket:false,regime:false}};
+  if(rows.length<3)return {sampleSize:rows.length,matchedSamples:0,adjustment:session.adjustment,winRatePct:null,avgPnl:null,confidence:'NONE',dimensions:{symbol:false,side:false,hourBucket:false,regime:false},session};
 
   const targetHour=bucket(now); const targetRegime=String(regime?.label??'');
   const scored=rows.map(r=>{
@@ -45,7 +48,7 @@ export function contextualLearning(
     return {...r,match,weight};
   }).filter(r=>r.match>=2);
 
-  if(scored.length<3)return {sampleSize:rows.length,matchedSamples:scored.length,adjustment:0,winRatePct:null,avgPnl:null,confidence:'LOW',dimensions:{symbol:false,side:false,hourBucket:false,regime:false}};
+  if(scored.length<3)return {sampleSize:rows.length,matchedSamples:scored.length,adjustment:session.adjustment,winRatePct:null,avgPnl:null,confidence:'LOW',dimensions:{symbol:false,side:false,hourBucket:false,regime:false},session};
   const totalWeight=scored.reduce((a,r)=>a+r.weight,0);
   const weightedPnl=scored.reduce((a,r)=>a+r.p.realizedPnl*r.weight,0)/Math.max(1,totalWeight);
   const wins=scored.filter(r=>r.p.realizedPnl>0).length;
@@ -55,9 +58,10 @@ export function contextualLearning(
   const raw=(winEdge*4)+(pnlScale*4);
   const confidence:ContextLearningResult['confidence']=scored.length>=20?'HIGH':scored.length>=8?'MEDIUM':'LOW';
   const confidenceMultiplier=confidence==='HIGH'?1:confidence==='MEDIUM'?.75:.45;
-  const adjustment=clamp(raw*confidenceMultiplier,-8,8);
+  const contextualAdjustment=raw*confidenceMultiplier;
+  const adjustment=clamp(contextualAdjustment+session.adjustment,-8,8);
   return {
-    sampleSize:rows.length,matchedSamples:scored.length,adjustment,winRatePct:winRate,avgPnl:weightedPnl,confidence,
+    sampleSize:rows.length,matchedSamples:scored.length,adjustment,winRatePct:winRate,avgPnl:weightedPnl,confidence,session,
     dimensions:{
       symbol:scored.some(r=>r.p.symbol===signal.symbol),
       side:scored.some(r=>r.p.side===signal.side),
