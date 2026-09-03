@@ -2,7 +2,7 @@ export type TradingMode = 'PAPER' | 'SHADOW' | 'LIVE';
 export type Side = 'LONG' | 'SHORT';
 export type MarketRegime = 'STRONG_UP' | 'UP' | 'RANGE' | 'DOWN' | 'STRONG_DOWN';
 export type PaperPositionStatus = 'OPEN' | 'CLOSED';
-export type PaperCloseReason = 'STOP' | 'TP2' | 'MANUAL' | 'RISK_KILL';
+export type PaperCloseReason = 'STOP' | 'BREAK_EVEN' | 'TRAILING_STOP' | 'TP2' | 'MANUAL' | 'RISK_KILL';
 
 export interface MarketSnapshot {
   symbol: string;
@@ -86,7 +86,6 @@ export interface PortfolioSummary {
   winRatePct: number;
   grossExposure: number;
 }
-
 
 export type CandleInterval = '1m' | '5m' | '15m' | '1h';
 
