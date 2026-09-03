@@ -369,6 +369,51 @@ router.post("/tenants/:tenantId/media/assets", async (req, res) => {
   res.status(201).json({ asset, version });
 });
 
+router.patch("/tenants/:tenantId/media/assets/:assetId", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const assetId = String(req.params["assetId"]);
+  const body = asRecord(req.body);
+
+  const [existing] = await db
+    .select()
+    .from(mediaAssetsTable)
+    .where(and(eq(mediaAssetsTable.id, assetId), eq(mediaAssetsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Ativo de mídia não encontrado" });
+    return;
+  }
+
+  const changes: { metadata?: Record<string, unknown>; projectId?: string | null } = {};
+
+  if (body["metadata"] !== undefined) {
+    changes.metadata = { ...asRecord(existing.metadata), ...asRecord(body["metadata"]) };
+  }
+
+  if (body["projectId"] !== undefined) {
+    const projectId = nonEmptyString(body["projectId"]);
+    if (projectId && !(await findProject(tenantId, projectId))) {
+      res.status(404).json({ error: "Projeto de mídia não encontrado" });
+      return;
+    }
+    changes.projectId = projectId;
+  }
+
+  if (!Object.keys(changes).length) {
+    res.status(422).json({ error: "Nenhuma alteração válida informada" });
+    return;
+  }
+
+  const [asset] = await db
+    .update(mediaAssetsTable)
+    .set(changes)
+    .where(and(eq(mediaAssetsTable.id, assetId), eq(mediaAssetsTable.tenantId, tenantId)))
+    .returning();
+
+  res.json({ asset });
+});
+
 router.get("/tenants/:tenantId/media/projects/:projectId/versions", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const projectId = String(req.params["projectId"]);
