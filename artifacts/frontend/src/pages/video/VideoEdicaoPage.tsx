@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, X, Loader2, CheckCircle2, AlertCircle, Scissors, Music2, Library, ShieldCheck, ShieldAlert, Sparkles } from "lucide-react";
+import { Upload, X, Loader2, CheckCircle2, AlertCircle, Scissors, Music2, Library, ShieldCheck, ShieldAlert, Sparkles, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VideoGenPanel from "@/components/video/VideoGenPanel";
 import AiMusicGenerator from "@/components/video/AiMusicGenerator";
@@ -11,9 +11,7 @@ function authHeader(): Record<string, string> {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function numberSetting(value: unknown, fallback: number): number {
@@ -21,9 +19,22 @@ function numberSetting(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function mediaUrl(storageUrl: string): string {
+  return storageUrl.startsWith("/objects/") ? `/api/storage${storageUrl}` : storageUrl;
+}
+
 type JobStatus = "idle" | "starting" | "processing" | "done" | "error";
 type EditorTab = "edit" | "music";
 type MusicSourceMode = "brand" | "upload" | "library" | "ai";
+
+type MediaAsset = {
+  id: string;
+  type: string;
+  storageUrl: string;
+  originalFilename?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+};
 
 interface LibraryTrack {
   id: string;
@@ -63,15 +74,7 @@ const SPEED_OPTIONS = [
   { id: "1.25", label: "Rápido (1.25x)" },
 ];
 
-function SliderField({
-  label,
-  value,
-  min,
-  max,
-  step,
-  suffix,
-  onChange,
-}: {
+function SliderField({ label, value, min, max, step, suffix, onChange }: {
   label: string;
   value: number;
   min: number;
@@ -80,35 +83,27 @@ function SliderField({
   suffix?: string;
   onChange: (value: number) => void;
 }) {
-  return (
-    <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.025] p-3">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-gray-300">{label}</span>
-        <span className="text-xs tabular-nums text-purple-300">
-          {value.toFixed(step < 1 ? 2 : 1)}{suffix ?? ""}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-purple-500"
-      />
+  return <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs font-medium text-gray-300">{label}</span>
+      <span className="text-xs tabular-nums text-purple-300">{value.toFixed(step < 1 ? 2 : 1)}{suffix ?? ""}</span>
     </div>
-  );
+    <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} className="w-full accent-purple-500" />
+  </div>;
 }
 
 export default function VideoEdicaoPage() {
-  const { user } = useAuth();
-  const tenantId = user?.tenantId ?? "";
-  useToast();
+  const { user, tenantOverride } = useAuth();
+  const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
+  const { toast } = useToast();
+  const requestedMediaAssetId = new URLSearchParams(window.location.search).get("mediaAssetId") ?? "";
 
   const [activeTab, setActiveTab] = useState<EditorTab>("edit");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  const [sourceMediaAssetId, setSourceMediaAssetId] = useState("");
+  const [libraryVideoLoading, setLibraryVideoLoading] = useState(false);
+  const [libraryVideoError, setLibraryVideoError] = useState("");
   const videoRef = useRef<HTMLInputElement>(null);
 
   const [musicSourceMode, setMusicSourceMode] = useState<MusicSourceMode>("brand");
@@ -128,29 +123,21 @@ export default function VideoEdicaoPage() {
 
   const [opts, setOpts] = useState<Record<string, boolean>>({ removeSilence: true, normalize: false });
   const [speed, setSpeed] = useState("1.0");
-
   const [jobStatus, setJobStatus] = useState<JobStatus>("idle");
   const [resultUrl, setResultUrl] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [processingOperation, setProcessingOperation] = useState<EditorTab>("edit");
 
   const toggleOpt = (id: string) => setOpts((current) => ({ ...current, [id]: !current[id] }));
-
-  const resetResult = () => {
-    setJobStatus("idle");
-    setResultUrl("");
-    setErrorMsg("");
-  };
+  const resetResult = () => { setJobStatus("idle"); setResultUrl(""); setErrorMsg(""); };
 
   const loadBrandKit = async () => {
     if (!tenantId) return;
-    setBrandKitLoading(true);
-    setBrandKitError("");
+    setBrandKitLoading(true); setBrandKitError("");
     try {
       const response = await fetch(`/api/tenants/${tenantId}/media-engine/brand-kit`, { headers: authHeader() });
       const data = await response.json() as BrandKitPayload & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha ao carregar Brand Video Kit");
-
       const kit = data.brandKit ?? null;
       const audioConfig = asRecord(kit?.audio_config);
       setBrandDefaultMusicAssetId(kit?.default_music_asset_id ?? "");
@@ -161,15 +148,12 @@ export default function VideoEdicaoPage() {
     } catch (error) {
       setBrandKitError(error instanceof Error ? error.message : "Falha ao carregar Brand Video Kit");
       setBrandDefaultMusicAssetId("");
-    } finally {
-      setBrandKitLoading(false);
-    }
+    } finally { setBrandKitLoading(false); }
   };
 
   const loadTracks = async () => {
     if (!tenantId) return;
-    setTracksLoading(true);
-    setTracksError("");
+    setTracksLoading(true); setTracksError("");
     try {
       const response = await fetch(`/api/tenants/${tenantId}/media/tracks?limit=80`, { headers: authHeader() });
       const data = await response.json();
@@ -177,20 +161,49 @@ export default function VideoEdicaoPage() {
       setTracks(Array.isArray(data.tracks) ? data.tracks : []);
     } catch (error) {
       setTracksError(error instanceof Error ? error.message : "Falha ao carregar trilhas");
-    } finally {
-      setTracksLoading(false);
-    }
+    } finally { setTracksLoading(false); }
   };
 
-  useEffect(() => {
-    void loadBrandKit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId]);
-
+  useEffect(() => { void loadBrandKit(); }, [tenantId]);
   useEffect(() => {
     if (activeTab === "music" && (musicSourceMode === "library" || musicSourceMode === "brand")) void loadTracks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, musicSourceMode, tenantId]);
+
+  useEffect(() => {
+    if (!tenantId || !requestedMediaAssetId) return;
+    let cancelled = false;
+    let objectUrl = "";
+
+    const loadLibraryVideo = async () => {
+      setLibraryVideoLoading(true); setLibraryVideoError("");
+      try {
+        const response = await fetch(`/api/tenants/${tenantId}/media/assets?type=video&limit=150`, { headers: authHeader() });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Falha ao abrir vídeo da Biblioteca");
+        const asset = (Array.isArray(data.assets) ? data.assets : []).find((item: MediaAsset) => item.id === requestedMediaAssetId) as MediaAsset | undefined;
+        if (!asset || asset.type !== "video") throw new Error("Vídeo não encontrado na Biblioteca deste tenant");
+
+        const fileResponse = await fetch(mediaUrl(asset.storageUrl), { headers: authHeader() });
+        if (!fileResponse.ok) throw new Error("Não foi possível carregar o arquivo de vídeo");
+        const blob = await fileResponse.blob();
+        const file = new File([blob], asset.originalFilename || "video-biblioteca.mp4", { type: asset.mimeType || blob.type || "video/mp4" });
+        objectUrl = URL.createObjectURL(file);
+        if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
+        setVideoFile(file);
+        setVideoPreview(objectUrl);
+        setSourceMediaAssetId(asset.id);
+        resetResult();
+        toast({ title: "Vídeo carregado da Biblioteca", description: asset.originalFilename || "Pronto para editar." });
+      } catch (error) {
+        if (!cancelled) setLibraryVideoError(error instanceof Error ? error.message : "Falha ao carregar vídeo da Biblioteca");
+      } finally {
+        if (!cancelled) setLibraryVideoLoading(false);
+      }
+    };
+
+    void loadLibraryVideo();
+    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [tenantId, requestedMediaAssetId]);
 
   const pollJob = async (jobId: string) => {
     setJobStatus("processing");
@@ -198,11 +211,7 @@ export default function VideoEdicaoPage() {
       await new Promise((resolve) => setTimeout(resolve, 4000));
       const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/job/${jobId}`, { headers: authHeader() });
       const data = await response.json();
-      if (data.status === "done") {
-        setResultUrl(data.videoUrl ?? "");
-        setJobStatus("done");
-        return;
-      }
+      if (data.status === "done") { setResultUrl(data.videoUrl ?? ""); setJobStatus("done"); return; }
       if (data.status === "error") throw new Error(data.error ?? "Erro no processamento");
     }
     throw new Error("Timeout: processamento demorou mais de 12 min");
@@ -212,15 +221,11 @@ export default function VideoEdicaoPage() {
     if (!videoFile || !tenantId) return;
     const form = new FormData();
     form.append("video", videoFile);
+    if (sourceMediaAssetId) form.append("sourceMediaAssetId", sourceMediaAssetId);
     form.append("removeSilence", String(opts.removeSilence ?? false));
     form.append("normalize", String(opts.normalize ?? false));
     form.append("speed", speed);
-
-    const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/edit`, {
-      method: "POST",
-      headers: authHeader(),
-      body: form,
-    });
+    const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/edit`, { method: "POST", headers: authHeader(), body: form });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? "Falha ao iniciar processamento");
     await pollJob(data.jobId);
@@ -232,21 +237,16 @@ export default function VideoEdicaoPage() {
     if (musicSourceMode === "upload" && !musicFile) return;
     if (musicSourceMode === "library" && !selectedTrackId) return;
     if (musicSourceMode === "ai") return;
-
     const form = new FormData();
     form.append("video", videoFile);
+    if (sourceMediaAssetId) form.append("sourceMediaAssetId", sourceMediaAssetId);
     if (musicSourceMode === "library") form.append("musicAssetId", selectedTrackId);
     else if (musicSourceMode === "upload" && musicFile) form.append("music", musicFile);
     form.append("musicVolume", String(musicVolume));
     form.append("originalVolume", String(originalVolume));
     form.append("fadeIn", String(fadeIn));
     form.append("fadeOut", String(fadeOut));
-
-    const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/compose`, {
-      method: "POST",
-      headers: authHeader(),
-      body: form,
-    });
+    const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/compose`, { method: "POST", headers: authHeader(), body: form });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? "Falha ao iniciar composição da trilha");
     await pollJob(data.jobId);
@@ -254,484 +254,74 @@ export default function VideoEdicaoPage() {
 
   const handleGenerate = async (tabId: string) => {
     const operation = tabId === "music" ? "music" : "edit";
-    setProcessingOperation(operation);
-    setErrorMsg("");
-    setResultUrl("");
-    setJobStatus("starting");
-    try {
-      if (operation === "music") await handleMusicCompose();
-      else await handleAutomaticEdit();
-    } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : "Erro desconhecido");
-      setJobStatus("error");
-    }
+    setProcessingOperation(operation); setErrorMsg(""); setResultUrl(""); setJobStatus("starting");
+    try { if (operation === "music") await handleMusicCompose(); else await handleAutomaticEdit(); }
+    catch (error) { setErrorMsg(error instanceof Error ? error.message : "Erro desconhecido"); setJobStatus("error"); }
   };
 
   const handleAiTrackGenerated = async (assetId: string) => {
-    await loadTracks();
-    setSelectedTrackId(assetId);
-    setMusicFile(null);
-    setMusicSourceMode("library");
-    resetResult();
+    await loadTracks(); setSelectedTrackId(assetId); setMusicFile(null); setMusicSourceMode("library"); resetResult();
   };
 
   const isProcessing = jobStatus === "starting" || jobStatus === "processing";
-  const hasMusicSelection = musicSourceMode === "brand"
-    ? Boolean(brandDefaultMusicAssetId)
-    : musicSourceMode === "library"
-      ? Boolean(selectedTrackId)
-      : musicSourceMode === "upload"
-        ? Boolean(musicFile)
-        : false;
-  const generateDisabled = !videoFile || isProcessing || brandKitLoading || (activeTab === "music" && !hasMusicSelection);
+  const hasMusicSelection = musicSourceMode === "brand" ? Boolean(brandDefaultMusicAssetId) : musicSourceMode === "library" ? Boolean(selectedTrackId) : musicSourceMode === "upload" ? Boolean(musicFile) : false;
+  const generateDisabled = !videoFile || isProcessing || brandKitLoading || libraryVideoLoading || (activeTab === "music" && !hasMusicSelection);
   const selectedTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
   const brandDefaultTrack = tracks.find((track) => track.id === brandDefaultMusicAssetId) ?? null;
 
-  const EditContent = (
-    <div className="space-y-5 h-full flex flex-col">
-      <div className="space-y-2">
-        <p className="text-xs text-gray-400 font-medium mb-2">Edições automáticas</p>
-        {EDIT_OPTIONS.map((option) => (
-          <label
-            key={option.id}
-            className={cn(
-              "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
-              opts[option.id] ? "border-emerald-500/40 bg-emerald-500/5" : "border-white/10 hover:border-white/20",
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={!!opts[option.id]}
-              onChange={() => toggleOpt(option.id)}
-              className="mt-0.5 accent-emerald-500"
-            />
-            <div>
-              <p className="text-sm text-gray-200 font-medium">{option.label}</p>
-              <p className="text-xs text-gray-500">{option.desc}</p>
-            </div>
-          </label>
-        ))}
+  const EditContent = <div className="space-y-5 h-full flex flex-col">
+    <div className="space-y-2"><p className="text-xs text-gray-400 font-medium mb-2">Edições automáticas</p>{EDIT_OPTIONS.map((option) => <label key={option.id} className={cn("flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all", opts[option.id] ? "border-emerald-500/40 bg-emerald-500/5" : "border-white/10 hover:border-white/20")}><input type="checkbox" checked={!!opts[option.id]} onChange={() => toggleOpt(option.id)} className="mt-0.5 accent-emerald-500" /><div><p className="text-sm text-gray-200 font-medium">{option.label}</p><p className="text-xs text-gray-500">{option.desc}</p></div></label>)}</div>
+    <div className="space-y-2"><p className="text-xs text-gray-400 font-medium">Velocidade de fala</p><div className="flex flex-col gap-1.5">{SPEED_OPTIONS.map((option) => <label key={option.id} className={cn("flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all text-sm", speed === option.id ? "border-emerald-500/40 bg-emerald-500/5 text-gray-200" : "border-white/10 text-gray-400 hover:border-white/20")}><input type="radio" name="speed" value={option.id} checked={speed === option.id} onChange={() => setSpeed(option.id)} className="accent-emerald-500" />{option.label}</label>)}</div></div>
+  </div>;
+
+  const MusicContent = <div className="space-y-4 h-full flex flex-col">
+    <div>
+      <p className="text-xs text-gray-400 font-medium mb-2">Origem da trilha</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+        <button type="button" onClick={() => { setMusicSourceMode("brand"); setMusicFile(null); setSelectedTrackId(""); resetResult(); void loadBrandKit(); }} className={cn("rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5", musicSourceMode === "brand" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-white/10 text-gray-400")}><ShieldCheck className="h-3.5 w-3.5" /> Padrão da marca</button>
+        <button type="button" onClick={() => { setMusicSourceMode("library"); setMusicFile(null); resetResult(); }} className={cn("rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5", musicSourceMode === "library" ? "border-purple-500/40 bg-purple-500/10 text-purple-200" : "border-white/10 text-gray-400")}><Library className="h-3.5 w-3.5" /> Biblioteca</button>
+        <button type="button" onClick={() => { setMusicSourceMode("upload"); setSelectedTrackId(""); resetResult(); }} className={cn("rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5", musicSourceMode === "upload" ? "border-purple-500/40 bg-purple-500/10 text-purple-200" : "border-white/10 text-gray-400")}><Upload className="h-3.5 w-3.5" /> Enviar</button>
+        <button type="button" onClick={() => { setMusicSourceMode("ai"); setMusicFile(null); setSelectedTrackId(""); resetResult(); }} className={cn("rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5", musicSourceMode === "ai" ? "border-purple-500/40 bg-purple-500/10 text-purple-200" : "border-white/10 text-gray-400")}><Sparkles className="h-3.5 w-3.5" /> Gerar IA</button>
       </div>
 
-      <div className="space-y-2">
-        <p className="text-xs text-gray-400 font-medium">Velocidade de fala</p>
-        <div className="flex flex-col gap-1.5">
-          {SPEED_OPTIONS.map((option) => (
-            <label
-              key={option.id}
-              className={cn(
-                "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all text-sm",
-                speed === option.id
-                  ? "border-emerald-500/40 bg-emerald-500/5 text-gray-200"
-                  : "border-white/10 text-gray-400 hover:border-white/20",
-              )}
-            >
-              <input
-                type="radio"
-                name="speed"
-                value={option.id}
-                checked={speed === option.id}
-                onChange={() => setSpeed(option.id)}
-                className="accent-emerald-500"
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
-      </div>
+      {musicSourceMode === "brand" ? <div className="space-y-2">{brandKitLoading ? <div className="rounded-xl border border-white/10 p-4 flex items-center gap-2 text-xs text-gray-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando padrão da marca…</div> : brandKitError ? <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{brandKitError}</div> : brandDefaultMusicAssetId ? <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3"><p className="text-xs font-semibold text-emerald-200">Brand Video Kit ativo</p><p className="text-xs text-gray-300 truncate mt-0.5">{brandDefaultTrack?.original_filename ?? "Trilha padrão configurada"}</p><p className="text-[10px] text-gray-500 mt-1">Logo, B-roll, intro/outro e parâmetros de áudio continuam aplicados pelo Media Engine.</p></div> : <div className="rounded-xl border border-dashed border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-200">Nenhuma trilha padrão configurada.</div>}</div>
+      : musicSourceMode === "upload" ? <><button type="button" onClick={() => musicRef.current?.click()} className="w-full rounded-xl border border-dashed border-white/15 p-4 flex items-center gap-3 text-left"><Music2 className="h-4 w-4" /><div><p className="text-sm font-medium text-gray-300">{musicFile?.name ?? "Escolher música"}</p><p className="text-xs text-gray-600">MP3, WAV, M4A ou outro áudio compatível</p></div></button><input ref={musicRef} type="file" accept="audio/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; setMusicFile(file); resetResult(); }} /><p className="mt-2 text-[11px] text-amber-300/70">Direitos serão validados antes da publicação/patrocínio.</p></>
+      : musicSourceMode === "library" ? <div className="space-y-2"><div className="flex items-center justify-between"><p className="text-xs text-gray-400 font-medium">Biblioteca de trilhas</p><button type="button" onClick={() => void loadTracks()} className="text-[11px] text-purple-300">Atualizar</button></div>{tracksLoading ? <div className="rounded-xl border border-white/10 p-4 text-xs text-gray-400">Carregando trilhas…</div> : tracksError ? <div className="rounded-xl border border-red-500/20 p-3 text-xs text-red-300">{tracksError}</div> : <div className="space-y-2 max-h-52 overflow-y-auto">{tracks.map((track) => { const allowed = track.usage.organicAllowed; const selected = selectedTrackId === track.id; return <button key={track.id} type="button" disabled={!allowed} onClick={() => { setSelectedTrackId(track.id); resetResult(); }} className={cn("w-full rounded-xl border p-3 text-left", selected ? "border-purple-500/50 bg-purple-500/10" : allowed ? "border-white/10" : "border-white/5 opacity-55")}><div className="flex items-start gap-2.5">{allowed ? <ShieldCheck className="h-4 w-4 text-emerald-300" /> : <ShieldAlert className="h-4 w-4 text-amber-300" />}<div className="min-w-0"><p className="text-xs font-medium text-gray-200 truncate">{track.original_filename ?? "Trilha sem nome"}</p><p className="text-[10px] text-gray-500">{allowed ? `Comercial liberado${track.usage.paidAdsAllowed ? " · Ads liberado" : ""}` : "Direitos pendentes/restritos"}</p></div></div></button>; })}</div>}{selectedTrack && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-200">Selecionada: {selectedTrack.original_filename ?? "Trilha"}</div>}</div>
+      : <AiMusicGenerator tenantId={tenantId} onGenerated={handleAiTrackGenerated} />}
     </div>
-  );
+    <SliderField label="Volume da música" value={musicVolume} min={0} max={1} step={0.01} onChange={setMusicVolume} />
+    <SliderField label="Volume do áudio original" value={originalVolume} min={0} max={2} step={0.05} onChange={setOriginalVolume} />
+    <div className="grid grid-cols-2 gap-2"><SliderField label="Entrada suave" value={fadeIn} min={0} max={10} step={0.5} suffix="s" onChange={setFadeIn} /><SliderField label="Saída suave" value={fadeOut} min={0} max={10} step={0.5} suffix="s" onChange={setFadeOut} /></div>
+  </div>;
 
-  const MusicContent = (
-    <div className="space-y-4 h-full flex flex-col">
-      <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">Origem da trilha</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-          <button
-            type="button"
-            onClick={() => {
-              setMusicSourceMode("brand");
-              setMusicFile(null);
-              setSelectedTrackId("");
-              resetResult();
-              void loadBrandKit();
-            }}
-            className={cn(
-              "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
-              musicSourceMode === "brand"
-                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-                : "border-white/10 text-gray-400 hover:border-white/20",
-            )}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Padrão da marca
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMusicSourceMode("library");
-              setMusicFile(null);
-              resetResult();
-            }}
-            className={cn(
-              "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
-              musicSourceMode === "library"
-                ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
-                : "border-white/10 text-gray-400 hover:border-white/20",
-            )}
-          >
-            <Library className="h-3.5 w-3.5" />
-            Biblioteca
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMusicSourceMode("upload");
-              setSelectedTrackId("");
-              resetResult();
-            }}
-            className={cn(
-              "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
-              musicSourceMode === "upload"
-                ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
-                : "border-white/10 text-gray-400 hover:border-white/20",
-            )}
-          >
-            <Upload className="h-3.5 w-3.5" />
-            Enviar
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMusicSourceMode("ai");
-              setMusicFile(null);
-              setSelectedTrackId("");
-              resetResult();
-            }}
-            className={cn(
-              "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
-              musicSourceMode === "ai"
-                ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
-                : "border-white/10 text-gray-400 hover:border-white/20",
-            )}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Gerar IA
-          </button>
-        </div>
+  const StatusBlock = <div className="space-y-2">
+    {isProcessing && <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300"><Loader2 className="h-4 w-4 animate-spin" />{jobStatus === "starting" ? "Enviando vídeo…" : processingOperation === "music" ? "Compondo trilha…" : "Processando…"}</div>}
+    {jobStatus === "done" && resultUrl && <div className="space-y-2"><div className="flex items-center gap-2 text-emerald-400 text-sm font-medium"><CheckCircle2 className="h-4 w-4" />{processingOperation === "music" ? "Vídeo com trilha pronto!" : "Vídeo editado pronto!"}</div><video src={resultUrl} controls className="w-full rounded-xl border border-white/10 max-h-40" /><div className="flex gap-2"><a href={resultUrl} download target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/15 text-gray-300">Baixar vídeo</a><button onClick={resetResult} className="px-3 py-1.5 rounded-lg text-xs text-gray-400">Fazer outra edição</button></div></div>}
+    {jobStatus === "error" && <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="h-4 w-4 text-red-400" /><div><p className="text-sm text-red-300">{errorMsg}</p><button onClick={resetResult} className="text-xs text-gray-400">Tentar novamente</button></div></div>}
+  </div>;
 
-        {musicSourceMode === "brand" ? (
-          <div className="space-y-2">
-            {brandKitLoading ? (
-              <div className="rounded-xl border border-white/10 p-4 flex items-center gap-2 text-xs text-gray-400">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando padrão da marca…
-              </div>
-            ) : brandKitError ? (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{brandKitError}</div>
-            ) : brandDefaultMusicAssetId ? (
-              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
-                <div className="flex items-start gap-2.5">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-300 flex items-center justify-center shrink-0">
-                    <ShieldCheck className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-emerald-200">Brand Video Kit ativo</p>
-                    <p className="text-xs text-gray-300 truncate mt-0.5">
-                      {brandDefaultTrack?.original_filename ?? "Trilha padrão configurada"}
-                    </p>
-                    <p className="text-[10px] text-gray-500 mt-1">Logo, B-roll, intro/outro e parâmetros de áudio do kit continuam sendo aplicados pelo Media Engine.</p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-200">
-                Nenhuma trilha padrão foi configurada. Defina uma no Brand Video Kit em Vídeo com IA ou escolha Biblioteca, Enviar ou Gerar IA.
-              </div>
-            )}
-          </div>
-        ) : musicSourceMode === "upload" ? (
-          <>
-            {musicFile ? (
-              <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-lg bg-purple-500/15 text-purple-300 flex items-center justify-center shrink-0">
-                    <Music2 className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-200 truncate">{musicFile.name}</p>
-                    <p className="text-xs text-gray-500">{(musicFile.size / 1024 / 1024).toFixed(1)} MB · arquivo local</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMusicFile(null);
-                      resetResult();
-                      if (musicRef.current) musicRef.current.value = "";
-                    }}
-                    className="h-7 w-7 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10 flex items-center justify-center"
-                    aria-label="Remover trilha"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => musicRef.current?.click()}
-                className="w-full rounded-xl border border-dashed border-white/15 hover:border-purple-500/40 hover:bg-purple-500/5 transition-all p-4 flex items-center gap-3 text-left"
-              >
-                <div className="h-9 w-9 rounded-lg bg-white/5 flex items-center justify-center text-gray-500">
-                  <Music2 className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-300">Escolher música</p>
-                  <p className="text-xs text-gray-600">MP3, WAV, M4A ou outro áudio compatível</p>
-                </div>
-              </button>
-            )}
-            <input
-              ref={musicRef}
-              type="file"
-              accept="audio/*"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                setMusicFile(file);
-                resetResult();
-              }}
-            />
-            <p className="mt-2 text-[11px] text-amber-300/70">
-              Arquivo local pode ser usado para rascunho. Os direitos serão validados antes de publicação/patrocínio.
-            </p>
-          </>
-        ) : musicSourceMode === "library" ? (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-400 font-medium">Biblioteca de trilhas</p>
-              <button type="button" onClick={() => void loadTracks()} className="text-[11px] text-purple-300 hover:text-purple-200">
-                Atualizar
-              </button>
-            </div>
-            {tracksLoading ? (
-              <div className="rounded-xl border border-white/10 p-4 flex items-center gap-2 text-xs text-gray-400">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando trilhas…
-              </div>
-            ) : tracksError ? (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{tracksError}</div>
-            ) : tracks.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/10 p-4 text-xs text-gray-500">
-                Nenhuma trilha cadastrada ainda. Envie uma música ou gere uma trilha com IA.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                {tracks.map((track) => {
-                  const allowed = track.usage.organicAllowed;
-                  const selected = selectedTrackId === track.id;
-                  return (
-                    <button
-                      key={track.id}
-                      type="button"
-                      disabled={!allowed}
-                      onClick={() => {
-                        setSelectedTrackId(track.id);
-                        resetResult();
-                      }}
-                      className={cn(
-                        "w-full rounded-xl border p-3 text-left transition-all",
-                        selected
-                          ? "border-purple-500/50 bg-purple-500/10"
-                          : allowed
-                            ? "border-white/10 hover:border-purple-500/30 hover:bg-white/[0.03]"
-                            : "border-white/5 bg-white/[0.015] opacity-55 cursor-not-allowed",
-                      )}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <div className={cn(
-                          "mt-0.5 h-7 w-7 rounded-lg flex items-center justify-center shrink-0",
-                          allowed ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300",
-                        )}>
-                          {allowed ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-gray-200 truncate">{track.original_filename ?? "Trilha sem nome"}</p>
-                          <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
-                            <span className={allowed ? "text-emerald-300" : "text-amber-300"}>
-                              {allowed ? "Comercial liberado" : track.usage.expired ? "Licença expirada" : "Direitos pendentes/restritos"}
-                            </span>
-                            {allowed && (
-                              <span className={track.usage.paidAdsAllowed ? "text-blue-300" : "text-gray-500"}>
-                                · {track.usage.paidAdsAllowed ? "Ads liberado" : "Ads não liberado"}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {selectedTrack && (
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-200">
-                Selecionada: {selectedTrack.original_filename ?? "Trilha"} · uso comercial liberado
-                {selectedTrack.usage.paidAdsAllowed ? " · mídia paga liberada" : " · mídia paga ainda não liberada"}
-              </div>
-            )}
-          </div>
-        ) : (
-          <AiMusicGenerator tenantId={tenantId} onGenerated={handleAiTrackGenerated} />
-        )}
-      </div>
+  const RightPanel = <div className="h-full flex flex-col gap-4">
+    <div className="flex items-center justify-between gap-2"><p className="text-xs text-gray-400 font-medium">Vídeo para editar</p>{sourceMediaAssetId && <span className="inline-flex items-center gap-1 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-200"><Library className="h-3 w-3" /> Biblioteca</span>}</div>
+    {libraryVideoLoading ? <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-cyan-500/20 bg-cyan-500/5 text-sm text-cyan-200"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando vídeo da Biblioteca…</div>
+    : libraryVideoError ? <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">{libraryVideoError}</div>
+    : videoPreview ? <div className="relative"><video src={videoPreview} controls className="w-full rounded-xl border border-white/10 max-h-48" /><button onClick={() => { if (videoPreview.startsWith("blob:")) URL.revokeObjectURL(videoPreview); setVideoFile(null); setVideoPreview(null); setSourceMediaAssetId(""); resetResult(); if (videoRef.current) videoRef.current.value = ""; }} className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center" aria-label="Remover vídeo"><X className="h-3 w-3" /></button><p className="mt-1.5 text-xs text-gray-500">{videoFile?.name} · {((videoFile?.size ?? 0) / 1024 / 1024).toFixed(1)} MB</p></div>
+    : <button onClick={() => videoRef.current?.click()} className="flex flex-col items-center justify-center flex-1 rounded-xl border-2 border-dashed border-white/10 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all gap-2 text-gray-500 py-10"><Upload className="h-6 w-6" /><span className="text-sm font-medium">Clique para enviar vídeo</span><span className="text-xs text-gray-600">MP4, MOV, AVI · até 500 MB</span></button>}
+    <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (videoPreview?.startsWith("blob:")) URL.revokeObjectURL(videoPreview); setVideoFile(file); setVideoPreview(URL.createObjectURL(file)); setSourceMediaAssetId(""); resetResult(); }} />
+    {StatusBlock}
+    <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1.5 mt-auto"><p className="text-xs text-gray-500 font-medium">Fluxo não destrutivo</p><div className="space-y-1 text-xs text-gray-600"><p>✂️ Edição automática preserva o original</p><p>🎵 A trilha gera uma nova versão do vídeo</p><p>📚 Resultados ficam registrados na Biblioteca Audiovisual</p>{sourceMediaAssetId && <p className="flex items-center gap-1 text-cyan-300"><Film className="h-3 w-3" /> Origem: asset oficial da Biblioteca</p>}</div></div>
+  </div>;
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-gray-400 font-medium">Mixagem</p>
-        {musicSourceMode === "brand" && brandDefaultMusicAssetId && (
-          <span className="text-[10px] text-emerald-300">Valores carregados do Brand Kit · ajustes abaixo valem para esta geração</span>
-        )}
-      </div>
-      <SliderField label="Volume da música" value={musicVolume} min={0} max={1} step={0.01} onChange={setMusicVolume} />
-      <SliderField label="Volume do áudio original" value={originalVolume} min={0} max={2} step={0.05} onChange={setOriginalVolume} />
-
-      <div className="grid grid-cols-2 gap-2">
-        <SliderField label="Entrada suave" value={fadeIn} min={0} max={10} step={0.5} suffix="s" onChange={setFadeIn} />
-        <SliderField label="Saída suave" value={fadeOut} min={0} max={10} step={0.5} suffix="s" onChange={setFadeOut} />
-      </div>
-
-      <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 text-xs text-gray-500 space-y-1">
-        <p>A trilha é repetida automaticamente até o fim do vídeo.</p>
-        <p>O áudio original é preservado; a música abaixa automaticamente durante a fala.</p>
-        <p>Trilhas da Biblioteca exibem a situação de uso comercial e mídia paga.</p>
-      </div>
-    </div>
-  );
-
-  const StatusBlock = (
-    <div className="space-y-2">
-      {isProcessing && (
-        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          {jobStatus === "starting"
-            ? processingOperation === "music" ? "Enviando vídeo e preparando trilha…" : "Enviando vídeo…"
-            : processingOperation === "music" ? "Compondo trilha com ffmpeg…" : "Processando com ffmpeg…"}
-        </div>
-      )}
-      {jobStatus === "done" && resultUrl && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
-            <CheckCircle2 className="h-4 w-4" />
-            {processingOperation === "music" ? "Vídeo com trilha pronto!" : "Vídeo editado pronto!"}
-          </div>
-          <video src={resultUrl} controls className="w-full rounded-xl border border-white/10 max-h-40" />
-          <div className="flex gap-2">
-            <a
-              href={resultUrl}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/15 text-gray-300 hover:border-emerald-500/50 transition-colors"
-            >
-              Baixar vídeo
-            </a>
-            <button
-              onClick={resetResult}
-              className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-gray-200 transition-colors"
-            >
-              Fazer outra edição
-            </button>
-          </div>
-        </div>
-      )}
-      {jobStatus === "error" && (
-        <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
-          <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="text-sm text-red-300">{errorMsg}</p>
-            <button onClick={resetResult} className="text-xs text-gray-400 hover:text-gray-200 transition-colors">
-              Tentar novamente
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const RightPanel = (
-    <div className="h-full flex flex-col gap-4">
-      <p className="text-xs text-gray-400 font-medium">Vídeo para editar</p>
-      {videoPreview ? (
-        <div className="relative">
-          <video src={videoPreview} controls className="w-full rounded-xl border border-white/10 max-h-48" />
-          <button
-            onClick={() => {
-              setVideoFile(null);
-              setVideoPreview(null);
-              resetResult();
-              if (videoRef.current) videoRef.current.value = "";
-            }}
-            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"
-            aria-label="Remover vídeo"
-          >
-            <X className="h-3 w-3" />
-          </button>
-          <p className="mt-1.5 text-xs text-gray-500">
-            {videoFile?.name} · {((videoFile?.size ?? 0) / 1024 / 1024).toFixed(1)} MB
-          </p>
-        </div>
-      ) : (
-        <button
-          onClick={() => videoRef.current?.click()}
-          className="flex flex-col items-center justify-center flex-1 rounded-xl border-2 border-dashed border-white/10 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all gap-2 text-gray-500 py-10"
-        >
-          <Upload className="h-6 w-6" />
-          <span className="text-sm font-medium">Clique para enviar vídeo</span>
-          <span className="text-xs text-gray-600">MP4, MOV, AVI · até 500 MB</span>
-        </button>
-      )}
-      <input
-        ref={videoRef}
-        type="file"
-        accept="video/*"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          setVideoFile(file);
-          setVideoPreview(URL.createObjectURL(file));
-          resetResult();
-        }}
-      />
-
-      {StatusBlock}
-
-      <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1.5 mt-auto">
-        <p className="text-xs text-gray-500 font-medium">Fluxo não destrutivo</p>
-        <div className="space-y-1 text-xs text-gray-600">
-          <p>✂️ Edição automática preserva o original</p>
-          <p>🎵 A trilha gera uma nova versão do vídeo</p>
-          <p>📚 Resultados ficam registrados na Biblioteca Audiovisual</p>
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <VideoGenPanel
-      title="Editar vídeo"
-      description="Faça ajustes automáticos e adicione trilha sonora sem alterar o arquivo original"
-      icon={activeTab === "music" ? Music2 : Scissors}
-      iconBg={activeTab === "music" ? "bg-purple-500/20 text-purple-300" : "bg-emerald-500/20 text-emerald-300"}
-      tabs={[
-        { id: "edit", label: "Edição automática", content: EditContent },
-        { id: "music", label: "Trilha sonora", content: MusicContent },
-      ]}
-      rightPanel={RightPanel}
-      onGenerate={handleGenerate}
-      onTabChange={(tabId) => setActiveTab(tabId === "music" ? "music" : "edit")}
-      generating={isProcessing}
-      generateLabel={activeTab === "music" ? musicSourceMode === "brand" ? "Aplicar padrão da marca" : "Adicionar trilha" : "Editar vídeo"}
-      generateDisabled={generateDisabled}
-    />
-  );
+  return <VideoGenPanel
+    title="Editar vídeo"
+    description="Faça ajustes automáticos e adicione trilha sonora sem alterar o arquivo original"
+    icon={activeTab === "music" ? Music2 : Scissors}
+    iconBg={activeTab === "music" ? "bg-purple-500/20 text-purple-300" : "bg-emerald-500/20 text-emerald-300"}
+    tabs={[{ id: "edit", label: "Edição automática", content: EditContent }, { id: "music", label: "Trilha sonora", content: MusicContent }]}
+    rightPanel={RightPanel}
+    onGenerate={handleGenerate}
+    onTabChange={(tabId) => setActiveTab(tabId === "music" ? "music" : "edit")}
+    generating={isProcessing}
+    generateLabel={activeTab === "music" ? musicSourceMode === "brand" ? "Aplicar padrão da marca" : "Adicionar trilha" : "Editar vídeo"}
+    generateDisabled={generateDisabled}
+  />;
 }
