@@ -50,7 +50,9 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     persona_profile: "ready",
     avatar_lipsync: "building",
     music_generate: "building",
-    video_generate: "building",
+    // Gerador nativo VendorAI: cenas por IA + continuidade visual + FFmpeg + Brand Kit.
+    // Não depende da API de vídeo Sora nem de provider externo de avatar.
+    video_generate: "ready",
   },
 };
 
