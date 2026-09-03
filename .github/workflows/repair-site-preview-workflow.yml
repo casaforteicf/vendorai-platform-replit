@@ -1,0 +1,37 @@
+name: Repair site preview workflow
+
+on:
+  push:
+    branches:
+      - fix/site-preview-json-transport
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/site-preview-json-transport
+          fetch-depth: 0
+      - name: Remove duplicated pnpm version and self-clean
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/fix-site-preview-json-transport.yml')
+          text = p.read_text(encoding='utf-8')
+          old = "      - uses: pnpm/action-setup@v4\n        with:\n          version: 10\n"
+          new = "      - uses: pnpm/action-setup@v4\n"
+          if old not in text:
+              raise SystemExit('pnpm setup anchor not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          rm .github/workflows/repair-site-preview-workflow.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/fix-site-preview-json-transport.yml .github/workflows/repair-site-preview-workflow.yml
+          git commit -m "chore: corrigir setup pnpm do patch de preview"
+          git push origin HEAD:fix/site-preview-json-transport
