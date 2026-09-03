@@ -12,12 +12,12 @@ async function proxyFetch(path:string){
 
 function mapRows(rows:Raw[]):Candle[]{return rows.map(k=>({openTime:k[0],open:Number(k[1]),high:Number(k[2]),low:Number(k[3]),close:Number(k[4]),volume:Number(k[5]),closeTime:k[6]}));}
 
-async function loadPaged(symbol:string,interval:'1h'|'5m'|'1m',bars:number):Promise<Candle[]>{
+export async function loadPagedCandles(symbol:string,interval:'1h'|'5m'|'1m',bars:number):Promise<Candle[]>{
  const out:Candle[]=[]; let endTime:number|undefined;
  while(out.length<bars){
   const limit=Math.min(1500,bars-out.length);
   const q=`/fapi/v1/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}${endTime?`&endTime=${endTime}`:''}`;
-  const r=await proxyFetch(q); if(!r.ok)throw new Error(`SWEEP_KLINES_${interval}_${r.status}`);
+  const r=await proxyFetch(q); if(!r.ok)throw new Error(`PAGED_KLINES_${interval}_${r.status}`);
   const rows=await r.json() as Raw[]; if(!rows.length)break;
   const batch=mapRows(rows); out.unshift(...batch);
   endTime=batch[0].openTime-1;
@@ -42,9 +42,9 @@ function horizonState(horizon:string,candles:Candle[],bars:number):HorizonState{
 
 export async function loadSweepHorizons(symbol:string){
  const [h1,m5,m1]=await Promise.all([
-  loadPaged(symbol,'1h',24*90),
-  loadPaged(symbol,'5m',12*24*5),
-  loadPaged(symbol,'1m',60*6),
+  loadPagedCandles(symbol,'1h',24*90),
+  loadPagedCandles(symbol,'5m',12*24*5),
+  loadPagedCandles(symbol,'1m',60*6),
  ]);
  const h:Record<string,HorizonState>={};
  const long:[string,number][]=[['90d',2160],['60d',1440],['45d',1080],['30d',720],['15d',360],['5d',120],['1d',24],['12h',12],['6h',6],['3h',3],['1h',1]];
