@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BarChart3,
   Bot,
+  CalendarRange,
   Check,
   ChevronRight,
   CircleDollarSign,
@@ -403,7 +404,7 @@ export default function Home() {
             <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] md:text-5xl">Enquanto a operação vende, a IA constrói presença digital sozinha.</h2>
             <p className="mt-5 text-lg leading-8 text-slate-400">Não é um checklist de funcionalidades. São ferramentas que fazem o trabalho de uma agência inteira, rodando dentro do mesmo sistema que já sabe tudo sobre o seu negócio.</p>
           </div>
-          <div className="mx-auto mt-14 grid max-w-6xl gap-5 md:grid-cols-2">
+          <div className="mx-auto mt-14 grid max-w-6xl gap-5 md:grid-cols-2 lg:grid-cols-3">
             {[
               {
                 icon: Globe,
@@ -432,6 +433,13 @@ export default function Home() {
                 desc: "Cada um dos 50 perfis verticais do VendorAI tem sua própria LP, com estrutura de venda SPIN Selling pronta — não é um template genérico reaproveitado.",
                 cta: "Ver as LPs por segmento",
                 slug: "lps-por-vertical",
+              },
+              {
+                icon: CalendarRange,
+                title: "Plano de Mídia com IA",
+                desc: "Diagnóstico, canais priorizados com % de orçamento, concorrentes e keywords reais — tudo virando calendário de conteúdo pronto pra publicar.",
+                cta: "Gerar meu plano de mídia",
+                slug: "plano-de-midia",
               },
             ].map((item) => (
               <motion.div

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Globe, FileSearch, Newspaper, LayoutTemplate } from "lucide-react";
+import { Globe, FileSearch, Newspaper, LayoutTemplate, CalendarRange } from "lucide-react";
 
 export type FeatureDetail = {
   slug: string;
@@ -101,5 +101,27 @@ export const FEATURES: FeatureDetail[] = [
       desc: "Não é só o texto que muda — a LP já reflete os sinais de oportunidade que o Revenue Scout daquele mercado específico sabe procurar.",
     },
     ctaLabel: "Ver as LPs por segmento",
+  },
+  {
+    slug: "plano-de-midia",
+    icon: CalendarRange,
+    eyebrow: "Estratégia de marketing pronta, não uma planilha vazia",
+    title: "Plano de Mídia com IA",
+    subtitle:
+      "A IA analisa seu negócio, seus concorrentes reais e as buscas do seu mercado, e devolve um plano de mídia completo: quais canais priorizar, quanto do orçamento colocar em cada um e o que publicar — não um relatório genérico de agência.",
+    howItWorks: [
+      { title: "Diagnóstico automático", desc: "A IA mapeia pontos fortes atuais e oportunidades reais, com base no seu perfil de negócio e no que já está sendo feito." },
+      { title: "Canais priorizados com % de orçamento", desc: "Cada canal recomendado vem com prioridade (alta/média/baixa), o motivo da recomendação, e quanto do orçamento sugerir alocar ali." },
+      { title: "Vira calendário de conteúdo", desc: "Os pilares de conteúdo do plano se transformam num calendário editorial de verdade — por semana, por pilar, por formato (feed, stories, reels)." },
+    ],
+    seo: {
+      title: "Baseado em concorrentes e buscas reais, não achismo",
+      desc: "O plano lista concorrentes realmente encontrados na pesquisa e as palavras-chave com volume de busca do seu mercado — a estratégia nasce de dado, não de intuição de agência.",
+    },
+    learning: {
+      title: "Ações imediatas, não só teoria",
+      desc: "Além do diagnóstico, o plano entrega uma lista de ações imediatas pra começar a executar — e se conecta direto com o Content Autopilot pra colocar o calendário no ar sozinho.",
+    },
+    ctaLabel: "Gerar meu plano de mídia",
   },
 ];
