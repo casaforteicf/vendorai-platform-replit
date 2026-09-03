@@ -22,132 +22,27 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-
           path = Path("artifacts/frontend/src/pages/SiteGenerator.tsx")
           text = path.read_text(encoding="utf-8")
 
-          def replace_block(source: str, start_marker: str, end_marker: str, replacement: str) -> str:
-              start = source.find(start_marker)
-              assert start >= 0, f"start marker missing: {start_marker[:60]}"
-              end = source.find(end_marker, start + len(start_marker))
-              assert end >= 0, f"end marker missing: {end_marker[:60]}"
-              return source[:start] + replacement + source[end:]
+          replacements = [
+              ("void pollJob(jobId, 20 * 60 * 1000)", "void pollJob(jobId, 30 * 1000)"),
+              ("async function pollJob(jobId: string, timeoutMs = 12 * 60 * 1000)", "async function pollJob(jobId: string, timeoutMs = 2 * 60 * 1000)"),
+              ('} catch (e) { const m = e instanceof Error ? e.message : "Não foi possível gerar"; setError(m); toast({ title: m.includes("continua em processamento") ? "Geração continua no servidor" : "Erro na geração", description: m, variant: m.includes("continua em processamento") ? "default" : "destructive" }); } finally { setGenerating(false); }', '} catch (e) { const m = e instanceof Error ? e.message : "Não foi possível gerar"; if (m.includes("continua em processamento")) setError(null); else setError(m); toast({ title: m.includes("continua em processamento") ? "Geração continua no servidor" : "Erro na geração", description: m.includes("continua em processamento") ? "O processamento continua no servidor, mas o botão foi liberado. O resultado não será perdido." : m, variant: m.includes("continua em processamento") ? "default" : "destructive" }); } finally { setGenerating(false); }'),
+          ]
 
-          helper_old = 'function pendingJobKey(tenantId: string) { return `vendorai_site_generation_job:${tenantId}`; }'
-          helper_new = '''function pendingJobKey(tenantId: string) { return `vendorai_site_generation_job:${tenantId}`; }
-function clearPendingJob(tenantId: string) { sessionStorage.removeItem(pendingJobKey(tenantId)); }
-function generationStillRunning(message: string) { return message.includes("continua em processamento"); }
-const FOREGROUND_GENERATION_WAIT_MS = 2 * 60 * 1000;
-const RECOVERY_GENERATION_WAIT_MS = 30 * 1000;'''
-          assert helper_old in text, "pending job helper missing"
-          text = text.replace(helper_old, helper_new, 1)
-
-          recovery_start = '''  useEffect(() => {
-    if (!tenantId) return;
-    const jobId = sessionStorage.getItem(pendingJobKey(tenantId));
-    if (!jobId) return;'''
-          recovery_end = '''
-  }, [tenantId, token]);'''
-          recovery_new = '''  useEffect(() => {
-    if (!tenantId) return;
-    const jobId = sessionStorage.getItem(pendingJobKey(tenantId));
-    if (!jobId) return;
-    let cancelled = false;
-    setGenerating(true);
-    setError(null);
-    void pollJob(jobId, RECOVERY_GENERATION_WAIT_MS)
-      .then(() => {
-        if (cancelled) return;
-        clearPendingJob(tenantId);
-        setEditor(true);
-        toast({ title: "Site recuperado", description: "A geração terminou no servidor. Abrindo o preview." });
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        const message = e instanceof Error ? e.message : "Não foi possível recuperar a geração";
-        if (generationStillRunning(message)) {
-          setError(null);
-          toast({ title: "Geração continua no servidor", description: "O acompanhamento foi liberado. Você pode verificar o site novamente depois." });
-          return;
-        }
-        clearPendingJob(tenantId);
-        setError(message);
-      })
-      .finally(() => { if (!cancelled) setGenerating(false); });
-    return () => { cancelled = true; };'''
-          text = replace_block(text, recovery_start, recovery_end, recovery_new)
-
-          poll_start = '''  async function pollJob(jobId: string, timeoutMs = 12 * 60 * 1000) {'''
-          run_start = '''
-
-  async function runJob(config: Record<string, unknown>) {'''
-          poll_new = '''  async function pollJob(jobId: string, timeoutMs = FOREGROUND_GENERATION_WAIT_MS) {
-    const end = Date.now() + timeoutMs;
-    let consecutiveFailures = 0;
-    const check = async () => {
-      const p = await fetch(`/api/tenants/${tenantId}/site-generator/jobs/${jobId}?t=${Date.now()}`, { headers: headers(token), cache: "no-store" });
-      if (!p.ok) {
-        if (p.status === 404) {
-          throw new Error("A geração anterior não está mais disponível no servidor. O formulário foi liberado para uma nova tentativa.");
-        }
-        if ([429, 502, 503, 504].includes(p.status) && consecutiveFailures < 5) {
-          consecutiveFailures++;
-          return null;
-        }
-        const b = await p.json().catch(() => ({}));
-        throw new Error(b.error ?? "Falha ao acompanhar geração");
-      }
-      consecutiveFailures = 0;
-      return p.json();
-    };
-    while (Date.now() < end) {
-      const b = await check();
-      if (b?.status === "done") return b.result;
-      if (b?.status === "error") throw new Error(b.error ?? "Erro na geração");
-      await new Promise((r) => window.setTimeout(r, 3000));
-    }
-    const final = await check();
-    if (final?.status === "done") return final.result;
-    if (final?.status === "error") throw new Error(final.error ?? "Erro na geração");
-    throw new Error("A geração continua em processamento no servidor. O acompanhamento foi liberado e o resultado não será perdido.");
-  }'''
-          text = replace_block(text, poll_start, run_start, poll_new)
-
-          run_start_plain = '''  async function runJob(config: Record<string, unknown>) {'''
-          generate_start = '''
-
-  async function generate() {'''
-          run_new = '''  async function runJob(config: Record<string, unknown>) {
-    const start = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, { method: "POST", headers: headers(token), cache: "no-store", body: JSON.stringify(config) });
-    const sb = await start.json().catch(() => ({}));
-    if (!start.ok || !sb.jobId) throw new Error(sb.error ?? "Não foi possível iniciar a geração");
-    sessionStorage.setItem(pendingJobKey(tenantId), sb.jobId);
-    try {
-      const result = await pollJob(sb.jobId, FOREGROUND_GENERATION_WAIT_MS);
-      clearPendingJob(tenantId);
-      return result;
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Erro na geração";
-      if (!generationStillRunning(message)) clearPendingJob(tenantId);
-      throw e;
-    }
-  }'''
-          text = replace_block(text, run_start_plain, generate_start, run_new)
-
-          old_catch = '    } catch (e) { const m = e instanceof Error ? e.message : "Não foi possível gerar"; setError(m); toast({ title: m.includes("continua em processamento") ? "Geração continua no servidor" : "Erro na geração", description: m, variant: m.includes("continua em processamento") ? "default" : "destructive" }); } finally { setGenerating(false); }'
-          new_catch = '    } catch (e) { const m = e instanceof Error ? e.message : "Não foi possível gerar"; if (generationStillRunning(m)) { setError(null); toast({ title: "Geração continua no servidor", description: "O acompanhamento foi liberado. O processamento continua sem deixar o botão travado." }); } else { setError(m); toast({ title: "Erro na geração", description: m, variant: "destructive" }); } } finally { setGenerating(false); }'
-          assert old_catch in text, "generate catch missing"
-          text = text.replace(old_catch, new_catch, 1)
+          for old, new in replacements:
+              assert old in text, f"anchor not found: {old[:80]}"
+              text = text.replace(old, new, 1)
 
           path.write_text(text, encoding="utf-8")
 
       - name: Validate patch
         run: |
           git diff --check
-          grep -q "FOREGROUND_GENERATION_WAIT_MS" artifacts/frontend/src/pages/SiteGenerator.tsx
-          grep -q "RECOVERY_GENERATION_WAIT_MS" artifacts/frontend/src/pages/SiteGenerator.tsx
-          grep -q "A geração anterior não está mais disponível" artifacts/frontend/src/pages/SiteGenerator.tsx
-          grep -q "O acompanhamento foi liberado" artifacts/frontend/src/pages/SiteGenerator.tsx
+          grep -q "pollJob(jobId, 30 \* 1000)" artifacts/frontend/src/pages/SiteGenerator.tsx
+          grep -q "timeoutMs = 2 \* 60 \* 1000" artifacts/frontend/src/pages/SiteGenerator.tsx
+          grep -q "o botão foi liberado" artifacts/frontend/src/pages/SiteGenerator.tsx
 
       - name: Commit focused fix and remove temporary workflow
         run: |
