@@ -32,7 +32,7 @@ const AUDIENCE_SEGMENTS = [
   "Outro público",
 ];
 
-function headers() {
+function headers(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -87,7 +87,7 @@ export function MarketingContextSelector({
     : "";
   const requestedProfile = requestedVerticalSlug
     ? MARKETING_VERTICALS.find(
-        (profile) => profile.slug === requestedVerticalSlug || profile.id === requestedVerticalSlug,
+        (profile: { slug: string; id: string; name: string }) => profile.slug === requestedVerticalSlug || profile.id === requestedVerticalSlug,
       )
     : undefined;
   const tenantVertical = ((user as any)?.tenantVertical as string | undefined)?.trim() || "";
