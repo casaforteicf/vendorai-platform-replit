@@ -1,0 +1,32 @@
+name: Temporary route suspense patch
+
+on:
+  push:
+    branches:
+      - fix/frontend-stale-chunk-final
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/frontend-stale-chunk-final
+          fetch-depth: 0
+      - name: Apply route suspense patch
+        run: python3 scripts/tmp_patch_route_suspense.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/App.tsx
+          if git diff --cached --quiet; then
+            echo "No patch changes"
+          else
+            git commit -m "fix(frontend): manter shell durante lazy loading"
+            git push origin HEAD:fix/frontend-stale-chunk-final
+          fi
