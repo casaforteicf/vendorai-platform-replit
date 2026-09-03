@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-340",
+    "titulo": "Marketing: permitir várias imagens no Feed",
+    "descricao": "No **Feed**, o botão de upload agora aceita **uma ou várias imagens de uma vez**. O botão passa a mostrar **Adicionar imagens** e exibe o progresso do envio. As imagens são **adicionadas ao post existente**, sem apagar automaticamente as anteriores. Limite de **10 imagens por publicação**.",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-03T14:48:46.000Z",
+    "pullRequest": 340
+  },
+  {
     "id": "pr-319",
     "titulo": "adicionar atalhos externos nas configurações do site",
     "descricao": "adiciona uma área compacta de **Onde encontrar os dados para conectar** em Configurações do Site; abre em nova aba os locais corretos para Google Ads (Conversões), Meta (Gerenciador de Eventos / Pixel), Cloudflare (Registros DNS) e Google Search Console; mantém intactos os fluxos atuais de domínio, Pixel, Google Ads e Search Console.",
