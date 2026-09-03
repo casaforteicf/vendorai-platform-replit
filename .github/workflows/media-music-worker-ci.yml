@@ -1,0 +1,59 @@
+name: VendorAI Music Worker CI
+
+on:
+  pull_request:
+    paths:
+      - "artifacts/media-music-worker/**"
+      - ".github/workflows/media-music-worker-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/media-music-worker/**"
+      - ".github/workflows/media-music-worker-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Python syntax
+        run: python -m py_compile artifacts/media-music-worker/app/main.py
+      - name: Shell syntax
+        run: bash -n artifacts/media-music-worker/entrypoint.sh
+      - name: Validate worker contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          src = Path("artifacts/media-music-worker/app/main.py").read_text()
+          required = [
+              '@app.get("/health")',
+              '@app.post("/v1/music/generate")',
+              'MusicRequest',
+              'durationSeconds',
+              'audio/wav',
+              'ACEStepPipeline',
+              'DataSampler',
+              'music_generate',
+              'torch.cuda.is_available',
+              'VENDORAI_MUSIC_WORKER_SECRET',
+          ]
+          missing = [value for value in required if value not in src]
+          if missing:
+              raise SystemExit(f"music worker contract missing: {missing}")
+          PY
+      - name: Validate pinned engine and container
+        run: |
+          test -s artifacts/media-music-worker/Dockerfile
+          test -s artifacts/media-music-worker/requirements.txt
+          test -s artifacts/media-music-worker/entrypoint.sh
+          grep -q "ace-step/ACE-Step" artifacts/media-music-worker/Dockerfile
+          grep -q "1bee4c9f5b43e30995f8d4d33b3919197ce1bd68" artifacts/media-music-worker/Dockerfile
+          grep -q "VENDORAI_MUSIC_AUTO_DOWNLOAD_WEIGHTS" artifacts/media-music-worker/entrypoint.sh
+          grep -q "fastapi" artifacts/media-music-worker/requirements.txt
+          grep -q "uvicorn" artifacts/media-music-worker/requirements.txt
