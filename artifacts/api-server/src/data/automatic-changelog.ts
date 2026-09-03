@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-289",
+    "titulo": "persistir fundação do Media Engine",
+    "descricao": "adiciona `media_projects`, `media_assets`, `media_versions` e `media_jobs`; migration 212 com índices e RLS por tenant; substitui o `Map` em memória de `video_processing.ts` por jobs persistidos no PostgreSQL; preserva as rotas e formatos atuais de edição, clipes, lote, legenda e consulta de job;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-03T01:32:09.000Z",
+    "pullRequest": 289
+  },
+  {
     "id": "pr-288",
     "titulo": "robustecer geração do plano de mídia",
     "descricao": "corrige o exemplo inválido de JSON usado no prompt do Plano de Mídia torna o parser tolerante a fences Markdown e texto residual ao redor do objeto JSON valida a estrutura retornada pela IA antes de persistir valida prioridade e percentual de orçamento",
