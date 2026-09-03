@@ -93,6 +93,9 @@ export function MarketingContextSelector({
   const tenantVertical = ((user as any)?.tenantVertical as string | undefined)?.trim() || "";
   const businessVertical = requestedProfile?.name || value.businessVertical || tenantVertical;
   const businessVerticalSlug = requestedProfile?.slug || value.businessVerticalSlug || "";
+  const hideExpandedInContentAutopilot = typeof window !== "undefined"
+    && window.location.pathname === "/content-autopilot"
+    && new URLSearchParams(window.location.search).get("view") === "generator";
 
   useEffect(() => {
     if (!tenantId || productsOverride) {
@@ -185,6 +188,8 @@ export function MarketingContextSelector({
       productNames: value.productNames.filter((_, itemIndex) => itemIndex !== index),
     });
   }
+
+  if (hideExpandedInContentAutopilot && !compact) return null;
 
   if (compact) {
     return (

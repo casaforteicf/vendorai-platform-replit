@@ -3,6 +3,7 @@ import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
+import { startProductPhotoVideo } from "../services/media-product-video.js";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -35,9 +36,6 @@ router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
 
   const resolvedTab: Tab = TABS.includes(tab as Tab) ? (tab as Tab) : "script";
   try {
-    // Padrões dos criadores de referência (se configurados) — enriquece
-    // especialmente 'trends' e 'hooks', que sem isso são só o modelo
-    // chutando com base no treino, sem nenhum dado real do nicho.
     const [referencePatterns, ownPerformance] = await Promise.all([
       buildReferencePatternsPromptBlock(tenantId),
       buildOwnPerformancePromptBlock(tenantId),
@@ -59,11 +57,21 @@ router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
   }
 });
 
-// ─── Product video storyboard (Anthropic Vision) ──────────────────────────────
+// ─── Product video storyboard + real photo render ────────────────────────────
+
+type UploadedProductImage = {
+  buffer: Buffer;
+  mimetype: string;
+  originalname: string;
+  size: number;
+};
 
 router.post(
   "/tenants/:tenantId/content-studio/product-video",
-  upload.single("image"),
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "images", maxCount: 8 },
+  ]),
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
     if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
@@ -77,13 +85,40 @@ router.post(
       benefits    = "",
       cta         = "Compre agora",
       format      = "reel",
+      renderVideo = "false",
     } = req.body as Record<string, string>;
 
     if (!name.trim()) {
       res.status(422).json({ error: "Nome do produto é obrigatório" }); return;
     }
 
-    const formatLabel = format === "story" ? "Stories (9:16 vertical, 5 telas)" : "Reels (15-30 segundos, roteiro sequencial)";
+    const fileFields = (!Array.isArray(req.files) && req.files ? req.files : {}) as Record<string, UploadedProductImage[]>;
+    const productImages = [
+      ...(fileFields["image"] ?? []),
+      ...(fileFields["images"] ?? []),
+    ].slice(0, 8);
+    const shouldRender = renderVideo === "true";
+    const resolvedFormat = format === "story" ? "story" : "reel";
+
+    if (shouldRender) {
+      if (!productImages.length) {
+        res.status(422).json({ error: "Envie ao menos uma foto para gerar o vídeo do produto" });
+        return;
+      }
+      const renderMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+      if (productImages.some((file) => !renderMimeTypes.has(file.mimetype.toLowerCase()))) {
+        res.status(422).json({ error: "Para gerar o vídeo, use somente fotos JPG, PNG ou WebP" });
+        return;
+      }
+      if (productImages.some((file) => file.size > 20 * 1024 * 1024)) {
+        res.status(422).json({ error: "Cada foto deve ter no máximo 20 MB" });
+        return;
+      }
+    }
+
+    const formatLabel = resolvedFormat === "story"
+      ? "Stories (9:16 vertical, 5 telas)"
+      : "Reels (15-30 segundos, roteiro sequencial)";
 
     const textPrompt = `Você é um especialista em marketing de conteúdo para Instagram no Brasil.
 
@@ -94,9 +129,9 @@ Crie um storyboard completo para ${formatLabel} de um produto com as seguintes i
 **Preço:** ${price || "não informado"}
 **Benefícios principais:** ${benefits || "não informados"}
 **CTA final:** ${cta}
-${req.file ? "\nUma imagem do produto foi fornecida para referência visual." : ""}
+${productImages.length ? `\n${productImages.length} imagem(ns) do produto foram fornecidas. Use a primeira como referência visual principal e escreva cenas compatíveis com fotografias reais do produto.` : ""}
 
-${format === "story"
+${resolvedFormat === "story"
   ? `Crie exatamente 5 telas de Story (use o formato abaixo para cada tela):
 
 TELA 1 — GANCHO
@@ -122,13 +157,14 @@ Ao final, sugira:
 - Música/áudio recomendado`;
 
     try {
-      const imageBlock = req.file
+      const referenceImage = productImages[0];
+      const imageBlock = referenceImage
         ? [{
             type: "image" as const,
             source: {
               type: "base64" as const,
-              media_type: (req.file.mimetype || "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-              data: req.file.buffer.toString("base64"),
+              media_type: (referenceImage.mimetype || "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+              data: referenceImage.buffer.toString("base64"),
             },
           }]
         : [];
@@ -151,7 +187,36 @@ Ao final, sugira:
         .map((b) => (b as { type: "text"; text: string }).text)
         .join("\n");
 
-      res.json({ result, format });
+      if (!shouldRender) {
+        res.json({ result, format: resolvedFormat });
+        return;
+      }
+
+      const render = await startProductPhotoVideo({
+        tenantId,
+        userId: req.user?.sub ?? null,
+        name,
+        description,
+        price,
+        benefits,
+        cta,
+        format: resolvedFormat,
+        storyboard: result,
+        images: productImages.map((file) => ({
+          buffer: file.buffer,
+          mimeType: file.mimetype,
+          originalName: file.originalname,
+          size: file.size,
+        })),
+      });
+
+      res.status(202).json({
+        result,
+        format: resolvedFormat,
+        renderStarted: true,
+        projectId: render.projectId,
+        jobId: render.jobId,
+      });
     } catch (err) {
       req.log.error({ err }, "content-studio: product-video failed");
       res.status(500).json({ error: err instanceof Error ? err.message : "Erro desconhecido" });

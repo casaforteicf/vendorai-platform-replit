@@ -222,24 +222,29 @@ router.post(
         await writeFile(inPath, req.file!.buffer);
 
         const duration = await getVideoDuration(inPath);
-        const clipSec  = Math.max(10, parseInt(clipDuration, 10) || 60);
-        const nClips   = Math.min(
-          parseInt(maxClips, 10) || 4,
-          Math.floor(duration / clipSec)
-        );
+        if (!Number.isFinite(duration) || duration <= 0) {
+          throw new Error("Não foi possível determinar a duração do vídeo");
+        }
+
+        const requestedClipSec = parseInt(clipDuration, 10);
+        const clipSec = Math.max(10, Math.min(90, Number.isFinite(requestedClipSec) ? requestedClipSec : 60));
+        const requestedMaxClips = parseInt(maxClips, 10);
+        const maxClipCount = Math.max(1, Math.min(8, Number.isFinite(requestedMaxClips) ? requestedMaxClips : 4));
+        const nClips = Math.min(maxClipCount, Math.max(1, Math.ceil(duration / clipSec)));
 
         await updateMediaJob(jobId, tenantId, { status: "running", progress: 0, total: nClips });
 
         const clipUrls: string[] = [];
 
         for (let i = 0; i < nClips; i++) {
-          const start   = i * clipSec;
+          const start = i * clipSec;
+          const actualDuration = Math.min(clipSec, Math.max(0.1, duration - start));
           const outPath = join(tmpdir(), `vc-clip-${jobId}-${i}.mp4`);
           clipPaths.push(outPath);
 
           const ffmpegArgs: string[] = [
             "-y", "-i", inPath,
-            "-ss", String(start), "-t", String(clipSec),
+            "-ss", String(start), "-t", actualDuration.toFixed(3),
           ];
 
           if (convertTo9x16 === "true") {
@@ -267,7 +272,7 @@ router.post(
             originalFilename: `clip-${i + 1}-${req.file!.originalname}`,
             operation: "video_clip",
             label: `Clipe ${i + 1}`,
-            metadata: { jobId, clipIndex: i, start, duration: clipSec, convertTo9x16 },
+            metadata: { jobId, clipIndex: i, start, duration: actualDuration, convertTo9x16 },
           }).catch((libraryError) => {
             req.log.error({ err: libraryError, tenantId, projectId, jobId, clipIndex: i }, "media-library: failed to register clip");
           });

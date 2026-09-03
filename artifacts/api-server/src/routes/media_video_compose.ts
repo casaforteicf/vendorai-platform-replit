@@ -16,6 +16,7 @@ import {
   setMediaProjectStatus,
 } from "../services/media-library.js";
 import { assessMediaAudioUsage, normalizeMediaAudioRights } from "../services/media-rights.js";
+import { applyBrandBroll } from "../services/media-broll.js";
 import { applyBrandIntroOutro } from "../services/media-brand-video.js";
 import mediaTracksRouter from "./media_tracks.js";
 
@@ -84,7 +85,9 @@ router.post(
     const files = (req.files ?? {}) as Record<string, Express.Multer.File[]>;
     const video = files["video"]?.[0];
     const uploadedMusic = files["music"]?.[0];
-    const musicAssetId = typeof req.body?.musicAssetId === "string" ? req.body.musicAssetId.trim() : "";
+    const requestedMusicAssetId = typeof req.body?.musicAssetId === "string" ? req.body.musicAssetId.trim() : "";
+    const tenantId = String(req.params["tenantId"]);
+    const userId = req.user?.sub ?? null;
 
     if (!video) {
       res.status(422).json({ error: "video é obrigatório" });
@@ -94,8 +97,8 @@ router.post(
       res.status(422).json({ error: "video precisa ser um arquivo de vídeo" });
       return;
     }
-    if ((!uploadedMusic && !musicAssetId) || (uploadedMusic && musicAssetId)) {
-      res.status(422).json({ error: "Informe exatamente uma trilha: music ou musicAssetId" });
+    if (uploadedMusic && requestedMusicAssetId) {
+      res.status(422).json({ error: "Informe somente uma trilha: music ou musicAssetId" });
       return;
     }
     if (uploadedMusic && !uploadedMusic.mimetype.startsWith("audio/")) {
@@ -103,15 +106,39 @@ router.post(
       return;
     }
 
-    const tenantId = String(req.params["tenantId"]);
-    const userId = req.user?.sub ?? null;
+    const brandKitResult = await pool.query(
+      `SELECT default_music_asset_id, audio_config
+         FROM media_brand_video_kits
+        WHERE tenant_id = $1 AND status = 'active'
+        LIMIT 1`,
+      [tenantId],
+    );
+    const brandKitRow = brandKitResult.rows[0];
+    const brandAudioConfig = asRecord(brandKitRow?.audio_config);
+    const defaultMusicAssetId = brandKitRow?.default_music_asset_id
+      ? String(brandKitRow.default_music_asset_id)
+      : "";
+    const effectiveMusicAssetId = requestedMusicAssetId || (!uploadedMusic ? defaultMusicAssetId : "");
+    const musicSource: "upload" | "library" | "brand_kit_default" = uploadedMusic
+      ? "upload"
+      : requestedMusicAssetId
+        ? "library"
+        : "brand_kit_default";
+
+    if (!uploadedMusic && !effectiveMusicAssetId) {
+      res.status(422).json({
+        error: "Informe uma trilha ou configure uma trilha padrão no Brand Video Kit",
+      });
+      return;
+    }
+
     let musicBuffer: Buffer;
     let musicFilename: string;
     let selectedMusicAssetId: string | null = null;
     let musicRights: ReturnType<typeof normalizeMediaAudioRights> | null = null;
     let musicUsage: ReturnType<typeof assessMediaAudioUsage> | null = null;
 
-    if (musicAssetId) {
+    if (effectiveMusicAssetId) {
       const assetResult = await pool.query(
         `SELECT id, storage_url, original_filename, metadata
            FROM media_assets
@@ -120,10 +147,14 @@ router.post(
             AND type = 'audio'
             AND role = 'music'
           LIMIT 1`,
-        [tenantId, musicAssetId],
+        [tenantId, effectiveMusicAssetId],
       );
       if (!assetResult.rowCount) {
-        res.status(404).json({ error: "Trilha da biblioteca não encontrada" });
+        res.status(musicSource === "brand_kit_default" ? 422 : 404).json({
+          error: musicSource === "brand_kit_default"
+            ? "Trilha padrão do Brand Video Kit não está disponível"
+            : "Trilha da biblioteca não encontrada",
+        });
         return;
       }
 
@@ -133,10 +164,14 @@ router.post(
         const file = await objectStorage.getObjectEntityFile(storageUrl);
         [musicBuffer] = await file.download();
       } catch {
-        res.status(422).json({ error: "Arquivo da trilha não está disponível no Object Storage" });
+        res.status(422).json({
+          error: musicSource === "brand_kit_default"
+            ? "Arquivo da trilha padrão não está disponível no Object Storage"
+            : "Arquivo da trilha não está disponível no Object Storage",
+        });
         return;
       }
-      musicFilename = String(asset.original_filename ?? `track-${musicAssetId}.mp3`);
+      musicFilename = String(asset.original_filename ?? `track-${effectiveMusicAssetId}.mp3`);
       selectedMusicAssetId = String(asset.id);
       const metadata = asRecord(asset.metadata);
       musicRights = normalizeMediaAudioRights(metadata["rights"]);
@@ -146,15 +181,28 @@ router.post(
       musicFilename = uploadedMusic!.originalname;
     }
 
-    const musicVolume = clampNumber(req.body?.musicVolume, 0.18, 0, 1);
-    const originalVolume = clampNumber(req.body?.originalVolume, 1, 0, 2);
-    const fadeIn = clampNumber(req.body?.fadeIn, 1, 0, 10);
-    const fadeOut = clampNumber(req.body?.fadeOut, 1.5, 0, 10);
-    const duckingEnabled = parseBoolean(req.body?.ducking, true);
-    const duckingThreshold = clampNumber(req.body?.duckingThreshold, 0.04, 0.001, 1);
-    const duckingRatio = clampNumber(req.body?.duckingRatio, 8, 1, 20);
-    const duckingAttackMs = clampNumber(req.body?.duckingAttackMs, 20, 0.01, 2000);
-    const duckingReleaseMs = clampNumber(req.body?.duckingReleaseMs, 250, 0.01, 9000);
+    const brandMusicVolume = clampNumber(brandAudioConfig["musicVolume"], 0.18, 0, 1);
+    const brandOriginalVolume = clampNumber(brandAudioConfig["originalVolume"], 1, 0, 2);
+    const brandFadeIn = clampNumber(brandAudioConfig["fadeIn"], 1, 0, 10);
+    const brandFadeOut = clampNumber(brandAudioConfig["fadeOut"], 1.5, 0, 10);
+    const brandDucking = parseBoolean(brandAudioConfig["ducking"], true);
+    const brandDuckingThreshold = clampNumber(brandAudioConfig["duckingThreshold"], 0.04, 0.001, 1);
+    const brandDuckingRatio = clampNumber(brandAudioConfig["duckingRatio"], 8, 1, 20);
+    const brandDuckingAttackMs = clampNumber(brandAudioConfig["duckingAttackMs"], 20, 0.01, 2000);
+    const brandDuckingReleaseMs = clampNumber(brandAudioConfig["duckingReleaseMs"], 250, 0.01, 9000);
+
+    const musicVolume = clampNumber(req.body?.musicVolume, brandMusicVolume, 0, 1);
+    const originalVolume = clampNumber(req.body?.originalVolume, brandOriginalVolume, 0, 2);
+    const fadeIn = clampNumber(req.body?.fadeIn, brandFadeIn, 0, 10);
+    const fadeOut = clampNumber(req.body?.fadeOut, brandFadeOut, 0, 10);
+    const duckingEnabled = parseBoolean(req.body?.ducking, brandDucking);
+    const duckingThreshold = clampNumber(req.body?.duckingThreshold, brandDuckingThreshold, 0.001, 1);
+    const duckingRatio = clampNumber(req.body?.duckingRatio, brandDuckingRatio, 1, 20);
+    const duckingAttackMs = clampNumber(req.body?.duckingAttackMs, brandDuckingAttackMs, 0.01, 2000);
+    const duckingReleaseMs = clampNumber(req.body?.duckingReleaseMs, brandDuckingReleaseMs, 0.01, 9000);
+    const brollContext = typeof req.body?.brollContext === "string"
+      ? req.body.brollContext.trim().slice(0, 4000)
+      : video.originalname;
     const jobId = randomUUID();
     const projectId = await createProcessingMediaProject({
       tenantId,
@@ -165,6 +213,7 @@ router.post(
         videoFilename: video.originalname,
         musicFilename,
         musicAssetId: selectedMusicAssetId,
+        musicSource,
         musicRights,
         musicUsage,
         musicVolume,
@@ -176,6 +225,7 @@ router.post(
         duckingRatio,
         duckingAttackMs,
         duckingReleaseMs,
+        brollContext,
       },
     });
     await createMediaJob({
@@ -186,6 +236,7 @@ router.post(
       provider: "vendorai",
       input: {
         musicAssetId: selectedMusicAssetId,
+        musicSource,
         musicRights,
         musicUsage,
         musicVolume,
@@ -197,6 +248,7 @@ router.post(
         duckingRatio,
         duckingAttackMs,
         duckingReleaseMs,
+        brollContext,
       },
       snapshot: { status: "running", progress: 0 },
     });
@@ -208,6 +260,7 @@ router.post(
       const musicExt = musicFilename.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "mp3";
       const musicPath = join(tmpdir(), `compose-music-${jobId}.${musicExt}`);
       const outputPath = join(tmpdir(), `compose-output-${jobId}.mp4`);
+      let brollCleanup: (() => Promise<void>) | null = null;
       let brandCleanup: (() => Promise<void>) | null = null;
       try {
         await Promise.all([
@@ -272,15 +325,41 @@ router.post(
 
         await updateMediaJob(jobId, tenantId, { status: "running", progress: 40 });
         await execFileAsync("ffmpeg", args, { maxBuffer: 8 * 1024 * 1024 });
-        await updateMediaJob(jobId, tenantId, { status: "running", progress: 72 });
+        await updateMediaJob(jobId, tenantId, { status: "running", progress: 68 });
 
-        const brandResult = await applyBrandIntroOutro({
+        const brollResult = await applyBrandBroll({
           tenantId,
           sourcePath: outputPath,
           jobId,
+          context: brollContext,
+        });
+        brollCleanup = brollResult.cleanup;
+        await updateMediaJob(jobId, tenantId, {
+          status: "running",
+          progress: 82,
+          brollApplied: brollResult.applied,
+          brollAssetIds: brollResult.assetIds,
+          brollInsertions: brollResult.insertions,
+          ...(brollResult.warning ? { brollWarning: brollResult.warning } : {}),
+        });
+
+        const brandResult = await applyBrandIntroOutro({
+          tenantId,
+          sourcePath: brollResult.outputPath,
+          jobId,
         });
         brandCleanup = brandResult.cleanup;
-        await updateMediaJob(jobId, tenantId, { status: "running", progress: 88 });
+        await updateMediaJob(jobId, tenantId, {
+          status: "running",
+          progress: 92,
+          logoAssetId: brandResult.logoAssetId,
+          logoApplied: brandResult.logoApplied,
+          ...(brandResult.logoWarning ? { logoWarning: brandResult.logoWarning } : {}),
+          introAssetId: brandResult.introAssetId,
+          outroAssetId: brandResult.outroAssetId,
+          introApplied: brandResult.introApplied,
+          outroApplied: brandResult.outroApplied,
+        });
 
         const output = await readFile(brandResult.outputPath);
         if (!output.length) throw new Error("FFmpeg retornou vídeo vazio");
@@ -299,6 +378,7 @@ router.post(
             jobId,
             musicFilename,
             musicAssetId: selectedMusicAssetId,
+            musicSource,
             musicRights,
             musicUsage,
             musicVolume,
@@ -312,6 +392,14 @@ router.post(
             duckingRatio,
             duckingAttackMs,
             duckingReleaseMs,
+            brollContext,
+            brollApplied: brollResult.applied,
+            brollAssetIds: brollResult.assetIds,
+            brollInsertions: brollResult.insertions,
+            brollWarning: brollResult.warning,
+            logoAssetId: brandResult.logoAssetId,
+            logoApplied: brandResult.logoApplied,
+            logoWarning: brandResult.logoWarning,
             introAssetId: brandResult.introAssetId,
             outroAssetId: brandResult.outroAssetId,
             introApplied: brandResult.introApplied,
@@ -325,14 +413,26 @@ router.post(
           videoUrl: storageUrl,
           assetId: registered.assetId,
           versionId: registered.versionId,
+          musicAssetId: selectedMusicAssetId,
+          musicSource,
+          brollApplied: brollResult.applied,
+          brollAssetIds: brollResult.assetIds,
+          brollInsertions: brollResult.insertions,
+          ...(brollResult.warning ? { brollWarning: brollResult.warning } : {}),
+          logoAssetId: brandResult.logoAssetId,
+          logoApplied: brandResult.logoApplied,
+          ...(brandResult.logoWarning ? { logoWarning: brandResult.logoWarning } : {}),
           introAssetId: brandResult.introAssetId,
           outroAssetId: brandResult.outroAssetId,
+          introApplied: brandResult.introApplied,
+          outroApplied: brandResult.outroApplied,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha desconhecida na composição de vídeo";
         await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         await updateMediaJob(jobId, tenantId, { status: "error", error: message }).catch(() => undefined);
       } finally {
+        await brollCleanup?.().catch(() => undefined);
         await brandCleanup?.().catch(() => undefined);
         await Promise.all([
           unlink(videoPath).catch(() => undefined),

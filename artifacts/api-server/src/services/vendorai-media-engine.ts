@@ -62,6 +62,7 @@ export async function refreshVendorAiWorkerCapabilities(): Promise<void> {
   ]);
   vendorAiMediaEngineCapabilities.capabilities.voice_synthesize = voiceReady ? "ready" : "building";
   vendorAiMediaEngineCapabilities.capabilities.avatar_lipsync = lipSyncReady ? "ready" : "building";
+  vendorAiMediaEngineCapabilities.capabilities.video_batch = voiceReady && lipSyncReady ? "ready" : "building";
   vendorAiMediaEngineCapabilities.capabilities.music_generate = musicReady ? "ready" : "building";
 }
 
@@ -97,7 +98,11 @@ export async function createVendorAiMediaGenerationJob(input: {
     projectId,
     operation: input.operation,
     provider: "vendorai",
-    input: input.context ?? {},
+    input: {
+      ...(input.context ?? {}),
+      userId: input.userId ?? null,
+      title: input.title,
+    },
     snapshot: { status: "running", progress: 0 },
   });
 

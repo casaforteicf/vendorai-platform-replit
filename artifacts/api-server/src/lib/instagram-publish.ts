@@ -80,6 +80,54 @@ export async function publishFeedPost(
   return published.id;
 }
 
+export async function publishFeedCarousel(
+  instagramAccountId: string,
+  token: string,
+  caption: string,
+  imageUrls: string[],
+  log: Logger,
+): Promise<string> {
+  if (imageUrls.length < 2 || imageUrls.length > 10) {
+    throw new InstagramApiError("O carrossel do Instagram precisa ter entre 2 e 10 imagens.", 422);
+  }
+
+  log.info({ instagramAccountId, imageCount: imageUrls.length }, "instagram-publish: creating carousel items");
+
+  const childIds: string[] = [];
+  for (const imageUrl of imageUrls) {
+    const child = (await gFetch(`${GRAPH}/${encodeURIComponent(instagramAccountId)}/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        image_url: imageUrl,
+        is_carousel_item: "true",
+        access_token: token,
+      }).toString(),
+    })) as { id: string };
+    childIds.push(child.id);
+  }
+
+  const container = (await gFetch(`${GRAPH}/${encodeURIComponent(instagramAccountId)}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      media_type: "CAROUSEL",
+      children: childIds.join(","),
+      caption,
+      access_token: token,
+    }).toString(),
+  })) as { id: string };
+
+  const published = (await gFetch(`${GRAPH}/${encodeURIComponent(instagramAccountId)}/media_publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ creation_id: container.id, access_token: token }).toString(),
+  })) as { id: string };
+
+  log.info({ postId: published.id, imageCount: imageUrls.length }, "instagram-publish: carousel published");
+  return published.id;
+}
+
 export async function publishStoriesPost(
   instagramAccountId: string,
   token: string,

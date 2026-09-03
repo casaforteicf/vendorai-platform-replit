@@ -16,6 +16,7 @@ import {
   generateImagesForContent,
 } from "../lib/content-generation.js";
 import {
+  publishFeedCarousel,
   publishFeedPost,
   publishReelPost,
   publishStoriesPost,
@@ -146,11 +147,14 @@ export async function publishContentGenerationToInstagram(params: {
 
   if (gen.type === "feed") {
     const feed = variation as FeedVariation;
-    const imageUrl = feed.imageUrl;
-    if (!imageUrl) throw new SocialPublicationError("Imagem não disponível para publicar o Feed.", 400);
-    const publicImageUrl = await resolveInstagramMediaUrl(imageUrl);
+    const imageUrls = feed.imageUrls?.length ? feed.imageUrls : feed.imageUrl ? [feed.imageUrl] : [];
+    if (imageUrls.length === 0) throw new SocialPublicationError("Imagem não disponível para publicar o Feed.", 400);
+    if (imageUrls.length > 10) throw new SocialPublicationError("O Feed aceita no máximo 10 imagens por publicação.", 400);
+    const publicImageUrls = await Promise.all(imageUrls.map(resolveInstagramMediaUrl));
     const caption = params.captionOverride ?? `${feed.caption}\n\n${(feed.hashtags ?? []).join(" ")}`;
-    postId = await publishFeedPost(accountId, accessToken, caption, publicImageUrl, params.log);
+    postId = publicImageUrls.length > 1
+      ? await publishFeedCarousel(accountId, accessToken, caption, publicImageUrls, params.log)
+      : await publishFeedPost(accountId, accessToken, caption, publicImageUrls[0]!, params.log);
     captionOuTexto = caption;
   } else if (gen.type === "stories") {
     const story = variation as StoriesVariation;
