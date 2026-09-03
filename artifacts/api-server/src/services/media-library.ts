@@ -21,6 +21,7 @@ export interface RegisterMediaOutputInput {
   userId?: string | null;
   storageUrl: string;
   mimeType: string;
+  fileSize?: number | null;
   type?: "video" | "audio" | "image" | "document";
   originalFilename?: string | null;
   operation: string;
@@ -65,6 +66,7 @@ export async function registerGeneratedMediaOutput(
       role: "output",
       storageUrl: input.storageUrl,
       mimeType: input.mimeType,
+      fileSize: input.fileSize ?? null,
       originalFilename: input.originalFilename ?? null,
       source: "generated",
       metadata: input.metadata ?? {},
