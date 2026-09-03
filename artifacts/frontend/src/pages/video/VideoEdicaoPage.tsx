@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, X, Loader2, CheckCircle2, AlertCircle, Scissors, Music2, Library, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Upload, X, Loader2, CheckCircle2, AlertCircle, Scissors, Music2, Library, ShieldCheck, ShieldAlert, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VideoGenPanel from "@/components/video/VideoGenPanel";
+import AiMusicGenerator from "@/components/video/AiMusicGenerator";
 
 function authHeader(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
@@ -11,7 +12,7 @@ function authHeader(): Record<string, string> {
 
 type JobStatus = "idle" | "starting" | "processing" | "done" | "error";
 type EditorTab = "edit" | "music";
-type MusicSourceMode = "upload" | "library";
+type MusicSourceMode = "upload" | "library" | "ai";
 
 interface LibraryTrack {
   id: string;
@@ -178,6 +179,7 @@ export default function VideoEdicaoPage() {
     if (!videoFile || !tenantId) return;
     if (musicSourceMode === "upload" && !musicFile) return;
     if (musicSourceMode === "library" && !selectedTrackId) return;
+    if (musicSourceMode === "ai") return;
 
     const form = new FormData();
     form.append("video", videoFile);
@@ -213,8 +215,20 @@ export default function VideoEdicaoPage() {
     }
   };
 
+  const handleAiTrackGenerated = async (assetId: string) => {
+    await loadTracks();
+    setSelectedTrackId(assetId);
+    setMusicFile(null);
+    setMusicSourceMode("library");
+    resetResult();
+  };
+
   const isProcessing = jobStatus === "starting" || jobStatus === "processing";
-  const hasMusicSelection = musicSourceMode === "library" ? Boolean(selectedTrackId) : Boolean(musicFile);
+  const hasMusicSelection = musicSourceMode === "library"
+    ? Boolean(selectedTrackId)
+    : musicSourceMode === "upload"
+      ? Boolean(musicFile)
+      : false;
   const generateDisabled = !videoFile || isProcessing || (activeTab === "music" && !hasMusicSelection);
   const selectedTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
 
@@ -277,7 +291,7 @@ export default function VideoEdicaoPage() {
     <div className="space-y-4 h-full flex flex-col">
       <div>
         <p className="text-xs text-gray-400 font-medium mb-2">Origem da trilha</p>
-        <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="grid grid-cols-3 gap-2 mb-3">
           <button
             type="button"
             onClick={() => {
@@ -286,14 +300,14 @@ export default function VideoEdicaoPage() {
               resetResult();
             }}
             className={cn(
-              "rounded-xl border px-3 py-2.5 text-xs font-medium flex items-center justify-center gap-2 transition-all",
+              "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
               musicSourceMode === "upload"
                 ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
                 : "border-white/10 text-gray-400 hover:border-white/20",
             )}
           >
             <Upload className="h-3.5 w-3.5" />
-            Enviar arquivo
+            Enviar
           </button>
           <button
             type="button"
@@ -303,7 +317,7 @@ export default function VideoEdicaoPage() {
               resetResult();
             }}
             className={cn(
-              "rounded-xl border px-3 py-2.5 text-xs font-medium flex items-center justify-center gap-2 transition-all",
+              "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
               musicSourceMode === "library"
                 ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
                 : "border-white/10 text-gray-400 hover:border-white/20",
@@ -311,6 +325,24 @@ export default function VideoEdicaoPage() {
           >
             <Library className="h-3.5 w-3.5" />
             Biblioteca
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMusicSourceMode("ai");
+              setMusicFile(null);
+              setSelectedTrackId("");
+              resetResult();
+            }}
+            className={cn(
+              "rounded-xl border px-2 py-2.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
+              musicSourceMode === "ai"
+                ? "border-purple-500/40 bg-purple-500/10 text-purple-200"
+                : "border-white/10 text-gray-400 hover:border-white/20",
+            )}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Gerar IA
           </button>
         </div>
 
@@ -371,7 +403,7 @@ export default function VideoEdicaoPage() {
               Arquivo local pode ser usado para rascunho. Os direitos serão validados antes de publicação/patrocínio.
             </p>
           </>
-        ) : (
+        ) : musicSourceMode === "library" ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-gray-400 font-medium">Biblioteca de trilhas</p>
@@ -387,7 +419,7 @@ export default function VideoEdicaoPage() {
               <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{tracksError}</div>
             ) : tracks.length === 0 ? (
               <div className="rounded-xl border border-dashed border-white/10 p-4 text-xs text-gray-500">
-                Nenhuma trilha cadastrada ainda. Cadastre músicas na Biblioteca Audiovisual com função “music” e seus direitos de uso.
+                Nenhuma trilha cadastrada ainda. Envie uma música ou gere uma trilha com IA.
               </div>
             ) : (
               <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
@@ -445,6 +477,8 @@ export default function VideoEdicaoPage() {
               </div>
             )}
           </div>
+        ) : (
+          <AiMusicGenerator tenantId={tenantId} onGenerated={handleAiTrackGenerated} />
         )}
       </div>
 
