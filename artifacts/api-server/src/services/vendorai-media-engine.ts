@@ -43,7 +43,7 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     video_clips: "ready",
     video_caption: "ready",
     video_batch: "building",
-    video_compose: "building",
+    video_compose: "ready",
     voice_profile: "ready",
     voice_synthesize: "building",
     persona_profile: "ready",

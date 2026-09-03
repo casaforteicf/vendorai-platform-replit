@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import mediaVideoComposeRouter from "./media_video_compose.js";
 import {
   createVendorAiMediaGenerationJob,
   vendorAiMediaEngineCapabilities,
@@ -395,5 +396,7 @@ router.post("/tenants/:tenantId/media-engine/jobs", async (req, res) => {
 
   res.status(202).json({ ...result, provider: "vendorai", operation });
 });
+
+router.use(mediaVideoComposeRouter);
 
 export default router;
