@@ -5,6 +5,7 @@ import { Upload, X, Loader2, CheckCircle2, AlertCircle, Scissors, Music2, Librar
 import { cn } from "@/lib/utils";
 import VideoGenPanel from "@/components/video/VideoGenPanel";
 import AiMusicGenerator from "@/components/video/AiMusicGenerator";
+import { useMediaVideoHandoff } from "@/hooks/useMediaVideoHandoff";
 
 function authHeader(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
@@ -102,14 +103,20 @@ function SliderField({
 }
 
 export default function VideoEdicaoPage() {
-  const { user } = useAuth();
-  const tenantId = user?.tenantId ?? "";
+  const { user, tenantOverride } = useAuth();
+  const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   useToast();
 
   const [activeTab, setActiveTab] = useState<EditorTab>("edit");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLInputElement>(null);
+  const {
+    sourceMediaAssetId,
+    loading: libraryVideoLoading,
+    error: libraryVideoError,
+    clearSource,
+  } = useMediaVideoHandoff({ tenantId, setVideoFile, setVideoPreview });
 
   const [musicSourceMode, setMusicSourceMode] = useState<MusicSourceMode>("brand");
   const [musicFile, setMusicFile] = useState<File | null>(null);
@@ -212,6 +219,7 @@ export default function VideoEdicaoPage() {
     if (!videoFile || !tenantId) return;
     const form = new FormData();
     form.append("video", videoFile);
+    if (sourceMediaAssetId) form.append("sourceMediaAssetId", sourceMediaAssetId);
     form.append("removeSilence", String(opts.removeSilence ?? false));
     form.append("normalize", String(opts.normalize ?? false));
     form.append("speed", speed);
@@ -235,6 +243,7 @@ export default function VideoEdicaoPage() {
 
     const form = new FormData();
     form.append("video", videoFile);
+    if (sourceMediaAssetId) form.append("sourceMediaAssetId", sourceMediaAssetId);
     if (musicSourceMode === "library") form.append("musicAssetId", selectedTrackId);
     else if (musicSourceMode === "upload" && musicFile) form.append("music", musicFile);
     form.append("musicVolume", String(musicVolume));
@@ -283,7 +292,7 @@ export default function VideoEdicaoPage() {
       : musicSourceMode === "upload"
         ? Boolean(musicFile)
         : false;
-  const generateDisabled = !videoFile || isProcessing || brandKitLoading || (activeTab === "music" && !hasMusicSelection);
+  const generateDisabled = !videoFile || isProcessing || brandKitLoading || libraryVideoLoading || (activeTab === "music" && !hasMusicSelection);
   const selectedTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
   const brandDefaultTrack = tracks.find((track) => track.id === brandDefaultMusicAssetId) ?? null;
 
@@ -659,7 +668,18 @@ export default function VideoEdicaoPage() {
 
   const RightPanel = (
     <div className="h-full flex flex-col gap-4">
-      <p className="text-xs text-gray-400 font-medium">Vídeo para editar</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-gray-400 font-medium">Vídeo para editar</p>
+        {sourceMediaAssetId && <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-200">Biblioteca</span>}
+      </div>
+      {libraryVideoLoading && (
+        <div className="flex items-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2.5 text-xs text-cyan-200">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando vídeo da Biblioteca…
+        </div>
+      )}
+      {libraryVideoError && (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-xs text-red-300">{libraryVideoError}</div>
+      )}
       {videoPreview ? (
         <div className="relative">
           <video src={videoPreview} controls className="w-full rounded-xl border border-white/10 max-h-48" />
@@ -667,6 +687,7 @@ export default function VideoEdicaoPage() {
             onClick={() => {
               setVideoFile(null);
               setVideoPreview(null);
+              clearSource();
               resetResult();
               if (videoRef.current) videoRef.current.value = "";
             }}
@@ -699,6 +720,7 @@ export default function VideoEdicaoPage() {
           if (!file) return;
           setVideoFile(file);
           setVideoPreview(URL.createObjectURL(file));
+          clearSource();
           resetResult();
         }}
       />
