@@ -11,10 +11,35 @@ export interface JwtPayload {
   role: "admin" | "member";
   userFunction?: string;
   partnerId?: string;
+  // Tokens de usuários existentes omitem este campo e são tratados como humanos.
+  // Somente credenciais internas/confiáveis devem emitir `ai` ou `system`.
+  actorType?: "human" | "ai" | "system";
 }
 
 export function signToken(payload: JwtPayload): string {
   return jwt.sign(payload, secret!, { expiresIn: "7d" });
+}
+
+/**
+ * Emite uma credencial curta e exclusivamente server-side para agentes internos.
+ * Ela não é exposta em login, payload do navegador ou configuração do usuário.
+ * O tenant continua explícito: IA/sistema atravessam funções e pipelines, nunca tenants.
+ */
+export function signInternalActorToken(input: {
+  sub: string;
+  tenantId: string;
+  actorType: "ai" | "system";
+  email?: string;
+}): string {
+  const payload: JwtPayload = {
+    sub: input.sub,
+    email: input.email ?? `${input.actorType}@internal.vendorai`,
+    platformRole: "member",
+    tenantId: input.tenantId,
+    role: "member",
+    actorType: input.actorType,
+  };
+  return jwt.sign(payload, secret!, { expiresIn: "15m" });
 }
 
 export function verifyToken(token: string): JwtPayload {

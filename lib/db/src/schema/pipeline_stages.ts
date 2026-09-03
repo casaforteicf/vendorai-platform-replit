@@ -1,33 +1,33 @@
-// Etapas do pipeline de negócios, configuráveis por tenant. As 11
-// etapas do sistema (antigo enum de deals.etapa) existem como linhas
-// isSystem=true — protegidas contra exclusão/troca de key (automação
-// de contrato/cobrança em vários pontos do backend depende do valor
-// exato), mas label/cor/SLA são editáveis pelo admin. Etapas novas
-// (isSystem=false) são só organizacionais, sem automação nenhuma
-// amarrada — o admin do tenant pode criar quantas quiser.
+// Etapas das pipelines, configuráveis por tenant. As etapas do sistema
+// existem como linhas isSystem=true — protegidas contra exclusão/troca de key,
+// mas label/cor/SLA/responsabilidade são editáveis pelo admin.
 import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
 export const pipelineStagesTable = pgTable("pipeline_stages", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  // Identifica qual pipeline esta etapa configura. `comercial` é o valor
+  // legado/default para preservar todos os tenants já existentes.
+  pipeline: text("pipeline").notNull().default("comercial"),
   key: text("key").notNull(),
   label: text("label").notNull(),
   color: text("color"),
   bg: text("bg"),
   ordem: integer("ordem").notNull().default(0),
   isSystem: boolean("is_system").notNull().default(false),
-  // Minutos que um deal pode ficar nesta etapa antes do card ficar
-  // vermelho no Kanban. Null = sem SLA (nunca fica vermelho).
+  // Minutos que um item pode ficar nesta etapa antes de estourar o SLA.
   slaMinutos: integer("sla_minutos"),
-  // IDs dos usuários habilitados a ser responsável quando um negócio
-  // entra nesta etapa. Null/vazio = qualquer usuário do tenant pode.
+  // Campo legado: IDs de pessoas elegíveis para receber um negócio.
+  // Mantido apenas por compatibilidade; a responsabilidade da etapa é
+  // definida por função em `responsaveisFuncoes`, nunca por pessoa.
   elegiveisUserIds: text("elegiveis_user_ids").array(),
-  // Perguntas-chave desta etapa (playbook) — aparecem no topo da Central
-  // de Trabalho enquanto o negócio está nesta etapa, e alimentam roteiro
-  // de reunião / geração de proposta / argumento de venda.
+  // Funções responsáveis por executar/acessar a etapa.
+  // Formato: `builtin:vendedor` ou `custom:<tenant_user_functions.id>`.
+  // Vazio = etapa sem restrição por função (compatibilidade).
+  responsaveisFuncoes: text("responsaveis_funcoes").array().notNull().default([]),
+  // Perguntas-chave/playbook. Hoje são usadas principalmente na pipeline comercial.
   perguntas: jsonb("perguntas").$type<{ id: string; texto: string }[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -38,19 +38,13 @@ export const insertPipelineStageSchema = createInsertSchema(pipelineStagesTable)
 });
 
 export const updatePipelineStageSchema = createSelectSchema(pipelineStagesTable)
-  .omit({ id: true, tenantId: true, key: true, isSystem: true, createdAt: true, updatedAt: true })
+  .omit({ id: true, tenantId: true, pipeline: true, key: true, isSystem: true, createdAt: true, updatedAt: true })
   .partial();
 
 export type PipelineStage = typeof pipelineStagesTable.$inferSelect;
 export type NewPipelineStage = typeof pipelineStagesTable.$inferInsert;
 
-// As 11 etapas do sistema (mesmos valores do antigo dealEtapaEnum) —
-// usado pra semear tenants que ainda não têm nenhuma etapa configurada.
-// Mesmas labels/cores que já existiam hardcoded em Deals.tsx (ETAPAS).
-// `perguntas` são o playbook padrão de cada etapa comercial — aparecem
-// no topo da Central de Trabalho, e o admin pode editar/adicionar/remover
-// livremente depois (ficam guardadas na própria linha da etapa, então
-// sobrevivem a renomear/reordenar a pipeline).
+// Etapas comerciais oficiais (mesmos valores usados por deals.etapa).
 export const SYSTEM_PIPELINE_STAGES: Array<{ key: string; label: string; color: string; bg: string; ordem: number; perguntas?: { id: string; texto: string }[] }> = [
   { key: "em_aquecimento",      label: "Em Aquecimento", color: "text-orange-600",  bg: "bg-orange-100",  ordem: 0 },
   {
@@ -93,9 +87,9 @@ export const SYSTEM_PIPELINE_STAGES: Array<{ key: string; label: string; color: 
       { id: "conf_prazo", texto: "Prazo de entrega confirmado com o cliente?" },
     ],
   },
-  { key: "ganho",                label: "Ganho",          color: "text-emerald-600", bg: "bg-emerald-100", ordem: 6 },
-  { key: "em_execucao",         label: "Em Execução",    color: "text-cyan-600",    bg: "bg-cyan-100",    ordem: 7 },
-  { key: "entregue",             label: "Entregue",       color: "text-teal-600",    bg: "bg-teal-100",    ordem: 8 },
-  { key: "perdido",              label: "Perdido",        color: "text-red-600",     bg: "bg-red-100",     ordem: 9 },
-  { key: "parceiro",             label: "Parceiros",      color: "text-purple-600",  bg: "bg-purple-100",  ordem: 10 },
+  { key: "ganho",        label: "Ganho",       color: "text-emerald-600", bg: "bg-emerald-100", ordem: 6 },
+  { key: "em_execucao",  label: "Em Execução", color: "text-cyan-600",    bg: "bg-cyan-100",    ordem: 7 },
+  { key: "entregue",     label: "Entregue",    color: "text-teal-600",    bg: "bg-teal-100",    ordem: 8 },
+  { key: "perdido",      label: "Perdido",     color: "text-red-600",     bg: "bg-red-100",     ordem: 9 },
+  { key: "parceiro",     label: "Parceiros",   color: "text-purple-600",  bg: "bg-purple-100",  ordem: 10 },
 ];

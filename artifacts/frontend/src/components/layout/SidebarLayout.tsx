@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
-import { useGetBusinessProfileByTenant } from "@workspace/api-client-react";
+import { getGetBusinessProfileByTenantQueryKey, useGetBusinessProfileByTenant } from "@workspace/api-client-react";
 
 type TenantNavModule = {
   moduleKey: string;
@@ -64,6 +64,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const businessProfileQuery = useGetBusinessProfileByTenant(effectiveTenantId, {
     query: {
+      queryKey: getGetBusinessProfileByTenantQueryKey(effectiveTenantId),
       enabled: !!effectiveTenantId && !!token,
       staleTime: 5 * 60_000,
     },
