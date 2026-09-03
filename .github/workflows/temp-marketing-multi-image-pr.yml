@@ -1,0 +1,54 @@
+name: Temporary Marketing multi-image PR patch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'fix/marketing-multi-image-upload'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/marketing-multi-image-upload
+
+      - name: Apply embedded product patch
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/temp-marketing-multi-image-patch.yml').read_text()
+          start_marker = "          python3 <<'PY'\n"
+          end_marker = "\n          PY\n\n          git diff --check"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          script = textwrap.dedent(workflow[start:end])
+          exec(compile(script, '<embedded-patch>', 'exec'))
+          PY
+
+          git diff --check
+
+      - name: Commit product changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No product changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/pages/Content.tsx \
+                  artifacts/api-server/src/routes/content.ts \
+                  artifacts/api-server/src/lib/instagram-publish.ts \
+                  artifacts/api-server/src/services/contentSocialPublisher.ts \
+                  lib/db/src/schema/content_generations.ts
+          git commit -m "Marketing: permitir várias imagens no Feed"
+          git push origin HEAD:fix/marketing-multi-image-upload
