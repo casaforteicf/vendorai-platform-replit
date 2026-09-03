@@ -1,8 +1,6 @@
 import { randomUUID } from "crypto";
 import { createMediaJob } from "./media-jobs.js";
 import { createProcessingMediaProject } from "./media-library.js";
-import { isVendorAiVoiceWorkerConfigured } from "./vendorai-voice-engine.js";
-import { isVendorAiLipSyncWorkerConfigured } from "./vendorai-lipsync-engine.js";
 
 export type VendorAiMediaCapability =
   | "video_edit"
@@ -47,29 +45,27 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     video_batch: "building",
     video_compose: "building",
     voice_profile: "ready",
-    voice_synthesize: isVendorAiVoiceWorkerConfigured() ? "ready" : "building",
+    voice_synthesize: "building",
     persona_profile: "ready",
-    avatar_lipsync: isVendorAiLipSyncWorkerConfigured() ? "ready" : "building",
+    avatar_lipsync: "building",
     video_generate: "building",
   },
 };
 
-export async function getVendorAiMediaEngineCapabilities(): Promise<VendorAiMediaEngineCapabilities> {
+export async function refreshVendorAiWorkerCapabilities(): Promise<void> {
   const [voiceReady, lipSyncReady] = await Promise.all([
     workerHealthReady(process.env["VENDORAI_MEDIA_WORKER_URL"], "voice"),
     workerHealthReady(process.env["VENDORAI_LIPSYNC_WORKER_URL"], "lipsync"),
   ]);
-
-  return {
-    provider: "vendorai",
-    externalAvatarProviderRequired: false,
-    capabilities: {
-      ...vendorAiMediaEngineCapabilities.capabilities,
-      voice_synthesize: voiceReady ? "ready" : "building",
-      avatar_lipsync: lipSyncReady ? "ready" : "building",
-    },
-  };
+  vendorAiMediaEngineCapabilities.capabilities.voice_synthesize = voiceReady ? "ready" : "building";
+  vendorAiMediaEngineCapabilities.capabilities.avatar_lipsync = lipSyncReady ? "ready" : "building";
 }
+
+void refreshVendorAiWorkerCapabilities();
+const workerHealthTimer = setInterval(() => {
+  void refreshVendorAiWorkerCapabilities();
+}, 30_000);
+workerHealthTimer.unref?.();
 
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string;
