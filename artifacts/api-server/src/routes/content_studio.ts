@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { contentGenerationsTable, db } from "@workspace/db";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
 import {
@@ -36,6 +37,17 @@ function parseImageAssetIds(value: unknown): string[] {
   } catch {
     throw new Error("imageAssetIds inválido");
   }
+}
+
+function sanitizeProductStoryboard(value: string): string {
+  const operationalSection = /(?:^|\n)\s*(?:#{1,6}\s*)?(?:⏰|🎵|🎶)?\s*(?:MELHOR\s+HOR[ÁA]RIO(?:\s+PARA\s+POSTAR)?|M[ÚU]SICA(?:\/[ÁA]UDIO)?\s+RECOMENDAD[OA]|[ÁA]UDIO\s+RECOMENDAD[OA])\b/i.exec(value);
+  const creativeOnly = operationalSection ? value.slice(0, operationalSection.index) : value;
+  return creativeOnly
+    .split(/\r?\n/)
+    .filter((line) => !/\b(?:CapCut|Adobe\s+Premiere(?:\s+Rush)?|Reels\s+nativo|biblioteca\s+do\s+Instagram)\b/i.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
@@ -201,10 +213,11 @@ CTA (25-30s): [chamada para ação com ${cta}]
 
 Para cada seção: texto de tela, narração/legenda e indicação visual.`}
 
-Ao final, sugira:
-- 5 hashtags estratégicas
-- Melhor horário para postar
-- Música/áudio recomendado`;
+Ao final, inclua somente 5 hashtags estratégicas.
+Não recomende músicas, faixas, artistas, bibliotecas de áudio ou níveis de volume.
+Não recomende melhor horário, dia, calendário ou estratégia de postagem.
+Não recomende CapCut, Adobe Premiere, Instagram, Reels nativo ou qualquer ferramenta externa.
+Não inclua instruções de edição nem próximos passos operacionais. O VendorAI cuidará do áudio, organização e publicação depois da renderização.`;
 
     try {
       const referenceImage = productImages[0];
@@ -222,7 +235,7 @@ Ao final, sugira:
       const message = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 2048,
-        system: "Você é um especialista em marketing digital para Instagram no Brasil. Responda sempre em português de forma clara e estruturada.",
+        system: "Você é o diretor criativo do VendorAI. Entregue somente conteúdo criativo que será usado diretamente na renderização. Responda em português claro e estruturado. Nunca recomende horários de postagem, músicas, artistas, bibliotecas de áudio, níveis de volume, CapCut, Adobe Premiere ou outras ferramentas externas; essas decisões são executadas pelo próprio VendorAI após o vídeo ficar pronto.",
         messages: [{
           role: "user",
           content: [
@@ -232,13 +245,35 @@ Ao final, sugira:
         }],
       });
 
-      const result = message.content
+      const rawResult = message.content
         .filter((b) => b.type === "text")
         .map((b) => (b as { type: "text"; text: string }).text)
         .join("\n");
+      const result = sanitizeProductStoryboard(rawResult);
+
+      let generationId: string | null = null;
+      try {
+        const [generation] = await db
+          .insert(contentGenerationsTable)
+          .values({
+            tenantId,
+            type: resolvedFormat === "story" ? "stories" : "reels",
+            theme: name.trim(),
+            productName: name.trim(),
+            contentFormat: resolvedFormat === "story" ? "stories" : "reels",
+            aspectRatio: "9:16",
+            result: resolvedFormat === "story"
+              ? { variations: [{ text: result, cta: cta.trim() || "Compre agora" }] }
+              : { variations: [{ title: name.trim(), scenes: [], audioSuggestion: "", cta: cta.trim() || "Compre agora" }] },
+          })
+          .returning({ id: contentGenerationsTable.id });
+        generationId = generation?.id ?? null;
+      } catch (persistError) {
+        req.log.warn({ err: persistError }, "content-studio: product-video generation could not be persisted");
+      }
 
       if (!shouldRender) {
-        res.json({ result, format: resolvedFormat });
+        res.json({ result, format: resolvedFormat, generationId });
         return;
       }
 
@@ -258,6 +293,7 @@ Ao final, sugira:
       res.status(202).json({
         result,
         format: resolvedFormat,
+        generationId,
         renderStarted: true,
         projectId: render.projectId,
         jobId: render.jobId,
