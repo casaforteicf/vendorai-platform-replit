@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-319",
+    "titulo": "adicionar atalhos externos nas configurações do site",
+    "descricao": "adiciona uma área compacta de **Onde encontrar os dados para conectar** em Configurações do Site; abre em nova aba os locais corretos para Google Ads (Conversões), Meta (Gerenciador de Eventos / Pixel), Cloudflare (Registros DNS) e Google Search Console; mantém intactos os fluxos atuais de domínio, Pixel, Google Ads e Search Console.",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-03T12:11:58.000Z",
+    "pullRequest": 319
+  },
+  {
     "id": "pr-311",
     "titulo": "Video: adicionar trilha sonora ao editor",
     "descricao": "acompanha o job pelo endpoint já existente; exibe preview do MP4 final; mantém o arquivo original intacto; resultado continua registrado na Biblioteca Audiovisual pelo backend do PR #310.",
