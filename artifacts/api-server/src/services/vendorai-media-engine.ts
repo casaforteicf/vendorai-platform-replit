@@ -22,6 +22,21 @@ export interface VendorAiMediaEngineCapabilities {
   capabilities: Record<VendorAiMediaCapability, "ready" | "building">;
 }
 
+async function workerHealthReady(url: string | undefined, kind: "voice" | "lipsync"): Promise<boolean> {
+  if (!url) return false;
+  try {
+    const response = await fetch(`${url.replace(/\/$/, "")}/health`, {
+      signal: AbortSignal.timeout(2500),
+    });
+    if (!response.ok) return false;
+    const health = await response.json() as Record<string, unknown>;
+    if (kind === "lipsync") return health["ready"] === true;
+    return health["status"] === "ok" && (health["cudaAvailable"] === true || health["device"] === "cpu");
+  } catch {
+    return false;
+  }
+}
+
 export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = {
   provider: "vendorai",
   externalAvatarProviderRequired: false,
@@ -38,6 +53,23 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     video_generate: "building",
   },
 };
+
+export async function getVendorAiMediaEngineCapabilities(): Promise<VendorAiMediaEngineCapabilities> {
+  const [voiceReady, lipSyncReady] = await Promise.all([
+    workerHealthReady(process.env["VENDORAI_MEDIA_WORKER_URL"], "voice"),
+    workerHealthReady(process.env["VENDORAI_LIPSYNC_WORKER_URL"], "lipsync"),
+  ]);
+
+  return {
+    provider: "vendorai",
+    externalAvatarProviderRequired: false,
+    capabilities: {
+      ...vendorAiMediaEngineCapabilities.capabilities,
+      voice_synthesize: voiceReady ? "ready" : "building",
+      avatar_lipsync: lipSyncReady ? "ready" : "building",
+    },
+  };
+}
 
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string;
