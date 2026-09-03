@@ -175,7 +175,7 @@ router.get("/tenants/:tenantId/content-autopilot/keywords", async (req, res) => 
 });
 
 // ── PATCH /tenants/:tenantId/content-autopilot/keywords/:id ─────────────────
-// Só pra aprovar/descartar por enquanto (status). Demais campos vêm só do Pesquisador.
+// Aprovar/descartar continua disponível para modo semiautomático; no Automático, oportunidades descobertas também podem ser executadas pela IA.
 const patchKeywordSchema = z.object({ status: z.enum(["descoberta", "aprovada", "em_uso", "descartada"]) });
 
 router.patch("/tenants/:tenantId/content-autopilot/keywords/:id", async (req, res) => {

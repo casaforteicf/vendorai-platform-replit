@@ -107,8 +107,8 @@ const MODE_COPY: Record<AutopilotMode, { title: string; description: string; bad
   },
   automatic: {
     title: "Automático",
-    description: "A IA gera, otimiza e publica automaticamente no site próprio, somente a partir de keywords previamente aprovadas.",
-    badge: "Publicação autorizada",
+    description: "A IA escolhe oportunidades, cria, otimiza e publica automaticamente no site e nos canais sociais conectados, sem aprovação manual de cada publicação.",
+    badge: "IA autorizada a publicar",
   },
 };
 
@@ -231,7 +231,7 @@ export default function ContentAutopilotCore() {
       toast({
         title: `Modo ${MODE_COPY[next].title} ativado`,
         description: next === "automatic"
-          ? "Somente keywords aprovadas poderão seguir até publicação automática."
+          ? "A IA está autorizada a criar e publicar automaticamente. Patrocínios usam somente orçamentos e limites já configurados no módulo de Anúncios."
           : MODE_COPY[next].description,
       });
     } catch (error: any) {
@@ -316,7 +316,7 @@ export default function ContentAutopilotCore() {
                 );
               })}
             </div>
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Automático não elimina governança: só consome keywords aprovadas, e seções bloqueadas no Gerador continuam protegidas.</p>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> No modo Automático a IA não depende de aprovação manual por publicação. A governança permanece pelos limites configurados, conexões válidas e proteções do sistema.</p>
           </div>
         </CardContent>
       </Card>
