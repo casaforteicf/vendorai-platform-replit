@@ -5,8 +5,10 @@ import { loadHistorical5m } from '../../../lib/historical-candles';
 
 export async function GET(req:NextRequest){
   const symbol=(req.nextUrl.searchParams.get('symbol')||'BTCUSDT').toUpperCase();
-  const requested=(req.nextUrl.searchParams.get('strategy')||'TREND_PULLBACK_V2') as StrategyId;
-  const strategy=(STRATEGY_IDS as readonly string[]).includes(requested)?requested:'TREND_PULLBACK_V2';
+  const rawRequested=(req.nextUrl.searchParams.get('strategy')||'TREND_PULLBACK_V2').toUpperCase();
+  const normalized=rawRequested==='EMA_RIBBON_TREND_V1'?'EMA_RIBBON_V1':rawRequested;
+  if(!(STRATEGY_IDS as readonly string[]).includes(normalized))return NextResponse.json({error:'UNKNOWN_STRATEGY',requested:rawRequested,availableStrategies:STRATEGY_IDS},{status:400});
+  const strategy=normalized as StrategyId;
   const days=Math.max(3,Math.min(90,Number(req.nextUrl.searchParams.get('days')||30)));
   const engine=req.nextUrl.searchParams.get('engine')==='legacy'?'LEGACY':'MANAGED_PAPER_V2';
   const candles=days<=5?await loadCandles(symbol,'5m',Math.min(1500,days*24*12)):await loadHistorical5m(symbol,days);
