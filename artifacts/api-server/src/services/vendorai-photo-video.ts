@@ -25,7 +25,6 @@ export class PhotoVideoValidationError extends Error {
 }
 
 type PhotoVideoFormat = "9:16" | "1:1" | "16:9";
-type PhotoVideoFit = "cover" | "inside";
 
 function dimensionsFor(format: PhotoVideoFormat): { width: number; height: number } {
   if (format === "9:16") return { width: 1080, height: 1920 };
@@ -59,24 +58,6 @@ async function resolveImageAsset(tenantId: string, assetId: string) {
   return row;
 }
 
-function videoFilter(width: number, height: number, fit: PhotoVideoFit): string {
-  if (fit === "inside") {
-    return [
-      `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
-      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`,
-      "setsar=1",
-      "format=yuv420p",
-    ].join(",");
-  }
-
-  return [
-    `scale=${width}:${height}:force_original_aspect_ratio=increase`,
-    `crop=${width}:${height}`,
-    "setsar=1",
-    "format=yuv420p",
-  ].join(",");
-}
-
 export async function startVendorAiPhotoVideo(input: {
   tenantId: string;
   userId?: string | null;
@@ -84,7 +65,6 @@ export async function startVendorAiPhotoVideo(input: {
   assetIds: string[];
   secondsPerImage?: number;
   format?: PhotoVideoFormat;
-  fit?: PhotoVideoFit;
 }) {
   const assetIds = [...new Set(input.assetIds.map((id) => id.trim()).filter(Boolean))];
   if (assetIds.length < 2 || assetIds.length > 30) {
@@ -93,9 +73,9 @@ export async function startVendorAiPhotoVideo(input: {
 
   const secondsPerImage = Math.max(1, Math.min(12, Number(input.secondsPerImage ?? 3)));
   const format: PhotoVideoFormat = input.format === "9:16" || input.format === "1:1" ? input.format : "16:9";
-  const fit: PhotoVideoFit = input.fit === "inside" ? "inside" : "cover";
   const { width, height } = dimensionsFor(format);
 
+  // Resolve antes de criar o job para falhar cedo em caso de asset inválido.
   const assets = [];
   for (const assetId of assetIds) {
     assets.push(await resolveImageAsset(input.tenantId, assetId));
@@ -111,7 +91,6 @@ export async function startVendorAiPhotoVideo(input: {
       sourceAssetIds: assetIds,
       secondsPerImage,
       format,
-      fit,
       width,
       height,
       native: true,
@@ -129,7 +108,6 @@ export async function startVendorAiPhotoVideo(input: {
       sourceAssetIds: assetIds,
       secondsPerImage,
       format,
-      fit,
       width,
       height,
       userId: input.userId ?? null,
@@ -157,12 +135,19 @@ export async function startVendorAiPhotoVideo(input: {
         segmentPaths.push(segmentPath);
         await writeFile(imagePath, buffer);
 
+        const vf = [
+          `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+          `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+          "setsar=1",
+          "format=yuv420p",
+        ].join(",");
+
         await execFileAsync("ffmpeg", [
           "-y",
           "-loop", "1",
           "-i", imagePath,
           "-t", secondsPerImage.toFixed(3),
-          "-vf", videoFilter(width, height, fit),
+          "-vf", vf,
           "-r", "30",
           "-an",
           "-c:v", "libx264",
@@ -219,7 +204,6 @@ export async function startVendorAiPhotoVideo(input: {
         userId: input.userId ?? null,
         storageUrl,
         mimeType: "video/mp4",
-        fileSize: output.length,
         type: "video",
         originalFilename: `${input.title.replace(/[^a-z0-9-_ ]/gi, "").trim() || "video-fotos"}.mp4`,
         operation: "photo_video",
@@ -229,7 +213,6 @@ export async function startVendorAiPhotoVideo(input: {
           sourceAssetIds: assetIds,
           secondsPerImage,
           format,
-          fit,
           width,
           height,
           durationEstimate: secondsPerImage * assetIds.length,
