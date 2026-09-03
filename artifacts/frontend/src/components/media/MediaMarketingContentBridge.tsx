@@ -57,6 +57,7 @@ export function MediaMarketingContentBridge() {
   const initial = readStoredSelection();
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [assets, setAssets] = useState<MediaPickerAsset[]>(initial.assets);
   const [mode, setMode] = useState<UsageMode>(initial.mode);
   const assetsRef = useRef(assets);
@@ -80,6 +81,10 @@ export function MediaMarketingContentBridge() {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!onContent) setMobilePanelOpen(false);
+  }, [onContent]);
 
   useEffect(() => {
     const previousFetch = window.fetch.bind(window);
@@ -118,59 +123,108 @@ export function MediaMarketingContentBridge() {
 
   if (!onContent || !tenantId) return null;
 
-  return (
+  const openPicker = () => {
+    setMobilePanelOpen(false);
+    setPickerOpen(true);
+  };
+
+  const renderPanelContent = (mobile = false) => (
     <>
-      <div className="fixed bottom-5 right-5 z-[80] w-[min(380px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
-            {assets[0] ? (
-              <img src={mediaAssetUrl(assets[0].storageUrl)} alt={assets[0].originalFilename || "Mídia escolhida"} className="h-full w-full object-cover" />
-            ) : (
-              <ImageIcon className="h-5 w-5 text-muted-foreground" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold">Mídias do conteúdo</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {assets.length > 0 ? `${assets.length} imagem(ns) escolhida(s) da Central de Mídias` : "Reutilize imagens já aprovadas antes de gerar o conteúdo"}
-            </p>
-          </div>
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+          {assets[0] ? (
+            <img src={mediaAssetUrl(assets[0].storageUrl)} alt={assets[0].originalFilename || "Mídia escolhida"} className="h-full w-full object-cover" />
+          ) : (
+            <ImageIcon className="h-5 w-5 text-muted-foreground" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold">Mídias do conteúdo</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {assets.length > 0 ? `${assets.length} imagem(ns) escolhida(s) da Central de Mídias` : "Reutilize imagens já aprovadas antes de gerar o conteúdo"}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
           {assets.length > 0 && (
-            <button type="button" onClick={() => setAssets([])} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted" title="Limpar seleção">
+            <button type="button" onClick={() => setAssets([])} className="rounded-lg px-2 py-1.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground" title="Limpar seleção">
+              Limpar
+            </button>
+          )}
+          {mobile && (
+            <button type="button" onClick={() => setMobilePanelOpen(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Fechar mídias do conteúdo">
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
+      </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-1">
-          <button
-            type="button"
-            onClick={() => setMode("post_material")}
-            className={`rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${mode === "post_material" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            Material do post
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("style_reference")}
-            className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${mode === "style_reference" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            <Palette className="h-3 w-3" /> Referência visual
-          </button>
-        </div>
-
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-1">
         <button
           type="button"
-          onClick={() => setPickerOpen(true)}
-          className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-xl border bg-background text-xs font-medium hover:bg-muted"
+          onClick={() => setMode("post_material")}
+          className={`rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${mode === "post_material" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
-          <Library className="h-4 w-4" />
-          {assets.length > 0 ? "Trocar seleção da Biblioteca" : "Escolher da Biblioteca"}
+          Material do post
         </button>
-        <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-          “Material do post” entra na peça final. “Referência visual” orienta a geração. Upload e geração por IA existentes continuam disponíveis normalmente.
-        </p>
+        <button
+          type="button"
+          onClick={() => setMode("style_reference")}
+          className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${mode === "style_reference" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Palette className="h-3 w-3" /> Referência visual
+        </button>
       </div>
+
+      <button
+        type="button"
+        onClick={openPicker}
+        className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-xl border bg-background text-xs font-medium hover:bg-muted"
+      >
+        <Library className="h-4 w-4" />
+        {assets.length > 0 ? "Trocar seleção da Biblioteca" : "Escolher da Biblioteca"}
+      </button>
+      <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+        “Material do post” entra na peça final. “Referência visual” orienta a geração. Upload e geração por IA existentes continuam disponíveis normalmente.
+      </p>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop: mantém o painel auxiliar flutuante. */}
+      <div className="fixed bottom-5 right-5 z-[80] hidden w-[min(380px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur md:block">
+        {renderPanelContent()}
+      </div>
+
+      {/* Mobile: o painel grande não fica mais aberto por cima do formulário. */}
+      <button
+        type="button"
+        onClick={() => setMobilePanelOpen(true)}
+        className="fixed bottom-4 left-4 z-[70] inline-flex h-11 items-center gap-2 rounded-full border bg-background/95 px-4 text-xs font-semibold shadow-lg backdrop-blur md:hidden"
+        aria-label="Abrir mídias do conteúdo"
+      >
+        <Library className="h-4 w-4" />
+        Mídias
+        {assets.length > 0 && (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+            {assets.length}
+          </span>
+        )}
+      </button>
+
+      {mobilePanelOpen && (
+        <div className="fixed inset-0 z-[90] md:hidden" role="dialog" aria-modal="true" aria-label="Mídias do conteúdo">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/35"
+            onClick={() => setMobilePanelOpen(false)}
+            aria-label="Fechar mídias do conteúdo"
+          />
+          <div className="absolute inset-x-3 bottom-3 max-h-[min(78dvh,560px)] overflow-y-auto rounded-2xl border bg-background p-4 shadow-2xl">
+            {renderPanelContent(true)}
+          </div>
+        </div>
+      )}
 
       <MediaAssetPicker
         tenantId={tenantId}
