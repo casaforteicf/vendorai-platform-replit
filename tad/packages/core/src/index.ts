@@ -21,6 +21,7 @@ export * from './strategy/range-scalp';
 export * from './strategy/liquidity-sweep';
 export * from './strategy/timing-profile';
 export * from './strategy/strategy-library';
+export * from './strategy/strategy-sweep';
 export * from './strategy/registry';
 export * from './audit/strategy-metrics';
 export * from './backtest/engine';
