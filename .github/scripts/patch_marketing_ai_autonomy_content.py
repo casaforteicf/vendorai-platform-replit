@@ -97,6 +97,25 @@ router.delete("/tenants/:tenantId/content/:id",'''
 content, count = publish_pattern.subn(publish_replacement, content, count=1)
 if count != 1:
     raise SystemExit(f"Não encontrei exatamente a rota de publicação Instagram para substituir: {count}")
+
+# O schema legado aceita TikTok, mas improveVariationText ainda só conhece os
+# formatos realmente implementados. Faz o narrowing explícito para não enviar
+# um tipo sem suporte e elimina a inconsistência de tipagem já existente.
+improve_old = '''    const { type, variation, theme } = parsed.data;
+    const { variation: improved, tokensUsed } = await improveVariationText(
+      tenantId, type, variation as Parameters<typeof improveVariationText>[2], theme ?? undefined,
+    );'''
+improve_new = '''    const { type, variation, theme } = parsed.data;
+    if (type === "tiktok") {
+      res.status(422).json({ error: "Melhoria de texto para TikTok ainda não é suportada por este motor." });
+      return;
+    }
+    const { variation: improved, tokensUsed } = await improveVariationText(
+      tenantId, type, variation as Parameters<typeof improveVariationText>[2], theme ?? undefined,
+    );'''
+if content.count(improve_old) != 1:
+    raise SystemExit(f"Não encontrei exatamente o bloco de melhoria de texto: {content.count(improve_old)}")
+content = content.replace(improve_old, improve_new, 1)
 Path(content_path).write_text(content)
 
 ui_path = "artifacts/frontend/src/pages/ContentAutopilotCore.tsx"
