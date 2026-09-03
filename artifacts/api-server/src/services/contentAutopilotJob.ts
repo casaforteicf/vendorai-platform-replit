@@ -5,11 +5,10 @@
  * Modos persistidos:
  * - suggestion: não gera nem publica automaticamente;
  * - semi: gera + otimiza usando keywords aprovadas e mantém revisão humana;
- * - automatic: a autorização do tenant permite que a IA escolha oportunidades
- *   descobertas, gere, otimize e publique sem aprovação manual de cada item.
+ * - automatic: a autorização específica do Marketing permite que a IA escolha
+ *   oportunidades descobertas, gere, otimize e publique sem aprovação manual.
  */
 import {
-  agentConfigsTable,
   contentAutopilotConfigTable,
   contentAutopilotKeywordsTable,
   contentAutopilotRunsTable,
@@ -26,14 +25,10 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
   const erros: string[] = [];
   let artigosGerados = 0;
 
-  const [[config], [agentConfig]] = await Promise.all([
-    db.select().from(contentAutopilotConfigTable).where(eq(contentAutopilotConfigTable.tenantId, tenantId)),
-    db
-      .select({ autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt })
-      .from(agentConfigsTable)
-      .where(eq(agentConfigsTable.tenantId, tenantId))
-      .limit(1),
-  ]);
+  const [config] = await db
+    .select()
+    .from(contentAutopilotConfigTable)
+    .where(eq(contentAutopilotConfigTable.tenantId, tenantId));
   if (!config) return { artigosGerados: 0, erros: [] };
 
   const automationMode = config.automationMode ?? (config.ativo ? "semi" : "suggestion");
@@ -47,12 +42,8 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
     return { artigosGerados: 0, erros: [] };
   }
 
-  const autonomousPublishing = automationMode === "automatic" && Boolean(agentConfig?.autonomyEnabledAt);
-  if (automationMode === "automatic" && !autonomousPublishing) {
-    log.warn({ tenantId }, "content-autopilot/job: modo automático sem autonomia global ativa; geração segue, publicação social fica protegida");
-  }
-
-  const statusFilter = automationMode === "automatic"
+  const autonomousPublishing = automationMode === "automatic";
+  const statusFilter = autonomousPublishing
     ? or(
         eq(contentAutopilotKeywordsTable.status, "aprovada"),
         eq(contentAutopilotKeywordsTable.status, "descoberta"),
@@ -69,7 +60,7 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
   if (keywords.length === 0) {
     log.info(
       { tenantId, automationMode },
-      automationMode === "automatic"
+      autonomousPublishing
         ? "content-autopilot/job: nenhuma oportunidade descoberta/aprovada disponível"
         : "content-autopilot/job: nenhuma keyword aprovada disponível",
     );
@@ -82,7 +73,7 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
       await optimizeArticle(tenantId, articleId, keyword.termo);
 
       if (config.canalPublicacao === "site_proprio") {
-        await publishToNativeSite(tenantId, articleId, { publish: automationMode === "automatic" });
+        await publishToNativeSite(tenantId, articleId, { publish: autonomousPublishing });
       }
 
       let social: Awaited<ReturnType<typeof createAndPublishAutonomousFeed>> | null = null;
@@ -107,8 +98,7 @@ export async function processTenant(tenantId: string, log: Logger): Promise<{ ar
           keywordId: keyword.id,
           articleId,
           automationMode,
-          autoPublishedSite: automationMode === "automatic" && config.canalPublicacao === "site_proprio",
-          autonomousPublishing,
+          autoPublishedSite: autonomousPublishing && config.canalPublicacao === "site_proprio",
           socialContentGenerationId: social?.contentGenerationId ?? null,
           instagramPublished: social?.published ?? false,
           instagramPostId: social?.postId ?? null,
