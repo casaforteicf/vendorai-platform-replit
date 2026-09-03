@@ -15,14 +15,14 @@ interface VideoCard {
 
 const CARDS: VideoCard[] = [
   {
-    title: "Avatar falando",
-    description: "Gere um vídeo com avatar narrando seu conteúdo a partir de um roteiro ou foto.",
+    title: "Pessoas & Vozes",
+    description: "Cadastre pessoas ou personas autorizadas, referências de voz e permissões de uso no Media Engine.",
     icon: Mic2,
     gradient: "from-purple-600/30 via-violet-500/20 to-purple-900/10",
     iconBg: "bg-purple-500/20 text-purple-300",
     route: "/content-studio/video/avatar",
-    badge: "Em construção",
-    badgeColor: "bg-gray-500/20 text-gray-300 border-gray-500/30",
+    badge: "Disponível",
+    badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/30",
   },
   {
     title: "Vídeo de Produto",
@@ -129,7 +129,7 @@ export default function VideoHome() {
 
                 {isAvailable && (
                   <div className="flex items-center gap-1 text-xs font-semibold text-gray-300 group-hover:text-white transition-colors">
-                    Criar agora
+                    Abrir
                     <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </div>
                 )}
