@@ -69,9 +69,7 @@ export const STRATEGY_LIBRARY:StrategyLibraryEntry[]=[
  A('BULL_CONTINUATION_V1','Bull Continuation','TREND',['ALL_LIQUID'],['UP','STRONG_UP'],['90d','30d','15d','5d','1d'],'5m',['15m','1h'],[],'Continuação específica para mercado estruturalmente altista.'),
  A('LOW_VOL_BREAKOUT_V1','Low Vol Breakout','BREAKOUT',['BTC','ETH','LARGE_CAP'],['RANGE'],['15d','5d','1d','6h'],'5m',['15m'],['30s'],'Rompimento após período prolongado de baixa volatilidade.'),
  A('HIGH_BETA_MOMENTUM_V1','High Beta Momentum','MOMENTUM',['HIGH_BETA','MEME'],['STRONG_UP','STRONG_DOWN'],['5d','1d','6h'],'1m',['5m','15m'],['30s','15s'],'Momentum para ativos de alta beta com filtros fortes de liquidez.'),
- A('MEME_LIQUIDITY_SWEEP_V1','Meme Liquidity Sweep','LIQUIDITY',['MEME'],['RANGE','UP','DOWN'],['1d','6h','1h'],'1m',['5m'],['30s','15s'],'Sweep adaptado a ativos meme, exigindo liquidez e rejeição fortes.'),
- A('PAIR_RELATIVE_STRENGTH_V1','Pair Relative Strength','MOMENTUM',['BTC','ETH','LARGE_CAP','HIGH_BETA'],['UP','DOWN'],['15d','5d','1d'],'15m',['1h'],[],'Opera força relativa do par versus benchmark.'),
- A('REGIME_SWITCH_V1','Regime Switch','TREND',['BTC','ETH','LARGE_CAP'],['RANGE','UP','DOWN','STRONG_UP','STRONG_DOWN'],['90d','30d','15d','5d','1d'],'15m',['1h'],[],'Estratégia meta para transição de regime, ainda apenas pesquisa.')
+ A('MEME_LIQUIDITY_SWEEP_V1','Meme Liquidity Sweep','LIQUIDITY',['MEME'],['RANGE','UP','DOWN'],['1d','6h','1h'],'1m',['5m'],['30s','15s'],'Sweep adaptado a ativos meme, exigindo liquidez e rejeição fortes.')
 ];
 
 export function classifyPair(symbol:string):PairClass[]{
