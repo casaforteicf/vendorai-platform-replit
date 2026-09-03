@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Funcionalidades from "@/pages/Funcionalidades";
+import RecursoDetalhe from "@/pages/RecursoDetalhe";
+import AgenteDetalhe from "@/pages/AgenteDetalhe";
 import Precos from "@/pages/Precos";
 import Sobre from "@/pages/Sobre";
 import Contato from "@/pages/Contato";
@@ -44,7 +46,9 @@ function Router() {
           <main className="flex-1">
             <Switch>
               <Route path="/" component={Home} />
+              <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
               <Route path="/funcionalidades" component={Funcionalidades} />
+              <Route path="/agentes/:slug" component={AgenteDetalhe} />
               <Route path="/precos" component={Precos} />
               <Route path="/sobre" component={Sobre} />
               <Route path="/contato" component={Contato} />

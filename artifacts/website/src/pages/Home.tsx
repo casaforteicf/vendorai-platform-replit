@@ -81,12 +81,12 @@ const GROWTH_CYCLE = [
 ] as const;
 
 const AGENT_FLOW = [
-  ["SDR IA", "Responde e entende a intenção"],
-  ["Qualificação IA", "Identifica contexto e prioridade"],
-  ["Follow-up IA", "Detecta esfriamento e mantém a próxima ação"],
-  ["Closer IA", "Apoia proposta, negociação e decisão"],
-  ["Pós-venda IA", "Continua a jornada depois do fechamento"],
-  ["Revenue Scout", "Procura a próxima oportunidade na carteira"],
+  ["SDR IA", "Responde e entende a intenção", "recepcao"],
+  ["Qualificação IA", "Identifica contexto e prioridade", "sdr"],
+  ["Follow-up IA", "Detecta esfriamento e mantém a próxima ação", "follow-up"],
+  ["Closer IA", "Apoia proposta, negociação e decisão", "closer"],
+  ["Pós-venda IA", "Continua a jornada depois do fechamento", "pos-venda"],
+  ["Revenue Scout", "Procura a próxima oportunidade na carteira", "revenue-scout"],
 ] as const;
 
 function money(value: number) {
@@ -410,24 +410,28 @@ export default function Home() {
                 title: "Gerador de Sites com IA",
                 desc: "Descreva sua empresa e a IA monta o site completo — textos, estrutura, SEO e identidade visual — pronto pra publicar em minutos, não em semanas de agência.",
                 cta: "Ver o gerador de sites",
+                slug: "gerador-de-sites",
               },
               {
                 icon: FileSearch,
                 title: "Análise do seu site atual",
                 desc: "Cole a URL do site que você já tem. A IA audita estrutura, conteúdo e SEO, e aponta exatamente o que está custando visita e conversão.",
                 cta: "Ver como funciona a análise",
+                slug: "analise-de-site",
               },
               {
                 icon: Newspaper,
                 title: "Content Autopilot",
                 desc: "A IA pesquisa palavras-chave do seu mercado, escreve artigos de blog otimizados pra SEO e publica sozinha, todo dia — sem você abrir uma tela de redação.",
                 cta: "Ver o Content Autopilot",
+                slug: "content-autopilot",
               },
               {
                 icon: LayoutTemplate,
                 title: "50 landing pages por mercado",
                 desc: "Cada um dos 50 perfis verticais do VendorAI tem sua própria LP, com estrutura de venda SPIN Selling pronta — não é um template genérico reaproveitado.",
                 cta: "Ver as LPs por segmento",
+                slug: "lps-por-vertical",
               },
             ].map((item) => (
               <motion.div
@@ -440,7 +444,7 @@ export default function Home() {
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-400/10 text-blue-300"><item.icon className="h-5 w-5" /></div>
                 <h3 className="mt-5 text-xl font-semibold tracking-[-0.02em]">{item.title}</h3>
                 <p className="mt-3 text-sm leading-6 text-slate-400">{item.desc}</p>
-                <Link href="/funcionalidades#sites" className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-300 hover:text-blue-200">
+                <Link href={`/funcionalidades/${item.slug}`} className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-300 hover:text-blue-200">
                   {item.cta} <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </motion.div>
@@ -593,11 +597,12 @@ export default function Home() {
               <p className="mt-5 text-lg leading-8 text-slate-600">Cada agente recebe contexto da etapa anterior e deixa a próxima ação pronta, evitando que atendimento, vendas e pós-venda funcionem como ilhas.</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              {AGENT_FLOW.map(([agent, role], index) => (
-                <div key={agent} className="rounded-2xl border border-slate-200 bg-white p-5">
+              {AGENT_FLOW.map(([agent, role, slug], index) => (
+                <Link key={agent} href={`/agentes/${slug}`} className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-1 hover:border-blue-300">
                   <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Bot className="h-4 w-4" /></div><div><p className="text-xs text-slate-400">Etapa {index + 1}</p><p className="font-semibold">{agent}</p></div></div>
                   <p className="mt-3 text-sm leading-6 text-slate-500">{role}</p>
-                </div>
+                  <p className="mt-3 flex items-center gap-1 text-xs font-semibold text-blue-600">Ver agente <ArrowRight className="h-3 w-3 transition group-hover:translate-x-1" /></p>
+                </Link>
               ))}
             </div>
           </div>
