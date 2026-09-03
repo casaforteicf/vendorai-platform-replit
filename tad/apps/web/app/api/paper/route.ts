@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildConsensus, combineIntelligence, evaluateRisk, evaluatePortfolioRisk, evaluatePortfolioIntelligence, classifyRegimeContext, evaluateRegimeGate, evaluateRiskBudget, evaluateStrategyLifecycle, supervise, executePaper, getOperatingProfile, metricPrior, portfolioCorrelationRisk, strategyCandidates, strategyMetrics, summarizePortfolio, simulateShadowOrder, shadowQualityScore, type MarketSnapshot, type StrategySignal, type StrategyMetric, type TadMarketId } from '@tad/core';
+import { buildConsensus, buildStrategyPerformanceMatrix, combineIntelligence, evaluateRisk, evaluatePortfolioRisk, evaluatePortfolioIntelligence, classifyRegimeContext, evaluateRegimeGate, evaluateRiskBudget, evaluateStrategyLifecycle, performanceAdjustment, supervise, executePaper, getOperatingProfile, metricPrior, portfolioCorrelationRisk, strategyCandidates, strategyMetrics, summarizePortfolio, simulateShadowOrder, shadowQualityScore, type MarketSnapshot, type StrategySignal, type StrategyMetric, type TadMarketId } from '@tad/core';
 import { bearerToken } from '../../../lib/auth';
 import { appendAudit, findPositionByAutopilotKey, getPaperWallet, listPositions, savePosition, saveShadowExecution, storageMode } from '../../../lib/store';
 import { getOperatingSettings } from '../../../lib/operating-settings';
@@ -29,6 +29,7 @@ export async function POST(req:NextRequest){
   const all=await listPositions(token); const summary=summarizePortfolio(all,accountSize); const open=all.filter(p=>p.status==='OPEN');
   if(open.some(p=>p.symbol===body.market!.symbol)){await appendAudit(token,'PAPER_BLOCKED_SYMBOL_ALREADY_OPEN',{symbol:body.market.symbol,autopilotKey:body.autopilotKey??null,profile:profile.id});return NextResponse.json({approved:false,reason:'SYMBOL_ALREADY_OPEN',mode:'PAPER',profile:profile.id,storage:storageMode()});}
   const metrics=strategyMetrics(all);
+  const performanceMatrix=buildStrategyPerformanceMatrix(all,{recentDays:7});
   const dailyLossPct=Math.max(0,(-Math.min(0,summary.realizedPnl+summary.unrealizedPnl)/accountSize)*100);
   const requestedLeverage=Math.max(1,Math.min(policy.maxLeverage,body.leverage??Math.min(2,policy.maxLeverage)));
   const [technical,derivatives,eventFeed,freshMarkets]=await Promise.all([loadTechnical(body.market.symbol),loadDerivativesIntelligence(body.market.symbol),loadConfiguredEvents(body.market.symbol),loadMarkets()]);
@@ -45,8 +46,9 @@ export async function POST(req:NextRequest){
     const prior=metricPrior(strategyMetric);
     const biasMatch=(intelligence.combinedBias==='BULLISH'&&s.side==='LONG')||(intelligence.combinedBias==='BEARISH'&&s.side==='SHORT')?6:intelligence.combinedBias==='NEUTRAL'?0:-4;
     const governanceAdjustment=governedAutopilot?(lifecycle.score-50)*.2:0;
-    const adaptiveScore=s.confidence*100+prior+biasMatch+governanceAdjustment;
-    return {signal:s,adaptiveScore,prior,biasMatch,governanceAdjustment,lifecycle};
+    const performance=governedAutopilot?performanceAdjustment(performanceMatrix,s.strategyId,body.market!.symbol,s.side):{adjustment:0,source:'MANUAL_PAPER_NO_ADJUSTMENT',row:null};
+    const adaptiveScore=s.confidence*100+prior+biasMatch+governanceAdjustment+performance.adjustment;
+    return {signal:s,adaptiveScore,prior,biasMatch,governanceAdjustment,performanceAdjustment:performance.adjustment,performanceSource:performance.source,performanceRow:performance.row,lifecycle};
   }).filter(v=>!governedAutopilot||v.lifecycle.capitalMultiplier>0).sort((a,b)=>b.adaptiveScore-a.adaptiveScore);
   if(!valid.length){await appendAudit(token,'NO_SIGNAL',{market:body.market,technical:technical.mtf,intelligence,profile:profile.id,governedAutopilot,allowedStrategyIds:allowlist?[...allowlist]:null});return NextResponse.json({approved:false,reason:governedAutopilot?'NO_SWEEP_GOVERNANCE_ELIGIBLE_STRATEGY':'NO_VALID_STRATEGY_SIGNAL',technical:technical.mtf,intelligence,profile:profile.id,storage:storageMode()})}
   const signal=valid[0].signal; const decision=buildConsensus(signal,agentScores(body.market,technical.mtf.alignmentScore/100,intelligence));
@@ -97,7 +99,7 @@ export async function POST(req:NextRequest){
   risk.approved=riskBudget.approved;
   risk.effectiveRiskPct=riskBudget.finalRiskPct;
   risk.reasons.push(...riskBudget.reasons);
-  await appendAudit(token,'DECISION',{decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,market:body.market,marketId,profile:profile.id,operatingSettings,technical:technical.mtf,intelligence,governedAutopilot,allowedStrategyIds:allowlist?[...allowlist]:null,candidates:valid.map(v=>({strategyId:v.signal.strategyId,confidence:v.signal.confidence,adaptiveScore:v.adaptiveScore,prior:v.prior,biasMatch:v.biasMatch,governanceAdjustment:v.governanceAdjustment,lifecycleState:v.lifecycle.state,lifecycleScore:v.lifecycle.score,capitalMultiplier:v.lifecycle.capitalMultiplier,rationale:v.signal.rationale}))});
+  await appendAudit(token,'DECISION',{decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,market:body.market,marketId,profile:profile.id,operatingSettings,technical:technical.mtf,intelligence,governedAutopilot,allowedStrategyIds:allowlist?[...allowlist]:null,performanceMatrix:{totalClosedTrades:performanceMatrix.totalClosedTrades,recentDays:performanceMatrix.recentDays},candidates:valid.map(v=>({strategyId:v.signal.strategyId,confidence:v.signal.confidence,adaptiveScore:v.adaptiveScore,prior:v.prior,biasMatch:v.biasMatch,governanceAdjustment:v.governanceAdjustment,performanceAdjustment:v.performanceAdjustment,performanceSource:v.performanceSource,performanceSampleState:v.performanceRow?.sampleState??'INSUFFICIENT',performanceTrades:v.performanceRow?.trades??0,lifecycleState:v.lifecycle.state,lifecycleScore:v.lifecycle.score,capitalMultiplier:v.lifecycle.capitalMultiplier,rationale:v.signal.rationale}))});
   if(!risk.approved)return NextResponse.json({approved:false,decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,technical:technical.mtf,intelligence,candidates:valid,mode:'PAPER',profile:profile.id,operatingSettings,storage:storageMode()});
   const position=executePaper(decision,risk,{accountSize,leverage:requestedLeverage}); if(body.autopilotKey)(position as any).autopilotKey=body.autopilotKey; await savePosition(token,position);
   const shadowOrder=simulateShadowOrder(decision,body.market,{latencyMs:180,feeBpsPerSide:2}); const shadow={...shadowOrder,qualityScore:shadowQualityScore(shadowOrder),paperPositionId:position.id}; await saveShadowExecution(token,shadow);
