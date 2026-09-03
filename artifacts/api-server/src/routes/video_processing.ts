@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { writeFile, readFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { pool } from "@workspace/db";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { transcribeAudioWithWordTimestamps, type TranscriptionWord } from "../lib/ai-gateway.js";
 import {
@@ -94,7 +95,6 @@ router.post(
     });
     res.json({ jobId, projectId });
 
-    // ── async processing ─────────────────────────────────────────────────────
     void (async () => {
       const tmpDir  = tmpdir();
       const inPath  = join(tmpDir, `vp-in-${jobId}.mp4`);
@@ -311,10 +311,8 @@ router.post("/tenants/:tenantId/content-studio/video/batch", async (req, res) =>
 
 // ── Legendagem automática ─────────────────────────────────────────────────────
 // Transcreve o áudio com timestamp por palavra (Whisper) e queima a
-// legenda no vídeo via ffmpeg (filtro ass, estilo TikTok/Reels: texto
-// branco em negrito, contorno preto, terço inferior). Agrupa palavras em
-// blocos curtos (3-6 palavras ou corte em pausa >0.6s) em vez de
-// legenda-frase-inteira, pra ficar no ritmo de leitura de Reels curto.
+// legenda no vídeo via ffmpeg (filtro ass). O visual é definido pelo
+// Brand Video Kit ativo do tenant, preservando reels_bold como fallback.
 
 function formatAssTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -330,6 +328,73 @@ function escapeAssText(text: string): string {
 
 const MAX_WORDS_PER_CAPTION = 5;
 const MAX_PAUSE_GAP_SECONDS = 0.6;
+type CaptionPreset = "reels_bold" | "clean" | "highlight" | "minimal";
+
+type CaptionStyle = {
+  fontSize: number;
+  primaryColour: string;
+  outlineColour: string;
+  bold: 0 | 1;
+  outline: number;
+  shadow: number;
+  marginV: number;
+  uppercase: boolean;
+};
+
+const CAPTION_STYLES: Record<CaptionPreset, CaptionStyle> = {
+  reels_bold: {
+    fontSize: 88,
+    primaryColour: "&H00FFFFFF",
+    outlineColour: "&H00000000",
+    bold: 1,
+    outline: 6,
+    shadow: 0,
+    marginV: 220,
+    uppercase: true,
+  },
+  clean: {
+    fontSize: 64,
+    primaryColour: "&H00FFFFFF",
+    outlineColour: "&H00000000",
+    bold: 0,
+    outline: 3,
+    shadow: 0,
+    marginV: 180,
+    uppercase: false,
+  },
+  highlight: {
+    fontSize: 76,
+    primaryColour: "&H0000FFFF",
+    outlineColour: "&H00000000",
+    bold: 1,
+    outline: 5,
+    shadow: 0,
+    marginV: 210,
+    uppercase: true,
+  },
+  minimal: {
+    fontSize: 54,
+    primaryColour: "&H00FFFFFF",
+    outlineColour: "&H00000000",
+    bold: 0,
+    outline: 2,
+    shadow: 0,
+    marginV: 150,
+    uppercase: false,
+  },
+};
+
+async function resolveBrandCaptionPreset(tenantId: string): Promise<CaptionPreset> {
+  const result = await pool.query(
+    `SELECT caption_preset
+       FROM media_brand_video_kits
+      WHERE tenant_id = $1 AND status = 'active'
+      LIMIT 1`,
+    [tenantId],
+  );
+  const preset = String(result.rows[0]?.caption_preset ?? "reels_bold") as CaptionPreset;
+  return preset in CAPTION_STYLES ? preset : "reels_bold";
+}
 
 function buildCaptionChunks(words: TranscriptionWord[]): { start: number; end: number; text: string }[] {
   const chunks: { start: number; end: number; text: string }[] = [];
@@ -357,7 +422,11 @@ function buildCaptionChunks(words: TranscriptionWord[]): { start: number; end: n
   return chunks;
 }
 
-function buildAssSubtitle(chunks: { start: number; end: number; text: string }[]): string {
+function buildAssSubtitle(
+  chunks: { start: number; end: number; text: string }[],
+  preset: CaptionPreset,
+): string {
+  const style = CAPTION_STYLES[preset];
   const header = `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -367,13 +436,16 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Liberation Sans,88,&H00FFFFFF,&H00000000,&H00000000,1,0,1,6,0,2,60,60,220,1
+Style: Default,Liberation Sans,${style.fontSize},${style.primaryColour},${style.outlineColour},&H00000000,${style.bold},0,1,${style.outline},${style.shadow},2,60,60,${style.marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
   const lines = chunks
-    .map((c) => `Dialogue: 0,${formatAssTime(c.start)},${formatAssTime(c.end)},Default,,0,0,0,,${escapeAssText(c.text.toUpperCase())}`)
+    .map((c) => {
+      const text = style.uppercase ? c.text.toUpperCase() : c.text;
+      return `Dialogue: 0,${formatAssTime(c.start)},${formatAssTime(c.end)},Default,,0,0,0,,${escapeAssText(text)}`;
+    })
     .join("\n");
   return header + lines;
 }
@@ -387,6 +459,7 @@ router.post(
 
     const tenantId = String(req.params["tenantId"]);
     const userId = req.user?.sub ?? null;
+    const captionPreset = await resolveBrandCaptionPreset(tenantId);
     const jobId = randomUUID();
     const projectId = await createProcessingMediaProject({
       tenantId,
@@ -397,10 +470,17 @@ router.post(
         originalFilename: req.file.originalname,
         mimeType: req.file.mimetype,
         fileSize: req.file.size,
+        captionPreset,
       },
     });
-    await createMediaJob({ id: jobId, tenantId, projectId, operation: "video_caption" });
-    res.json({ jobId, projectId });
+    await createMediaJob({
+      id: jobId,
+      tenantId,
+      projectId,
+      operation: "video_caption",
+      input: { captionPreset },
+    });
+    res.json({ jobId, projectId, captionPreset });
 
     void (async () => {
       const tmpDir    = tmpdir();
@@ -411,11 +491,9 @@ router.post(
       try {
         await writeFile(inPath, req.file!.buffer);
 
-        // 1) Extrai áudio em WAV mono 16kHz — formato mais leve/confiável pro Whisper.
         await execFileAsync("ffmpeg", ["-y", "-i", inPath, "-vn", "-ac", "1", "-ar", "16000", audioPath]);
         const audioBuffer = await readFile(audioPath);
 
-        // 2) Transcreve com timestamp por palavra.
         const { words } = await transcribeAudioWithWordTimestamps(tenantId, "audio_transcription", audioBuffer, {
           mimeType: "audio/wav",
           language: "pt",
@@ -429,13 +507,9 @@ router.post(
           return;
         }
 
-        // 3) Monta legenda estilo Reels (blocos curtos) e grava o .ass.
         const chunks = buildCaptionChunks(words);
-        await writeFile(assPath, buildAssSubtitle(chunks), "utf8");
+        await writeFile(assPath, buildAssSubtitle(chunks, captionPreset), "utf8");
 
-        // 4) Queima a legenda no vídeo. Caminho absoluto do .ass precisa
-        // ser escapado pro filtro ass= do ffmpeg (Windows-style escaping
-        // exigido pelo próprio libass mesmo em Linux, por herança do formato).
         const assFilterPath = assPath.replace(/\\/g, "/").replace(/:/g, "\\\\:");
         await execFileAsync("ffmpeg", [
           "-y", "-i", inPath,
@@ -455,7 +529,7 @@ router.post(
           originalFilename: `captioned-${req.file!.originalname}`,
           operation: "video_caption",
           label: "Vídeo legendado",
-          metadata: { jobId, captionChunks: chunks.length, language: "pt" },
+          metadata: { jobId, captionChunks: chunks.length, language: "pt", captionPreset },
         }).catch(async (libraryError) => {
           req.log.error({ err: libraryError, tenantId, projectId, jobId }, "media-library: failed to register captioned video");
           await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
