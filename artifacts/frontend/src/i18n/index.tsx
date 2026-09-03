@@ -102,7 +102,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       locale,
       setLocale,
       t: (key, variables) => {
-        let text = dictionary[key] ?? messages["pt-BR"][key] ?? key;
+        let text: string = dictionary[key] ?? messages["pt-BR"][key] ?? key;
         if (!variables) return text;
         for (const [name, variable] of Object.entries(variables)) {
           text = text.replaceAll(`{{${name}}}`, String(variable));
