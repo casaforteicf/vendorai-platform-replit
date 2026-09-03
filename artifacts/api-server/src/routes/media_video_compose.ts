@@ -16,6 +16,7 @@ import {
   setMediaProjectStatus,
 } from "../services/media-library.js";
 import { assessMediaAudioUsage, normalizeMediaAudioRights } from "../services/media-rights.js";
+import { applyBrandIntroOutro } from "../services/media-brand-video.js";
 import mediaTracksRouter from "./media_tracks.js";
 
 const router: IRouter = Router();
@@ -207,6 +208,7 @@ router.post(
       const musicExt = musicFilename.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "mp3";
       const musicPath = join(tmpdir(), `compose-music-${jobId}.${musicExt}`);
       const outputPath = join(tmpdir(), `compose-output-${jobId}.mp4`);
+      let brandCleanup: (() => Promise<void>) | null = null;
       try {
         await Promise.all([
           writeFile(videoPath, video.buffer),
@@ -270,9 +272,17 @@ router.post(
 
         await updateMediaJob(jobId, tenantId, { status: "running", progress: 40 });
         await execFileAsync("ffmpeg", args, { maxBuffer: 8 * 1024 * 1024 });
-        await updateMediaJob(jobId, tenantId, { status: "running", progress: 80 });
+        await updateMediaJob(jobId, tenantId, { status: "running", progress: 72 });
 
-        const output = await readFile(outputPath);
+        const brandResult = await applyBrandIntroOutro({
+          tenantId,
+          sourcePath: outputPath,
+          jobId,
+        });
+        brandCleanup = brandResult.cleanup;
+        await updateMediaJob(jobId, tenantId, { status: "running", progress: 88 });
+
+        const output = await readFile(brandResult.outputPath);
         if (!output.length) throw new Error("FFmpeg retornou vídeo vazio");
         const storageUrl = await objectStorage.savePrivateBuffer(output, "video/mp4", `composed-${jobId}.mp4`);
         const registered = await registerGeneratedMediaOutput({
@@ -302,6 +312,10 @@ router.post(
             duckingRatio,
             duckingAttackMs,
             duckingReleaseMs,
+            introAssetId: brandResult.introAssetId,
+            outroAssetId: brandResult.outroAssetId,
+            introApplied: brandResult.introApplied,
+            outroApplied: brandResult.outroApplied,
             engine: "vendorai",
           },
         });
@@ -311,12 +325,15 @@ router.post(
           videoUrl: storageUrl,
           assetId: registered.assetId,
           versionId: registered.versionId,
+          introAssetId: brandResult.introAssetId,
+          outroAssetId: brandResult.outroAssetId,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha desconhecida na composição de vídeo";
         await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         await updateMediaJob(jobId, tenantId, { status: "error", error: message }).catch(() => undefined);
       } finally {
+        await brandCleanup?.().catch(() => undefined);
         await Promise.all([
           unlink(videoPath).catch(() => undefined),
           unlink(musicPath).catch(() => undefined),
