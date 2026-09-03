@@ -5,6 +5,7 @@ export * from './strategy/momentum';
 export * from './brain/consensus';
 export * from './risk/risk-engine';
 export * from './risk/operating-profiles';
+export * from './risk/live-execution-gate';
 export * from './execution/paper-engine';
 export * from './audit/event';
 
