@@ -1,14 +1,10 @@
 /**
- * Plano de mídia automático -- pedido real: "colocar as informações do @,
- * o site, segmento, região, concorrentes (as informações do cadastro
- * inicial) e gerar um planejamento pra mídias, buscando maneiras de
- * vitalizar o negócio pela internet".
+ * Plano de mídia automático.
  *
- * Junta o perfil do negócio já cadastrado com dados REAIS de busca
- * (DataForSEO, já configurado e usado pelo Content Autopilot) e pede pra IA
- * montar um plano estratégico. Tenants antigos que ainda não possuem linha em
- * business_profiles usam os dados reais já existentes em tenants como
- * fallback, sem bloquear a geração.
+ * A geração usa o perfil real do tenant, dados de busca quando disponíveis e
+ * IA estruturada. Falhas de provedor/formato da IA NÃO devem bloquear o
+ * usuário: nesses casos o serviço produz e persiste um plano determinístico
+ * válido usando somente os dados reais já disponíveis no tenant.
  */
 import {
   db,
@@ -40,6 +36,7 @@ Em prioridade, use somente alta, media ou baixa. Em percentualOrcamento, use um 
 somarem aproximadamente 100.`;
 
 type JsonRecord = Record<string, unknown>;
+type GenerationMode = "ai" | "fallback";
 
 type MediaPlanProfile = {
   razaoSocial: string;
@@ -175,10 +172,12 @@ async function resolveMediaPlanProfile(tenantId: string): Promise<MediaPlanProfi
       .limit(1),
   ]);
 
+  // Só existe erro de dados quando o tenant realmente não existe. Um tenant
+  // válido nunca deve receber 422 apenas porque o cadastro antigo está parcial.
   if (!profile && !tenant) return null;
 
-  const razaoSocial = profile?.razaoSocial || tenant?.nomeEmpresa || tenant?.name || "";
-  if (!razaoSocial.trim()) return null;
+  const razaoSocial =
+    profile?.razaoSocial?.trim() || tenant?.nomeEmpresa?.trim() || tenant?.name?.trim() || "Empresa";
 
   return {
     razaoSocial,
@@ -195,75 +194,105 @@ async function resolveMediaPlanProfile(tenantId: string): Promise<MediaPlanProfi
   };
 }
 
-export class MediaPlanError extends Error {}
+function buildFallbackMediaPlan(
+  profile: MediaPlanProfile,
+  keywordsRelevantes: MediaPlanConteudo["keywordsRelevantes"],
+  concorrentesEncontrados: MediaPlanConteudo["concorrentesEncontrados"],
+): MediaPlanConteudo {
+  const nome = profile.nomeFantasia || profile.razaoSocial;
+  const segmento = profile.vertical || "seu segmento";
+  const produtos = profile.produtos?.map((produto) => produto.nome).filter(Boolean) ?? [];
+  const principalProduto = produtos[0];
+  const principalKeyword = keywordsRelevantes[0];
+  const principalConcorrente = concorrentesEncontrados[0];
 
-export async function generateMediaPlan(
-  tenantId: string,
-  geradoPor: string | null,
-): Promise<{ plan: typeof mediaPlansTable.$inferSelect }> {
-  const profile = await resolveMediaPlanProfile(tenantId);
-  if (!profile) {
-    throw new MediaPlanError(
-      "Complete o perfil do negócio (Configurações → Perfil do Negócio) antes de gerar o plano de mídia.",
+  const pontosFortesAtuais: string[] = [];
+  if (profile.vertical) pontosFortesAtuais.push(`Atuação definida no segmento ${profile.vertical}.`);
+  if (profile.diferenciais) pontosFortesAtuais.push(`Diferenciais comerciais já cadastrados: ${profile.diferenciais}`);
+  if (produtos.length > 0) pontosFortesAtuais.push(`Portfólio identificado com ${produtos.length} produto(s) ou serviço(s).`);
+  if (profile.site) pontosFortesAtuais.push("Site próprio disponível para receber e converter tráfego.");
+  if (profile.instagramUrl) pontosFortesAtuais.push("Instagram já cadastrado como ativo de presença digital.");
+  if (pontosFortesAtuais.length === 0) {
+    pontosFortesAtuais.push(`Identidade comercial de ${nome} disponível para estruturar a aquisição digital.`);
+  }
+
+  const oportunidades: string[] = [];
+  if (principalKeyword) {
+    oportunidades.push(
+      `Explorar a demanda de busca por “${principalKeyword.termo}”${
+        principalKeyword.volumeBusca != null ? `, com ${principalKeyword.volumeBusca} buscas/mês nos dados disponíveis` : ""
+      }.`,
     );
   }
-
-  let custoTotal = 0;
-  let keywordsRelevantes: MediaPlanConteudo["keywordsRelevantes"] = [];
-  let concorrentesEncontrados: MediaPlanConteudo["concorrentesEncontrados"] = [];
-
-  // Dados reais de busca -- best-effort: se não estiver configurado ou
-  // falhar, segue só com o perfil (não bloqueia a geração do plano).
-  if (isDataForSeoConfigured()) {
-    try {
-      const produtosNomes = profile.produtos?.map((p) => p.nome) ?? [];
-      const seeds = [profile.vertical, ...produtosNomes]
-        .filter((s): s is string => Boolean(s))
-        .slice(0, 3);
-      if (seeds.length > 0) {
-        const { keywords, cost } = await keywordsForKeywords(seeds, { limit: 10 });
-        custoTotal += cost;
-        keywordsRelevantes = keywords
-          .slice(0, 8)
-          .map((k) => ({ termo: k.keyword, volumeBusca: k.searchVolume }));
-
-        const termoPrincipal = seeds[0];
-        if (termoPrincipal) {
-          const { results, cost: serpCost } = await serpOrganicTop(termoPrincipal, {
-            maxResults: 5,
-          });
-          custoTotal += serpCost;
-          concorrentesEncontrados = results.map((r) => ({
-            dominio: r.domain,
-            titulo: r.title,
-            url: r.url,
-          }));
-        }
-      }
-    } catch (err) {
-      logger.warn(
-        { err, tenantId },
-        "media-plan: falha ao buscar dados reais (DataForSEO) — seguindo só com o perfil",
-      );
-    }
+  if (principalConcorrente) {
+    oportunidades.push(
+      `Disputar visibilidade orgânica e paga com domínios que já aparecem nas buscas, como ${principalConcorrente.dominio}.`,
+    );
+  }
+  if (!profile.site) oportunidades.push("Criar uma página de conversão simples para transformar campanhas em contatos mensuráveis.");
+  if (!profile.instagramUrl) oportunidades.push("Estruturar presença social para prova visual, autoridade e remarketing.");
+  if (!profile.publicoAlvo) oportunidades.push("Refinar o público-alvo no cadastro para aumentar a precisão das próximas campanhas.");
+  if (oportunidades.length < 3) {
+    oportunidades.push(`Criar campanhas por intenção ligadas a ${principalProduto || segmento}, evitando mídia genérica.`);
+  }
+  if (oportunidades.length < 3) {
+    oportunidades.push("Medir origem dos contatos e concentrar orçamento nos canais com melhor custo por oportunidade.");
   }
 
-  const contextoTexto = [
-    buildProfileContext(profile),
-    keywordsRelevantes.length > 0
-      ? `\nVolume de busca real (Google, últimos dados disponíveis) pros termos do negócio:\n${keywordsRelevantes
-          .map((k) => `- "${k.termo}": ${k.volumeBusca ?? "?"} buscas/mês`)
-          .join("\n")}`
-      : "",
-    concorrentesEncontrados.length > 0
-      ? `\nQuem aparece hoje no Google pro termo principal do negócio (concorrência real de visibilidade):\n${concorrentesEncontrados
-          .map((c) => `- ${c.dominio} — "${c.titulo}"`)
-          .join("\n")}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const diagnosticoPartes = [
+    `${nome} possui dados suficientes no VendorAI para iniciar um plano de aquisição digital`,
+    profile.vertical ? `com foco no segmento ${profile.vertical}` : "mesmo com o segmento ainda incompleto no cadastro",
+    profile.site || profile.instagramUrl
+      ? "e já conta com pelo menos um ativo digital cadastrado"
+      : "mas ainda precisa fortalecer os ativos digitais próprios",
+  ];
 
+  const conteudo = {
+    diagnostico: `${diagnosticoPartes.join(" ")}. O plano abaixo prioriza demanda com intenção, presença social e construção de ativo próprio, sem depender de informações não cadastradas.`,
+    pontosFortesAtuais: pontosFortesAtuais.slice(0, 4),
+    oportunidades: oportunidades.slice(0, 4),
+    canais: [
+      {
+        canal: "Google Ads — Pesquisa",
+        prioridade: "alta",
+        motivo: `Capturar pessoas que já procuram por ${principalKeyword?.termo || principalProduto || segmento}, priorizando intenção de compra ou contato.`,
+        tiposCampanhaSugeridos: ["Pesquisa por intenção", "Campanha geográfica com conversão"],
+        percentualOrcamento: 45,
+      },
+      {
+        canal: "Meta Ads — Instagram e Facebook",
+        prioridade: "alta",
+        motivo: `Gerar descoberta, prova visual e remarketing para ${nome}, usando ofertas e conteúdos ligados ao que a empresa realmente vende.`,
+        tiposCampanhaSugeridos: ["Prova social e demonstração", "Remarketing para visitantes e engajados"],
+        percentualOrcamento: 35,
+      },
+      {
+        canal: "SEO e conteúdo",
+        prioridade: "media",
+        motivo: `Construir presença própria para buscas relacionadas a ${principalProduto || segmento} e reduzir dependência de mídia paga no médio prazo.`,
+        tiposCampanhaSugeridos: ["Conteúdo orientado a buscas", "Páginas de serviço e autoridade"],
+        percentualOrcamento: 20,
+      },
+    ],
+    pilaresConteudo: [
+      `Educação: explicar problemas, dúvidas e critérios de compra relacionados a ${principalProduto || segmento}.`,
+      `Prova: mostrar aplicações, resultados, bastidores, diferenciais e evidências reais de ${nome}.`,
+      "Conversão: apresentar ofertas, chamadas para contato, orçamento, demonstração ou próximo passo comercial.",
+    ],
+    acoesImediatas: [
+      `Definir uma oferta principal para ${principalProduto || segmento} e uma única conversão prioritária.`,
+      "Criar ou revisar a página de destino com proposta de valor, prova e chamada para contato.",
+      "Publicar uma campanha de Pesquisa com termos de alta intenção e acompanhamento de conversão.",
+      "Criar uma campanha de Meta com prova visual e remarketing para quem interagir com os ativos digitais.",
+    ],
+    keywordsRelevantes,
+    concorrentesEncontrados,
+  };
+
+  return conteudo as MediaPlanConteudo;
+}
+
+async function generateMediaPlanWithAi(contextoTexto: string): Promise<MediaPlanConteudo> {
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 3500,
@@ -327,21 +356,99 @@ export async function generateMediaPlan(
     (block) => block.type === "tool_use" && block.name === "submit_media_plan",
   );
   if (!toolBlock || toolBlock.type !== "tool_use") {
-    logger.warn(
-      { tenantId, stopReason: response.stop_reason },
-      "media-plan: IA não retornou a ferramenta estruturada",
-    );
-    throw new MediaPlanError("IA não retornou o plano — tente novamente.");
+    throw new Error(`IA não retornou submit_media_plan (stop_reason=${response.stop_reason ?? "unknown"})`);
   }
+
+  return parseMediaPlanPayload(toolBlock.input);
+}
+
+export class MediaPlanError extends Error {}
+
+export async function generateMediaPlan(
+  tenantId: string,
+  geradoPor: string | null,
+): Promise<{ plan: typeof mediaPlansTable.$inferSelect }> {
+  const profile = await resolveMediaPlanProfile(tenantId);
+  if (!profile) {
+    // 422 fica reservado ao único caso realmente corrigível pelo cliente:
+    // tenant inexistente/sem qualquer fonte persistida de perfil.
+    throw new MediaPlanError(
+      "Não foi possível localizar os dados deste negócio. Atualize a página e entre novamente antes de gerar o plano.",
+    );
+  }
+
+  let custoTotal = 0;
+  let keywordsRelevantes: MediaPlanConteudo["keywordsRelevantes"] = [];
+  let concorrentesEncontrados: MediaPlanConteudo["concorrentesEncontrados"] = [];
+
+  if (isDataForSeoConfigured()) {
+    try {
+      const produtosNomes = profile.produtos?.map((p) => p.nome) ?? [];
+      const seeds = [profile.vertical, ...produtosNomes]
+        .filter((s): s is string => Boolean(s))
+        .slice(0, 3);
+      if (seeds.length > 0) {
+        const { keywords, cost } = await keywordsForKeywords(seeds, { limit: 10 });
+        custoTotal += cost;
+        keywordsRelevantes = keywords
+          .slice(0, 8)
+          .map((k) => ({ termo: k.keyword, volumeBusca: k.searchVolume }));
+
+        const termoPrincipal = seeds[0];
+        if (termoPrincipal) {
+          const { results, cost: serpCost } = await serpOrganicTop(termoPrincipal, {
+            maxResults: 5,
+          });
+          custoTotal += serpCost;
+          concorrentesEncontrados = results.map((r) => ({
+            dominio: r.domain,
+            titulo: r.title,
+            url: r.url,
+          }));
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        { err, tenantId },
+        "media-plan: falha DataForSEO; geração seguirá sem bloquear o usuário",
+      );
+    }
+  }
+
+  const contextoTexto = [
+    buildProfileContext(profile),
+    keywordsRelevantes.length > 0
+      ? `\nVolume de busca real (Google, últimos dados disponíveis) pros termos do negócio:\n${keywordsRelevantes
+          .map((k) => `- "${k.termo}": ${k.volumeBusca ?? "?"} buscas/mês`)
+          .join("\n")}`
+      : "",
+    concorrentesEncontrados.length > 0
+      ? `\nQuem aparece hoje no Google pro termo principal do negócio (concorrência real de visibilidade):\n${concorrentesEncontrados
+          .map((c) => `- ${c.dominio} — "${c.titulo}"`)
+          .join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   let conteudo: MediaPlanConteudo;
+  let generationMode: GenerationMode = "ai";
+  let fallbackReason: string | null = null;
+
   try {
-    conteudo = parseMediaPlanPayload(toolBlock.input);
+    conteudo = await generateMediaPlanWithAi(contextoTexto);
   } catch (err) {
-    logger.warn({ err, tenantId }, "media-plan: payload estruturado da IA fora do formato esperado");
-    throw new MediaPlanError("Falha ao interpretar o plano gerado — tente novamente.");
+    generationMode = "fallback";
+    fallbackReason = err instanceof Error ? err.message : String(err);
+    logger.error(
+      { err, tenantId, fallbackReason },
+      "media-plan: IA indisponível ou inválida; usando plano determinístico persistível",
+    );
+    conteudo = buildFallbackMediaPlan(profile, keywordsRelevantes, concorrentesEncontrados);
   }
 
+  // Mesmo no caminho da IA, anexa os dados reais de busca fora do payload do
+  // modelo. O fallback já nasce com esses dados, mas a atribuição é idempotente.
   conteudo.keywordsRelevantes = keywordsRelevantes;
   conteudo.concorrentesEncontrados = concorrentesEncontrados;
 
@@ -352,11 +459,24 @@ export async function generateMediaPlan(
     .values({
       tenantId,
       conteudo,
-      contextoUsado: { profileSnapshot: contextoTexto },
+      contextoUsado: {
+        profileSnapshot: contextoTexto,
+        generationMode,
+        fallbackReason,
+      },
       custoUsd: custoTotal.toFixed(4),
       geradoPor,
     })
     .returning();
 
-  return { plan: plan! };
+  if (!plan) {
+    throw new Error("media-plan: persistência não retornou o plano criado");
+  }
+
+  logger.info(
+    { tenantId, planId: plan.id, generationMode },
+    "media-plan: plano gerado e persistido",
+  );
+
+  return { plan };
 }
