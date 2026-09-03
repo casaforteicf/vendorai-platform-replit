@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-296",
+    "titulo": "garantir geração efetiva do plano de mídia",
+    "descricao": "falha, indisponibilidade ou payload inválido da IA deixa de virar 422 para o cliente geração passa a ter fallback determinístico baseado somente nos dados reais já persistidos do tenant fallback também é persistido em `media_plans` e retorna o mesmo contrato `{ plan }` DataForSEO continua best-effort e nunca bloqueia a geração",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-03T01:51:29.000Z",
+    "pullRequest": 296
+  },
+  {
     "id": "pr-293",
     "titulo": "adicionar biblioteca audiovisual persistente",
     "descricao": "adiciona rotas tenant-scoped para listar/criar/editar projetos de mídia; adiciona biblioteca de ativos com filtros por tipo e projeto; usa o Object Storage/Supabase já existente para upload direto por URL assinada; valida o arquivo enviado antes de registrá-lo como ativo;",
