@@ -327,6 +327,7 @@ const publishBodySchema = z.object({
 const patchMediaBodySchema = z.object({
   objectPath: z.string().min(1),
   field: z.enum(["imageUrl", "videoUrl"]).default("imageUrl"),
+  append: z.boolean().optional().default(false),
 });
 
 // POST .../variations/:idx/generate-image — gera imagem via IA e salva na variação
@@ -387,9 +388,9 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-imag
     return;
   }
 
-  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string })[];
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[] })[];
   if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
-  variations[idx] = { ...variations[idx], imageUrl };
+  variations[idx] = { ...variations[idx], imageUrl, imageUrls: undefined };
 
   await db
     .update(contentGenerationsTable)
@@ -423,18 +424,45 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
 
   if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
 
-  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; videoUrl?: string })[];
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
+    imageUrl?: string | null;
+    imageUrls?: string[];
+    videoUrl?: string;
+  })[];
   if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
 
   const mediaUrl = `/api/storage${body.data.objectPath}`;
-  variations[idx] = { ...variations[idx], [body.data.field]: mediaUrl };
+  const variation = variations[idx]!;
+  let responseImageUrls: string[] | undefined;
+
+  if (body.data.field === "imageUrl") {
+    if (body.data.append) {
+      const currentUrls = variation.imageUrls ?? (variation.imageUrl ? [variation.imageUrl] : []);
+      const nextUrls = Array.from(new Set([...currentUrls, mediaUrl]));
+      if (nextUrls.length > 10) {
+        res.status(422).json({ error: "O Feed aceita no máximo 10 imagens por publicação." });
+        return;
+      }
+      responseImageUrls = nextUrls;
+      variations[idx] = {
+        ...variation,
+        imageUrl: nextUrls[0] ?? mediaUrl,
+        imageUrls: nextUrls.length > 1 ? nextUrls : undefined,
+      };
+    } else {
+      responseImageUrls = [mediaUrl];
+      variations[idx] = { ...variation, imageUrl: mediaUrl, imageUrls: undefined };
+    }
+  } else {
+    variations[idx] = { ...variation, videoUrl: mediaUrl };
+  }
 
   await db
     .update(contentGenerationsTable)
     .set({ result: { variations } })
     .where(eq(contentGenerationsTable.id, contentId));
 
-  res.json({ success: true, mediaUrl, field: body.data.field });
+  res.json({ success: true, mediaUrl, field: body.data.field, imageUrls: responseImageUrls });
 });
 
 router.delete("/tenants/:tenantId/content/:contentId/variations/:idx/image", async (req, res) => {
