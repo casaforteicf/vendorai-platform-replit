@@ -357,7 +357,7 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/consents/:co
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const result = await pool.query(
+    const result = await client.query(
       `UPDATE media_identity_consents SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4, updated_at = NOW()
        WHERE tenant_id = $1 AND identity_id = $2 AND id = $3 AND status = 'active' RETURNING *`,
       [tenantId, identityId, consentId, reason],
