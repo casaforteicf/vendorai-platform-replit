@@ -30,7 +30,6 @@ jobs:
         shell: bash
         run: |
           git fetch origin main
-          cp artifacts/frontend/src/components/marketing/MarketingContextSelector.tsx /tmp/MarketingContextSelector.tsx
           git checkout origin/main -- artifacts/frontend/src/pages/Content.tsx artifacts/frontend/src/components/marketing/MarketingContextSelector.tsx
           set +e
           NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @workspace/frontend typecheck 2>&1 | grep 'error TS' | sort -u > /tmp/baseline-errors.txt
@@ -38,7 +37,9 @@ jobs:
           git checkout HEAD -- artifacts/frontend/src/pages/Content.tsx artifacts/frontend/src/components/marketing/MarketingContextSelector.tsx
 
       - name: Apply focused UI patch
-        run: python .github/scripts/patch_marketing_unified_generator.py
+        run: |
+          python .github/scripts/patch_marketing_unified_generator.py
+          python .github/scripts/fix_marketing_unified_types.py
 
       - name: Validate no new frontend type errors
         shell: bash
@@ -58,6 +59,7 @@ jobs:
         shell: bash
         run: |
           rm -f .github/scripts/patch_marketing_unified_generator.py
+          rm -f .github/scripts/fix_marketing_unified_types.py
           rm -f .github/workflows/patch-marketing-unified-generator.yml
           git add -A
           if git diff --cached --quiet; then
