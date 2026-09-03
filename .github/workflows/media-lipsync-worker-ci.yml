@@ -24,6 +24,8 @@ jobs:
           python-version: "3.10"
       - name: Python syntax
         run: python -m py_compile artifacts/media-lipsync-worker/app/main.py
+      - name: Shell syntax
+        run: bash -n artifacts/media-lipsync-worker/entrypoint.sh
       - name: Validate worker contract
         run: |
           python - <<'PY'
@@ -38,6 +40,8 @@ jobs:
               'video/mp4',
               'scripts.inference',
               'musetalkV15',
+              'extra_margin',
+              'nvidia-smi',
           ]
           missing = [value for value in required if value not in src]
           if missing:
@@ -47,7 +51,10 @@ jobs:
         run: |
           test -s artifacts/media-lipsync-worker/Dockerfile
           test -s artifacts/media-lipsync-worker/requirements.txt
+          test -s artifacts/media-lipsync-worker/entrypoint.sh
           grep -q "nvidia/cuda:11.8" artifacts/media-lipsync-worker/Dockerfile
           grep -q "TMElyralab/MuseTalk" artifacts/media-lipsync-worker/Dockerfile
+          grep -q "0a89dec45a0192b824e3cf4daf96c239440c5ed8" artifacts/media-lipsync-worker/Dockerfile
           grep -q "torch==2.0.1" artifacts/media-lipsync-worker/Dockerfile
+          grep -q "VENDORAI_LIPSYNC_AUTO_DOWNLOAD_WEIGHTS" artifacts/media-lipsync-worker/entrypoint.sh
           grep -q "python-multipart" artifacts/media-lipsync-worker/requirements.txt
