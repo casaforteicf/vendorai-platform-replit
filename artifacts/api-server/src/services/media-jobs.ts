@@ -15,6 +15,7 @@ export interface MediaJobSnapshot {
   progress?: number;
   total?: number;
   videoUrl?: string;
+  audioUrl?: string;
   clips?: string[];
   results?: MediaJobResultItem[];
   error?: string;
@@ -34,6 +35,7 @@ export interface CreateMediaJobInput {
 function snapshotOutput(snapshot: MediaJobSnapshot): Record<string, unknown> {
   const output: Record<string, unknown> = {};
   if (snapshot.videoUrl !== undefined) output.videoUrl = snapshot.videoUrl;
+  if (snapshot.audioUrl !== undefined) output.audioUrl = snapshot.audioUrl;
   if (snapshot.clips !== undefined) output.clips = snapshot.clips;
   if (snapshot.results !== undefined) output.results = snapshot.results;
   return output;
@@ -105,6 +107,7 @@ export async function getMediaJob(
     ...(job.progress !== null ? { progress: job.progress } : {}),
     ...(job.total !== null ? { total: job.total } : {}),
     ...(typeof output.videoUrl === "string" ? { videoUrl: output.videoUrl } : {}),
+    ...(typeof output.audioUrl === "string" ? { audioUrl: output.audioUrl } : {}),
     ...(Array.isArray(output.clips) ? { clips: output.clips.filter((value): value is string => typeof value === "string") } : {}),
     ...(Array.isArray(output.results) ? { results: output.results as MediaJobResultItem[] } : {}),
     ...(job.error ? { error: job.error } : {}),

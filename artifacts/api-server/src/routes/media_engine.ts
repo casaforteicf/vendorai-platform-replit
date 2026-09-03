@@ -6,6 +6,12 @@ import {
   vendorAiMediaEngineCapabilities,
   type VendorAiMediaCapability,
 } from "../services/vendorai-media-engine.js";
+import {
+  synthesizeVendorAiVoice,
+  VoiceConsentError,
+  VoiceEngineNotReadyError,
+  VoiceProfileInvalidError,
+} from "../services/vendorai-voice-engine.js";
 
 const router: IRouter = Router();
 
@@ -16,6 +22,7 @@ const KNOWN_OPERATIONS = new Set<VendorAiMediaCapability>([
   "video_batch",
   "video_compose",
   "voice_profile",
+  "voice_synthesize",
   "persona_profile",
   "avatar_lipsync",
   "video_generate",
@@ -211,6 +218,46 @@ router.patch("/tenants/:tenantId/media-engine/identities/:identityId/voices/:voi
     return;
   }
   res.json({ voiceProfile: result.rows[0] });
+});
+
+router.post("/tenants/:tenantId/media-engine/identities/:identityId/voices/:voiceId/synthesize", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const identityId = String(req.params["identityId"]);
+  const voiceId = String(req.params["voiceId"]);
+  const text = nonEmptyString(req.body?.text);
+  const language = nonEmptyString(req.body?.language) ?? "pt-br";
+  const title = nonEmptyString(req.body?.title) ?? "Síntese de voz";
+
+  if (!text || text.length > 5000) {
+    res.status(422).json({ error: "text é obrigatório e deve ter até 5000 caracteres" });
+    return;
+  }
+  try {
+    const result = await synthesizeVendorAiVoice({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      identityId,
+      voiceProfileId: voiceId,
+      text,
+      language,
+      title,
+    });
+    res.status(201).json({ ...result, provider: "vendorai", operation: "voice_synthesize" });
+  } catch (error) {
+    if (error instanceof VoiceEngineNotReadyError) {
+      res.status(503).json({ error: error.message, code: "VOICE_WORKER_NOT_READY" });
+      return;
+    }
+    if (error instanceof VoiceConsentError) {
+      res.status(403).json({ error: error.message, code: "VOICE_CONSENT_REQUIRED", missingScopes: error.missingScopes });
+      return;
+    }
+    if (error instanceof VoiceProfileInvalidError) {
+      res.status(422).json({ error: error.message, code: "VOICE_PROFILE_INVALID" });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.post("/tenants/:tenantId/media-engine/identities/:identityId/consents", async (req, res) => {
