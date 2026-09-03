@@ -160,18 +160,16 @@ async function canExecuteCurrentPipelineStage(
     .where(eq(dealsTable.id, dealId));
   if (!deal || deal.tenantId !== current.tenantId) return true;
 
-  const requestedStage =
-    typeof req.body?.etapa === "string" && req.body.etapa.trim()
-      ? req.body.etapa.trim()
-      : deal.etapa;
-
+  // A função responsável pela etapa ATUAL pode concluir o trabalho e
+  // encaminhar o negócio para a próxima etapa. Depois do handoff, a função
+  // responsável pela nova etapa passa a controlar as próximas alterações.
   const [stage] = await db
     .select({ responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes })
     .from(pipelineStagesTable)
     .where(
       and(
         eq(pipelineStagesTable.tenantId, deal.tenantId),
-        eq(pipelineStagesTable.key, requestedStage),
+        eq(pipelineStagesTable.key, deal.etapa),
       ),
     );
 
