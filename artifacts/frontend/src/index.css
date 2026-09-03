@@ -331,3 +331,15 @@ h1, h2, h3, h4,
 .vendor-light-module button[style*="background: #10b981"] {
   color: #ffffff !important;
 }
+
+/* Media Hub: o preview lateral deve respeitar a proporção nativa do vídeo.
+   O componente usa w-full por padrão; sem esta correção um MP4 9:16 vira
+   um player horizontal grande com a imagem estreita no centro. */
+main + aside video[controls] {
+  display: block;
+  width: auto !important;
+  height: auto !important;
+  max-width: 100%;
+  margin-inline: auto;
+  object-fit: contain;
+}
