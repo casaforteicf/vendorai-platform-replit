@@ -1,28 +1,27 @@
-name: Temporary site project open/edit patch
+name: Temporary site project patch
 
 on:
   push:
-    branches:
-      - fix/site-project-open-edit
+    branches: ["fix/site-project-open-edit"]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/site-project-open-edit
           fetch-depth: 0
-      - name: Patch SiteGeneratorCore
+      - name: Patch site project interactions
+        shell: bash
         run: |
-          python - <<'PY'
+          python3 <<'PY'
           from pathlib import Path
 
-          path = Path('artifacts/frontend/src/pages/SiteGeneratorCore.tsx')
+          path = Path("artifacts/frontend/src/pages/SiteGeneratorCore.tsx")
           text = path.read_text()
 
           old_load = '''  const loadSite = useCallback(async (id: string) => {
@@ -66,8 +65,6 @@ jobs:
     const repairedHtml = absolutizeStorageUrls(originalHtml);
 
     // Abrir o projeto nunca pode depender de uma gravação de manutenção.
-    // Hidrata a tela imediatamente; a normalização de URLs antigas é apenas
-    // best-effort em segundo plano e não bloqueia Preview/edição.
     setHtml(repairedHtml);
     setSiteId(site.id);
     setSiteSlug(site.siteSlug ?? null);
@@ -80,15 +77,14 @@ jobs:
     setError(null);
     setStatus("ready");
 
+    // Normalização de URLs legadas é best-effort e jamais bloqueia abertura/edição.
     if (repairedHtml !== originalHtml) {
       void fetch(`/api/tenants/${tenantId}/site-generator/${site.id}/html`, {
         method: "PATCH",
         headers: authHeaders,
         body: JSON.stringify({ html: repairedHtml }),
       }).then((repairRes) => {
-        if (!repairRes.ok) {
-          console.warn(`Site ${site.id}: normalização de URLs não persistida (${repairRes.status}); projeto permanece aberto.`);
-        }
+        if (!repairRes.ok) console.warn(`Site ${site.id}: normalização de URLs não persistida (${repairRes.status}); projeto permanece aberto.`);
       }).catch((repairError) => {
         console.warn(`Site ${site.id}: falha ao persistir normalização de URLs; projeto permanece aberto.`, repairError);
       });
@@ -96,10 +92,6 @@ jobs:
 
     return true;
   }, [tenantId, token]);'''
-
-          if old_load not in text:
-              raise SystemExit('loadSite block not found')
-          text = text.replace(old_load, new_load, 1)
 
           old_switch = '''  async function handleSwitchSite(id: string) {
     if (id === siteId) return;
@@ -145,10 +137,6 @@ jobs:
   }
 
   const [deletingSiteId, setDeletingSiteId] = useState<string | null>(null);'''
-
-          if old_switch not in text:
-              raise SystemExit('handleSwitchSite block not found')
-          text = text.replace(old_switch, new_switch, 1)
 
           old_ui = '''              <div
                 key={s.id}
@@ -241,9 +229,15 @@ jobs:
                 </button>
               </div>'''
 
-          if old_ui not in text:
-              raise SystemExit('site switcher UI block not found')
-          text = text.replace(old_ui, new_ui, 1)
+          for label, old, new in [
+              ("loadSite", old_load, new_load),
+              ("switch", old_switch, new_switch),
+              ("UI", old_ui, new_ui),
+          ]:
+              if old not in text:
+                  print(f"{label} already patched or source changed")
+              else:
+                  text = text.replace(old, new, 1)
 
           path.write_text(text)
           PY
@@ -252,8 +246,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add artifacts/frontend/src/pages/SiteGeneratorCore.tsx
           if git diff --cached --quiet; then
-            echo "No changes to commit"
-            exit 0
+            echo "No patch changes"
+          else
+            git commit -m "fix(sites): permitir abrir e editar projetos existentes"
+            git push origin HEAD:fix/site-project-open-edit
           fi
-          git commit -m "fix(sites): permitir abrir e editar projetos existentes"
-          git push origin HEAD:fix/site-project-open-edit
