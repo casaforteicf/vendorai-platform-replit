@@ -732,6 +732,25 @@ router.get("/tenants/:tenantId/site-generator/latest", async (req, res) => {
 // GET /tenants/:tenantId/site-generator — list generated sites
 router.get("/tenants/:tenantId/site-generator", async (req, res) => {
   const { tenantId } = req.params;
+
+  if (req.query.includeHtml === "0") {
+    const rows = await db
+      .select({
+        id: generatedSitesTable.id,
+        name: generatedSitesTable.name,
+        siteType: generatedSitesTable.siteType,
+        config: generatedSitesTable.config,
+        published: generatedSitesTable.published,
+        siteSlug: generatedSitesTable.siteSlug,
+        createdAt: generatedSitesTable.createdAt,
+        updatedAt: generatedSitesTable.updatedAt,
+      })
+      .from(generatedSitesTable)
+      .where(eq(generatedSitesTable.tenantId, tenantId))
+      .orderBy(desc(generatedSitesTable.createdAt));
+    return res.json(rows);
+  }
+
   const rows = await db
     .select({
       id: generatedSitesTable.id,
@@ -753,6 +772,32 @@ router.get("/tenants/:tenantId/site-generator", async (req, res) => {
 // GET /tenants/:tenantId/site-generator/:siteId — get single site with html
 router.get("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
   const { tenantId, siteId } = req.params;
+
+  if (req.query.includeHtml === "0") {
+    const [row] = await db
+      .select({
+        id: generatedSitesTable.id,
+        tenantId: generatedSitesTable.tenantId,
+        name: generatedSitesTable.name,
+        siteType: generatedSitesTable.siteType,
+        config: generatedSitesTable.config,
+        published: generatedSitesTable.published,
+        siteSlug: generatedSitesTable.siteSlug,
+        seoScore: generatedSitesTable.seoScore,
+        seoChecklist: generatedSitesTable.seoChecklist,
+        createdAt: generatedSitesTable.createdAt,
+        updatedAt: generatedSitesTable.updatedAt,
+      })
+      .from(generatedSitesTable)
+      .where(eq(generatedSitesTable.id, siteId));
+
+    if (!row || row.tenantId !== tenantId) {
+      res.status(404).json({ error: "Site not found" });
+      return;
+    }
+    return res.json(row);
+  }
+
   const [row] = await db
     .select()
     .from(generatedSitesTable)
@@ -1054,7 +1099,10 @@ router.get("/tenants/:tenantId/site-generator/jobs/:jobId", async (req, res) => 
     activeGenerationJobs.add(job.id);
     void runGenerateSite(job.id, job.tenantId, job.config, job.baseOrigin, req.log);
   }
-  return res.json({ status: job.status, result: job.result, error: job.error });
+const result = req.query.includeHtml === "0" && job.result && typeof job.result === "object" && !Array.isArray(job.result)
+  ? Object.fromEntries(Object.entries(job.result as Record<string, unknown>).filter(([key]) => key !== "html"))
+  : job.result;
+return res.json({ status: job.status, result, error: job.error });
 });
 
 // POST /tenants/:tenantId/site-generator/:siteId/refine — refine via chat
