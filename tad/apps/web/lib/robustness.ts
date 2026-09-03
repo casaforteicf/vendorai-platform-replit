@@ -1,8 +1,8 @@
-import { aggregateCandles, assessRobustness, breakoutSignal, buildMultiTimeframe, classifyRegime, momentumSignal, monteCarloTradeReturns, opportunityScore, runSignalBacktest, runWalkForward, technicalSnapshot, trendPullbackSignal, vwapReversionSignal, type Candle } from '@tad/core';
+import { aggregateCandles, assessRobustness, buildMultiTimeframe, classifyRegime, monteCarloTradeReturns, opportunityScore, runSignalBacktest, runWalkForward, strategySignal, STRATEGY_IDS, technicalSnapshot, type Candle, type StrategyId } from '@tad/core';
 import { loadCandles } from './binance';
 
-export const ROBUSTNESS_STRATEGIES=['MOMENTUM_V1','TREND_PULLBACK_V1','VWAP_REVERSION_V1','BREAKOUT_V1'] as const;
-export type RobustnessStrategyId=typeof ROBUSTNESS_STRATEGIES[number];
+export const ROBUSTNESS_STRATEGIES=STRATEGY_IDS;
+export type RobustnessStrategyId=StrategyId;
 
 function completedAsOf(candles:Candle[],asOf:number){return candles.filter(c=>c.closeTime<=asOf)}
 function evaluate(symbol:string,strategy:RobustnessStrategyId,candles:Candle[]){
@@ -16,12 +16,10 @@ function evaluate(symbol:string,strategy:RobustnessStrategyId,candles:Candle[]){
       market.opportunityScore=opportunityScore(market);
       const h15=completedAsOf(aggregateCandles(h,15*60_000),last.closeTime);
       const h1=completedAsOf(aggregateCandles(h,60*60_000),last.closeTime);
+      if(h15.length<20||h1.length<20)return null;
       const f5=technicalSnapshot(symbol,'5m',h), f15=technicalSnapshot(symbol,'15m',h15), f1h=technicalSnapshot(symbol,'1h',h1);
       const mtf=buildMultiTimeframe(symbol,{'5m':f5,'15m':f15,'1h':f1h});
-      if(strategy==='MOMENTUM_V1')return momentumSignal(market);
-      if(strategy==='BREAKOUT_V1')return breakoutSignal(market,mtf,h);
-      if(strategy==='VWAP_REVERSION_V1')return vwapReversionSignal(market,mtf);
-      return trendPullbackSignal(market,mtf);
+      return strategySignal(strategy,market,mtf,h);
     }
   });
 }
