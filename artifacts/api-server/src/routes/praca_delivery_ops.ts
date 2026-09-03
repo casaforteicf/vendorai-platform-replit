@@ -9,12 +9,18 @@ import {
 
 const router: IRouter = Router();
 export const pracaDeliveryPublicRouter: IRouter = Router();
-pracaDeliveryPublicRouter.use(rateLimit({
+
+// IMPORTANT: this public router is mounted without a path before the global
+// authenticate middleware. A router.use(rateLimit(...)) here would therefore
+// rate-limit every API request that was not handled by an earlier public router,
+// including all authenticated CRM routes. Keep the limiter attached only to the
+// two public delivery-portal endpoints below.
+const publicDeliveryRateLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-}));
+});
 
 function actor(req: Express.Request) {
   const user = (req as any).user;
@@ -39,7 +45,7 @@ function message(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-pracaDeliveryPublicRouter.get("/public/praca-delivery/:trackingToken", async (req, res) => {
+pracaDeliveryPublicRouter.get("/public/praca-delivery/:trackingToken", publicDeliveryRateLimiter, async (req, res) => {
   const token = String(req.params.trackingToken);
   if (!/^[a-f0-9]{64}$/.test(token)) return res.status(404).json({ error: "Rastreamento não encontrado." });
   const order = await vendorPool.query(
@@ -87,7 +93,7 @@ pracaDeliveryPublicRouter.get("/public/praca-delivery/:trackingToken", async (re
     reverse: reverse.rows[0] ?? null, reverseEvents: reverseEvents.rows });
 });
 
-pracaDeliveryPublicRouter.post("/public/praca-delivery/:trackingToken/messages", async (req, res) => {
+pracaDeliveryPublicRouter.post("/public/praca-delivery/:trackingToken/messages", publicDeliveryRateLimiter, async (req, res) => {
   const token = String(req.params.trackingToken);
   const body = message(req.body?.mensagem);
   if (!/^[a-f0-9]{64}$/.test(token) || !body || body.length > 4000) {
