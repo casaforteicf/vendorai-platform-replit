@@ -39,45 +39,60 @@ const simpleStage = (key: string, label: string, ordem: number): SystemStage => 
   bg: "bg-slate-100",
 });
 
-// Mantém exatamente as keys que cada pipeline já usa hoje. A configuração
-// de responsáveis apenas governa acesso/execução; não cria um fluxo paralelo.
+// Mantém exatamente as keys que cada pipeline real já usa hoje. A configuração
+// de responsáveis governa o fluxo existente; não cria uma segunda pipeline.
 export const SYSTEM_STAGES_BY_PIPELINE: Record<PipelineKey, SystemStage[]> = {
   comercial: SYSTEM_PIPELINE_STAGES,
   execucao: [
-    simpleStage("aguardando_separacao", "Aguardando separação", 0),
-    simpleStage("separacao", "Separação", 1),
-    simpleStage("conferencia", "Conferência", 2),
-    simpleStage("faturamento", "Faturamento", 3),
-    simpleStage("expedicao", "Expedição", 4),
-    simpleStage("transporte", "Transporte", 5),
-    simpleStage("entregue", "Entregue", 6),
+    simpleStage("pedido_confirmado", "Pedido confirmado", 0),
+    simpleStage("liberacao_financeira", "Liberação financeira", 1),
+    simpleStage("liberacao_medidas", "Liberação de medidas", 2),
+    simpleStage("projeto", "Projeto", 3),
+    simpleStage("producao_a_iniciar", "Produção — a iniciar", 4),
+    simpleStage("producao_em_andamento", "Produção — em andamento", 5),
+    simpleStage("producao_finalizada", "Produção — finalizada", 6),
+    simpleStage("aguardando_liberacao", "Aguardando liberação", 7),
+    simpleStage("liberado", "Liberado", 8),
+    simpleStage("agenda_entrega", "Agenda de entrega", 9),
+    simpleStage("em_transporte", "Em transporte", 10),
+    simpleStage("instalacao_a_iniciar", "Instalação — a iniciar", 11),
+    simpleStage("instalacao_em_andamento", "Instalação — em andamento", 12),
+    simpleStage("instalacao_finalizada", "Instalação — finalizada", 13),
+    simpleStage("entrega_obra", "Entrega da obra", 14),
+    simpleStage("pos_venda", "Pós-venda", 15),
+    simpleStage("concluido", "Concluído", 16),
+    simpleStage("cancelado", "Cancelado", 17),
   ],
   suporte: [
-    simpleStage("aberto", "Aberto", 0),
-    simpleStage("triagem", "Triagem", 1),
-    simpleStage("aguardando_cliente", "Aguardando cliente", 2),
-    simpleStage("em_atendimento", "Em atendimento", 3),
-    simpleStage("resolvido", "Resolvido", 4),
-    simpleStage("encerrado", "Encerrado", 5),
+    simpleStage("chamado_cliente", "Chamado cliente", 0),
+    simpleStage("agendamento_assistencia", "Agendamento assistência", 1),
+    simpleStage("execucao_assistencia", "Execução da assistência", 2),
+    simpleStage("relatorio_assistencia", "Relatório da assistência", 3),
+    simpleStage("feedback_cliente", "Feedback cliente", 4),
+    simpleStage("fechamento_assistencia", "Fechamento assistência", 5),
+    simpleStage("cancelado", "Cancelado", 6),
   ],
   aquecimento: [
-    simpleStage("aquecimento_lead", "Leads em aquecimento", 0),
-    simpleStage("aquecimento_cliente", "Clientes em aquecimento", 1),
+    simpleStage("aquecimento_lead", "Em Aquecimento — Leads", 0),
+    simpleStage("aquecimento_cliente", "Em Aquecimento — Clientes", 1),
   ],
   parceiros: [
-    simpleStage("prospectando", "Prospectando", 0),
-    simpleStage("conectado", "Conectado", 1),
-    simpleStage("negociando", "Negociando", 2),
-    simpleStage("parceiro", "Parceiro", 3),
+    simpleStage("parceiro_identificado", "Parceiro identificado", 0),
+    simpleStage("contato", "Contato", 1),
+    simpleStage("qualificacao", "Qualificação", 2),
+    simpleStage("proposta_parceria", "Proposta de parceria", 3),
+    simpleStage("negociacao", "Negociação", 4),
+    simpleStage("parceiro_ativo", "Parceiro ativo", 5),
+    simpleStage("inativo", "Inativo", 6),
   ],
   scout: [
-    simpleStage("identificada", "Identificada", 0),
+    simpleStage("identificada", "Identificadas", 0),
     simpleStage("em_analise", "Em análise", 1),
-    simpleStage("encaminhada", "Encaminhada", 2),
+    simpleStage("encaminhada", "Encaminhadas", 2),
     simpleStage("ia_aprovada", "IA aprovada", 3),
     simpleStage("em_contato", "Em contato", 4),
-    simpleStage("convertida", "Convertida", 5),
-    simpleStage("descartada", "Descartada", 6),
+    simpleStage("convertida", "Convertidas", 5),
+    simpleStage("descartada", "Descartadas", 6),
   ],
 };
 
@@ -95,7 +110,9 @@ function hasAccess(req: any, tenantId: string): boolean {
 }
 
 function isAdmin(req: any): boolean {
-  return req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  return req.user?.platformRole === "super_admin"
+    || req.user?.platformRole === "tenant_admin"
+    || req.user?.userFunction === "administrador";
 }
 
 function parsePipeline(value: unknown): PipelineKey {
@@ -180,27 +197,28 @@ async function listPipelineStages(tenantId: string, pipeline: PipelineKey) {
 
 async function ensureSystemStages(tenantId: string, pipeline: PipelineKey) {
   let stages = await listPipelineStages(tenantId, pipeline);
-  if (stages.length > 0) return stages;
+  const existingKeys = new Set(stages.map((stage) => stage.key));
+  const missing = SYSTEM_STAGES_BY_PIPELINE[pipeline].filter((stage) => !existingKeys.has(stage.key));
+  if (missing.length === 0) return stages;
 
   try {
-    stages = await db
+    await db
       .insert(pipelineStagesTable)
       .values(
-        SYSTEM_STAGES_BY_PIPELINE[pipeline].map((stage) => ({
+        missing.map((stage) => ({
           ...stage,
           tenantId,
           pipeline,
           isSystem: true,
         })),
-      )
-      .returning();
-    stages.sort((a, b) => a.ordem - b.ordem);
+      );
   } catch (err) {
     // Duas abas podem semear ao mesmo tempo. A unicidade
     // (tenant_id, pipeline, key) protege contra duplicidade.
     logger.warn({ err, tenantId, pipeline }, "pipeline-stages: falha ao semear; buscando de novo");
-    stages = await listPipelineStages(tenantId, pipeline);
   }
+
+  stages = await listPipelineStages(tenantId, pipeline);
   return stages;
 }
 
