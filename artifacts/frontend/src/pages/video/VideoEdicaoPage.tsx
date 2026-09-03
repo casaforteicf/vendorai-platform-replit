@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, X, Loader2, CheckCircle2, AlertCircle, Scissors } from "lucide-react";
+import { Upload, X, Loader2, CheckCircle2, AlertCircle, Scissors, Music2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import VideoGenPanel from "@/components/video/VideoGenPanel";
 
@@ -10,143 +10,337 @@ function authHeader(): Record<string, string> {
 }
 
 type JobStatus = "idle" | "starting" | "processing" | "done" | "error";
+type EditorTab = "edit" | "music";
 
 const EDIT_OPTIONS = [
-  { id: "removeSilence", label: "Remover silêncios",      desc: "Remove pausas e silêncios acima de 0.4s" },
-  { id: "normalize",     label: "Normalizar volume",      desc: "Equaliza o áudio para -14 LUFS" },
+  { id: "removeSilence", label: "Remover silêncios", desc: "Remove pausas e silêncios acima de 0.4s" },
+  { id: "normalize", label: "Normalizar volume", desc: "Equaliza o áudio para -14 LUFS" },
 ];
 
 const SPEED_OPTIONS = [
-  { id: "1.0", label: "Normal (1x)"     },
+  { id: "1.0", label: "Normal (1x)" },
   { id: "1.1", label: "Ligeiramente mais rápido (1.1x)" },
   { id: "1.25", label: "Rápido (1.25x)" },
 ];
 
+function SliderField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-medium text-gray-300">{label}</span>
+        <span className="text-xs tabular-nums text-purple-300">
+          {value.toFixed(step < 1 ? 2 : 1)}{suffix ?? ""}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full accent-purple-500"
+      />
+    </div>
+  );
+}
+
 export default function VideoEdicaoPage() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
-  const { toast } = useToast();
+  useToast();
 
-  const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [activeTab, setActiveTab] = useState<EditorTab>("edit");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLInputElement>(null);
 
-  const [opts, setOpts]     = useState<Record<string, boolean>>({ removeSilence: true, normalize: false });
-  const [speed, setSpeed]   = useState("1.0");
+  const [musicFile, setMusicFile] = useState<File | null>(null);
+  const musicRef = useRef<HTMLInputElement>(null);
+  const [musicVolume, setMusicVolume] = useState(0.18);
+  const [originalVolume, setOriginalVolume] = useState(1);
+  const [fadeIn, setFadeIn] = useState(1);
+  const [fadeOut, setFadeOut] = useState(1.5);
+
+  const [opts, setOpts] = useState<Record<string, boolean>>({ removeSilence: true, normalize: false });
+  const [speed, setSpeed] = useState("1.0");
 
   const [jobStatus, setJobStatus] = useState<JobStatus>("idle");
   const [resultUrl, setResultUrl] = useState("");
-  const [errorMsg,  setErrorMsg]  = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [processingOperation, setProcessingOperation] = useState<EditorTab>("edit");
 
-  const toggleOpt = (id: string) => setOpts((o) => ({ ...o, [id]: !o[id] }));
+  const toggleOpt = (id: string) => setOpts((current) => ({ ...current, [id]: !current[id] }));
+
+  const resetResult = () => {
+    setJobStatus("idle");
+    setResultUrl("");
+    setErrorMsg("");
+  };
 
   const pollJob = async (jobId: string) => {
     setJobStatus("processing");
     for (let i = 0; i < 180; i++) {
-      await new Promise((r) => setTimeout(r, 4000));
-      const r = await fetch(`/api/tenants/${tenantId}/content-studio/video/job/${jobId}`, { headers: authHeader() });
-      const d = await r.json();
-      if (d.status === "done")  { setResultUrl(d.videoUrl ?? ""); setJobStatus("done"); return; }
-      if (d.status === "error") throw new Error(d.error ?? "Erro no processamento");
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/job/${jobId}`, { headers: authHeader() });
+      const data = await response.json();
+      if (data.status === "done") {
+        setResultUrl(data.videoUrl ?? "");
+        setJobStatus("done");
+        return;
+      }
+      if (data.status === "error") throw new Error(data.error ?? "Erro no processamento");
     }
     throw new Error("Timeout: processamento demorou mais de 12 min");
   };
 
-  const handleGenerate = async () => {
+  const handleAutomaticEdit = async () => {
     if (!videoFile || !tenantId) return;
-    setErrorMsg(""); setResultUrl(""); setJobStatus("starting");
-    try {
-      const form = new FormData();
-      form.append("video", videoFile);
-      form.append("removeSilence", String(opts.removeSilence ?? false));
-      form.append("normalize",     String(opts.normalize    ?? false));
-      form.append("speed",         speed);
+    const form = new FormData();
+    form.append("video", videoFile);
+    form.append("removeSilence", String(opts.removeSilence ?? false));
+    form.append("normalize", String(opts.normalize ?? false));
+    form.append("speed", speed);
 
-      const r = await fetch(`/api/tenants/${tenantId}/content-studio/video/edit`, {
-        method: "POST", headers: authHeader(), body: form,
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error ?? "Falha ao iniciar processamento");
-      await pollJob(d.jobId);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Erro desconhecido");
+    const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/edit`, {
+      method: "POST",
+      headers: authHeader(),
+      body: form,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "Falha ao iniciar processamento");
+    await pollJob(data.jobId);
+  };
+
+  const handleMusicCompose = async () => {
+    if (!videoFile || !musicFile || !tenantId) return;
+    const form = new FormData();
+    form.append("video", videoFile);
+    form.append("music", musicFile);
+    form.append("musicVolume", String(musicVolume));
+    form.append("originalVolume", String(originalVolume));
+    form.append("fadeIn", String(fadeIn));
+    form.append("fadeOut", String(fadeOut));
+
+    const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/compose`, {
+      method: "POST",
+      headers: authHeader(),
+      body: form,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "Falha ao iniciar composição da trilha");
+    await pollJob(data.jobId);
+  };
+
+  const handleGenerate = async (tabId: string) => {
+    const operation = tabId === "music" ? "music" : "edit";
+    setProcessingOperation(operation);
+    setErrorMsg("");
+    setResultUrl("");
+    setJobStatus("starting");
+    try {
+      if (operation === "music") await handleMusicCompose();
+      else await handleAutomaticEdit();
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : "Erro desconhecido");
       setJobStatus("error");
     }
   };
 
   const isProcessing = jobStatus === "starting" || jobStatus === "processing";
+  const generateDisabled = !videoFile || isProcessing || (activeTab === "music" && !musicFile);
 
-  const LeftContent = (
+  const EditContent = (
     <div className="space-y-5 h-full flex flex-col">
-      {/* Options */}
       <div className="space-y-2">
         <p className="text-xs text-gray-400 font-medium mb-2">Edições automáticas</p>
-        {EDIT_OPTIONS.map((opt) => (
-          <label key={opt.id} className={cn(
-            "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
-            opts[opt.id] ? "border-emerald-500/40 bg-emerald-500/5" : "border-white/10 hover:border-white/20"
-          )}>
-            <input type="checkbox" checked={!!opts[opt.id]} onChange={() => toggleOpt(opt.id)} className="mt-0.5 accent-emerald-500" />
+        {EDIT_OPTIONS.map((option) => (
+          <label
+            key={option.id}
+            className={cn(
+              "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+              opts[option.id] ? "border-emerald-500/40 bg-emerald-500/5" : "border-white/10 hover:border-white/20",
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={!!opts[option.id]}
+              onChange={() => toggleOpt(option.id)}
+              className="mt-0.5 accent-emerald-500"
+            />
             <div>
-              <p className="text-sm text-gray-200 font-medium">{opt.label}</p>
-              <p className="text-xs text-gray-500">{opt.desc}</p>
+              <p className="text-sm text-gray-200 font-medium">{option.label}</p>
+              <p className="text-xs text-gray-500">{option.desc}</p>
             </div>
           </label>
         ))}
       </div>
 
-      {/* Speed */}
       <div className="space-y-2">
         <p className="text-xs text-gray-400 font-medium">Velocidade de fala</p>
         <div className="flex flex-col gap-1.5">
-          {SPEED_OPTIONS.map((s) => (
-            <label key={s.id} className={cn(
-              "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all text-sm",
-              speed === s.id ? "border-emerald-500/40 bg-emerald-500/5 text-gray-200" : "border-white/10 text-gray-400 hover:border-white/20"
-            )}>
-              <input type="radio" name="speed" value={s.id} checked={speed === s.id} onChange={() => setSpeed(s.id)} className="accent-emerald-500" />
-              {s.label}
+          {SPEED_OPTIONS.map((option) => (
+            <label
+              key={option.id}
+              className={cn(
+                "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all text-sm",
+                speed === option.id
+                  ? "border-emerald-500/40 bg-emerald-500/5 text-gray-200"
+                  : "border-white/10 text-gray-400 hover:border-white/20",
+              )}
+            >
+              <input
+                type="radio"
+                name="speed"
+                value={option.id}
+                checked={speed === option.id}
+                onChange={() => setSpeed(option.id)}
+                className="accent-emerald-500"
+              />
+              {option.label}
             </label>
           ))}
         </div>
       </div>
+    </div>
+  );
 
-      {/* Status / result */}
-      <div className="mt-auto space-y-2">
-        {isProcessing && (
-          <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
-            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-            {jobStatus === "starting" ? "Enviando vídeo…" : "Processando com ffmpeg…"}
-          </div>
-        )}
-        {jobStatus === "done" && resultUrl && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
-              <CheckCircle2 className="h-4 w-4" /> Vídeo editado pronto!
-            </div>
-            <video src={resultUrl} controls className="w-full rounded-xl border border-white/10 max-h-40" />
-            <div className="flex gap-2">
-              <a href={resultUrl} download target="_blank" rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/15 text-gray-300 hover:border-emerald-500/50 transition-colors">
-                Baixar vídeo
-              </a>
-              <button onClick={() => { setJobStatus("idle"); setResultUrl(""); }}
-                className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-gray-200 transition-colors">
-                Editar outro
+  const MusicContent = (
+    <div className="space-y-4 h-full flex flex-col">
+      <div>
+        <p className="text-xs text-gray-400 font-medium mb-2">Trilha sonora</p>
+        {musicFile ? (
+          <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-purple-500/15 text-purple-300 flex items-center justify-center shrink-0">
+                <Music2 className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-200 truncate">{musicFile.name}</p>
+                <p className="text-xs text-gray-500">{(musicFile.size / 1024 / 1024).toFixed(1)} MB</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMusicFile(null);
+                  resetResult();
+                  if (musicRef.current) musicRef.current.value = "";
+                }}
+                className="h-7 w-7 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10 flex items-center justify-center"
+                aria-label="Remover trilha"
+              >
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
-        )}
-        {jobStatus === "error" && (
-          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
-            <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm text-red-300">{errorMsg}</p>
-              <button onClick={() => setJobStatus("idle")} className="text-xs text-gray-400 hover:text-gray-200 transition-colors">Tentar novamente</button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => musicRef.current?.click()}
+            className="w-full rounded-xl border border-dashed border-white/15 hover:border-purple-500/40 hover:bg-purple-500/5 transition-all p-4 flex items-center gap-3 text-left"
+          >
+            <div className="h-9 w-9 rounded-lg bg-white/5 flex items-center justify-center text-gray-500">
+              <Music2 className="h-4 w-4" />
             </div>
-          </div>
+            <div>
+              <p className="text-sm font-medium text-gray-300">Escolher música</p>
+              <p className="text-xs text-gray-600">MP3, WAV, M4A ou outro áudio compatível</p>
+            </div>
+          </button>
         )}
+        <input
+          ref={musicRef}
+          type="file"
+          accept="audio/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            setMusicFile(file);
+            resetResult();
+          }}
+        />
       </div>
+
+      <SliderField label="Volume da música" value={musicVolume} min={0} max={1} step={0.01} onChange={setMusicVolume} />
+      <SliderField label="Volume do áudio original" value={originalVolume} min={0} max={2} step={0.05} onChange={setOriginalVolume} />
+
+      <div className="grid grid-cols-2 gap-2">
+        <SliderField label="Entrada suave" value={fadeIn} min={0} max={10} step={0.5} suffix="s" onChange={setFadeIn} />
+        <SliderField label="Saída suave" value={fadeOut} min={0} max={10} step={0.5} suffix="s" onChange={setFadeOut} />
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 text-xs text-gray-500 space-y-1">
+        <p>A trilha é repetida automaticamente até o fim do vídeo.</p>
+        <p>O áudio original é preservado e misturado conforme os volumes acima.</p>
+        <p>Use apenas músicas com direito de uso compatível com a publicação desejada.</p>
+      </div>
+    </div>
+  );
+
+  const StatusBlock = (
+    <div className="space-y-2">
+      {isProcessing && (
+        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          {jobStatus === "starting"
+            ? processingOperation === "music" ? "Enviando vídeo e trilha…" : "Enviando vídeo…"
+            : processingOperation === "music" ? "Compondo trilha com ffmpeg…" : "Processando com ffmpeg…"}
+        </div>
+      )}
+      {jobStatus === "done" && resultUrl && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
+            <CheckCircle2 className="h-4 w-4" />
+            {processingOperation === "music" ? "Vídeo com trilha pronto!" : "Vídeo editado pronto!"}
+          </div>
+          <video src={resultUrl} controls className="w-full rounded-xl border border-white/10 max-h-40" />
+          <div className="flex gap-2">
+            <a
+              href={resultUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/15 text-gray-300 hover:border-emerald-500/50 transition-colors"
+            >
+              Baixar vídeo
+            </a>
+            <button
+              onClick={resetResult}
+              className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-gray-200 transition-colors"
+            >
+              Fazer outra edição
+            </button>
+          </div>
+        </div>
+      )}
+      {jobStatus === "error" && (
+        <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
+          <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm text-red-300">{errorMsg}</p>
+            <button onClick={resetResult} className="text-xs text-gray-400 hover:text-gray-200 transition-colors">
+              Tentar novamente
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -157,29 +351,53 @@ export default function VideoEdicaoPage() {
         <div className="relative">
           <video src={videoPreview} controls className="w-full rounded-xl border border-white/10 max-h-48" />
           <button
-            onClick={() => { setVideoFile(null); setVideoPreview(null); setJobStatus("idle"); setResultUrl(""); if (videoRef.current) videoRef.current.value = ""; }}
-            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600">
+            onClick={() => {
+              setVideoFile(null);
+              setVideoPreview(null);
+              resetResult();
+              if (videoRef.current) videoRef.current.value = "";
+            }}
+            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"
+            aria-label="Remover vídeo"
+          >
             <X className="h-3 w-3" />
           </button>
-          <p className="mt-1.5 text-xs text-gray-500">{videoFile?.name} · {((videoFile?.size ?? 0) / 1024 / 1024).toFixed(1)} MB</p>
+          <p className="mt-1.5 text-xs text-gray-500">
+            {videoFile?.name} · {((videoFile?.size ?? 0) / 1024 / 1024).toFixed(1)} MB
+          </p>
         </div>
       ) : (
-        <button onClick={() => videoRef.current?.click()}
-          className="flex flex-col items-center justify-center flex-1 rounded-xl border-2 border-dashed border-white/10 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all gap-2 text-gray-500 py-10">
+        <button
+          onClick={() => videoRef.current?.click()}
+          className="flex flex-col items-center justify-center flex-1 rounded-xl border-2 border-dashed border-white/10 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all gap-2 text-gray-500 py-10"
+        >
           <Upload className="h-6 w-6" />
           <span className="text-sm font-medium">Clique para enviar vídeo</span>
           <span className="text-xs text-gray-600">MP4, MOV, AVI · até 500 MB</span>
         </button>
       )}
-      <input ref={videoRef} type="file" accept="video/*" className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; setVideoFile(f); setVideoPreview(URL.createObjectURL(f)); setJobStatus("idle"); setResultUrl(""); }} />
+      <input
+        ref={videoRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          setVideoFile(file);
+          setVideoPreview(URL.createObjectURL(file));
+          resetResult();
+        }}
+      />
 
-      <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1.5">
-        <p className="text-xs text-gray-500 font-medium">Resultados típicos</p>
+      {StatusBlock}
+
+      <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1.5 mt-auto">
+        <p className="text-xs text-gray-500 font-medium">Fluxo não destrutivo</p>
         <div className="space-y-1 text-xs text-gray-600">
-          <p>✂️ Remove 20–40% do tempo de silêncios</p>
-          <p>🎙 Normaliza volume para distribuição</p>
-          <p>⚡ Processa em ~30s por minuto de vídeo</p>
+          <p>✂️ Edição automática preserva o original</p>
+          <p>🎵 A trilha gera uma nova versão do vídeo</p>
+          <p>📚 Resultados ficam registrados na Biblioteca Audiovisual</p>
         </div>
       </div>
     </div>
@@ -187,16 +405,20 @@ export default function VideoEdicaoPage() {
 
   return (
     <VideoGenPanel
-      title="Edição automática"
-      description="Remova silêncios, normalize volume e acelere seu vídeo automaticamente"
-      icon={Scissors}
-      iconBg="bg-emerald-500/20 text-emerald-300"
-      tabs={[{ id: "edit", label: "Configurações de edição", content: LeftContent }]}
+      title="Editar vídeo"
+      description="Faça ajustes automáticos e adicione trilha sonora sem alterar o arquivo original"
+      icon={activeTab === "music" ? Music2 : Scissors}
+      iconBg={activeTab === "music" ? "bg-purple-500/20 text-purple-300" : "bg-emerald-500/20 text-emerald-300"}
+      tabs={[
+        { id: "edit", label: "Edição automática", content: EditContent },
+        { id: "music", label: "Trilha sonora", content: MusicContent },
+      ]}
       rightPanel={RightPanel}
       onGenerate={handleGenerate}
+      onTabChange={(tabId) => setActiveTab(tabId === "music" ? "music" : "edit")}
       generating={isProcessing}
-      generateLabel="Editar vídeo"
-      generateDisabled={!videoFile || isProcessing}
+      generateLabel={activeTab === "music" ? "Adicionar trilha" : "Editar vídeo"}
+      generateDisabled={generateDisabled}
     />
   );
 }
