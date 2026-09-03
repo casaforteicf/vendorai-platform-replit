@@ -2,8 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Image as ImageIcon,
-  Video,
   Music2,
   FileText,
   Upload,
@@ -17,10 +15,12 @@ import {
   Loader2,
   CheckSquare,
   Square,
+  Link2,
 } from "lucide-react";
 
 type MediaType = "image" | "video" | "audio" | "document";
 type FilterType = "all" | MediaType;
+type MediaContextType = "none" | "client" | "event" | "campaign" | "product" | "project" | "other";
 
 type MediaAsset = {
   id: string;
@@ -40,6 +40,30 @@ type MediaAsset = {
 type Capabilities = {
   provider: "vendorai";
   capabilities: Record<string, "ready" | "building">;
+};
+
+type AssetContext = {
+  type: MediaContextType;
+  label: string;
+};
+
+const CONTEXT_LABELS: Record<MediaContextType, string> = {
+  none: "Sem vínculo",
+  client: "Cliente",
+  event: "Evento",
+  campaign: "Campanha",
+  product: "Produto",
+  project: "Obra / Projeto",
+  other: "Outro",
+};
+
+const CONTEXT_PLACEHOLDERS: Record<Exclude<MediaContextType, "none">, string> = {
+  client: "Nome do cliente",
+  event: "Nome do evento",
+  campaign: "Nome da campanha",
+  product: "Nome do produto",
+  project: "Nome da obra ou projeto",
+  other: "Descrição do vínculo",
 };
 
 function authHeaders(json = false): Record<string, string> {
@@ -70,6 +94,17 @@ function bytes(value?: number | null): string {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function assetContext(asset: MediaAsset): AssetContext | null {
+  const raw = asset.metadata?.context;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : "other";
+  const label = typeof record.label === "string" ? record.label.trim() : "";
+  if (!label) return null;
+  const safeType: MediaContextType = type in CONTEXT_LABELS ? type as MediaContextType : "other";
+  return { type: safeType, label };
+}
+
 export default function MediaCenter() {
   const { user, tenantOverride } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
@@ -83,6 +118,8 @@ export default function MediaCenter() {
   const [uploading, setUploading] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [running, setRunning] = useState<string | null>(null);
+  const [uploadContextType, setUploadContextType] = useState<MediaContextType>("none");
+  const [uploadContextLabel, setUploadContextLabel] = useState("");
 
   const selectedAssets = useMemo(
     () => assets.filter((asset) => selected.includes(asset.id)),
@@ -113,6 +150,17 @@ export default function MediaCenter() {
 
   async function uploadFiles(files: FileList | File[]) {
     if (!tenantId || !files.length) return;
+    const contextLabel = uploadContextLabel.trim();
+    if (uploadContextType !== "none" && !contextLabel) {
+      toast({
+        title: "Informe o vínculo do upload",
+        description: `Preencha ${CONTEXT_LABELS[uploadContextType].toLowerCase()} antes de enviar os arquivos.`,
+        variant: "destructive",
+      });
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
     setUploading(true);
     let success = 0;
     try {
@@ -148,14 +196,31 @@ export default function MediaCenter() {
             originalFilename: file.name,
             mimeType: file.type || null,
             fileSize: file.size,
-            metadata: { uploadedFrom: "media_center" },
+            metadata: {
+              uploadedFrom: "media_center",
+              uploadedAt: new Date().toISOString(),
+              ...(uploadContextType !== "none" ? {
+                context: {
+                  type: uploadContextType,
+                  label: contextLabel,
+                },
+              } : {}),
+            },
           }),
         });
         const registerBody = await registerRes.json();
         if (!registerRes.ok) throw new Error(registerBody.error || `Falha ao registrar ${file.name}`);
         success += 1;
       }
-      if (success) toast({ title: `${success} arquivo(s) adicionado(s) à Central de Mídias.` });
+      if (success) {
+        const contextDescription = uploadContextType !== "none"
+          ? ` Vinculado a ${CONTEXT_LABELS[uploadContextType].toLowerCase()}: ${contextLabel}.`
+          : "";
+        toast({ title: `${success} arquivo(s) adicionado(s) à Central de Mídias.`, description: contextDescription || undefined });
+        setSelected([]);
+        setUploadContextType("none");
+        setUploadContextLabel("");
+      }
       await loadAll();
     } catch (error) {
       toast({ title: "Falha no upload", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -238,21 +303,57 @@ export default function MediaCenter() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Mídias</h1>
           <p className="text-sm text-muted-foreground">Biblioteca oficial do tenant para fotos, vídeos, áudios e arquivos.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => void loadAll()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted">
-            <RefreshCw className="h-4 w-4" /> Atualizar
-          </button>
-          <input ref={inputRef} type="file" multiple className="hidden" onChange={(event) => event.target.files && void uploadFiles(event.target.files)} />
-          <button disabled={uploading} onClick={() => inputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Upload
-          </button>
+        <div className="flex flex-col gap-2 md:flex-row md:items-end">
+          <div className="min-w-[170px]">
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Vincular upload a</label>
+            <select
+              value={uploadContextType}
+              onChange={(event) => {
+                const next = event.target.value as MediaContextType;
+                setUploadContextType(next);
+                if (next === "none") setUploadContextLabel("");
+              }}
+              disabled={uploading}
+              className="h-9 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+            >
+              {Object.entries(CONTEXT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          {uploadContextType !== "none" && (
+            <div className="min-w-[220px] md:min-w-[260px]">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">{CONTEXT_LABELS[uploadContextType]}</label>
+              <input
+                value={uploadContextLabel}
+                onChange={(event) => setUploadContextLabel(event.target.value)}
+                disabled={uploading}
+                placeholder={CONTEXT_PLACEHOLDERS[uploadContextType]}
+                className="h-9 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button onClick={() => void loadAll()} className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm hover:bg-muted">
+              <RefreshCw className="h-4 w-4" /> Atualizar
+            </button>
+            <input ref={inputRef} type="file" multiple className="hidden" onChange={(event) => event.target.files && void uploadFiles(event.target.files)} />
+            <button disabled={uploading} onClick={() => inputRef.current?.click()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50">
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Upload
+            </button>
+          </div>
         </div>
       </div>
+
+      {uploadContextType !== "none" && uploadContextLabel.trim() && (
+        <div className="inline-flex items-center gap-2 rounded-full border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+          <Link2 className="h-3.5 w-3.5" />
+          Os próximos arquivos serão vinculados a <strong className="text-foreground">{CONTEXT_LABELS[uploadContextType]} · {uploadContextLabel.trim()}</strong>
+        </div>
+      )}
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {tabs.map((tab) => (
@@ -293,6 +394,7 @@ export default function MediaCenter() {
           {visible.map((asset) => {
             const isSelected = selected.includes(asset.id);
             const url = mediaUrl(asset.storageUrl);
+            const context = assetContext(asset);
             return (
               <button key={asset.id} onClick={() => toggle(asset.id)} className={`group overflow-hidden rounded-xl border bg-card text-left transition ${isSelected ? "ring-2 ring-primary border-primary" : "hover:border-foreground/25"}`}>
                 <div className="relative aspect-square bg-muted flex items-center justify-center overflow-hidden">
@@ -307,6 +409,12 @@ export default function MediaCenter() {
                 </div>
                 <div className="p-2.5">
                   <p className="truncate text-sm font-medium" title={asset.originalFilename || asset.id}>{asset.originalFilename || "Mídia"}</p>
+                  {context && (
+                    <div className="mt-1 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground" title={`${CONTEXT_LABELS[context.type]} · ${context.label}`}>
+                      <Link2 className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{CONTEXT_LABELS[context.type]} · {context.label}</span>
+                    </div>
+                  )}
                   <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>{asset.source === "generated" ? "Gerada" : asset.source === "upload" ? "Upload" : asset.source || "Mídia"}</span>
                     <span>{bytes(asset.fileSize)}</span>
