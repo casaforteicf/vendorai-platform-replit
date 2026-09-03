@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { ArrowRight, Mic2, ShoppingBag, Scissors, Clapperboard, LayoutGrid, Sparkles, Captions } from "lucide-react";
 import { cn } from "@/lib/utils";
+import BrandVideoKitPanel from "@/components/video/BrandVideoKitPanel";
 
 interface VideoCard {
   title: string;
@@ -137,6 +138,8 @@ export default function VideoHome() {
             );
           })}
         </div>
+
+        <BrandVideoKitPanel />
       </div>
     </div>
   );
