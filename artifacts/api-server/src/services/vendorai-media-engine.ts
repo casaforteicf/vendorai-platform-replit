@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { createMediaJob } from "./media-jobs.js";
 import { createProcessingMediaProject } from "./media-library.js";
 import { isVendorAiVoiceWorkerConfigured } from "./vendorai-voice-engine.js";
+import { isVendorAiLipSyncWorkerConfigured } from "./vendorai-lipsync-engine.js";
 
 export type VendorAiMediaCapability =
   | "video_edit"
@@ -33,7 +34,7 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     voice_profile: "ready",
     voice_synthesize: isVendorAiVoiceWorkerConfigured() ? "ready" : "building",
     persona_profile: "ready",
-    avatar_lipsync: "building",
+    avatar_lipsync: isVendorAiLipSyncWorkerConfigured() ? "ready" : "building",
     video_generate: "building",
   },
 };
