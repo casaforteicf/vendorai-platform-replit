@@ -13,6 +13,27 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function extractImageSources(html: string): string[] {
+  const comparableHtml = decodeComparableHtml(html);
+  const sources: string[] = [];
+  const imageTagPattern = /<img\b[^>]*>/gi;
+  const quotedSrcPattern = /\bsrc\s*=\s*(["'])(.*?)\1/i;
+  const unquotedSrcPattern = /\bsrc\s*=\s*([^\s>]+)/i;
+
+  for (const match of comparableHtml.matchAll(imageTagPattern)) {
+    const tag = match[0];
+    const quoted = tag.match(quotedSrcPattern);
+    if (quoted?.[2]) {
+      sources.push(quoted[2].trim());
+      continue;
+    }
+    const unquoted = tag.match(unquotedSrcPattern);
+    if (unquoted?.[1]) sources.push(unquoted[1].trim());
+  }
+
+  return sources;
+}
+
 export function normalizeRequiredImageUrls(images: readonly string[] | null | undefined): string[] {
   return [...new Set(
     (images ?? [])
@@ -25,8 +46,8 @@ export function findMissingRequiredImages(
   html: string,
   images: readonly string[] | null | undefined,
 ): string[] {
-  const comparableHtml = decodeComparableHtml(html);
-  return normalizeRequiredImageUrls(images).filter((url) => !comparableHtml.includes(url));
+  const imageSources = new Set(extractImageSources(html));
+  return normalizeRequiredImageUrls(images).filter((url) => !imageSources.has(url));
 }
 
 export function ensureRequiredImagesInHtml(
