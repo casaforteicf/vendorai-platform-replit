@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 
-const RECOVERY_KEY = "vendorai_frontend_recovery_at";
-const RECOVERY_COOLDOWN_MS = 60_000;
-const STUCK_SPINNER_MS = 15_000;
+const RECOVERY_KEY_PREFIX = "vendorai_frontend_recovered_bundle";
+const STUCK_SPINNER_MS = 12_000;
 const CHUNK_ERROR_PATTERN =
-  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS/i;
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html/i;
+
+function currentBundleRecoveryKey() {
+  const entryScript = Array.from(document.scripts).find((script) =>
+    script.type === "module" && /\/assets\/index-[^/]+\.js(?:$|\?)/.test(script.src),
+  );
+  return `${RECOVERY_KEY_PREFIX}:${entryScript?.src || "bootstrap"}`;
+}
 
 async function clearObsoleteFrontendState() {
   try {
@@ -26,15 +32,19 @@ async function clearObsoleteFrontendState() {
   }
 }
 
-function canAutoRecover() {
-  const lastRecovery = Number(sessionStorage.getItem(RECOVERY_KEY) ?? 0);
-  return !Number.isFinite(lastRecovery) || Date.now() - lastRecovery >= RECOVERY_COOLDOWN_MS;
+function canAutoRecoverCurrentBundle() {
+  return sessionStorage.getItem(currentBundleRecoveryKey()) !== "1";
 }
 
 async function recoverFrontendOnce(reason: string) {
-  if (!canAutoRecover()) return false;
+  const recoveryKey = currentBundleRecoveryKey();
+  if (!canAutoRecoverCurrentBundle()) return false;
 
-  sessionStorage.setItem(RECOVERY_KEY, String(Date.now()));
+  // One automatic reload PER entry bundle, rather than one reload per minute.
+  // When a new deploy changes index-<hash>.js, that new bundle gets its own
+  // recovery allowance. If the same broken bundle comes back, we stop and show
+  // an explicit recovery UI instead of creating a reload loop.
+  sessionStorage.setItem(recoveryKey, "1");
   console.warn(`[VendorAI] Recuperando frontend após ${reason}.`);
   await clearObsoleteFrontendState();
   window.location.reload();
@@ -51,8 +61,9 @@ function isFullScreenRouteSpinnerVisible() {
 }
 
 function warmCriticalRoutes() {
-  // These are the two areas that already showed the stale/lazy-loading failure in production.
-  // Warm them while the CRM shell is loading so the first click does not depend on a cold chunk.
+  // Warm the areas that already exposed stale lazy chunks in production.
+  // If the current entry bundle references an asset from an older deploy,
+  // this also surfaces the failure immediately so recovery can refresh it.
   void Promise.allSettled([
     import("@/pages/ContentAutopilot"),
     import("@/pages/video/VideoHome"),
@@ -65,36 +76,50 @@ export function FrontendRecoveryGuard() {
   const spinnerSinceRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Retire any worker/cache left by versions prior to the CRM disabling PWA.
     void clearObsoleteFrontendState();
     warmCriticalRoutes();
 
-    const onPreloadError = (event: Event) => {
-      event.preventDefault();
-      void recoverFrontendOnce("falha de preload").then((recovered) => {
+    const markStalledIfNotRecovered = (reason: string) => {
+      void recoverFrontendOnce(reason).then((recovered) => {
         if (!recovered) setStalled(true);
       });
+    };
+
+    const onPreloadError = (event: Event) => {
+      event.preventDefault();
+      markStalledIfNotRecovered("falha de preload");
     };
 
     const onWindowError = (event: ErrorEvent) => {
       const message = event.error instanceof Error ? event.error.message : event.message;
       if (!CHUNK_ERROR_PATTERN.test(message ?? "")) return;
       event.preventDefault();
-      void recoverFrontendOnce("chunk desatualizado").then((recovered) => {
-        if (!recovered) setStalled(true);
-      });
+      markStalledIfNotRecovered("chunk ou MIME desatualizado");
+    };
+
+    const onResourceError = (event: Event) => {
+      const target = event.target;
+      const assetUrl =
+        target instanceof HTMLScriptElement
+          ? target.src
+          : target instanceof HTMLLinkElement
+            ? target.href
+            : "";
+      if (!assetUrl.includes("/assets/")) return;
+      markStalledIfNotRecovered("asset do frontend indisponível");
     };
 
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       const message = event.reason instanceof Error ? event.reason.message : String(event.reason ?? "");
       if (!CHUNK_ERROR_PATTERN.test(message)) return;
       event.preventDefault();
-      void recoverFrontendOnce("import dinâmico").then((recovered) => {
-        if (!recovered) setStalled(true);
-      });
+      markStalledIfNotRecovered("import dinâmico");
     };
 
     window.addEventListener("vite:preloadError", onPreloadError);
     window.addEventListener("error", onWindowError);
+    window.addEventListener("error", onResourceError, true);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
 
     const interval = window.setInterval(() => {
@@ -110,14 +135,13 @@ export function FrontendRecoveryGuard() {
 
       if (Date.now() - spinnerSinceRef.current < STUCK_SPINNER_MS) return;
       spinnerSinceRef.current = Date.now();
-      void recoverFrontendOnce("carregamento travado").then((recovered) => {
-        if (!recovered) setStalled(true);
-      });
+      markStalledIfNotRecovered("carregamento global travado");
     }, 1_000);
 
     return () => {
       window.removeEventListener("vite:preloadError", onPreloadError);
       window.removeEventListener("error", onWindowError);
+      window.removeEventListener("error", onResourceError, true);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       window.clearInterval(interval);
     };
@@ -128,21 +152,21 @@ export function FrontendRecoveryGuard() {
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-background/95 p-6 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border bg-card p-6 text-center shadow-xl">
-        <h2 className="text-lg font-semibold">Não foi possível concluir o carregamento</h2>
+        <h2 className="text-lg font-semibold">A versão aberta não conseguiu carregar esta tela</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          O VendorAI interrompeu o carregamento infinito. Atualize para buscar a versão mais recente do sistema.
+          O VendorAI interrompeu o carregamento infinito. Você pode buscar a versão atual do sistema ou voltar ao painel sem ficar preso no spinner.
         </p>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
           <button
             type="button"
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
             onClick={async () => {
-              sessionStorage.removeItem(RECOVERY_KEY);
+              sessionStorage.removeItem(currentBundleRecoveryKey());
               await clearObsoleteFrontendState();
               window.location.reload();
             }}
           >
-            Atualizar agora
+            Carregar versão atual
           </button>
           <button
             type="button"
