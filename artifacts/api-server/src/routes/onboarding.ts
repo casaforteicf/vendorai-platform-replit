@@ -1269,6 +1269,14 @@ router.post("/onboarding/integracoes/complete", authenticate, async (req, res) =
   await db.update(tenantsTable)
     .set({ integracoesConcluido: true })
     .where(eq(tenantsTable.id, tenantId));
+
+  // Melhor esforço, não bloqueia a resposta: compila o briefing da empresa
+  // e já deixa todos os agentes com contexto do negócio configurado, sem
+  // depender do tenant visitar a aba Agentes manualmente depois.
+  import("../lib/agentBriefingCompiler.js")
+    .then(({ compileAgentBusinessBriefing }) => compileAgentBusinessBriefing(tenantId, undefined, req.log))
+    .catch((err) => req.log.warn({ err, tenantId }, "onboarding: auto-compile de briefing dos agentes falhou"));
+
   return res.json({ ok: true, redirectTo: "/dashboard" });
 });
 

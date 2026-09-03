@@ -313,6 +313,31 @@ function AgentConfigSheet({
   const [nomePerfil, setNomePerfil]               = useState(agent.nomePerfil ?? "");
   const [tom, setTom]                             = useState(agent.tom ?? "profissional");
   const [restricoes, setRestricoes]               = useState(agent.restricoes ?? "");
+  const [briefingNotes, setBriefingNotes]         = useState("");
+  const [briefingResult, setBriefingResult]       = useState<string | null>(null);
+  const [compilingBriefing, setCompilingBriefing] = useState(false);
+
+  async function compileBriefing() {
+    setCompilingBriefing(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/agent-configs/compile-briefing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+        body: JSON.stringify({ notes: briefingNotes || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Não foi possível compilar", description: data.error, variant: "destructive" });
+        return;
+      }
+      setBriefingResult(data.briefing);
+      toast({ title: "Contexto da empresa aplicado a todos os agentes." });
+    } catch {
+      toast({ title: "Erro de conexão ao compilar", variant: "destructive" });
+    } finally {
+      setCompilingBriefing(false);
+    }
+  }
   const [systemPromptCustom, setSystemPromptCustom] = useState(agent.systemPromptCustom ?? "");
 
   // ── SPIN qualification state (SDR only) ──
@@ -619,6 +644,27 @@ function AgentConfigSheet({
 
           {/* ABA PROMPT */}
           <TabsContent value="prompt" className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+            <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/[0.03] p-4">
+              <div>
+                <Label className="text-sm font-semibold">Contexto da empresa (IA) — vale pra todos os agentes</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Compila o Perfil do Negócio (Configurações) num briefing curto e aplica automaticamente como contexto fixo em todos os seus agentes — não mexe nas regras/metodologia de cada um, só garante que sabem o que sua empresa vende.
+                </p>
+              </div>
+              <Textarea
+                value={briefingNotes}
+                onChange={(e) => setBriefingNotes(e.target.value)}
+                placeholder="Observação extra pra IA considerar (opcional): objeção comum, algo que o agente nunca deve dizer, etc."
+                rows={2}
+              />
+              <Button size="sm" onClick={compileBriefing} disabled={compilingBriefing}>
+                {compilingBriefing ? "Compilando…" : "Compilar e aplicar com IA"}
+              </Button>
+              {briefingResult && (
+                <div className="rounded-md bg-background border p-3 text-sm text-muted-foreground whitespace-pre-wrap">{briefingResult}</div>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label>Prompt padrão Vendor.ai</Label>
               <Textarea

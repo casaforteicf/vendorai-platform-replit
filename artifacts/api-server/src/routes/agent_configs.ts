@@ -759,4 +759,30 @@ function isPgCode(err: unknown, code: string): boolean {
   return false;
 }
 
+// POST /tenants/:tenantId/agent-configs/compile-briefing
+// Compila business_profiles + catálogo (com IA) num texto de contexto e
+// aplica automaticamente como "customPrompt" (## INSTRUÇÕES DA EMPRESA)
+// em TODOS os agentes do tenant — não sobrescreve as regras/metodologia
+// de cada agente, só o pedaço aditivo que descreve o negócio.
+router.post("/tenants/:tenantId/agent-configs/compile-briefing", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.tenantId !== tenantId && req.user?.platformRole !== "super_admin") {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+  const extraNotes = typeof req.body?.notes === "string" ? req.body.notes.slice(0, 1000) : undefined;
+  try {
+    const { compileAgentBusinessBriefing } = await import("../lib/agentBriefingCompiler.js");
+    const result = await compileAgentBusinessBriefing(tenantId, extraNotes, req.log);
+    if (!result.briefing) {
+      res.status(422).json({ error: "Preencha o Perfil do Negócio (Configurações) antes de compilar — não há informação suficiente ainda." });
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err, tenantId }, "compile-briefing failed");
+    res.status(500).json({ error: "Não foi possível compilar agora. Tenta de novo em instantes." });
+  }
+});
+
 export default router;

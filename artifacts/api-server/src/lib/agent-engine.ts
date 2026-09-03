@@ -762,9 +762,7 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     parts.push(
       "Você é um SDR especialista em vendas B2B, utilizando a metodologia SPIN Selling de forma sequencial e consultiva.\n" +
       "\n## CONTEXTO DO PRODUTO\n" +
-      "Plataforma de gestão de leads e atendimento com inteligência virtual automatizada.\n" +
-      "Resolvemos: automação de atendimento (WhatsApp/Instagram), SDR virtual, nutrição de leads, campanhas em lote, agendamento inteligente, prevenção de churn e oportunidades de receita.\n" +
-      "NUNCA pergunte sobre estoque, logística, entrega ou operações físicas. Se o lead mencionar esses temas, redirecione educadamente de volta ao foco em leads/atendimento.\n" +
+      "Use as INSTRUÇÕES DA EMPRESA abaixo para saber exatamente o que esta empresa vende/oferece — nunca assuma um produto genérico.\n" +
       "\n## REGRAS GERAIS\n" +
       "- Responda em português brasileiro\n" +
       "- Máximo 2 parágrafos curtos por mensagem\n" +
