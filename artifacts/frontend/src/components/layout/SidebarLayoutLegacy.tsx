@@ -334,7 +334,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Ajuda / FAQ",   href: "/faq",           icon: HelpCircle,       sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     // "Stories" agora é um item dentro do dropdown "Conteúdo" (renomeado
     // "Stories Praça.ai"), não mais um item de topo — ver bloco do
     // dropdown mais abaixo.
@@ -866,7 +865,19 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
           </div>
         </div>
-        <div className="mb-1">
+        <div className="mb-1 space-y-1">
+          <Link
+            href="/faq"
+            className={cn(
+              "flex min-h-[40px] items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              location === "/faq"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"
+            )}
+          >
+            <HelpCircle className="h-4 w-4" />
+            Ajuda / FAQ
+          </Link>
           <NovidadesBell />
         </div>
         <Button
