@@ -37,9 +37,7 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
   const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
   const [responsibilityOpen, setResponsibilityOpen] = useState(false);
 
-  const { data: stages = [] } = useListPipelineStages(tenantId, {
-    query: { enabled: Boolean(tenantId && isAdmin && responsibilityOpen) },
-  });
+  const { data: stages = [] } = useListPipelineStages(tenantId);
 
   const orderedStages = useMemo(
     () => [...stages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)),
