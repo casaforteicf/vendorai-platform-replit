@@ -5,6 +5,7 @@ import mediaVideoComposeRouter from "./media_video_compose.js";
 import {
   createVendorAiMediaGenerationJob,
   vendorAiMediaEngineCapabilities,
+  vendorAiWorkerStatus,
   type VendorAiMediaCapability,
 } from "../services/vendorai-media-engine.js";
 import {
@@ -23,6 +24,15 @@ import {
   VoiceEngineNotReadyError,
   VoiceProfileInvalidError,
 } from "../services/vendorai-voice-engine.js";
+import {
+  MusicEngineNotReadyError,
+  MusicGenerationInputError,
+} from "../services/vendorai-music-engine.js";
+import {
+  LipSyncConsentError,
+  LipSyncEngineNotReadyError,
+  LipSyncInputError,
+} from "../services/vendorai-lipsync-engine.js";
 
 const router: IRouter = Router();
 
@@ -43,6 +53,7 @@ const KNOWN_OPERATIONS = new Set<VendorAiMediaCapability>([
   "voice_synthesize",
   "persona_profile",
   "avatar_lipsync",
+  "music_generate",
   "video_generate",
   "image_resize",
   "image_crop",
@@ -96,7 +107,10 @@ async function assetBelongsToTenant(tenantId: string, assetId: string): Promise<
 router.use("/tenants/:tenantId/media-engine", requireSameTenanOrSuperAdmin());
 
 router.get("/tenants/:tenantId/media-engine/capabilities", (_req, res) => {
-  res.json(vendorAiMediaEngineCapabilities);
+  res.json({
+    ...vendorAiMediaEngineCapabilities,
+    workers: vendorAiWorkerStatus,
+  });
 });
 
 router.get("/tenants/:tenantId/media-engine/identities", async (req, res) => {
@@ -477,15 +491,35 @@ router.post("/tenants/:tenantId/media-engine/jobs", async (req, res) => {
     return;
   }
 
-  const result = await createVendorAiMediaGenerationJob({
-    tenantId,
-    userId: req.user?.sub ?? null,
-    title,
-    operation,
-    context,
-  });
-
-  res.status(202).json({ ...result, provider: "vendorai", operation });
+  try {
+    const result = await createVendorAiMediaGenerationJob({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      title,
+      operation,
+      context,
+    });
+    res.status(202).json({ ...result, provider: "vendorai", operation });
+  } catch (error) {
+    if (error instanceof MusicEngineNotReadyError || error instanceof LipSyncEngineNotReadyError) {
+      res.status(503).json({ error: error.message, code: "MEDIA_WORKER_NOT_READY", operation });
+      return;
+    }
+    if (error instanceof MusicGenerationInputError || error instanceof LipSyncInputError) {
+      res.status(422).json({ error: error.message, operation });
+      return;
+    }
+    if (error instanceof LipSyncConsentError) {
+      res.status(403).json({
+        error: error.message,
+        code: "LIPSYNC_CONSENT_REQUIRED",
+        missingScopes: error.missingScopes,
+        operation,
+      });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.use(mediaVideoComposeRouter);

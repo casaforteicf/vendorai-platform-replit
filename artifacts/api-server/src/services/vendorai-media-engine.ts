@@ -4,6 +4,8 @@ import { createProcessingMediaProject } from "./media-library.js";
 import { startVendorAiPhotoVideo } from "./vendorai-photo-video.js";
 import { startVendorAiMediaBatch, type MediaBatchItem } from "./vendorai-media-batch.js";
 import { startVendorAiAiImageTool } from "./vendorai-ai-image-tools.js";
+import { generateVendorAiMusic } from "./vendorai-music-engine.js";
+import { generateVendorAiLipSync } from "./vendorai-lipsync-engine.js";
 
 export type VendorAiMediaCapability =
   | "video_edit"
@@ -33,7 +35,20 @@ export interface VendorAiMediaEngineCapabilities {
   capabilities: Record<VendorAiMediaCapability, "ready" | "building">;
 }
 
-async function workerHealthReady(url: string | undefined, kind: "voice" | "lipsync" | "music"): Promise<boolean> {
+export type VendorAiWorkerKind = "voice" | "lipsync" | "music";
+export type VendorAiWorkerStatus = {
+  configured: boolean;
+  ready: boolean;
+  checkedAt: string;
+};
+
+export const vendorAiWorkerStatus: Record<VendorAiWorkerKind, VendorAiWorkerStatus> = {
+  voice: { configured: Boolean(process.env["VENDORAI_MEDIA_WORKER_URL"]), ready: false, checkedAt: new Date(0).toISOString() },
+  lipsync: { configured: Boolean(process.env["VENDORAI_LIPSYNC_WORKER_URL"]), ready: false, checkedAt: new Date(0).toISOString() },
+  music: { configured: Boolean(process.env["VENDORAI_MUSIC_WORKER_URL"]), ready: false, checkedAt: new Date(0).toISOString() },
+};
+
+async function workerHealthReady(url: string | undefined, kind: VendorAiWorkerKind): Promise<boolean> {
   if (!url) return false;
   try {
     const response = await fetch(`${url.replace(/\/$/, "")}/health`, { signal: AbortSignal.timeout(2500) });
@@ -56,11 +71,22 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
 };
 
 export async function refreshVendorAiWorkerCapabilities(): Promise<void> {
+  const checkedAt = new Date().toISOString();
+  const urls: Record<VendorAiWorkerKind, string | undefined> = {
+    voice: process.env["VENDORAI_MEDIA_WORKER_URL"],
+    lipsync: process.env["VENDORAI_LIPSYNC_WORKER_URL"],
+    music: process.env["VENDORAI_MUSIC_WORKER_URL"],
+  };
   const [voiceReady, lipSyncReady, musicReady] = await Promise.all([
-    workerHealthReady(process.env["VENDORAI_MEDIA_WORKER_URL"], "voice"),
-    workerHealthReady(process.env["VENDORAI_LIPSYNC_WORKER_URL"], "lipsync"),
-    workerHealthReady(process.env["VENDORAI_MUSIC_WORKER_URL"], "music"),
+    workerHealthReady(urls.voice, "voice"),
+    workerHealthReady(urls.lipsync, "lipsync"),
+    workerHealthReady(urls.music, "music"),
   ]);
+
+  vendorAiWorkerStatus.voice = { configured: Boolean(urls.voice), ready: voiceReady, checkedAt };
+  vendorAiWorkerStatus.lipsync = { configured: Boolean(urls.lipsync), ready: lipSyncReady, checkedAt };
+  vendorAiWorkerStatus.music = { configured: Boolean(urls.music), ready: musicReady, checkedAt };
+
   vendorAiMediaEngineCapabilities.capabilities.voice_synthesize = voiceReady ? "ready" : "building";
   vendorAiMediaEngineCapabilities.capabilities.avatar_lipsync = lipSyncReady ? "ready" : "building";
   vendorAiMediaEngineCapabilities.capabilities.video_batch = voiceReady && lipSyncReady ? "ready" : "building";
@@ -82,6 +108,10 @@ function mediaBatchItems(value: unknown): MediaBatchItem[] {
     operation: String(item["operation"] ?? "") as MediaBatchItem["operation"],
     options: item["options"] && typeof item["options"] === "object" && !Array.isArray(item["options"]) ? item["options"] as MediaBatchItem["options"] : undefined,
   }));
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 export async function createVendorAiMediaGenerationJob(input: {
@@ -109,6 +139,29 @@ export async function createVendorAiMediaGenerationJob(input: {
       prompt: typeof context["prompt"] === "string" ? context["prompt"] : undefined,
       count: Number(context["count"] ?? 2),
       size,
+    });
+  }
+  if (input.operation === "music_generate") {
+    return generateVendorAiMusic({
+      tenantId: input.tenantId,
+      userId: input.userId ?? null,
+      title: input.title,
+      prompt: String(context["prompt"] ?? ""),
+      durationSeconds: Number(context["durationSeconds"] ?? 30),
+      style: optionalString(context["style"]),
+      mood: optionalString(context["mood"]),
+      energy: optionalString(context["energy"]),
+      instrumental: context["instrumental"] !== false,
+    });
+  }
+  if (input.operation === "avatar_lipsync") {
+    return generateVendorAiLipSync({
+      tenantId: input.tenantId,
+      userId: input.userId ?? null,
+      title: input.title,
+      identityId: String(context["identityId"] ?? ""),
+      audioAssetId: String(context["audioAssetId"] ?? ""),
+      bboxShift: Number(context["bboxShift"] ?? 0),
     });
   }
 
