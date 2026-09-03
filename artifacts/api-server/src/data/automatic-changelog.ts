@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-311",
+    "titulo": "Video: adicionar trilha sonora ao editor",
+    "descricao": "acompanha o job pelo endpoint já existente; exibe preview do MP4 final; mantém o arquivo original intacto; resultado continua registrado na Biblioteca Audiovisual pelo backend do PR #310.",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-03T11:29:48.000Z",
+    "pullRequest": 311
+  },
+  {
     "id": "pr-297",
     "titulo": "oficializar VendorAI Media Engine sem HeyGen",
     "descricao": "adiciona `/tenants/:tenantId/media-engine/capabilities` com provider oficial `vendorai`; declara edição, clipes e legendagem como capacidades prontas; declara composição, geração de vídeo, lote, perfis de voz/persona e lip-sync como capacidades em construção, sem fingir disponibilidade; remove as rotas HeyGen do `content_studio.ts`;",
