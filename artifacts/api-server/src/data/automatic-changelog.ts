@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-286",
+    "titulo": "unificar briefing e gerador de conteúdo",
+    "descricao": "briefing único com **Oferta → Público → Objetivo**; contexto do anunciante aparece de forma compacta; usa a lista de produtos real de cada vertical (catálogo, varejo, supermercado ou insumos); remove da área inferior o seletor de produto que repetia a oferta já escolhida;",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-03T00:47:43.000Z",
+    "pullRequest": 286
+  },
+  {
     "id": "pr-284",
     "titulo": "liberar patrocínio automático pela IA",
     "descricao": "só executa automaticamente campanhas originadas do Marketing (`contentGenerationId`); exige modo Marketing `automatic` ativo; mantém objetivo, período, orçamento diário/total, conversão e categoria especial validados; proíbe aumento automático de orçamento;",
