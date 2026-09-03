@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildConsensus, combineIntelligence, evaluateRisk, evaluatePortfolioRisk, evaluatePortfolioIntelligence, classifyRegimeContext, evaluateRegimeGate, evaluateRiskBudget, evaluateStrategyLifecycle, supervise, executePaper, getOperatingProfile, metricPrior, portfolioCorrelationRisk, strategyCandidates, strategyMetrics, summarizePortfolio, simulateShadowOrder, shadowQualityScore, type MarketSnapshot, type StrategySignal, type StrategyMetric, type TadMarketId } from '@tad/core';
 import { bearerToken } from '../../../lib/auth';
-import { appendAudit, findPositionByAutopilotKey, getPaperWallet, listPositions, savePosition, saveShadowExecution, storageMode } from '../../../lib/store';
+import { appendAudit, findPositionByAutopilotKey, getPaperWallet, listAudit, listPositions, savePosition, saveShadowExecution, storageMode } from '../../../lib/store';
 import { getOperatingSettings } from '../../../lib/operating-settings';
 import { loadCandles, loadConfiguredEvents, loadDerivativesIntelligence, loadTechnical, loadMarkets } from '../../../lib/binance';
 import { runRegimeHistory } from '../../../lib/regime-history';
 import { computeRobustness, type RobustnessStrategyId } from '../../../lib/robustness';
 import { assessDataHealth } from '../../../lib/data-health';
+import { contextualLearning } from '../../../lib/context-learning';
 
 function agentScores(m:MarketSnapshot,techScore:number,intel:any){
   const score=(m.opportunityScore??50)/100;const base=Math.max(.5,Math.min(.96,.53+score*.28+techScore*.16));
@@ -35,22 +36,25 @@ export async function POST(req:NextRequest){
   const freshMarket=freshMarkets.find(m=>m.symbol===body.market!.symbol);
   const dataHealth=assessDataHealth({market:body.market,candles5m:technical.candles5m,derivatives,eventProvider:eventFeed.provider,restPrice:freshMarket?.price});
   const intelligence=combineIntelligence(body.market,derivatives,eventFeed.events,eventFeed.provider);
+  const currentRegimeContext=classifyRegimeContext(body.market,technical.mtf,body.market.fundingRate??0);
   const candidates:(StrategySignal|null)[]=strategyCandidates(body.market,technical.mtf,technical.candles5m);
   const governedAutopilot=Boolean(body.autopilotKey);
+  const contextualAudit=governedAutopilot?await listAudit(token,500):[];
   const valid=candidates.filter((x):x is StrategySignal=>Boolean(x)).map(s=>{
     const strategyMetric:StrategyMetric=metrics.find(m=>m.strategyId===s.strategyId)??{strategyId:s.strategyId,trades:0,wins:0,losses:0,winRatePct:0,realizedPnl:0,avgPnl:0,profitFactor:null};
     const lifecycle=evaluateStrategyLifecycle(strategyMetric,all);
     const prior=metricPrior(strategyMetric);
     const biasMatch=(intelligence.combinedBias==='BULLISH'&&s.side==='LONG')||(intelligence.combinedBias==='BEARISH'&&s.side==='SHORT')?6:intelligence.combinedBias==='NEUTRAL'?0:-4;
     const governanceAdjustment=governedAutopilot?(lifecycle.score-50)*.2:0;
-    const adaptiveScore=s.confidence*100+prior+biasMatch+governanceAdjustment;
-    return {signal:s,adaptiveScore,prior,biasMatch,governanceAdjustment,lifecycle};
+    const contextLearning=governedAutopilot?contextualLearning(all,contextualAudit,s,currentRegimeContext):{sampleSize:0,matchedSamples:0,adjustment:0,winRatePct:null,avgPnl:null,confidence:'NONE' as const,dimensions:{symbol:false,side:false,hourBucket:false,regime:false}};
+    const adaptiveScore=s.confidence*100+prior+biasMatch+governanceAdjustment+contextLearning.adjustment;
+    return {signal:s,adaptiveScore,prior,biasMatch,governanceAdjustment,contextLearning,lifecycle};
   }).filter(v=>!governedAutopilot||v.lifecycle.capitalMultiplier>0).sort((a,b)=>b.adaptiveScore-a.adaptiveScore);
   if(!valid.length){await appendAudit(token,'NO_SIGNAL',{market:body.market,technical:technical.mtf,intelligence,profile:profile.id,governedAutopilot});return NextResponse.json({approved:false,reason:governedAutopilot?'NO_GOVERNANCE_ELIGIBLE_STRATEGY':'NO_VALID_STRATEGY_SIGNAL',technical:technical.mtf,intelligence,profile:profile.id,storage:storageMode()})}
   const signal=valid[0].signal; const decision=buildConsensus(signal,agentScores(body.market,technical.mtf.alignmentScore/100,intelligence));
   const strategyMetric:StrategyMetric=metrics.find(m=>m.strategyId===signal.strategyId)??{strategyId:signal.strategyId,trades:0,wins:0,losses:0,winRatePct:0,realizedPnl:0,avgPnl:0,profitFactor:null};
   const lifecycle=valid[0].lifecycle;
-  const regimeContext=classifyRegimeContext(body.market,technical.mtf,body.market.fundingRate??0);
+  const regimeContext=currentRegimeContext;
   const regimeCandles=await loadCandles(body.market.symbol,'5m',900);
   const regimeHistory=runRegimeHistory(body.market.symbol,signal.strategyId as any,regimeCandles);
   const regimeGate=evaluateRegimeGate(regimeHistory.trades,regimeContext);
@@ -95,7 +99,7 @@ export async function POST(req:NextRequest){
   risk.approved=riskBudget.approved;
   risk.effectiveRiskPct=riskBudget.finalRiskPct;
   risk.reasons.push(...riskBudget.reasons);
-  await appendAudit(token,'DECISION',{decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,market:body.market,marketId,profile:profile.id,operatingSettings,technical:technical.mtf,intelligence,governedAutopilot,candidates:valid.map(v=>({strategyId:v.signal.strategyId,confidence:v.signal.confidence,adaptiveScore:v.adaptiveScore,prior:v.prior,biasMatch:v.biasMatch,governanceAdjustment:v.governanceAdjustment,lifecycleState:v.lifecycle.state,lifecycleScore:v.lifecycle.score,capitalMultiplier:v.lifecycle.capitalMultiplier,rationale:v.signal.rationale}))});
+  await appendAudit(token,'DECISION',{decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,market:body.market,marketId,profile:profile.id,operatingSettings,technical:technical.mtf,intelligence,governedAutopilot,candidates:valid.map(v=>({strategyId:v.signal.strategyId,confidence:v.signal.confidence,adaptiveScore:v.adaptiveScore,prior:v.prior,biasMatch:v.biasMatch,governanceAdjustment:v.governanceAdjustment,contextLearning:v.contextLearning,lifecycleState:v.lifecycle.state,lifecycleScore:v.lifecycle.score,capitalMultiplier:v.lifecycle.capitalMultiplier,rationale:v.signal.rationale}))});
   if(!risk.approved)return NextResponse.json({approved:false,decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,technical:technical.mtf,intelligence,candidates:valid,mode:'PAPER',profile:profile.id,operatingSettings,storage:storageMode()});
   const position=executePaper(decision,risk,{accountSize,leverage:requestedLeverage}); if(body.autopilotKey)(position as any).autopilotKey=body.autopilotKey; await savePosition(token,position);
   const shadowOrder=simulateShadowOrder(decision,body.market,{latencyMs:180,feeBpsPerSide:2}); const shadow={...shadowOrder,qualityScore:shadowQualityScore(shadowOrder),paperPositionId:position.id}; await saveShadowExecution(token,shadow);
