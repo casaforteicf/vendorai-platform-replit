@@ -4,6 +4,7 @@ import SubdomainSite from "./SubdomainSite";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
 import { MediaMenuInjector } from "./components/media/MediaMenuInjector";
+import { MediaAdsBridge } from "./components/media/MediaAdsBridge";
 import "./index.css";
 import "./site-generator-fix.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
@@ -48,6 +49,7 @@ createRoot(document.getElementById("root")!).render(
         <FrontendRecoveryGuard />
         <App />
         <MediaMenuInjector />
+        <MediaAdsBridge />
       </>
     )}
   </ErrorBoundary>,
