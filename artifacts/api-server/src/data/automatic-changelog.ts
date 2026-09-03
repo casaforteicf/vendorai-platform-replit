@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-294",
+    "titulo": "ligar processamento de vídeo à biblioteca",
+    "descricao": "cria um projeto `media_projects` para cada execução de edição, clipes ou legendagem; associa o `media_job` existente ao novo `projectId`; mantém `jobId` nas respostas e acrescenta `projectId` de forma retrocompatível; registra cada vídeo gerado em `media_assets` como output;",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-03T01:55:32.000Z",
+    "pullRequest": 294
+  },
+  {
     "id": "pr-296",
     "titulo": "garantir geração efetiva do plano de mídia",
     "descricao": "falha, indisponibilidade ou payload inválido da IA deixa de virar 422 para o cliente geração passa a ter fallback determinístico baseado somente nos dados reais já persistidos do tenant fallback também é persistido em `media_plans` e retorna o mesmo contrato `{ plan }` DataForSEO continua best-effort e nunca bloqueia a geração",
