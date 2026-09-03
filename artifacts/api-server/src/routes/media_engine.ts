@@ -14,6 +14,7 @@ import {
   processVendorAiImageTool,
   type VendorAiNativeImageOperation,
 } from "../services/vendorai-image-tools.js";
+import { AiImageToolValidationError } from "../services/vendorai-ai-image-tools.js";
 import {
   PhotoVideoValidationError,
   startVendorAiPhotoVideo,
@@ -62,6 +63,9 @@ const KNOWN_OPERATIONS = new Set<VendorAiMediaCapability>([
   "image_convert",
   "image_remove_background",
   "image_variations",
+  "image_replace_background",
+  "image_remove_object",
+  "image_outpaint",
   "photo_video",
   "media_batch",
 ]);
@@ -501,6 +505,10 @@ router.post("/tenants/:tenantId/media-engine/jobs", async (req, res) => {
     });
     res.status(202).json({ ...result, provider: "vendorai", operation });
   } catch (error) {
+    if (error instanceof AiImageToolValidationError) {
+      res.status(422).json({ error: error.message, code: "IMAGE_EDIT_INPUT_INVALID", operation });
+      return;
+    }
     if (error instanceof MusicEngineNotReadyError || error instanceof LipSyncEngineNotReadyError) {
       res.status(503).json({ error: error.message, code: "MEDIA_WORKER_NOT_READY", operation });
       return;
