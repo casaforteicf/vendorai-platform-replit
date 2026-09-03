@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   getAdDataConsentState,
   setAdDataConsent,
-  type AdDataConsentState,
 } from "@/lib/launchAttribution";
 
 function shouldHideControl(pathname: string): boolean {
@@ -10,68 +9,52 @@ function shouldHideControl(pathname: string): boolean {
 }
 
 export function AdDataConsentControl() {
-  const [consent, setConsent] = useState<AdDataConsentState | null>(null);
-  const [open, setOpen] = useState(false);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const current = getAdDataConsentState();
-    setConsent(current);
-    setOpen(current === null);
+    setVisible(getAdDataConsentState() === null);
   }, []);
 
-  if (typeof window === "undefined" || shouldHideControl(window.location.pathname)) {
+  if (
+    typeof window === "undefined" ||
+    shouldHideControl(window.location.pathname) ||
+    !visible
+  ) {
     return null;
   }
 
   const choose = (granted: boolean) => {
-    const next = setAdDataConsent(granted);
-    setConsent(next);
-    setOpen(false);
+    setAdDataConsent(granted);
+    setVisible(false);
   };
 
-  if (!open && consent) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-4 left-4 z-[100] rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-600 shadow-lg backdrop-blur hover:text-slate-900"
-        aria-label="Gerenciar preferência de medição de anúncios"
-        data-testid="btn-ad-data-preferences"
-      >
-        Medição de anúncios: {consent.granted ? "ativa" : "desativada"}
-      </button>
-    );
-  }
-
   return (
-    <div className="fixed inset-x-4 bottom-4 z-[100] mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="max-w-xl">
-          <p className="text-sm font-semibold text-slate-900">Medição e otimização de campanhas</p>
-          <p className="mt-1 text-xs leading-relaxed text-slate-600">
-            Opcionalmente, você pode autorizar o VendorAI a usar dados de conversão e identificadores protegidos para medir e otimizar campanhas em plataformas como Meta e Google. Sua escolha não interfere no atendimento, na demonstração ou no teste gratuito.
-          </p>
-          <a href="/privacy" className="mt-1 inline-block text-xs font-medium text-slate-700 underline hover:text-slate-950">
-            Política de Privacidade
+    <div className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white/95 px-3 py-2.5 shadow-xl backdrop-blur sm:px-4">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <p className="text-xs leading-relaxed text-slate-600 sm:text-[13px]">
+          <span className="font-semibold text-slate-900">Medição de campanhas (opcional)</span>
+          {" — "}Use dados de conversão para melhorar anúncios na Meta e Google.{" "}
+          <a href="/privacy" className="font-medium text-slate-700 underline hover:text-slate-950">
+            Privacidade
           </a>
-        </div>
+        </p>
 
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 gap-2 self-end sm:self-auto">
           <button
             type="button"
             onClick={() => choose(false)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
             data-testid="btn-ad-data-decline"
           >
-            Não autorizar
+            Agora não
           </button>
           <button
             type="button"
             onClick={() => choose(true)}
-            className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
             data-testid="btn-ad-data-allow"
           >
-            Autorizar
+            Permitir
           </button>
         </div>
       </div>
