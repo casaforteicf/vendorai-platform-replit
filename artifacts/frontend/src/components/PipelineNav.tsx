@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Settings2, ShieldCheck } from "lucide-react";
-import { useListPipelineStages } from "@workspace/api-client-react";
+import { customFetch } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,14 @@ import {
 import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
 
 export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
+
+type PipelineStageSummary = {
+  id: string;
+  label: string;
+  ordem: number;
+  isSystem: boolean;
+  responsaveisFuncoes?: string[] | null;
+};
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
   { key: "comercial", label: "Comercial", href: "/deals" },
@@ -34,10 +43,19 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
-  const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
+  const isAdmin = user?.platformRole === "super_admin"
+    || user?.platformRole === "tenant_admin"
+    || user?.userFunction === "administrador";
   const [responsibilityOpen, setResponsibilityOpen] = useState(false);
 
-  const { data: stages = [] } = useListPipelineStages(tenantId);
+  const { data: stages = [] } = useQuery<PipelineStageSummary[]>({
+    queryKey: ["pipeline-stages", tenantId, active],
+    enabled: Boolean(tenantId),
+    queryFn: () => customFetch<PipelineStageSummary[]>(
+      `/api/tenants/${tenantId}/pipeline-stages?pipeline=${encodeURIComponent(active)}`,
+      { responseType: "json" },
+    ),
+  });
 
   const orderedStages = useMemo(
     () => [...stages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)),
@@ -71,10 +89,10 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Settings2 className="h-5 w-5" />
-                Responsáveis pelas etapas da pipeline
+                Responsáveis — {TABS.find((tab) => tab.key === active)?.label ?? "Pipeline"}
               </DialogTitle>
               <DialogDescription>
-                Cadastre a função responsável pela execução de cada etapa. A configuração é por função, nunca por pessoa.
+                Cadastre a função responsável pela execução de cada etapa desta pipeline. A configuração é por função, nunca por pessoa.
               </DialogDescription>
             </DialogHeader>
 
@@ -83,7 +101,7 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
                 <p className="py-8 text-center text-sm text-muted-foreground">Carregando etapas...</p>
               ) : (
                 orderedStages.map((stage) => {
-                  const responsaveis = ((stage as any).responsaveisFuncoes ?? []) as string[];
+                  const responsaveis = stage.responsaveisFuncoes ?? [];
                   return (
                     <div
                       key={stage.id}
@@ -102,6 +120,7 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
                       </div>
                       <PipelineStageFunctionAccess
                         tenantId={tenantId}
+                        pipeline={active}
                         stageId={stage.id}
                         value={responsaveis}
                         className="w-full sm:w-48"
