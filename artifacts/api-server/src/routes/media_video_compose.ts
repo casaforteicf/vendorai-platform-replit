@@ -28,6 +28,15 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   return Math.max(min, Math.min(max, parsed));
 }
 
+function parseBoolean(value: unknown, fallback: boolean): boolean {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  return fallback;
+}
+
 async function hasAudioStream(path: string): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync("ffprobe", [
@@ -84,6 +93,11 @@ router.post(
     const originalVolume = clampNumber(req.body?.originalVolume, 1, 0, 2);
     const fadeIn = clampNumber(req.body?.fadeIn, 1, 0, 10);
     const fadeOut = clampNumber(req.body?.fadeOut, 1.5, 0, 10);
+    const duckingEnabled = parseBoolean(req.body?.ducking, true);
+    const duckingThreshold = clampNumber(req.body?.duckingThreshold, 0.04, 0.001, 1);
+    const duckingRatio = clampNumber(req.body?.duckingRatio, 8, 1, 20);
+    const duckingAttackMs = clampNumber(req.body?.duckingAttackMs, 20, 0.01, 2000);
+    const duckingReleaseMs = clampNumber(req.body?.duckingReleaseMs, 250, 0.01, 9000);
     const jobId = randomUUID();
     const projectId = await createProcessingMediaProject({
       tenantId,
@@ -97,6 +111,11 @@ router.post(
         originalVolume,
         fadeIn,
         fadeOut,
+        duckingEnabled,
+        duckingThreshold,
+        duckingRatio,
+        duckingAttackMs,
+        duckingReleaseMs,
       },
     });
     await createMediaJob({
@@ -105,7 +124,17 @@ router.post(
       projectId,
       operation: "video_compose",
       provider: "vendorai",
-      input: { musicVolume, originalVolume, fadeIn, fadeOut },
+      input: {
+        musicVolume,
+        originalVolume,
+        fadeIn,
+        fadeOut,
+        duckingEnabled,
+        duckingThreshold,
+        duckingRatio,
+        duckingAttackMs,
+        duckingReleaseMs,
+      },
       snapshot: { status: "running", progress: 0 },
     });
 
@@ -138,7 +167,22 @@ router.post(
         if (safeFadeOut > 0) musicFilters.push(`afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${safeFadeOut.toFixed(3)}`);
 
         const args = ["-y", "-i", videoPath, "-stream_loop", "-1", "-i", musicPath];
-        if (sourceHasAudio) {
+        const duckingApplied = sourceHasAudio && duckingEnabled;
+        if (duckingApplied) {
+          args.push(
+            "-filter_complex",
+            `[0:a]volume=${originalVolume.toFixed(3)},asplit=2[originalMix][sidechain];` +
+              `[1:a]${musicFilters.join(",")}[music];` +
+              `[music][sidechain]sidechaincompress=` +
+              `threshold=${duckingThreshold.toFixed(4)}:` +
+              `ratio=${duckingRatio.toFixed(2)}:` +
+              `attack=${duckingAttackMs.toFixed(2)}:` +
+              `release=${duckingReleaseMs.toFixed(2)}[duckedMusic];` +
+              `[originalMix][duckedMusic]amix=inputs=2:duration=first:dropout_transition=2[aout]`,
+            "-map", "0:v:0",
+            "-map", "[aout]",
+          );
+        } else if (sourceHasAudio) {
           args.push(
             "-filter_complex",
             `[0:a]volume=${originalVolume.toFixed(3)}[original];[1:a]${musicFilters.join(",")}[music];[original][music]amix=inputs=2:duration=first:dropout_transition=2[aout]`,
@@ -187,6 +231,12 @@ router.post(
             fadeIn,
             fadeOut,
             sourceHasAudio,
+            duckingEnabled,
+            duckingApplied,
+            duckingThreshold,
+            duckingRatio,
+            duckingAttackMs,
+            duckingReleaseMs,
             engine: "vendorai",
           },
         });
