@@ -1,0 +1,142 @@
+name: Apply FAQ update
+on:
+  push:
+    branches:
+      - fix/faq-updated-next-to-news
+    paths:
+      - '.github/workflows/apply-faq-update.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/faq-updated-next-to-news
+          fetch-depth: 0
+      - name: Update FAQ and navigation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          sidebar_path = Path('artifacts/frontend/src/components/layout/SidebarLayoutLegacy.tsx')
+          faq_path = Path('artifacts/frontend/src/pages/faq/index.tsx')
+
+          sidebar = sidebar_path.read_text(encoding='utf-8')
+          faq = faq_path.read_text(encoding='utf-8')
+
+          # Move FAQ out of the long main navigation and place it next to Novidades.
+          sidebar, removed = re.subn(
+              r'^\s*\{ name: "Ajuda / FAQ",\s+href: "/faq",.*?\n',
+              '',
+              sidebar,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if removed != 1:
+              raise SystemExit('Could not remove the existing FAQ nav item')
+
+          old_footer = '''        <div className="mb-1">\n          <NovidadesBell />\n        </div>'''
+          new_footer = '''        <div className="mb-1 space-y-1">\n          <Link\n            href="/faq"\n            className={cn(\n              "flex min-h-[40px] items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",\n              location === "/faq"\n                ? "bg-primary/10 text-primary"\n                : "text-muted-foreground hover:bg-sidebar-accent/80 hover:text-foreground"\n            )}\n          >\n            <HelpCircle className="h-4 w-4" />\n            Ajuda / FAQ\n          </Link>\n          <NovidadesBell />\n        </div>'''
+          if old_footer not in sidebar:
+              raise SystemExit('Could not find Novidades footer block')
+          sidebar = sidebar.replace(old_footer, new_footer, 1)
+
+          replacements = {
+              '"O que devo conectar primeiro?", "Conecte Instagram e Facebook, depois WhatsApp e Google. Se algum canal ainda não estiver disponível, continue a implantação; ele ficará marcado como pendente."':
+              '"O que devo conectar primeiro?", "Comece pela Central Meta: conecte o Instagram profissional, depois Meta Ads se for anunciar e WhatsApp oficial para atendimento. Google Calendar e Google Ads podem ser conectados conforme a necessidade. Se algum canal ficar pendente, você pode continuar a implantação."',
+
+              '"O que é o funil de Negócios?", "É a visão das oportunidades por etapa, como aquecimento, qualificação, proposta, negociação, ganho ou perdido. Arraste ou atualize conforme o avanço real."':
+              '"O que é o funil de Negócios?", "É a pipeline comercial das oportunidades. A visualização atual acompanha o fluxo comercial configurado pelo tenant e destaca etapas como Novo, Qualificado, Orçamento, Negociação, Fechamento, Contrato, Pedido e Perdido. Movimente o negócio somente conforme o avanço real."',
+
+              '"Como acompanhar tarefas e próximos passos?", "A Central de Trabalho reúne atividades, pendências, prazos e ações recomendadas. Cada vendedor pode priorizar o que exige atenção."':
+              '"Como acompanhar tarefas e próximos passos?", "A Central de Trabalho reúne a pipeline do atendimento, a Jornada de Atendimento da etapa, atividades, pendências, prazos e ações recomendadas. As perguntas ficam compactas e servem para registrar apenas o necessário antes do próximo avanço."',
+
+              '"Como conectar o Instagram profissional?", "Use Integrações e autorize uma conta profissional vinculada a uma Página do Facebook. O sistema mostra o estado da conexão."':
+              '"Como conectar o Instagram profissional?", "Abra Configurações → Central Meta e conecte sua conta profissional. Essa conexão é usada para publicar conteúdo, receber DMs e acompanhar insights. Para patrocinar, conecte o Meta Ads separadamente."',
+
+              '"Como conectar Facebook e Meta Ads?", "Autorize sua conta Meta, selecione a Página e a conta de anúncios corretas. Confirme as permissões solicitadas."':
+              '"Como conectar Facebook e Meta Ads?", "Abra Configurações → Central Meta e conecte o Meta Ads. Selecione a conta de anúncios correta. Para patrocinar uma publicação existente no Instagram, use a mesma conta profissional conectada. Nenhuma campanha é ativada sem uma ação específica de Ativar."',
+
+              '"Como criar conteúdo para Instagram?", "Abra Conteúdo, escolha nicho, produtos ou serviços e formato. A IA usa o contexto da marca para criar texto e material."':
+              '"Como criar conteúdo para Instagram?", "Abra Marketing, escolha nicho, produtos ou serviços e formato. A IA usa o contexto da marca para criar texto e material, e o Instagram profissional conectado pode ser usado para publicação."',
+
+              '"Como criar uma campanha do início ao fim?", "Escolha plataforma, objetivo, nicho, oferta, destino, público, período e orçamento. Gere o criativo, revise e publique."':
+              '"Como criar uma campanha do início ao fim?", "Escolha plataforma, objetivo, nicho, oferta, destino, público, período e orçamento. Gere o criativo, aprove o material, publique a campanha em modo pausado e só depois use Ativar quando quiser iniciar a veiculação e o gasto."',
+
+              '"A campanha pode ser enviada ativa?", "Sim. Ao publicar e ativar, ela segue para análise da plataforma. A entrega começa somente quando Google ou Meta aprovarem."':
+              '"A campanha pode ser enviada ativa?", "Não. No fluxo oficial do VendorAI, Publicar envia a campanha para Google ou Meta sempre em modo pausado. Somente a ação separada Ativar pode iniciar a veiculação e o gasto, respeitando também a análise obrigatória da plataforma."',
+
+              '"Como patrocinar uma publicação existente?", "Escolha Meta, selecione a publicação disponível, configure público, destino, orçamento e período. Depois publique a campanha."':
+              '"Como patrocinar uma publicação existente?", "Escolha Meta, selecione a publicação disponível, configure público, destino, orçamento e período. Depois aprove o criativo e publique a campanha pausada. Use Ativar somente quando quiser começar o gasto."',
+
+              '"O que é a Gestão ERP?", "É a área para organizar documentos, movimentações e rotinas administrativas integradas ao contexto comercial."':
+              '"O que é a Gestão ERP?", "É o add-on financeiro e operacional do VendorAI, contratado separadamente por R$ 299/mês. Reúne contas e caixa, DRE, faturamento, comissões, estoque, compras, vendas e captura de documentos. Se o add-on não estiver ativo para o tenant, o menu fica oculto sem apagar os dados já existentes."',
+
+              '"Como acompanhar indicadores da empresa?", "Use Dashboard, Métricas de IA e relatórios comerciais. Escolha o período e compare atividade, conversão e receita."':
+              '"Como acompanhar indicadores da empresa?", "Use o Dashboard para acompanhar os indicadores oficiais e configurar metas da empresa inteira ou por vendedor. As metas podem acompanhar leads novos, oportunidades ativas, vendas confirmadas, receita vendida, ticket médio e conversão comercial em períodos semanais, mensais, trimestrais, anuais ou personalizados."',
+
+              '"O que é o Pipeline Scout?", "É a visão das oportunidades identificadas pelo Revenue Scout durante o processo até seu resultado."':
+              '"O que é o Pipeline Scout?", "É a pipeline das oportunidades confirmadas pelo Revenue Scout. Novos achados devem ser validados antes de entrar nela; depois, o Scout aparece junto das demais pipelines para acompanhamento até o resultado."',
+          }
+
+          for old, new in replacements.items():
+              if old not in faq:
+                  raise SystemExit(f'Missing FAQ text to replace: {old[:70]}')
+              faq = faq.replace(old, new, 1)
+
+          # Update paths/actions for the areas whose navigation changed.
+          faq = faq.replace('3, "/onboarding/integracoes", "Conectar Instagram", "meta página profissional"', '3, "/configuracoes", "Abrir Central Meta", "meta página profissional"', 1)
+          faq = faq.replace('5, "/onboarding/integracoes", "Conectar Meta", "facebook ads business"', '5, "/configuracoes", "Abrir Central Meta", "facebook ads business"', 1)
+          faq = faq.replace('4, "/content", "Criar conteúdo", "feed stories reels"', '4, "/content", "Abrir Marketing", "feed stories reels"', 1)
+          faq = faq.replace('4, "/analytics", "Ver indicadores", "dashboard kpi"', '4, "/", "Abrir Dashboard", "dashboard kpi metas vendedor empresa"', 1)
+
+          # Add current FAQ topics without forcing the page to stay artificially at exactly 100 items.
+          crm_anchor = '    ["Como descubro por que estou perdendo vendas?", "Registre o motivo ao marcar um negócio como perdido e consulte relatórios de dores e perdas. Compare motivos por produto, equipe e período.", "A empresa transforma perdas em melhorias de preço, oferta e processo.", 4, "/analytics", "Analisar resultados", "motivo perda relatório"]\n'
+          crm_extra = crm_anchor[:-1] + ',\n' + \
+          '    ["Como funciona a Jornada de Atendimento na Central de Trabalho?", "A Jornada de Atendimento é o bloco compacto de perguntas ligado à etapa atual da pipeline. As respostas ficam registradas no atendimento e ajudam a preparar o próximo avanço sem duplicar a antiga jornada do negócio.", "O vendedor vê o que precisa descobrir em cada etapa sem poluir a tela.", 3, "/trabalho", "Abrir Central de Trabalho", "jornada perguntas etapa pipeline"],\n' + \
+          '    ["Qual é a diferença entre Lead, Não Lead e oportunidade?", "Lead é um potencial cliente. Não Lead é um contato que deve permanecer fora da pipeline comercial, como fornecedor ou parceiro sem oportunidade de venda. Oportunidade é o negócio comercial efetivamente acompanhado na pipeline.", "A base fica organizada e a pipeline mostra somente o que realmente pode virar venda.", 3, "/leads", "Abrir Leads", "lead não lead contato oportunidade"]\n'
+          if crm_anchor not in faq:
+              raise SystemExit('Could not find CRM insertion anchor')
+          faq = faq.replace(crm_anchor, crm_extra, 1)
+
+          erp_anchor = '    ["Posso definir regras diferentes por segmento?", "Sim. O VendorAI utiliza módulos e processos adequados ao segmento, mantendo o núcleo de CRM, marketing e inteligência.", "A empresa recebe profundidade operacional sem perder uma base integrada.", 3, "/configuracoes", "Revisar segmento", "indústria vertical"]\n'
+          erp_extra = erp_anchor[:-1] + ',\n' + \
+          '    ["Por que a Gestão ERP não aparece no meu menu?", "A Gestão ERP é um add-on pago de R$ 299/mês e fica oculta quando não está habilitada para o tenant. A ativação é feita pelo Super Admin após a contratação; desativar o acesso não apaga os dados já registrados.", "O cliente vê somente os módulos contratados sem perder histórico.", 2, "/configuracoes", "Ver configurações", "erp add-on 299 menu oculto"],\n' + \
+          '    ["Como configurar metas da empresa ou de um vendedor?", "No Dashboard, use Configurar metas. Escolha Empresa inteira ou Vendedor, o indicador, o valor e o período. Metas individuais não são somadas automaticamente à meta global.", "O gestor acompanha objetivos reais por empresa e por responsável sem misturar os escopos.", 3, "/", "Configurar metas", "dashboard metas vendedor empresa conversão receita"]\n'
+          if erp_anchor not in faq:
+              raise SystemExit('Could not find management insertion anchor')
+          faq = faq.replace(erp_anchor, erp_extra, 1)
+
+          account_anchor = '    ["O VendorAI toma decisões financeiras sozinho?", "Não. Recomendações podem ser automáticas, mas gastos, aumentos de orçamento e ações críticas exigem confirmação e permissões.", "A empresa aproveita inteligência mantendo governança.", 2, "/configuracoes", "Ver regras", "aprovação humana"],\n'
+          account_extra = account_anchor + \
+          '    ["Como trocar a logo exibida no sistema?", "Abra Configurações → Perfil da Empresa e altere Logo da empresa. Essa é a única fonte de logo do tenant: dentro do ambiente do cliente aparece somente a marca dele. Se não houver uma logo válida, o sistema usa o nome da empresa, nunca a logo VendorAI.", "O cliente opera em um ambiente realmente white label e sem configuração duplicada de marca.", 3, "/configuracoes", "Alterar logo", "white label logo perfil empresa marca"],\n'
+          if account_anchor not in faq:
+              raise SystemExit('Could not find account insertion anchor')
+          faq = faq.replace(account_anchor, account_extra, 1)
+
+          # Dynamic FAQ totals, since new current topics were added.
+          faq = faq.replace('100 respostas práticas', '{FAQS.length} respostas práticas', 1)
+          faq = faq.replace('Ver todas as 100 dúvidas', 'Ver todas as {FAQS.length} dúvidas', 1)
+          faq = faq.replace('{item}{item !== "Todas" && <span className="ml-1 opacity-70">10</span>}', '{item}{item !== "Todas" && <span className="ml-1 opacity-70">{FAQS.filter((faq) => faq.category === item).length}</span>}', 1)
+
+          # Every actionable FAQ gets a primary CTA. Support-only questions open the support window.
+          old_actions = '''                    {item.href && item.action && (\n                      <Link href={item.href}>\n                        <Button size="sm">{item.action}<ArrowRight className="h-3.5 w-3.5 ml-1" /></Button>\n                      </Link>\n                    )}\n                    <Button size="sm" variant="outline" onClick={() => requestSupport(item.question)}>\n                      <MessageCircleQuestion className="h-3.5 w-3.5 mr-1" />Não resolveu? Pedir ajuda\n                    </Button>'''
+          new_actions = '''                    {item.href && item.action ? (\n                      <Link href={item.href}>\n                        <Button size="sm">{item.action}<ArrowRight className="h-3.5 w-3.5 ml-1" /></Button>\n                      </Link>\n                    ) : item.action ? (\n                      <Button size="sm" onClick={() => requestSupport(item.question)}>\n                        {item.action}<ArrowRight className="h-3.5 w-3.5 ml-1" />\n                      </Button>\n                    ) : null}\n                    {item.href && (\n                      <Button size="sm" variant="outline" onClick={() => requestSupport(item.question)}>\n                        <MessageCircleQuestion className="h-3.5 w-3.5 mr-1" />Não resolveu? Pedir ajuda\n                      </Button>\n                    )}'''
+          if old_actions not in faq:
+              raise SystemExit('Could not find FAQ action block')
+          faq = faq.replace(old_actions, new_actions, 1)
+
+          sidebar_path.write_text(sidebar, encoding='utf-8')
+          faq_path.write_text(faq, encoding='utf-8')
+          PY
+
+          rm -f tmp.txt .github/workflows/apply-faq-update.yml
+          git config user.name 'VendorAI Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: update FAQ navigation and current guidance'
+          git push origin fix/faq-updated-next-to-news
