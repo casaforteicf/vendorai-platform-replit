@@ -34,20 +34,24 @@ function opposite(structure:string|undefined,side:Side){
 
 export function evaluateStrategyTiming(signal:StrategySignal,mtf:MultiTimeframeSnapshot){
   const profile=STRATEGY_TIMING_PROFILES[signal.strategyId];
-  if(!profile)return {approved:true,score:50,profile:null,reasons:['TIMING_PROFILE_NOT_DEFINED']};
+  if(!profile)return {approved:true,score:50,profile:null,reasons:['TIMING_PROFILE_NOT_DEFINED'],coverage:'NONE' as const};
   const execution=mtf.frames[profile.execution];
   const confirmations=profile.confirmations.map(tf=>({tf,frame:mtf.frames[tf]}));
+  const availableConfirmations=confirmations.filter(x=>Boolean(x.frame));
   const missing=[...(execution?[]:[profile.execution]),...confirmations.filter(x=>!x.frame).map(x=>x.tf)];
-  if(missing.length)return {approved:false,score:0,profile,reasons:[`TIMING_FRAMES_MISSING:${missing.join(',')}`]};
 
   let score=50;
-  const reasons:string[]=[`EXECUTION_${profile.execution}`];
+  const reasons:string[]=[];
   if(execution){
+    reasons.push(`EXECUTION_${profile.execution}`);
     if(aligned(execution.structure,signal.side)){score+=12;reasons.push('EXECUTION_STRUCTURE_ALIGNED');}
     else if(opposite(execution.structure,signal.side)&&profile.style==='TREND_CONFIRMATION'){score-=18;reasons.push('EXECUTION_STRUCTURE_OPPOSED');}
     else reasons.push('EXECUTION_STRUCTURE_NEUTRAL_OR_REVERSAL');
+  }else{
+    score-=4;
+    reasons.push(`EXECUTION_FRAME_UNAVAILABLE:${profile.execution}`);
   }
-  for(const {tf,frame} of confirmations){
+  for(const {tf,frame} of availableConfirmations){
     if(!frame)continue;
     if(aligned(frame.structure,signal.side)){score+=10;reasons.push(`${tf}_CONFIRMS`);}
     else if(opposite(frame.structure,signal.side)){
@@ -60,14 +64,18 @@ export function evaluateStrategyTiming(signal:StrategySignal,mtf:MultiTimeframeS
     score+=mtfAligned?8:(profile.style==='TREND_CONFIRMATION'?-10:-2);
     reasons.push(mtfAligned?'MTF_ALIGNED':'MTF_NOT_ALIGNED');
   }
+  if(missing.length)reasons.push(`TIMING_PARTIAL_COVERAGE:${missing.join(',')}`);
   score=Math.max(0,Math.min(100,score));
-  return {approved:score>=profile.minimumTimingScore,score,profile,reasons};
+  const coverage=missing.length===0?'FULL':availableConfirmations.length>0?'PARTIAL':'LOW';
+  const threshold=coverage==='FULL'?profile.minimumTimingScore:Math.max(48,profile.minimumTimingScore-8);
+  return {approved:score>=threshold,score,profile,reasons,coverage};
 }
 
 export function applyStrategyTiming(signal:StrategySignal|null,mtf:MultiTimeframeSnapshot):StrategySignal|null{
   if(!signal)return null;
   const timing=evaluateStrategyTiming(signal,mtf);
   if(!timing.approved)return null;
-  const confidence=Math.max(.05,Math.min(.99,signal.confidence*(.82+timing.score/500)));
-  return {...signal,confidence,rationale:[...signal.rationale,`Timing ${timing.profile?.execution??'N/D'} ${timing.score}/100`,...(timing.profile?.confirmations?.length?[`Confirmações ${timing.profile.confirmations.join('/')}`]:[])]};
+  const multiplier=timing.coverage==='FULL'?(.82+timing.score/500):(.78+timing.score/550);
+  const confidence=Math.max(.05,Math.min(.99,signal.confidence*multiplier));
+  return {...signal,confidence,rationale:[...signal.rationale,`Timing ${timing.profile?.execution??'N/D'} ${timing.score}/100 (${timing.coverage})`,...(timing.profile?.confirmations?.length?[`Confirmações ${timing.profile.confirmations.join('/')}`]:[])]};
 }
