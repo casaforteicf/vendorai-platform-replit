@@ -12,6 +12,7 @@ export interface CreateProcessingProjectInput {
   title: string;
   operation: string;
   context?: Record<string, unknown>;
+  kind?: string;
 }
 
 export interface RegisterMediaOutputInput {
@@ -20,6 +21,7 @@ export interface RegisterMediaOutputInput {
   userId?: string | null;
   storageUrl: string;
   mimeType: string;
+  type?: "video" | "audio" | "image" | "document";
   originalFilename?: string | null;
   operation: string;
   label?: string | null;
@@ -35,7 +37,7 @@ export async function createProcessingMediaProject(
       tenantId: input.tenantId,
       userId: input.userId ?? null,
       title: input.title,
-      kind: "video",
+      kind: input.kind ?? "video",
       status: "processing",
       source: "content_studio",
       context: {
@@ -59,7 +61,7 @@ export async function registerGeneratedMediaOutput(
       tenantId: input.tenantId,
       projectId: input.projectId,
       userId: input.userId ?? null,
-      type: "video",
+      type: input.type ?? "video",
       role: "output",
       storageUrl: input.storageUrl,
       mimeType: input.mimeType,
