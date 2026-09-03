@@ -106,8 +106,9 @@ export default function VideoEdicaoPage() {
   const { user, tenantOverride } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   useToast();
+  const requestedMusicAssetId = new URLSearchParams(window.location.search).get("musicAssetId")?.trim() ?? "";
 
-  const [activeTab, setActiveTab] = useState<EditorTab>("edit");
+  const [activeTab, setActiveTab] = useState<EditorTab>(requestedMusicAssetId ? "music" : "edit");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLInputElement>(null);
@@ -118,13 +119,13 @@ export default function VideoEdicaoPage() {
     clearSource,
   } = useMediaVideoHandoff({ tenantId, setVideoFile, setVideoPreview });
 
-  const [musicSourceMode, setMusicSourceMode] = useState<MusicSourceMode>("brand");
+  const [musicSourceMode, setMusicSourceMode] = useState<MusicSourceMode>(requestedMusicAssetId ? "library" : "brand");
   const [musicFile, setMusicFile] = useState<File | null>(null);
   const musicRef = useRef<HTMLInputElement>(null);
   const [tracks, setTracks] = useState<LibraryTrack[]>([]);
   const [tracksLoading, setTracksLoading] = useState(false);
   const [tracksError, setTracksError] = useState("");
-  const [selectedTrackId, setSelectedTrackId] = useState("");
+  const [selectedTrackId, setSelectedTrackId] = useState(requestedMusicAssetId);
   const [brandKitLoading, setBrandKitLoading] = useState(false);
   const [brandKitError, setBrandKitError] = useState("");
   const [brandDefaultMusicAssetId, setBrandDefaultMusicAssetId] = useState("");
@@ -178,10 +179,14 @@ export default function VideoEdicaoPage() {
     setTracksLoading(true);
     setTracksError("");
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/media/tracks?limit=80`, { headers: authHeader() });
+      const response = await fetch(`/api/tenants/${tenantId}/media/tracks?limit=200`, { headers: authHeader() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Falha ao carregar trilhas");
-      setTracks(Array.isArray(data.tracks) ? data.tracks : []);
+      const nextTracks = Array.isArray(data.tracks) ? data.tracks as LibraryTrack[] : [];
+      setTracks(nextTracks);
+      if (requestedMusicAssetId && !nextTracks.some((track) => track.id === requestedMusicAssetId)) {
+        setTracksError("A trilha escolhida não está disponível na Biblioteca deste tenant.");
+      }
     } catch (error) {
       setTracksError(error instanceof Error ? error.message : "Falha ao carregar trilhas");
     } finally {
@@ -285,16 +290,16 @@ export default function VideoEdicaoPage() {
   };
 
   const isProcessing = jobStatus === "starting" || jobStatus === "processing";
+  const selectedTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
+  const brandDefaultTrack = tracks.find((track) => track.id === brandDefaultMusicAssetId) ?? null;
   const hasMusicSelection = musicSourceMode === "brand"
     ? Boolean(brandDefaultMusicAssetId)
     : musicSourceMode === "library"
-      ? Boolean(selectedTrackId)
+      ? Boolean(selectedTrack?.usage.organicAllowed)
       : musicSourceMode === "upload"
         ? Boolean(musicFile)
         : false;
-  const generateDisabled = !videoFile || isProcessing || brandKitLoading || libraryVideoLoading || (activeTab === "music" && !hasMusicSelection);
-  const selectedTrack = tracks.find((track) => track.id === selectedTrackId) ?? null;
-  const brandDefaultTrack = tracks.find((track) => track.id === brandDefaultMusicAssetId) ?? null;
+  const generateDisabled = !videoFile || isProcessing || brandKitLoading || libraryVideoLoading || (activeTab === "music" && musicSourceMode === "library" && tracksLoading) || (activeTab === "music" && !hasMusicSelection);
 
   const EditContent = (
     <div className="space-y-5 h-full flex flex-col">
@@ -583,9 +588,15 @@ export default function VideoEdicaoPage() {
               </div>
             )}
             {selectedTrack && (
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-200">
-                Selecionada: {selectedTrack.original_filename ?? "Trilha"} · uso comercial liberado
-                {selectedTrack.usage.paidAdsAllowed ? " · mídia paga liberada" : " · mídia paga ainda não liberada"}
+              <div className={cn(
+                "rounded-xl border p-2.5 text-[11px]",
+                selectedTrack.usage.organicAllowed
+                  ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200"
+                  : "border-amber-500/20 bg-amber-500/5 text-amber-200",
+              )}>
+                {selectedTrack.usage.organicAllowed
+                  ? <>Selecionada: {selectedTrack.original_filename ?? "Trilha"} · uso comercial liberado{selectedTrack.usage.paidAdsAllowed ? " · mídia paga liberada" : " · mídia paga ainda não liberada"}</>
+                  : <>A trilha selecionada está bloqueada por direitos de uso e não pode ser aplicada ao vídeo.</>}
               </div>
             )}
           </div>
@@ -738,16 +749,23 @@ export default function VideoEdicaoPage() {
     </div>
   );
 
+  const tabs = requestedMusicAssetId
+    ? [
+        { id: "music", label: "Trilha sonora", content: MusicContent },
+        { id: "edit", label: "Edição automática", content: EditContent },
+      ]
+    : [
+        { id: "edit", label: "Edição automática", content: EditContent },
+        { id: "music", label: "Trilha sonora", content: MusicContent },
+      ];
+
   return (
     <VideoGenPanel
       title="Editar vídeo"
       description="Faça ajustes automáticos e adicione trilha sonora sem alterar o arquivo original"
       icon={activeTab === "music" ? Music2 : Scissors}
       iconBg={activeTab === "music" ? "bg-purple-500/20 text-purple-300" : "bg-emerald-500/20 text-emerald-300"}
-      tabs={[
-        { id: "edit", label: "Edição automática", content: EditContent },
-        { id: "music", label: "Trilha sonora", content: MusicContent },
-      ]}
+      tabs={tabs}
       rightPanel={RightPanel}
       onGenerate={handleGenerate}
       onTabChange={(tabId) => setActiveTab(tabId === "music" ? "music" : "edit")}
