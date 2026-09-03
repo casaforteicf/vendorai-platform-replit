@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { and, eq, asc } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
@@ -41,16 +41,16 @@ const midiaSchema = z.union([uploadedMidiaSchema, libraryMidiaSchema]);
 
 type ResolvedMidia = z.infer<typeof uploadedMidiaSchema>;
 
-function requestBaseOrigin(req: Parameters<IRouter["post"]>[1] extends never ? never : any): string {
+function requestBaseOrigin(req: Request): string {
   const forwardedProto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0]?.trim();
   const forwardedHost = String(req.headers["x-forwarded-host"] ?? "").split(",")[0]?.trim();
   const protocol = forwardedProto || req.protocol || "https";
-  const host = forwardedHost || req.get("host");
+  const host = forwardedHost || req.get("host") || "localhost";
   return `${protocol}://${host}`;
 }
 
 async function resolveMidia(
-  req: any,
+  req: Request,
   tenantId: string,
   rawMidia: unknown,
 ): Promise<ResolvedMidia | undefined> {
