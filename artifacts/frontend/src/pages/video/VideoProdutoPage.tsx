@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "@/components/media/MediaAssetPicker";
 import {
   ArrowLeft,
   CheckCheck,
@@ -20,10 +21,6 @@ import { cn } from "@/lib/utils";
 
 function authHeader(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
-}
-
-function mediaUrl(storageUrl: string): string {
-  return storageUrl.startsWith("/objects/") ? `/api/storage${storageUrl}` : storageUrl;
 }
 
 type ProductImage = {
@@ -123,6 +120,7 @@ export default function VideoProdutoPage() {
   }, []);
 
   const [images, setImages] = useState<ProductImage[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState("");
   const [prodName, setProdName] = useState("");
@@ -163,7 +161,7 @@ export default function VideoProdutoPage() {
         if (cancelled) return;
         setImages(resolved.map((asset) => ({
           assetId: asset.id,
-          preview: mediaUrl(asset.storageUrl),
+          preview: mediaAssetUrl(asset.storageUrl),
           name: asset.originalFilename || "Foto da Biblioteca",
         })));
       } catch (error) {
@@ -194,11 +192,28 @@ export default function VideoProdutoPage() {
       ...current,
       ...accepted.map((file) => ({ file, preview: URL.createObjectURL(file), name: file.name })),
     ]);
-    setProjectId("");
-    setJobId("");
-    setJob(null);
-    setProdResult("");
+    resetGeneration();
     if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const addLibraryImages = (assets: MediaPickerAsset[]) => {
+    setImages((current) => {
+      const currentAssetIds = new Set(current.flatMap((item) => item.assetId ? [item.assetId] : []));
+      const available = Math.max(0, 8 - current.length);
+      const additions = assets
+        .filter((asset) => asset.type === "image" && !currentAssetIds.has(asset.id))
+        .slice(0, available)
+        .map((asset) => ({
+          assetId: asset.id,
+          preview: mediaAssetUrl(asset.storageUrl),
+          name: asset.originalFilename || "Foto da Biblioteca",
+        }));
+      if (assets.length > additions.length && available > 0) {
+        window.setTimeout(() => toast({ title: "Algumas fotos já estavam selecionadas", description: "Mantivemos apenas imagens novas, até o limite de 8." }), 0);
+      }
+      return [...current, ...additions];
+    });
+    resetGeneration();
   };
 
   const removeImage = (index: number) => {
@@ -328,30 +343,43 @@ export default function VideoProdutoPage() {
           />
 
           {images.length === 0 ? (
-            <button type="button" onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center justify-center w-full h-32 rounded-2xl border-2 border-dashed border-white/10 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all gap-2 text-gray-500">
-              <Upload className="h-5 w-5" />
-              <span className="text-sm font-medium">Selecionar fotos reais do produto</span>
-              <span className="text-xs text-gray-600">Cada foto pode ter até 20 MB</span>
-            </button>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button type="button" onClick={() => setPickerOpen(true)} className="flex h-32 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-cyan-500/20 hover:border-cyan-400/50 hover:bg-cyan-500/5 transition-all gap-2 text-cyan-200">
+                <Library className="h-5 w-5" />
+                <span className="text-sm font-medium">Escolher da Biblioteca</span>
+                <span className="text-xs text-gray-500">Reutiliza a mídia oficial sem duplicar</span>
+              </button>
+              <button type="button" onClick={() => imageInputRef.current?.click()} className="flex h-32 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/10 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all gap-2 text-gray-500">
+                <Upload className="h-5 w-5" />
+                <span className="text-sm font-medium">Enviar novas fotos</span>
+                <span className="text-xs text-gray-600">Cada foto pode ter até 20 MB</span>
+              </button>
+            </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {images.map((item, index) => (
-                <div key={`${item.assetId ?? item.name}-${index}`} className="relative aspect-square rounded-xl overflow-hidden border border-white/10 bg-black/20">
-                  <img src={item.preview} alt={`Produto ${index + 1}`} className="h-full w-full object-cover" />
-                  <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] text-white">Cena {index + 1}</span>
-                  {item.assetId && <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-md bg-cyan-950/90 px-1.5 py-0.5 text-[10px] text-cyan-100"><Library className="h-2.5 w-2.5" /> Biblioteca</span>}
-                  <button onClick={() => removeImage(index)} className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-500">
-                    <X className="h-3 w-3" />
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {images.map((item, index) => (
+                  <div key={`${item.assetId ?? item.name}-${index}`} className="relative aspect-square rounded-xl overflow-hidden border border-white/10 bg-black/20">
+                    <img src={item.preview} alt={`Produto ${index + 1}`} className="h-full w-full object-cover" />
+                    <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] text-white">Cena {index + 1}</span>
+                    {item.assetId && <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-md bg-cyan-950/90 px-1.5 py-0.5 text-[10px] text-cyan-100"><Library className="h-2.5 w-2.5" /> Biblioteca</span>}
+                    <button onClick={() => removeImage(index)} className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-500">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {images.length < 8 && (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setPickerOpen(true)} className="flex items-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-xs font-medium text-cyan-200 hover:bg-cyan-500/10">
+                    <Library className="h-4 w-4" /> Biblioteca
+                  </button>
+                  <button type="button" onClick={() => imageInputRef.current?.click()} className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-500/10">
+                    <ImagePlus className="h-4 w-4" /> Enviar foto
                   </button>
                 </div>
-              ))}
-              {images.length < 8 && (
-                <button onClick={() => imageInputRef.current?.click()} className="aspect-square rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 flex flex-col items-center justify-center gap-1.5 text-amber-200 hover:bg-amber-500/10">
-                  <ImagePlus className="h-5 w-5" />
-                  <span className="text-xs font-medium">Adicionar</span>
-                </button>
               )}
-            </div>
+            </>
           )}
         </section>
 
@@ -457,6 +485,17 @@ export default function VideoProdutoPage() {
           </section>
         )}
       </div>
+
+      <MediaAssetPicker
+        tenantId={tenantId}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        allowedTypes={["image"]}
+        maxSelection={Math.max(1, 8 - images.length)}
+        title="Escolher fotos da Biblioteca"
+        confirmLabel="Usar fotos no vídeo"
+        onConfirm={addLibraryImages}
+      />
     </div>
   );
 }
