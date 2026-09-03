@@ -8,6 +8,7 @@ import {
   Copy,
   Film,
   ImagePlus,
+  Library,
   Loader2,
   RefreshCw,
   ShoppingBag,
@@ -21,9 +22,23 @@ function authHeader(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
 }
 
+function mediaUrl(storageUrl: string): string {
+  return storageUrl.startsWith("/objects/") ? `/api/storage${storageUrl}` : storageUrl;
+}
+
 type ProductImage = {
-  file: File;
+  file?: File;
   preview: string;
+  assetId?: string;
+  name: string;
+};
+
+type LibraryImageAsset = {
+  id: string;
+  type: string;
+  storageUrl: string;
+  originalFilename?: string | null;
+  mimeType?: string | null;
 };
 
 type ProductVideoJob = {
@@ -98,12 +113,18 @@ function StoryboardResult({ text, format }: { text: string; format: string }) {
 
 export default function VideoProdutoPage() {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
-  const tenantId = user?.tenantId ?? "";
+  const { user, tenantOverride } = useAuth();
+  const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const { toast } = useToast();
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const requestedAssetIds = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get("mediaAssetIds") ?? "";
+    return [...new Set(raw.split(",").map((id) => id.trim()).filter(Boolean))].slice(0, 8);
+  }, []);
 
   const [images, setImages] = useState<ProductImage[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState("");
   const [prodName, setProdName] = useState("");
   const [prodDesc, setProdDesc] = useState("");
   const [prodPrice, setProdPrice] = useState("");
@@ -125,6 +146,35 @@ export default function VideoProdutoPage() {
     return Math.max(0, Math.min(100, Math.round((progress / total) * 100)));
   }, [job?.progress, job?.total]);
 
+  useEffect(() => {
+    if (!tenantId || !requestedAssetIds.length) return;
+    let cancelled = false;
+    void (async () => {
+      setLibraryLoading(true);
+      setLibraryError("");
+      try {
+        const response = await fetch(`/api/tenants/${tenantId}/media/assets?type=image&limit=500`, { headers: authHeader() });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error ?? "Falha ao consultar a Biblioteca");
+        const assets = (Array.isArray(data.assets) ? data.assets : []) as LibraryImageAsset[];
+        const byId = new Map(assets.map((asset) => [asset.id, asset]));
+        const resolved = requestedAssetIds.map((id) => byId.get(id)).filter((asset): asset is LibraryImageAsset => Boolean(asset));
+        if (resolved.length !== requestedAssetIds.length) throw new Error("Uma ou mais fotos não estão disponíveis na Biblioteca deste tenant");
+        if (cancelled) return;
+        setImages(resolved.map((asset) => ({
+          assetId: asset.id,
+          preview: mediaUrl(asset.storageUrl),
+          name: asset.originalFilename || "Foto da Biblioteca",
+        })));
+      } catch (error) {
+        if (!cancelled) setLibraryError(error instanceof Error ? error.message : "Falha ao carregar fotos da Biblioteca");
+      } finally {
+        if (!cancelled) setLibraryLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tenantId, requestedAssetIds]);
+
   const addImages = (files: File[]) => {
     const supported = files.filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type));
     if (supported.length !== files.length) {
@@ -142,7 +192,7 @@ export default function VideoProdutoPage() {
     }
     setImages((current) => [
       ...current,
-      ...accepted.map((file) => ({ file, preview: URL.createObjectURL(file) })),
+      ...accepted.map((file) => ({ file, preview: URL.createObjectURL(file), name: file.name })),
     ]);
     setProjectId("");
     setJobId("");
@@ -154,7 +204,7 @@ export default function VideoProdutoPage() {
   const removeImage = (index: number) => {
     setImages((current) => {
       const item = current[index];
-      if (item) URL.revokeObjectURL(item.preview);
+      if (item?.file) URL.revokeObjectURL(item.preview);
       return current.filter((_, currentIndex) => currentIndex !== index);
     });
   };
@@ -172,7 +222,9 @@ export default function VideoProdutoPage() {
     resetGeneration();
     try {
       const form = new FormData();
-      images.forEach(({ file }) => form.append("images", file));
+      images.forEach((item) => { if (item.file) form.append("images", item.file); });
+      const libraryAssetIds = images.flatMap((item) => item.assetId ? [item.assetId] : []);
+      if (libraryAssetIds.length) form.append("imageAssetIds", JSON.stringify(libraryAssetIds));
       form.append("name", prodName.trim());
       form.append("description", prodDesc.trim());
       form.append("price", prodPrice.trim());
@@ -233,11 +285,11 @@ export default function VideoProdutoPage() {
   }, [projectId, jobId, job?.status]);
 
   useEffect(() => () => {
-    images.forEach((item) => URL.revokeObjectURL(item.preview));
+    images.forEach((item) => { if (item.file) URL.revokeObjectURL(item.preview); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const canGenerate = Boolean(prodName.trim() && images.length > 0 && !prodLoading && job?.status !== "running");
+  const canGenerate = Boolean(prodName.trim() && images.length > 0 && !prodLoading && !libraryLoading && job?.status !== "running");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0f0b1e] via-[#1a1040] to-[#0a0818] text-[#e8e4f8]">
@@ -258,10 +310,13 @@ export default function VideoProdutoPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="font-bold text-white">1. Fotos do produto</h2>
-              <p className="text-xs text-gray-500 mt-1">Envie de 1 a 8 fotos JPG, PNG ou WebP. O vídeo usa obrigatoriamente essas imagens.</p>
+              <p className="text-xs text-gray-500 mt-1">Use de 1 a 8 fotos da Biblioteca ou envie JPG, PNG ou WebP. O vídeo usa obrigatoriamente essas imagens.</p>
             </div>
             <span className="text-[11px] rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-amber-200">{images.length}/8 fotos</span>
           </div>
+
+          {libraryLoading && <div className="flex items-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 text-xs text-cyan-200"><Loader2 className="h-4 w-4 animate-spin" /> Carregando fotos da Biblioteca…</div>}
+          {libraryError && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">{libraryError}</div>}
 
           <input
             ref={imageInputRef}
@@ -281,9 +336,10 @@ export default function VideoProdutoPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {images.map((item, index) => (
-                <div key={`${item.file.name}-${index}`} className="relative aspect-square rounded-xl overflow-hidden border border-white/10 bg-black/20">
+                <div key={`${item.assetId ?? item.name}-${index}`} className="relative aspect-square rounded-xl overflow-hidden border border-white/10 bg-black/20">
                   <img src={item.preview} alt={`Produto ${index + 1}`} className="h-full w-full object-cover" />
                   <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] text-white">Cena {index + 1}</span>
+                  {item.assetId && <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-md bg-cyan-950/90 px-1.5 py-0.5 text-[10px] text-cyan-100"><Library className="h-2.5 w-2.5" /> Biblioteca</span>}
                   <button onClick={() => removeImage(index)} className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-500">
                     <X className="h-3 w-3" />
                   </button>
