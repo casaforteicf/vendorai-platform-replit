@@ -280,6 +280,11 @@ router.get("/tenants/:tenantId/site-generator/:siteId/preview", async (req, res)
     return;
   }
   res.setHeader("Cache-Control", "no-store");
+  if (req.query.format === "html") {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(site.html);
+    return;
+  }
   res.json({ site });
 });
 

@@ -115,7 +115,7 @@ function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: s
     setLoading(true);
     setLoadError(null);
     try {
-      const listRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator`, { headers: headers(token) }, 2);
+      const listRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, { headers: headers(token) }, 2);
       if (!listRes.ok) {
         throw new Error(listRes.status === 429
           ? "O servidor está temporariamente limitando requisições. O VendorAI tentou novamente automaticamente."
@@ -132,25 +132,20 @@ function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: s
       const targetId = requestedExists ? requestedSiteId! : currentExists ? selectedSiteId : sorted[0].id;
       const targetSite = sorted.find((site: any) => site.id === targetId);
 
-      // O endpoint de listagem já devolve o HTML salvo. Isso transforma o preview
-      // em uma única requisição e evita que o segundo GET seja bloqueado pelo
-      // rate limit quando o restante do painel está carregando em paralelo.
-      let site: any = targetSite;
-      if (typeof targetSite?.html !== "string" || !targetSite.html.trim()) {
-        // Compatibilidade temporária enquanto o backend novo termina o deploy.
-        const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${targetId}`, { headers: headers(token) }, 1);
-        const body = await siteRes.json().catch(() => ({}));
-        site = body?.site ?? body;
-        if (!siteRes.ok) {
-          throw new Error(site?.error ?? `Não foi possível carregar o site (${siteRes.status})`);
-        }
-      }
-      if (typeof site?.html !== "string" || !site.html.trim()) {
-        throw new Error("O projeto existe, mas o servidor não devolveu o HTML salvo. O VendorAI preservou o site e você pode tentar novamente.");
-      }
-      setSelectedSiteId(targetId);
-      setHtml(site.html);
-      setSiteName(site.name ?? sorted.find((item: any) => item.id === targetId)?.name ?? "Site");
+
+// HTML grande segue como texto puro; o JSON fica restrito a metadados.
+const previewRes = await resilientFetch(
+  `/api/tenants/${tenantId}/site-generator/${targetId}/preview?format=html`,
+  { headers: { ...headers(token), Accept: "text/html" }, cache: "no-store" },
+  1,
+);
+const siteHtml = await previewRes.text();
+if (!previewRes.ok || !siteHtml.trim()) {
+  throw new Error(`Não foi possível carregar o HTML salvo (${previewRes.status})`);
+}
+setSelectedSiteId(targetId);
+setHtml(siteHtml);
+setSiteName(targetSite?.name ?? sorted.find((item: any) => item.id === targetId)?.name ?? "Site");
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Não foi possível abrir o preview");
     } finally {
@@ -202,7 +197,7 @@ function CoreEditor({ onNew, tenantId, token }: { onNew: () => void; tenantId: s
 
 function Governance({ tenantId, token }: { tenantId: string; token?: string | null }) {
   const { toast } = useToast(); const [sites, setSites] = useState<GovernanceSite[]>([]); const [siteId, setSiteId] = useState(""); const [sections, setSections] = useState<GovernanceSection[]>([]); const [busy, setBusy] = useState(false);
-  useEffect(() => { if (!tenantId) return; fetch(`/api/tenants/${tenantId}/site-generator`, { headers: headers(token), cache: "no-store" }).then((r) => r.ok ? r.json() : []).then((rows) => { const a = Array.isArray(rows) ? rows : []; setSites(a); setSiteId((v) => v || a[0]?.id || ""); }); }, [tenantId, token]);
+  useEffect(() => { if (!tenantId) return; fetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, { headers: headers(token), cache: "no-store" }).then((r) => r.ok ? r.json() : []).then((rows) => { const a = Array.isArray(rows) ? rows : []; setSites(a); setSiteId((v) => v || a[0]?.id || ""); }); }, [tenantId, token]);
   useEffect(() => { if (!siteId) return setSections([]); fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/sections`, { headers: headers(token), cache: "no-store" }).then((r) => r.ok ? r.json() : {}).then((b: any) => setSections(b.sections ?? [])); }, [siteId, tenantId, token]);
   async function save(next: GovernanceSection[]) { setBusy(true); try { const r = await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/protection`, { method: "PATCH", headers: headers(token), body: JSON.stringify({ lockedSectionKeys: next.filter((x) => x.locked).map((x) => x.key) }) }); if (!r.ok) throw new Error("Falha ao salvar proteção"); setSections(next); } catch (e) { toast({ title: "Erro ao salvar proteção", description: e instanceof Error ? e.message : undefined, variant: "destructive" }); } finally { setBusy(false); } }
   async function duplicate() { setBusy(true); try { const s = sites.find((x) => x.id === siteId); const r = await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/duplicate`, { method: "POST", headers: headers(token), body: JSON.stringify({ name: `${s?.name ?? "Site"} — nova versão` }) }); if (!r.ok) throw new Error("Falha ao criar versão"); toast({ title: "Nova versão criada", description: "A versão atual continua intacta." }); } catch (e) { toast({ title: "Erro", description: e instanceof Error ? e.message : undefined, variant: "destructive" }); } finally { setBusy(false); } }
@@ -360,7 +355,7 @@ function GeneratorWorkspace() {
   function toggleGroup(items: CatalogItem[]) { const ids = items.map((x) => x.id); const all = ids.every((id) => selected.includes(id)); setSelected((v) => all ? v.filter((id) => !ids.includes(id)) : [...new Set([...v, ...ids])]); }
   async function openSites() {
     try {
-      const r = await resilientFetch(`/api/tenants/${tenantId}/site-generator`, { headers: headers(token), cache: "no-store" });
+      const r = await resilientFetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, { headers: headers(token), cache: "no-store" });
       if (!r.ok) throw new Error(r.status === 429 ? "Servidor temporariamente ocupado. Aguarde alguns segundos." : `Erro ${r.status}`);
       const rows = await r.json();
       if (!Array.isArray(rows) || !rows.length) return toast({ title: "Nenhum site criado ainda" });
@@ -372,15 +367,16 @@ function GeneratorWorkspace() {
 
   async function previewLatest() {
     try {
-      const listRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator`, { headers: headers(token), cache: "no-store" });
+      const listRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, { headers: headers(token), cache: "no-store" });
       if (!listRes.ok) throw new Error(listRes.status === 429 ? "Servidor temporariamente ocupado. Aguarde alguns segundos." : `Erro ${listRes.status}`);
       const rows = await listRes.json();
       if (!Array.isArray(rows) || !rows.length) return toast({ title: "Nenhum site criado ainda" });
       const latest = [...rows].sort((a: any, b: any) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime())[0];
-      const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${latest.id}`, { headers: headers(token), cache: "no-store" });
-      const site = await siteRes.json().catch(() => ({}));
-      if (!siteRes.ok || !site.html) throw new Error(site.error ?? "Não foi possível carregar o site");
-      const blob = new Blob([site.html], { type: "text/html;charset=utf-8" });
+
+const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${latest.id}/preview?format=html`, { headers: { ...headers(token), Accept: "text/html" }, cache: "no-store" });
+const siteHtml = await siteRes.text();
+if (!siteRes.ok || !siteHtml.trim()) throw new Error(`Não foi possível carregar o site (${siteRes.status})`);
+const blob = new Blob([siteHtml], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -405,7 +401,7 @@ function GeneratorWorkspace() {
     const end = Date.now() + timeoutMs;
     let consecutiveFailures = 0;
     const check = async () => {
-      const p = await fetch(`/api/tenants/${tenantId}/site-generator/jobs/${jobId}?t=${Date.now()}`, { headers: headers(token), cache: "no-store" });
+      const p = await fetch(`/api/tenants/${tenantId}/site-generator/jobs/${jobId}?t=${Date.now()}&includeHtml=0`, { headers: headers(token), cache: "no-store" });
       if (!p.ok) {
         // Falhas transitórias (429/502/503) não devem derrubar o acompanhamento —
         // só desistimos depois de várias tentativas seguidas ruins.
