@@ -1,7 +1,16 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { db, usersTable, insertUserSchema, updateUserSchema, archPromptVariationsTable } from "@workspace/db";
+import {
+  db,
+  usersTable,
+  userFunctionsTable,
+  insertUserSchema,
+  updateUserSchema,
+  insertUserFunctionSchema,
+  updateUserFunctionSchema,
+  archPromptVariationsTable,
+} from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
@@ -14,6 +23,7 @@ const PUBLIC_FIELDS = {
   role: usersTable.role,
   platformRole: usersTable.platformRole,
   userFunction: usersTable.userFunction,
+  customFunctionId: usersTable.customFunctionId,
   permissions: usersTable.permissions,
   telefone: usersTable.telefone,
   active: usersTable.active,
@@ -21,19 +31,27 @@ const PUBLIC_FIELDS = {
   updatedAt: usersTable.updatedAt,
 } as const;
 
+function canManageTenant(req: any, tenantId: string): boolean {
+  return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+}
+
+async function findFunctionForTenant(functionId: string, tenantId: string) {
+  const [definition] = await db
+    .select()
+    .from(userFunctionsTable)
+    .where(
+      and(
+        eq(userFunctionsTable.id, functionId),
+        eq(userFunctionsTable.tenantId, tenantId),
+      ),
+    );
+  return definition;
+}
+
 router.get("/tenants/:tenantId/users", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
 
-  if (
-    req.user?.platformRole !== "super_admin" &&
-    req.user?.platformRole !== "tenant_admin" &&
-    req.user?.tenantId !== tenantId
-  ) {
-    res.status(403).json({ error: "Access denied" });
-    return;
-  }
-
-  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+  if (!canManageTenant(req, tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
@@ -46,7 +64,125 @@ router.get("/tenants/:tenantId/users", requireRole("super_admin", "tenant_admin"
   res.json(users);
 });
 
-router.get("/users", requireRole("super_admin"), async (req, res) => {
+router.get(
+  "/tenants/:tenantId/user-functions",
+  requireRole("super_admin", "tenant_admin"),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    if (!canManageTenant(req, tenantId)) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    const definitions = await db
+      .select()
+      .from(userFunctionsTable)
+      .where(eq(userFunctionsTable.tenantId, tenantId))
+      .orderBy(userFunctionsTable.name);
+
+    res.json(definitions);
+  },
+);
+
+router.post(
+  "/tenants/:tenantId/user-functions",
+  requireRole("super_admin", "tenant_admin"),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    if (!canManageTenant(req, tenantId)) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    const parsed = insertUserFunctionSchema.safeParse({ ...req.body, tenantId });
+    if (!parsed.success) {
+      res.status(422).json({ error: parsed.error.message });
+      return;
+    }
+
+    try {
+      const [definition] = await db
+        .insert(userFunctionsTable)
+        .values(parsed.data)
+        .returning();
+      res.status(201).json(definition);
+    } catch (err: unknown) {
+      if (isUniqueViolation(err)) {
+        res.status(409).json({ error: "Já existe uma função com este nome" });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+router.patch(
+  "/user-functions/:id",
+  requireRole("super_admin", "tenant_admin"),
+  async (req, res) => {
+    const id = String(req.params["id"]);
+    const [existing] = await db
+      .select()
+      .from(userFunctionsTable)
+      .where(eq(userFunctionsTable.id, id));
+
+    if (!existing) {
+      res.status(404).json({ error: "Função não encontrada" });
+      return;
+    }
+    if (!canManageTenant(req, existing.tenantId)) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    const parsed = updateUserFunctionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json({ error: parsed.error.message });
+      return;
+    }
+
+    try {
+      const [definition] = await db
+        .update(userFunctionsTable)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(eq(userFunctionsTable.id, id))
+        .returning();
+      res.json(definition);
+    } catch (err: unknown) {
+      if (isUniqueViolation(err)) {
+        res.status(409).json({ error: "Já existe uma função com este nome" });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+router.delete(
+  "/user-functions/:id",
+  requireRole("super_admin", "tenant_admin"),
+  async (req, res) => {
+    const id = String(req.params["id"]);
+    const [existing] = await db
+      .select({ id: userFunctionsTable.id, tenantId: userFunctionsTable.tenantId })
+      .from(userFunctionsTable)
+      .where(eq(userFunctionsTable.id, id));
+
+    if (!existing) {
+      res.status(404).json({ error: "Função não encontrada" });
+      return;
+    }
+    if (!canManageTenant(req, existing.tenantId)) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    await db.delete(userFunctionsTable).where(eq(userFunctionsTable.id, id));
+    res.status(204).send();
+  },
+);
+
+router.get("/users", requireRole("super_admin"), async (_req, res) => {
   const users = await db
     .select(PUBLIC_FIELDS)
     .from(usersTable)
@@ -61,9 +197,18 @@ router.post("/users", requireRole("super_admin", "tenant_admin"), async (req, re
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+  if (!canManageTenant(req, parsed.data.tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
+  }
+
+  if (parsed.data.customFunctionId) {
+    const definition = await findFunctionForTenant(parsed.data.customFunctionId, parsed.data.tenantId);
+    if (!definition || !definition.active) {
+      res.status(422).json({ error: "A função personalizada selecionada não está disponível" });
+      return;
+    }
+    parsed.data.userFunction = "outro";
   }
 
   const data = {
@@ -96,6 +241,10 @@ router.get("/users/:id", requireRole("super_admin", "tenant_admin"), async (req,
     res.status(404).json({ error: "User not found" });
     return;
   }
+  if (!canManageTenant(req, user.tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
 
   res.json(user);
 });
@@ -117,12 +266,20 @@ router.patch("/users/:id", requireRole("super_admin", "tenant_admin"), async (re
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+  if (!canManageTenant(req, existing.tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
 
   const data: typeof parsed.data = { ...parsed.data };
+  if (data.customFunctionId) {
+    const definition = await findFunctionForTenant(data.customFunctionId, existing.tenantId);
+    if (!definition || !definition.active) {
+      res.status(422).json({ error: "A função personalizada selecionada não está disponível" });
+      return;
+    }
+    data.userFunction = "outro";
+  }
   if (data.password) {
     data.password = await bcrypt.hash(data.password, 12);
   }
@@ -170,7 +327,7 @@ router.patch("/users/:id/password", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+  if (!canManageTenant(req, existing.tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
@@ -203,7 +360,7 @@ router.delete("/users/:id", requireRole("super_admin", "tenant_admin"), async (r
     return;
   }
 
-  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+  if (!canManageTenant(req, existing.tenantId)) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
