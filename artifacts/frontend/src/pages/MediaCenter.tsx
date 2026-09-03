@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import ImageAdvisorPanel from "@/components/media/ImageAdvisorPanel";
+import MediaPostGenerationPanel from "@/components/media/MediaPostGenerationPanel";
 import {
   Archive,
   AudioLines,
@@ -100,6 +101,10 @@ function assetContext(asset: MediaAsset): AssetContext | null {
   const label = typeof record.label === "string" ? record.label.trim() : "";
   return label ? { type, label } : null;
 }
+function sourceAssetId(asset: MediaAsset | null): string | null {
+  const value = asset?.metadata?.sourceAssetId;
+  return typeof value === "string" && value.trim() ? value : null;
+}
 function sourceLabel(asset: MediaAsset): string {
   if (asset.source === "generated") return "Gerada por IA";
   if (asset.source === "imported") return "Importada";
@@ -134,6 +139,8 @@ export default function MediaCenter() {
   const selectedAssets = useMemo(() => assets.filter((asset) => selected.includes(asset.id)), [assets, selected]);
   const selectedImages = selectedAssets.filter((asset) => asset.type === "image");
   const inspected = assets.find((asset) => asset.id === inspectedId) ?? null;
+  const inspectedSourceId = sourceAssetId(inspected);
+  const inspectedOriginal = inspectedSourceId ? assets.find((asset) => asset.id === inspectedSourceId) ?? null : null;
 
   async function loadAll() {
     if (!tenantId) return;
@@ -288,6 +295,7 @@ export default function MediaCenter() {
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs"><Info label="Tipo" value={TYPE_LABELS[inspected.type]} /><Info label="Tamanho" value={bytes(inspected.fileSize)} /><Info label="Origem" value={sourceLabel(inspected)} /><Info label="Criado" value={dateLabel(inspected.createdAt)} /></div>
           {assetContext(inspected) && <div className="mt-3 rounded-xl border bg-primary/5 p-3"><div className="flex items-center gap-2 text-xs text-muted-foreground"><Link2 className="h-3.5 w-3.5" /> Vínculo</div><p className="mt-1 text-sm font-medium">{CONTEXT_LABELS[assetContext(inspected)!.type]} · {assetContext(inspected)!.label}</p></div>}
           {inspected.type === "image" && <ImageAdvisorPanel tenantId={tenantId} assetId={inspected.id} filename={inspected.originalFilename} canGenerateAi={ready("image_variations")} onUpdated={loadAll} />}
+          <MediaPostGenerationPanel asset={inspected} originalAsset={inspectedOriginal} mediaUrl={mediaUrl} onInspectOriginal={(assetId) => setInspectedId(assetId)} onNavigate={navigate} />
           <div className="mt-5 border-t pt-4"><p className="mb-3 text-xs font-semibold">Outras ações</p>{inspected.type === "image" && <><div className="grid grid-cols-2 gap-2"><button disabled={!ready("image_remove_background")} onClick={() => void runJob("image_remove_background", { assetId: inspected.id }, "Remover fundo")} className="inspector-action"><Eraser className="h-4 w-4" /> Remover fundo</button><button disabled={!ready("image_variations")} onClick={() => void runJob("image_variations", { assetId: inspected.id, count: 3 }, "Criar variações")} className="inspector-action"><Sparkles className="h-4 w-4" /> Variações</button><button onClick={() => { setSelected([inspected.id]); void runNativeImage("image_resize"); }} className="inspector-action"><Maximize2 className="h-4 w-4" /> Redimensionar</button><button onClick={() => { setSelected([inspected.id]); void runNativeImage("image_optimize"); }} className="inspector-action"><Layers3 className="h-4 w-4" /> Otimizar</button></div><button onClick={() => navigate(`/content-studio/video/produto?mediaAssetIds=${encodeURIComponent(inspected.id)}`)} className="mt-2 wide-action"><Film className="h-4 w-4" /> Usar no Vídeo de Produto <ChevronRight className="ml-auto h-4 w-4" /></button></>}{inspected.type === "video" && <button onClick={() => navigate(`/content-studio/video/edicao?mediaAssetId=${encodeURIComponent(inspected.id)}`)} className="wide-action"><Film className="h-4 w-4" /> Usar no Studio de Vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>}{inspected.type === "audio" && inspected.role === "music" && <button onClick={() => navigate(`/content-studio/video/edicao?musicAssetId=${encodeURIComponent(inspected.id)}`)} className="wide-action"><Music2 className="h-4 w-4" /> Usar como trilha no vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>}{inspected.type === "audio" && inspected.role !== "music" && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">Este áudio não está classificado como trilha musical. Vozes e outros áudios permanecem separados para preservar consentimentos e direitos.</div>}<a href={mediaUrl(inspected.storageUrl)} target="_blank" rel="noreferrer" className="mt-2 wide-action"><Download className="h-4 w-4" /> Abrir arquivo</a></div>
         </div> : <div className="flex min-h-[500px] flex-col items-center justify-center p-8 text-center"><CircleAlert className="h-8 w-8 text-muted-foreground" /><p className="mt-3 text-sm font-medium">Selecione uma mídia</p><p className="mt-1 text-xs text-muted-foreground">Clique em um card para abrir análise, preview e ferramentas.</p></div>}
       </aside>
