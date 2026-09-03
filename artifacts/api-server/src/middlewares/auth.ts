@@ -1,4 +1,4 @@
-import { type RequestHandler } from "express";
+import { type Request, type RequestHandler } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
 import {
   db,
@@ -145,7 +145,7 @@ type AccessRow = {
 };
 
 async function canExecuteCurrentPipelineStage(
-  req: Express.Request,
+  req: Request,
   current: JwtPayload,
   row: AccessRow | undefined,
 ): Promise<boolean> {
