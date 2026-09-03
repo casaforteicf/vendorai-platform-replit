@@ -14,6 +14,10 @@ import {
   type VendorAiNativeImageOperation,
 } from "../services/vendorai-image-tools.js";
 import {
+  PhotoVideoValidationError,
+  startVendorAiPhotoVideo,
+} from "../services/vendorai-photo-video.js";
+import {
   synthesizeVendorAiVoice,
   VoiceConsentError,
   VoiceEngineNotReadyError,
@@ -414,6 +418,32 @@ router.post("/tenants/:tenantId/media-engine/image-tools", async (req, res) => {
       return;
     }
     if (error instanceof MediaImageToolValidationError) {
+      res.status(422).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+});
+
+router.post("/tenants/:tenantId/media-engine/photo-video", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const title = nonEmptyString(req.body?.title) ?? "Vídeo a partir de fotos";
+  const assetIds = Array.isArray(req.body?.assetIds) ? req.body.assetIds.map(String) : [];
+  const secondsPerImage = Number(req.body?.secondsPerImage ?? 3);
+  const format = req.body?.format === "9:16" || req.body?.format === "1:1" ? req.body.format : "16:9";
+
+  try {
+    const result = await startVendorAiPhotoVideo({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      title,
+      assetIds,
+      secondsPerImage,
+      format,
+    });
+    res.status(202).json(result);
+  } catch (error) {
+    if (error instanceof PhotoVideoValidationError) {
       res.status(422).json({ error: error.message });
       return;
     }
