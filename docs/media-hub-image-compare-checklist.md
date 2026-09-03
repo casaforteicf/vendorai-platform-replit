@@ -1,5 +1,0 @@
-- [x] comparação original x resultado
-- [x] seletor de versões
-- [x] histórico visual da linhagem
-- [x] atualização automática após melhoria técnica
-- [x] polling após melhoria por IA
