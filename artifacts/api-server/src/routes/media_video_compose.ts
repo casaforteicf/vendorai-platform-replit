@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { readFile, unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { pool } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createMediaJob, updateMediaJob } from "../services/media-jobs.js";
@@ -14,6 +15,7 @@ import {
   registerGeneratedMediaOutput,
   setMediaProjectStatus,
 } from "../services/media-library.js";
+import { assessMediaAudioUsage, normalizeMediaAudioRights } from "../services/media-rights.js";
 import mediaTracksRouter from "./media_tracks.js";
 
 const router: IRouter = Router();
@@ -36,6 +38,12 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
   if (["false", "0", "no", "off"].includes(normalized)) return false;
   if (["true", "1", "yes", "on"].includes(normalized)) return true;
   return fallback;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 async function hasAudioStream(path: string): Promise<boolean> {
@@ -74,22 +82,69 @@ router.post(
   async (req, res) => {
     const files = (req.files ?? {}) as Record<string, Express.Multer.File[]>;
     const video = files["video"]?.[0];
-    const music = files["music"]?.[0];
-    if (!video || !music) {
-      res.status(422).json({ error: "video e music são obrigatórios" });
+    const uploadedMusic = files["music"]?.[0];
+    const musicAssetId = typeof req.body?.musicAssetId === "string" ? req.body.musicAssetId.trim() : "";
+
+    if (!video) {
+      res.status(422).json({ error: "video é obrigatório" });
       return;
     }
     if (!video.mimetype.startsWith("video/")) {
       res.status(422).json({ error: "video precisa ser um arquivo de vídeo" });
       return;
     }
-    if (!music.mimetype.startsWith("audio/")) {
+    if ((!uploadedMusic && !musicAssetId) || (uploadedMusic && musicAssetId)) {
+      res.status(422).json({ error: "Informe exatamente uma trilha: music ou musicAssetId" });
+      return;
+    }
+    if (uploadedMusic && !uploadedMusic.mimetype.startsWith("audio/")) {
       res.status(422).json({ error: "music precisa ser um arquivo de áudio" });
       return;
     }
 
     const tenantId = String(req.params["tenantId"]);
     const userId = req.user?.sub ?? null;
+    let musicBuffer: Buffer;
+    let musicFilename: string;
+    let selectedMusicAssetId: string | null = null;
+    let musicRights: ReturnType<typeof normalizeMediaAudioRights> | null = null;
+    let musicUsage: ReturnType<typeof assessMediaAudioUsage> | null = null;
+
+    if (musicAssetId) {
+      const assetResult = await pool.query(
+        `SELECT id, storage_url, original_filename, metadata
+           FROM media_assets
+          WHERE tenant_id = $1
+            AND id = $2
+            AND type = 'audio'
+            AND role = 'music'
+          LIMIT 1`,
+        [tenantId, musicAssetId],
+      );
+      if (!assetResult.rowCount) {
+        res.status(404).json({ error: "Trilha da biblioteca não encontrada" });
+        return;
+      }
+
+      const asset = assetResult.rows[0];
+      const storageUrl = String(asset.storage_url ?? "");
+      try {
+        const file = await objectStorage.getObjectEntityFile(storageUrl);
+        [musicBuffer] = await file.download();
+      } catch {
+        res.status(422).json({ error: "Arquivo da trilha não está disponível no Object Storage" });
+        return;
+      }
+      musicFilename = String(asset.original_filename ?? `track-${musicAssetId}.mp3`);
+      selectedMusicAssetId = String(asset.id);
+      const metadata = asRecord(asset.metadata);
+      musicRights = normalizeMediaAudioRights(metadata["rights"]);
+      musicUsage = assessMediaAudioUsage(musicRights);
+    } else {
+      musicBuffer = uploadedMusic!.buffer;
+      musicFilename = uploadedMusic!.originalname;
+    }
+
     const musicVolume = clampNumber(req.body?.musicVolume, 0.18, 0, 1);
     const originalVolume = clampNumber(req.body?.originalVolume, 1, 0, 2);
     const fadeIn = clampNumber(req.body?.fadeIn, 1, 0, 10);
@@ -107,7 +162,10 @@ router.post(
       operation: "video_compose",
       context: {
         videoFilename: video.originalname,
-        musicFilename: music.originalname,
+        musicFilename,
+        musicAssetId: selectedMusicAssetId,
+        musicRights,
+        musicUsage,
         musicVolume,
         originalVolume,
         fadeIn,
@@ -126,6 +184,9 @@ router.post(
       operation: "video_compose",
       provider: "vendorai",
       input: {
+        musicAssetId: selectedMusicAssetId,
+        musicRights,
+        musicUsage,
         musicVolume,
         originalVolume,
         fadeIn,
@@ -143,13 +204,13 @@ router.post(
 
     void (async () => {
       const videoPath = join(tmpdir(), `compose-video-${jobId}.mp4`);
-      const musicExt = music.originalname.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "mp3";
+      const musicExt = musicFilename.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "mp3";
       const musicPath = join(tmpdir(), `compose-music-${jobId}.${musicExt}`);
       const outputPath = join(tmpdir(), `compose-output-${jobId}.mp4`);
       try {
         await Promise.all([
           writeFile(videoPath, video.buffer),
-          writeFile(musicPath, music.buffer),
+          writeFile(musicPath, musicBuffer),
         ]);
         await updateMediaJob(jobId, tenantId, { status: "running", progress: 15 });
 
@@ -226,7 +287,10 @@ router.post(
           label: "Vídeo com trilha",
           metadata: {
             jobId,
-            musicFilename: music.originalname,
+            musicFilename,
+            musicAssetId: selectedMusicAssetId,
+            musicRights,
+            musicUsage,
             musicVolume,
             originalVolume,
             fadeIn,
