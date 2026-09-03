@@ -50,10 +50,6 @@ export function requireRole(...roles: PlatformRole[]): RequestHandler {
       res.status(401).json({ error: "Unauthenticated" });
       return;
     }
-    if (isTrustedInternalActor(req.user)) {
-      next();
-      return;
-    }
     const hasRole = roles.includes(req.user.platformRole);
     const isAdminFn = req.user.userFunction === "administrador";
     const grantedViaAdminFn = isAdminFn && roles.includes("tenant_admin");
@@ -144,7 +140,7 @@ const API_MODULE_RULES: Array<[RegExp, string]> = [
   [/^\/(?:deals|funis|activities)(?:\/|$)/, "deals"],
   [/^\/(?:conversations|messages)(?:\/|$)/, "conversations"],
   [/^\/(?:agendas|agendamentos|bloqueios-agenda)(?:\/|$)/, "agenda"],
-  [/^\/(?:entregas|fretes|work-cards|support-cases)(?:\/|$)/, "deliveries"],
+  [/^\/(?:tenants\/[^/]+\/)?(?:entregas|fretes|work-cards|support-cases)(?:\/|$)/, "deliveries"],
   [/^\/(?:propostas|lead-proposals|solicitacoes-compra)(?:\/|$)/, "proposals"],
   [/^\/(?:produtos-catalogo|categorias-produto|inventory|varejo)(?:\/|$)/, "catalog"],
   [/^\/(?:erp|invoices|subscriptions)(?:\/|$)/, "erp"],
