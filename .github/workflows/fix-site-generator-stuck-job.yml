@@ -1,0 +1,267 @@
+name: Apply site generator stuck-job fix
+
+on:
+  push:
+    branches:
+      - fix/site-generator-stuck-job
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/site-generator-stuck-job
+          fetch-depth: 0
+
+      - name: Patch real SiteGenerator
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("artifacts/frontend/src/pages/SiteGenerator.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          old = '''function pendingJobKey(tenantId: string) { return `vendorai_site_generation_job:${tenantId}`; }'''
+          new = '''function pendingJobKey(tenantId: string) { return `vendorai_site_generation_job:${tenantId}`; }
+          function pendingJobStartedAtKey(tenantId: string) { return `vendorai_site_generation_job_started_at:${tenantId}`; }
+          function rememberPendingJob(tenantId: string, jobId: string) {
+            sessionStorage.setItem(pendingJobKey(tenantId), jobId);
+            sessionStorage.setItem(pendingJobStartedAtKey(tenantId), String(Date.now()));
+          }
+          function clearPendingJob(tenantId: string) {
+            sessionStorage.removeItem(pendingJobKey(tenantId));
+            sessionStorage.removeItem(pendingJobStartedAtKey(tenantId));
+          }
+          function generationStillRunning(message: string) { return message.includes("continua em processamento"); }
+          const FOREGROUND_GENERATION_WAIT_MS = 2 * 60 * 1000;
+          const RECOVERY_GENERATION_WAIT_MS = 30 * 1000;
+          const MAX_PENDING_JOB_AGE_MS = 30 * 60 * 1000;'''.replace("          ", "")
+          assert old in text, "pendingJobKey anchor not found"
+          text = text.replace(old, new, 1)
+
+          old = '''  useEffect(() => {
+            if (!tenantId) return;
+            const jobId = sessionStorage.getItem(pendingJobKey(tenantId));
+            if (!jobId) return;
+            let cancelled = false;
+            setGenerating(true);
+            setError(null);
+            void pollJob(jobId, 20 * 60 * 1000)
+              .then(() => {
+                if (cancelled) return;
+                sessionStorage.removeItem(pendingJobKey(tenantId));
+                setEditor(true);
+                toast({ title: "Site recuperado", description: "A geração terminou no servidor. Abrindo o preview." });
+              })
+              .catch((e) => {
+                if (cancelled) return;
+                const message = e instanceof Error ? e.message : "Não foi possível recuperar a geração";
+                if (!message.includes("continua em processamento")) setError(message);
+              })
+              .finally(() => { if (!cancelled) setGenerating(false); });
+            return () => { cancelled = true; };
+          }, [tenantId, token]);'''.replace("          ", "")
+          new = '''  useEffect(() => {
+            if (!tenantId) return;
+            const jobId = sessionStorage.getItem(pendingJobKey(tenantId));
+            if (!jobId) return;
+
+            const startedAt = Number(sessionStorage.getItem(pendingJobStartedAtKey(tenantId)) ?? "0");
+            if (startedAt > 0 && Date.now() - startedAt > MAX_PENDING_JOB_AGE_MS) {
+              clearPendingJob(tenantId);
+              setError("A geração anterior excedeu o tempo máximo de acompanhamento. O formulário foi liberado para você tentar novamente.");
+              return;
+            }
+
+            let cancelled = false;
+            setGenerating(true);
+            setError(null);
+            void pollJob(jobId, RECOVERY_GENERATION_WAIT_MS)
+              .then(() => {
+                if (cancelled) return;
+                clearPendingJob(tenantId);
+                setEditor(true);
+                toast({ title: "Site recuperado", description: "A geração terminou no servidor. Abrindo o preview." });
+              })
+              .catch((e) => {
+                if (cancelled) return;
+                const message = e instanceof Error ? e.message : "Não foi possível recuperar a geração";
+                if (generationStillRunning(message)) {
+                  setError(null);
+                  toast({ title: "Geração continua no servidor", description: "O botão foi liberado. Você pode verificar novamente sem ficar preso na tela." });
+                  return;
+                }
+                clearPendingJob(tenantId);
+                setError(message);
+              })
+              .finally(() => { if (!cancelled) setGenerating(false); });
+            return () => { cancelled = true; };
+          }, [tenantId, token]);'''.replace("          ", "")
+          assert old in text, "recovery effect anchor not found"
+          text = text.replace(old, new, 1)
+
+          old = '''  async function pollJob(jobId: string, timeoutMs = 12 * 60 * 1000) {
+            const end = Date.now() + timeoutMs;
+            let consecutiveFailures = 0;
+            const check = async () => {
+              const p = await fetch(`/api/tenants/${tenantId}/site-generator/jobs/${jobId}?t=${Date.now()}`, { headers: headers(token), cache: "no-store" });
+              if (!p.ok) {
+                // Falhas transitórias (429/502/503) não devem derrubar o acompanhamento —
+                // só desistimos depois de várias tentativas seguidas ruins.
+                if ([429, 502, 503, 504].includes(p.status) && consecutiveFailures < 5) {
+                  consecutiveFailures++;
+                  return null;
+                }
+                const b = await p.json().catch(() => ({}));
+                throw new Error(b.error ?? "Falha ao acompanhar geração");
+              }
+              consecutiveFailures = 0;
+              return p.json();
+            };
+            while (Date.now() < end) {
+              await new Promise((r) => window.setTimeout(r, 3000));
+              const b = await check();
+              if (!b) continue;
+              if (b.status === "done") return b.result;
+              if (b.status === "error") throw new Error(b.error ?? "Erro na geração");
+            }
+            const final = await check();
+            if (final?.status === "done") return final.result;
+            if (final?.status === "error") throw new Error(final.error ?? "Erro na geração");
+            throw new Error("A geração continua em processamento no servidor. Você pode abrir Meus sites depois; o resultado não será perdido.");
+          }'''.replace("          ", "")
+          new = '''  async function pollJob(jobId: string, timeoutMs = FOREGROUND_GENERATION_WAIT_MS) {
+            const end = Date.now() + timeoutMs;
+            let consecutiveFailures = 0;
+            const check = async () => {
+              const p = await fetch(`/api/tenants/${tenantId}/site-generator/jobs/${jobId}?t=${Date.now()}`, { headers: headers(token), cache: "no-store" });
+              if (!p.ok) {
+                if (p.status === 404) {
+                  throw new Error("A geração anterior não está mais disponível no servidor. O formulário foi liberado para uma nova tentativa.");
+                }
+                // Falhas transitórias (429/502/503/504) não devem derrubar o acompanhamento —
+                // só desistimos depois de várias tentativas seguidas ruins.
+                if ([429, 502, 503, 504].includes(p.status) && consecutiveFailures < 5) {
+                  consecutiveFailures++;
+                  return null;
+                }
+                const b = await p.json().catch(() => ({}));
+                throw new Error(b.error ?? "Falha ao acompanhar geração");
+              }
+              consecutiveFailures = 0;
+              return p.json();
+            };
+            while (Date.now() < end) {
+              const b = await check();
+              if (b?.status === "done") return b.result;
+              if (b?.status === "error") throw new Error(b.error ?? "Erro na geração");
+              await new Promise((r) => window.setTimeout(r, 3000));
+            }
+            const final = await check();
+            if (final?.status === "done") return final.result;
+            if (final?.status === "error") throw new Error(final.error ?? "Erro na geração");
+            throw new Error("A geração continua em processamento no servidor. O acompanhamento foi liberado e o resultado não será perdido.");
+          }'''.replace("          ", "")
+          assert old in text, "pollJob anchor not found"
+          text = text.replace(old, new, 1)
+
+          old = '''  async function runJob(config: Record<string, unknown>) {
+            const start = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, { method: "POST", headers: headers(token), cache: "no-store", body: JSON.stringify(config) });
+            const sb = await start.json().catch(() => ({}));
+            if (!start.ok || !sb.jobId) throw new Error(sb.error ?? "Não foi possível iniciar a geração");
+            sessionStorage.setItem(pendingJobKey(tenantId), sb.jobId);
+            try {
+              const result = await pollJob(sb.jobId);
+              sessionStorage.removeItem(pendingJobKey(tenantId));
+              return result;
+            } catch (e) {
+              const message = e instanceof Error ? e.message : "Erro na geração";
+              if (!message.includes("continua em processamento")) sessionStorage.removeItem(pendingJobKey(tenantId));
+              throw e;
+            }
+          }'''.replace("          ", "")
+          new = '''  async function runJob(config: Record<string, unknown>) {
+            const start = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, { method: "POST", headers: headers(token), cache: "no-store", body: JSON.stringify(config) });
+            const sb = await start.json().catch(() => ({}));
+            if (!start.ok || !sb.jobId) throw new Error(sb.error ?? "Não foi possível iniciar a geração");
+            rememberPendingJob(tenantId, sb.jobId);
+            try {
+              const result = await pollJob(sb.jobId, FOREGROUND_GENERATION_WAIT_MS);
+              clearPendingJob(tenantId);
+              return result;
+            } catch (e) {
+              const message = e instanceof Error ? e.message : "Erro na geração";
+              if (!generationStillRunning(message)) clearPendingJob(tenantId);
+              throw e;
+            }
+          }
+
+          async function resumePendingJob() {
+            const jobId = sessionStorage.getItem(pendingJobKey(tenantId));
+            if (!jobId) return;
+            setGenerating(true);
+            setError(null);
+            try {
+              await pollJob(jobId, RECOVERY_GENERATION_WAIT_MS);
+              clearPendingJob(tenantId);
+              setEditor(true);
+              toast({ title: "Site gerado", description: "A geração terminou. Abrindo o preview para revisão." });
+            } catch (e) {
+              const message = e instanceof Error ? e.message : "Não foi possível acompanhar a geração";
+              if (generationStillRunning(message)) {
+                toast({ title: "Ainda gerando no servidor", description: "Você pode continuar usando o VendorAI e verificar novamente depois." });
+              } else {
+                clearPendingJob(tenantId);
+                setError(message);
+                toast({ title: "Geração encerrada", description: message, variant: "destructive" });
+              }
+            } finally {
+              setGenerating(false);
+            }
+          }'''.replace("          ", "")
+          assert old in text, "runJob anchor not found"
+          text = text.replace(old, new, 1)
+
+          old = '''    } catch (e) { const m = e instanceof Error ? e.message : "Não foi possível gerar"; setError(m); toast({ title: m.includes("continua em processamento") ? "Geração continua no servidor" : "Erro na geração", description: m, variant: m.includes("continua em processamento") ? "default" : "destructive" }); } finally { setGenerating(false); }
+          }
+
+          if (editor) return'''.replace("          ", "")
+          new = '''    } catch (e) { const m = e instanceof Error ? e.message : "Não foi possível gerar"; if (generationStillRunning(m)) { setError(null); toast({ title: "Geração continua no servidor", description: "O acompanhamento foi liberado. Você pode verificar o resultado sem ficar preso no botão." }); } else { setError(m); toast({ title: "Erro na geração", description: m, variant: "destructive" }); } } finally { setGenerating(false); }
+          }
+
+          const pendingJobId = tenantId ? sessionStorage.getItem(pendingJobKey(tenantId)) : null;
+
+          if (editor) return'''.replace("          ", "")
+          assert old in text, "generate catch anchor not found"
+          text = text.replace(old, new, 1)
+
+          old = '''      {error && <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</div>}
+          <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur"><div><p className="text-sm font-semibold">Pronto para gerar</p><p className="text-xs text-muted-foreground">Sem repetir perguntas: negócio + público + oferta + catálogo + ativos + inteligência disponível.</p></div><div className="flex flex-wrap justify-end gap-2"><Button size="lg" variant="outline" onClick={() => void previewLatest()}><Globe className="mr-2 h-4 w-4" />Visualizar site</Button><Button size="lg" onClick={() => void generate()} disabled={generating || uploads > 0}>{generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</> : uploads > 0 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enviando mídia...</> : <><Sparkles className="mr-2 h-4 w-4" />Gerar site com IA</>}</Button></div></div>'''.replace("          ", "")
+          new = '''      {pendingJobId && !generating && <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold">Geração em andamento no servidor</p><p className="text-xs text-muted-foreground">Você não precisa deixar o botão travado. Verifique quando quiser; o job continua preservado no servidor.</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void resumePendingJob()}><RefreshCw className="mr-2 h-4 w-4" />Verificar agora</Button><Button size="sm" variant="ghost" onClick={() => { clearPendingJob(tenantId); setError(null); toast({ title: "Acompanhamento liberado", description: "O job anterior pode continuar no servidor, mas esta tela não ficará mais presa a ele." }); }}>Parar de acompanhar</Button></div></div>}
+          {error && <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</div>}
+          <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur"><div><p className="text-sm font-semibold">{pendingJobId ? "Geração em andamento" : "Pronto para gerar"}</p><p className="text-xs text-muted-foreground">{pendingJobId ? "O processamento continua no servidor sem bloquear esta tela." : "Sem repetir perguntas: negócio + público + oferta + catálogo + ativos + inteligência disponível."}</p></div><div className="flex flex-wrap justify-end gap-2"><Button size="lg" variant="outline" onClick={() => void previewLatest()}><Globe className="mr-2 h-4 w-4" />Visualizar site</Button><Button size="lg" onClick={() => pendingJobId ? void resumePendingJob() : void generate()} disabled={generating || uploads > 0}>{generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</> : uploads > 0 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enviando mídia...</> : pendingJobId ? <><RefreshCw className="mr-2 h-4 w-4" />Verificar geração</> : <><Sparkles className="mr-2 h-4 w-4" />Gerar site com IA</>}</Button></div></div>'''.replace("          ", "")
+          assert old in text, "sticky footer anchor not found"
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Validate patch
+        run: |
+          git diff --check
+          grep -q "FOREGROUND_GENERATION_WAIT_MS" artifacts/frontend/src/pages/SiteGenerator.tsx
+          grep -q "Verificar geração" artifacts/frontend/src/pages/SiteGenerator.tsx
+          grep -q "A geração anterior não está mais disponível" artifacts/frontend/src/pages/SiteGenerator.tsx
+
+      - name: Commit focused fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/pages/SiteGenerator.tsx
+          git rm .github/workflows/fix-site-generator-stuck-job.yml
+          git commit -m "fix(site-generator): destravar acompanhamento de geração"
+          git push origin HEAD:fix/site-generator-stuck-job
