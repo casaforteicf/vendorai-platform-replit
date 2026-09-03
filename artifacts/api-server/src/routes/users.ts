@@ -51,7 +51,7 @@ const PUBLIC_FIELDS = {
   updatedAt: usersTable.updatedAt,
 } as const;
 
-function canManageTenant(req: Parameters<Parameters<typeof requireRole>[0]>[0] extends never ? never : any, tenantId: string) {
+function canManageTenant(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
 
@@ -188,7 +188,9 @@ router.post("/users", requireRole("super_admin", "tenant_admin"), async (req, re
       return;
     }
     userData.userFunction = "outro";
-    userData.permissions = customFunction.permissions;
+    if (!Array.isArray(userData.permissions)) {
+      userData.permissions = customFunction.permissions;
+    }
   }
 
   const data = {
@@ -255,7 +257,9 @@ router.patch("/users/:id", requireRole("super_admin", "tenant_admin"), async (re
       return;
     }
     data.userFunction = "outro";
-    data.permissions = customFunction.permissions;
+    if (!Array.isArray(data.permissions)) {
+      data.permissions = customFunction.permissions;
+    }
   }
 
   if (data.password) {
