@@ -17,6 +17,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import TalkingVideoPanel from "@/components/video/TalkingVideoPanel";
 
 function authHeaders(json = false): Record<string, string> {
   return {
@@ -123,6 +124,7 @@ export default function VideoAvatarPage() {
   }, [detail]);
 
   const voiceEngineReady = capabilities?.capabilities?.voice_synthesize === "ready";
+  const lipSyncEngineReady = capabilities?.capabilities?.avatar_lipsync === "ready";
 
   const loadIdentity = async (identityId: string) => {
     if (!tenantId) return;
@@ -469,6 +471,17 @@ export default function VideoAvatarPage() {
                     {testAudioUrl && <audio controls src={testAudioUrl} className="h-8 max-w-full" />}
                   </div>
                 </section>
+
+                <TalkingVideoPanel
+                  tenantId={tenantId}
+                  identityId={detail.identity.id}
+                  identityName={detail.identity.display_name}
+                  faceReferenceAssetId={detail.identity.face_reference_asset_id}
+                  voices={detail.voices}
+                  activeConsentScopes={activeConsentScopes}
+                  voiceEngineReady={voiceEngineReady}
+                  lipSyncEngineReady={lipSyncEngineReady}
+                />
               </div>
             )}
           </main>
