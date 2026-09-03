@@ -11,6 +11,22 @@ import { requireRole } from "./index.js";
 
 const router: IRouter = Router();
 const ERP_MODULE_KEY: NavModuleKey = "financeiro";
+const PRACA_AI_MODULE_KEY: NavModuleKey = "praca_ai";
+const SUPERADMIN_ONLY_MODULE_KEYS = new Set<NavModuleKey>([
+  ERP_MODULE_KEY,
+  PRACA_AI_MODULE_KEY,
+]);
+const EFFECTIVE_DEFAULT_OFF_MODULE_KEYS = new Set<NavModuleKey>([
+  ERP_MODULE_KEY,
+  PRACA_AI_MODULE_KEY,
+]);
+
+function superAdminOnlyModuleMessage(moduleKey: string) {
+  if (moduleKey === PRACA_AI_MODULE_KEY) {
+    return "Os módulos do Praça.AI ficam ocultos por padrão e só podem ser liberados pelo Super Admin.";
+  }
+  return "A Gestão ERP é um add-on pago e só pode ser ativada pelo Super Admin.";
+}
 
 // ── POST /tenants/:tenantId/apply-light-plan-defaults ───────────────────────
 // Aplica as restrições de tela do plano Light: sem Revenue Scout ("revenue",
@@ -39,10 +55,10 @@ router.post("/tenants/:tenantId/apply-light-plan-defaults", requireRole("tenant_
 
 // ── GET /tenants/:tenantId/nav-modules ──────────────────────────────────────
 // Retorna o catálogo completo de módulos com o estado is_enabled do tenant.
-// Módulos sem override usam o default do catálogo. O ERP é uma exceção
-// deliberada: por ser add-on pago, o default false é efetivo mesmo sem linha
-// persistida, garantindo que tenants atuais e futuros não recebam acesso
-// automaticamente.
+// Módulos sem override usam o default do catálogo. Entitlements comerciais ou
+// exclusivos do Super Admin (ERP e Praça.AI) têm o default false efetivo mesmo
+// sem linha persistida, garantindo que tenants atuais e futuros não recebam
+// acesso automaticamente.
 router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   const user = (req as any).user;
@@ -65,7 +81,7 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
 
   const modules = NAV_MODULE_CATALOG.map((entry) => {
     const hasPersistedOverride = overrideMap.has(entry.moduleKey);
-    const isPaidErpEntitlement = entry.moduleKey === ERP_MODULE_KEY;
+    const hasEffectiveDefaultOff = EFFECTIVE_DEFAULT_OFF_MODULE_KEYS.has(entry.moduleKey);
 
     return {
       moduleKey:   entry.moduleKey,
@@ -76,10 +92,10 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
       isEnabled:   hasPersistedOverride
         ? overrideMap.get(entry.moduleKey)!
         : entry.isDefault,
-      // O menu legado só esconde módulos quando hasOverride=true. Para o ERP,
-      // tratamos o default pago/desligado como efetivo para que ele desapareça
+      // O menu legado só esconde módulos quando hasOverride=true. Para
+      // entitlements que devem falhar fechados, o default false já é efetivo
       // mesmo antes de existir uma linha tenant_nav_modules.
-      hasOverride: hasPersistedOverride || isPaidErpEntitlement,
+      hasOverride: hasPersistedOverride || hasEffectiveDefaultOff,
     };
   });
 
@@ -87,8 +103,8 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
 });
 
 // ── PATCH /tenants/:tenantId/nav-modules/:moduleKey ─────────────────────────
-// Liga/desliga um módulo específico. Gestão ERP é comercial: somente o
-// super_admin pode ativar/desativar após a contratação do add-on.
+// Liga/desliga um módulo específico. Gestão ERP e Praça.AI são controles
+// exclusivos do Super Admin.
 router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("tenant_admin", "super_admin"), async (req, res) => {
   const tenantId = req.params.tenantId as string;
   const moduleKey = req.params.moduleKey as string;
@@ -99,10 +115,10 @@ router.patch("/tenants/:tenantId/nav-modules/:moduleKey", requireRole("tenant_ad
     return;
   }
 
-  if (moduleKey === ERP_MODULE_KEY && user.platformRole !== "super_admin") {
+  if (SUPERADMIN_ONLY_MODULE_KEYS.has(moduleKey as NavModuleKey) && user.platformRole !== "super_admin") {
     res.status(403).json({
-      error: "ERP_ADDON_ADMIN_REQUIRED",
-      message: "A Gestão ERP é um add-on pago e só pode ser ativada pelo Super Admin.",
+      error: moduleKey === PRACA_AI_MODULE_KEY ? "PRACA_AI_SUPERADMIN_REQUIRED" : "ERP_ADDON_ADMIN_REQUIRED",
+      message: superAdminOnlyModuleMessage(moduleKey),
     });
     return;
   }
@@ -148,10 +164,12 @@ router.put("/tenants/:tenantId/nav-modules", requireRole("tenant_admin", "super_
     return;
   }
 
-  if (user.platformRole !== "super_admin" && modules.some((mod: any) => mod?.moduleKey === ERP_MODULE_KEY)) {
+  const restrictedModule = modules.find((mod: any) => SUPERADMIN_ONLY_MODULE_KEYS.has(mod?.moduleKey));
+  if (user.platformRole !== "super_admin" && restrictedModule) {
+    const moduleKey = restrictedModule.moduleKey as string;
     res.status(403).json({
-      error: "ERP_ADDON_ADMIN_REQUIRED",
-      message: "A Gestão ERP é um add-on pago e só pode ser alterada pelo Super Admin.",
+      error: moduleKey === PRACA_AI_MODULE_KEY ? "PRACA_AI_SUPERADMIN_REQUIRED" : "ERP_ADDON_ADMIN_REQUIRED",
+      message: superAdminOnlyModuleMessage(moduleKey),
     });
     return;
   }
