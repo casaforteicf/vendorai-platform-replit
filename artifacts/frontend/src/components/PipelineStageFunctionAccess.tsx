@@ -25,6 +25,7 @@ type TenantUserFunction = {
 
 type Props = {
   tenantId: string;
+  pipeline: string;
   stageId?: string | null;
   value?: string[] | null;
   disabled?: boolean;
@@ -33,6 +34,7 @@ type Props = {
 
 export function PipelineStageFunctionAccess({
   tenantId,
+  pipeline,
   stageId,
   value,
   disabled = false,
@@ -86,7 +88,10 @@ export function PipelineStageFunctionAccess({
         body: JSON.stringify({ responsaveisFuncoes: next }),
         responseType: "json",
       });
-      await queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["pipeline-stages", tenantId, pipeline] }),
+        queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) }),
+      ]);
     } catch (error) {
       setSelected(previous);
       console.error("Falha ao salvar funções responsáveis da etapa", error);
