@@ -76,3 +76,14 @@ export const updateUserSchema = createSelectSchema(usersTable, {
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpdateUser = z.infer<typeof updateUserSchema>;
 export type User = typeof usersTable.$inferSelect;
+
+export {
+  userFunctionsTable,
+  insertUserFunctionSchema,
+  updateUserFunctionSchema,
+} from "./user_functions";
+export type {
+  InsertUserFunction,
+  UpdateUserFunction,
+  UserFunctionDefinition,
+} from "./user_functions";
