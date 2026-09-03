@@ -10,8 +10,10 @@ import { MediaCatalogBridge } from "./components/media/MediaCatalogBridge";
 import { MediaContentStudioBridge } from "./components/media/MediaContentStudioBridge";
 import { MediaMarketingContentBridge } from "./components/media/MediaMarketingContentBridge";
 import { MediaConversationsBridge } from "./components/media/MediaConversationsBridge";
+import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import "./index.css";
 import "./site-generator-fix.css";
+import "./video-route-theme.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
 
@@ -52,6 +54,7 @@ createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <FrontendRecoveryGuard />
+        <VideoRouteThemeSync />
         <App />
         <MediaMenuInjector />
         <MediaAdsBridge />

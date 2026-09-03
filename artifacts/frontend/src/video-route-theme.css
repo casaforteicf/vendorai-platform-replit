@@ -1,0 +1,193 @@
+/*
+ * VendorAI Media Engine — harmonização visual das rotas /content-studio/video/*.
+ *
+ * As telas internas do Media Engine nasceram com um tema escuro próprio. Esta
+ * camada mantém os fluxos e componentes existentes, mas faz os shells, cards,
+ * formulários e ações herdarem os mesmos tokens visuais usados no restante do
+ * VendorAI. O escopo é ativado apenas enquanto uma rota de vídeo está aberta.
+ */
+
+body.vendorai-video-route {
+  --video-page-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+}
+
+/* Shell antigo das páginas internas: deixa de funcionar como uma aplicação
+   escura independente e passa a usar o próprio shell do SidebarLayout. */
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"][class*="to-[#0a0818]"] {
+  min-height: 0 !important;
+  background: transparent !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"][class*="to-[#0a0818]"] > [class*="max-w-"][class*="mx-auto"] {
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding: 0 !important;
+}
+
+/* Tipografia de cabeçalhos das páginas internas. */
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] h1,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] h2,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] h3,
+body.vendorai-video-route section[class*="rounded-2xl"] h1,
+body.vendorai-video-route section[class*="rounded-2xl"] h2,
+body.vendorai-video-route section[class*="rounded-2xl"] h3 {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Cards/seções estruturais. Mantém alertas semânticos menores (success/error)
+   intactos, mas normaliza os grandes painéis do fluxo. */
+body.vendorai-video-route section[class*="rounded-2xl"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] div[class*="rounded-2xl"][class*="border-white/10"] {
+  border-color: hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  box-shadow: var(--video-page-shadow) !important;
+}
+
+body.vendorai-video-route section[class*="rounded-2xl"] [class*="border-white/10"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [class*="border-white/10"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [class*="border-white/[0.08]"] {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* Superfícies secundárias e estados vazios. Vídeos em si continuam com fundo
+   preto porque usam a classe bg-black, não bg-black/20. */
+body.vendorai-video-route section[class*="rounded-2xl"] div[class*="bg-black/20"],
+body.vendorai-video-route section[class*="rounded-2xl"] div[class*="bg-black/10"],
+body.vendorai-video-route section[class*="rounded-2xl"] div[class*="bg-white/5"],
+body.vendorai-video-route section[class*="rounded-2xl"] div[class*="bg-white/[0.03]"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] div[class*="bg-black/20"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] div[class*="bg-black/10"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] div[class*="bg-white/5"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] div[class*="bg-white/[0.03]"] {
+  background: hsl(var(--muted) / 0.5) !important;
+}
+
+/* Formulários: usa o mesmo contraste, borda, foco e tipografia dos demais
+   módulos do sistema. */
+body.vendorai-video-route section[class*="rounded-2xl"] input:not([type="file"]),
+body.vendorai-video-route section[class*="rounded-2xl"] textarea,
+body.vendorai-video-route section[class*="rounded-2xl"] select,
+body.vendorai-video-route section[class*="rounded-2xl"] [role="combobox"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] input:not([type="file"]),
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] textarea,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] select,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [role="combobox"] {
+  border-color: hsl(var(--input)) !important;
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  box-shadow: none !important;
+}
+
+body.vendorai-video-route section[class*="rounded-2xl"] input:not([type="file"]):focus,
+body.vendorai-video-route section[class*="rounded-2xl"] textarea:focus,
+body.vendorai-video-route section[class*="rounded-2xl"] select:focus,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] input:not([type="file"]):focus,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] textarea:focus,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] select:focus {
+  border-color: hsl(var(--ring)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.12) !important;
+}
+
+body.vendorai-video-route section[class*="rounded-2xl"] input::placeholder,
+body.vendorai-video-route section[class*="rounded-2xl"] textarea::placeholder,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] input::placeholder,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] textarea::placeholder {
+  color: hsl(var(--muted-foreground)) !important;
+  opacity: 0.72;
+}
+
+/* Texto auxiliar criado originalmente para fundos escuros. */
+body.vendorai-video-route section[class*="rounded-2xl"] [class*="text-gray-3"],
+body.vendorai-video-route section[class*="rounded-2xl"] [class*="text-gray-4"],
+body.vendorai-video-route section[class*="rounded-2xl"] [class*="text-gray-5"],
+body.vendorai-video-route section[class*="rounded-2xl"] [class*="text-gray-6"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [class*="text-gray-3"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [class*="text-gray-4"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [class*="text-gray-5"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [class*="text-gray-6"] {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+body.vendorai-video-route section[class*="rounded-2xl"] :is(h1, h2, h3, h4, p, span, label, div)[class~="text-white"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] :is(h1, h2, h3, h4, p, span, label, div)[class~="text-white"],
+body.vendorai-video-route section[class*="rounded-2xl"] :is(p, span, pre)[class*="text-white/"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] :is(p, span, pre)[class*="text-white/"],
+body.vendorai-video-route section[class*="rounded-2xl"] [class*="text-[#e8e4f8]"],
+body.vendorai-video-route section[class*="rounded-2xl"] [class*="text-[#d4cff0]"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [class*="text-[#e8e4f8]"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] [class*="text-[#d4cff0]"] {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Dropzones e escolhas de mídia deixam de competir com o conteúdo. */
+body.vendorai-video-route section[class*="rounded-2xl"] button[class*="border-dashed"],
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] button[class*="border-dashed"] {
+  border-color: hsl(var(--border)) !important;
+  background: hsl(var(--muted) / 0.38) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+body.vendorai-video-route section[class*="rounded-2xl"] button[class*="border-dashed"]:hover,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] button[class*="border-dashed"]:hover {
+  border-color: hsl(var(--primary) / 0.45) !important;
+  background: hsl(var(--accent)) !important;
+}
+
+/* CTAs principais: uma única cor de ação do tenant/sistema em vez de um arco-
+   íris diferente em cada ferramenta. */
+body.vendorai-video-route button[class*="bg-gradient-to-r"],
+body.vendorai-video-route button[class~="bg-purple-600"],
+body.vendorai-video-route button[class~="bg-violet-600"],
+body.vendorai-video-route button[class~="bg-blue-600"],
+body.vendorai-video-route button[class~="bg-cyan-600"],
+body.vendorai-video-route button[class~="bg-rose-600"],
+body.vendorai-video-route button[class~="bg-emerald-600"],
+body.vendorai-video-route button[class~="bg-amber-500"] {
+  border-color: hsl(var(--primary)) !important;
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  box-shadow: none !important;
+}
+
+body.vendorai-video-route button[class*="bg-gradient-to-r"]:hover,
+body.vendorai-video-route button[class~="bg-purple-600"]:hover,
+body.vendorai-video-route button[class~="bg-violet-600"]:hover,
+body.vendorai-video-route button[class~="bg-blue-600"]:hover,
+body.vendorai-video-route button[class~="bg-cyan-600"]:hover,
+body.vendorai-video-route button[class~="bg-rose-600"]:hover,
+body.vendorai-video-route button[class~="bg-emerald-600"]:hover,
+body.vendorai-video-route button[class~="bg-amber-500"]:hover {
+  filter: brightness(0.96);
+}
+
+/* Botões secundários que antes eram desenhados para fundo preto. */
+body.vendorai-video-route section[class*="rounded-2xl"] button[class*="border-white/10"]:not([class*="bg-gradient-to-r"]),
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] button[class*="border-white/10"]:not([class*="bg-gradient-to-r"]) {
+  border-color: hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+body.vendorai-video-route section[class*="rounded-2xl"] button[class*="border-white/10"]:hover,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] button[class*="border-white/10"]:hover {
+  background: hsl(var(--muted)) !important;
+}
+
+/* Storyboards/resultados textuais: superfície editorial neutra. */
+body.vendorai-video-route section[class*="rounded-2xl"] pre,
+body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"] pre {
+  border-color: hsl(var(--border)) !important;
+  background: hsl(var(--muted) / 0.55) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Mantém a leitura confortável em telas largas sem o painel roxo estreito e
+   centralizado visto anteriormente. */
+@media (min-width: 1024px) {
+  body.vendorai-video-route [class*="from-[#0f0b1e]"][class*="via-[#1a1040]"][class*="to-[#0a0818]"] > [class*="max-w-"][class*="mx-auto"] {
+    width: 100% !important;
+  }
+}
