@@ -67,7 +67,7 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     image_convert: "ready",
     image_remove_background: "building",
     image_variations: "building",
-    photo_video: "building",
+    photo_video: "ready",
     media_batch: "building",
   },
 };
