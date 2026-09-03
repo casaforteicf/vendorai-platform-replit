@@ -6,6 +6,11 @@ import {
   normalizeMediaAudioRights,
   validateMediaAudioRightsInput,
 } from "../services/media-rights.js";
+import {
+  generateVendorAiMusic,
+  MusicEngineNotReadyError,
+  MusicGenerationInputError,
+} from "../services/vendorai-music-engine.js";
 
 const router: IRouter = Router();
 
@@ -19,6 +24,12 @@ function clampLimit(value: unknown, fallback = 60, max = 150): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.min(Math.floor(parsed), max);
+}
+
+function optionalText(value: unknown, maxLength = 300): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : null;
 }
 
 router.use("/tenants/:tenantId/media/tracks", requireSameTenanOrSuperAdmin());
@@ -48,6 +59,47 @@ router.get("/tenants/:tenantId/media/tracks", async (req, res) => {
   });
 
   res.json({ tracks });
+});
+
+router.post("/tenants/:tenantId/media/tracks/generate", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const body = record(req.body);
+  const prompt = optionalText(body["prompt"], 1500);
+  const durationSeconds = Number(body["durationSeconds"] ?? 30);
+  if (!prompt) {
+    res.status(422).json({ error: "prompt é obrigatório" });
+    return;
+  }
+
+  try {
+    const result = await generateVendorAiMusic({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      prompt,
+      title: optionalText(body["title"], 200) ?? undefined,
+      durationSeconds,
+      style: optionalText(body["style"], 200),
+      mood: optionalText(body["mood"], 120),
+      energy: optionalText(body["energy"], 120),
+      instrumental: body["instrumental"] !== false,
+    });
+    res.status(201).json({
+      ...result,
+      provider: "vendorai",
+      operation: "music_generate",
+      usage: assessMediaAudioUsage(result.rights),
+    });
+  } catch (error) {
+    if (error instanceof MusicEngineNotReadyError) {
+      res.status(503).json({ error: error.message, code: "MUSIC_WORKER_NOT_READY" });
+      return;
+    }
+    if (error instanceof MusicGenerationInputError) {
+      res.status(422).json({ error: error.message, code: "MUSIC_INPUT_INVALID" });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.patch("/tenants/:tenantId/media/tracks/:assetId/rights", async (req, res) => {
