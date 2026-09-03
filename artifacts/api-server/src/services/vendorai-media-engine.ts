@@ -13,7 +13,16 @@ export type VendorAiMediaCapability =
   | "persona_profile"
   | "avatar_lipsync"
   | "music_generate"
-  | "video_generate";
+  | "video_generate"
+  | "image_resize"
+  | "image_crop"
+  | "image_optimize"
+  | "image_enhance"
+  | "image_convert"
+  | "image_remove_background"
+  | "image_variations"
+  | "photo_video"
+  | "media_batch";
 
 export interface VendorAiMediaEngineCapabilities {
   provider: "vendorai";
@@ -50,9 +59,16 @@ export const vendorAiMediaEngineCapabilities: VendorAiMediaEngineCapabilities = 
     persona_profile: "ready",
     avatar_lipsync: "building",
     music_generate: "building",
-    // Gerador nativo VendorAI: cenas por IA + continuidade visual + FFmpeg + Brand Kit.
-    // Não depende da API de vídeo Sora nem de provider externo de avatar.
     video_generate: "ready",
+    image_resize: "ready",
+    image_crop: "ready",
+    image_optimize: "ready",
+    image_enhance: "ready",
+    image_convert: "ready",
+    image_remove_background: "building",
+    image_variations: "building",
+    photo_video: "building",
+    media_batch: "building",
   },
 };
 
