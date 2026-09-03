@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Clock3, ExternalLink, GitCompare, History, Megaphone, MessageSquare, Package, Send, Sparkles, Video } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import ImageFormatPresetsPanel from "@/components/media/ImageFormatPresetsPanel";
 
 type MediaType = "image" | "video" | "audio" | "document";
 
@@ -140,6 +141,8 @@ export default function MediaPostGenerationPanel({ asset, originalAsset, mediaUr
           </div>
         </details>
       )}
+
+      {asset.type === "image" && <ImageFormatPresetsPanel assetId={asset.id} filename={asset.originalFilename} onUpdated={() => window.dispatchEvent(new CustomEvent("vendorai:media-updated"))} />}
 
       <div className="rounded-xl border bg-background p-3">
         <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold">Usar em</p><p className="mt-0.5 text-[10px] text-muted-foreground">Leve esta mídia para outro módulo sem fazer novo upload.</p></div><ExternalLink className="h-4 w-4 text-muted-foreground" /></div>
