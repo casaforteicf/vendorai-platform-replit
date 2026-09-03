@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { breakoutSignal, buildConsensus, combineIntelligence, evaluateRisk, evaluatePortfolioRisk, evaluatePortfolioIntelligence, classifyRegimeContext, evaluateRegimeGate, evaluateRiskBudget, evaluateStrategyLifecycle, supervise, executePaper, getOperatingProfile, metricPrior, momentumSignal, portfolioCorrelationRisk, strategyMetrics, trendPullbackSignal, vwapReversionSignal, summarizePortfolio, simulateShadowOrder, shadowQualityScore, type MarketSnapshot, type StrategySignal, type StrategyMetric, type TadMarketId } from '@tad/core';
+import { buildConsensus, combineIntelligence, evaluateRisk, evaluatePortfolioRisk, evaluatePortfolioIntelligence, classifyRegimeContext, evaluateRegimeGate, evaluateRiskBudget, evaluateStrategyLifecycle, supervise, executePaper, getOperatingProfile, metricPrior, portfolioCorrelationRisk, strategyCandidates, strategyMetrics, summarizePortfolio, simulateShadowOrder, shadowQualityScore, type MarketSnapshot, type StrategySignal, type StrategyMetric, type TadMarketId } from '@tad/core';
 import { bearerToken } from '../../../lib/auth';
 import { appendAudit, findPositionByAutopilotKey, getPaperWallet, listPositions, savePosition, saveShadowExecution, storageMode } from '../../../lib/store';
 import { getOperatingSettings } from '../../../lib/operating-settings';
@@ -35,7 +35,7 @@ export async function POST(req:NextRequest){
   const freshMarket=freshMarkets.find(m=>m.symbol===body.market!.symbol);
   const dataHealth=assessDataHealth({market:body.market,candles5m:technical.candles5m,derivatives,eventProvider:eventFeed.provider,restPrice:freshMarket?.price});
   const intelligence=combineIntelligence(body.market,derivatives,eventFeed.events,eventFeed.provider);
-  const candidates:(StrategySignal|null)[]=[momentumSignal(body.market),trendPullbackSignal(body.market,technical.mtf),vwapReversionSignal(body.market,technical.mtf),breakoutSignal(body.market,technical.mtf,technical.candles5m)];
+  const candidates:(StrategySignal|null)[]=strategyCandidates(body.market,technical.mtf,technical.candles5m);
   const valid=candidates.filter((x):x is StrategySignal=>Boolean(x)).map(s=>{
     const prior=metricPrior(metrics.find(m=>m.strategyId===s.strategyId));
     const biasMatch=(intelligence.combinedBias==='BULLISH'&&s.side==='LONG')||(intelligence.combinedBias==='BEARISH'&&s.side==='SHORT')?6:intelligence.combinedBias==='NEUTRAL'?0:-4;
@@ -91,7 +91,7 @@ export async function POST(req:NextRequest){
   risk.approved=riskBudget.approved;
   risk.effectiveRiskPct=riskBudget.finalRiskPct;
   risk.reasons.push(...riskBudget.reasons);
-  await appendAudit(token,'DECISION',{decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,market:body.market,marketId,profile:profile.id,operatingSettings,technical:technical.mtf,intelligence,candidates:valid.map(v=>({strategyId:v.signal.strategyId,confidence:v.signal.confidence,adaptiveScore:v.adaptiveScore,prior:v.prior,biasMatch:v.biasMatch}))});
+  await appendAudit(token,'DECISION',{decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,market:body.market,marketId,profile:profile.id,operatingSettings,technical:technical.mtf,intelligence,candidates:valid.map(v=>({strategyId:v.signal.strategyId,confidence:v.signal.confidence,adaptiveScore:v.adaptiveScore,prior:v.prior,biasMatch:v.biasMatch,rationale:v.signal.rationale}))});
   if(!risk.approved)return NextResponse.json({approved:false,decision,risk,riskBudget,dataHealth,robustness,lifecycle,supervisor,portfolioRisk,portfolioIntelligence,regimeContext,regimeGate,correlation,technical:technical.mtf,intelligence,candidates:valid,mode:'PAPER',profile:profile.id,operatingSettings,storage:storageMode()});
   const position=executePaper(decision,risk,{accountSize,leverage:requestedLeverage}); if(body.autopilotKey)(position as any).autopilotKey=body.autopilotKey; await savePosition(token,position);
   const shadowOrder=simulateShadowOrder(decision,body.market,{latencyMs:180,feeBpsPerSide:2}); const shadow={...shadowOrder,qualityScore:shadowQualityScore(shadowOrder),paperPositionId:position.id}; await saveShadowExecution(token,shadow);
