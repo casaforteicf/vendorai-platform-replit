@@ -13,7 +13,12 @@ import { randomUUID } from "crypto";
 
 const objectStorage = new ObjectStorageService();
 
-type AiImageOperation = "image_remove_background" | "image_variations";
+export type AiImageOperation =
+  | "image_remove_background"
+  | "image_variations"
+  | "image_replace_background"
+  | "image_remove_object"
+  | "image_outpaint";
 type ImageSize = "1024x1024" | "1024x1536" | "1536x1024";
 
 export class AiImageToolValidationError extends Error {
@@ -80,6 +85,25 @@ async function editImage(input: {
   }
 }
 
+function buildPrompt(operation: AiImageOperation, instruction: string): string {
+  const preserve = "Preserve all unaffected real geometry, proportions, materials, colors, logos, text and identifying details exactly. Do not invent unrelated objects, text or branding.";
+  if (operation === "image_remove_background") {
+    return `Preserve the subject/product exactly. Remove only the background and return the isolated subject on a fully transparent background. Do not add shadows, text, logos, borders or new objects. Preserve colors, geometry, materials and identifying details.`;
+  }
+  if (operation === "image_replace_background") {
+    if (!instruction) throw new AiImageToolValidationError("Descreva o novo fundo desejado");
+    return `Replace only the background of the supplied image with this background: ${instruction}. Keep the foreground subject/product/building exactly unchanged. Match realistic lighting and perspective without altering the subject. ${preserve}`;
+  }
+  if (operation === "image_remove_object") {
+    if (!instruction) throw new AiImageToolValidationError("Descreva exatamente o objeto ou elemento que deve ser removido");
+    return `Remove only this object/element from the supplied image: ${instruction}. Reconstruct the area naturally from the surrounding scene. Do not move, redesign or alter any other object or architectural/product detail. ${preserve}`;
+  }
+  if (operation === "image_outpaint") {
+    return `Expand the supplied image naturally beyond its current framing to create a wider, complete composition. Continue the real scene, architecture, materials, landscape, lighting and perspective consistently. ${instruction ? `Expansion direction/details: ${instruction}.` : "Extend the surrounding scene naturally."} ${preserve}`;
+  }
+  return `Create a distinct professional variation of the supplied image while preserving the main subject/product identity, geometry, colors, materials, logo and recognizable details. ${instruction || "Improve composition, lighting and presentation without changing the product itself."} Do not invent text or watermarks.`;
+}
+
 export async function startVendorAiAiImageTool(input: {
   tenantId: string;
   userId?: string | null;
@@ -91,11 +115,10 @@ export async function startVendorAiAiImageTool(input: {
   size?: ImageSize;
 }) {
   const { asset, buffer } = await resolveSource(input.tenantId, input.assetId);
+  const instruction = input.prompt?.trim() ?? "";
   const count = input.operation === "image_variations" ? Math.max(1, Math.min(4, Math.round(input.count ?? 2))) : 1;
   const size: ImageSize = input.size === "1024x1536" || input.size === "1536x1024" ? input.size : "1024x1024";
-  const prompt = input.operation === "image_remove_background"
-    ? "Preserve the subject/product exactly. Remove only the background and return the isolated subject on a fully transparent background. Do not add shadows, text, logos, borders or new objects. Preserve colors, geometry, materials and identifying details."
-    : `Create a distinct professional variation of the supplied image while preserving the main subject/product identity, geometry, colors, materials, logo and recognizable details. ${input.prompt?.trim() || "Improve composition, lighting and presentation without changing the product itself."} Do not invent text or watermarks.`;
+  const prompt = buildPrompt(input.operation, instruction);
 
   const projectId = await createProcessingMediaProject({
     tenantId: input.tenantId,
