@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-284",
+    "titulo": "liberar patrocínio automático pela IA",
+    "descricao": "só executa automaticamente campanhas originadas do Marketing (`contentGenerationId`); exige modo Marketing `automatic` ativo; mantém objetivo, período, orçamento diário/total, conversão e categoria especial validados; proíbe aumento automático de orçamento;",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-03T00:30:45.000Z",
+    "pullRequest": 284
+  },
+  {
     "id": "pr-285",
     "titulo": "liberar criação e publicação automática pela IA",
     "descricao": "modo Automático pode consumir oportunidades descobertas além de keywords manualmente aprovadas; mantém o teto mensal do Content Autopilot; gera Feed social usando o mesmo contexto de marca, desempenho próprio e referências do Gerador de Conteúdo; centraliza publicação Instagram em um único serviço real;",
