@@ -119,6 +119,7 @@ import partnerProspectorRouter from "./partner-prospector";
 import prospectorFlowsRouter from "./prospector-flows";
 import contentStudioRouter from "./content_studio";
 import videoProcessingRouter from "./video_processing";
+import mediaLibraryRouter from "./media_library";
 import beautyRouter from "./beauty";
 import servicosRouter from "./servicos";
 import clinicRouter from "./clinic";
@@ -329,6 +330,7 @@ router.use(contentPerformanceRouter);
 router.use(evolutionWhatsappAuthRouter);
 router.use(contentStudioRouter);
 router.use(videoProcessingRouter);
+router.use(mediaLibraryRouter);
 
 // Partner Hub (revendedor dashboard — legacy)
 router.use(partnerRouter);
