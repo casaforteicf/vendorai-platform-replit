@@ -21,17 +21,6 @@ type ScriptTabId = (typeof SCRIPT_TABS)[number]["id"];
 
 type MainTab = "script" | "produto";
 
-type VStatus =
-  | "idle" | "uploading" | "creating_avatar" | "waiting_avatar"
-  | "generating" | "polling" | "done" | "error";
-
-const V_STATUS_LABEL: Record<VStatus, string> = {
-  idle: "", uploading: "Enviando vídeo...", creating_avatar: "Criando avatar...",
-  waiting_avatar: "Processando avatar (pode levar alguns minutos)...",
-  generating: "Iniciando geração do vídeo...", polling: "Aguardando vídeo finalizar...",
-  done: "", error: "",
-};
-
 function authHeader(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
 }
@@ -111,16 +100,7 @@ export default function ContentStudio() {
   const [scriptLoading, setScriptLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // HeyGen avatar video state
-  const [videoFile, setVideoFile]       = useState<File | null>(null);
-  const [videoPreview, setVideoPreview] = useState<string | null>(null);
-  const [showHeyGen, setShowHeyGen]     = useState(false);
-  const [vScript, setVScript]           = useState("");
-  const [vStatus, setVStatus]           = useState<VStatus>("idle");
-  const [vUrl, setVUrl]                 = useState("");
-  const [vError, setVError]             = useState("");
-  const [avatarId, setAvatarId]         = useState("");
-  const videoFileRef = useRef<HTMLInputElement>(null);
+  // O vídeo com IA usa o VendorAI Media Engine próprio.
 
   // Product tab state
   const [prodImage, setProdImage]         = useState<File | null>(null);
@@ -286,7 +266,6 @@ export default function ContentStudio() {
       if (!res.ok) throw new Error(data.error || "Erro na geração");
       const text = data.result ?? "";
       setScriptResult(text);
-      setVScript(text.substring(0, 1500));
     } catch (err) {
       toast({ title: "Erro", description: err instanceof Error ? err.message : "Erro ao gerar", variant: "destructive" });
     } finally {
@@ -329,76 +308,6 @@ export default function ContentStudio() {
       setProdLoading(false);
     }
   };
-
-  // ── HeyGen video flow ─────────────────────────────────────────────────────
-  const genHeyGenVideo = async () => {
-    if (!videoFile || !vScript || !tenantId) return;
-    setVError(""); setVUrl("");
-    const base = `/api/tenants/${tenantId}/content-studio/heygen`;
-    const headers = authHeader();
-
-    try {
-      setVStatus("uploading");
-      const formData = new FormData();
-      formData.append("video", videoFile);
-      const upRes = await fetch(`${base}/upload-video`, { method: "POST", headers, body: formData });
-      const upData = await upRes.json();
-      if (!upRes.ok) throw new Error(upData.error ?? "Falha no upload do vídeo");
-
-      let avId = avatarId;
-      if (!avId) {
-        setVStatus("creating_avatar");
-        const avRes = await fetch(`${base}/create-avatar`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...headers },
-          body: JSON.stringify({ assetUrl: upData.assetUrl }),
-        });
-        const avData = await avRes.json();
-        if (!avRes.ok) throw new Error(avData.error ?? "Falha ao criar avatar");
-        avId = avData.avatarId;
-        setAvatarId(avId);
-      }
-
-      setVStatus("waiting_avatar");
-      await new Promise<void>((resolve, reject) => {
-        let n = 0;
-        const id = setInterval(async () => {
-          if (++n > 72) { clearInterval(id); reject(new Error("Timeout no avatar")); return; }
-          const r = await fetch(`${base}/avatar-status/${avId}`, { headers });
-          const d = await r.json();
-          if (d.status === "completed") { clearInterval(id); resolve(); }
-          else if (d.status === "failed") { clearInterval(id); reject(new Error("Avatar falhou")); }
-        }, 5000);
-      });
-
-      setVStatus("generating");
-      const vidRes = await fetch(`${base}/generate-video`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ avatarId: avId, script: vScript }),
-      });
-      const vidData = await vidRes.json();
-      if (!vidRes.ok) throw new Error(vidData.error ?? "Falha ao gerar vídeo");
-
-      setVStatus("polling");
-      await new Promise<void>((resolve, reject) => {
-        let n = 0;
-        const id = setInterval(async () => {
-          if (++n > 72) { clearInterval(id); reject(new Error("Timeout no vídeo")); return; }
-          const r = await fetch(`${base}/video-status/${vidData.videoId}`, { headers });
-          const d = await r.json();
-          if (d.status === "completed") { clearInterval(id); setVUrl(d.videoUrl ?? ""); setVStatus("done"); resolve(); }
-          else if (d.status === "failed") { clearInterval(id); reject(new Error(d.error ?? "Geração falhou")); }
-        }, 5000);
-      });
-    } catch (err) {
-      setVError(err instanceof Error ? err.message : "Erro desconhecido");
-      setVStatus("error");
-    }
-  };
-
-  const isProcessing = ["uploading","creating_avatar","waiting_avatar","generating","polling"].includes(vStatus);
-  const V_STEPS: VStatus[] = ["uploading","creating_avatar","waiting_avatar","generating","polling"];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -637,83 +546,21 @@ export default function ContentStudio() {
               </section>
             )}
 
-            {/* HeyGen avatar section */}
-            <section>
-              <p className="text-xs text-gray-500 font-semibold mb-1">② VÍDEO PARA O AVATAR</p>
-              <p className="text-xs text-gray-600 mb-3">Grave 3–10 segundos falando para a câmera. O HeyGen usará seu rosto para gerar o vídeo.</p>
-              {videoPreview ? (
-                <div className="relative w-fit mb-3">
-                  <video src={videoPreview} className="h-32 w-56 object-cover rounded-2xl border border-white/10" muted playsInline />
-                  <button onClick={() => { setVideoFile(null); setVideoPreview(null); setAvatarId(""); if (videoFileRef.current) videoFileRef.current.value = ""; }}
-                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600">
-                    <X className="h-3 w-3" />
-                  </button>
-                  {avatarId && <span className="mt-1.5 block text-xs text-emerald-400">✓ Avatar criado — será reutilizado</span>}
-                </div>
-              ) : (
-                <button type="button" onClick={() => videoFileRef.current?.click()}
-                  className="flex flex-col items-center justify-center w-full h-24 rounded-2xl border-2 border-dashed border-white/10 hover:border-purple-500/40 hover:bg-purple-500/5 transition-all gap-1.5 text-gray-500 mb-3">
-                  <Upload className="h-4 w-4" />
-                  <span className="text-sm">Clique para enviar vídeo (MP4/MOV)</span>
-                </button>
-              )}
-              <input ref={videoFileRef} type="file" accept="video/*" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; setVideoFile(f); setVideoPreview(URL.createObjectURL(f)); setAvatarId(""); setVStatus("idle"); setVUrl(""); }} />
-
-              <button onClick={() => setShowHeyGen((v) => !v)} className="flex items-center justify-between w-full text-left mb-3">
-                <p className="text-xs text-gray-500 font-semibold">③ GERAR VÍDEO COM HEYGEN</p>
-                <span className="text-xs text-purple-400">{showHeyGen ? "▲" : "▼"}</span>
+            {/* VendorAI Media Engine */}
+            <section className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Video className="h-4 w-4 text-cyan-400" />
+                <p className="text-sm font-semibold text-gray-200">Vídeo com IA — VendorAI Media Engine</p>
+              </div>
+              <p className="text-xs text-gray-500">
+                Crie, edite, recorte e legende vídeos no motor próprio do VendorAI. Nenhum avatar externo é necessário.
+              </p>
+              <button
+                onClick={() => navigate("/content-studio/video")}
+                className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90"
+              >
+                <Video className="h-4 w-4" /> Abrir Vídeo com IA
               </button>
-
-              {showHeyGen && (
-                <div className="space-y-4 rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <textarea value={vScript} onChange={(e) => setVScript(e.target.value)} placeholder="Script gerado aparece aqui automaticamente..." rows={4}
-                    className="w-full rounded-xl bg-white/5 border border-white/10 text-sm text-[#e8e4f8] placeholder-gray-500 px-3 py-2.5 resize-none focus:outline-none focus:border-purple-500/50" />
-
-                  {vStatus === "idle" && (
-                    <button onClick={genHeyGenVideo} disabled={!videoFile || !vScript}
-                      className={cn("w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all",
-                        !videoFile || !vScript ? "bg-purple-900/30 text-purple-400/40 cursor-not-allowed" : "bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90")}>
-                      <Video className="h-4 w-4" /> Gerar vídeo com HeyGen
-                    </button>
-                  )}
-
-                  {isProcessing && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-3 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-purple-300">
-                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                        <span>{V_STATUS_LABEL[vStatus]}</span>
-                      </div>
-                      <div className="flex gap-1">
-                        {V_STEPS.map((s, i) => (
-                          <div key={s} className={cn("h-1 flex-1 rounded-full transition-all",
-                            V_STEPS.indexOf(vStatus) >= i ? "bg-purple-500" : "bg-white/10")} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {vStatus === "done" && vUrl && (
-                    <div className="space-y-3">
-                      <video src={vUrl} controls className="w-full rounded-xl border border-white/10" />
-                      <div className="flex gap-2">
-                        <a href={vUrl} download target="_blank" rel="noopener noreferrer"
-                          className="px-4 py-2 rounded-xl text-xs font-semibold border border-white/15 text-gray-300 hover:border-purple-500/50 transition-colors">Baixar</a>
-                        <button onClick={() => { setVStatus("idle"); setVUrl(""); }}
-                          className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-gray-200 transition-colors">Gerar outro</button>
-                      </div>
-                    </div>
-                  )}
-
-                  {vStatus === "error" && (
-                    <div className="space-y-2">
-                      <p className="text-sm text-red-400">{vError}</p>
-                      <button onClick={() => setVStatus("idle")}
-                        className="px-4 py-2 rounded-xl text-xs font-semibold border border-white/15 text-gray-300 hover:border-red-500/50 transition-colors">Tentar novamente</button>
-                    </div>
-                  )}
-                </div>
-              )}
             </section>
           </>
         )}
