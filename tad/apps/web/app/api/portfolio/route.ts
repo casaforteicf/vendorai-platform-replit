@@ -10,7 +10,22 @@ export async function GET(req:NextRequest){
   try{
     const [positions,markets,wallet]=await Promise.all([listPositions(token),loadMarkets(),getPaperWallet(token)]); const mm=new Map(markets.map(m=>[m.symbol,m.price]));
     const reconciled=[];
-    for(const p of positions){const price=mm.get(p.symbol)??p.markPrice;const next=markPaperPosition(p,price);if(next.updatedAt!==p.updatedAt||next.status!==p.status){await savePosition(token,next);if(next.status==='CLOSED'&&p.status==='OPEN'){const sh=await findShadowByPaperPosition(token,p.id);if(sh){const cmp=comparePaperShadow(sh,next.markPrice,next.markPrice);await updateShadowExecution(token,sh.id,{paperExit:cmp.paperExit,shadowExit:cmp.shadowExit,paperReturnPct:cmp.paperReturnPct,shadowReturnPct:cmp.shadowReturnPct,divergencePct:cmp.divergencePct,closedAt:Date.now()});}await appendAudit(token,'PAPER_AUTO_CLOSE',{position:next,shadowCompared:Boolean(sh)});}}reconciled.push(next)}
+    for(const p of positions){
+      const price=mm.get(p.symbol)??p.markPrice;
+      const next=markPaperPosition(p,price);
+      const managed=next.quantity!==p.quantity||next.stop!==p.stop||next.realizedPnl!==p.realizedPnl;
+      if(next.updatedAt!==p.updatedAt||next.status!==p.status){
+        await savePosition(token,next);
+        if(next.status==='CLOSED'&&p.status==='OPEN'){
+          const sh=await findShadowByPaperPosition(token,p.id);
+          if(sh){const cmp=comparePaperShadow(sh,next.markPrice,next.markPrice);await updateShadowExecution(token,sh.id,{paperExit:cmp.paperExit,shadowExit:cmp.shadowExit,paperReturnPct:cmp.paperReturnPct,shadowReturnPct:cmp.shadowReturnPct,divergencePct:cmp.divergencePct,closedAt:Date.now()});}
+          await appendAudit(token,'PAPER_AUTO_CLOSE',{position:next,shadowCompared:Boolean(sh),closeReason:next.closeReason});
+        }else if(managed){
+          await appendAudit(token,'PAPER_POSITION_MANAGED',{positionId:p.id,symbol:p.symbol,strategyId:p.strategyId,side:p.side,from:{quantity:p.quantity,stop:p.stop,realizedPnl:p.realizedPnl},to:{quantity:next.quantity,stop:next.stop,realizedPnl:next.realizedPnl},partialExit:next.quantity<p.quantity,breakEvenActivated:next.stop===next.entry&&p.stop!==p.entry,trailingAdjusted:next.stop!==p.stop&&next.stop!==next.entry,markPrice:next.markPrice});
+        }
+      }
+      reconciled.push(next);
+    }
     return NextResponse.json({mode:'PAPER',storage:storageMode(),positions:reconciled,summary:summarizePortfolio(reconciled,wallet.depositedCapital),wallet});
   }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'PORTFOLIO_ERROR'},{status:500})}
 }

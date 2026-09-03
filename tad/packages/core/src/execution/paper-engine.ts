@@ -18,6 +18,18 @@ export function unrealizedPnl(side:Side, quantity:number, entry:number, mark:num
   return delta * quantity;
 }
 
+function hit(side:Side, price:number, level:number, direction:'PROFIT'|'STOP') {
+  if (direction === 'PROFIT') return side === 'LONG' ? price >= level : price <= level;
+  return side === 'LONG' ? price <= level : price >= level;
+}
+
+function stopCloseReason(position:PaperPosition):PaperCloseReason {
+  const eps=Math.max(Math.abs(position.entry)*1e-8,1e-10);
+  if (Math.abs(position.stop-position.entry)<=eps) return 'BREAK_EVEN';
+  const profitableStop=position.side==='LONG'?position.stop>position.entry:position.stop<position.entry;
+  return profitableStop?'TRAILING_STOP':'STOP';
+}
+
 export function executePaper(
   decision: BrainDecision,
   risk: RiskResult,
@@ -58,17 +70,52 @@ export function executePaper(
 
 export function markPaperPosition(position:PaperPosition, markPrice:number):PaperPosition {
   if (position.status === 'CLOSED') return position;
-  const pnl = unrealizedPnl(position.side, position.quantity, position.entry, markPrice);
-  const stopHit = position.side === 'LONG' ? markPrice <= position.stop : markPrice >= position.stop;
-  const tp2 = position.targets[position.targets.length - 1];
-  const tp2Hit = position.side === 'LONG' ? markPrice >= tp2 : markPrice <= tp2;
-  if (stopHit) return closePaperPosition(position, markPrice, 'STOP');
-  if (tp2Hit) return closePaperPosition(position, markPrice, 'TP2');
-  return {...position, markPrice, unrealizedPnl:pnl, updatedAt:Date.now()};
+
+  const originalQuantity=position.entry>0?position.notional/position.entry:position.quantity;
+  const hasPartial=position.quantity < originalQuantity*0.75;
+  const targets=position.targets||[];
+  const firstTarget=targets[0];
+  const finalTarget=targets[targets.length-1];
+
+  const stopHit=hit(position.side,markPrice,position.stop,'STOP');
+  if(stopHit)return closePaperPosition(position,position.stop,stopCloseReason(position));
+
+  const firstHit=firstTarget!=null&&hit(position.side,markPrice,firstTarget,'PROFIT');
+  const finalHit=finalTarget!=null&&hit(position.side,markPrice,finalTarget,'PROFIT');
+
+  if(finalHit){
+    if(!hasPartial&&targets.length>1){
+      const partialQty=originalQuantity*.5;
+      const remainingQty=Math.max(0,position.quantity-partialQty);
+      const partialPnl=unrealizedPnl(position.side,partialQty,position.entry,firstTarget);
+      const finalPnl=unrealizedPnl(position.side,remainingQty,position.entry,finalTarget);
+      const now=Date.now();
+      return {...position,quantity:remainingQty,markPrice:finalTarget,unrealizedPnl:0,realizedPnl:position.realizedPnl+partialPnl+finalPnl,status:'CLOSED',closeReason:'TP2',closedAt:now,updatedAt:now,marginUsed:0};
+    }
+    return closePaperPosition(position,finalTarget,'TP2');
+  }
+
+  if(firstHit&&!hasPartial&&targets.length>1){
+    const partialQty=originalQuantity*.5;
+    const remainingQty=Math.max(0,position.quantity-partialQty);
+    const partialPnl=unrealizedPnl(position.side,partialQty,position.entry,firstTarget);
+    const pnl=unrealizedPnl(position.side,remainingQty,position.entry,markPrice);
+    return {...position,quantity:remainingQty,markPrice,stop:position.entry,marginUsed:(remainingQty*position.entry)/position.leverage,unrealizedPnl:pnl,realizedPnl:position.realizedPnl+partialPnl,updatedAt:Date.now()};
+  }
+
+  let nextStop=position.stop;
+  if(hasPartial){
+    const baseDistance=Math.max(Math.abs((firstTarget??position.entry)-position.entry)*.5,Math.abs(position.entry)*.001);
+    const candidate=position.side==='LONG'?markPrice-baseDistance:markPrice+baseDistance;
+    nextStop=position.side==='LONG'?Math.max(position.stop,position.entry,candidate):Math.min(position.stop,position.entry,candidate);
+  }
+
+  const pnl=unrealizedPnl(position.side,position.quantity,position.entry,markPrice);
+  return {...position,markPrice,stop:nextStop,unrealizedPnl:pnl,updatedAt:Date.now()};
 }
 
 export function closePaperPosition(position:PaperPosition, markPrice:number, reason:PaperCloseReason='MANUAL'):PaperPosition {
   const pnl = unrealizedPnl(position.side, position.quantity, position.entry, markPrice);
   const now = Date.now();
-  return {...position, markPrice, unrealizedPnl:0, realizedPnl:pnl, status:'CLOSED', closeReason:reason, closedAt:now, updatedAt:now};
+  return {...position, markPrice, marginUsed:0, unrealizedPnl:0, realizedPnl:position.realizedPnl+pnl, status:'CLOSED', closeReason:reason, closedAt:now, updatedAt:now};
 }
