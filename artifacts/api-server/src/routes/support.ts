@@ -70,7 +70,10 @@ router.post("/support/dev/github-task", async (req, res) => {
   const parsed = devGithubTaskSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
 
-  const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_TOKEN"];
+  const token =
+    process.env["GITHUB_DEV_TOKEN"] ??
+    process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ??
+    process.env["GITHUB_TOKEN"];
   const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
   if (!token) {
     return res.status(503).json({
