@@ -217,6 +217,13 @@ type MusicRecommendation = {
 };
 
 type BeatStep = 1 | 2 | 4;
+type AudioMixPreset = "voice" | "balanced" | "institutional" | "music";
+
+type MusicVolumePoint = {
+  id: string;
+  time: number;
+  value: number;
+};
 
 type BeatAnalysis = {
   trackKey: string;
@@ -224,6 +231,7 @@ type BeatAnalysis = {
   offset: number;
   confidence: number;
   source: "audio" | "metadata";
+  waveform: number[];
 };
 
 type LocatedClip = {
@@ -262,6 +270,13 @@ const MUSIC_BPM_BY_CHANNEL: Record<string, [number, number]> = {
   youtube: [80, 120],
   site: [80, 115],
 };
+
+const AUDIO_MIX_PRESETS: Array<{ id: AudioMixPreset; label: string; hint: string; original: number; music: number; duck: number; fadeIn: number; fadeOut: number; lufs: number }> = [
+  { id: "voice", label: "Voz em foco", hint: "Locução sempre à frente", original: 1, music: 0.16, duck: 72, fadeIn: 0.6, fadeOut: 1.2, lufs: -16 },
+  { id: "balanced", label: "Social", hint: "Reels e anúncios equilibrados", original: 0.95, music: 0.24, duck: 58, fadeIn: 0.35, fadeOut: 0.8, lufs: -14 },
+  { id: "institutional", label: "Institucional", hint: "Trilha discreta e suave", original: 1, music: 0.14, duck: 66, fadeIn: 1, fadeOut: 1.8, lufs: -16 },
+  { id: "music", label: "Música forte", hint: "Conteúdo visual sem muita fala", original: 0.72, music: 0.42, duck: 35, fadeIn: 0.25, fadeOut: 0.7, lufs: -14 },
+];
 
 const TOOL_ITEMS: Array<{ id: ToolPanel; label: string; icon: typeof Film }> = [
   { id: "media", label: "Mídia", icon: Library },
@@ -740,6 +755,72 @@ function buildBeatTimes(bpm: number, offset: number, duration: number): number[]
   return beats;
 }
 
+function buildWaveformSamples(buffer: AudioBuffer, bins = 96): number[] {
+  const channel = buffer.getChannelData(0);
+  if (!channel.length) return [];
+  const samples: number[] = [];
+  const span = Math.max(1, Math.floor(channel.length / bins));
+  let maxPeak = 0;
+  for (let bin = 0; bin < bins; bin += 1) {
+    const start = bin * span;
+    const end = bin === bins - 1 ? channel.length : Math.min(channel.length, start + span);
+    let peak = 0;
+    for (let index = start; index < end; index += Math.max(1, Math.floor((end - start) / 180))) {
+      peak = Math.max(peak, Math.abs(channel[index] ?? 0));
+    }
+    samples.push(peak);
+    maxPeak = Math.max(maxPeak, peak);
+  }
+  return samples.map((peak) => Math.round((maxPeak > 0 ? peak / maxPeak : 0) * 1000) / 1000);
+}
+
+function smartLoopBounds(buffer: AudioBuffer): { start: number; end: number } {
+  const channel = buffer.getChannelData(0);
+  if (!channel.length || buffer.duration < 1.5) return { start: 0, end: buffer.duration };
+  const sampleRate = buffer.sampleRate;
+  const findCrossing = (target: number, radiusSeconds: number) => {
+    const center = clamp(Math.round(target * sampleRate), 1, channel.length - 2);
+    const radius = Math.max(1, Math.round(radiusSeconds * sampleRate));
+    let best = center;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (let index = Math.max(1, center - radius); index <= Math.min(channel.length - 2, center + radius); index += 1) {
+      const current = channel[index] ?? 0;
+      const previous = channel[index - 1] ?? 0;
+      const crossing = (previous <= 0 && current >= 0) || (previous >= 0 && current <= 0);
+      const score = Math.abs(current) + (crossing ? 0 : 0.4);
+      if (score < bestScore) { best = index; bestScore = score; }
+    }
+    return best / sampleRate;
+  };
+  const start = findCrossing(Math.min(0.35, buffer.duration * 0.05), 0.2);
+  const end = findCrossing(Math.max(start + 1, buffer.duration - 0.15), 0.25);
+  return end > start + 0.75 ? { start, end } : { start: 0, end: buffer.duration };
+}
+
+function volumeAtTime(points: MusicVolumePoint[], time: number, fallback: number): number {
+  if (!points.length) return fallback;
+  const sorted = [...points].sort((a, b) => a.time - b.time);
+  const first = sorted[0]!;
+  const last = sorted[sorted.length - 1]!;
+  if (time <= first.time) return first.value;
+  if (time >= last.time) return last.value;
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const left = sorted[index]!;
+    const right = sorted[index + 1]!;
+    if (time < left.time || time > right.time) continue;
+    const progress = (time - left.time) / Math.max(0.001, right.time - left.time);
+    return left.value + (right.value - left.value) * progress;
+  }
+  return fallback;
+}
+
+function fadeMultiplier(time: number, start: number, end: number, fadeIn: number, fadeOut: number): number {
+  if (time < start || time > end) return 0;
+  const inMultiplier = fadeIn > 0 ? clamp((time - start) / fadeIn, 0, 1) : 1;
+  const outMultiplier = fadeOut > 0 ? clamp((end - time) / fadeOut, 0, 1) : 1;
+  return Math.min(inMultiplier, outMultiplier);
+}
+
 function analyzeAudioBufferBeats(buffer: AudioBuffer, bpmHint?: number | null): Omit<BeatAnalysis, "trackKey"> {
   const sampleRate = buffer.sampleRate;
   const maxSamples = Math.min(buffer.length, Math.floor(sampleRate * 120));
@@ -829,6 +910,7 @@ function analyzeAudioBufferBeats(buffer: AudioBuffer, bpmHint?: number | null): 
     offset: Math.round(bestOffset * 1000) / 1000,
     confidence: Math.round(clamp(correlationConfidence, 0.2, 0.98) * 100) / 100,
     source: "audio",
+    waveform: buildWaveformSamples(buffer),
   };
 }
 
@@ -1015,8 +1097,18 @@ export default function VideoTimelineEditor() {
   const [beatAnalyzing, setBeatAnalyzing] = useState(false);
   const [beatStep, setBeatStep] = useState<BeatStep>(2);
   const [showBeatMarkers, setShowBeatMarkers] = useState(true);
+  const [duckingEnabled, setDuckingEnabled] = useState(true);
+  const [duckingReduction, setDuckingReduction] = useState(62);
+  const [duckingThresholdPct, setDuckingThresholdPct] = useState(5);
+  const [duckingAttackMs, setDuckingAttackMs] = useState(120);
+  const [duckingReleaseMs, setDuckingReleaseMs] = useState(480);
+  const [musicFadeIn, setMusicFadeIn] = useState(0.5);
+  const [musicFadeOut, setMusicFadeOut] = useState(1);
+  const [smartMusicLoop, setSmartMusicLoop] = useState(true);
+  const [musicVolumePoints, setMusicVolumePoints] = useState<MusicVolumePoint[]>([]);
+  const [loudnessTarget, setLoudnessTarget] = useState(-14);
 
-  const [normalizeAudio, setNormalizeAudio] = useState(false);
+  const [normalizeAudio, setNormalizeAudio] = useState(true);
   const [speed, setSpeed] = useState("1.0");
   const [jobStatus, setJobStatus] = useState<JobStatus>("idle");
   const [jobMessage, setJobMessage] = useState("");
@@ -1043,6 +1135,25 @@ export default function VideoTimelineEditor() {
     ? `upload:${musicFile.name}:${musicFile.size}:${musicFile.lastModified}`
     : musicAssetId;
   const activeBeatAnalysis = beatAnalysis?.trackKey === currentMusicKey ? beatAnalysis : null;
+  const applyAudioMixPreset = useCallback((presetId: AudioMixPreset) => {
+    const preset = AUDIO_MIX_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+    setOriginalVolume(preset.original);
+    setMusicVolume(preset.music);
+    setDuckingReduction(preset.duck);
+    setMusicFadeIn(preset.fadeIn);
+    setMusicFadeOut(preset.fadeOut);
+    setLoudnessTarget(preset.lufs);
+    setDuckingEnabled(true);
+    setNormalizeAudio(true);
+    toast({ title: `Mix ${preset.label} aplicado`, description: "Volumes, ducking, fades e loudness foram ajustados." });
+  }, [toast]);
+
+  const addMusicVolumePoint = useCallback(() => {
+    const time = clamp(timelineTime, musicStart, Math.max(musicStart, musicEnd));
+    setMusicVolumePoints((current) => [...current.filter((point) => Math.abs(point.time - time) > 0.08), { id: uid("music-volume"), time, value: musicVolume }].sort((a, b) => a.time - b.time));
+  }, [musicEnd, musicStart, musicVolume, timelineTime]);
+
   const beatTimes = useMemo(() => {
     if (!activeBeatAnalysis || musicMode === "none") return [];
     const sourceDuration = Math.max(0.1, musicEnd - musicStart, realProjectDuration - musicStart);
@@ -1328,7 +1439,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 11,
+    editorVersion: 12,
     channel,
     ratio,
     quality,
@@ -1345,6 +1456,12 @@ export default function VideoTimelineEditor() {
       originalVolume,
       start: musicStart,
       end: musicEnd,
+      ducking: { enabled: duckingEnabled, reduction: duckingReduction, thresholdPct: duckingThresholdPct, attackMs: duckingAttackMs, releaseMs: duckingReleaseMs },
+      fadeIn: musicFadeIn,
+      fadeOut: musicFadeOut,
+      smartLoop: smartMusicLoop,
+      volumePoints: musicVolumePoints,
+      loudnessTarget,
       beatSync: activeBeatAnalysis ? {
         bpm: activeBeatAnalysis.bpm,
         offset: activeBeatAnalysis.offset,
@@ -1352,9 +1469,10 @@ export default function VideoTimelineEditor() {
         source: activeBeatAnalysis.source,
         step: beatStep,
         showMarkers: showBeatMarkers,
+        waveform: activeBeatAnalysis.waveform,
       } : null,
     },
-  }), [channel, ratio, quality, clips, layers, aiPlan, musicMode, musicAssetId, musicVolume, originalVolume, musicStart, musicEnd, activeBeatAnalysis, beatStep, showBeatMarkers]);
+  }), [channel, ratio, quality, clips, layers, aiPlan, musicMode, musicAssetId, musicVolume, originalVolume, musicStart, musicEnd, duckingEnabled, duckingReduction, duckingThresholdPct, duckingAttackMs, duckingReleaseMs, musicFadeIn, musicFadeOut, smartMusicLoop, musicVolumePoints, loudnessTarget, activeBeatAnalysis, beatStep, showBeatMarkers]);
 
   const ensureProject = useCallback(async (): Promise<string> => {
     if (projectId) return projectId;
@@ -1466,7 +1584,7 @@ export default function VideoTimelineEditor() {
       }
     } catch (error) {
       if (bpmHint && bpmHint > 0) {
-        setBeatAnalysis({ trackKey: currentMusicKey, bpm: bpmHint, offset: 0, confidence: 0.35, source: "metadata" });
+        setBeatAnalysis({ trackKey: currentMusicKey, bpm: bpmHint, offset: 0, confidence: 0.35, source: "metadata", waveform: [] });
         setShowBeatMarkers(true);
         toast({ title: "Grade criada pelo BPM", description: "Não foi possível ler a forma de onda; usei o BPM cadastrado no Music Hub." });
       } else {
@@ -1597,6 +1715,19 @@ export default function VideoTimelineEditor() {
         if (Number.isFinite(Number(audio.originalVolume))) setOriginalVolume(Number(audio.originalVolume));
         if (Number.isFinite(Number(audio.start))) setMusicStart(Number(audio.start));
         if (Number.isFinite(Number(audio.end))) setMusicEnd(Number(audio.end));
+        const savedDucking = audio.ducking && typeof audio.ducking === "object" ? audio.ducking : null;
+        if (savedDucking) {
+          if (typeof savedDucking.enabled === "boolean") setDuckingEnabled(savedDucking.enabled);
+          if (Number.isFinite(Number(savedDucking.reduction))) setDuckingReduction(clamp(Number(savedDucking.reduction), 0, 90));
+          if (Number.isFinite(Number(savedDucking.thresholdPct))) setDuckingThresholdPct(clamp(Number(savedDucking.thresholdPct), 1, 30));
+          if (Number.isFinite(Number(savedDucking.attackMs))) setDuckingAttackMs(clamp(Number(savedDucking.attackMs), 20, 600));
+          if (Number.isFinite(Number(savedDucking.releaseMs))) setDuckingReleaseMs(clamp(Number(savedDucking.releaseMs), 80, 1800));
+        }
+        if (Number.isFinite(Number(audio.fadeIn))) setMusicFadeIn(clamp(Number(audio.fadeIn), 0, 5));
+        if (Number.isFinite(Number(audio.fadeOut))) setMusicFadeOut(clamp(Number(audio.fadeOut), 0, 8));
+        if (typeof audio.smartLoop === "boolean") setSmartMusicLoop(audio.smartLoop);
+        if (Array.isArray(audio.volumePoints)) setMusicVolumePoints(audio.volumePoints.map((point: Partial<MusicVolumePoint>) => ({ id: String(point.id || uid("music-volume")), time: Math.max(0, Number(point.time) || 0), value: clamp(Number(point.value) || 0, 0, 1) })).sort((a: MusicVolumePoint, b: MusicVolumePoint) => a.time - b.time));
+        if (Number.isFinite(Number(audio.loudnessTarget))) setLoudnessTarget(clamp(Number(audio.loudnessTarget), -24, -8));
         const savedBeatSync = audio.beatSync && typeof audio.beatSync === "object" ? audio.beatSync : null;
         if (savedBeatSync && Number.isFinite(Number(savedBeatSync.bpm)) && Number(savedBeatSync.bpm) > 0 && audio.assetId) {
           setBeatAnalysis({
@@ -1605,6 +1736,7 @@ export default function VideoTimelineEditor() {
             offset: Math.max(0, Number(savedBeatSync.offset) || 0),
             confidence: clamp(Number(savedBeatSync.confidence) || 0.35, 0, 1),
             source: savedBeatSync.source === "audio" ? "audio" : "metadata",
+            waveform: Array.isArray(savedBeatSync.waveform) ? savedBeatSync.waveform.map((value: unknown) => clamp(Number(value) || 0, 0, 1)).slice(0, 160) : [],
           });
           if ([1, 2, 4].includes(Number(savedBeatSync.step))) setBeatStep(Number(savedBeatSync.step) as BeatStep);
           if (typeof savedBeatSync.showMarkers === "boolean") setShowBeatMarkers(savedBeatSync.showMarkers);
@@ -2297,6 +2429,7 @@ export default function VideoTimelineEditor() {
     form.append("video", new File([blob], `${projectTitle || "vendorai-video"}.webm`, { type: blob.type || "video/webm" }));
     form.append("removeSilence", "false");
     form.append("normalize", String(normalizeAudio));
+    form.append("loudnessTarget", String(loudnessTarget));
     form.append("speed", speed);
     const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/edit`, {
       method: "POST",
@@ -2341,8 +2474,12 @@ export default function VideoTimelineEditor() {
       const audioContext = AudioContextCtor ? new AudioContextCtor() : null;
       let destination: MediaStreamAudioDestinationNode | null = null;
       let musicSourceNode: AudioBufferSourceNode | null = null;
+      let musicGainNode: GainNode | null = null;
       let originalGain: GainNode | null = null;
       let overlapGain: GainNode | null = null;
+      let originalAnalyser: AnalyserNode | null = null;
+      let analyserSamples: Float32Array<ArrayBuffer> | null = null;
+      let duckingLevel = 0;
 
       if (audioContext) {
         destination = audioContext.createMediaStreamDestination();
@@ -2352,8 +2489,13 @@ export default function VideoTimelineEditor() {
         overlapGain = audioContext.createGain();
         originalGain.gain.value = originalVolume;
         overlapGain.gain.value = 0;
-        source.connect(originalGain).connect(destination);
-        overlapSource.connect(overlapGain).connect(destination);
+        originalAnalyser = audioContext.createAnalyser();
+        originalAnalyser.fftSize = 512;
+        originalAnalyser.smoothingTimeConstant = 0.35;
+        analyserSamples = new Float32Array(originalAnalyser.fftSize);
+        source.connect(originalGain).connect(originalAnalyser);
+        overlapSource.connect(overlapGain).connect(originalAnalyser);
+        originalAnalyser.connect(destination);
 
         let musicBlob: Blob | null = null;
         if (musicMode === "upload" && musicFile) musicBlob = musicFile;
@@ -2371,9 +2513,14 @@ export default function VideoTimelineEditor() {
           musicSourceNode = audioContext.createBufferSource();
           musicSourceNode.buffer = buffer;
           musicSourceNode.loop = true;
-          const musicGain = audioContext.createGain();
-          musicGain.gain.value = musicVolume;
-          musicSourceNode.connect(musicGain).connect(destination);
+          if (smartMusicLoop) {
+            const loop = smartLoopBounds(buffer);
+            musicSourceNode.loopStart = loop.start;
+            musicSourceNode.loopEnd = loop.end;
+          }
+          musicGainNode = audioContext.createGain();
+          musicGainNode.gain.value = 0;
+          musicSourceNode.connect(musicGainNode).connect(destination);
         }
       }
 
@@ -2441,6 +2588,27 @@ export default function VideoTimelineEditor() {
           }
           ctx.restore();
         }
+      };
+
+      const updateAudioMix = (globalTime: number) => {
+        if (!audioContext || !musicGainNode) return;
+        if (duckingEnabled && originalAnalyser && analyserSamples) {
+          originalAnalyser.getFloatTimeDomainData(analyserSamples);
+          let sum = 0;
+          for (const sample of analyserSamples) sum += sample * sample;
+          const rms = Math.sqrt(sum / Math.max(1, analyserSamples.length));
+          const target = rms >= duckingThresholdPct / 100 ? 1 : 0;
+          const seconds = target > duckingLevel ? duckingAttackMs / 1000 : duckingReleaseMs / 1000;
+          const alpha = 1 - Math.exp(-(1 / 30) / Math.max(0.01, seconds));
+          duckingLevel += (target - duckingLevel) * alpha;
+        } else {
+          duckingLevel = 0;
+        }
+        const automated = volumeAtTime(musicVolumePoints, globalTime, musicVolume);
+        const faded = fadeMultiplier(globalTime, musicStart, musicEnd, musicFadeIn, musicFadeOut);
+        const duckMultiplier = 1 - (duckingReduction / 100) * duckingLevel;
+        const targetGain = clamp(automated * faded * duckMultiplier, 0, 1.2);
+        musicGainNode.gain.setTargetAtTime(targetGain, audioContext.currentTime, 0.025);
       };
 
       const prepareRenderVideo = async (videoElement: HTMLVideoElement, clip: VideoClip, sourceTime: number) => {
@@ -2513,10 +2681,12 @@ export default function VideoTimelineEditor() {
               if (originalGain) originalGain.gain.value = originalVolume * (1 - progress);
               if (overlapGain) overlapGain.gain.value = originalVolume * progress;
               drawFrame(globalTime, clipIndex, clipIndex + 1);
+              updateAudioMix(globalTime);
             } else {
               if (originalGain) originalGain.gain.value = originalVolume;
               if (overlapGain) overlapGain.gain.value = 0;
               drawFrame(globalTime, clipIndex);
+              updateAudioMix(globalTime);
             }
             setJobMessage(`Renderizando sequência… ${Math.min(99, Math.round(globalTime / Math.max(0.1, totalDuration) * 100))}%`);
             if (renderVideo.ended || renderVideo.currentTime >= clip.trimOut - 0.02) {
@@ -2889,7 +3059,7 @@ export default function VideoTimelineEditor() {
     </div>;
     if (tool === "text") return <div className="space-y-3"><div><p className="text-sm font-semibold">Adicionar texto</p><p className="text-xs text-muted-foreground">Faixas escritas independentes sobre toda a sequência.</p></div><button onClick={() => addTextLayer("title")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-semibold">Título</p><p className="text-xs text-muted-foreground">Gancho ou headline principal</p></button><button onClick={() => addTextLayer("subtitle")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">Subtítulo</p><p className="text-xs text-muted-foreground">Mensagem de apoio e benefício</p></button><button onClick={() => addTextLayer("cta")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">CTA</p><p className="text-xs text-muted-foreground">WhatsApp, site ou chamada final</p></button></div>;
     if (tool === "cards") return <div className="space-y-3"><div><p className="text-sm font-semibold">Cards</p><p className="text-xs text-muted-foreground">Oferta, benefício e CTA no ponto atual da timeline.</p></div>{CARD_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCardLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40"><div className="h-12 rounded-lg p-2 text-xs font-bold" style={{ background: template.background, color: template.color }}>{template.text.split("\n").map((line) => <div key={line}>{line}</div>)}</div><p className="mt-2 text-xs font-medium">{template.name}</p></button>)}</div>;
-    if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicTracks.length > 0 && <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.03] p-3"><div className="flex items-start gap-2"><WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-xs font-semibold">Recomendadas para este vídeo</p><p className="mt-0.5 text-[10px] text-muted-foreground">{musicRecommendationProfile.label} · {musicRecommendationProfile.bpmMin}–{musicRecommendationProfile.bpmMax} BPM · {musicRecommendationProfile.paidCampaign ? "mídia paga" : "uso orgânico"}</p></div></div>{recommendedMusicTracks.length > 0 ? <div className="space-y-2">{recommendedMusicTracks.map(({ track, reasons }, index) => { const metadata = metadataRecord(track); return <div key={track.id} className={cn("rounded-lg border bg-background p-2.5", musicAssetId === track.id && "border-primary bg-primary/5")}><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">#{index + 1}</span><p className="truncate text-xs font-medium">{assetName(track)}</p>{metadata.brandOfficial === true && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}</div><div className="mt-1.5 flex flex-wrap gap-1">{reasons.map((reason) => <span key={reason} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{reason}</span>)}</div><p className="mt-1.5 text-[9px] text-emerald-700 dark:text-emerald-300">{musicRecommendationProfile.paidCampaign ? "Direitos para mídia paga liberados" : "Direitos para uso orgânico liberados"}</p></div><button type="button" onClick={() => { setMusicMode("library"); setMusicAssetId(track.id); setMusicStart(0); setMusicEnd(Math.max(0.1, realProjectDuration)); toast({ title: "Trilha aplicada", description: `${assetName(track)} foi adicionada à timeline.` }); }} className="shrink-0 rounded-lg bg-primary px-2 py-1.5 text-[10px] font-semibold text-primary-foreground">Aplicar</button></div></div>; })}</div> : <div className="rounded-lg border border-dashed p-2.5 text-[10px] text-muted-foreground">Nenhuma trilha da biblioteca tem direitos compatíveis com este contexto. Ajuste o Passaporte de Direitos no Music Hub ou gere uma nova trilha.</div>}</div>}{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}{musicMode !== "none" && (selectedTrack || musicFile) && <div className="space-y-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-3"><div className="flex items-start gap-2"><Music2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><div className="min-w-0"><p className="text-xs font-semibold">Beat Sync</p><p className="mt-0.5 text-[10px] text-muted-foreground">Detecta o pulso da trilha e encaixa cortes/transições no ritmo sem alterar os originais.</p></div></div>{activeBeatAnalysis ? <div className="rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold tabular-nums">{activeBeatAnalysis.bpm.toFixed(1)} BPM</p><p className="text-[9px] text-muted-foreground">{activeBeatAnalysis.source === "audio" ? "Forma de onda analisada" : "BPM do Music Hub"} · fase {activeBeatAnalysis.offset.toFixed(2)}s</p></div><button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="rounded-lg border px-2 py-1 text-[9px] font-medium disabled:opacity-50">Reanalisar</button></div></div> : <button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="w-full rounded-lg bg-foreground px-3 py-2.5 text-xs font-semibold text-background disabled:opacity-50">{beatAnalyzing ? <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />Analisando batidas…</> : <><WandSparkles className="mr-1.5 inline h-3.5 w-3.5" />Detectar batidas</>}</button>}{activeBeatAnalysis && <><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Ritmo dos cortes</span><select value={beatStep} onChange={(event) => setBeatStep(Number(event.target.value) as BeatStep)} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value={1}>Cada batida</option><option value={2}>A cada 2 batidas</option><option value={4}>A cada 4 batidas</option></select></label><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Mostrar batidas na timeline</span><input type="checkbox" checked={showBeatMarkers} onChange={(event) => setShowBeatMarkers(event.target.checked)} className="accent-primary" /></label><button type="button" onClick={syncCutsToBeats} disabled={clips.length < 2} className="w-full rounded-lg bg-amber-600 px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-40"><Scissors className="mr-1.5 inline h-3.5 w-3.5" />Sincronizar cortes com batidas</button><p className="text-[9px] leading-relaxed text-muted-foreground">Ajuste seguro: cada corte move no máximo 0,42s e continua editável com Desfazer/Refazer.</p></>}</div>}<RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
+    if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicTracks.length > 0 && <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.03] p-3"><div className="flex items-start gap-2"><WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-xs font-semibold">Recomendadas para este vídeo</p><p className="mt-0.5 text-[10px] text-muted-foreground">{musicRecommendationProfile.label} · {musicRecommendationProfile.bpmMin}–{musicRecommendationProfile.bpmMax} BPM · {musicRecommendationProfile.paidCampaign ? "mídia paga" : "uso orgânico"}</p></div></div>{recommendedMusicTracks.length > 0 ? <div className="space-y-2">{recommendedMusicTracks.map(({ track, reasons }, index) => { const metadata = metadataRecord(track); return <div key={track.id} className={cn("rounded-lg border bg-background p-2.5", musicAssetId === track.id && "border-primary bg-primary/5")}><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">#{index + 1}</span><p className="truncate text-xs font-medium">{assetName(track)}</p>{metadata.brandOfficial === true && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}</div><div className="mt-1.5 flex flex-wrap gap-1">{reasons.map((reason) => <span key={reason} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{reason}</span>)}</div><p className="mt-1.5 text-[9px] text-emerald-700 dark:text-emerald-300">{musicRecommendationProfile.paidCampaign ? "Direitos para mídia paga liberados" : "Direitos para uso orgânico liberados"}</p></div><button type="button" onClick={() => { setMusicMode("library"); setMusicAssetId(track.id); setMusicStart(0); setMusicEnd(Math.max(0.1, realProjectDuration)); toast({ title: "Trilha aplicada", description: `${assetName(track)} foi adicionada à timeline.` }); }} className="shrink-0 rounded-lg bg-primary px-2 py-1.5 text-[10px] font-semibold text-primary-foreground">Aplicar</button></div></div>; })}</div> : <div className="rounded-lg border border-dashed p-2.5 text-[10px] text-muted-foreground">Nenhuma trilha da biblioteca tem direitos compatíveis com este contexto. Ajuste o Passaporte de Direitos no Music Hub ou gere uma nova trilha.</div>}</div>}{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}{musicMode !== "none" && (selectedTrack || musicFile) && <div className="space-y-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-3"><div className="flex items-start gap-2"><Music2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><div className="min-w-0"><p className="text-xs font-semibold">Beat Sync</p><p className="mt-0.5 text-[10px] text-muted-foreground">Detecta o pulso da trilha e encaixa cortes/transições no ritmo sem alterar os originais.</p></div></div>{activeBeatAnalysis ? <div className="rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold tabular-nums">{activeBeatAnalysis.bpm.toFixed(1)} BPM</p><p className="text-[9px] text-muted-foreground">{activeBeatAnalysis.source === "audio" ? "Forma de onda analisada" : "BPM do Music Hub"} · fase {activeBeatAnalysis.offset.toFixed(2)}s</p></div><button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="rounded-lg border px-2 py-1 text-[9px] font-medium disabled:opacity-50">Reanalisar</button></div>{activeBeatAnalysis.waveform.length > 0 && <div className="mt-2 flex h-10 items-center gap-px overflow-hidden rounded-md bg-muted/40 px-1">{activeBeatAnalysis.waveform.map((level, index) => <span key={index} className="min-w-[1px] flex-1 rounded-full bg-amber-500/70" style={{ height: `${Math.max(8, Math.round(level * 100))}%` }} />)}</div>}</div> : <button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="w-full rounded-lg bg-foreground px-3 py-2.5 text-xs font-semibold text-background disabled:opacity-50">{beatAnalyzing ? <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />Analisando batidas…</> : <><WandSparkles className="mr-1.5 inline h-3.5 w-3.5" />Detectar batidas</>}</button>}{activeBeatAnalysis && <><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Ritmo dos cortes</span><select value={beatStep} onChange={(event) => setBeatStep(Number(event.target.value) as BeatStep)} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value={1}>Cada batida</option><option value={2}>A cada 2 batidas</option><option value={4}>A cada 4 batidas</option></select></label><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Mostrar batidas na timeline</span><input type="checkbox" checked={showBeatMarkers} onChange={(event) => setShowBeatMarkers(event.target.checked)} className="accent-primary" /></label><button type="button" onClick={syncCutsToBeats} disabled={clips.length < 2} className="w-full rounded-lg bg-amber-600 px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-40"><Scissors className="mr-1.5 inline h-3.5 w-3.5" />Sincronizar cortes com batidas</button><p className="text-[9px] leading-relaxed text-muted-foreground">Ajuste seguro: cada corte move no máximo 0,42s e continua editável com Desfazer/Refazer.</p></>}</div>}<div className="space-y-3 rounded-xl border bg-muted/15 p-3"><div><p className="text-xs font-semibold">Mixer inteligente</p><p className="text-[10px] text-muted-foreground">Presets ajustam voz, trilha, ducking, fades e loudness juntos.</p></div><div className="grid grid-cols-2 gap-1.5">{AUDIO_MIX_PRESETS.map((preset) => <button key={preset.id} type="button" onClick={() => applyAudioMixPreset(preset.id)} title={preset.hint} className="rounded-lg border bg-background px-2 py-1.5 text-[10px] font-medium hover:border-primary/40">{preset.label}</button>)}</div><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span><strong className="block text-foreground">Ducking automático</strong><span className="text-muted-foreground">Baixa a música quando o áudio original entra.</span></span><input type="checkbox" checked={duckingEnabled} onChange={(event) => setDuckingEnabled(event.target.checked)} className="accent-primary" /></label>{duckingEnabled && <div className="space-y-2"><RangeField label="Redução da música" value={duckingReduction} min={0} max={90} step={1} suffix="%" onChange={setDuckingReduction} /><RangeField label="Sensibilidade à voz/áudio" value={duckingThresholdPct} min={1} max={20} step={1} suffix="%" onChange={setDuckingThresholdPct} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-[10px] text-muted-foreground">Ataque (ms)</span><input type="number" min={20} max={600} step={10} value={duckingAttackMs} onChange={(event) => setDuckingAttackMs(clamp(Number(event.target.value), 20, 600))} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]" /></label><label className="space-y-1"><span className="text-[10px] text-muted-foreground">Retorno (ms)</span><input type="number" min={80} max={1800} step={20} value={duckingReleaseMs} onChange={(event) => setDuckingReleaseMs(clamp(Number(event.target.value), 80, 1800))} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]" /></label></div></div>}<div className="grid grid-cols-2 gap-2"><RangeField label="Fade-in" value={musicFadeIn} min={0} max={5} step={0.1} suffix="s" onChange={setMusicFadeIn} /><RangeField label="Fade-out" value={musicFadeOut} min={0} max={8} step={0.1} suffix="s" onChange={setMusicFadeOut} /></div><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Loop inteligente sem emenda</span><input type="checkbox" checked={smartMusicLoop} onChange={(event) => setSmartMusicLoop(event.target.checked)} className="accent-primary" /></label><div className="space-y-2"><div className="flex items-center justify-between gap-2"><span className="text-[10px] font-medium">Automação de volume</span><button type="button" onClick={addMusicVolumePoint} className="rounded-lg border bg-background px-2 py-1 text-[9px]">+ Ponto no playhead</button></div>{musicVolumePoints.length > 0 ? <div className="flex flex-wrap gap-1">{musicVolumePoints.map((point) => <button key={point.id} type="button" onClick={() => setMusicVolumePoints((current) => current.filter((item) => item.id !== point.id))} title="Remover ponto" className="rounded-full border bg-background px-2 py-1 text-[9px] tabular-nums">{timeLabel(point.time)} · {Math.round(point.value * 100)}% ×</button>)}</div> : <p className="text-[9px] text-muted-foreground">Adicione pontos para aumentar ou reduzir a trilha ao longo do vídeo.</p>}</div><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Loudness final (LUFS)</span><select value={loudnessTarget} onChange={(event) => { setLoudnessTarget(Number(event.target.value)); setNormalizeAudio(true); }} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value={-12}>-12 LUFS · anúncio forte</option><option value={-14}>-14 LUFS · social / YouTube</option><option value={-16}>-16 LUFS · voz / institucional</option><option value={-18}>-18 LUFS · conteúdo suave</option></select></label></div><RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
     if (tool === "stickers") return <div className="space-y-4"><div><p className="text-sm font-semibold">Stickers e emojis</p><p className="text-xs text-muted-foreground">Adicione elementos rápidos na timeline e posicione livremente no vídeo.</p></div><div className="grid grid-cols-4 gap-2">{STICKER_PRESETS.map((sticker) => <button key={sticker.label} title={sticker.label} onClick={() => addStickerLayer(sticker)} className="rounded-xl border bg-background p-2 text-center hover:border-primary/40 hover:bg-primary/5"><span className="block text-2xl leading-8">{sticker.glyph}</span><span className="mt-1 block truncate text-[9px] text-muted-foreground">{sticker.label}</span></button>)}</div><div className="rounded-xl border bg-muted/20 p-3 text-[11px] text-muted-foreground">Cada sticker vira uma camada independente: pode ser movido, redimensionado, rotacionado, animado, duplicado e temporizado como qualquer outro elemento.</div></div>;
     if (tool === "captions") return <div className="space-y-4"><div><p className="text-sm font-semibold">Legendas inteligentes</p><p className="text-xs text-muted-foreground">Transcreva a fala para a timeline e destaque cada palavra no momento exato.</p></div><div className="space-y-2"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Estilo automático</p><div className="grid grid-cols-2 gap-2">{Object.entries(AUTO_CAPTION_STYLES).map(([id, style]) => <button key={id} onClick={() => setAutoCaptionStyle(id as CaptionStylePreset)} className={cn("rounded-xl border p-2 text-left", autoCaptionStyle === id ? "border-primary bg-primary/5" : "hover:border-primary/30")}><div className="truncate text-xs font-semibold">{style.label}</div><div className="mt-1 flex gap-1"><span className="h-2 w-5 rounded-sm" style={{ background: style.color }} /><span className="h-2 w-5 rounded-sm" style={{ background: style.activeWordBackground === "transparent" ? style.activeWordColor : style.activeWordBackground }} /></div></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void createEditableAutomaticCaptions()} className="w-full rounded-xl bg-foreground px-3 py-3 text-sm font-semibold text-background disabled:opacity-40"><Captions className="mr-2 inline h-4 w-4" />Transcrever para a timeline</button><div className="rounded-xl border bg-muted/20 p-3"><p className="text-xs font-semibold">Adicionar manualmente</p><div className="mt-2 space-y-2">{CAPTION_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCaptionLayer(template)} className="w-full rounded-lg border bg-background p-2 text-left hover:border-primary/40"><div className="rounded-md px-2 py-1.5 text-[10px] font-bold" style={{ background: template.background, color: template.color, textAlign: template.textAlign }}>{template.text}</div><p className="mt-1.5 text-[10px] font-medium">{template.name}</p></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void applyBurnedAutomaticCaption()} className="w-full rounded-xl border px-3 py-2.5 text-xs font-medium disabled:opacity-40">Gerar versão com legenda fixa</button><p className="text-[11px] text-muted-foreground">A opção principal cria faixas editáveis e mantém o original intacto. A versão fixa continua disponível para compatibilidade.</p></div>;
     if (tool === "settings") return <div className="space-y-4"><div><p className="text-sm font-semibold">Ajustes de saída</p><p className="text-xs text-muted-foreground">Tratamento aplicado depois da composição.</p></div><label className="flex items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-medium">Normalizar volume</p><p className="text-xs text-muted-foreground">Equaliza o resultado final</p></div><input type="checkbox" checked={normalizeAudio} onChange={(event) => setNormalizeAudio(event.target.checked)} className="accent-primary" /></label><label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Velocidade final</span><select value={speed} onChange={(event) => setSpeed(event.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm"><option value="1.0">Normal · 1x</option><option value="1.1">Levemente rápido · 1.1x</option><option value="1.25">Rápido · 1.25x</option></select></label><div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Fluxo não destrutivo</p><p className="mt-1">Cada clipe mantém seu arquivo original; cortes, ordem e sobreposições ficam salvos no projeto.</p></div></div>;
