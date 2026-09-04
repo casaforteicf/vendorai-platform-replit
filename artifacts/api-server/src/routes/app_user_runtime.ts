@@ -9,6 +9,10 @@ import {
   db,
 } from "@workspace/db";
 import { verifyAppUserToken, type AppUserJwtPayload } from "../lib/app_user_jwt.js";
+import {
+  applyRuntimeBindings,
+  type AppRuntimeBindingContext,
+} from "../lib/app_runtime_bindings.js";
 
 const router: IRouter = Router();
 type JsonObject = Record<string, unknown>;
@@ -264,6 +268,10 @@ router.get("/app-runtime/apps/:appId/runtime", authenticateAppUser, async (req, 
   const [current] = await db
     .select({
       userStatus: appUsersTable.status,
+      displayName: appUsersTable.displayName,
+      email: appUsersTable.email,
+      phone: appUsersTable.phone,
+      locale: appUsersTable.locale,
       membershipStatus: appUserMembershipsTable.status,
       roleKey: appUserMembershipsTable.roleKey,
       permissions: appUserMembershipsTable.permissions,
@@ -289,22 +297,38 @@ router.get("/app-runtime/apps/:appId/runtime", authenticateAppUser, async (req, 
 
   const snapshotDefinition = asObject(snapshot.definition);
   const templateDefinition = asObject(templateVersion.definition);
-  const runtime = sanitizeRuntime(templateDefinition.runtime, current.roleKey, current.permissions ?? []);
+  const appName = text(snapshotDefinition.name, 120) ?? "Aplicativo";
+  const bindings: AppRuntimeBindingContext = {
+    "viewer.name": current.displayName ?? "",
+    "viewer.email": current.email ?? "",
+    "viewer.phone": current.phone ?? "",
+    "viewer.locale": current.locale ?? "",
+    "viewer.role": current.roleKey,
+    "app.name": appName,
+  };
+
+  const sanitizedRuntime = sanitizeRuntime(templateDefinition.runtime, current.roleKey, current.permissions ?? []);
+  const runtime = applyRuntimeBindings(sanitizedRuntime, bindings) as JsonObject;
   const pageIds = new Set((runtime.pages as JsonObject[]).map((page) => String(page.id)));
+  const navigation = applyRuntimeBindings(
+    sanitizeNavigation(snapshotDefinition.navigation, pageIds),
+    bindings,
+  ) as JsonObject[];
 
   res.setHeader("Cache-Control", "private, no-store");
   return res.json({
     runtimeVersion: 1,
+    bindingVersion: 1,
     publishedVersionId: snapshot.id,
     publishedVersion: snapshot.version,
     publishedAt: snapshot.publishedAt,
     app: {
       id: app.id,
-      name: text(snapshotDefinition.name, 120) ?? "Aplicativo",
+      name: appName,
       slug: text(snapshotDefinition.slug, 100) ?? "",
       theme: sanitizeTheme(snapshotDefinition.theme),
       whiteLabel: sanitizeWhiteLabel(snapshotDefinition.whiteLabel),
-      navigation: sanitizeNavigation(snapshotDefinition.navigation, pageIds),
+      navigation,
     },
     template: { versionId: templateVersion.id, version: templateVersion.version },
     runtime,
