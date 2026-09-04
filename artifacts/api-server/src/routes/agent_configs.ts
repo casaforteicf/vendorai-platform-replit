@@ -13,7 +13,7 @@ import { getOpenAI } from "../lib/agent-engine.js";
 
 const KNOWN_AGENT_KEYS = new Set([
   "sdr", "closer", "financeiro", "cobranca",
-  "suporte", "agendamento", "pos_venda", "prospector", "recepcao", "farmacia",
+  "suporte", "agendamento", "pos_venda", "prospector", "recepcao", "farmacia", "expansao_conta",
 ]);
 
 const incrementCountSchema = {
