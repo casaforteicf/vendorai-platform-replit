@@ -208,8 +208,12 @@ export const appActionRegistryTable = pgTable(
     description: text("description"),
     category: text("category"),
     inputSchema: jsonb("input_schema").$type<Record<string, unknown>>().notNull().default({}),
+    outputSchema: jsonb("output_schema").$type<Record<string, unknown>>().notNull().default({}),
+    executorKey: text("executor_key"),
+    requiredPermissions: jsonb("required_permissions").$type<string[]>().notNull().default([]),
     riskLevel: text("risk_level").notNull().default("low"),
     status: text("status").notNull().default("active"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -217,6 +221,8 @@ export const appActionRegistryTable = pgTable(
     uniqueIndex("app_action_registry_key_uidx").on(table.key),
     index("app_action_registry_category_idx").on(table.category),
     index("app_action_registry_risk_idx").on(table.riskLevel),
+    index("app_action_registry_status_idx").on(table.status),
+    index("app_action_registry_executor_idx").on(table.executorKey),
   ],
 );
 
