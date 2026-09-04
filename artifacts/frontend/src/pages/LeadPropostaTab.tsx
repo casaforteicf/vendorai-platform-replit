@@ -207,6 +207,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const proposalTemplateName = (profileQuery.data as any)?.proposalTemplateName as string | null;
   const [selectedProposalTemplateId, setSelectedProposalTemplateId] = useState<string>("__auto__");
 
+  // Renderizações 3D pertencem ao fluxo Arch e só devem aparecer em segmentos
+  // em que esse material faz sentido. Uma flag explícita em discoveryData pode
+  // sobrescrever a inferência conservadora pelo segmento do tenant.
+  const explicit3dCapability = profileDiscovery.proposal3dRendersEnabled;
+  const tenantSegmentNormalized = String((profileQuery.data as any)?.vertical ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const supports3DRenders = typeof explicit3dCapability === "boolean"
+    ? explicit3dCapability
+    : /(construcao|reforma|arquitetura|interiores|esquadrias|marcenaria)/.test(tenantSegmentNormalized);
+
   // Imagens da proposta
   const [proposalImages, setProposalImages] = useState<string[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
@@ -369,6 +381,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     setCorSecundaria(lead?.corSecundaria ?? "");
   }, [lead]);
 
+  useEffect(() => {
+    if (!supports3DRenders && imageSourceTab === "renders") {
+      setImageSourceTab("upload");
+    }
+  }, [supports3DRenders, imageSourceTab]);
+
   // Listen for inline edits from the preview iframe
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -478,7 +496,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   }
 
   async function fetchRenders() {
-    if (rendersLoaded) return;
+    if (rendersLoaded || !supports3DRenders) return;
     setRendersLoading(true);
     try {
       const res = await fetch(api("/api/arch/renders/gallery?limit=40"), {
@@ -691,15 +709,27 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
+  function openBudgetCreation() {
+    const budgetButton = document.querySelector<HTMLElement>('[data-testid="btn-new-budget"]');
+    if (budgetButton) {
+      budgetButton.click();
+      return;
+    }
+    toast({
+      title: "Criar orçamento para este cliente",
+      description: "Use a ação “Gerar orçamento” no topo do atendimento para manter o contexto do lead.",
+    });
+  }
+
   return (
-    <div className="space-y-4">
-      {/* Dados da Proposta */}
-      <Card data-testid="card-proposta-config">
+    <div className="flex flex-col gap-4">
+      {/* Personalização da proposta */}
+      <Card data-testid="card-proposta-config" className="order-2">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Palette className="h-4 w-4" />
-              Dados da Proposta
+              Personalização da proposta
             </span>
             <Button
               size="sm"
@@ -814,12 +844,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         </CardContent>
       </Card>
 
-      {/* Imagens da Proposta */}
-      <Card>
+      {/* Materiais da proposta */}
+      <Card className="order-3">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <ImagePlus className="h-4 w-4" />
-            Imagens da Proposta
+            Materiais da proposta
             {proposalImages.length > 0 && (
               <Badge variant="secondary" className="text-xs ml-1">{proposalImages.length} selecionada{proposalImages.length > 1 ? "s" : ""}</Badge>
             )}
@@ -871,20 +901,22 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               <Upload className="h-3 w-3" />
               Importar
             </button>
-            <button
-              onClick={() => {
-                setImageSourceTab("renders");
-                void fetchRenders();
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 border-l transition-colors ${
-                imageSourceTab === "renders"
-                  ? "bg-primary text-primary-foreground font-medium"
-                  : "bg-transparent text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <Sparkles className="h-3 w-3" />
-              Renderizações 3D
-            </button>
+            {supports3DRenders && (
+              <button
+                onClick={() => {
+                  setImageSourceTab("renders");
+                  void fetchRenders();
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 border-l transition-colors ${
+                  imageSourceTab === "renders"
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "bg-transparent text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                <Sparkles className="h-3 w-3" />
+                Renderizações 3D
+              </button>
+            )}
           </div>
 
           {/* Aba: Importar */}
@@ -924,7 +956,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           )}
 
           {/* Aba: Renderizações 3D */}
-          {imageSourceTab === "renders" && (
+          {supports3DRenders && imageSourceTab === "renders" && (
             <div className="space-y-2">
               {rendersLoading ? (
                 <div className="grid grid-cols-3 gap-2">
@@ -991,8 +1023,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         </CardContent>
       </Card>
 
-      {/* Orçamentos vinculados */}
-      <Card data-testid="card-orcamentos-lead">
+      {/* Orçamentos vinculados — primeira etapa do fluxo */}
+      <Card data-testid="card-orcamentos-lead" className="order-1">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center justify-between">
             <span className="flex items-center gap-2">
@@ -1002,9 +1034,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 <Badge variant="outline" className="text-xs">{orcamentos.length}</Badge>
               )}
             </span>
-            <Link href="/propostas" className="text-xs font-normal text-muted-foreground hover:text-foreground underline underline-offset-2">
+            <button
+              type="button"
+              onClick={openBudgetCreation}
+              className="text-xs font-normal text-muted-foreground hover:text-foreground underline underline-offset-2"
+            >
               + Novo orçamento
-            </Link>
+            </button>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1013,12 +1049,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               {[1, 2].map((i) => <div key={i} className="h-14 bg-muted animate-pulse rounded" />)}
             </div>
           ) : orcamentos.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">
-              Nenhum orçamento criado para este lead.{" "}
-              <Link href="/propostas" className="underline underline-offset-2 hover:text-foreground">
-                Criar orçamento
-              </Link>
-            </p>
+            <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-muted-foreground">
+              <span>Nenhum orçamento criado para este lead.</span>
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openBudgetCreation}>
+                Criar orçamento para este cliente
+              </Button>
+            </div>
           ) : (
             <div className="space-y-2">
               {orcamentos.map((orc) => {
@@ -1093,16 +1129,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         </CardContent>
       </Card>
 
-      {/* Histórico de revisões de orçamento */}
-      <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} />
+      {/* Negociação e revisões — última etapa */}
+      <div className="order-5">
+        <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} />
+      </div>
 
-      {/* Propostas Geradas */}
-      <Card data-testid="card-propostas-geradas">
+      {/* Proposta comercial */}
+      <Card data-testid="card-propostas-geradas" className="order-4">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center justify-between">
             <span className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Propostas Geradas
+              Proposta comercial
               {proposals.length > 0 && (
                 <Badge variant="outline" className="text-xs ml-1">{proposals.length}</Badge>
               )}
