@@ -1,3 +1,10 @@
+export type MarketingTrackingPlan = {
+  campaignKey?: string;
+  utmCampaign?: string;
+  conversionGoal?: string;
+  channels?: Record<string, { source?: string; medium?: string; content?: string }>;
+};
+
 export type MarketingContextForAds = {
   nicheId?: string;
   nicheName?: string;
@@ -31,12 +38,7 @@ export type MarketingContextForAds = {
       primaryKeyword?: string;
       secondaryKeywords?: string[];
     };
-    tracking?: {
-      campaignKey?: string;
-      utmCampaign?: string;
-      conversionGoal?: string;
-      channels?: Record<string, { source?: string; medium?: string; content?: string }>;
-    };
+    tracking?: MarketingTrackingPlan;
   };
 };
 
@@ -53,7 +55,7 @@ type Segmentacao = {
   audiencias?: { termosPesquisa?: string[]; [key: string]: unknown };
   marketingContext?: MarketingContextForAds;
   audiencePlan?: AdsAudiencePlan;
-  marketingTracking?: MarketingContextForAds["marketingIntelligence"] extends { tracking?: infer T } ? T : never;
+  marketingTracking?: MarketingTrackingPlan;
   [key: string]: unknown;
 };
 
