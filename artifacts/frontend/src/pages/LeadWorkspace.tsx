@@ -15,11 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, ArrowRight, AlertTriangle, Loader2, Settings2, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, AlertTriangle, Clock3, Loader2, Settings2, UserRound } from "lucide-react";
 
 const fallbackStages = [
+  { key: "em_aquecimento", label: "Em aquecimento", ordem: 0 },
   { key: "novo", label: "Novo", ordem: 10 },
-  { key: "em_aquecimento", label: "Em aquecimento", ordem: 20 },
   { key: "qualificado", label: "Qualificado", ordem: 30 },
   { key: "proposta", label: "Proposta", ordem: 40 },
   { key: "negociacao", label: "Negociação", ordem: 50 },
@@ -75,6 +75,19 @@ function tomorrow() {
   return d.toISOString().slice(0, 16);
 }
 
+function formatDeadline(value?: string | null) {
+  if (!value) return "Sem prazo definido";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Prazo inválido";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export default function LeadWorkspace() {
   const { id = "" } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
@@ -94,7 +107,7 @@ export default function LeadWorkspace() {
   const { data: configuredStages = [] } = useListPipelineStages(tenantId, { request, query: { enabled, queryKey: getListPipelineStagesQueryKey(tenantId) } });
   const createDeal = useCreateDeal({ request });
   const updateStage = useUpdatePipelineStage();
-  const deal = useMemo(() => deals.find((d) => d.id === requestedDealId) ?? deals.find((d) => !["ganho", "perdido", "entregue"].includes(d.etapa)) ?? deals[0] ?? null, [deals, requestedDealId]);
+  const deal = useMemo(() => deals.find((d) => d.id === requestedDealId) ?? deals.find((d) => !["ganho", "perdido", "entregue", "concluido", "cancelado"].includes(d.etapa)) ?? deals[0] ?? null, [deals, requestedDealId]);
   const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
   const currentStage = stages[currentIndex];
@@ -104,7 +117,12 @@ export default function LeadWorkspace() {
     return commercial;
   }, [currentStage, stages]);
   const initialNext = requestedStage ?? stages[currentIndex + 1]?.key ?? "";
-  const pending = activities.filter((a) => a.status !== "concluida" && (!deal || !a.dealId || a.dealId === deal.id)).sort((a, b) => new Date(a.dataVencimento ?? "9999").getTime() - new Date(b.dataVencimento ?? "9999").getTime());
+  const pending = useMemo(() => activities
+    .filter((a) => ["pendente", "planejado"].includes(a.status) && (!deal || !a.dealId || a.dealId === deal.id))
+    .sort((a, b) => new Date(a.dataVencimento ?? "9999").getTime() - new Date(b.dataVencimento ?? "9999").getTime()), [activities, deal]);
+  const nextPending = pending[0];
+  const overduePendingCount = pending.filter((activity) => activity.dataVencimento && new Date(activity.dataVencimento).getTime() < Date.now()).length;
+  const nextPendingOverdue = Boolean(nextPending?.dataVencimento && new Date(nextPending.dataVencimento).getTime() < Date.now());
   const displayUser = (uid?: string | null) => users.find((u) => u.id === uid)?.name ?? users.find((u) => u.id === uid)?.email ?? "Não definido";
   const [open, setOpen] = useState(Boolean(requestedStage));
   const [nextStage, setNextStage] = useState(initialNext);
@@ -215,7 +233,7 @@ export default function LeadWorkspace() {
       <CardContent className="p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-2.5">
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Voltar à pipeline" onClick={() => navigate("/deals")}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Voltar à Central de Trabalho" onClick={() => navigate("/trabalho")}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="min-w-0">
@@ -223,11 +241,15 @@ export default function LeadWorkspace() {
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-semibold leading-tight sm:text-2xl">{lead.nome}</h1>
                 <Badge variant="secondary" className="h-5 px-2 text-[11px]">{currentStage?.label ?? deal?.etapa ?? "Sem negócio"}</Badge>
+                {nextPendingOverdue && <Badge variant="destructive" className="h-5 px-2 text-[11px]">Atividade vencida</Badge>}
               </div>
-              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground sm:text-sm">
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground sm:text-sm">
                 <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />Responsável: {displayUser(deal?.assignedTo ?? lead.assignedTo)}</span>
-                {pending[0] && <span>· Próxima atividade: {pending[0].titulo}</span>}
-              </p>
+                {nextPending ? <>
+                  <span>· Próxima atividade: {nextPending.titulo}</span>
+                  <span className={`inline-flex items-center gap-1 ${nextPendingOverdue ? "font-medium text-destructive" : ""}`}><Clock3 className="h-3.5 w-3.5" />{formatDeadline(nextPending.dataVencimento)}</span>
+                </> : <span className="font-medium text-amber-700">· Próxima atividade não definida</span>}
+              </div>
             </div>
           </div>
           {deal
@@ -273,13 +295,21 @@ export default function LeadWorkspace() {
       saving={savingAnswers}
     />
 
-    <LeadDetail />
+    <div className="[&>div>div:first-child]:hidden [&_[data-testid=section-journey-stage]]:hidden">
+      <LeadDetail />
+    </div>
 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader><DialogTitle>Avançar e definir a sequência</DialogTitle></DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="rounded-lg border bg-muted/40 p-3 text-sm">Atual: <strong>{currentStage?.label ?? deal?.etapa}</strong> — responsável: <strong>{displayUser(deal?.assignedTo)}</strong></div>
+          {pending.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>Há {pending.length} atividade(s) pendente(s) neste atendimento{overduePendingCount > 0 ? `, sendo ${overduePendingCount} vencida(s)` : ""}. Ao avançar, elas continuam registradas; conclua ou cancele o que não fizer mais sentido para evitar uma fila duplicada.</span>
+            </div>
+          )}
           {(() => {
             const perguntas = currentStage?.perguntas ?? [];
             if (!perguntas.length) return null;
