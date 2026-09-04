@@ -13,6 +13,7 @@
     "src/jobs/trialJourney.ts",
     "src/jobs/vendorAiSubscriptionBilling.ts",
     "src/jobs/vendorAiSubscriptionPaymentSync.ts",
+    "src/jobs/vendorAiSubscriptionScheduler.ts",
     "src/lib/commercialOffer.ts",
     "src/lib/deal-closure-commission.ts",
     "src/lib/trial-email.ts",
