@@ -26,11 +26,12 @@ const PRACA_AI_LINK_SELECTOR = Array.from(PRACA_AI_PATHS)
   .join(",");
 
 /**
- * Navigation migration shim.
+ * Navigation policy wrapper.
  *
- * The existing sidebar is intentionally preserved intact in SidebarLayoutLegacy
- * while Marketing → Content Autopilot becomes the unified Sites workspace.
- * This avoids duplicating role/module visibility rules during the migration.
+ * SidebarLayoutLegacy remains the declarative source of the navigation tree.
+ * This wrapper only enforces tenant entitlements and tenant-only branding.
+ * Marketing labels and entries must be declared in the sidebar itself instead
+ * of being cloned or renamed after render.
  *
  * Branding policy:
  * - regular tenant sessions show only the tenant/client logo;
@@ -155,91 +156,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     const pathname = location.split("?")[0];
     if (PRACA_AI_PATHS.has(pathname)) setLocation("/");
   }, [effectiveTenantId, location, pracaAiEntitled, setLocation, tenantNavModulesLoading]);
-
-  useEffect(() => {
-    const relabelMarketingEntries = () => {
-      const siteLinks = document.querySelectorAll<HTMLAnchorElement>('a[href="/content-autopilot"]');
-      siteLinks.forEach((link) => {
-        const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT);
-        let node = walker.nextNode();
-        while (node) {
-          if (node.nodeValue?.trim() === "Content Autopilot") {
-            node.nodeValue = node.nodeValue.replace("Content Autopilot", "Sites");
-          }
-          node = walker.nextNode();
-        }
-        link.setAttribute("aria-label", "Sites — Gerador de Sites e Content Autopilot");
-        link.setAttribute("title", "Sites — Gerador de Sites e Content Autopilot");
-      });
-
-      const variedadesLinks = document.querySelectorAll<HTMLAnchorElement>('a[href="/variedades-dia"]');
-      variedadesLinks.forEach((link) => {
-        const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT);
-        let node = walker.nextNode();
-        while (node) {
-          if (node.nodeValue?.trim() === "Variedades Praça.ai") {
-            node.nodeValue = node.nodeValue.replace("Variedades Praça.ai", "Variedades do Dia");
-          }
-          node = walker.nextNode();
-        }
-        link.setAttribute("aria-label", "Variedades do Dia — conteúdo temporário do Praça.ai");
-        link.setAttribute("title", "Variedades do Dia — conteúdo temporário do Praça.ai");
-      });
-    };
-
-    relabelMarketingEntries();
-    const observer = new MutationObserver(relabelMarketingEntries);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
-
-  // Restaura a entrada "Vídeo com IA" sem reintroduzir o loop que travava o
-  // renderer. A entrada só é criada quando o submenu Marketing já está aberto;
-  // não há MutationObserver dedicado e nunca há clique programático no menu.
-  useEffect(() => {
-    const VIDEO_HREF = "/content-studio/video";
-
-    const ensureVideoEntry = () => {
-      document.querySelectorAll<HTMLAnchorElement>('a[href="/content"]').forEach((contentLink) => {
-        const container = contentLink.parentElement;
-        if (!container || container.querySelector<HTMLAnchorElement>(`a[href="${VIDEO_HREF}"]`)) return;
-
-        const videoLink = contentLink.cloneNode(true) as HTMLAnchorElement;
-        videoLink.href = VIDEO_HREF;
-        videoLink.dataset.mediaVideoMenuEntry = "true";
-        videoLink.setAttribute("aria-label", "Vídeo com IA — VendorAI Media Engine");
-        videoLink.setAttribute("title", "Vídeo com IA — VendorAI Media Engine");
-
-        const walker = document.createTreeWalker(videoLink, NodeFilter.SHOW_TEXT);
-        let node = walker.nextNode();
-        while (node) {
-          if (node.nodeValue?.includes("Gerador de Conteúdo")) {
-            node.nodeValue = node.nodeValue.replace("Gerador de Conteúdo", "Vídeo com IA");
-          }
-          node = walker.nextNode();
-        }
-
-        videoLink.addEventListener("click", (event) => {
-          event.preventDefault();
-          window.location.assign(VIDEO_HREF);
-        });
-
-        contentLink.insertAdjacentElement("afterend", videoLink);
-      });
-    };
-
-    const scheduleEnsure = () => window.requestAnimationFrame(ensureVideoEntry);
-
-    ensureVideoEntry();
-    document.addEventListener("click", scheduleEnsure, true);
-    window.addEventListener("popstate", scheduleEnsure);
-
-    return () => {
-      document.removeEventListener("click", scheduleEnsure, true);
-      window.removeEventListener("popstate", scheduleEnsure);
-      document.querySelectorAll<HTMLAnchorElement>('[data-media-video-menu-entry="true"]').forEach((link) => link.remove());
-    };
-  }, []);
 
   useEffect(() => {
     if (!user) return;
