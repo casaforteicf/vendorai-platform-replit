@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import ImageAdvisorPanel from "@/components/media/ImageAdvisorPanel";
 import MediaPostGenerationPanel from "@/components/media/MediaPostGenerationPanel";
 import AudioRightsPanel from "@/components/media/AudioRightsPanel";
+import MusicMetadataPanel from "@/components/media/MusicMetadataPanel";
 import {
   Archive,
   AudioLines,
@@ -250,6 +251,9 @@ export default function MediaCenter() {
   const [uploadFolderPath, setUploadFolderPath] = useState("");
   const [audioKindFilter, setAudioKindFilter] = useState<AudioKindFilter>("all");
   const [uploadAudioKind, setUploadAudioKind] = useState<AudioKind>("other");
+  const [musicGenreFilter, setMusicGenreFilter] = useState("all");
+  const [musicMoodFilter, setMusicMoodFilter] = useState("all");
+  const [musicFavoritesOnly, setMusicFavoritesOnly] = useState(false);
 
   const selectedAssets = useMemo(
     () => assets.filter((asset) => selected.includes(asset.id)),
@@ -675,11 +679,45 @@ export default function MediaCenter() {
     return result;
   }, [assets]);
 
+  const musicGenres = useMemo(
+    () => Array.from(new Set(
+      assets
+        .filter((asset) => assetAudioKind(asset) === "music")
+        .map((asset) => typeof asset.metadata?.genre === "string" ? asset.metadata.genre.trim() : "")
+        .filter(Boolean),
+    )).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [assets],
+  );
+
+  const musicMoods = useMemo(
+    () => Array.from(new Set(
+      assets
+        .filter((asset) => assetAudioKind(asset) === "music")
+        .map((asset) => typeof asset.metadata?.mood === "string" ? asset.metadata.mood.trim() : "")
+        .filter(Boolean),
+    )).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [assets],
+  );
+
+  const favoriteMusicCount = useMemo(
+    () => assets.filter((asset) => assetAudioKind(asset) === "music" && asset.metadata?.favorite === true).length,
+    [assets],
+  );
+
   const visible = useMemo(
     () =>
       assets.filter((asset) => {
         if (filter !== "all" && asset.type !== filter) return false;
         if (filter === "audio" && audioKindFilter !== "all" && assetAudioKind(asset) !== audioKindFilter) return false;
+        if (filter === "audio" && musicGenreFilter !== "all") {
+          if (assetAudioKind(asset) !== "music" || asset.metadata?.genre !== musicGenreFilter) return false;
+        }
+        if (filter === "audio" && musicMoodFilter !== "all") {
+          if (assetAudioKind(asset) !== "music" || asset.metadata?.mood !== musicMoodFilter) return false;
+        }
+        if (filter === "audio" && musicFavoritesOnly) {
+          if (assetAudioKind(asset) !== "music" || asset.metadata?.favorite !== true) return false;
+        }
         if (sourceFilter !== "all" && asset.source !== sourceFilter) return false;
         const context = assetContext(asset);
         const folder = assetFolder(asset);
@@ -700,13 +738,15 @@ export default function MediaCenter() {
           assetAudioKind(asset) ? AUDIO_KIND_LABELS[assetAudioKind(asset)!] : null,
           typeof asset.metadata?.genre === "string" ? asset.metadata.genre : null,
           typeof asset.metadata?.mood === "string" ? asset.metadata.mood : null,
+          typeof asset.metadata?.energy === "string" ? asset.metadata.energy : null,
+          typeof asset.metadata?.bpm === "number" ? `${asset.metadata.bpm} BPM` : null,
           sourceLabel(asset),
           TYPE_LABELS[asset.type],
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(term));
       }),
-    [assets, filter, audioKindFilter, sourceFilter, contextFilter, folderFilter, search],
+    [assets, filter, audioKindFilter, musicGenreFilter, musicMoodFilter, musicFavoritesOnly, sourceFilter, contextFilter, folderFilter, search],
   );
 
   const unfiledCount = assets.filter((asset) => !assetFolder(asset)).length;
@@ -931,13 +971,38 @@ export default function MediaCenter() {
                     {(Object.keys(AUDIO_KIND_SHORT_LABELS) as AudioKindFilter[]).map((kind) => (
                       <button
                         key={kind}
-                        onClick={() => setAudioKindFilter(kind)}
+                        onClick={() => {
+                          setAudioKindFilter(kind);
+                          if (kind !== "all" && kind !== "music") {
+                            setMusicGenreFilter("all");
+                            setMusicMoodFilter("all");
+                            setMusicFavoritesOnly(false);
+                          }
+                        }}
                         className={`folder-chip ${audioKindFilter === kind ? "folder-chip-active" : ""}`}
                       >
                         {AUDIO_KIND_SHORT_LABELS[kind]} · {audioKindCounts[kind]}
                       </button>
                     ))}
                   </div>
+                  {(audioKindFilter === "all" || audioKindFilter === "music") && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <select value={musicGenreFilter} onChange={(event) => setMusicGenreFilter(event.target.value)} className="h-9 rounded-lg border bg-background px-2 text-xs">
+                        <option value="all">Todos os gêneros</option>
+                        {musicGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
+                      </select>
+                      <select value={musicMoodFilter} onChange={(event) => setMusicMoodFilter(event.target.value)} className="h-9 rounded-lg border bg-background px-2 text-xs">
+                        <option value="all">Todos os moods</option>
+                        {musicMoods.map((mood) => <option key={mood} value={mood}>{mood}</option>)}
+                      </select>
+                      <button
+                        onClick={() => setMusicFavoritesOnly((current) => !current)}
+                        className={`folder-chip ${musicFavoritesOnly ? "folder-chip-active" : ""}`}
+                      >
+                        Favoritas · {favoriteMusicCount}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1109,6 +1174,15 @@ export default function MediaCenter() {
                                   <Link2 className="mr-1 inline h-3 w-3" />{CONTEXT_LABELS[context.type]} · {context.label}
                                 </span>
                               )}
+                              {audioKind === "music" && typeof asset.metadata?.genre === "string" && asset.metadata.genre.trim() && (
+                                <span className="rounded-full bg-violet-500/10 px-2 py-1 text-[10px] text-violet-700 dark:text-violet-300">{asset.metadata.genre}</span>
+                              )}
+                              {audioKind === "music" && typeof asset.metadata?.bpm === "number" && Number.isFinite(asset.metadata.bpm) && (
+                                <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[10px] text-sky-700 dark:text-sky-300">{asset.metadata.bpm} BPM</span>
+                              )}
+                              {audioKind === "music" && asset.metadata?.favorite === true && (
+                                <span className="rounded-full bg-rose-500/10 px-2 py-1 text-[10px] text-rose-700 dark:text-rose-300">Favorita</span>
+                              )}
                             </div>
                           </div>
                         </article>
@@ -1223,7 +1297,10 @@ export default function MediaCenter() {
                 </div>
               )}
               {inspected.type === "audio" && assetAudioKind(inspected) === "music" && (
-                <AudioRightsPanel tenantId={tenantId} asset={inspected} onUpdated={loadAll} />
+                <>
+                  <MusicMetadataPanel tenantId={tenantId} asset={inspected} resolvedUrl={mediaUrl(inspected.storageUrl)} onUpdated={loadAll} />
+                  <AudioRightsPanel tenantId={tenantId} asset={inspected} onUpdated={loadAll} />
+                </>
               )}
               {inspected.type === "image" && (
                 <ImageAdvisorPanel tenantId={tenantId} assetId={inspected.id} filename={inspected.originalFilename} canGenerateAi={ready("image_variations")} onUpdated={loadAll} />
