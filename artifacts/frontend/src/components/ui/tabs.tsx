@@ -1,9 +1,8 @@
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 
+import LeadAttachmentsTab from "@/components/leads/LeadAttachmentsTab"
 import { cn } from "@/lib/utils"
-
-const Tabs = TabsPrimitive.Root
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
@@ -49,5 +48,67 @@ const TabsContent = React.forwardRef<
   />
 ))
 TabsContent.displayName = TabsPrimitive.Content.displayName
+
+/**
+ * Mantém o componente Tabs genérico, mas estende o workspace real do lead
+ * quando ele se identifica pelo id oficial. Isso evita duplicar LeadDetail e
+ * permite que a nova aba Anexos compartilhe o mesmo estado de abas existente.
+ * Se LeadDetail passar a declarar a aba nativamente no futuro, a proteção
+ * hasAnexos evita qualquer duplicação.
+ */
+function Tabs({ children, ...props }: React.ComponentProps<typeof TabsPrimitive.Root>) {
+  const isLeadWorkspace = props.id === "lead-workspace-tabs"
+
+  if (!isLeadWorkspace) {
+    return <TabsPrimitive.Root {...props}>{children}</TabsPrimitive.Root>
+  }
+
+  const rootChildren = React.Children.toArray(children)
+  const hasAnexosContent = rootChildren.some((child) =>
+    React.isValidElement(child) &&
+    child.type === TabsContent &&
+    (child.props as { value?: string }).value === "anexos"
+  )
+
+  const enhancedChildren = rootChildren.map((child) => {
+    if (!React.isValidElement(child) || child.type !== TabsList) return child
+
+    const listProps = child.props as React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+    const listChildren = React.Children.toArray(listProps.children)
+    const hasAnexosTrigger = listChildren.some((listChild) =>
+      React.isValidElement(listChild) &&
+      listChild.type === TabsTrigger &&
+      (listChild.props as { value?: string }).value === "anexos"
+    )
+
+    if (hasAnexosTrigger) return child
+
+    return React.cloneElement(
+      child as React.ReactElement<React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>>,
+      {
+        style: {
+          ...listProps.style,
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          maxWidth: "42rem",
+        },
+      },
+      <>
+        {listProps.children}
+        <TabsTrigger value="anexos">Anexos</TabsTrigger>
+      </>
+    )
+  })
+
+  return (
+    <TabsPrimitive.Root {...props}>
+      {enhancedChildren}
+      {!hasAnexosContent && (
+        <TabsContent value="anexos" className="mt-4">
+          <LeadAttachmentsTab />
+        </TabsContent>
+      )}
+    </TabsPrimitive.Root>
+  )
+}
 
 export { Tabs, TabsList, TabsTrigger, TabsContent }
