@@ -5,8 +5,11 @@ import {
   type MarketingMacrosegmentKey,
 } from "@workspace/vendor-brain/marketing-verticals";
 import { ArrowRight, Bot, Radar, Route, Sparkles } from "lucide-react";
+import { usePublicCountry } from "@/lib/publicCountry";
 
-const SEGMENTS: Record<MarketingMacrosegmentKey, { name: string; eyebrow: string; description: string }> = {
+type SegmentCopy = { name: string; eyebrow: string; description: string };
+
+const SEGMENTS_PT: Record<MarketingMacrosegmentKey, SegmentCopy> = {
   retail: {
     name: "Lojas e Varejo",
     eyebrow: "Venda, recompra e relacionamento",
@@ -39,6 +42,39 @@ const SEGMENTS: Record<MarketingMacrosegmentKey, { name: string; eyebrow: string
   },
 };
 
+const SEGMENTS_ES: Record<MarketingMacrosegmentKey, SegmentCopy> = {
+  retail: {
+    name: "Tiendas y Retail",
+    eyebrow: "Venta, recompra y relación",
+    description: "Jornadas comerciales para operaciones que necesitan transformar atención, historial de compra y comportamiento en nuevas ventas.",
+  },
+  clinics: {
+    name: "Clínicas y Salud",
+    eyebrow: "Agenda, retorno y relación",
+    description: "Jornadas con atención al contexto, recurrencia, agenda y cumplimiento para negocios de salud, estética y bienestar.",
+  },
+  dealerships: {
+    name: "Concesionarias y Automotriz",
+    eyebrow: "Lead, negociación y próxima renovación",
+    description: "Operaciones orientadas a inventario, intención, evaluación, propuesta, financiamiento, posventa y futuro ciclo del cliente.",
+  },
+  distributors: {
+    name: "Distribuidoras y Mayoristas",
+    eyebrow: "Cartera, mix y share of wallet",
+    description: "Inteligencia comercial B2B para detectar categorías ausentes, frecuencia, clientes en riesgo y expansión de cartera.",
+  },
+  services: {
+    name: "Servicios Profesionales",
+    eyebrow: "Cotización, seguimiento y cierre",
+    description: "Jornadas consultivas para servicios donde la decisión lleva tiempo y cada cotización necesita seguimiento contextual.",
+  },
+  industries: {
+    name: "Industrias y B2B",
+    eyebrow: "Especificación, oportunidad y recurrencia",
+    description: "Operaciones de venta compleja con múltiples decisores, propuestas técnicas, ciclos largos y oportunidades de expansión por cliente.",
+  },
+};
+
 const ALIASES: Record<string, MarketingMacrosegmentKey> = {
   varejo: "retail",
   lojas: "retail",
@@ -52,15 +88,56 @@ const ALIASES: Record<string, MarketingMacrosegmentKey> = {
   industrias: "industries",
 };
 
+const UI_PT = {
+  notFound: "Segmento não encontrado",
+  back: "Voltar ao VendorAI",
+  demo: "Ver demonstração",
+  vendorFor: "VendorAI para",
+  officialVerticals: "verticais oficiais",
+  marketPipeline: "Pipeline por mercado",
+  verticalScout: "Revenue Scout verticalizado",
+  chooseMarket: "Escolha o mercado",
+  differentOperation: "Uma operação diferente para cada subnicho",
+  sourceDescription: "Cada página abaixo nasce da mesma fonte de verdade do Vendor Brain e carrega jornada, pipeline, agentes, KPIs e sinais comerciais próprios.",
+  ownPipelines: "Pipelines próprios",
+  ownPipelinesDesc: "A oportunidade avança conforme a realidade do mercado, não por um funil genérico igual para todos.",
+  segmentAgents: "Agentes do segmento",
+  finalTitle: "Escolha a sua vertical e veja o VendorAI trabalhando na jornada certa.",
+  finalDesc: "As páginas acima são geradas dinamicamente e compartilham a mesma inteligência usada pelo Vendor Brain.",
+  openFirst: "Abrir primeira vertical",
+} as const;
+
+const UI_ES: typeof UI_PT = {
+  notFound: "Segmento no encontrado",
+  back: "Volver a VendorAI",
+  demo: "Ver demostración",
+  vendorFor: "VendorAI para",
+  officialVerticals: "verticales oficiales",
+  marketPipeline: "Pipeline por mercado",
+  verticalScout: "Revenue Scout verticalizado",
+  chooseMarket: "Elige el mercado",
+  differentOperation: "Una operación diferente para cada subnicho",
+  sourceDescription: "Cada página nace de la misma fuente de verdad del Vendor Brain e incorpora jornada, pipeline, agentes, KPIs y señales comerciales propios.",
+  ownPipelines: "Pipelines propios",
+  ownPipelinesDesc: "La oportunidad avanza según la realidad del mercado, no por un embudo genérico igual para todos.",
+  segmentAgents: "Agentes del segmento",
+  finalTitle: "Elige tu vertical y mira a VendorAI trabajando en la jornada correcta.",
+  finalDesc: "Las páginas anteriores se generan dinámicamente y comparten la misma inteligencia utilizada por Vendor Brain.",
+  openFirst: "Abrir primera vertical",
+};
+
 function resolveSegment(raw: string): MarketingMacrosegmentKey | undefined {
-  if (raw in SEGMENTS) return raw as MarketingMacrosegmentKey;
+  if (raw in SEGMENTS_PT) return raw as MarketingMacrosegmentKey;
   return ALIASES[raw];
 }
 
 export default function MacrosegmentHub() {
+  const { isSpanish } = usePublicCountry();
+  const segments = isSpanish ? SEGMENTS_ES : SEGMENTS_PT;
+  const copy = isSpanish ? UI_ES : UI_PT;
   const params = useParams<{ slug: string }>();
   const segmentKey = resolveSegment((params.slug ?? "").toLowerCase());
-  const segment = segmentKey ? SEGMENTS[segmentKey] : undefined;
+  const segment = segmentKey ? segments[segmentKey] : undefined;
   const verticals = segmentKey
     ? MARKETING_VERTICALS.filter((item) => item.macrosegment === segmentKey)
     : [];
@@ -73,8 +150,8 @@ export default function MacrosegmentHub() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-[#07070c] px-4 text-center text-white">
         <div className="text-5xl">🔍</div>
-        <h1 className="text-3xl font-black">Segmento não encontrado</h1>
-        <a href="/" className="text-sm font-semibold text-cyan-300 hover:underline">Voltar ao VendorAI</a>
+        <h1 className="text-3xl font-black">{copy.notFound}</h1>
+        <a href="/" className="text-sm font-semibold text-cyan-300 hover:underline">{copy.back}</a>
       </div>
     );
   }
@@ -94,7 +171,7 @@ export default function MacrosegmentHub() {
             </div>
           </a>
           <a href="/demo" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-black transition-transform hover:scale-[1.02]">
-            Ver demonstração <ArrowRight className="h-3.5 w-3.5" />
+            {copy.demo} <ArrowRight className="h-3.5 w-3.5" />
           </a>
         </div>
       </header>
@@ -106,12 +183,12 @@ export default function MacrosegmentHub() {
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1.5 text-xs font-semibold text-violet-200">
               <Sparkles className="h-3.5 w-3.5" /> {segment.eyebrow}
             </div>
-            <h1 className="max-w-4xl text-4xl font-black tracking-tight sm:text-6xl">VendorAI para {segment.name}</h1>
+            <h1 className="max-w-4xl text-4xl font-black tracking-tight sm:text-6xl">{copy.vendorFor} {segment.name}</h1>
             <p className="mt-6 max-w-3xl text-lg leading-relaxed text-slate-300">{segment.description}</p>
             <div className="mt-8 flex flex-wrap gap-3 text-xs text-slate-400">
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{verticals.length} verticais oficiais</span>
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">Pipeline por mercado</span>
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">Revenue Scout verticalizado</span>
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{verticals.length} {copy.officialVerticals}</span>
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{copy.marketPipeline}</span>
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{copy.verticalScout}</span>
             </div>
           </div>
         </section>
@@ -120,10 +197,10 @@ export default function MacrosegmentHub() {
           <div className="mx-auto max-w-6xl">
             <div className="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
               <div>
-                <div className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-cyan-300">Escolha o mercado</div>
-                <h2 className="text-3xl font-bold tracking-tight">Uma operação diferente para cada subnicho</h2>
+                <div className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-cyan-300">{copy.chooseMarket}</div>
+                <h2 className="text-3xl font-bold tracking-tight">{copy.differentOperation}</h2>
               </div>
-              <p className="max-w-lg text-sm leading-relaxed text-slate-400">Cada página abaixo nasce da mesma fonte de verdade do Vendor Brain e carrega jornada, pipeline, agentes, KPIs e sinais comerciais próprios.</p>
+              <p className="max-w-lg text-sm leading-relaxed text-slate-400">{copy.sourceDescription}</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -154,12 +231,12 @@ export default function MacrosegmentHub() {
           <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-3">
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] p-7">
               <Route className="h-6 w-6 text-cyan-300" />
-              <h2 className="mt-5 text-xl font-bold">Pipelines próprios</h2>
-              <p className="mt-3 text-sm leading-relaxed text-slate-400">A oportunidade avança conforme a realidade do mercado, não por um funil genérico igual para todos.</p>
+              <h2 className="mt-5 text-xl font-bold">{copy.ownPipelines}</h2>
+              <p className="mt-3 text-sm leading-relaxed text-slate-400">{copy.ownPipelinesDesc}</p>
             </div>
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] p-7">
               <Bot className="h-6 w-6 text-violet-300" />
-              <h2 className="mt-5 text-xl font-bold">Agentes do segmento</h2>
+              <h2 className="mt-5 text-xl font-bold">{copy.segmentAgents}</h2>
               <div className="mt-4 flex flex-wrap gap-2">
                 {agents.map((agent) => <span key={agent} className="rounded-full border border-white/8 px-2.5 py-1 text-[10px] text-slate-400">{agent}</span>)}
               </div>
@@ -176,10 +253,10 @@ export default function MacrosegmentHub() {
 
         <section className="px-4 pb-28 sm:px-6">
           <div className="mx-auto max-w-5xl rounded-3xl border border-violet-400/15 bg-gradient-to-br from-violet-950/70 via-[#121126] to-cyan-950/40 p-8 text-center sm:p-14">
-            <h2 className="text-3xl font-black tracking-tight sm:text-4xl">Escolha a sua vertical e veja o VendorAI trabalhando na jornada certa.</h2>
-            <p className="mx-auto mt-4 max-w-2xl text-slate-300">As páginas acima são geradas dinamicamente e compartilham a mesma inteligência usada pelo Vendor Brain.</p>
+            <h2 className="text-3xl font-black tracking-tight sm:text-4xl">{copy.finalTitle}</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-slate-300">{copy.finalDesc}</p>
             <a href={`/lp/${verticals[0]?.slug ?? ""}`} className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3.5 text-sm font-bold text-black">
-              Abrir primeira vertical <ArrowRight className="h-4 w-4" />
+              {copy.openFirst} <ArrowRight className="h-4 w-4" />
             </a>
           </div>
         </section>
