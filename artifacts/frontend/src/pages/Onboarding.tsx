@@ -47,14 +47,14 @@ interface PlanFromApi {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const AGENT_CARDS = [
-  { key: "sdr",            label: "SDR",         descKey: "onboarding.agent.sdr",        Icon: UserSearch },
-  { key: "closer",         label: "Closer",      descKey: "onboarding.agent.closer",     Icon: Handshake },
-  { key: "relacionamento", label: "Financeiro",  descKey: "onboarding.agent.finance",    Icon: BarChart2 },
-  { key: "reactivation",   label: "Cobrança",    descKey: "onboarding.agent.collection", Icon: AlertCircle },
-  { key: "service",        label: "Suporte",     descKey: "onboarding.agent.support",    Icon: Headphones },
-  { key: "scheduler",      label: "Agendamento", descKey: "onboarding.agent.scheduler",  Icon: CalendarCheck },
-  { key: "followup",       label: "Pós-venda",   descKey: "onboarding.agent.afterSales", Icon: Star },
-  { key: "onboarding",     label: "Prospector",  descKey: "onboarding.agent.prospector", Icon: Telescope },
+  { key: "sdr",            labelKey: "onboarding.agent.label.sdr",        descKey: "onboarding.agent.sdr",        Icon: UserSearch },
+  { key: "closer",         labelKey: "onboarding.agent.label.closer",     descKey: "onboarding.agent.closer",     Icon: Handshake },
+  { key: "relacionamento", labelKey: "onboarding.agent.label.finance",    descKey: "onboarding.agent.finance",    Icon: BarChart2 },
+  { key: "reactivation",   labelKey: "onboarding.agent.label.collection", descKey: "onboarding.agent.collection", Icon: AlertCircle },
+  { key: "service",        labelKey: "onboarding.agent.label.support",    descKey: "onboarding.agent.support",    Icon: Headphones },
+  { key: "scheduler",      labelKey: "onboarding.agent.label.scheduler",  descKey: "onboarding.agent.scheduler",  Icon: CalendarCheck },
+  { key: "followup",       labelKey: "onboarding.agent.label.afterSales", descKey: "onboarding.agent.afterSales", Icon: Star },
+  { key: "onboarding",     labelKey: "onboarding.agent.label.prospector", descKey: "onboarding.agent.prospector", Icon: Telescope },
 ] as const;
 
 const PLAN_DISPLAY = [
@@ -626,7 +626,7 @@ export default function Onboarding() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  {AGENT_CARDS.map(({ key, label, descKey, Icon }) => {
+                  {AGENT_CARDS.map(({ key, labelKey, descKey, Icon }) => {
                     const selected = s3AgentKey === key;
                     return (
                       <button
@@ -655,7 +655,7 @@ export default function Onboarding() {
                         )}
                         <Icon className={`h-6 w-6 ${selected ? "text-primary" : "text-muted-foreground"}`} />
                         <span className={`text-sm font-semibold leading-tight ${selected ? "text-primary" : ""}`}>
-                          {label}
+                          {t(labelKey)}
                         </span>
                         <span className="text-[11px] text-muted-foreground leading-snug">{t(descKey)}</span>
                       </button>
