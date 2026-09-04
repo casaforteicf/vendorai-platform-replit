@@ -26,7 +26,17 @@ export const CONTENT_CALENDAR_TIPOS = [
 ] as const;
 export type ContentCalendarTipo = (typeof CONTENT_CALENDAR_TIPOS)[number];
 
-export const CONTENT_CALENDAR_STATUS = ["planejado", "gerado", "publicado", "pulado"] as const;
+// "aprovado" e "recusado" são estados editoriais do Planejador. O usuário
+// pode revisar cada ação antes da produção, sem confundir revisão estratégica
+// com os estados posteriores de geração/publicação.
+export const CONTENT_CALENDAR_STATUS = [
+  "planejado",
+  "aprovado",
+  "recusado",
+  "gerado",
+  "publicado",
+  "pulado",
+] as const;
 export type ContentCalendarStatus = (typeof CONTENT_CALENDAR_STATUS)[number];
 
 export const contentCalendarItemsTable = pgTable("content_calendar_items", {
