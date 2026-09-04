@@ -8,6 +8,7 @@ import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
 import VideoAvatarCapturePage from "@/pages/video/VideoAvatarCapturePage";
 import VideoAvatarCaptureViewportGuard from "@/pages/video/VideoAvatarCaptureViewportGuard";
+import VideoAvatarVideoScriptGuide from "@/pages/video/VideoAvatarVideoScriptGuide";
 
 const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
 
@@ -38,6 +39,7 @@ export default function NotFound() {
         <>
           <VideoAvatarCapturePage />
           <VideoAvatarCaptureViewportGuard />
+          <VideoAvatarVideoScriptGuide />
         </>
       );
     }
