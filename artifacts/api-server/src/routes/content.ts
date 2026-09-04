@@ -13,6 +13,7 @@ import {
   supermercadoProdutoTable,
   insumosTable,
   subscriptionsTable,
+  tenantsTable,
 } from "@workspace/db";
 import {
   generateFeedContent,
@@ -30,6 +31,8 @@ import { InstagramApiError, listRecentMedia } from "../lib/instagram-publish.js"
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import { publishContentGenerationToInstagram, getPublishingCredentials, SocialPublicationError } from "../services/contentSocialPublisher.js";
 import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
+import { applyBrandFrame } from "../services/brandFrame.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
 
@@ -463,6 +466,94 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
     .where(eq(contentGenerationsTable.id, contentId));
 
   res.json({ success: true, mediaUrl, field: body.data.field, imageUrls: responseImageUrls });
+});
+
+const applyBrandFrameBodySchema = z.object({
+  imageIndex: z.number().int().min(0).optional(),
+});
+
+async function fetchVariationImageBuffer(url: string): Promise<Buffer> {
+  if (url.startsWith("/api/storage/objects/") || url.startsWith("/objects/")) {
+    const objectPath = url.startsWith("/api/storage/objects/")
+      ? `/objects/${url.slice("/api/storage/objects/".length)}`
+      : url;
+    const objectStorage = new ObjectStorageService();
+    const file = await objectStorage.getObjectEntityFile(objectPath);
+    const [buffer] = await file.download();
+    return buffer;
+  }
+  const absolute = /^https?:\/\//i.test(url)
+    ? url
+    : new URL(url, (process.env["FRONTEND_APP_URL"] || process.env["APP_URL"] || "https://app.appvendorai.com").replace(/\/$/, "") + "/").toString();
+  const res = await fetch(absolute);
+  if (!res.ok) throw new Error(`Falha ao baixar imagem de origem (${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+router.post("/tenants/:tenantId/content/:contentId/variations/:idx/apply-brand-frame", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const body = applyBrandFrameBodySchema.safeParse(req.body ?? {});
+  if (!body.success) {
+    res.status(422).json({ error: body.error.message });
+    return;
+  }
+  const imageIndex = body.data.imageIndex ?? 0;
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string | null; imageUrls?: string[] })[];
+  const variation = variations[idx];
+  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+
+  const currentUrls = variation.imageUrls ?? (variation.imageUrl ? [variation.imageUrl] : []);
+  const sourceUrl = currentUrls[imageIndex];
+  if (!sourceUrl) { res.status(422).json({ error: "Essa variação não tem imagem nesse índice." }); return; }
+
+  const [tenant] = await db
+    .select({ corPrimaria: tenantsTable.corPrimaria, logoUrl: tenantsTable.logoUrl })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  try {
+    const sourceBuffer = await fetchVariationImageBuffer(sourceUrl);
+    const framed = await applyBrandFrame(sourceBuffer, {
+      corPrimaria: tenant?.corPrimaria || "#A78BFA",
+      logoUrl: tenant?.logoUrl || null,
+    });
+
+    const objectStorage = new ObjectStorageService();
+    const objectPath = await objectStorage.savePrivateBuffer(framed, "image/jpeg", "brand-frame.jpg");
+    const mediaUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
+
+    const newUrls = [...currentUrls];
+    newUrls[imageIndex] = mediaUrl;
+    variations[idx] = { ...variation, imageUrl: newUrls[0], imageUrls: newUrls.length > 1 ? newUrls : undefined };
+
+    await db
+      .update(contentGenerationsTable)
+      .set({ result: { variations } })
+      .where(eq(contentGenerationsTable.id, contentId));
+
+    res.json({ success: true, mediaUrl, imageUrls: newUrls });
+  } catch (err) {
+    req.log.error({ err }, "apply-brand-frame: falha ao gerar moldura");
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    res.status(502).json({ error: `Não foi possível aplicar a moldura: ${msg}` });
+  }
 });
 
 router.delete("/tenants/:tenantId/content/:contentId/variations/:idx/image", async (req, res) => {

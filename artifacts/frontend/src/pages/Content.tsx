@@ -279,6 +279,8 @@ function FeedCard({
   onChangeHashtags,
   onRemoveImage,
   onUploadClick,
+  onApplyBrandFrame,
+  applyingFrameIdx,
 }: {
   v: FeedVariation;
   editing?: boolean;
@@ -288,6 +290,8 @@ function FeedCard({
   onChangeHashtags?: (val: string) => void;
   onRemoveImage?: (imgIdx: number) => void;
   onUploadClick?: () => void;
+  onApplyBrandFrame?: (imgIdx: number) => void;
+  applyingFrameIdx?: number | null;
 }) {
   const displayCaption = editing ? editedCaption : v.caption;
   const displayHashtagsStr = editing ? editedHashtags : (v.hashtags ?? []).join(" ");
@@ -314,7 +318,7 @@ function FeedCard({
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
-                <div className="absolute inset-0 flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center gap-1.5">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -324,6 +328,23 @@ function FeedCard({
                     <Download className="h-3 w-3 mr-1" />
                     Baixar
                   </Button>
+                  {onApplyBrandFrame && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="text-xs"
+                      disabled={applyingFrameIdx === idx}
+                      onClick={() => onApplyBrandFrame(idx)}
+                      title="Emoldura a imagem com a cor da sua marca — útil pra print/screenshot que destoa da grade"
+                    >
+                      {applyingFrameIdx === idx ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-3 w-3 mr-1" />
+                      )}
+                      Moldura
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1053,6 +1074,33 @@ function VariationCard({
     }
   }
 
+  const [applyingFrameIdx, setApplyingFrameIdx] = useState<number | null>(null);
+
+  async function handleApplyBrandFrame(imgIdx: number) {
+    if (!contentId || !tenantId) return;
+    setApplyingFrameIdx(imgIdx);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/variations/${index}/apply-brand-frame`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+        body: JSON.stringify({ imageIndex: imgIdx }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
+        throw new Error(err.error ?? "Falha ao aplicar moldura");
+      }
+      const data = (await res.json()) as { imageUrls: string[] };
+      setLocalImageUrls(data.imageUrls);
+      setLocalImageUrl(data.imageUrls[0]);
+      qc.invalidateQueries({ queryKey: ["content", tenantId] });
+      toast({ title: "Moldura aplicada!", description: "A imagem agora usa a cor da sua marca." });
+    } catch (err) {
+      toast({ title: "Erro ao aplicar moldura", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setApplyingFrameIdx(null);
+    }
+  }
+
   const { toast } = useToast();
 
   const [improvedVariation, setImprovedVariation] = useState<ContentVariation | null>(null);
@@ -1311,6 +1359,8 @@ function VariationCard({
             onChangeHashtags={setEditHashtags}
             onRemoveImage={contentId && tenantId ? handleRemoveImage : undefined}
             onUploadClick={contentId && tenantId ? () => uploadTriggerRef.current?.() : undefined}
+            onApplyBrandFrame={contentId && tenantId ? handleApplyBrandFrame : undefined}
+            applyingFrameIdx={applyingFrameIdx}
           />
         )}
         {type === "stories" && (
