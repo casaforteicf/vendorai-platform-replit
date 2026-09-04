@@ -65,6 +65,7 @@ import mediaPlanRouter from "./media_plan";
 import contentCalendarRouter from "./content_calendar";
 import adminProdutosInternosRouter from "./admin_produtos_internos";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
+import adminAppBuilderRouter from "./admin_app_builder";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
 import accessLicenseRouter, { accessLicensePublicRouter } from "./access_license";
@@ -353,6 +354,7 @@ router.use(mediaPlanRouter);
 router.use(contentCalendarRouter);
 router.use(adminProdutosInternosRouter);
 router.use(adminAgentDefaultsRouter);
+router.use(adminAppBuilderRouter);
 
 // Construção Civil Hub
 router.use(construcaoRouter);
