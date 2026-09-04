@@ -5,10 +5,16 @@
  * - Semiautomático: cria/atualiza rascunho para revisão humana.
  * - Automático: publica somente depois de a keyword ter sido aprovada e o
  *   artigo ter passado por geração + otimização.
+ *
+ * Segurança de destino: este serviço é exclusivamente o publicador nativo do
+ * VendorAI. Antes de criar rascunho ou marcar um artigo como publicado, ele
+ * confirma que o site principal resolvido do tenant é realmente hospedado pelo
+ * VendorAI. Assim o job automático não pode simular publicação em CMS externo.
  */
 import { db, siteBlogPostsTable, contentAutopilotArticlesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
+import { resolveWebsiteConnection } from "./websiteConnector.js";
 
 function slugify(title: string): string {
   return title
@@ -32,12 +38,27 @@ export interface PublishNativeOptions {
   publish?: boolean;
 }
 
+async function assertNativePublicationTarget(tenantId: string) {
+  const connection = await resolveWebsiteConnection(tenantId);
+  if (connection.canPublish) return connection;
+
+  if (connection.status === "not_configured") {
+    throw new Error("Site principal do cliente não configurado. O publicador nativo foi bloqueado.");
+  }
+
+  throw new Error(
+    `O site principal ${connection.hostname ?? "externo"} exige conexão real com o CMS. O publicador nativo do VendorAI não pode marcar esse conteúdo como publicado.`,
+  );
+}
+
 /** Cria ou atualiza o post nativo, respeitando o nível de automação autorizado. */
 export async function publishToNativeSite(
   tenantId: string,
   articleId: string,
   options: PublishNativeOptions = {},
 ): Promise<PublishNativeResult> {
+  await assertNativePublicationTarget(tenantId);
+
   const publish = options.publish === true;
   const now = new Date();
 

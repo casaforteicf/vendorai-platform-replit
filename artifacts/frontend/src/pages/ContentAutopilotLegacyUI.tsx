@@ -57,6 +57,20 @@ interface BlogPost {
   id: string; slug: string; titulo: string; imagemCapaUrl: string | null;
   publicado: boolean; publicadoEm: string | null;
 }
+interface WebsiteConnection {
+  siteUrl: string | null;
+  hostname: string | null;
+  source: "autopilot_config" | "tenant_profile" | "tenant_domain" | "vendorai_subdomain" | "none";
+  platform: "vendorai" | "wordpress" | "wix" | "webflow" | "shopify" | "generic" | null;
+  platformLabel: string;
+  status: "connected_native" | "detected_needs_auth" | "not_configured";
+  canPublish: boolean;
+  publicationMode: "native" | "cms_required" | "not_configured";
+  needsCmsConnection: boolean;
+  nativeSiteSlug: string | null;
+  replacedPlatformDefault: boolean;
+  message: string;
+}
 
 const STATUS_LABEL: Record<string, string> = {
   descoberta: "Descoberta", aprovada: "Aprovada", em_uso: "Em uso", descartada: "Descartada",
@@ -70,7 +84,8 @@ export default function ContentAutopilot() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [siteUrl, setSiteUrl] = useState("");
+  const [activeTab, setActiveTab] = useState("config");
+  const [siteUrl, setSiteUrl] = useState<string | null>(null);
   const [seedInput, setSeedInput] = useState("");
 
   const { data, isLoading } = useQuery<{ config: Config | null; dataForSeoConfigured: boolean }>({
@@ -80,6 +95,20 @@ export default function ContentAutopilot() {
   });
   const config = data?.config;
   const dataForSeoConfigured = data?.dataForSeoConfigured ?? false;
+
+  const { data: websiteConnectionData } = useQuery<{ connection: WebsiteConnection }>({
+    queryKey: ["content-autopilot-website-connection", tenantId],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/content-autopilot/website-connection`, { headers: authHeaders() })
+      .then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((body as { error?: string }).error ?? "Erro ao identificar site do cliente");
+        return body as { connection: WebsiteConnection };
+      }),
+    enabled: !!tenantId,
+  });
+  const websiteConnection = websiteConnectionData?.connection;
+  const effectiveSiteUrl = websiteConnection?.siteUrl ?? config?.siteUrl ?? null;
+  const publicationReady = websiteConnection?.canPublish ?? false;
 
   const { data: keywordsData } = useQuery<{ keywords: Keyword[] }>({
     queryKey: ["content-autopilot-keywords", tenantId],
@@ -105,16 +134,46 @@ export default function ContentAutopilot() {
   const saveConfigMutation = useMutation({
     mutationFn: (payload: Partial<Config>) =>
       fetch(`/api/tenants/${tenantId}/content-autopilot/config`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(payload) })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao salvar"); return r.json(); }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] }); toast({ title: "Configuração salva" }); },
+        .then(async (r) => {
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error((body as { error?: string }).error ?? "Erro ao salvar");
+          return body;
+        }),
+    onSuccess: () => {
+      setSiteUrl(null);
+      qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] });
+      qc.invalidateQueries({ queryKey: ["content-autopilot-website-connection", tenantId] });
+      toast({ title: "Configuração salva" });
+    },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const analyzeSiteMutation = useMutation({
-    mutationFn: () =>
-      fetch(`/api/tenants/${tenantId}/content-autopilot/analyze-site`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao analisar site"); return r.json(); }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] }); toast({ title: "Tom de marca extraído!" }); },
+    mutationFn: async () => {
+      const targetSiteUrl = normalizeSiteUrlForBrowser(effectiveSiteUrl);
+      if (!targetSiteUrl) throw new Error("Defina o site principal do cliente antes de analisar.");
+
+      const configuredSiteUrl = normalizeSiteUrlForBrowser(config?.siteUrl);
+      if (configuredSiteUrl !== targetSiteUrl) {
+        const saveResponse = await fetch(`/api/tenants/${tenantId}/content-autopilot/config`, {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify({ siteUrl: targetSiteUrl }),
+        });
+        const saveBody = await saveResponse.json().catch(() => ({}));
+        if (!saveResponse.ok) throw new Error((saveBody as { error?: string }).error ?? "Erro ao sincronizar o site principal");
+      }
+
+      const response = await fetch(`/api/tenants/${tenantId}/content-autopilot/analyze-site`, { method: "POST", headers: authHeaders() });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((body as { error?: string }).error ?? "Erro ao analisar site");
+      return body;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["content-autopilot-config", tenantId] });
+      qc.invalidateQueries({ queryKey: ["content-autopilot-website-connection", tenantId] });
+      toast({ title: "Site do cliente analisado e tom de marca extraído" });
+    },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
@@ -179,11 +238,15 @@ export default function ContentAutopilot() {
   const publishNativeMutation = useMutation({
     mutationFn: (articleId: string) =>
       fetch(`/api/tenants/${tenantId}/content-autopilot/articles/${articleId}/publish-native`, { method: "POST", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao publicar"); return r.json(); }),
+        .then(async (r) => {
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error((body as { error?: string }).error ?? "Erro ao publicar");
+          return body;
+        }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["content-autopilot-articles", tenantId] });
       qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
-      toast({ title: "Rascunho criado — vá na aba Posts do Blog pra colocar no ar" });
+      toast({ title: "Rascunho criado no blog do site conectado" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -191,7 +254,11 @@ export default function ContentAutopilot() {
   const togglePublishMutation = useMutation({
     mutationFn: ({ id, publish }: { id: string; publish: boolean }) =>
       fetch(`/api/tenants/${tenantId}/content-autopilot/site-blog-posts/${id}/${publish ? "publish" : "unpublish"}`, { method: "PATCH", headers: authHeaders() })
-        .then((r) => { if (!r.ok) throw new Error("Erro ao atualizar publicação"); return r.json(); }),
+        .then(async (r) => {
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error((body as { error?: string }).error ?? "Erro ao atualizar publicação");
+          return body;
+        }),
     onSuccess: (_res, vars) => {
       qc.invalidateQueries({ queryKey: ["content-autopilot-blog-posts", tenantId] });
       toast({ title: vars.publish ? "Post publicado — já está no ar!" : "Post despublicado" });
@@ -209,10 +276,10 @@ export default function ContentAutopilot() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Sparkles className="h-5 w-5" /> Content Autopilot
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Pesquisa, gera e publica conteúdo SEO automaticamente.</p>
+        <p className="text-sm text-muted-foreground mt-1">Pesquisa, gera e publica conteúdo SEO automaticamente no site do cliente.</p>
       </div>
 
-      <Tabs defaultValue="config">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="config">Configuração</TabsTrigger>
           <TabsTrigger value="keywords">Keywords ({keywords.length})</TabsTrigger>
@@ -256,20 +323,59 @@ export default function ContentAutopilot() {
                 </Button>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>URL do site</Label>
+              <div className="space-y-2 rounded-lg border p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <Label>Site principal do cliente</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">O VendorAI usa este site para aprender a marca e como destino das publicações.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {websiteConnection?.hostname ? <Badge variant="outline">{websiteConnection.hostname}</Badge> : null}
+                    {websiteConnection?.platformLabel ? <Badge variant="outline">{websiteConnection.platformLabel}</Badge> : null}
+                    {websiteConnection?.status === "connected_native" ? <Badge>Publicação direta</Badge> : null}
+                    {websiteConnection?.status === "detected_needs_auth" ? <Badge variant="secondary">CMS precisa ser conectado</Badge> : null}
+                  </div>
+                </div>
                 <div className="flex gap-2">
-                  <Input placeholder="https://seusite.com" value={siteUrl || config?.siteUrl || ""} onChange={(e) => setSiteUrl(e.target.value)} />
-                  <Button variant="outline" onClick={() => saveConfigMutation.mutate({ siteUrl: normalizeSiteUrlForBrowser(siteUrl) })} disabled={!siteUrl || saveConfigMutation.isPending}>
+                  <Input
+                    placeholder="https://site-do-cliente.com"
+                    value={siteUrl ?? effectiveSiteUrl ?? ""}
+                    onChange={(e) => setSiteUrl(e.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const normalized = normalizeSiteUrlForBrowser(siteUrl);
+                      if (!normalized) {
+                        toast({ title: "URL inválida", description: "Informe o domínio público do cliente.", variant: "destructive" });
+                        return;
+                      }
+                      saveConfigMutation.mutate({ siteUrl: normalized });
+                    }}
+                    disabled={siteUrl === null || !siteUrl.trim() || saveConfigMutation.isPending}
+                  >
                     Salvar
                   </Button>
                 </div>
+                {websiteConnection?.replacedPlatformDefault ? (
+                  <p className="text-xs text-amber-700">
+                    O endereço padrão da VendorAI foi ignorado porque este tenant já possui um site próprio cadastrado. O site do cliente passa a ser a referência.
+                  </p>
+                ) : null}
+                {websiteConnection?.needsCmsConnection ? (
+                  <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                    Site externo identificado. O VendorAI pode analisar este domínio agora, mas não vai marcar nenhum artigo como publicado nele até o CMS ser autenticado. A camada de conexão atende WordPress, Wix/Wix Studio, Webflow, Shopify ou API do site.
+                  </div>
+                ) : null}
+                {!websiteConnection?.siteUrl ? (
+                  <p className="text-xs text-muted-foreground">Se o cliente já possui site, informe-o aqui. O Gerador de Sites só deve ser usado quando o cliente quiser criar um novo.</p>
+                ) : null}
               </div>
 
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => analyzeSiteMutation.mutate()} disabled={!config?.siteUrl || analyzeSiteMutation.isPending}>
+                <Button variant="outline" size="sm" onClick={() => analyzeSiteMutation.mutate()} disabled={!effectiveSiteUrl || analyzeSiteMutation.isPending}>
                   {analyzeSiteMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                  Analisar tom de marca
+                  Analisar / reanalisar site do cliente
                 </Button>
                 {config?.brandTone ? <Badge variant="outline" className="text-xs">Tom já extraído</Badge> : null}
               </div>
@@ -371,8 +477,26 @@ export default function ContentAutopilot() {
                       </Button>
                     )}
                     {a.status === "pronto_revisao" && (
-                      <Button size="sm" onClick={() => publishNativeMutation.mutate(a.id)} disabled={publishNativeMutation.isPending}>
-                        <Globe className="h-3.5 w-3.5 mr-1.5" /> Publicar rascunho
+                      <Button
+                        size="sm"
+                        variant={publicationReady ? "default" : "outline"}
+                        onClick={() => {
+                          if (publicationReady) {
+                            publishNativeMutation.mutate(a.id);
+                            return;
+                          }
+                          setActiveTab("config");
+                          toast({
+                            title: websiteConnection?.siteUrl ? "Conecte o CMS para publicar" : "Defina o site principal para publicar",
+                            description: websiteConnection?.siteUrl
+                              ? `O artigo não será marcado como publicado até ${displaySiteHostname(effectiveSiteUrl)} estar autenticado.`
+                              : undefined,
+                          });
+                        }}
+                        disabled={publishNativeMutation.isPending}
+                      >
+                        <Globe className="h-3.5 w-3.5 mr-1.5" />
+                        {publicationReady ? "Criar rascunho no site" : "Preparar publicação"}
                       </Button>
                     )}
                   </div>
@@ -384,14 +508,20 @@ export default function ContentAutopilot() {
 
         {/* ── Posts do Blog ────────────────────────────────────────── */}
         <TabsContent value="posts" className="space-y-2 mt-4">
-          <p className="text-xs text-muted-foreground">
-            "Publicar" aqui é a única forma de um post ficar visível de verdade em {displaySiteHostname(config?.siteUrl)}/api/sites/.../blog — o sistema nunca publica sozinho.
-          </p>
+          <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+            {publicationReady ? (
+              <>Destino ativo: <strong>{displaySiteHostname(effectiveSiteUrl)}</strong>. Os botões abaixo controlam o blog hospedado pelo VendorAI para este tenant.</>
+            ) : websiteConnection?.siteUrl ? (
+              <>Destino principal: <strong>{displaySiteHostname(effectiveSiteUrl)}</strong>. Como é um site externo, nenhum item abaixo será tratado como publicado no site do cliente até a conexão do CMS ser autenticada.</>
+            ) : (
+              <>Nenhum site principal definido. Configure o site do cliente antes de publicar artigos.</>
+            )}
+          </div>
           {blogPosts.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum post ainda. Gere e publique um artigo na aba Artigos primeiro.</div>
+            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum post ainda. Gere um artigo na aba Artigos primeiro.</div>
           ) : (
             blogPosts.map((p) => {
-              const publicPostUrl = getContentAutopilotBlogPostUrl(config?.siteUrl, p.slug);
+              const publicPostUrl = publicationReady ? getContentAutopilotBlogPostUrl(effectiveSiteUrl, p.slug) : null;
               return (
               <Card key={p.id}>
                 <CardContent className="p-4 flex gap-4 flex-wrap items-center">
@@ -399,13 +529,21 @@ export default function ContentAutopilot() {
                   <div className="flex-1 min-w-[200px]">
                     <p className="text-sm font-medium">{p.titulo}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <Badge variant={p.publicado ? "default" : "outline"} className="text-xs">
-                        {p.publicado ? "No ar" : "Rascunho (não visível)"}
-                      </Badge>
+                      {publicationReady ? (
+                        <Badge variant={p.publicado ? "default" : "outline"} className="text-xs">
+                          {p.publicado ? "No ar" : "Rascunho (não visível)"}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs">
+                          {p.publicado ? "Publicação nativa antiga — não confirma o site atual" : "Rascunho local"}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-1.5 shrink-0">
-                    {p.publicado ? (
+                    {!publicationReady ? (
+                      <Badge variant="secondary">Conectar CMS para publicar</Badge>
+                    ) : p.publicado ? (
                       <>
                         {publicPostUrl ? (
                           <Button size="sm" variant="outline" asChild>
