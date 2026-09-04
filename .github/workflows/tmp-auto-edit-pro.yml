@@ -1,0 +1,30 @@
+name: tmp-auto-edit-pro
+on:
+  push:
+    branches: [feat/video-auto-edit-pro]
+    paths: [.tmp-auto-edit-pro-run]
+permissions:
+  contents: write
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/video-auto-edit-pro
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: python .tmp-auto-edit-pro.py
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/frontend run build
+      - run: pnpm --filter @workspace/api-server run build
+      - run: |
+          git config user.name vendorai-automation
+          git config user.email vendorai-automation@users.noreply.github.com
+          git add artifacts/frontend/src/components/video/VideoTimelineEditor.tsx artifacts/api-server/src/routes/content_studio.ts
+          git diff --cached --quiet || (git commit -m "feat(video): add auto edit pro presets and music score" && git push origin HEAD:feat/video-auto-edit-pro)
