@@ -39,10 +39,10 @@ Ao registrar, inclua EXATAMENTE ao final da sua resposta (nunca antes, nunca den
 - Seja direto, empático e conciso
 - Nunca peça informações que já foram fornecidas
 - Máximo 1 pergunta de cada vez para coletar informações
-- Se for uma dúvida simples, responda diretamente; o sistema registrará o atendimento como resolvido pelo agente\n- Use o marcador somente quando houver problema, sugestão ou necessidade de acompanhamento humano`;
+- Se for uma dúvida simples, responda diretamente; o sistema registrará o atendimento como resolvido pelo agente
+- Use o marcador somente quando houver problema, sugestão ou necessidade de acompanhamento humano`;
 
-const reportMarkerRegex =
-  /<!--VENDORAI_REPORT:([\s\S]*?)-->/;
+const reportMarkerRegex = /<!--VENDORAI_REPORT:([\s\S]*?)-->/;
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -51,10 +51,86 @@ const messageSchema = z.object({
 
 const chatBodySchema = z.object({
   messages: z.array(messageSchema).min(1).max(100),
-  // Gerado uma vez no front quando o widget abre, mesmo id em toda a
-  // conversa — usado pra agrupar as mensagens num único relato técnico
-  // em vez de criar um registro por turno.
   conversationId: z.string().uuid().optional(),
+});
+
+const devGithubTaskSchema = z.object({
+  requestId: z.string().uuid(),
+  title: z.string().min(3).max(120),
+  request: z.string().min(3).max(8000),
+  diagnosis: z.string().min(1).max(16000),
+  route: z.string().min(1).max(500),
+});
+
+router.post("/support/dev/github-task", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin") {
+    return res.status(403).json({ error: "Somente Super Admin pode criar tarefas técnicas." });
+  }
+
+  const parsed = devGithubTaskSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
+
+  const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_TOKEN"];
+  const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
+  if (!token) {
+    return res.status(503).json({
+      error: "Integração GitHub do Dev IA ainda não configurada no backend.",
+      code: "GITHUB_DEV_TOKEN_MISSING",
+    });
+  }
+
+  const { requestId, title, request, diagnosis, route } = parsed.data;
+  const body = [
+    "## Pedido do Super Admin",
+    request,
+    "",
+    "## Contexto",
+    `- Rota: \`${route}\``,
+    `- Dev IA requestId: \`${requestId}\``,
+    "- Origem: Dev IA residente do VendorAI",
+    "",
+    "## Diagnóstico do Dev IA",
+    diagnosis,
+    "",
+    "## Regras de execução",
+    "- preservar o fluxo existente e evitar módulo paralelo;",
+    "- fazer a menor alteração possível;",
+    "- criar branch/PR, nunca alterar `main` diretamente;",
+    "- executar testes aplicáveis;",
+    "- não marcar como concluído sem evidência de teste/deploy;",
+    "- mudanças destrutivas, autenticação, financeiro, banco crítico, permissões globais ou infraestrutura exigem aprovação explícita do Super Admin.",
+  ].join("\n");
+
+  try {
+    const gh = await fetch(`https://api.github.com/repos/${repository}/issues`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "VendorAI-Dev-Agent/1.0",
+      },
+      body: JSON.stringify({ title: `[Dev IA] ${title}`, body }),
+    });
+
+    const data = await gh.json() as { number?: number; html_url?: string; message?: string };
+    if (!gh.ok || !data.number || !data.html_url) {
+      req.log?.warn({ status: gh.status, data }, "dev-ia: GitHub issue creation failed");
+      return res.status(502).json({ error: data.message ?? "Falha ao criar tarefa no GitHub" });
+    }
+
+    return res.status(201).json({
+      success: true,
+      issueNumber: data.number,
+      issueUrl: data.html_url,
+      repository,
+      status: "github_task_created",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "dev-ia: GitHub task request failed");
+    return res.status(502).json({ error: "Não foi possível conectar ao GitHub." });
+  }
 });
 
 router.post("/support/chat", async (req, res) => {
@@ -85,10 +161,7 @@ router.post("/support/chat", async (req, res) => {
       });
 
       for await (const event of stream) {
-        if (
-          event.type === "content_block_delta" &&
-          event.delta.type === "text_delta"
-        ) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
           fullResponse += event.delta.text;
           const visibleChunk = event.delta.text.replace(reportMarkerRegex, "");
           if (visibleChunk) {
@@ -98,10 +171,6 @@ router.post("/support/chat", async (req, res) => {
         }
       }
     } catch (anthropicErr) {
-      // Se a Anthropic falhou (ex: billing) ANTES de mandar qualquer chunk,
-      // cai pro OpenAI em vez de quebrar o chat de suporte inteiro. Se já
-      // tinha mandado parte da resposta, não dá pra reiniciar sem duplicar
-      // texto na tela — nesse caso sobe o erro mesmo.
       if (fullResponse !== "") throw anthropicErr;
       req.log?.warn({ err: anthropicErr }, "support: anthropic falhou, caindo pro OpenAI");
 
@@ -135,10 +204,6 @@ router.post("/support/chat", async (req, res) => {
     let atendimentoStatus: "aberto" | "em_analise" | "resolvido" = "resolvido";
     let resolvidoPor: "agente" | "humano" | null = "agente";
 
-    // Toda conversa de suporte vira um atendimento na tela administrativa.
-    // Uma dúvida respondida pela IA entra como resolvida pelo agente; quando
-    // existe marcador de problema/sugestão, o mesmo protocolo é reaberto para
-    // acompanhamento humano.
     try {
       if (tenantId) {
         const primeiraMensagem = parsed.data.messages.find((m) => m.role === "user")?.content ?? "Conversa com o Suporte";
@@ -171,8 +236,6 @@ router.post("/support/chat", async (req, res) => {
             )).limit(1)
           : [];
 
-        // Um atendimento que já aguarda a equipe nunca é fechado por uma
-        // resposta posterior do agente sem decisão humana explícita.
         if (existing && existing.status !== "resolvido" && !match) {
           atendimentoStatus = existing.status;
           resolvidoPor = existing.resolvidoPor as "agente" | "humano" | null;
@@ -214,9 +277,6 @@ router.post("/support/chat", async (req, res) => {
       req.log?.warn({ err }, "support: falha ao registrar atendimento");
     }
 
-    // Registro em relatos_tecnicos — TODA interação com o Suporte, não só
-    // quando vira chamado formal em bug_reports. Um relato por conversa
-    // (upsert por conversationId), não um por mensagem.
     try {
       if (tenantId && parsed.data.conversationId) {
         const conversationId = parsed.data.conversationId;
@@ -251,9 +311,7 @@ router.post("/support/chat", async (req, res) => {
       req.log?.warn({ err }, "support: falha ao registrar relato técnico da conversa (não bloqueia)");
     }
 
-    res.write(
-      `data: ${JSON.stringify({ done: true, bugReportId, protocolo, status: atendimentoStatus, resolvidoPor })}\n\n`,
-    );
+    res.write(`data: ${JSON.stringify({ done: true, bugReportId, protocolo, status: atendimentoStatus, resolvidoPor })}\n\n`);
     res.end();
   } catch (err) {
     req.log?.error({ err }, "support: claude stream error");
