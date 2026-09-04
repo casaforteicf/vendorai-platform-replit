@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useI18n } from "@/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +80,7 @@ export default function OnboardingIntegracoes() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { t } = useI18n();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -98,12 +100,12 @@ export default function OnboardingIntegracoes() {
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("googleConnected")) {
-      toast({ title: "Google Calendar conectado!" });
+      toast({ title: t("onboarding.integrations.googleCalendarConnected") });
       window.history.replaceState({}, "", window.location.pathname);
     }
     if (urlParams.get("googleError")) {
       toast({
-        title: "Erro ao conectar Google Calendar.",
+        title: t("onboarding.integrations.googleCalendarConnectError"),
         variant: "destructive",
       });
       window.history.replaceState({}, "", window.location.pathname);
@@ -114,38 +116,37 @@ export default function OnboardingIntegracoes() {
       toast({
         title:
           googleAdsConnected === "pending"
-            ? "Google Ads conectado — escolha a conta"
-            : "Google Ads conectado!",
+            ? t("onboarding.integrations.googleAdsConnectedPending")
+            : t("onboarding.integrations.googleAdsConnected"),
       });
       window.history.replaceState({}, "", window.location.pathname);
     } else if (googleAdsError) {
       toast({
-        title: "Erro ao conectar Google Ads.",
+        title: t("onboarding.integrations.googleAdsConnectError"),
         description: googleAdsError,
         variant: "destructive",
       });
       window.history.replaceState({}, "", window.location.pathname);
     }
     if (urlParams.get("whatsappConnected") === "1") {
-      toast({ title: "WhatsApp conectado com sucesso!" });
+      toast({ title: t("onboarding.integrations.whatsappConnected") });
       window.history.replaceState({}, "", window.location.pathname);
     }
     const whatsappError = urlParams.get("whatsappError");
     if (whatsappError) {
       const messages: Record<string, string> = {
-        access_denied: "Permissão negada pela Meta.",
-        invalid_state: "A sessão de conexão expirou. Tente novamente.",
-        no_waba: "Nenhuma conta WhatsApp Business foi encontrada.",
-        no_phone: "Nenhum número foi encontrado na conta WhatsApp Business.",
-        token_exchange: "A Meta não autorizou a troca do código de acesso.",
-        token_extension: "Não foi possível validar o token do WhatsApp.",
-        waba_lookup: "Não foi possível consultar sua conta WhatsApp Business.",
-        phone_lookup:
-          "Não foi possível consultar os números da conta WhatsApp.",
-        exchange_failed: "A conexão falhou na etapa final. Tente novamente.",
+        access_denied: t("onboarding.integrations.whatsappError.permissionDenied"),
+        invalid_state: t("onboarding.integrations.whatsappError.sessionExpired"),
+        no_waba: t("onboarding.integrations.whatsappError.noWaba"),
+        no_phone: t("onboarding.integrations.whatsappError.noPhone"),
+        token_exchange: t("onboarding.integrations.whatsappError.tokenExchange"),
+        token_extension: t("onboarding.integrations.whatsappError.tokenExtension"),
+        waba_lookup: t("onboarding.integrations.whatsappError.wabaLookup"),
+        phone_lookup: t("onboarding.integrations.whatsappError.phoneLookup"),
+        exchange_failed: t("onboarding.integrations.whatsappError.exchangeFailed"),
       };
       toast({
-        title: messages[whatsappError] ?? "Erro ao conectar WhatsApp.",
+        title: messages[whatsappError] ?? t("onboarding.integrations.whatsappConnectError"),
         variant: "destructive",
       });
       window.history.replaceState({}, "", window.location.pathname);
@@ -198,7 +199,7 @@ export default function OnboardingIntegracoes() {
         setLoading(false);
       }
     })();
-  }, [user?.tenantId]);
+  }, [user?.tenantId, t]);
 
   useEffect(() => {
     if (!user?.tenantId || !whatsappQrCode) return;
@@ -216,7 +217,7 @@ export default function OnboardingIntegracoes() {
               : current,
           );
           setWhatsappQrCode(null);
-          toast({ title: "WhatsApp conectado via QR Code!" });
+          toast({ title: t("onboarding.integrations.whatsappQrConnected") });
         }
       } catch {
         // mantém o QR aberto; uma falha transitória não interrompe o onboarding
@@ -229,7 +230,7 @@ export default function OnboardingIntegracoes() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [user?.tenantId, whatsappQrCode]);
+  }, [user?.tenantId, whatsappQrCode, t]);
 
   async function complete() {
     setSubmitting(true);
@@ -239,7 +240,7 @@ export default function OnboardingIntegracoes() {
       });
       setLocation("/guia-implantacao");
     } catch {
-      toast({ title: "Erro ao finalizar onboarding.", variant: "destructive" });
+      toast({ title: t("onboarding.integrations.finishError"), variant: "destructive" });
       setSubmitting(false);
     }
   }
@@ -248,16 +249,16 @@ export default function OnboardingIntegracoes() {
     try {
       const data = (await apiFetch("/api/auth/whatsapp")) as { url?: string };
       if (!data.url) {
-        throw new Error("O servidor não retornou a URL de conexão da Meta.");
+        throw new Error(t("onboarding.integrations.metaUrlMissing"));
       }
       window.location.assign(data.url);
     } catch (error) {
       toast({
-        title: "Não foi possível conectar o WhatsApp",
+        title: t("onboarding.integrations.whatsappConnectFailed"),
         description:
-          error instanceof Error
+          error instanceof Error && error.message === t("onboarding.integrations.metaUrlMissing")
             ? error.message
-            : "Verifique a configuração da Meta e tente novamente.",
+            : t("onboarding.integrations.metaConfigCheck"),
         variant: "destructive",
       });
     }
@@ -289,20 +290,20 @@ export default function OnboardingIntegracoes() {
         );
         setWhatsappQrCode(null);
         if (evo.connected)
-          toast({ title: "WhatsApp já está conectado via QR Code." });
+          toast({ title: t("onboarding.integrations.whatsappAlreadyQr") });
         return;
       }
 
       if (!data.qrCodeBase64)
-        throw new Error("A Evolution API não retornou um QR Code.");
+        throw new Error(t("onboarding.integrations.qrMissing"));
       setWhatsappQrCode(data.qrCodeBase64);
     } catch (error) {
       toast({
-        title: "Não foi possível gerar o QR Code",
+        title: t("onboarding.integrations.qrGenerateFailed"),
         description:
-          error instanceof Error
+          error instanceof Error && error.message === t("onboarding.integrations.qrMissing")
             ? error.message
-            : "Verifique a integração Evolution API.",
+            : t("onboarding.integrations.evolutionConfigCheck"),
         variant: "destructive",
       });
     } finally {
@@ -318,7 +319,7 @@ export default function OnboardingIntegracoes() {
       window.location.href = data.url;
     } catch {
       toast({
-        title: "Erro ao iniciar conexão Google Calendar.",
+        title: t("onboarding.integrations.googleCalendarStartError"),
         variant: "destructive",
       });
     }
@@ -330,7 +331,7 @@ export default function OnboardingIntegracoes() {
       window.location.href = data.url;
     } catch {
       toast({
-        title: "Erro ao iniciar conexão Instagram.",
+        title: t("onboarding.integrations.instagramStartError"),
         variant: "destructive",
       });
     }
@@ -344,7 +345,7 @@ export default function OnboardingIntegracoes() {
       window.location.href = data.url;
     } catch {
       toast({
-        title: "Erro ao iniciar conexão Google Ads.",
+        title: t("onboarding.integrations.googleAdsStartError"),
         variant: "destructive",
       });
     }
@@ -389,10 +390,10 @@ export default function OnboardingIntegracoes() {
             }
           : current,
       );
-      toast({ title: "Conta Google Ads selecionada!" });
+      toast({ title: t("onboarding.integrations.googleAdsAccountSelected") });
     } catch {
       toast({
-        title: "Erro ao selecionar conta Google Ads.",
+        title: t("onboarding.integrations.googleAdsAccountSelectError"),
         variant: "destructive",
       });
     } finally {
@@ -413,17 +414,20 @@ export default function OnboardingIntegracoes() {
       )) as { valid: boolean; error?: string; name?: string };
       if (data.valid) {
         toast({
-          title: `Asaas conectado${data.name ? ` — ${data.name}` : ""}!`,
+          title: t("onboarding.integrations.asaasConnected", {
+            name: data.name ? ` — ${data.name}` : "",
+          }),
         });
         setStatus((s) => (s ? { ...s, asaas: { connected: true } } : s));
       } else {
         toast({
-          title: data.error ?? "Chave inválida.",
+          title: t("onboarding.integrations.invalidKey"),
+          description: data.error,
           variant: "destructive",
         });
       }
     } catch {
-      toast({ title: "Erro ao validar chave Asaas.", variant: "destructive" });
+      toast({ title: t("onboarding.integrations.asaasValidateError"), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -442,18 +446,21 @@ export default function OnboardingIntegracoes() {
       )) as { valid: boolean; error?: string; name?: string };
       if (data.valid) {
         toast({
-          title: `ZapSign conectado${data.name ? ` — ${data.name}` : ""}!`,
+          title: t("onboarding.integrations.zapSignConnected", {
+            name: data.name ? ` — ${data.name}` : "",
+          }),
         });
         setStatus((s) => (s ? { ...s, zapsign: { connected: true } } : s));
       } else {
         toast({
-          title: data.error ?? "Chave inválida.",
+          title: t("onboarding.integrations.invalidKey"),
+          description: data.error,
           variant: "destructive",
         });
       }
     } catch {
       toast({
-        title: "Erro ao validar chave ZapSign.",
+        title: t("onboarding.integrations.zapSignValidateError"),
         variant: "destructive",
       });
     } finally {
@@ -497,18 +504,18 @@ export default function OnboardingIntegracoes() {
         {
           key: "calendar",
           done: status.googleCalendar.connected,
-          title: "Sincronizar Google Calendar",
-          text: "Autorize a agenda usada nos compromissos e reuniões.",
-          label: "Conectar Calendar",
+          title: t("onboarding.integrations.action.calendar.title"),
+          text: t("onboarding.integrations.action.calendar.text"),
+          label: t("onboarding.integrations.action.calendar.label"),
           action: connectGoogleCalendar,
           link: "https://calendar.google.com/",
         },
         {
           key: "instagram",
           done: status.instagram.connected,
-          title: "Conectar Instagram e Facebook",
-          text: "Autorize a conta Business para mensagens e publicações.",
-          label: "Conectar Instagram",
+          title: t("onboarding.integrations.action.instagram.title"),
+          text: t("onboarding.integrations.action.instagram.text"),
+          label: t("onboarding.integrations.action.instagram.label"),
           action: connectInstagram,
           link: "https://business.facebook.com/settings/",
         },
@@ -517,96 +524,100 @@ export default function OnboardingIntegracoes() {
           done:
             status.googleAds.connected &&
             !status.googleAds.pendingAccountSelection,
-          title: "Conectar a conta Google Ads",
-          text: "Autorize a conta que receberá as campanhas criadas no VendorAI.",
-          label: "Conectar Google Ads",
+          title: t("onboarding.integrations.action.googleAds.title"),
+          text: t("onboarding.integrations.action.googleAds.text"),
+          label: t("onboarding.integrations.action.googleAds.label"),
           action: connectGoogleAds,
           link: "https://ads.google.com/",
         },
         {
           key: "site",
           done: status.site.published,
-          title: "Criar ou publicar o site",
-          text: "Gere o site com IA, revise e clique em Publicar. Para HTML baixado, use a publicação do seu provedor.",
-          label: "Ir para meu site",
+          title: t("onboarding.integrations.action.site.title"),
+          text: t("onboarding.integrations.action.site.text"),
+          label: t("onboarding.integrations.action.site.label"),
           action: () => go("/configuracoes?tab=site&installation=1"),
           link: "https://developers.cloudflare.com/pages/get-started/direct-upload/",
         },
         {
           key: "domain",
           done: status.domain.active,
-          title: "Usar domínio próprio",
+          title: t("onboarding.integrations.action.domain.title"),
           text: status.domain.configured
-            ? `O domínio ${status.domain.name ?? "informado"} ainda precisa concluir DNS/SSL.`
-            : "Adicione o domínio e copie o CNAME mostrado para o painel onde ele foi comprado.",
+            ? t("onboarding.integrations.action.domain.configuredText", {
+                domain:
+                  status.domain.name ??
+                  t("onboarding.integrations.action.domain.fallbackName"),
+              })
+            : t("onboarding.integrations.action.domain.notConfiguredText"),
           label: status.domain.configured
-            ? "Concluir domínio"
-            : "Adicionar domínio",
+            ? t("onboarding.integrations.action.domain.configuredLabel")
+            : t("onboarding.integrations.action.domain.notConfiguredLabel"),
           action: () => go("/configuracoes?tab=site&installation=1"),
           link: "https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/",
         },
         {
           key: "search",
           done: status.searchConsole.verified,
-          title: "Ativar Google Search Console",
+          title: t("onboarding.integrations.action.search.title"),
           text: status.searchConsole.connected
-            ? "A conta está conectada; falta verificar a propriedade."
-            : "Conecte a conta Google; o VendorAI verifica o site e envia o sitemap.",
-          label: "Configurar Search Console",
+            ? t("onboarding.integrations.action.search.connectedText")
+            : t("onboarding.integrations.action.search.notConnectedText"),
+          label: t("onboarding.integrations.action.search.label"),
           action: () => go("/configuracoes?tab=site&installation=1"),
           link: "https://search.google.com/search-console",
         },
         {
           key: "googleTag",
           done: status.tracking.googleAds,
-          title: "ID de conversão do Google Ads",
-          text: "Em Metas → Conversões → Configuração da tag, copie o ID AW-XXXXXXXXX.",
-          label: "Colar ID",
+          title: t("onboarding.integrations.action.googleTag.title"),
+          text: t("onboarding.integrations.action.googleTag.text"),
+          label: t("onboarding.integrations.action.googleTag.label"),
           action: () => go("/configuracoes?tab=site&installation=1"),
           link: "https://ads.google.com/aw/conversions",
         },
         {
           key: "metaPixel",
           done: status.tracking.metaPixel,
-          title: "ID do Meta Pixel",
-          text: "No Gerenciador de Eventos, abra a fonte de dados e copie o ID do Pixel.",
-          label: "Colar ID",
+          title: t("onboarding.integrations.action.metaPixel.title"),
+          text: t("onboarding.integrations.action.metaPixel.text"),
+          label: t("onboarding.integrations.action.metaPixel.label"),
           action: () => go("/configuracoes?tab=site&installation=1"),
           link: "https://business.facebook.com/events_manager2/list/pixel/",
         },
         {
           key: "linkedinTag",
           done: status.tracking.linkedinInsightTag,
-          title: "ID do LinkedIn Insight Tag",
-          text: "No Campaign Manager, abra Insight Tag e copie o Partner ID.",
-          label: "Colar Partner ID",
+          title: t("onboarding.integrations.action.linkedinTag.title"),
+          text: t("onboarding.integrations.action.linkedinTag.text"),
+          label: t("onboarding.integrations.action.linkedinTag.label"),
           action: () => go("/configuracoes?tab=site&installation=1"),
           link: "https://www.linkedin.com/campaignmanager/",
         },
         {
           key: "tiktokPixel",
           done: status.tracking.tiktokPixel,
-          title: "ID do TikTok Pixel",
-          text: "Em Ferramentas → Eventos → Fontes de dados → Web, copie o Pixel ID.",
-          label: "Colar Pixel ID",
+          title: t("onboarding.integrations.action.tiktokPixel.title"),
+          text: t("onboarding.integrations.action.tiktokPixel.text"),
+          label: t("onboarding.integrations.action.tiktokPixel.label"),
           action: () => go("/configuracoes?tab=site&installation=1"),
           link: "https://ads.tiktok.com/i18n/events_manager/",
         },
         {
           key: "linkedin",
           done: status.social.linkedin,
-          title: "Conectar LinkedIn",
-          text: "Autorize a conta usada para publicar conteúdo.",
-          label: "Conectar LinkedIn",
+          title: t("onboarding.integrations.action.linkedin.title"),
+          text: t("onboarding.integrations.action.linkedin.text"),
+          label: t("onboarding.integrations.action.linkedin.label"),
           action: () => go("/configuracoes?tab=integracoes&installation=1"),
           link: "https://www.linkedin.com/help/linkedin/",
         },
         {
           key: "tiktok",
           done: status.social.tiktok,
-          title: "Conectar TikTok",
-          text: "Autorize a conta usada pela operação de conteúdo.",
-          label: "Conectar TikTok",
+          title: t("onboarding.integrations.action.tiktok.title"),
+          text: t("onboarding.integrations.action.tiktok.text"),
+          label: t("onboarding.integrations.action.tiktok.label"),
           action: () => go("/configuracoes?tab=integracoes&installation=1"),
           link: "https://www.tiktok.com/business/",
         },
@@ -618,7 +629,7 @@ export default function OnboardingIntegracoes() {
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <img src={logoLight} alt="VendorAI" className="h-7 dark:invert" />
           <Button variant="ghost" size="sm" onClick={complete}>
-            Continuar depois
+            {t("onboarding.integrations.continueLater")}
           </Button>
         </div>
       </header>
@@ -626,19 +637,18 @@ export default function OnboardingIntegracoes() {
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm font-semibold text-primary">
-              Instalação autônoma
+              {t("onboarding.integrations.eyebrow")}
             </p>
             <h1 className="text-3xl font-bold">
-              Vamos colocar sua operação no ar
+              {t("onboarding.integrations.title")}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Cada cartão explica uma ação e leva direto ao local correto.
-              Quando funcionar, ele desaparece da lista.
+              {t("onboarding.integrations.subtitle")}
             </p>
           </div>
           <div className="rounded-xl border bg-background px-5 py-3">
             <strong className="text-2xl">{done}/15</strong>
-            <p className="text-xs text-muted-foreground">ações funcionando</p>
+            <p className="text-xs text-muted-foreground">{t("onboarding.integrations.progress")}</p>
           </div>
         </div>
         {!status?.whatsapp.connected && (
@@ -646,13 +656,12 @@ export default function OnboardingIntegracoes() {
             <div className="flex gap-4">
               <MessageCircle className="h-7 w-7 shrink-0 text-green-600" />
               <div className="flex-1">
-                <h2 className="font-semibold">Conectar o primeiro WhatsApp</h2>
+                <h2 className="font-semibold">{t("onboarding.integrations.whatsapp.title")}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Use Meta oficial ou QR Code. Depois adicione vários números e
-                  atribua cada um a um usuário.
+                  {t("onboarding.integrations.whatsapp.text")}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button onClick={connectWhatsApp}>Meta oficial</Button>
+                  <Button onClick={connectWhatsApp}>{t("onboarding.integrations.whatsapp.metaOfficial")}</Button>
                   <Button
                     variant="outline"
                     onClick={connectWhatsAppQr}
@@ -661,23 +670,23 @@ export default function OnboardingIntegracoes() {
                     {whatsappQrConnecting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    Conectar por QR
+                    {t("onboarding.integrations.whatsapp.connectQr")}
                   </Button>
                   <Button
                     variant="ghost"
                     onClick={() => go("/configuracoes?tab=integracoes&installation=1")}
                   >
-                    Gerenciar números
+                    {t("onboarding.integrations.whatsapp.manageNumbers")}
                   </Button>
                 </div>
                 {qrSrc && (
                   <div className="mt-4 rounded-xl border p-4 text-center">
                     <p className="mb-2 text-sm">
-                      WhatsApp → Aparelhos conectados → Conectar aparelho
+                      {t("onboarding.integrations.whatsapp.qrInstructions")}
                     </p>
                     <img
                       src={qrSrc}
-                      alt="QR Code do WhatsApp"
+                      alt={t("onboarding.integrations.whatsapp.qrAlt")}
                       className="mx-auto h-56 w-56 bg-white p-2"
                     />
                   </div>
@@ -688,14 +697,14 @@ export default function OnboardingIntegracoes() {
         )}
         {status?.googleAds.pendingAccountSelection && (
           <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-            <h2 className="font-semibold">Escolha a conta Google Ads</h2>
+            <h2 className="font-semibold">{t("onboarding.integrations.googleAdsAccount.title")}</h2>
             <div className="mt-3 flex gap-2">
               <select
                 className="h-10 flex-1 rounded-md border bg-background px-3"
                 value={selectedGoogleAdsAccount}
                 onChange={(e) => setSelectedGoogleAdsAccount(e.target.value)}
               >
-                <option value="">Selecione</option>
+                <option value="">{t("onboarding.integrations.googleAdsAccount.select")}</option>
                 {googleAdsAccounts.map((a) => (
                   <option key={a.customerId} value={a.customerId}>
                     {a.descriptiveName
@@ -708,15 +717,15 @@ export default function OnboardingIntegracoes() {
                 onClick={selectGoogleAdsAccount}
                 disabled={!selectedGoogleAdsAccount || submitting}
               >
-                Confirmar
+                {t("common.confirm")}
               </Button>
             </div>
           </section>
         )}
         <section>
-          <h2 className="text-lg font-semibold">Próximas ações</h2>
+          <h2 className="text-lg font-semibold">{t("onboarding.integrations.nextActions")}</h2>
           <p className="mb-3 text-sm text-muted-foreground">
-            Faça apenas as integrações que sua operação usa.
+            {t("onboarding.integrations.nextActionsSubtitle")}
           </p>
           {actions.length ? (
             <div className="grid gap-4 md:grid-cols-2">
@@ -743,7 +752,7 @@ export default function OnboardingIntegracoes() {
                     </Button>
                     <Button size="sm" variant="outline" asChild>
                       <a href={a.link} target="_blank" rel="noreferrer">
-                        Abrir local oficial
+                        {t("onboarding.integrations.openOfficial")}
                         <ExternalLink className="ml-1 h-3.5 w-3.5" />
                       </a>
                     </Button>
@@ -755,14 +764,14 @@ export default function OnboardingIntegracoes() {
             <div className="rounded-2xl border border-green-200 bg-green-50 p-8 text-center">
               <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" />
               <h2 className="mt-3 text-xl font-semibold">
-                Instalação concluída
+                {t("onboarding.integrations.complete")}
               </h2>
             </div>
           )}
         </section>
         <section className="grid gap-4 md:grid-cols-2">
           <CredentialCard
-            title="Cobrança com Asaas"
+            title={t("onboarding.integrations.asaasTitle")}
             connected={status?.asaas.connected}
             value={asaasKey}
             setValue={setAsaasKey}
@@ -772,11 +781,11 @@ export default function OnboardingIntegracoes() {
             submitting={submitting}
           />
           <CredentialCard
-            title="Assinatura com ZapSign"
+            title={t("onboarding.integrations.zapSignTitle")}
             connected={status?.zapsign.connected}
             value={zapsignKey}
             setValue={setZapsignKey}
-            placeholder="Token da API"
+            placeholder={t("onboarding.integrations.apiToken")}
             validate={validateZapSign}
             link="https://app.zapsign.com.br"
             submitting={submitting}
@@ -784,10 +793,10 @@ export default function OnboardingIntegracoes() {
         </section>
         <div className="sticky bottom-4 flex items-center justify-between gap-4 rounded-2xl border bg-background/95 p-4 shadow-lg">
           <p className="text-sm text-muted-foreground">
-            Você pode completar outras integrações depois.
+            {t("onboarding.integrations.later")}
           </p>
           <Button onClick={complete} disabled={submitting}>
-            Entrar no VendorAI
+            {t("onboarding.integrations.enterVendorAI")}
           </Button>
         </div>
       </main>
@@ -814,14 +823,16 @@ function CredentialCard({
   link: string;
   submitting: boolean;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="rounded-2xl border bg-background p-5">
       <h3 className="font-semibold">{title}</h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Opcional. Abra o serviço, copie a chave de API e valide.
+        {t("onboarding.integrations.credentialHelp")}
       </p>
       {connected ? (
-        <p className="mt-3 text-sm text-green-600">✓ Funcionando</p>
+        <p className="mt-3 text-sm text-green-600">{t("onboarding.integrations.working")}</p>
       ) : (
         <div className="mt-3 flex gap-2">
           <Input
@@ -831,7 +842,7 @@ function CredentialCard({
             placeholder={placeholder}
           />
           <Button onClick={validate} disabled={!value.trim() || submitting}>
-            Validar
+            {t("onboarding.integrations.validate")}
           </Button>
         </div>
       )}
@@ -841,7 +852,7 @@ function CredentialCard({
         target="_blank"
         rel="noreferrer"
       >
-        Abrir serviço
+        {t("onboarding.integrations.openService")}
         <ExternalLink className="ml-1 h-3 w-3" />
       </a>
     </div>
