@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SocialIntegrationsPanel } from "@/components/SocialIntegrationsPanel";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1576,6 +1577,39 @@ export default function Content() {
     },
   });
 
+  const [libraryFilter, setLibraryFilter] = useState<ContentType | "all">("all");
+  const [expandedLibraryItem, setExpandedLibraryItem] = useState<ContentLibraryItem | null>(null);
+
+  // Proporção de miniatura por formato — cada rede tem uma "forma" real
+  // (Feed é quase quadrado, Stories/Reels/TikTok são verticais 9:16), então
+  // a grade respeita isso em vez de forçar tudo no mesmo quadrado.
+  const LIBRARY_ASPECT: Record<ContentType, string> = {
+    feed: "aspect-[4/5]",
+    stories: "aspect-[9/16]",
+    reels: "aspect-[9/16]",
+    tiktok: "aspect-[9/16]",
+    linkedin: "aspect-square",
+    youtube: "aspect-video",
+  };
+
+  function getLibraryThumbnail(item: ContentLibraryItem): { url?: string; kind: "image" | "video" } {
+    if (item.type === "reels" || item.type === "tiktok") {
+      return { url: (item.variation as ReelsVariation).videoUrl, kind: "video" };
+    }
+    if (item.type === "feed" || item.type === "stories") {
+      const v = item.variation as FeedVariation | StoriesVariation;
+      return { url: v.imageUrl ?? v.imageUrls?.[0], kind: "image" };
+    }
+    return { url: undefined, kind: "image" };
+  }
+
+  const libraryItems = library?.items ?? [];
+  const libraryCounts = libraryItems.reduce<Partial<Record<ContentType, number>>>((acc, item) => {
+    acc[item.type] = (acc[item.type] ?? 0) + 1;
+    return acc;
+  }, {});
+  const filteredLibraryItems = libraryFilter === "all" ? libraryItems : libraryItems.filter((item) => item.type === libraryFilter);
+
   const { data: history, isLoading: historyLoading } = useQuery<ListContentResponse>({
     queryKey: ["content", tenantId],
     queryFn: async () => {
@@ -2388,52 +2422,126 @@ export default function Content() {
               <Badge variant="secondary" className="text-xs">{library!.items.length}</Badge>
             )}
           </h2>
+
+          {!libraryLoading && libraryItems.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              <Button
+                variant={libraryFilter === "all" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 px-2.5 text-xs"
+                onClick={() => setLibraryFilter("all")}
+              >
+                Todos
+                <Badge variant="outline" className="ml-1.5 text-xs">{libraryItems.length}</Badge>
+              </Button>
+              {(Object.keys(TYPE_CONFIG) as ContentType[])
+                .filter((type) => libraryCounts[type])
+                .map((type) => {
+                  const Icon = TYPE_CONFIG[type].icon;
+                  return (
+                    <Button
+                      key={type}
+                      variant={libraryFilter === type ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-7 px-2.5 text-xs gap-1.5"
+                      onClick={() => setLibraryFilter(type)}
+                    >
+                      <Icon className="h-3 w-3" />
+                      {TYPE_CONFIG[type].label}
+                      <Badge variant="outline" className="ml-0.5 text-xs">{libraryCounts[type]}</Badge>
+                    </Button>
+                  );
+                })}
+            </div>
+          )}
+
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-3">
               {libraryLoading ? (
                 <div className="py-8 flex justify-center">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
+              ) : filteredLibraryItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">Nada nesse formato ainda.</p>
               ) : (
-                <div className="divide-y">
-                  {library!.items.map((item) => (
-                    <div key={item.id} className="px-4 py-3">
-                      <div className="flex items-center justify-between mb-2 gap-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            {TYPE_CONFIG[item.type]?.label ?? item.type}
-                          </Badge>
-                          {item.theme && (
-                            <span className="text-xs text-muted-foreground truncate max-w-[200px]">{item.theme}</span>
-                          )}
-                          <span className="text-xs text-muted-foreground">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {filteredLibraryItems.map((item) => {
+                    const Icon = TYPE_CONFIG[item.type]?.icon ?? Image;
+                    const thumb = getLibraryThumbnail(item);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setExpandedLibraryItem(item)}
+                        className={cn(
+                          "group relative w-full overflow-hidden rounded-lg border bg-muted/40 text-left hover:ring-2 hover:ring-primary/40 transition",
+                          LIBRARY_ASPECT[item.type],
+                        )}
+                      >
+                        {thumb.url ? (
+                          thumb.kind === "video" ? (
+                            <video src={thumb.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                          ) : (
+                            <img src={thumb.url} alt={item.theme ?? TYPE_CONFIG[item.type]?.label ?? item.type} className="h-full w-full object-cover" />
+                          )
+                        ) : (
+                          <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-3 text-center">
+                            <Icon className="h-6 w-6 text-muted-foreground" />
+                            <p className="text-[11px] text-muted-foreground line-clamp-3">{item.theme || TYPE_CONFIG[item.type]?.label}</p>
+                          </div>
+                        )}
+
+                        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
+                          <span className="flex items-center gap-1 text-[10px] font-medium text-white">
+                            <Icon className="h-3 w-3" />
                             {new Date(item.savedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
                           </span>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteLibraryMutation.mutate(item.id);
+                            }}
+                            className="rounded p-0.5 text-white/80 hover:text-white hover:bg-black/30"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </span>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteLibraryMutation.mutate(item.id)}
-                          disabled={deleteLibraryMutation.isPending}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <VariationCard
-                        index={item.variationIndex ?? 0}
-                        type={item.type}
-                        variation={item.variation}
-                        contentId={item.contentGenerationId ?? undefined}
-                        tenantId={tenantId}
-                        theme={item.theme ?? undefined}
-                      />
-                    </div>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
           </Card>
+
+          <Dialog open={!!expandedLibraryItem} onOpenChange={(open) => !open && setExpandedLibraryItem(null)}>
+            <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+              {expandedLibraryItem && (
+                <>
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-sm">
+                      <Badge variant="outline" className="text-xs">
+                        {TYPE_CONFIG[expandedLibraryItem.type]?.label ?? expandedLibraryItem.type}
+                      </Badge>
+                      {expandedLibraryItem.theme && (
+                        <span className="text-muted-foreground font-normal truncate">{expandedLibraryItem.theme}</span>
+                      )}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <VariationCard
+                    index={expandedLibraryItem.variationIndex ?? 0}
+                    type={expandedLibraryItem.type}
+                    variation={expandedLibraryItem.variation}
+                    contentId={expandedLibraryItem.contentGenerationId ?? undefined}
+                    tenantId={tenantId}
+                    theme={expandedLibraryItem.theme ?? undefined}
+                  />
+                </>
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
