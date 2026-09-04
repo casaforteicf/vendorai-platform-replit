@@ -1,0 +1,26 @@
+name: tmp-validate-video-music-recommendations
+on:
+  push:
+    branches:
+      - feat/video-brand-music-recommendations
+permissions:
+  contents: read
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/video-brand-music-recommendations
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build frontend
+        run: pnpm --filter @workspace/frontend run build
