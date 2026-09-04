@@ -17,6 +17,10 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import VideoGenerationMediaInputs, {
+  type VideoGenerationMediaInput,
+  type VideoGenerationMode,
+} from "@/components/video/VideoGenerationMediaInputs";
 
 type Capabilities = {
   provider: "vendorai";
@@ -55,6 +59,7 @@ type GeneratedVideoJob = {
     videoUrl?: string;
     videoAssetId?: string;
     sceneAssetIds?: string[];
+    inputAssetIds?: string[];
     imageModel?: string;
     sceneCount?: number;
     duration?: number;
@@ -63,9 +68,11 @@ type GeneratedVideoJob = {
     introApplied?: boolean;
     outroApplied?: boolean;
     logoWarning?: string | null;
-    generationMode?: string;
+    generationMode?: VideoGenerationMode | string;
     transitionDuration?: number;
     effects?: VideoEffects;
+    audioApplied?: boolean;
+    documentSources?: string[];
   } | null;
 };
 
@@ -139,6 +146,12 @@ const COLORS: Array<{ value: ColorPreset; label: string }> = [
 
 const DURATIONS = [8, 12, 16, 20, 24, 30];
 
+const MODE_LABELS: Record<VideoGenerationMode, string> = {
+  ai_only: "Somente IA",
+  hybrid: "Minhas mídias + IA",
+  media_only: "Somente minhas mídias",
+};
+
 function authHeaders(json = false): Record<string, string> {
   return {
     Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
@@ -157,14 +170,16 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export default function VideoGeneratePanel() {
-  const { user } = useAuth();
-  const tenantId = user?.tenantId ?? "";
+  const { user, tenantOverride } = useAuth();
+  const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [loadingCapability, setLoadingCapability] = useState(true);
   const [prompt, setPrompt] = useState("");
+  const [generationMode, setGenerationMode] = useState<VideoGenerationMode>("ai_only");
+  const [mediaInputs, setMediaInputs] = useState<VideoGenerationMediaInput[]>([]);
   const [style, setStyle] = useState(STYLE_OPTIONS[0]!.value);
   const [aspectRatio, setAspectRatio] = useState<"portrait" | "landscape">("portrait");
   const [duration, setDuration] = useState(16);
@@ -189,7 +204,11 @@ export default function VideoGeneratePanel() {
 
   const ready = capabilities?.capabilities?.video_generate === "ready";
   const isRunning = Boolean(projectId && jobId && job?.status !== "done" && job?.status !== "error");
-  const canGenerate = Boolean(ready && prompt.trim() && prompt.trim().length <= 4000 && !submitting && !isRunning);
+  const validBrief = generationMode === "media_only"
+    ? mediaInputs.length > 0
+    : prompt.trim().length > 0;
+  const validMediaMode = generationMode === "ai_only" || mediaInputs.length > 0;
+  const canGenerate = Boolean(ready && validBrief && validMediaMode && prompt.length <= 4000 && !submitting && !isRunning);
 
   const effects = useMemo<VideoEffects>(() => ({
     preset: effectPreset,
@@ -283,16 +302,31 @@ export default function VideoGeneratePanel() {
         aspectRatio,
         duration,
         effects,
+        generationMode,
+        mediaInputs: mediaInputs.map((item, index) => ({
+          assetId: item.assetId,
+          type: item.type,
+          role: item.role,
+          importance: item.importance,
+          order: index,
+          note: item.note?.trim() || undefined,
+        })),
       };
       if (sceneCount !== "auto") context.sceneCount = Number(sceneCount);
 
+      const titleSubject = trimmedPrompt || mediaInputs[0]?.originalFilename || "Vídeo com mídias";
       const data = await apiJson<{ projectId: string; jobId: string }>(`/api/tenants/${tenantId}/media-engine/jobs`, {
         method: "POST",
-        body: JSON.stringify({ operation: "video_generate", title: `Vídeo IA — ${trimmedPrompt.slice(0, 60)}`, context }),
+        body: JSON.stringify({ operation: "video_generate", title: `Vídeo IA — ${titleSubject.slice(0, 60)}`, context }),
       });
       setProjectId(data.projectId);
       setJobId(data.jobId);
-      toast({ title: "Geração iniciada", description: "O VendorAI está criando cenas, efeitos, transições, ritmo e Brand Video Kit." });
+      toast({
+        title: "Geração iniciada",
+        description: generationMode === "ai_only"
+          ? "O VendorAI está criando cenas, efeitos, transições, ritmo e Brand Video Kit."
+          : `O VendorAI está usando ${mediaInputs.length} mídia(s) do projeto no modo “${MODE_LABELS[generationMode]}”.`,
+      });
     } catch (error) {
       toast({ title: "Não foi possível iniciar o vídeo", description: error instanceof Error ? error.message : "Erro desconhecido", variant: "destructive" });
     } finally {
@@ -305,6 +339,8 @@ export default function VideoGeneratePanel() {
     setJobId("");
     setJob(null);
     setPrompt("");
+    setGenerationMode("ai_only");
+    setMediaInputs([]);
   };
 
   const openInEditor = () => {
@@ -323,7 +359,7 @@ export default function VideoGeneratePanel() {
               <h2 className="font-bold text-white">Gerar vídeo com IA</h2>
               <span className="rounded-full border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-[10px] font-semibold text-purple-200">VendorAI Media Engine</span>
             </div>
-            <p className="text-xs text-gray-400 mt-1 max-w-2xl">Descreva a ideia. A IA cria cenas coerentes, anima, aplica efeitos modernos, identidade da marca e salva tudo na Biblioteca.</p>
+            <p className="text-xs text-gray-400 mt-1 max-w-2xl">Crie do zero, combine IA com suas mídias ou monte um vídeo somente com arquivos reais. Tudo continua centralizado na Biblioteca.</p>
           </div>
         </div>
         <button onClick={() => void loadCapability()} disabled={loadingCapability} className="inline-flex items-center gap-1.5 self-start rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] text-gray-400 hover:text-white disabled:opacity-50">
@@ -333,16 +369,31 @@ export default function VideoGeneratePanel() {
 
       <div className={cn("rounded-xl border px-3.5 py-2.5 text-xs flex items-center gap-2", ready ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200" : "border-amber-500/20 bg-amber-500/5 text-amber-200")}>
         {ready ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <Loader2 className={cn("h-4 w-4 shrink-0", loadingCapability && "animate-spin")} />}
-        {ready ? "Gerador de vídeo + efeitos pronto" : loadingCapability ? "Verificando capacidade..." : "Gerador indisponível neste momento"}
+        {ready ? "Gerador de vídeo + mídias + efeitos pronto" : loadingCapability ? "Verificando capacidade..." : "Gerador indisponível neste momento"}
       </div>
 
       {!job?.output?.videoUrl && (
         <div className="space-y-4">
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold text-gray-300">O que deve acontecer no vídeo?</span>
-            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value.slice(0, 4000))} rows={5} maxLength={4000} placeholder="Ex.: Um revestimento premium sendo apresentado em uma casa contemporânea brasileira. Comece com visão ampla, aproxime nos detalhes da textura e termine com uma cena hero." className="w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3.5 py-3 text-sm text-white placeholder-gray-600 outline-none focus:border-purple-500/50" />
-            <div className="flex justify-between text-[10px] text-gray-600"><span>Descreva sujeito, ambiente, ação, câmera e resultado desejado.</span><span>{prompt.length}/4000</span></div>
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value.slice(0, 4000))}
+              rows={5}
+              maxLength={4000}
+              placeholder={generationMode === "media_only" ? "Opcional: descreva como organizar, cortar e apresentar suas mídias." : "Ex.: Um revestimento premium sendo apresentado em uma casa contemporânea brasileira. Comece com visão ampla, aproxime nos detalhes da textura e termine com uma cena hero."}
+              className="w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3.5 py-3 text-sm text-white placeholder-gray-600 outline-none focus:border-purple-500/50"
+            />
+            <div className="flex justify-between text-[10px] text-gray-600"><span>{generationMode === "media_only" ? "A IA atua como editora e não cria novas cenas visuais." : "Descreva sujeito, ambiente, ação, câmera e resultado desejado."}</span><span>{prompt.length}/4000</span></div>
           </label>
+
+          <VideoGenerationMediaInputs
+            tenantId={tenantId}
+            mode={generationMode}
+            onModeChange={setGenerationMode}
+            inputs={mediaInputs}
+            onInputsChange={setMediaInputs}
+          />
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1.5">
@@ -408,17 +459,20 @@ export default function VideoGeneratePanel() {
             )}
           </div>
 
+          {!canGenerate && generationMode !== "ai_only" && mediaInputs.length === 0 && (
+            <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[10px] text-amber-200">Adicione pelo menos uma mídia para usar este modo.</p>
+          )}
           <button onClick={() => void generate()} disabled={!canGenerate} className={cn("w-full rounded-xl py-3.5 text-sm font-bold flex items-center justify-center gap-2 transition-all", canGenerate ? "bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90 shadow-lg shadow-purple-950/30" : "bg-white/5 text-gray-600 cursor-not-allowed")}>
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{submitting ? "Iniciando geração..." : "Gerar vídeo com efeitos"}
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{submitting ? "Iniciando geração..." : generationMode === "media_only" ? "Montar vídeo com minhas mídias" : "Gerar vídeo com efeitos"}
           </button>
 
-          <p className="text-[10px] leading-relaxed text-gray-600 text-center">As cenas, configurações de efeitos e o MP4 final ficam preservados e versionados na Biblioteca. O processamento continua mesmo se você sair desta tela.</p>
+          <p className="text-[10px] leading-relaxed text-gray-600 text-center">Arquivos selecionados, cenas, configurações de efeitos e o MP4 final ficam preservados e versionados na Biblioteca. O processamento continua mesmo se você sair desta tela.</p>
         </div>
       )}
 
       {(projectId || job) && !job?.output?.videoUrl && (
         <div className="rounded-xl border border-purple-500/20 bg-black/20 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2">{job?.status === "error" ? <Film className="h-4 w-4 text-red-400" /> : <Loader2 className="h-4 w-4 text-purple-300 animate-spin" />}<div><p className="text-xs font-semibold text-white">{job?.status === "error" ? "A geração encontrou um erro" : "Criando seu vídeo"}</p><p className="text-[10px] text-gray-500 mt-0.5">{job?.status === "error" ? job.error ?? "Falha durante a geração" : "Cenas IA → motion → transições → color grade → SFX → Brand Kit"}</p></div></div><span className="text-xs font-bold text-purple-200">{job?.status === "error" ? "—" : `${progress}%`}</span></div>
+          <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2">{job?.status === "error" ? <Film className="h-4 w-4 text-red-400" /> : <Loader2 className="h-4 w-4 text-purple-300 animate-spin" />}<div><p className="text-xs font-semibold text-white">{job?.status === "error" ? "A geração encontrou um erro" : "Criando seu vídeo"}</p><p className="text-[10px] text-gray-500 mt-0.5">{job?.status === "error" ? job.error ?? "Falha durante a geração" : generationMode === "ai_only" ? "Cenas IA → motion → transições → color grade → SFX → Brand Kit" : "Mídias do projeto → IA quando necessário → edição → áudio → Brand Kit"}</p></div></div><span className="text-xs font-bold text-purple-200">{job?.status === "error" ? "—" : `${progress}%`}</span></div>
           {job?.status !== "error" && <div className="h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-cyan-400 transition-all duration-500" style={{ width: `${progress}%` }} /></div>}
           {job?.status === "error" && <button onClick={() => { setJob(null); setProjectId(""); setJobId(""); }} className="text-xs text-purple-300 hover:text-purple-200">Voltar e ajustar</button>}
           {polling && <p className="text-[10px] text-gray-700">Atualizando status…</p>}
@@ -431,17 +485,17 @@ export default function VideoGeneratePanel() {
           <div className="space-y-4">
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
               <div className="flex items-center gap-2 text-emerald-200"><CheckCircle2 className="h-4 w-4" /><p className="text-sm font-bold">Vídeo pronto</p></div>
-              <div className="mt-3 space-y-1 text-[11px] text-gray-400"><p>{job.output.sceneCount ?? "—"} cenas • {job.output.duration ?? duration}s</p><p>{job.output.aspectRatio === "landscape" ? "16:9 horizontal" : "9:16 vertical"}</p>{job.output.imageModel && <p>Modelo visual: {job.output.imageModel}</p>}</div>
+              <div className="mt-3 space-y-1 text-[11px] text-gray-400"><p>{job.output.sceneCount ?? "—"} cenas • {job.output.duration ?? duration}s</p><p>{job.output.aspectRatio === "landscape" ? "16:9 horizontal" : "9:16 vertical"}</p><p>Modo: {MODE_LABELS[(job.output.generationMode as VideoGenerationMode) ?? generationMode] ?? job.output.generationMode ?? MODE_LABELS[generationMode]}</p>{job.output.inputAssetIds?.length ? <p>{job.output.inputAssetIds.length} mídia(s) própria(s) utilizadas</p> : null}{job.output.imageModel && <p>Modelo visual: {job.output.imageModel}</p>}</div>
             </div>
 
             <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-2">
               <p className="text-xs font-semibold text-purple-200">Efeitos aplicados</p>
-              <div className="text-[11px] text-gray-400 space-y-1"><p>Preset: {job.output.effects?.preset ?? effectPreset}</p><p>Transição: {job.output.effects?.transition ?? transition}</p><p>Movimento: {job.output.effects?.motion ?? motion}</p><p>Cor: {job.output.effects?.color ?? color}</p>{job.output.effects?.beatSync && <p>Beat sync: {job.output.effects.bpm} BPM</p>}{job.output.effects?.sfx && job.output.effects.sfx !== "none" && <p>SFX: {job.output.effects.sfx}</p>}</div>
+              <div className="text-[11px] text-gray-400 space-y-1"><p>Preset: {job.output.effects?.preset ?? effectPreset}</p><p>Transição: {job.output.effects?.transition ?? transition}</p><p>Movimento: {job.output.effects?.motion ?? motion}</p><p>Cor: {job.output.effects?.color ?? color}</p>{job.output.effects?.beatSync && <p>Beat sync: {job.output.effects.bpm} BPM</p>}{job.output.effects?.sfx && job.output.effects.sfx !== "none" && <p>SFX: {job.output.effects.sfx}</p>}{job.output.audioApplied && <p>Áudio do projeto: aplicado</p>}</div>
             </div>
 
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2"><p className="text-xs font-semibold text-white">Brand Video Kit</p><div className="text-[11px] text-gray-400 space-y-1"><p>Logo: {job.output.logoApplied ? "aplicada" : "não configurada"}</p><p>Abertura: {job.output.introApplied ? "aplicada" : "não configurada"}</p><p>Encerramento: {job.output.outroApplied ? "aplicado" : "não configurado"}</p></div>{job.output.logoWarning && <p className="text-[10px] text-amber-300">{job.output.logoWarning}</p>}</div>
 
-            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-[11px] text-gray-400"><p className="font-semibold text-cyan-200 mb-1">Salvo na Biblioteca</p><p>Vídeo, cenas e parâmetros dos efeitos permanecem vinculados ao mesmo projeto, com histórico e versões.</p></div>
+            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-[11px] text-gray-400"><p className="font-semibold text-cyan-200 mb-1">Salvo na Biblioteca</p><p>Vídeo, entradas, cenas e parâmetros dos efeitos permanecem vinculados ao mesmo projeto, com histórico e versões.</p></div>
 
             <button disabled={!job.output.videoAssetId} onClick={openInEditor} className="w-full rounded-xl bg-purple-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-purple-500 disabled:opacity-40"><SlidersHorizontal className="h-3.5 w-3.5 inline mr-1.5" />Editar na timeline</button>
             <button onClick={reset} className="w-full rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/5"><Play className="h-3.5 w-3.5 inline mr-1.5" /> Criar outro vídeo</button>
