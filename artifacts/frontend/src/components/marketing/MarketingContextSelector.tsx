@@ -32,6 +32,8 @@ const AUDIENCE_SEGMENTS = [
   "Outro público",
 ];
 
+const MANUAL_OFFER_ID = "custom:manual-offer-draft";
+
 function headers(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -171,9 +173,47 @@ export function MarketingContextSelector({
     });
   }
 
+  function syncCustomOffer(rawValue: string) {
+    setCustomOffer(rawValue);
+    const name = rawValue.trim();
+    const draftIndex = value.productIds.indexOf(MANUAL_OFFER_ID);
+
+    if (!name) {
+      if (draftIndex >= 0) {
+        emit({
+          productIds: value.productIds.filter((_, index) => index !== draftIndex),
+          productNames: value.productNames.filter((_, index) => index !== draftIndex),
+        });
+      }
+      return;
+    }
+
+    if (draftIndex >= 0) {
+      const productNames = [...value.productNames];
+      productNames[draftIndex] = name;
+      emit({ productNames });
+      return;
+    }
+
+    emit({
+      productIds: [...value.productIds, MANUAL_OFFER_ID],
+      productNames: [...value.productNames, name],
+    });
+  }
+
   function addCustomOffer() {
     const name = customOffer.trim();
     if (!name) return;
+
+    const draftIndex = value.productIds.indexOf(MANUAL_OFFER_ID);
+    if (draftIndex >= 0) {
+      const productIds = [...value.productIds];
+      productIds[draftIndex] = `custom:${crypto.randomUUID()}`;
+      emit({ productIds });
+      setCustomOffer("");
+      return;
+    }
+
     const id = `custom:${crypto.randomUUID()}`;
     emit({
       productIds: [...value.productIds, id],
@@ -183,6 +223,7 @@ export function MarketingContextSelector({
   }
 
   function removeOffer(index: number) {
+    if (value.productIds[index] === MANUAL_OFFER_ID) setCustomOffer("");
     emit({
       productIds: value.productIds.filter((_, itemIndex) => itemIndex !== index),
       productNames: value.productNames.filter((_, itemIndex) => itemIndex !== index),
@@ -243,7 +284,7 @@ export function MarketingContextSelector({
             <div className="flex gap-2">
               <Input
                 value={customOffer}
-                onChange={(event) => setCustomOffer(event.target.value)}
+                onChange={(event) => syncCustomOffer(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -256,12 +297,16 @@ export function MarketingContextSelector({
               <button
                 type="button"
                 onClick={addCustomOffer}
-                aria-label="Adicionar oferta"
+                aria-label="Fixar oferta e adicionar outra"
+                title="Fixar oferta e adicionar outra"
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"
               >
                 <Plus className="h-4 w-4" />
               </button>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              O texto digitado já entra no resumo e no contexto da IA. Use + somente para fixar esta oferta e escrever outra.
+            </p>
             {!productsLoading && availableProducts.length === 0 && value.productNames.length === 0 && (
               <p className="text-[11px] text-muted-foreground">Catálogo vazio — use a oferta manual acima.</p>
             )}
@@ -310,6 +355,13 @@ export function MarketingContextSelector({
             />
             <p className="text-[11px] text-muted-foreground">A IA usa este objetivo para decidir abordagem, dor, CTA e composição.</p>
           </div>
+        </div>
+
+        <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <p>
+            <strong className="text-foreground">Conectado ao gerador abaixo:</strong> oferta, público e objetivo definidos aqui alimentam automaticamente o resumo da peça e o contexto enviado para a IA.
+          </p>
         </div>
       </section>
     );
@@ -400,7 +452,7 @@ export function MarketingContextSelector({
         <div className="flex gap-2">
           <Input
             value={customOffer}
-            onChange={(event) => setCustomOffer(event.target.value)}
+            onChange={(event) => syncCustomOffer(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -417,6 +469,9 @@ export function MarketingContextSelector({
             <Plus className="h-4 w-4" /> Adicionar
           </button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          O texto digitado já faz parte do contexto da campanha; Adicionar apenas fixa a oferta para você incluir outra.
+        </p>
 
         {availableProducts.length > 0 && (
           <div className="max-h-44 overflow-y-auto rounded-lg border bg-background p-2">
