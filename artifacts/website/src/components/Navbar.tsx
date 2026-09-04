@@ -1,16 +1,47 @@
 import { Link, useLocation } from "wouter";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { useState } from "react";
+import {
+  PUBLIC_COUNTRIES,
+  type PublicCountryCode,
+  usePublicCountry,
+} from "@/lib/publicCountry";
+
+const PT = {
+  features: "Funcionalidades",
+  plans: "Planos",
+  content: "Conteúdo",
+  about: "Sobre",
+  trial: "Testar 5 dias grátis",
+  login: "Entrar",
+  clientLogin: "Já sou cliente — Entrar",
+  openMenu: "Abrir menu",
+  country: "País",
+} as const;
+
+const ES = {
+  features: "Funcionalidades",
+  plans: "Planes",
+  content: "Contenido",
+  about: "Nosotros",
+  trial: "Probar 5 días gratis",
+  login: "Ingresar",
+  clientLogin: "Ya soy cliente — Ingresar",
+  openMenu: "Abrir menú",
+  country: "País",
+} as const;
 
 export default function Navbar() {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { countryCode, setCountryCode, isSpanish } = usePublicCountry();
+  const copy = isSpanish ? ES : PT;
 
   const links = [
-    { href: "/funcionalidades", label: "Funcionalidades" },
-    { href: "/precos", label: "Planos" },
-    { href: "/blog", label: "Conteúdo" },
-    { href: "/sobre", label: "Sobre" },
+    { href: "/funcionalidades", label: copy.features },
+    { href: "/precos", label: copy.plans },
+    { href: "/blog", label: copy.content },
+    { href: "/sobre", label: copy.about },
   ];
 
   return (
@@ -21,7 +52,7 @@ export default function Navbar() {
           <span className="text-lg leading-tight">Vendor.ai</span>
         </Link>
 
-        <nav className="hidden items-center gap-7 md:flex">
+        <nav className="hidden items-center gap-6 md:flex">
           {links.map((link) => (
             <Link
               key={link.href}
@@ -34,23 +65,53 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
-          <Link href="/demo" className="group ml-2 inline-flex h-11 items-center rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.28)] transition hover:bg-orange-400" data-testid="btn-demo">
-            Testar 5 dias grátis
+          <label className="sr-only" htmlFor="public-country">{copy.country}</label>
+          <select
+            id="public-country"
+            value={countryCode}
+            onChange={(event) => setCountryCode(event.target.value as PublicCountryCode)}
+            className="h-9 rounded-lg border border-white/10 bg-white/[0.06] px-2 text-xs font-semibold text-slate-200 outline-none transition hover:bg-white/[0.10]"
+            aria-label={copy.country}
+          >
+            {Object.entries(PUBLIC_COUNTRIES).map(([code, country]) => (
+              <option key={code} value={code} className="bg-slate-950 text-white">
+                {country.short}
+              </option>
+            ))}
+          </select>
+          <Link href="/demo" className="group ml-1 inline-flex h-11 items-center rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.28)] transition hover:bg-orange-400" data-testid="btn-demo">
+            {copy.trial}
             <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
           </Link>
           <a href="https://app.appvendorai.com" className="ml-1 text-sm font-medium text-slate-400 transition-colors hover:text-white" data-testid="link-entrar">
-            Entrar
+            {copy.login}
           </a>
         </nav>
 
-        <button
-          className="rounded-lg border border-orange-400/20 bg-orange-400/[0.06] p-2 text-white md:hidden"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          data-testid="btn-mobile-menu"
-          aria-label="Abrir menu"
-        >
-          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <label className="sr-only" htmlFor="public-country-mobile">{copy.country}</label>
+          <select
+            id="public-country-mobile"
+            value={countryCode}
+            onChange={(event) => setCountryCode(event.target.value as PublicCountryCode)}
+            className="h-9 rounded-lg border border-white/10 bg-white/[0.06] px-2 text-xs font-semibold text-white outline-none"
+            aria-label={copy.country}
+          >
+            {Object.entries(PUBLIC_COUNTRIES).map(([code, country]) => (
+              <option key={code} value={code} className="bg-slate-950 text-white">
+                {country.short}
+              </option>
+            ))}
+          </select>
+          <button
+            className="rounded-lg border border-orange-400/20 bg-orange-400/[0.06] p-2 text-white"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            data-testid="btn-mobile-menu"
+            aria-label={copy.openMenu}
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
 
       {mobileMenuOpen && (
@@ -73,14 +134,14 @@ export default function Navbar() {
               className="mt-2 inline-flex h-12 items-center justify-center rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-[0_12px_34px_rgba(249,115,22,0.24)] hover:bg-orange-400"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Testar 5 dias grátis
+              {copy.trial}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
             <a
               href="https://app.appvendorai.com"
               className="mt-1 inline-flex h-12 items-center justify-center rounded-xl border border-white/10 px-5 font-medium text-slate-300"
             >
-              Já sou cliente — Entrar
+              {copy.clientLogin}
             </a>
           </nav>
         </div>
