@@ -1,9 +1,11 @@
 import { useParams } from "wouter";
 import { MARKETING_VERTICALS } from "@workspace/vendor-brain/marketing-verticals";
+import { usePublicCountry } from "@/lib/publicCountry";
 import LegacyLpRouter from "./LpPage";
 import OfficialVerticalLp from "./OfficialVerticalLp";
 
 export default function UnifiedLpRouter() {
+  usePublicCountry();
   const params = useParams<{ slug: string }>();
   const slug = params.slug ?? "";
   const officialProfile = MARKETING_VERTICALS.find(

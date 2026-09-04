@@ -18,6 +18,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
+      "@workspace/vendor-brain/marketing-verticals-localization": path.resolve(
+        import.meta.dirname,
+        "../../lib/vendor-brain/src/marketing-verticals-localization.ts",
+      ),
       "@workspace/vendor-brain/marketing-verticals": path.resolve(
         import.meta.dirname,
         "../../lib/vendor-brain/src/marketing-verticals.ts",

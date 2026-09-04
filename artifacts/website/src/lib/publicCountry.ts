@@ -1,4 +1,9 @@
 import { useEffect, useState } from "react";
+import {
+  MARKETING_VERTICALS,
+  type MarketingVerticalProfile,
+} from "@workspace/vendor-brain/marketing-verticals";
+import { localizeMarketingVertical } from "@workspace/vendor-brain/marketing-verticals-localization";
 
 export const PUBLIC_COUNTRIES = {
   BR: { label: "Brasil", locale: "pt-BR", short: "BR", phone: "+55 49 99999-9999" },
@@ -12,6 +17,45 @@ export type PublicCountryCode = keyof typeof PUBLIC_COUNTRIES;
 
 const STORAGE_KEY = "vendorai_public_country";
 const CHANGE_EVENT = "vendorai:public-country-change";
+
+function cloneVerticalProfile(profile: MarketingVerticalProfile): MarketingVerticalProfile {
+  return {
+    ...profile,
+    decisionMakers: [...profile.decisionMakers],
+    journey: [...profile.journey],
+    pipeline: [...profile.pipeline],
+    priorityAgents: [...profile.priorityAgents],
+    lp: {
+      ...profile.lp,
+      painMap: [...profile.lp.painMap],
+      timeline: profile.lp.timeline.map((step) => ({ ...step })),
+      faq: [...profile.lp.faq],
+    },
+    revenueScout: {
+      signals: [...profile.revenueScout.signals],
+      nextBestActions: [...profile.revenueScout.nextBestActions],
+    },
+    googleIntentSeeds: [...profile.googleIntentSeeds],
+    creativeAngles: [...profile.creativeAngles],
+    kpis: [...profile.kpis],
+  };
+}
+
+const ORIGINAL_MARKETING_VERTICALS = MARKETING_VERTICALS.map(cloneVerticalProfile);
+let appliedMarketingLocale = "pt-BR";
+
+function applyPublicMarketingLocale(locale: string) {
+  if (appliedMarketingLocale === locale) return;
+
+  ORIGINAL_MARKETING_VERTICALS.forEach((original, index) => {
+    const localized = localizeMarketingVertical(original, locale);
+    const target = MARKETING_VERTICALS[index];
+    if (!target) return;
+    Object.assign(target, cloneVerticalProfile(localized));
+  });
+
+  appliedMarketingLocale = locale;
+}
 
 function isPublicCountryCode(value: string | null | undefined): value is PublicCountryCode {
   return Boolean(value && value in PUBLIC_COUNTRIES);
@@ -33,16 +77,24 @@ export function detectPublicCountry(): PublicCountryCode {
 
 export function persistPublicCountry(countryCode: PublicCountryCode) {
   if (typeof window === "undefined") return;
+  const locale = PUBLIC_COUNTRIES[countryCode].locale;
+  applyPublicMarketingLocale(locale);
   window.localStorage.setItem(STORAGE_KEY, countryCode);
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: countryCode }));
-  document.documentElement.lang = PUBLIC_COUNTRIES[countryCode].locale;
+  document.documentElement.lang = locale;
 }
 
 export function usePublicCountry() {
   const [countryCode, setCountryCodeState] = useState<PublicCountryCode>(detectPublicCountry);
+  const locale = PUBLIC_COUNTRIES[countryCode].locale;
+
+  // The website consumes the canonical 50-profile array in many places. Applying
+  // the presentation overlay synchronously here keeps those existing consumers
+  // reactive without creating a second catalog or changing ids/slugs/pipelines.
+  applyPublicMarketingLocale(locale);
 
   useEffect(() => {
-    document.documentElement.lang = PUBLIC_COUNTRIES[countryCode].locale;
+    document.documentElement.lang = locale;
 
     const sync = () => setCountryCodeState(detectPublicCountry());
     const onCustomChange = (event: Event) => {
@@ -56,7 +108,7 @@ export function usePublicCountry() {
       window.removeEventListener("storage", sync);
       window.removeEventListener(CHANGE_EVENT, onCustomChange);
     };
-  }, [countryCode]);
+  }, [locale]);
 
   function setCountryCode(next: PublicCountryCode) {
     persistPublicCountry(next);
