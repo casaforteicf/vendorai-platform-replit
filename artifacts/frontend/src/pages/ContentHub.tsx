@@ -124,7 +124,10 @@ export default function ContentHub() {
   const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
   const params = new URLSearchParams(queryString);
   const mediaPlanSource = params.get("source") === "media-plan" || params.get("from") === "media-plan";
-  const requestedTab = params.get("tab") ?? (mediaPlanSource ? "gerador" : "planejamento");
+  // Compatibilidade: o atalho lateral "Gerador de Conteúdo" continua apontando
+  // para /content. O Planejamento é a primeira aba visual, mas /content abre o
+  // gerador como antes; /content?tab=planejamento abre o Planejador explicitamente.
+  const requestedTab = params.get("tab") ?? "gerador";
   const requestedMediaPlanId = params.get("mediaPlanId")?.trim() ?? "";
   const requestedPlannerCampaignId = params.get("campaignId")?.trim() ?? "";
 
@@ -382,7 +385,7 @@ export default function ContentHub() {
                   {plannerApproved && (
                     <div className="flex items-center gap-1.5 text-[11px] text-emerald-700">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      A direção estratégica desta campanha foi carregada no briefing compartilhado. Os executores existentes reutilizam o mesmo público, oferta, objetivo, KPI e regras de comunicação.
+                      A direção estratégica desta campanha fica preservada no briefing compartilhado para os executores de Marketing, com público, oferta, objetivo, KPI e regras de comunicação.
                     </div>
                   )}
                 </CardContent>
