@@ -17,6 +17,7 @@ import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { callReplicateFlux11Pro, callReplicateFluxKontext } from "../lib/arch-render-pipeline.js";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
+import { buildCampaignMarketingIntelligence } from "../services/campaign-marketing-intelligence.js";
 
 const router: IRouter = Router();
 
@@ -312,6 +313,102 @@ router.post("/tenants/:tenantId/campaigns/generate-copy", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "campaigns: generate-copy failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Erro desconhecido" });
+  }
+});
+
+const marketingIntelligenceBodySchema = z.object({
+  countryCode: z.string().trim().length(2).optional().default("BR"),
+});
+
+router.get("/tenants/:tenantId/campaigns/:id/marketing-intelligence", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [campaign] = await db
+    .select({ id: campaignsTable.id, tenantId: campaignsTable.tenantId, contexto: campaignsTable.contexto })
+    .from(campaignsTable)
+    .where(and(eq(campaignsTable.id, id), eq(campaignsTable.tenantId, tenantId)));
+  if (!campaign) {
+    res.status(404).json({ error: "Campaign not found" });
+    return;
+  }
+
+  const contexto = (campaign.contexto ?? {}) as Record<string, unknown>;
+  res.json({ marketingIntelligence: contexto["marketingIntelligence"] ?? null });
+});
+
+router.post("/tenants/:tenantId/campaigns/:id/marketing-intelligence", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const parsed = marketingIntelligenceBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [campaign] = await db
+    .select()
+    .from(campaignsTable)
+    .where(and(eq(campaignsTable.id, id), eq(campaignsTable.tenantId, tenantId)));
+  if (!campaign) {
+    res.status(404).json({ error: "Campaign not found" });
+    return;
+  }
+
+  const segmentoFiltro = ((campaign.segmentoFiltro ?? {}) as Record<string, unknown>);
+  const contexto = ((campaign.contexto ?? {}) as Record<string, unknown>);
+  const nestedMarketing = segmentoFiltro["marketingContext"] ?? contexto["marketingContext"];
+  const marketingContext = (
+    nestedMarketing && typeof nestedMarketing === "object" && !Array.isArray(nestedMarketing)
+      ? nestedMarketing
+      : contexto
+  ) as Record<string, unknown>;
+
+  try {
+    const pack = await buildCampaignMarketingIntelligence({
+      tenantId,
+      campaignId: campaign.id,
+      campaignName: campaign.nome,
+      context: marketingContext as any,
+      countryCode: parsed.data.countryCode,
+    });
+
+    const enrichedMarketingContext = {
+      ...marketingContext,
+      marketingIntelligence: pack,
+    };
+    const nextSegmentoFiltro = {
+      ...segmentoFiltro,
+      marketingContext: enrichedMarketingContext,
+    };
+    const nextContexto = {
+      ...contexto,
+      marketingContext: enrichedMarketingContext,
+      marketingIntelligence: pack,
+    };
+
+    await db
+      .update(campaignsTable)
+      .set({
+        segmentoFiltro: nextSegmentoFiltro as any,
+        contexto: nextContexto as any,
+        updatedAt: new Date(),
+      })
+      .where(eq(campaignsTable.id, campaign.id));
+
+    res.json({ marketingIntelligence: pack });
+  } catch (err) {
+    req.log.error({ err, tenantId, campaignId: id }, "campaigns: marketing intelligence failed");
+    res.status(502).json({
+      error: err instanceof Error ? err.message : "Falha ao montar pesquisa e estratégia da campanha",
+    });
   }
 });
 
