@@ -19,7 +19,7 @@ export type AiImageOperation =
   | "image_replace_background"
   | "image_remove_object"
   | "image_outpaint";
-type ImageSize = "1024x1024" | "1024x1536" | "1536x1024";
+export type VendorAiImageSize = "1024x1024" | "1024x1536" | "1536x1024";
 
 export class AiImageToolValidationError extends Error {
   constructor(message: string) {
@@ -59,7 +59,7 @@ async function editImage(input: {
   tenantId: string;
   source: Buffer;
   prompt: string;
-  size: ImageSize;
+  size: VendorAiImageSize;
   transparent?: boolean;
 }) {
   const openai = await getOpenAIForTenant(input.tenantId);
@@ -83,6 +83,28 @@ async function editImage(input: {
     if (preferredModel === "gpt-image-1" || !isModelAvailabilityError(error)) throw error;
     return call("gpt-image-1");
   }
+}
+
+/**
+ * Low-level image-reference edit used by the Media Engine itself.
+ * It intentionally does not create a Media Project or asset. Callers that
+ * compose higher-level workflows (such as Dublê Digital) own registration,
+ * metadata and consent semantics for the generated output.
+ */
+export async function editVendorAiImageReference(input: {
+  tenantId: string;
+  assetId: string;
+  prompt: string;
+  size?: VendorAiImageSize;
+}) {
+  const { asset, buffer } = await resolveSource(input.tenantId, input.assetId);
+  const result = await editImage({
+    tenantId: input.tenantId,
+    source: buffer,
+    prompt: input.prompt,
+    size: input.size ?? "1024x1536",
+  });
+  return { sourceAsset: asset, buffer: result.buffer, model: result.model };
 }
 
 function buildPrompt(operation: AiImageOperation, instruction: string): string {
@@ -112,12 +134,12 @@ export async function startVendorAiAiImageTool(input: {
   operation: AiImageOperation;
   prompt?: string;
   count?: number;
-  size?: ImageSize;
+  size?: VendorAiImageSize;
 }) {
   const { asset, buffer } = await resolveSource(input.tenantId, input.assetId);
   const instruction = input.prompt?.trim() ?? "";
   const count = input.operation === "image_variations" ? Math.max(1, Math.min(4, Math.round(input.count ?? 2))) : 1;
-  const size: ImageSize = input.size === "1024x1536" || input.size === "1536x1024" ? input.size : "1024x1024";
+  const size: VendorAiImageSize = input.size === "1024x1536" || input.size === "1536x1024" ? input.size : "1024x1024";
   const prompt = buildPrompt(input.operation, instruction);
 
   const projectId = await createProcessingMediaProject({
