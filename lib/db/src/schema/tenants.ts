@@ -22,6 +22,23 @@ export const tenantStatusEnum = pgEnum("tenant_status", [
   "cancelled",
 ]);
 
+export const supportedCountryCodes = ["BR", "PY", "AR", "UY", "CL"] as const;
+export const supportedTenantLocales = [
+  "pt-BR",
+  "es-PY",
+  "es-AR",
+  "es-UY",
+  "es-CL",
+] as const;
+export const supportedTenantCurrencies = [
+  "BRL",
+  "USD",
+  "PYG",
+  "ARS",
+  "UYU",
+  "CLP",
+] as const;
+
 export const tenantsTable = pgTable(
   "tenants",
   {
@@ -32,6 +49,27 @@ export const tenantsTable = pgTable(
     slug: text("slug").notNull().unique(),
     status: tenantStatusEnum("status").notNull().default("active"),
     vertical: text("vertical"),
+    countryCode: varchar("country_code", { length: 2 })
+      .$type<(typeof supportedCountryCodes)[number]>()
+      .notNull()
+      .default("BR"),
+    defaultLocale: varchar("default_locale", { length: 12 })
+      .$type<(typeof supportedTenantLocales)[number]>()
+      .notNull()
+      .default("pt-BR"),
+    timezone: varchar("timezone", { length: 64 })
+      .notNull()
+      .default("America/Sao_Paulo"),
+    defaultCurrency: varchar("default_currency", { length: 3 })
+      .$type<(typeof supportedTenantCurrencies)[number]>()
+      .notNull()
+      .default("BRL"),
+    supportedCurrencies: json("supported_currencies")
+      .$type<(typeof supportedTenantCurrencies)[number][]>()
+      .notNull()
+      .default(["BRL"]),
+    taxIdentifierType: varchar("tax_identifier_type", { length: 32 }),
+    taxIdentifier: varchar("tax_identifier", { length: 64 }),
     agentsEnabled: json("agents_enabled")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -47,8 +85,7 @@ export const tenantsTable = pgTable(
     // Horário comercial pra mensagens PROATIVAS (campanhas de reativação,
     // follow-up automático, Revenue Scout) — mensagens de RESPOSTA a um
     // cliente que chamou nunca são bloqueadas por isso, só o disparo
-    // espontâneo do sistema. Horas em fuso America/Sao_Paulo (produto
-    // 100% Brasil); domingo sempre fora do expediente.
+    // espontâneo do sistema. As horas são interpretadas no timezone do tenant.
     horarioComercialInicio: integer("horario_comercial_inicio")
       .notNull()
       .default(8),
@@ -223,6 +260,18 @@ export const tenantsTable = pgTable(
       "max_analyses_per_hour_positive",
       sql`${table.maxAnalysesPerHour} IS NULL OR ${table.maxAnalysesPerHour} >= 1`,
     ),
+    check(
+      "tenants_country_code_check",
+      sql`${table.countryCode} IN ('BR', 'PY', 'AR', 'UY', 'CL')`,
+    ),
+    check(
+      "tenants_default_locale_check",
+      sql`${table.defaultLocale} IN ('pt-BR', 'es-PY', 'es-AR', 'es-UY', 'es-CL')`,
+    ),
+    check(
+      "tenants_default_currency_check",
+      sql`${table.defaultCurrency} IN ('BRL', 'USD', 'PYG', 'ARS', 'UYU', 'CLP')`,
+    ),
   ],
 );
 
@@ -243,6 +292,11 @@ const provisioningMethodEnum = z
   .enum(["trial", "self_service", "manual"])
   .nullish();
 
+const countryCodeSchema = z.enum(supportedCountryCodes);
+const tenantLocaleSchema = z.enum(supportedTenantLocales);
+const tenantCurrencySchema = z.enum(supportedTenantCurrencies);
+const supportedCurrenciesSchema = z.array(tenantCurrencySchema).min(1);
+
 export const insertTenantSchema = createInsertSchema(tenantsTable)
   .omit({
     id: true,
@@ -259,6 +313,10 @@ export const insertTenantSchema = createInsertSchema(tenantsTable)
     billingCycle: billingCycleOrNull,
     tipoFechamentoDefault: tipoFechamentoOrNull,
     provisioningMethod: provisioningMethodEnum,
+    countryCode: countryCodeSchema.optional(),
+    defaultLocale: tenantLocaleSchema.optional(),
+    defaultCurrency: tenantCurrencySchema.optional(),
+    supportedCurrencies: supportedCurrenciesSchema.optional(),
   });
 
 export const updateTenantSchema = createSelectSchema(tenantsTable)
@@ -274,6 +332,10 @@ export const updateTenantSchema = createSelectSchema(tenantsTable)
     billingCycle: billingCycleOrNull,
     tipoFechamentoDefault: tipoFechamentoOrNull,
     provisioningMethod: provisioningMethodEnum,
+    countryCode: countryCodeSchema,
+    defaultLocale: tenantLocaleSchema,
+    defaultCurrency: tenantCurrencySchema,
+    supportedCurrencies: supportedCurrenciesSchema,
   })
   .partial();
 
