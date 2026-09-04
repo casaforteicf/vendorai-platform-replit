@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-491",
+    "titulo": "internacionalizar login",
+    "descricao": "usa o locale global já resolvido para exibir o login em português ou espanhol traduz validações, erros, botões, acessibilidade, demo e mensagem institucional mantém Google OAuth, autenticação por senha e demo sem mudança de fluxo",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T03:02:04.000Z",
+    "pullRequest": 491
+  },
+  {
     "id": "pr-490",
     "titulo": "internacionalizar guia de implantação",
     "descricao": "usa o locale ativo do tenant para exibir o Guia de Implantação em português ou espanhol cobre todos os textos, instruções, botões, progresso e rótulos de acessibilidade da tela remove referências antigas visíveis a `TAD` e usa linguagem neutra da plataforma preserva rotas, progresso local por tenant e comportamento atual",
