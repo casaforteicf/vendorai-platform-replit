@@ -24,9 +24,19 @@ const planningConfigSchema = z.object({
 });
 type PlanningConfig = z.infer<typeof planningConfigSchema>;
 
+const EMPTY_PLANNING_CONFIG: PlanningConfig = {
+  objetivoPrincipal: "",
+  produtoServicoPrioritario: "",
+  publicoPrioritario: "",
+  regiao: "",
+  ofertaPrincipal: "",
+  canaisPreferidos: [],
+  observacoes: "",
+};
+
 const generateBodySchema = z.object({
   periodoDias: periodSchema.default(30),
-  configuracao: planningConfigSchema.optional().default({}),
+  configuracao: planningConfigSchema.optional().default(EMPTY_PLANNING_CONFIG),
 });
 
 function normalizedChannel(value: string): string {
