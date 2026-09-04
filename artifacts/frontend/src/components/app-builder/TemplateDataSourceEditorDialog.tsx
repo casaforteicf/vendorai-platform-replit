@@ -363,7 +363,11 @@ export default function TemplateDataSourceEditorDialog({ template, token, open, 
                   <span className="text-xs font-medium">Bloco</span>
                   <Select value={String(blockIndex)} onValueChange={(value) => { setBlockIndex(Number(value)); setTargetKey(""); }} disabled={blocks.length === 0}>
                     <SelectTrigger><SelectValue placeholder="Sem blocos" /></SelectTrigger>
-                    <SelectContent>{blocks.map((block, index) => <SelectItem key={`${stringValue(block.id)}-${index}`} value={String(index)}>{BLOCK_LABEL[stringValue(block.type)] ?? stringValue(block.type) || "Bloco"} · {stringValue(block.id) || index + 1}</SelectItem>)}</SelectContent>
+                    <SelectContent>{blocks.map((block, index) => {
+                      const rawType = stringValue(block.type);
+                      const blockLabel = BLOCK_LABEL[rawType] ?? rawType || "Bloco";
+                      return <SelectItem key={`${stringValue(block.id)}-${index}`} value={String(index)}>{blockLabel} · {stringValue(block.id) || index + 1}</SelectItem>;
+                    })}</SelectContent>
                   </Select>
                 </label>
                 <label className="space-y-1">
