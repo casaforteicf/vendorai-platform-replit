@@ -460,6 +460,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     ? [
         { name: "Tenants",     href: "/admin/tenants",    icon: Briefcase,    sellerHidden: false, section: "admin", badge: undefined },
         { name: "Segmentos",   href: "/admin/verticais",  icon: Building2,    sellerHidden: false, section: "admin", badge: undefined },
+        { name: "App Builder", href: "/admin/app-builder", icon: Cpu,          sellerHidden: false, section: "admin", badge: undefined },
         { name: "Produtos",    href: "/admin/produtos-internos", icon: Package, sellerHidden: false, section: "admin", badge: undefined },
         { name: "Marketplace", href: "/marketplace",      icon: Store,        sellerHidden: false, section: "admin", badge: undefined },
         { name: "AI Usage",    href: "/admin/ai-usage",   icon: BrainCircuit, sellerHidden: false, section: "admin", badge: undefined },
