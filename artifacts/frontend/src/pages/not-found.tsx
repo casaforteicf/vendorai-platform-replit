@@ -5,13 +5,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import MediaCenter from "@/pages/MediaCenter";
 import Conversations from "@/pages/Conversations";
+import Analytics from "@/pages/Analytics";
 
 export default function NotFound() {
   const { token, isLoading } = useAuth();
   const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
   const isMediaCenter = normalizedPath === "/midias";
   const isConversations = normalizedPath === "/conversas";
-  const isProtectedAlias = isMediaCenter || isConversations;
+  const isAiMetrics = normalizedPath === "/metricas-ia";
+  const isProtectedAlias = isMediaCenter || isConversations || isAiMetrics;
 
   useEffect(() => {
     if (isProtectedAlias && !isLoading && !token) {
@@ -23,7 +25,7 @@ export default function NotFound() {
     if (isLoading || !token) return null;
     return (
       <SidebarLayout>
-        {isMediaCenter ? <MediaCenter /> : <Conversations />}
+        {isMediaCenter ? <MediaCenter /> : isConversations ? <Conversations /> : <Analytics />}
       </SidebarLayout>
     );
   }
