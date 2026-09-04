@@ -19,6 +19,14 @@ import {
   registerGeneratedMediaOutput,
   setMediaProjectStatus,
 } from "./media-library.js";
+import {
+  applyTransitionSoundEffects,
+  buildSceneFilter,
+  concatScenesWithEffects,
+  recommendedSceneCount,
+  resolveVideoEffects,
+  transitionDurationFor,
+} from "./media-video-effects.js";
 
 const execFileAsync = promisify(execFile);
 const PRIVATE_DIR = process.env["PRIVATE_OBJECT_DIR"] ?? "";
@@ -42,6 +50,7 @@ type GenerateVideoInput = {
   aspectRatio?: VideoAspectRatio;
   duration?: number;
   sceneCount?: number;
+  effects?: unknown;
 };
 
 type ClaimedVideo = {
@@ -269,39 +278,6 @@ async function registerScene(input: {
   return asset.id;
 }
 
-function motionFilter(input: {
-  sceneIndex: number;
-  duration: number;
-  width: number;
-  height: number;
-}): string {
-  const frames = Math.max(1, Math.round(input.duration * FPS));
-  const fadeDuration = Math.min(0.35, Math.max(0.18, input.duration / 12));
-  const fadeOutStart = Math.max(0, input.duration - fadeDuration).toFixed(3);
-  const movement = input.sceneIndex % 4;
-  const x = movement === 1
-    ? "0"
-    : movement === 3
-      ? "iw-iw/zoom"
-      : "iw/2-(iw/zoom/2)";
-  const y = movement === 0
-    ? "0"
-    : movement === 2
-      ? "ih-ih/zoom"
-      : "ih/2-(ih/zoom/2)";
-  const scaleWidth = Math.round(input.width * 1.25);
-  const scaleHeight = Math.round(input.height * 1.25);
-
-  return [
-    `scale=${scaleWidth}:${scaleHeight}:force_original_aspect_ratio=increase`,
-    `crop=${scaleWidth}:${scaleHeight}`,
-    `zoompan=z='min(zoom+0.0009,1.12)':x='${x}':y='${y}':d=${frames}:s=${input.width}x${input.height}:fps=${FPS}`,
-    "format=yuv420p",
-    `fade=t=in:st=0:d=${fadeDuration.toFixed(3)}`,
-    `fade=t=out:st=${fadeOutStart}:d=${fadeDuration.toFixed(3)}`,
-  ].join(",");
-}
-
 async function renderScene(input: {
   imagePath: string;
   outputPath: string;
@@ -309,6 +285,7 @@ async function renderScene(input: {
   duration: number;
   width: number;
   height: number;
+  effects: ReturnType<typeof resolveVideoEffects>;
 }): Promise<void> {
   await execFileAsync("ffmpeg", [
     "-y",
@@ -317,7 +294,13 @@ async function renderScene(input: {
     "-f", "lavfi",
     "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
     "-t", input.duration.toFixed(3),
-    "-vf", motionFilter(input),
+    "-vf", buildSceneFilter({
+      sceneIndex: input.sceneIndex,
+      duration: input.duration,
+      width: input.width,
+      height: input.height,
+      effects: input.effects,
+    }),
     "-r", String(FPS),
     "-c:v", "libx264",
     "-preset", "fast",
@@ -330,22 +313,6 @@ async function renderScene(input: {
     "-shortest",
     "-movflags", "+faststart",
     input.outputPath,
-  ], { maxBuffer: 8 * 1024 * 1024 });
-}
-
-async function concatScenes(scenePaths: string[], listPath: string, outputPath: string): Promise<void> {
-  const content = scenePaths
-    .map((path) => `file '${path.replace(/'/g, "'\\''")}'`)
-    .join("\n");
-  await writeFile(listPath, content, "utf8");
-  await execFileAsync("ffmpeg", [
-    "-y",
-    "-f", "concat",
-    "-safe", "0",
-    "-i", listPath,
-    "-c", "copy",
-    "-movflags", "+faststart",
-    outputPath,
   ], { maxBuffer: 8 * 1024 * 1024 });
 }
 
@@ -444,8 +411,11 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
   const style = (stringValue(video.input.style) ?? "cinematic, premium, photorealistic, polished commercial production").slice(0, MAX_STYLE_LENGTH);
   const aspectRatio = aspectRatioValue(video.input.aspectRatio);
   const duration = numberValue(video.input.duration, 16, MIN_DURATION, MAX_DURATION);
-  const defaultScenes = Math.max(MIN_SCENES, Math.min(MAX_SCENES, Math.round(duration / 4)));
-  const sceneCount = numberValue(video.input.sceneCount, defaultScenes, MIN_SCENES, MAX_SCENES);
+  const effects = resolveVideoEffects(video.input.effects);
+  const requestedSceneCount = Number.isFinite(Number(video.input.sceneCount)) ? Number(video.input.sceneCount) : null;
+  const sceneCount = recommendedSceneCount(duration, requestedSceneCount, effects, MIN_SCENES, MAX_SCENES);
+  const transitionDuration = transitionDurationFor(duration, sceneCount, effects);
+  const sceneDuration = (duration + transitionDuration * Math.max(0, sceneCount - 1)) / sceneCount;
   const userId = video.input.userId ?? null;
 
   if (!video.projectId || !prompt || prompt.length > MAX_PROMPT_LENGTH) {
@@ -457,7 +427,6 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
 
   const { width, height } = outputDimensions(aspectRatio);
   const size = imageSize(aspectRatio);
-  const sceneDuration = duration / sceneCount;
   const tempPaths: string[] = [];
   let brandCleanup: (() => Promise<void>) | null = null;
 
@@ -466,7 +435,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
       video,
       runnerToken,
       progress: 2,
-      output: { prompt, style, aspectRatio, duration, sceneCount },
+      output: { prompt, style, aspectRatio, duration, sceneCount, effects, transitionDuration },
     });
 
     const sceneAssetIds: string[] = [];
@@ -528,6 +497,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         duration: sceneDuration,
         width,
         height,
+        effects,
       });
       sceneVideoPaths.push(sceneVideoPath);
 
@@ -544,6 +514,8 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           imageModel,
           sceneAssetIds,
           continuityModes,
+          effects,
+          transitionDuration,
         },
       });
     }
@@ -551,7 +523,24 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
     const listPath = join(tmpdir(), `video-generate-${video.id}-concat.txt`);
     const basePath = join(tmpdir(), `video-generate-${video.id}-base.mp4`);
     tempPaths.push(listPath, basePath);
-    await concatScenes(sceneVideoPaths, listPath, basePath);
+    await concatScenesWithEffects({
+      scenePaths: sceneVideoPaths,
+      listPath,
+      outputPath: basePath,
+      sceneDuration,
+      transitionDuration,
+      effects,
+    });
+
+    let composedPath = basePath;
+    const transitionTimes = Array.from({ length: Math.max(0, sceneCount - 1) }, (_, index) => (index + 1) * (sceneDuration - transitionDuration));
+    if (effects.sfx !== "none" && transitionTimes.length) {
+      const sfxPath = join(tmpdir(), `video-generate-${video.id}-sfx.mp4`);
+      tempPaths.push(sfxPath);
+      await applyTransitionSoundEffects({ sourcePath: basePath, outputPath: sfxPath, transitionTimes, effects });
+      composedPath = sfxPath;
+    }
+
     await persistRunning({
       video,
       runnerToken,
@@ -565,12 +554,14 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         imageModel,
         sceneAssetIds,
         continuityModes,
+        effects,
+        transitionDuration,
       },
     });
 
     const branded = await applyBrandIntroOutro({
       tenantId: video.tenantId,
-      sourcePath: basePath,
+      sourcePath: composedPath,
       jobId: video.id,
     });
     brandCleanup = branded.cleanup;
@@ -598,6 +589,9 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         sceneAssetIds,
         scenePrompts,
         continuityModes,
+        effects,
+        transitionDuration,
+        transitionTimes,
         logoAssetId: branded.logoAssetId,
         introAssetId: branded.introAssetId,
         outroAssetId: branded.outroAssetId,
@@ -606,7 +600,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         outroApplied: branded.outroApplied,
         logoWarning: branded.logoWarning,
         engine: "vendorai",
-        generationMode: "ai-scenes-ffmpeg",
+        generationMode: "ai-scenes-ffmpeg-effects-v2",
       },
     });
 
@@ -625,6 +619,8 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         imageModel,
         sceneAssetIds,
         continuityModes,
+        effects,
+        transitionDuration,
         logoAssetId: branded.logoAssetId,
         introAssetId: branded.introAssetId,
         outroAssetId: branded.outroAssetId,
@@ -633,7 +629,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         outroApplied: branded.outroApplied,
         logoWarning: branded.logoWarning,
         engine: "vendorai",
-        generationMode: "ai-scenes-ffmpeg",
+        generationMode: "ai-scenes-ffmpeg-effects-v2",
       },
     });
   } catch (error) {
