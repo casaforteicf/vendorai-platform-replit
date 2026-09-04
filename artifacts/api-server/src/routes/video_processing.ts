@@ -70,7 +70,7 @@ router.post(
 
     const tenantId = String(req.params["tenantId"]);
     const userId = req.user?.sub ?? null;
-    const { removeSilence = "true", speed = "1.0", normalize = "false" } = req.body as Record<string, string>;
+    const { removeSilence = "true", speed = "1.0", normalize = "false", loudnessTarget = "-14" } = req.body as Record<string, string>;
     const jobId = randomUUID();
     const projectId = await createProcessingMediaProject({
       tenantId,
@@ -84,6 +84,7 @@ router.post(
         removeSilence,
         speed,
         normalize,
+        loudnessTarget,
       },
     });
     await createMediaJob({
@@ -91,7 +92,7 @@ router.post(
       tenantId,
       projectId,
       operation: "video_edit",
-      input: { removeSilence, speed, normalize },
+      input: { removeSilence, speed, normalize, loudnessTarget },
     });
     res.json({ jobId, projectId });
 
@@ -116,7 +117,9 @@ router.post(
 
         const vFilters: string[] = [];
         const aFilters: string[] = [...filters];
-        if (normalize === "true") aFilters.push("loudnorm");
+        const parsedLoudnessTarget = parseFloat(loudnessTarget);
+        const safeLoudnessTarget = Number.isFinite(parsedLoudnessTarget) ? Math.max(-24, Math.min(-8, parsedLoudnessTarget)) : -14;
+        if (normalize === "true") aFilters.push(`loudnorm=I=${safeLoudnessTarget}:TP=-1.5:LRA=11`);
 
         const ffmpegArgs: string[] = ["-y", "-i", inPath];
 
@@ -157,7 +160,7 @@ router.post(
           originalFilename: `edited-${req.file!.originalname}`,
           operation: "video_edit",
           label: "Vídeo editado",
-          metadata: { jobId, removeSilence, speed, normalize },
+          metadata: { jobId, removeSilence, speed, normalize, loudnessTarget },
         }).catch(async (libraryError) => {
           req.log.error({ err: libraryError, tenantId, projectId, jobId }, "media-library: failed to register edited video");
           await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
