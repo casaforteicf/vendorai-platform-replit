@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import {
   ArrowLeft,
   Camera,
+  Copy,
   CheckCircle2,
   CircleStop,
   Clock3,
@@ -13,9 +14,11 @@ import {
   Loader2,
   Mic2,
   Plus,
+  QrCode,
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Smartphone,
   Upload,
   UserRound,
   Volume2,
@@ -303,7 +306,8 @@ export default function VideoAvatarPage() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(() => new URLSearchParams(window.location.search).get("capture") === "mobile");
+  const [showMobileQr, setShowMobileQr] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
   const [kind, setKind] = useState<"person" | "persona">("person");
@@ -337,6 +341,25 @@ export default function VideoAvatarPage() {
   }, [detail]);
 
   const marketConfig = CAPTURE_MARKETS[captureMarket];
+  const mobileCaptureUrl = useMemo(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("capture", "mobile");
+    return url.toString();
+  }, []);
+  const mobileQrUrl = `https://quickchart.io/qr?size=280&margin=2&text=${encodeURIComponent(mobileCaptureUrl)}`;
+
+  const copyMobileLink = async () => {
+    await navigator.clipboard.writeText(mobileCaptureUrl);
+    toast({ title: "Link copiado", description: "Abra o link no celular para fotografar e gravar com os roteiros guiados." });
+  };
+
+  const shareMobileLink = async () => {
+    if (navigator.share) {
+      await navigator.share({ title: "Captura do Dublê Digital", text: "Abra no celular para fazer foto, áudio e vídeo guiados.", url: mobileCaptureUrl });
+      return;
+    }
+    await copyMobileLink();
+  };
   const detailMarket = useMemo(() => marketFromMetadata(detail?.identity.metadata), [detail?.identity.metadata]);
   const voiceEngineReady = capabilities?.capabilities?.voice_synthesize === "ready";
   const lipSyncEngineReady = capabilities?.capabilities?.avatar_lipsync === "ready";
@@ -745,6 +768,34 @@ export default function VideoAvatarPage() {
               </div>
               <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-gray-400">Alta fidelidade: foto + voz guiada + vídeo ~2 min</div>
             </div>
+
+            <section className="rounded-xl border border-purple-500/20 bg-black/20 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-3">
+                  <div className="rounded-xl bg-purple-500/15 p-2.5 text-purple-200"><Smartphone className="h-5 w-5" /></div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Fazer foto, áudio e vídeo pelo celular</p>
+                    <p className="mt-1 text-xs text-gray-400">O celular abre esta mesma captura responsiva, com os roteiros de voz e vídeo do mercado selecionado.</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setShowMobileQr((value) => !value)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-purple-400/30 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/20">
+                  <QrCode className="h-4 w-4" /> {showMobileQr ? "Ocultar QR Code" : "Abrir QR Code"}
+                </button>
+              </div>
+              {showMobileQr && (
+                <div className="mt-4 grid gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-[176px_1fr] sm:items-center">
+                  <div className="rounded-xl bg-white p-2"><img src={mobileQrUrl} alt="QR Code para abrir a captura do Dublê Digital no celular" className="aspect-square w-full" /></div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Escaneie com a câmera do celular</p>
+                    <p className="mt-1 text-xs leading-5 text-gray-400">Por segurança, o usuário deverá entrar na própria conta. Nenhum token, identidade ou mídia é enviado ao serviço que desenha o QR Code.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void copyMobileLink()} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/5"><Copy className="h-3.5 w-3.5" /> Copiar link</button>
+                      <button type="button" onClick={() => void shareMobileLink()} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/5"><Smartphone className="h-3.5 w-3.5" /> Compartilhar</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
 
             <div className="grid lg:grid-cols-3 gap-4">
               <label className="space-y-1.5">
