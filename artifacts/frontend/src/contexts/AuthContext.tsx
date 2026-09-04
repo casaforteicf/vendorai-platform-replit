@@ -225,6 +225,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       : rawUser
     : null;
 
+  // Pessoas & Vozes gera o QR a partir da URL atual. Manter o tenant efetivo
+  // explicitamente na URL faz o celular carregar a empresa que iniciou a
+  // captura, em vez de depender da conta que por acaso esteja aberta nele.
+  // O reload acontece apenas quando o tenant muda ou quando a URL antiga ainda
+  // não possuía esse contexto, garantindo que o useMemo do QR nasça correto.
+  useEffect(() => {
+    if (!effectiveUser?.tenantId) return;
+    const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
+    if (normalizedPath !== "/content-studio/video/avatar") return;
+
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("tenant") === effectiveUser.tenantId) return;
+    url.searchParams.set("tenant", effectiveUser.tenantId);
+    window.location.replace(`${url.pathname}${url.search}${url.hash}`);
+  }, [location, effectiveUser?.tenantId]);
+
   const shouldLoadLocaleTenant =
     !!token &&
     !!effectiveUser?.tenantId &&
