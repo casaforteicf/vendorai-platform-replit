@@ -31,7 +31,7 @@ import { InstagramApiError, listRecentMedia } from "../lib/instagram-publish.js"
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import { publishContentGenerationToInstagram, getPublishingCredentials, SocialPublicationError } from "../services/contentSocialPublisher.js";
 import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
-import { applyBrandFrame } from "../services/brandFrame.js";
+import { applyBrandFrame, generateHighlightCover } from "../services/brandFrame.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
@@ -391,9 +391,9 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-imag
     return;
   }
 
-  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[] })[];
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[]; imageSource?: "ai" | "upload" })[];
   if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
-  variations[idx] = { ...variations[idx], imageUrl, imageUrls: undefined };
+  variations[idx] = { ...variations[idx], imageUrl, imageUrls: undefined, imageSource: "ai" } as typeof variations[number];
 
   await db
     .update(contentGenerationsTable)
@@ -431,6 +431,8 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
     imageUrl?: string | null;
     imageUrls?: string[];
     videoUrl?: string;
+    framed?: boolean;
+    imageSource?: "ai" | "upload";
   })[];
   if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
 
@@ -451,10 +453,12 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
         ...variation,
         imageUrl: nextUrls[0] ?? mediaUrl,
         imageUrls: nextUrls.length > 1 ? nextUrls : undefined,
+        imageSource: "upload",
+        framed: false,
       };
     } else {
       responseImageUrls = [mediaUrl];
-      variations[idx] = { ...variation, imageUrl: mediaUrl, imageUrls: undefined };
+      variations[idx] = { ...variation, imageUrl: mediaUrl, imageUrls: undefined, imageSource: "upload", framed: false };
     }
   } else {
     variations[idx] = { ...variation, videoUrl: mediaUrl };
@@ -514,7 +518,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/apply-brand-f
     .limit(1);
   if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
 
-  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string | null; imageUrls?: string[] })[];
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string | null; imageUrls?: string[]; framed?: boolean; imageSource?: "ai" | "upload" })[];
   const variation = variations[idx];
   if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
 
@@ -541,7 +545,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/apply-brand-f
 
     const newUrls = [...currentUrls];
     newUrls[imageIndex] = mediaUrl;
-    variations[idx] = { ...variation, imageUrl: newUrls[0], imageUrls: newUrls.length > 1 ? newUrls : undefined };
+    variations[idx] = { ...variation, imageUrl: newUrls[0], imageUrls: newUrls.length > 1 ? newUrls : undefined, framed: true, imageSource: "upload" } as typeof variations[number];
 
     await db
       .update(contentGenerationsTable)
@@ -672,6 +676,119 @@ router.get("/tenants/:tenantId/content/instagram-grid", async (req, res) => {
   }
 });
 
+/**
+ * "Inteligência" de layout — motor de regras (não um agente autônomo):
+ * 1. Olha o tipo dos últimos posts publicados de verdade (media_type da
+ *    Graph API: IMAGE/CAROUSEL_ALBUM = Feed estático, VIDEO = Reels) e
+ *    recomenda alternar quando o mesmo tipo se repete demais em seguida.
+ * 2. Vasculha a Biblioteca por rascunhos de Feed enviados manualmente
+ *    (imageSource "upload") que ainda não passaram pela moldura de marca
+ *    — provável print/screenshot cru que vai destoar da grade.
+ */
+router.get("/tenants/:tenantId/content/layout-recommendation", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  let recommendedType: "feed" | "reels" | null = null;
+  let reason = "";
+
+  try {
+    const { accessToken, accountId } = await getPublishingCredentials(tenantId);
+    const items = await listRecentMedia(accountId, accessToken, 6);
+    const recentTypes = items.map((item) => (item.mediaType === "VIDEO" ? "reels" : "feed"));
+    const lastType = recentTypes[0];
+
+    if (lastType) {
+      let streak = 0;
+      for (const t of recentTypes) {
+        if (t === lastType) streak++;
+        else break;
+      }
+      if (streak >= 2) {
+        recommendedType = lastType === "feed" ? "reels" : "feed";
+        reason = `Os últimos ${streak} posts publicados foram todos ${lastType === "feed" ? "Feed (foto)" : "Reels (vídeo)"} — publicar um ${recommendedType === "feed" ? "Feed" : "Reels"} agora quebra a repetição e dá mais variedade pra grade.`;
+      } else {
+        reason = "A grade já está alternando entre Feed e Reels — sem repetição pra corrigir agora.";
+      }
+    } else {
+      reason = "Ainda não há posts publicados suficientes pra recomendar um padrão.";
+    }
+  } catch (err) {
+    if (!(err instanceof SocialPublicationError)) {
+      req.log.error({ err }, "layout-recommendation: falha ao ler grade real");
+    }
+    reason = "Instagram não conectado — conecte pra receber recomendação de padrão da grade.";
+  }
+
+  const libraryRows = await db
+    .select({
+      id: contentLibraryTable.id,
+      type: contentLibraryTable.type,
+      theme: contentLibraryTable.theme,
+      variation: contentLibraryTable.variation,
+    })
+    .from(contentLibraryTable)
+    .where(eq(contentLibraryTable.tenantId, tenantId))
+    .orderBy(desc(contentLibraryTable.savedAt));
+
+  const flaggedDrafts = libraryRows
+    .filter((row) => {
+      if (row.type !== "feed") return false;
+      const v = row.variation as { imageSource?: string; framed?: boolean; imageUrl?: string };
+      return v.imageSource === "upload" && !v.framed && !!v.imageUrl;
+    })
+    .map((row) => ({ id: row.id, theme: row.theme }));
+
+  res.json({ recommendedType, reason, flaggedDrafts });
+});
+
+const highlightCoverBodySchema = z.object({
+  label: z.string().min(1).max(30),
+});
+
+router.post("/tenants/:tenantId/content/highlight-cover", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const body = highlightCoverBodySchema.safeParse(req.body);
+  if (!body.success) {
+    res.status(422).json({ error: body.error.message });
+    return;
+  }
+
+  const [tenant] = await db
+    .select({ corPrimaria: tenantsTable.corPrimaria, logoUrl: tenantsTable.logoUrl })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  try {
+    const cover = await generateHighlightCover({
+      corPrimaria: tenant?.corPrimaria || "#A78BFA",
+      logoUrl: tenant?.logoUrl || null,
+      label: body.data.label,
+    });
+
+    const objectStorage = new ObjectStorageService();
+    const objectPath = await objectStorage.savePrivateBuffer(cover, "image/jpeg", "highlight-cover.jpg");
+    const mediaUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
+
+    res.json({ success: true, mediaUrl });
+  } catch (err) {
+    req.log.error({ err }, "highlight-cover: falha ao gerar capa");
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    res.status(502).json({ error: `Não foi possível gerar a capa: ${msg}` });
+  }
+});
+
 router.delete("/tenants/:tenantId/content/:id", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const id = String(req.params["id"]);
@@ -779,14 +896,15 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
       );
     }
 
-    const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[] })[];
+    const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[]; imageSource?: "ai" | "upload" })[];
     if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
 
     variations[idx] = {
       ...variations[idx],
       imageUrl: imageUrls[0],
       imageUrls: imageUrls.length > 1 ? imageUrls : undefined,
-    };
+      imageSource: "ai",
+    } as typeof variations[number];
 
     await db
       .update(contentGenerationsTable)

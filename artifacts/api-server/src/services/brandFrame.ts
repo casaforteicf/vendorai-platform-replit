@@ -29,6 +29,10 @@ function darken(hex: string, amount: number): string {
   return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount));
 }
 
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 /**
  * Compõe um print/imagem crua dentro de uma moldura de marca: fundo em
  * gradiente derivado da cor primária do tenant, imagem original centralizada
@@ -114,4 +118,66 @@ export async function applyBrandFrame(sourceBuffer: Buffer, opts: BrandFrameOpti
   }
 
   return sharp(background).composite(composites).jpeg({ quality: 90 }).toBuffer();
+}
+
+/**
+ * Gera uma capa de Destaque (Instagram Highlights) com a cor + logo da
+ * marca do tenant — quadrada, pronta pra virar o círculo que o Instagram
+ * recorta automaticamente. A Graph API não tem endpoint pra CRIAR Destaque
+ * (só leitura em APIs de terceiros não-oficiais), então isso não publica
+ * nada sozinho: gera a imagem pra download, o upload final é manual, feito
+ * na hora de criar o Destaque dentro do app.
+ */
+export async function generateHighlightCover(opts: { corPrimaria: string; logoUrl?: string | null; label: string }): Promise<Buffer> {
+  const size = 1080;
+  const primary = /^#[0-9a-fA-F]{3,6}$/.test(opts.corPrimaria || "") ? opts.corPrimaria : "#A78BFA";
+  const secondary = darken(primary, 0.5);
+
+  const backgroundSvg = `
+    <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="bg" cx="50%" cy="42%" r="70%">
+          <stop offset="0%" stop-color="${primary}" />
+          <stop offset="100%" stop-color="${secondary}" />
+        </radialGradient>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#bg)" />
+    </svg>`;
+  const background = await sharp(Buffer.from(backgroundSvg)).png().toBuffer();
+
+  const composites: { input: Buffer; left: number; top: number }[] = [];
+  let logoBottom = Math.round(size * 0.4);
+
+  if (opts.logoUrl) {
+    try {
+      const logoRes = await fetch(opts.logoUrl);
+      if (logoRes.ok) {
+        const logoBuf = Buffer.from(await logoRes.arrayBuffer());
+        const logoTargetSize = Math.round(size * 0.34);
+        const resizedLogo = await sharp(logoBuf).resize({ width: logoTargetSize, height: logoTargetSize, fit: "inside" }).png().toBuffer();
+        const logoMeta = await sharp(resizedLogo).metadata();
+        const logoW = logoMeta.width ?? logoTargetSize;
+        const logoH = logoMeta.height ?? logoTargetSize;
+        const logoTop = Math.round(size * 0.28);
+        composites.push({ input: resizedLogo, left: Math.round((size - logoW) / 2), top: logoTop });
+        logoBottom = logoTop + logoH + 40;
+      }
+    } catch {
+      // Logo é opcional — sem ela, o rótulo sozinho ainda faz uma capa válida.
+    }
+  }
+
+  const labelText = escapeXml((opts.label || "").trim().slice(0, 20).toUpperCase());
+  if (labelText) {
+    const labelSvg = `
+      <svg width="${size}" height="200" xmlns="http://www.w3.org/2000/svg">
+        <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
+          font-family="Arial, sans-serif" font-weight="700" font-size="64" fill="white" letter-spacing="2">
+          ${labelText}
+        </text>
+      </svg>`;
+    composites.push({ input: Buffer.from(labelSvg), left: 0, top: Math.min(logoBottom, size - 220) });
+  }
+
+  return sharp(background).composite(composites).jpeg({ quality: 92 }).toBuffer();
 }

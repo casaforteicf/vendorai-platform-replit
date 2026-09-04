@@ -4,6 +4,8 @@ import { useLocation } from "wouter";
 import { Instagram, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InstagramGridPreview, type DraftOption } from "@/components/InstagramGridPreview";
+import { LayoutIntelligenceCard } from "@/components/LayoutIntelligenceCard";
+import { HighlightCoverGenerator } from "@/components/HighlightCoverGenerator";
 
 type FeedVariation = { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[] };
 type ContentLibraryItem = {
@@ -64,6 +66,10 @@ export default function MarketingInstagram() {
       </div>
 
       <InstagramGridPreview tenantId={tenantId} draftOptions={draftOptions} />
+
+      <LayoutIntelligenceCard tenantId={tenantId} />
+
+      <HighlightCoverGenerator tenantId={tenantId} />
 
       <p className="text-xs text-muted-foreground">
         Conta não conectada ou token expirado? Ajuste em Configurações → Integrações.

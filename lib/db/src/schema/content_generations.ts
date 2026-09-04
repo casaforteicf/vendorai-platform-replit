@@ -6,7 +6,7 @@ import { tenantsTable } from "./tenants";
 export const CONTENT_TYPES = ["feed", "stories", "reels", "linkedin", "youtube"] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
-export type FeedVariation = { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[] };
+export type FeedVariation = { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[]; framed?: boolean; imageSource?: "ai" | "upload" };
 export type StoriesVariation = { text: string; cta: string; imageUrl?: string; imageUrls?: string[] };
 export type ReelsScene = { visual: string; fala: string; duracao: string };
 export type ReelsVariation = {
