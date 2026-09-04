@@ -221,3 +221,105 @@ main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl {
     font-size: 1.5rem !important; /* 24px */
   }
 }
+
+/*
+ * Footer desktop fix:
+ * the sidebar itself has backdrop-filter + overflow-hidden, so the previous
+ * fixed top-right utility bar was clipped by its own containing block. Keep
+ * account, FAQ, Novidades and Sair anchored inside the sidebar instead.
+ */
+@media (min-width: 768px) {
+  .hidden.md\:flex.sticky.top-0.h-screen > div {
+    min-height: 0 !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .vendor-scrollbar.flex-1 {
+    min-height: 0 !important;
+    overflow-y: auto !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    padding: 10px 12px !important;
+    border: 0 !important;
+    border-top: 1px solid hsl(var(--sidebar-border) / 0.8) !important;
+    border-radius: 0 !important;
+    background: hsl(var(--sidebar) / 0.98) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 {
+    display: flex !important;
+    height: auto !important;
+    margin: 0 0 8px !important;
+    padding: 0 2px !important;
+    border-right: 0 !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > div:first-child {
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 12px !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 {
+    display: block !important;
+    max-width: none !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 > p:first-child {
+    font-size: 12px !important;
+    line-height: 1rem !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 > p:last-child {
+    font-size: 10px !important;
+    line-height: 0.9rem !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 {
+    display: block !important;
+    margin: 0 0 4px !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > a,
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > button,
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > button {
+    display: flex !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 0 10px !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    line-height: 1 !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t svg {
+    width: 14px !important;
+    height: 14px !important;
+    margin-right: 6px !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > button > span {
+    position: static !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    margin-left: auto !important;
+    padding: 0 4px !important;
+    font-size: 9px !important;
+  }
+}
