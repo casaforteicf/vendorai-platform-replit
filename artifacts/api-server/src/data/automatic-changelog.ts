@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-449",
+    "titulo": "configurar perfil internacional do tenant",
+    "descricao": "adiciona card **Perfil internacional** na tela real de detalhes do tenant; permite configurar país, idioma padrão, fuso horário, moeda principal, moedas habilitadas e identificação fiscal; presets oficiais para Brasil, Paraguai, Argentina, Uruguai e Chile; ao trocar país, aplica locale/fuso/moeda/tipo fiscal recomendados antes de salvar;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T01:10:05.000Z",
+    "pullRequest": 449
+  },
+  {
     "id": "pr-442",
     "titulo": "adicionar coleções e identidade sonora ao Music Hub",
     "descricao": "trilhas podem participar de múltiplas coleções/playlists; adiciona contextos de uso da marca: Institucional, Reels/Shorts, Anúncios, Produto, Stories e Apresentações; permite marcar trilhas como `Oficial da marca`; adiciona filtros por coleção e uso da marca;",
