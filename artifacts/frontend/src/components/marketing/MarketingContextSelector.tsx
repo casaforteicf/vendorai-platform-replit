@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, CheckCircle2, Link2, MapPin, PackageSearch, Plus, Search, Target } from "lucide-react";
+import { CampaignMarketingIntelligencePanel } from "@/components/marketing/CampaignMarketingIntelligencePanel";
 
 type Product = { id: string; nome: string; ativo?: boolean };
 
@@ -677,6 +678,19 @@ export function MarketingContextSelector({
           <BriefingToggle checked={value.seoTrackingEnabled === true} onChange={(checked) => emit({ seoTrackingEnabled: checked })} title="Gerar SEO e tracking" description="Mantém o briefing preparado para palavras-chave, metadados, UTMs e eventos de conversão das peças conectadas." />
         </div>
       </div>
+
+      {value.campaignId ? (
+        <CampaignMarketingIntelligencePanel
+          tenantId={tenantId}
+          campaignId={value.campaignId}
+          campaignName={value.campaignName}
+          researchEnabled={value.researchEnabled}
+        />
+      ) : (
+        <div className="rounded-lg border border-dashed bg-background/50 px-3 py-3 text-xs text-muted-foreground">
+          Salve a campanha primeiro. Depois o VendorAI libera a pesquisa de palavras-chave, o pacote SEO e o tracking vinculados a este briefing.
+        </div>
+      )}
 
       <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
         <Search className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
