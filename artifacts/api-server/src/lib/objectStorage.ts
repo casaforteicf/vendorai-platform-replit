@@ -110,6 +110,11 @@ class SupabaseFileHandle {
     return [{ contentType: meta?.metadata?.["mimetype"], size: meta?.metadata?.["size"] }];
   }
 
+  async delete(): Promise<void> {
+    const { error } = await this.client.storage.from(this.bucketName).remove([this.objectName]);
+    if (error) throw error;
+  }
+
   getPublicUrl(): string {
     const { data } = this.client.storage.from(this.bucketName).getPublicUrl(this.objectName);
     return data.publicUrl;
