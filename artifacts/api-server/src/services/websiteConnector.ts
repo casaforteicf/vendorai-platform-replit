@@ -109,7 +109,8 @@ function platformLabel(platform: WebsitePlatform | null): string {
  *  1) URL explicitamente configurada no Content Autopilot;
  *  2) site principal do cadastro do tenant;
  *  3) domínio customizado ativo de um site hospedado pelo VendorAI;
- *  4) subdomínio VendorAI do tenant.
+ *  4) subdomínio VendorAI somente quando o tenant realmente possui um site
+ *     criado no Gerador de Sites.
  *
  * Exceção importante: um appvendorai.com raiz salvo como default antigo nunca
  * ganha do site real do cliente. Isso corrige tenants que herdaram
@@ -148,7 +149,8 @@ export async function resolveWebsiteConnection(tenantId: string): Promise<Websit
   const activeDomain = activeDomains[0]?.domain
     ? normalizeWebsiteUrl(`https://${activeDomains[0].domain}`)
     : null;
-  const subdomainSite = tenants[0]?.subdomainSlug
+  const hasGeneratedSite = generatedSites.length > 0;
+  const subdomainSite = tenants[0]?.subdomainSlug && hasGeneratedSite
     ? normalizeWebsiteUrl(`https://${tenants[0].subdomainSlug}.appvendorai.com`)
     : null;
 
@@ -206,6 +208,7 @@ export async function resolveWebsiteConnection(tenantId: string): Promise<Websit
     ? hostname.slice(0, -".appvendorai.com".length)
     : null;
   const isNativeSubdomain = Boolean(
+    hasGeneratedSite &&
     nativeSubdomainSlug &&
     !nativeSubdomainSlug.includes(".") &&
     !PLATFORM_ROOT_HOSTS.has(hostname ?? "") &&
@@ -217,7 +220,6 @@ export async function resolveWebsiteConnection(tenantId: string): Promise<Websit
   const nativeSiteSlug = isNativeSubdomain
     ? nativeSubdomainSlug
     : generatedSites.find((row) => row.published && row.siteSlug)?.siteSlug
-      ?? tenants[0]?.subdomainSlug
       ?? generatedSites.find((row) => row.siteSlug)?.siteSlug
       ?? null;
 
