@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AppUsersDialog from "@/components/app-builder/AppUsersDialog";
 import TemplateRuntimeEditorDialog from "@/components/app-builder/TemplateRuntimeEditorDialog";
+import TemplateRuntimePreviewDialog from "@/components/app-builder/TemplateRuntimePreviewDialog";
 import AdminAppBuilderLegacy from "./AdminAppBuilderLegacy";
-import { ExternalLink, Layers3, Loader2, UserRoundCog } from "lucide-react";
+import { ExternalLink, Layers3, Loader2, MonitorSmartphone, UserRoundCog } from "lucide-react";
 
 type AppInstance = {
   id: string;
@@ -31,6 +32,7 @@ export default function AdminAppBuilder() {
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [usersOpen, setUsersOpen] = useState(false);
   const [runtimeEditorOpen, setRuntimeEditorOpen] = useState(false);
+  const [runtimePreviewOpen, setRuntimePreviewOpen] = useState(false);
   const [loadingControls, setLoadingControls] = useState(false);
 
   const loadControls = useCallback(async () => {
@@ -98,6 +100,10 @@ export default function AdminAppBuilder() {
             <SelectTrigger className="h-9 w-full sm:w-[280px]"><SelectValue placeholder={loadingControls ? "Carregando templates..." : "Selecione o template"} /></SelectTrigger>
             <SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · {template.status}</SelectItem>)}</SelectContent>
           </Select>
+          <Button size="sm" variant="outline" onClick={() => setRuntimePreviewOpen(true)} disabled={!selectedTemplate || loadingControls}>
+            <MonitorSmartphone className="mr-2 h-4 w-4" />
+            Pré-visualizar
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setRuntimeEditorOpen(true)} disabled={!selectedTemplate || loadingControls}>
             <Layers3 className="mr-2 h-4 w-4" />
             Editor visual
@@ -120,6 +126,13 @@ export default function AdminAppBuilder() {
         token={token}
         open={runtimeEditorOpen}
         onOpenChange={setRuntimeEditorOpen}
+      />
+
+      <TemplateRuntimePreviewDialog
+        template={selectedTemplate}
+        token={token}
+        open={runtimePreviewOpen}
+        onOpenChange={setRuntimePreviewOpen}
       />
     </>
   );
