@@ -7,6 +7,7 @@ import MediaCenter from "@/pages/MediaCenter";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
 import VideoAvatarCapturePage from "@/pages/video/VideoAvatarCapturePage";
+import VideoAvatarCaptureTenantGate from "@/pages/video/VideoAvatarCaptureTenantGate";
 import VideoAvatarCaptureViewportGuard from "@/pages/video/VideoAvatarCaptureViewportGuard";
 import VideoAvatarVideoScriptGuide from "@/pages/video/VideoAvatarVideoScriptGuide";
 
@@ -36,11 +37,11 @@ export default function NotFound() {
 
     if (isDubleCapture) {
       return (
-        <>
+        <VideoAvatarCaptureTenantGate>
           <VideoAvatarCapturePage />
           <VideoAvatarCaptureViewportGuard />
           <VideoAvatarVideoScriptGuide />
-        </>
+        </VideoAvatarCaptureTenantGate>
       );
     }
 
