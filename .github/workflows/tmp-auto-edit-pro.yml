@@ -2,11 +2,11 @@ name: tmp-auto-edit-pro
 on:
   push:
     branches: [feat/video-auto-edit-pro]
-    paths: [.tmp-auto-edit-pro-run]
 permissions:
   contents: write
 jobs:
   patch-and-validate:
+    if: github.actor != 'vendorai-automation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
