@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ActiveLeadProcesses, type ActiveWorkCard } from "@/components/ActiveLeadProcesses";
+import { NewLeadDialog } from "@/components/NewLeadDialog";
 import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle, Flame, Cloud, Snowflake, Trash2, UserRound } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -185,8 +186,6 @@ interface ParsedLeadRow {
   empresa: string;
   status: string;
   responsavel: string;
-  // Colunas do CSV que não são nenhum campo padrão — nome da coluna
-  // vira a chave, guardado no metadata do lead em vez de descartado.
   camposExtras: Record<string, string>;
 }
 
@@ -194,9 +193,6 @@ const CSV_TEMPLATE = "nome,telefone,endereco,email,instagram,empresa,status,resp
 
 const KNOWN_LEAD_COLUMNS = new Set(["nome", "telefone", "endereco", "email", "instagram", "empresa", "status", "responsavel"]);
 
-// Aspas-aware — mesma lógica já usada no import de catálogo (Propostas.tsx).
-// Sem isso, qualquer célula com vírgula dentro (ex: endereço "Rua X, 123")
-// quebra o alinhamento das colunas seguintes.
 function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
   let cur = "";
@@ -231,9 +227,6 @@ function parseCsvRows(text: string): ParsedLeadRow[] {
     status: rawHeader.indexOf("status"),
     responsavel: rawHeader.indexOf("responsavel"),
   };
-  // Qualquer coluna do CSV que não seja um campo padrão (ex: "cargo",
-  // "origem_lead", "aniversario") — guarda a posição + o nome original
-  // (não normalizado) pra usar como chave no metadata do lead.
   const extraColumns = lines[0]!
     .split(",")
     .map((h, i) => ({ name: h.trim(), key: rawHeader[i] ?? "", index: i }))
@@ -289,7 +282,6 @@ export default function Leads() {
   const [assignSelectedUser, setAssignSelectedUser] = useState<string>("");
   const updateLead = useUpdateLead();
 
-  // ── Exclusão lógica de lead ──────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<"ativos" | "excluidos">("ativos");
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null });
   const [deleteMotivo, setDeleteMotivo] = useState("");
@@ -458,11 +450,8 @@ export default function Leads() {
   });
 
   const userMap = new Map(Object.entries(overview?.userLabelsById ?? {}));
-
   const ciMap = new Map(ciList?.map((ci) => [ci.leadId, ci]) ?? []);
-
   const briefingMap = new Map(briefings.map((b) => [b.leadId, b]));
-
   const leadValorMap = new Map<string, string>(Object.entries(overview?.proposalTotalsByLeadId ?? {}));
 
   function formatCurrency(value: string | null | undefined): string {
@@ -556,7 +545,6 @@ export default function Leads() {
     })
     .sort((a, b) => {
       if (isQuenteUrl) {
-        // Quente leads: prioritize qualificado over novo
         const scoreA = a.status === "qualificado" ? 2 : a.status === "novo" ? 1 : 0;
         const scoreB = b.status === "qualificado" ? 2 : b.status === "novo" ? 1 : 0;
         return scoreB - scoreA;
@@ -586,7 +574,6 @@ export default function Leads() {
 
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={() => setLocation("/contacts-nonleads")}>Outros contatos</Button>
-          {/* Import button + dialog */}
           <Dialog open={isImportOpen} onOpenChange={(v) => { setIsImportOpen(v); if (!v) resetImport(); }}>
             <DialogTrigger asChild>
               <Button variant="outline">
@@ -601,7 +588,6 @@ export default function Leads() {
 
               {!importResult ? (
                 <div className="space-y-4">
-                  {/* Instructions */}
                   <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1">
                     <p className="font-medium">Formato esperado (colunas em ordem):</p>
                     <p className="font-mono text-xs text-muted-foreground">nome, telefone, endereco, email, instagram, empresa, status, responsavel</p>
@@ -609,7 +595,6 @@ export default function Leads() {
                     <p className="text-xs text-muted-foreground">Pode adicionar qualquer coluna extra (ex: cargo, origem, data de nascimento) — elas são guardadas no cadastro do lead e aparecem na ficha dele.</p>
                   </div>
 
-                  {/* Template download */}
                   <Button variant="ghost" size="sm" className="gap-2 text-primary" onClick={downloadTemplate}>
                     <FileDown className="h-4 w-4" />
                     Baixar planilha modelo
@@ -618,7 +603,6 @@ export default function Leads() {
                     Mapeamento avançado
                   </Button>
 
-                  {/* File upload */}
                   <div
                     className="border-2 border-dashed border-muted-foreground/30 rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
                     onClick={() => fileInputRef.current?.click()}
@@ -635,7 +619,6 @@ export default function Leads() {
                     />
                   </div>
 
-                  {/* Preview table */}
                   {parsedRows.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-emerald-700">
@@ -688,7 +671,6 @@ export default function Leads() {
                   )}
                 </div>
               ) : (
-                /* Result screen */
                 <div className="space-y-4 py-2">
                   <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
                     <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
@@ -718,99 +700,15 @@ export default function Leads() {
             </DialogContent>
           </Dialog>
 
-          {/* New lead button + dialog */}
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-novo-lead">
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Lead
-              </Button>
-            </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Criar Novo Lead</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="nome"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nome *</FormLabel>
-                      <FormControl>
-                        <Input data-testid="input-nome" placeholder="Nome completo" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="telefone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Telefone</FormLabel>
-                        <FormControl>
-                          <PhoneInput data-testid="input-telefone" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input data-testid="input-email" placeholder="email@empresa.com" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="empresa"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Empresa</FormLabel>
-                      <FormControl>
-                        <Input data-testid="input-empresa" placeholder={hints.leadEmpresaPlaceholder} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="objetivo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Objetivo</FormLabel>
-                      <FormControl>
-                        <Input data-testid="input-objetivo" placeholder={hints.leadObjetivoPlaceholder} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={createLead.isPending}
-                  data-testid="button-submit-lead"
-                >
-                  {createLead.isPending ? "Salvando..." : "Salvar Lead"}
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+          <NewLeadDialog
+            tenantId={tenantId}
+            token={token}
+            isAdmin={isAdmin}
+            leads={leads ?? []}
+            companyPlaceholder={hints.leadEmpresaPlaceholder}
+            objectivePlaceholder={hints.leadObjetivoPlaceholder}
+            onNavigate={setLocation}
+          />
         </div>
       </div>
 
@@ -919,7 +817,6 @@ export default function Leads() {
         </div>
 
         <CardContent className="p-0">
-          {/* Mobile card list */}
           <div className="md:hidden divide-y">
             {leadsLoading ? (
               Array.from({ length: 4 }).map((_, i) => (
@@ -1002,7 +899,6 @@ export default function Leads() {
             )}
           </div>
 
-          {/* Desktop table */}
           <div className="hidden md:block">
             <TooltipProvider delayDuration={300}>
             <Table>
@@ -1148,7 +1044,6 @@ export default function Leads() {
       </Card>
       )}
 
-      {/* Assign lead dialog */}
       <Dialog
         open={assignDialog.open}
         onOpenChange={(v) => {
@@ -1211,7 +1106,6 @@ export default function Leads() {
         </DialogContent>
       </Dialog>
 
-      {/* Duplicate merge dialog */}
       <Dialog open={duplicateDialog.open} onOpenChange={(v) => !v && setDuplicateDialog({ open: false, lead: null, matchBy: "" })}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1256,7 +1150,6 @@ export default function Leads() {
         </DialogContent>
       </Dialog>
 
-      {/* Motivo da exclusão */}
       <Dialog open={deleteDialog.open} onOpenChange={(v) => !v && setDeleteDialog({ open: false, lead: null })}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
