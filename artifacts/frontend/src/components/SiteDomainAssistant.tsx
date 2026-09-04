@@ -30,6 +30,10 @@ type WebsiteConnection = {
   canPublish?: boolean;
 };
 
+type WebsiteConnectionResponse = {
+  connection?: WebsiteConnection | null;
+};
+
 type DnsCheck = {
   checked?: boolean;
   matches?: boolean;
@@ -158,12 +162,13 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
         fetch(`/api/tenants/${tenantId}/content-autopilot/website-connection`, { headers: authHeaders(), cache: "no-store" }),
       ]);
       const domainsBody = await domainsRes.json().catch(() => ({})) as DomainsResponse;
-      const connectionBody = await connectionRes.json().catch(() => ({})) as WebsiteConnection;
+      const connectionBody = await connectionRes.json().catch(() => ({})) as WebsiteConnectionResponse;
       if (!domainsRes.ok) throw new Error("Não foi possível carregar os domínios deste cliente.");
+      const resolvedConnection = connectionRes.ok ? connectionBody.connection ?? null : null;
       setDomains(Array.isArray(domainsBody.domains) ? domainsBody.domains : []);
-      setConnection(connectionRes.ok ? connectionBody : null);
-      if (!domainInput && connectionRes.ok) {
-        const next = suggestLpDomain(connectionBody);
+      setConnection(resolvedConnection);
+      if (!domainInput && resolvedConnection) {
+        const next = suggestLpDomain(resolvedConnection);
         if (next) setDomainInput(next);
       }
     } catch (error) {
