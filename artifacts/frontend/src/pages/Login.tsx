@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useLogin, useDemoLogin } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useI18n } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -16,14 +17,62 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import logoDark from "/logo-full-dark.svg";
 import logoLight from "/logo-full-light.svg";
 
-const formSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(1, "Senha é obrigatória"),
-});
+const PT_COPY = {
+  invalidEmail: "Email inválido",
+  requiredPassword: "Senha é obrigatória",
+  loginErrorTitle: "Erro ao entrar",
+  loginErrorDescription: "Verifique suas credenciais.",
+  demoErrorTitle: "Erro ao entrar na demo",
+  demoErrorDescription: "Não foi possível acessar a conta de demonstração.",
+  title: "Entrar",
+  subtitle: "Insira suas credenciais para acessar a plataforma.",
+  email: "Email",
+  emailPlaceholder: "seu@email.com",
+  password: "Senha",
+  hidePassword: "Ocultar senha",
+  showPassword: "Mostrar senha",
+  entering: "Entrando...",
+  enterPlatform: "Entrar na Plataforma",
+  or: "ou",
+  enterGoogle: "Entrar com Google",
+  demo: "Acessar conta de demonstração",
+  forgotPassword: "Esqueci minha senha",
+  headline: "O comando central de vendas.",
+  description: "CRM, conversas, agendamentos e IA em uma única interface pensada para velocidade e densidade de informação.",
+} as const;
+
+const ES_COPY = {
+  invalidEmail: "Correo electrónico inválido",
+  requiredPassword: "La contraseña es obligatoria",
+  loginErrorTitle: "Error al iniciar sesión",
+  loginErrorDescription: "Verifica tus credenciales.",
+  demoErrorTitle: "Error al entrar en la demo",
+  demoErrorDescription: "No fue posible acceder a la cuenta de demostración.",
+  title: "Iniciar sesión",
+  subtitle: "Ingresa tus credenciales para acceder a la plataforma.",
+  email: "Correo electrónico",
+  emailPlaceholder: "tu@email.com",
+  password: "Contraseña",
+  hidePassword: "Ocultar contraseña",
+  showPassword: "Mostrar contraseña",
+  entering: "Ingresando...",
+  enterPlatform: "Entrar a la plataforma",
+  or: "o",
+  enterGoogle: "Entrar con Google",
+  demo: "Acceder a la cuenta de demostración",
+  forgotPassword: "Olvidé mi contraseña",
+  headline: "El centro de comando de ventas.",
+  description: "CRM, conversaciones, agenda e IA en una sola interfaz diseñada para trabajar con velocidad y alta densidad de información.",
+} as const;
+
+type LoginFormValues = {
+  email: string;
+  password: string;
+};
 
 function GoogleIcon() {
   return (
@@ -40,10 +89,19 @@ export default function Login() {
   const loginMutation = useLogin();
   const demoLoginMutation = useDemoLogin();
   const { login } = useAuth();
+  const { locale } = useI18n();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
+  const copy = locale === "pt-BR" ? PT_COPY : ES_COPY;
+  const formSchema = useMemo(
+    () => z.object({
+      email: z.string().email(copy.invalidEmail),
+      password: z.string().min(1, copy.requiredPassword),
+    }),
+    [copy],
+  );
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<LoginFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       email: "",
@@ -51,15 +109,15 @@ export default function Login() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  function onSubmit(values: LoginFormValues) {
     loginMutation.mutate({ data: values }, {
       onSuccess: (response) => {
         login(response.token, response.user);
       },
       onError: (error) => {
         toast({
-          title: "Erro ao entrar",
-          description: error.message || "Verifique suas credenciais.",
+          title: copy.loginErrorTitle,
+          description: error.message || copy.loginErrorDescription,
           variant: "destructive",
         });
       }
@@ -79,8 +137,8 @@ export default function Login() {
         },
         onError: (error) => {
           toast({
-            title: "Erro ao entrar na demo",
-            description: error.message || "Não foi possível acessar a conta de demonstração.",
+            title: copy.demoErrorTitle,
+            description: error.message || copy.demoErrorDescription,
             variant: "destructive",
           });
         },
@@ -94,8 +152,8 @@ export default function Login() {
         <div className="mx-auto w-full max-w-sm space-y-8">
           <div className="space-y-2">
             <img src={logoLight} alt="Vendor.ai" className="h-10 w-auto mb-6" />
-            <h1 className="text-3xl font-bold tracking-tight">Entrar</h1>
-            <p className="text-muted-foreground">Insira suas credenciais para acessar a plataforma.</p>
+            <h1 className="text-3xl font-bold tracking-tight">{copy.title}</h1>
+            <p className="text-muted-foreground">{copy.subtitle}</p>
           </div>
 
           <Form {...form}>
@@ -105,9 +163,9 @@ export default function Login() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>{copy.email}</FormLabel>
                     <FormControl>
-                      <Input placeholder="seu@email.com" {...field} />
+                      <Input placeholder={copy.emailPlaceholder} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -118,7 +176,7 @@ export default function Login() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Senha</FormLabel>
+                    <FormLabel>{copy.password}</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Input type={showPassword ? "text" : "password"} placeholder="••••••••" {...field} className="pr-10" />
@@ -127,7 +185,7 @@ export default function Login() {
                           onClick={() => setShowPassword((v) => !v)}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                           tabIndex={-1}
-                          aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                          aria-label={showPassword ? copy.hidePassword : copy.showPassword}
                         >
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -138,7 +196,7 @@ export default function Login() {
                 )}
               />
               <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
-                {loginMutation.isPending ? "Entrando..." : "Entrar na Plataforma"}
+                {loginMutation.isPending ? copy.entering : copy.enterPlatform}
               </Button>
             </form>
           </Form>
@@ -148,14 +206,14 @@ export default function Login() {
               <span className="w-full border-t" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">ou</span>
+              <span className="bg-background px-2 text-muted-foreground">{copy.or}</span>
             </div>
           </div>
 
           <div className="space-y-3">
             <Button type="button" variant="outline" className="w-full gap-2" onClick={onGoogleLogin}>
               <GoogleIcon />
-              Entrar com Google
+              {copy.enterGoogle}
             </Button>
             <Button
               type="button"
@@ -164,7 +222,7 @@ export default function Login() {
               onClick={onDemoLogin}
               disabled={demoLoginMutation.isPending}
             >
-              {demoLoginMutation.isPending ? "Entrando..." : "Acessar conta de demonstração"}
+              {demoLoginMutation.isPending ? copy.entering : copy.demo}
             </Button>
           </div>
 
@@ -173,19 +231,16 @@ export default function Login() {
               href="/esqueci-senha"
               className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors"
             >
-              Esqueci minha senha
+              {copy.forgotPassword}
             </Link>
           </div>
-          
         </div>
       </div>
       <div className="hidden lg:flex bg-primary items-center justify-center p-12">
         <div className="max-w-md text-primary-foreground space-y-6">
           <img src={logoDark} alt="Vendor.ai" className="h-14 w-auto" />
-          <h2 className="text-4xl font-bold">O comando central de vendas.</h2>
-          <p className="text-lg opacity-80 leading-relaxed">
-            CRM, conversas, agendamentos e IA em uma única interface pensada para velocidade e densidade de informação.
-          </p>
+          <h2 className="text-4xl font-bold">{copy.headline}</h2>
+          <p className="text-lg opacity-80 leading-relaxed">{copy.description}</p>
         </div>
       </div>
     </div>
