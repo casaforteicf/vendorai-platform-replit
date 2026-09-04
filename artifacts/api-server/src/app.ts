@@ -69,6 +69,23 @@ const configuredOrigins = new Set(
     .filter(Boolean),
 );
 
+function hostnameFromOrigin(value: string): string | null {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function rejectCorsOrigin(origin: string, callback: (err: Error | null, allow?: boolean) => void) {
+  if (process.env.NODE_ENV !== "production") {
+    callback(null, true);
+    return;
+  }
+  logger.warn({ origin }, "CORS blocked origin");
+  callback(new Error("CORS origin denied"));
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -84,12 +101,29 @@ app.use(
         return callback(null, true);
       }
 
-      if (process.env.NODE_ENV !== "production") {
-        return callback(null, true);
+      const customHost = hostnameFromOrigin(origin);
+      if (!customHost) {
+        rejectCorsOrigin(origin, callback);
+        return;
       }
 
-      logger.warn({ origin }, "CORS blocked origin");
-      return callback(new Error("CORS origin denied"));
+      // Landing pages hospedadas pelo VendorAI rodam em domínios próprios do
+      // tenant. Seus formulários, analytics e touchpoints precisam chamar a
+      // API no mesmo host sem que o CORS negue uma origem que já foi validada
+      // por DNS + SSL. Só liberamos domínios com status ativo.
+      void db
+        .select({ id: tenantDomainsTable.id })
+        .from(tenantDomainsTable)
+        .where(and(eq(tenantDomainsTable.domain, customHost), eq(tenantDomainsTable.status, "active")))
+        .limit(1)
+        .then(([domain]) => {
+          if (domain) callback(null, true);
+          else rejectCorsOrigin(origin, callback);
+        })
+        .catch((err) => {
+          logger.warn({ err, origin, customHost }, "CORS custom-domain lookup failed");
+          rejectCorsOrigin(origin, callback);
+        });
     },
     credentials: true,
   }),
@@ -161,6 +195,12 @@ function hostnameFromUrlHeader(value: string | undefined): string | null {
 function isCrmHostname(hostname: string | null): boolean {
   if (!hostname) return false;
   return MAIN_HOSTNAMES.has(hostname) || hostname.endsWith(`.app.${ROOT_DOMAIN}`);
+}
+
+function firstPathSegment(pathname: string): string | null {
+  const segment = pathname.split("?")[0]?.split("/").filter(Boolean)[0]?.trim() ?? "";
+  if (!segment || segment === "robots.txt" || segment === "sitemap.xml" || segment === "api") return null;
+  return segment;
 }
 
 app.use(async (req: Request, res: Response, next: NextFunction) => {
@@ -238,6 +278,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     // tem seu próprio endereço, então nesse caso servimos ESSE site, não
     // "o último publicado do tenant".
     let matchedSite: { html: string; published: boolean } | undefined;
+    let matchedSiteSlug: string | null = null;
 
     const identifier = subdomainFromHeader
       ?? (isWildcard ? hostname.slice(0, hostname.length - ROOT_DOMAIN.length - 1) : null);
@@ -254,6 +295,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
           tenantId: tenantsTable.id,
           tenantName: tenantsTable.name,
           tenantStatus: tenantsTable.status,
+          siteSlug: generatedSitesTable.siteSlug,
         })
         .from(generatedSitesTable)
         .innerJoin(tenantsTable, eq(generatedSitesTable.tenantId, tenantsTable.id))
@@ -264,6 +306,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       if (siteMatch) {
         tenant = { id: siteMatch.tenantId, name: siteMatch.tenantName, status: siteMatch.tenantStatus };
         matchedSite = { html: siteMatch.html, published: siteMatch.published };
+        matchedSiteSlug = siteMatch.siteSlug;
       } else {
         const [found] = await db
           .select({ id: tenantsTable.id, name: tenantsTable.name, status: tenantsTable.status })
@@ -283,6 +326,28 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
           .from(tenantsTable)
           .where(eq(tenantsTable.id, domainRow.tenantId));
         tenant = found;
+
+        // Um mesmo subdomínio de LP pode hospedar várias páginas publicadas.
+        // / mantém a página mais recente para compatibilidade; /<siteSlug>
+        // resolve uma LP específica do MESMO tenant. Se o caminho não for um
+        // slug válido do tenant, mantemos o fallback da raiz em vez de vazar
+        // ou procurar conteúdo de outra conta.
+        const requestedSlug = firstPathSegment(req.path);
+        if (tenant && requestedSlug) {
+          const [siteMatch] = await db
+            .select({ html: generatedSitesTable.html, published: generatedSitesTable.published, siteSlug: generatedSitesTable.siteSlug })
+            .from(generatedSitesTable)
+            .where(and(
+              eq(generatedSitesTable.tenantId, tenant.id),
+              eq(generatedSitesTable.siteSlug, requestedSlug),
+            ))
+            .orderBy(desc(generatedSitesTable.updatedAt))
+            .limit(1);
+          if (siteMatch) {
+            matchedSite = { html: siteMatch.html, published: siteMatch.published };
+            matchedSiteSlug = siteMatch.siteSlug;
+          }
+        }
       }
     }
 
@@ -318,15 +383,13 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
         ? new Date(publishedSites[0].updatedAt).toISOString().slice(0, 10)
         : undefined;
 
-      // A raiz do domínio deste tenant sempre entra; sites com siteSlug
-      // próprio (ex: uma landing de campanha à parte) entram também, no
-      // próprio subdomínio deles.
+      // Em domínio próprio, cada LP publicada ganha URL real em /<siteSlug>.
+      // Nos subdomínios nativos, preservamos o endereço histórico por slug.
       const extraUrls = publishedSites
         .filter((s) => s.siteSlug && s.siteSlug !== identifier)
-        .map(
-          (s) =>
-            `  <url><loc>https://${s.siteSlug}.${ROOT_DOMAIN}/</loc><priority>0.8</priority></url>`,
-        )
+        .map((s) => identifier
+          ? `  <url><loc>https://${s.siteSlug}.${ROOT_DOMAIN}/</loc><priority>0.8</priority></url>`
+          : `  <url><loc>${publicUrl}/${s.siteSlug}</loc><priority>0.8</priority></url>`)
         .join("\n");
 
       const xml =
@@ -389,7 +452,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       : site.html;
     const trackedHtml = injectGeneratedSiteTouchpointTracking(
       html,
-      identifier || displayAddress,
+      matchedSiteSlug || identifier || displayAddress,
     );
 
     return res.send(trackedHtml);
