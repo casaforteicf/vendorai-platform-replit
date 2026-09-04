@@ -20,6 +20,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: sed -i 's/uso orgânico liberado/uso orgânico liberados/g' .tmp-auto-edit-pro.py
+      - run: python .tmp-auto-edit-pro-fix.py
       - run: python .tmp-auto-edit-pro.py
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @workspace/frontend run build
