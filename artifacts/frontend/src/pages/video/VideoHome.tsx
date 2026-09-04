@@ -81,7 +81,8 @@ function LoadingPanel({ label }: { label: string }) {
 
 export default function VideoHome() {
   const [, navigate] = useLocation();
-  const [showGenerator, setShowGenerator] = useState(false);
+  const planExecution = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "media-calendar";
+  const [showGenerator, setShowGenerator] = useState(planExecution);
   const [showBrandKit, setShowBrandKit] = useState(false);
 
   return (
@@ -95,7 +96,9 @@ export default function VideoHome() {
             <div>
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vídeo com IA</h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                Crie, edite e padronize vídeos com o VendorAI Media Engine.
+                {planExecution
+                  ? "O briefing aprovado do Plano de Mídia já foi carregado. Revise as referências e gere o vídeo."
+                  : "Crie, edite e padronize vídeos com o VendorAI Media Engine."}
               </p>
             </div>
           </div>
@@ -121,13 +124,15 @@ export default function VideoHome() {
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-semibold text-foreground">Criar vídeo do zero</h2>
+                <h2 className="text-sm font-semibold text-foreground">{planExecution ? "Produzir vídeo do planejamento" : "Criar vídeo do zero"}</h2>
                 <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  Media Engine
+                  {planExecution ? "Briefing do plano" : "Media Engine"}
                 </span>
               </div>
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Descreva a ideia, escolha formato e duração. O gerador abre somente quando necessário para manter a tela leve.
+                {planExecution
+                  ? "Campanha, objetivo, público, oferta, canal e direção criativa vêm do calendário; você não precisa preencher a estratégia novamente."
+                  : "Descreva a ideia, escolha formato e duração. O gerador abre somente quando necessário para manter a tela leve."}
               </p>
             </div>
           </div>
