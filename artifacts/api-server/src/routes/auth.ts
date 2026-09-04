@@ -7,6 +7,7 @@ import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable, 
 import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { sendPasswordResetEmail } from "../lib/email.js";
+import { tenantCountryInsertFields } from "../lib/tenant-country.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -22,13 +23,11 @@ function checkDemoRateLimit(clientKey: string): { allowed: boolean; retryAfter?:
   const attempts = demoLoginAttempts.get(clientKey) ?? [];
   const recent = attempts.filter((t) => now - t < HOUR_MS);
 
-  // Max 5 per minute
   const inLastMinute = recent.filter((t) => now - t < MINUTE_MS).length;
   if (inLastMinute >= 5) {
     return { allowed: false, retryAfter: Math.ceil((MINUTE_MS - (now - recent[0]!)) / 1000) };
   }
 
-  // Max 20 per hour
   if (recent.length >= 20) {
     return { allowed: false, retryAfter: Math.ceil((HOUR_MS - (now - recent[0]!)) / 1000) };
   }
@@ -77,14 +76,15 @@ const registerSchema = z.object({
   password: z.string().min(8),
 });
 
+const publicCountryCodeSchema = z.enum(["BR", "PY", "AR", "UY", "CL"]);
+
 const demoSignupSchema = z.object({
   nomeEmpresa: z.string().min(1, "Nome da empresa é obrigatório"),
   nomePessoa: z.string().min(1, "Seu nome é obrigatório"),
   email: z.email(),
   senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
   telefone: z.string().optional(),
-  // Código de embaixador do Praça.ai (?ref=CODIGO) — se vier, dispara
-  // registro de indicação de lojista pro Praça.ai depois do cadastro.
+  countryCode: publicCountryCodeSchema.optional().default("BR"),
   codigoIndicacaoPraca: z.string().optional(),
 });
 
@@ -94,17 +94,20 @@ const pracaSignupSchema = z.object({
   email: z.email(),
   senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
   telefone: z.string().optional(),
+  countryCode: publicCountryCodeSchema.optional().default("BR"),
   codigoIndicacaoPraca: z.string().optional(),
 });
 
-router.post("/auth/demo-signup", async (req, res) => {
+// /trial-signup é o caminho usado pelo website. Mantemos /demo-signup por
+// compatibilidade com clientes antigos, mas os dois nomes executam o MESMO handler.
+router.post(["/auth/demo-signup", "/auth/trial-signup"], async (req, res) => {
   const parsed = demoSignupSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
     return;
   }
 
-  const { nomeEmpresa, nomePessoa, email, senha, telefone, codigoIndicacaoPraca } = parsed.data;
+  const { nomeEmpresa, nomePessoa, email, senha, telefone, countryCode, codigoIndicacaoPraca } = parsed.data;
 
   const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
   const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
@@ -122,12 +125,12 @@ router.post("/auth/demo-signup", async (req, res) => {
         isDemo: true,
         demoExpiresAt,
         planId: null,
+        provisioningMethod: "trial",
+        ...tenantCountryInsertFields(countryCode),
         codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
       })
       .returning();
 
-    // Registra a indicação de lojista no Praça.ai — fire-and-forget, nunca
-    // trava nem falha o cadastro se o Praça.ai estiver fora do ar.
     if (codigoIndicacaoPraca) {
       const pracaBaseUrl = process.env.PRACA_API_BASE_URL || "https://praca.ai/api";
       fetch(`${pracaBaseUrl}/embaixadores/indicar`, {
@@ -139,10 +142,6 @@ router.post("/auth/demo-signup", async (req, res) => {
         req.log?.error({ err, tenantId: tenant.id }, "auth: falha ao registrar indicação de lojista no Praça.ai");
       });
     }
-
-    // A Demo deve nascer limpa para o usuário conhecer o produto com os próprios
-    // dados. A fixture seedDemoData continua disponível internamente, mas não é
-    // executada automaticamente no cadastro de trial.
 
     const [user] = await db
       .insert(usersTable)
@@ -156,7 +155,6 @@ router.post("/auth/demo-signup", async (req, res) => {
       })
       .returning(PUBLIC_FIELDS);
 
-    // ── Pipeline: criar lead e deal no tenant de vendas da VendorAI ──
     try {
       const [vendorai] = await db
         .select()
@@ -169,7 +167,7 @@ router.post("/auth/demo-signup", async (req, res) => {
           .where(
             and(
               eq(funisTable.tenantId, vendorai.id),
-              eq(funisTable.nome, "Funil de Vendas \u2014 VendorAI")
+              eq(funisTable.nome, "Funil de Vendas — VendorAI")
             )
           );
         const [lead] = await db
@@ -186,7 +184,7 @@ router.post("/auth/demo-signup", async (req, res) => {
         await db.insert(dealsTable).values({
           tenantId: vendorai.id,
           leadId: lead.id,
-          titulo: `Trial \u2014 ${nomeEmpresa}`,
+          titulo: `Trial — ${nomeEmpresa}`,
           etapa: "novo",
           funilId: funil?.id ?? null,
           probabilidade: 30,
@@ -207,7 +205,7 @@ router.post("/auth/demo-signup", async (req, res) => {
     res.status(201).json({
       token,
       user,
-      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, isDemo: true, demoExpiresAt },
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, countryCode: tenant.countryCode, isDemo: true, demoExpiresAt },
       demoUrl: `/app?tenant=${tenant.slug}`,
     });
   } catch (err: unknown) {
@@ -219,14 +217,6 @@ router.post("/auth/demo-signup", async (req, res) => {
   }
 });
 
-// Cadastro gratuito e PERMANENTE pra vender no Praça.ai — diferente do
-// /auth/demo-signup acima (que é trial de 5 dias, isDemo=true). Aqui o
-// tenant nasce ativo, no plano Start (grátis, sem custo, ferramentas
-// mínimas: Catálogo/Pedidos/Configurações), já habilitado pra vender no
-// Praça.ai (vendeNoPracaAi=true) com a comissão padrão (8%, editável só
-// por super_admin depois, caso a caso). Lojista pode assinar um plano
-// pago a qualquer momento pra liberar mais ferramentas — nunca é cobrado
-// nesse cadastro.
 router.post("/auth/praca-signup", async (req, res) => {
   const parsed = pracaSignupSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -234,7 +224,7 @@ router.post("/auth/praca-signup", async (req, res) => {
     return;
   }
 
-  const { nomeEmpresa, nomePessoa, email, senha, telefone, codigoIndicacaoPraca } = parsed.data;
+  const { nomeEmpresa, nomePessoa, email, senha, telefone, countryCode, codigoIndicacaoPraca } = parsed.data;
 
   const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
   const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
@@ -253,12 +243,11 @@ router.post("/auth/praca-signup", async (req, res) => {
         planId: startPlan?.id ?? null,
         provisioningMethod: "self_service",
         vendeNoPracaAi: false,
+        ...tenantCountryInsertFields(countryCode),
         codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
       })
       .returning();
 
-    // Registra a indicação de lojista no Praça.ai — fire-and-forget, nunca
-    // trava nem falha o cadastro se o Praça.ai estiver fora do ar.
     if (codigoIndicacaoPraca) {
       const pracaBaseUrl = process.env.PRACA_API_BASE_URL || "https://praca.ai/api";
       fetch(`${pracaBaseUrl}/embaixadores/indicar`, {
@@ -284,16 +273,13 @@ router.post("/auth/praca-signup", async (req, res) => {
       })
       .returning(PUBLIC_FIELDS);
 
-    // Mesmo pipeline de acompanhamento comercial do trial — registra como
-    // lead/deal no tenant de vendas da VendorAI, só que já sinalizando que
-    // entrou grátis pelo Praça.ai (não é trial expirando).
     try {
       const [vendorai] = await db.select().from(tenantsTable).where(eq(tenantsTable.slug, "vendorai"));
       if (vendorai) {
         const [funil] = await db
           .select()
           .from(funisTable)
-          .where(and(eq(funisTable.tenantId, vendorai.id), eq(funisTable.nome, "Funil de Vendas \u2014 VendorAI")));
+          .where(and(eq(funisTable.tenantId, vendorai.id), eq(funisTable.nome, "Funil de Vendas — VendorAI")));
         const [lead] = await db
           .insert(leadsTable)
           .values({ tenantId: vendorai.id, nome: nomePessoa, empresa: nomeEmpresa, email, telefone: telefone ?? null, source: "praca_ai_signup" })
@@ -301,7 +287,7 @@ router.post("/auth/praca-signup", async (req, res) => {
         await db.insert(dealsTable).values({
           tenantId: vendorai.id,
           leadId: lead.id,
-          titulo: `Plano Start (Pra\u00e7a.ai) \u2014 ${nomeEmpresa}`,
+          titulo: `Plano Start (Praça.ai) — ${nomeEmpresa}`,
           etapa: "novo",
           funilId: funil?.id ?? null,
           probabilidade: 15,
@@ -322,7 +308,7 @@ router.post("/auth/praca-signup", async (req, res) => {
     res.status(201).json({
       token,
       user,
-      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, vendeNoPracaAi: tenant.vendeNoPracaAi, comissaoPracaAiPercentual: tenant.comissaoPracaAiPercentual },
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, countryCode: tenant.countryCode, vendeNoPracaAi: tenant.vendeNoPracaAi, comissaoPracaAiPercentual: tenant.comissaoPracaAiPercentual },
       appUrl: `/app?tenant=${tenant.slug}`,
     });
   } catch (err: unknown) {
@@ -336,15 +322,12 @@ router.post("/auth/praca-signup", async (req, res) => {
 
 router.post("/auth/demo-login", async (req, res) => {
   const { email, password } = req.body;
-
-  // Rate limiting check for demo credentials
   const isDemoCredentials = email === "demo" && password === "demo";
   if (!isDemoCredentials) {
     res.status(401).json({ error: "Invalid demo credentials" });
     return;
   }
 
-  // Apply rate limiting (by IP)
   const clientKey = req.ip ?? "unknown";
   const rateLimit = checkDemoRateLimit(clientKey);
   if (!rateLimit.allowed) {
@@ -352,7 +335,6 @@ router.post("/auth/demo-login", async (req, res) => {
     return;
   }
 
-  // Find or create demo tenant
   let [tenant] = await db
     .select()
     .from(tenantsTable)
@@ -366,14 +348,12 @@ router.post("/auth/demo-login", async (req, res) => {
         slug: "demo",
         status: "active",
         isDemo: true,
-        demoExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+        demoExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
         planId: null,
       })
       .returning();
   }
 
-  // Find or create demo user — scoped to the demo tenant to avoid
-  // authenticating a conflicting account that reuses demo@demo.com.
   let [user] = await db
     .select()
     .from(usersTable)
@@ -399,7 +379,6 @@ router.post("/auth/demo-login", async (req, res) => {
       .returning();
   }
 
-  // Seed if not seeded
   if (!tenant.demoSeeded) {
     const { seedDemoData } = await import("./tenants.js");
     await seedDemoData(tenant.id);
@@ -565,8 +544,6 @@ protectedRouter.post("/auth/refresh", async (req, res) => {
   res.json({ token, user });
 });
 
-// ── Forgot password ───────────────────────────────────────────────────────
-
 const forgotPasswordSchema = z.object({ email: z.email() });
 
 router.post("/auth/forgot-password", async (req, res) => {
@@ -583,7 +560,6 @@ router.post("/auth/forgot-password", async (req, res) => {
     .from(usersTable)
     .where(eq(usersTable.email, email));
 
-  // Always respond 200 to avoid user enumeration
   if (!user || !user.active) {
     res.json({ ok: true });
     return;
@@ -591,7 +567,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 
   const rawToken = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
   await db.insert(passwordResetTokensTable).values({
     userId: user.id,
@@ -599,11 +575,6 @@ router.post("/auth/forgot-password", async (req, res) => {
     expiresAt,
   });
 
-  // Achado real: usava REPLIT_DOMAINS (variável antiga, de antes da
-  // migração pra Railway/Vercel) -- gerava link apontando pro domínio
-  // do BACKEND (Railway), não pro site (Vercel), onde /app/redefinir-
-  // senha nem existe como rota. APP_URL é a variável correta, já usada
-  // em todos os outros fluxos de OAuth (Google/Meta/Instagram/WhatsApp).
   const appUrl = (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
   const resetUrl = `${appUrl}/redefinir-senha?token=${rawToken}`;
 
@@ -611,8 +582,6 @@ router.post("/auth/forgot-password", async (req, res) => {
 
   res.json({ ok: true });
 });
-
-// ── Reset password ─────────────────────────────────────────────────────────
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
@@ -627,7 +596,7 @@ router.post("/auth/reset-password", async (req, res) => {
   }
 
   const { token, newPassword } = parsed.data;
-  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const tokenHash = createHash("sha256").update(rawTokenFromReset(token)).digest("hex");
   const now = new Date();
 
   const [resetRecord] = await db
@@ -653,7 +622,6 @@ router.post("/auth/reset-password", async (req, res) => {
     .set({ usedAt: now })
     .where(eq(passwordResetTokensTable.id, resetRecord.id));
 
-  // Auto-login: return a JWT so the client can skip the login step
   if (!updatedUser) {
     res.json({ ok: true });
     return;
@@ -682,9 +650,11 @@ router.post("/auth/reset-password", async (req, res) => {
   res.json({ ok: true, token: jwtToken, user: publicUser });
 });
 
-// ── Force password change (first login) ───────────────────────────────────
+function rawTokenFromReset(token: string) {
+  return token;
+}
+
 protectedRouter.post("/auth/change-password", async (req, res) => {
-  const { z } = await import("zod/v4");
   const schema = z.object({ newPassword: z.string().min(8) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
