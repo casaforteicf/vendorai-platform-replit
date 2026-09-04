@@ -82,6 +82,7 @@ type AssignmentUser = {
   leadAssignmentEnabled?: boolean | null;
   leadAssignmentCities?: string[] | null;
   leadAssignmentRegions?: string[] | null;
+  leadAssignmentSegments?: string[] | null;
 };
 
 const DEFAULT_VALUES: NewLeadValues = {
@@ -233,13 +234,21 @@ export function NewLeadDialog({
     if (values.assignedTo !== "__auto__") return values.assignedTo;
     if (!assignableUsers.length || !values.endereco.trim()) return undefined;
 
-    const cityMatches = assignableUsers.filter((user) =>
+    const segmentoValue = values.mercadoSegmento?.trim() ?? "";
+    const segmentMatches = segmentoValue
+      ? assignableUsers.filter((user) =>
+          (user.leadAssignmentSegments ?? []).some((segmento) => territoryMatches(segmentoValue, segmento)),
+        )
+      : [];
+    const baseUsers = segmentMatches.length ? segmentMatches : assignableUsers;
+
+    const cityMatches = baseUsers.filter((user) =>
       (user.leadAssignmentCities ?? []).some((city) => territoryMatches(values.endereco, city)),
     );
-    const regionMatches = assignableUsers.filter((user) =>
+    const regionMatches = baseUsers.filter((user) =>
       (user.leadAssignmentRegions ?? []).some((region) => territoryMatches(values.endereco, region)),
     );
-    const pool = cityMatches.length ? cityMatches : regionMatches;
+    const pool = cityMatches.length ? cityMatches : regionMatches.length ? regionMatches : segmentMatches;
     if (!pool.length) return undefined;
 
     const seed = `${values.nome}|${values.telefone}|${values.email}|${values.empresa}|${values.endereco}`;

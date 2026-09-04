@@ -9,12 +9,16 @@ type AssignmentCandidate = {
   leadAssignmentEnabled: boolean | null;
   leadAssignmentCities: string[];
   leadAssignmentRegions: string[];
+  leadAssignmentSegments: string[];
 };
 
 export type LeadAssignmentContext = {
   city?: string | null;
   region?: string | null;
   location?: string | null;
+  // Linha/segmento de produto do lead (leads.mercadoSegmento) — ex: loja de
+  // peças com vendedor especializado em óleo vs outro em peça de motor.
+  segmento?: string | null;
 };
 
 export function canReceiveLeads(candidate: Pick<AssignmentCandidate, "platformRole" | "userFunction" | "leadAssignmentEnabled">): boolean {
@@ -53,11 +57,15 @@ function oldestFirst(a: AssignmentCandidate, b: AssignmentCandidate): number {
 }
 
 /**
- * Distribuição de leads em quatro níveis:
- * 1. vendedores elegíveis configurados para a cidade do lead;
- * 2. vendedores elegíveis configurados para a região/UF;
- * 3. vendedores elegíveis do rodízio geral (sem território configurado);
- * 4. fallback para qualquer vendedor elegível.
+ * Distribuição de leads em cascata:
+ * 1. vendedores elegíveis configurados pra linha/segmento do lead (quando
+ *    o lead já tem mercadoSegmento identificado e algum vendedor cobre
+ *    exatamente essa linha — ex: loja de peças, vendedor de óleo vs peça);
+ * 2. dentro do grupo acima (ou de todo mundo, se segmento não filtrou
+ *    ninguém), aplica o mesmo critério de território já existente:
+ *    cidade → região/UF → rodízio geral (sem território configurado) →
+ *    qualquer vendedor elegível daquele segmento;
+ * 3. fallback final: qualquer vendedor elegível do tenant, sem filtro nenhum.
  *
  * Dentro do grupo escolhido, quem nunca recebeu lead tem prioridade e depois
  * vale o lastAssignedAt mais antigo. Usuários com leadAssignmentEnabled=false
@@ -76,6 +84,7 @@ export async function pickNextVendedor(
       leadAssignmentEnabled: usersTable.leadAssignmentEnabled,
       leadAssignmentCities: usersTable.leadAssignmentCities,
       leadAssignmentRegions: usersTable.leadAssignmentRegions,
+      leadAssignmentSegments: usersTable.leadAssignmentSegments,
     })
     .from(usersTable)
     .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)));
@@ -86,22 +95,33 @@ export async function pickNextVendedor(
       ...candidate,
       leadAssignmentCities: Array.isArray(candidate.leadAssignmentCities) ? candidate.leadAssignmentCities : [],
       leadAssignmentRegions: Array.isArray(candidate.leadAssignmentRegions) ? candidate.leadAssignmentRegions : [],
+      leadAssignmentSegments: Array.isArray(candidate.leadAssignmentSegments) ? candidate.leadAssignmentSegments : [],
     }));
 
   if (!candidates.length) return null;
 
+  // Nível 1: segmento/linha. Só restringe o pool se o lead tiver segmento
+  // identificado E existir pelo menos um vendedor especializado nele —
+  // senão segue com todo mundo (compatível com tenants que não usam segmento).
+  const segmentoValue = context.segmento || "";
+  const segmentMatches = segmentoValue
+    ? candidates.filter((candidate) => candidate.leadAssignmentSegments.some((segmento) => matchesTerritory(segmentoValue, segmento)))
+    : [];
+  const baseCandidates = segmentMatches.length ? segmentMatches : candidates;
+
+  // Nível 2: território, igual antes, mas já dentro do pool de segmento.
   const cityLocation = context.city || context.location || "";
   const regionLocation = context.region || context.location || "";
 
   const cityMatches = cityLocation
-    ? candidates.filter((candidate) => candidate.leadAssignmentCities.some((city) => matchesTerritory(cityLocation, city)))
+    ? baseCandidates.filter((candidate) => candidate.leadAssignmentCities.some((city) => matchesTerritory(cityLocation, city)))
     : [];
 
   const regionMatches = regionLocation
-    ? candidates.filter((candidate) => candidate.leadAssignmentRegions.some((region) => matchesTerritory(regionLocation, region)))
+    ? baseCandidates.filter((candidate) => candidate.leadAssignmentRegions.some((region) => matchesTerritory(regionLocation, region)))
     : [];
 
-  const generalPool = candidates.filter(
+  const generalPool = baseCandidates.filter(
     (candidate) => candidate.leadAssignmentCities.length === 0 && candidate.leadAssignmentRegions.length === 0,
   );
 
@@ -111,7 +131,9 @@ export async function pickNextVendedor(
       ? regionMatches
       : generalPool.length
         ? generalPool
-        : candidates;
+        : baseCandidates.length
+          ? baseCandidates
+          : candidates;
 
   const seller = [...pool].sort(oldestFirst)[0];
   if (!seller) return null;
