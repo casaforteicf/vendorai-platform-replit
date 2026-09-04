@@ -125,9 +125,10 @@ export default function ContentHub() {
   const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
   const params = new URLSearchParams(queryString);
   const mediaPlanSource = params.get("source") === "media-plan" || params.get("from") === "media-plan";
+  const manualCreation = params.get("mode") === "avulso";
   // Compatibilidade: o atalho lateral "Gerador de Conteúdo" continua apontando
-  // para /content. O Planejamento é a primeira aba visual, mas /content abre o
-  // gerador como antes; /content?tab=planejamento abre o Planejador explicitamente.
+  // para /content. O modo padrão agora é a produção do Plano de Mídia; a criação
+  // manual permanece disponível explicitamente em ?mode=avulso.
   const requestedTab = params.get("tab") ?? "gerador";
   const requestedMediaPlanId = params.get("mediaPlanId")?.trim() ?? "";
   const requestedPlannerCampaignId = params.get("campaignId")?.trim() ?? "";
@@ -136,8 +137,6 @@ export default function ContentHub() {
   const [plannerLoading, setPlannerLoading] = useState(false);
   const [plannerError, setPlannerError] = useState<string | null>(null);
 
-  // Compatibilidade: o antigo ?tab=variedades agora abre a modalidade Praça.ai
-  // dentro de Campanhas, sem manter uma terceira área paralela no Marketing.
   const legacyPracaView = requestedTab === "variedades";
   const activeTab = requestedTab === "campanhas" || legacyPracaView
     ? "campanhas"
@@ -402,7 +401,24 @@ export default function ContentHub() {
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>Campanhas</TabsTrigger>
           </TabsList>
           <TabsContent value="planejamento" className="-mx-4 md:-mx-6"><div className="p-4 md:p-6"><PlanoMidia /></div></TabsContent>
-          <TabsContent value="gerador" className="-mx-4 md:-mx-6"><ContentProductionQueue tenantId={tenantId} /><Content /></TabsContent>
+          <TabsContent value="gerador" className="-mx-4 md:-mx-6">
+            {manualCreation ? (
+              <>
+                <div className="px-4 pt-4 md:px-6 flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <Badge variant="outline">Criação avulsa</Badge>
+                    <p className="mt-1 text-xs text-muted-foreground">Use a Estratégia da divulgação apenas quando o conteúdo não vier do Plano de Mídia.</p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=gerador")}>
+                    <ArrowLeft className="h-3.5 w-3.5 mr-1" />Conteúdos do plano
+                  </Button>
+                </div>
+                <Content />
+              </>
+            ) : (
+              <ContentProductionQueue tenantId={tenantId} />
+            )}
+          </TabsContent>
           <TabsContent value="campanhas" className="-mx-4 md:-mx-6">
             {campaignView === "organicas" ? (
               <Campanhas />
