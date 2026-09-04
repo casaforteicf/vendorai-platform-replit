@@ -1,0 +1,83 @@
+/* Leads desktop table: keep all columns inside the card without horizontal scrolling.
+   Scope is intentionally limited to the table that contains lead rows. */
+@media (min-width: 768px) {
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) {
+    overflow-x: hidden;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) > table {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th,
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td {
+    min-width: 0 !important;
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+    vertical-align: middle;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(1),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) { width: 11%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(2),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2) { width: 10%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(3),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3) { width: 10%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(4),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(4) { width: 11%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(5),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) { width: 27%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(6),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) { width: 11%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(7),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) { width: 10%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8) { width: 7%; }
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) { width: 3%; }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(2),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(3),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(6) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(1) > span,
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) > *,
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) button,
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(5) [class*="max-w-"] {
+    min-width: 0;
+    max-width: 100% !important;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(7),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(7) {
+    text-align: right;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(8) {
+    text-align: center;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(8) button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) th:nth-child(9),
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) {
+    padding-left: 0.2rem;
+    padding-right: 0.35rem;
+    text-align: right;
+  }
+
+  .vendor-scrollbar:has(table [data-testid^="row-lead-"]) td:nth-child(9) > span {
+    justify-content: flex-end;
+    gap: 0;
+  }
+}
