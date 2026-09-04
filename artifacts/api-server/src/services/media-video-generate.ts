@@ -20,6 +20,17 @@ import {
   setMediaProjectStatus,
 } from "./media-library.js";
 import {
+  extensionForMediaInput,
+  referenceImageInput,
+  resolveVideoGenerationMediaInputs,
+  videoGenerationBriefing,
+  videoGenerationMode,
+  visualGenerationInputs,
+  type ResolvedVideoGenerationMediaInput,
+  type VideoGenerationMode,
+  type VideoGenerationMediaInputSpec,
+} from "./media-video-inputs.js";
+import {
   applyTransitionSoundEffects,
   buildSceneFilter,
   concatScenesWithEffects,
@@ -36,7 +47,8 @@ const FPS = 30;
 const MAX_PROMPT_LENGTH = 4_000;
 const MAX_STYLE_LENGTH = 300;
 const MIN_SCENES = 3;
-const MAX_SCENES = 6;
+const MAX_AI_SCENES = 6;
+const MAX_MEDIA_SCENES = 12;
 const MIN_DURATION = 8;
 const MAX_DURATION = 30;
 
@@ -51,6 +63,8 @@ type GenerateVideoInput = {
   duration?: number;
   sceneCount?: number;
   effects?: unknown;
+  generationMode?: VideoGenerationMode | string;
+  mediaInputs?: VideoGenerationMediaInputSpec[] | unknown;
 };
 
 type ClaimedVideo = {
@@ -65,6 +79,8 @@ type GeneratedScene = {
   model: string;
   continuity: "generated" | "edited" | "regenerated";
 };
+
+type SceneContinuity = GeneratedScene["continuity"] | "provided_image" | "provided_video";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -124,17 +140,18 @@ function scenePrompt(input: {
     "result or payoff shot that communicates the desired outcome",
     "final hero shot with a clean, premium closing composition",
   ];
-  const shot = shotTypes[Math.min(input.sceneIndex, shotTypes.length - 1)]!;
+  const shot = shotTypes[Math.min(input.sceneIndex, shotTypes.length - 1)] ?? shotTypes.at(-1)!;
   const orientation = input.aspectRatio === "landscape" ? "horizontal 16:9" : "vertical 9:16";
   return [
     input.continuity
       ? "Use the supplied previous frame only as a VISUAL CONTINUITY REFERENCE. Create the next distinct scene, not a duplicate. Preserve the main subject identity, recognizable product/character features, palette and art direction."
       : "Create the first frame of a coherent short-form video sequence.",
-    `Core video concept: ${input.prompt}`,
+    `Core video concept and confirmed context: ${input.prompt}`,
     `Scene ${input.sceneIndex + 1} of ${input.sceneCount}: ${shot}.`,
     `Art direction: ${input.style}.`,
     `Composition: ${orientation}, cinematic depth, realistic lighting, strong focal point, safe margins for social video cropping.`,
     "Do not add captions, typography, logos, UI, watermarks or borders inside the generated image.",
+    "Do not invent prices, discounts, guarantees, certifications, deadlines or performance claims that are not explicitly present in the confirmed context.",
     "This frame will be animated and connected to the following frames, so preserve visual continuity while advancing the story.",
   ].join(" ");
 }
@@ -180,13 +197,16 @@ async function generateFirstScene(input: {
 async function generateNextScene(input: {
   tenantId: string;
   previous: Buffer;
+  previousMimeType?: string | null;
   prompt: string;
   size: "1024x1536" | "1536x1024";
   model: string;
 }): Promise<GeneratedScene> {
   const openai = await getOpenAIForTenant(input.tenantId);
   try {
-    const previousFile = await toFile(input.previous, "previous-scene.png", { type: "image/png" });
+    const mimeType = input.previousMimeType?.startsWith("image/") ? input.previousMimeType : "image/png";
+    const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
+    const previousFile = await toFile(input.previous, `previous-scene.${extension}`, { type: mimeType });
     const result = await openai.images.edit({
       model: input.model,
       image: previousFile,
@@ -278,7 +298,7 @@ async function registerScene(input: {
   return asset.id;
 }
 
-async function renderScene(input: {
+async function renderImageScene(input: {
   imagePath: string;
   outputPath: string;
   sceneIndex: number;
@@ -301,6 +321,8 @@ async function renderScene(input: {
       height: input.height,
       effects: input.effects,
     }),
+    "-map", "0:v:0",
+    "-map", "1:a:0",
     "-r", String(FPS),
     "-c:v", "libx264",
     "-preset", "fast",
@@ -314,6 +336,132 @@ async function renderScene(input: {
     "-movflags", "+faststart",
     input.outputPath,
   ], { maxBuffer: 8 * 1024 * 1024 });
+}
+
+async function hasAudioStream(path: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "error",
+      "-select_streams", "a:0",
+      "-show_entries", "stream=index",
+      "-of", "csv=p=0",
+      path,
+    ]);
+    return Boolean(stdout.trim());
+  } catch {
+    return false;
+  }
+}
+
+async function renderVideoScene(input: {
+  sourcePath: string;
+  outputPath: string;
+  duration: number;
+  width: number;
+  height: number;
+}): Promise<void> {
+  const sourceHasAudio = await hasAudioStream(input.sourcePath);
+  const videoFilter = [
+    `scale=${input.width}:${input.height}:force_original_aspect_ratio=increase`,
+    `crop=${input.width}:${input.height}`,
+    "setsar=1",
+    "format=yuv420p",
+  ].join(",");
+  if (sourceHasAudio) {
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-stream_loop", "-1",
+      "-i", input.sourcePath,
+      "-t", input.duration.toFixed(3),
+      "-vf", videoFilter,
+      "-map", "0:v:0",
+      "-map", "0:a:0",
+      "-r", String(FPS),
+      "-c:v", "libx264",
+      "-preset", "fast",
+      "-crf", "20",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-ar", "48000",
+      "-ac", "2",
+      "-b:a", "128k",
+      "-shortest",
+      "-movflags", "+faststart",
+      input.outputPath,
+    ], { maxBuffer: 8 * 1024 * 1024 });
+    return;
+  }
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-stream_loop", "-1",
+    "-i", input.sourcePath,
+    "-f", "lavfi",
+    "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+    "-t", input.duration.toFixed(3),
+    "-vf", videoFilter,
+    "-map", "0:v:0",
+    "-map", "1:a:0",
+    "-r", String(FPS),
+    "-c:v", "libx264",
+    "-preset", "fast",
+    "-crf", "20",
+    "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
+    "-ar", "48000",
+    "-ac", "2",
+    "-b:a", "128k",
+    "-shortest",
+    "-movflags", "+faststart",
+    input.outputPath,
+  ], { maxBuffer: 8 * 1024 * 1024 });
+}
+
+async function applyProjectAudio(input: {
+  sourcePath: string;
+  outputPath: string;
+  audioInputs: ResolvedVideoGenerationMediaInput[];
+  duration: number;
+  tempPaths: string[];
+  jobId: string;
+}): Promise<{ outputPath: string; applied: boolean; assetIds: string[] }> {
+  const voice = input.audioInputs.find((item) => item.role === "voiceover");
+  const music = input.audioInputs.find((item) => item.role === "music");
+  const sfx = input.audioInputs.find((item) => item.role === "sfx");
+  const selected = [voice, music, sfx].filter((item): item is ResolvedVideoGenerationMediaInput => Boolean(item));
+  if (!selected.length) return { outputPath: input.sourcePath, applied: false, assetIds: [] };
+
+  const args = ["-y", "-i", input.sourcePath];
+  const filterParts: string[] = ["[0:a]volume=1[baseaudio]"];
+  const mixLabels = ["[baseaudio]"];
+  for (let index = 0; index < selected.length; index += 1) {
+    const asset = selected[index]!;
+    const extension = extensionForMediaInput(asset);
+    const path = join(tmpdir(), `video-generate-${input.jobId}-audio-${index}.${extension}`);
+    input.tempPaths.push(path);
+    await writeFile(path, asset.buffer);
+    args.push("-stream_loop", "-1", "-i", path);
+    const label = `audio${index}`;
+    const volume = asset.role === "voiceover" ? 1 : asset.role === "music" ? 0.18 : 0.38;
+    const trimDuration = asset.role === "sfx" ? Math.min(2, input.duration) : input.duration;
+    filterParts.push(`[${index + 1}:a]volume=${volume.toFixed(2)},atrim=0:${trimDuration.toFixed(3)},asetpts=N/SR/TB[${label}]`);
+    mixLabels.push(`[${label}]`);
+  }
+  filterParts.push(`${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2[aout]`);
+  args.push(
+    "-filter_complex", filterParts.join(";"),
+    "-map", "0:v:0",
+    "-map", "[aout]",
+    "-c:v", "copy",
+    "-c:a", "aac",
+    "-b:a", "192k",
+    "-ar", "48000",
+    "-ac", "2",
+    "-t", input.duration.toFixed(3),
+    "-movflags", "+faststart",
+    input.outputPath,
+  );
+  await execFileAsync("ffmpeg", args, { maxBuffer: 8 * 1024 * 1024 });
+  return { outputPath: input.outputPath, applied: true, assetIds: selected.map((item) => item.assetId) };
 }
 
 async function claimNextVideo(runnerToken: string): Promise<ClaimedVideo | null> {
@@ -406,20 +554,18 @@ async function persistFinished(input: {
 }
 
 async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, logger: Logger): Promise<void> {
-  const prompt = stringValue(video.input.prompt);
+  const rawPrompt = stringValue(video.input.prompt);
   const title = stringValue(video.input.title) ?? "Vídeo gerado com IA";
   const style = (stringValue(video.input.style) ?? "cinematic, premium, photorealistic, polished commercial production").slice(0, MAX_STYLE_LENGTH);
   const aspectRatio = aspectRatioValue(video.input.aspectRatio);
   const duration = numberValue(video.input.duration, 16, MIN_DURATION, MAX_DURATION);
   const effects = resolveVideoEffects(video.input.effects);
   const requestedSceneCount = Number.isFinite(Number(video.input.sceneCount)) ? Number(video.input.sceneCount) : null;
-  const sceneCount = recommendedSceneCount(duration, requestedSceneCount, effects, MIN_SCENES, MAX_SCENES);
-  const transitionDuration = transitionDurationFor(duration, sceneCount, effects);
-  const sceneDuration = (duration + transitionDuration * Math.max(0, sceneCount - 1)) / sceneCount;
+  const mode = videoGenerationMode(video.input.generationMode);
   const userId = video.input.userId ?? null;
 
-  if (!video.projectId || !prompt || prompt.length > MAX_PROMPT_LENGTH) {
-    const error = `Vídeo inválido: informe prompt de 1 a ${MAX_PROMPT_LENGTH} caracteres`;
+  if (!video.projectId || (rawPrompt?.length ?? 0) > MAX_PROMPT_LENGTH) {
+    const error = `Vídeo inválido: o prompt deve ter no máximo ${MAX_PROMPT_LENGTH} caracteres`;
     await persistFinished({ video, runnerToken, status: "error", error });
     if (video.projectId) await setMediaProjectStatus(video.tenantId, video.projectId, "draft");
     return;
@@ -431,82 +577,86 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
   let brandCleanup: (() => Promise<void>) | null = null;
 
   try {
+    const resolvedInputs = mode === "ai_only"
+      ? []
+      : await resolveVideoGenerationMediaInputs({ tenantId: video.tenantId, specs: video.input.mediaInputs });
+    const visualInputs = visualGenerationInputs(resolvedInputs);
+    const audioInputs = resolvedInputs.filter((item) => item.type === "audio");
+    const requiredVisuals = visualInputs.filter((item) => item.importance === "required");
+    if (mode !== "ai_only" && resolvedInputs.length === 0) {
+      throw new Error("Adicione pelo menos uma mídia válida para usar este modo de geração");
+    }
+    if (mode === "media_only" && visualInputs.length === 0) {
+      throw new Error("O modo “Somente minhas mídias” precisa de pelo menos uma foto ou vídeo");
+    }
+    if (visualInputs.length > MAX_MEDIA_SCENES) {
+      throw new Error(`Use no máximo ${MAX_MEDIA_SCENES} fotos/vídeos por geração. Divida projetos maiores na timeline.`);
+    }
+    if (requiredVisuals.length > MAX_MEDIA_SCENES) {
+      throw new Error(`Há mais de ${MAX_MEDIA_SCENES} mídias visuais obrigatórias; reduza a seleção antes de gerar.`);
+    }
+
+    const briefing = videoGenerationBriefing({ prompt: rawPrompt, inputs: resolvedInputs, mode });
+    const baseAiSceneCount = recommendedSceneCount(duration, requestedSceneCount, effects, MIN_SCENES, MAX_AI_SCENES);
+    const sceneCount = mode === "media_only"
+      ? visualInputs.length
+      : mode === "hybrid"
+        ? Math.min(MAX_MEDIA_SCENES, Math.max(baseAiSceneCount, visualInputs.length))
+        : baseAiSceneCount;
+    const transitionDuration = transitionDurationFor(duration, sceneCount, effects);
+    const sceneDuration = (duration + transitionDuration * Math.max(0, sceneCount - 1)) / Math.max(1, sceneCount);
+    const inputAssetIds = resolvedInputs.map((item) => item.assetId);
+
     await persistRunning({
       video,
       runnerToken,
       progress: 2,
-      output: { prompt, style, aspectRatio, duration, sceneCount, effects, transitionDuration },
+      output: {
+        prompt: rawPrompt ?? "",
+        style,
+        aspectRatio,
+        duration,
+        sceneCount,
+        effects,
+        transitionDuration,
+        generationMode: mode,
+        inputAssetIds,
+        documentSources: briefing.documentSources,
+      },
     });
 
     const sceneAssetIds: string[] = [];
     const scenePrompts: string[] = [];
-    const continuityModes: GeneratedScene["continuity"][] = [];
+    const continuityModes: SceneContinuity[] = [];
     const sceneVideoPaths: string[] = [];
     let previous: Buffer | null = null;
+    let previousMimeType: string | null = null;
     let imageModel = process.env["VENDORAI_IMAGE_MODEL"]?.trim() || "gpt-image-2";
 
-    for (let index = 0; index < sceneCount; index += 1) {
-      const promptForScene = scenePrompt({
-        prompt,
-        style,
-        sceneIndex: index,
-        sceneCount,
-        aspectRatio,
-        continuity: index > 0,
-      });
-      const generated = previous
-        ? await generateNextScene({
-            tenantId: video.tenantId,
-            previous,
-            prompt: promptForScene,
-            size,
-            model: imageModel,
-          })
-        : await generateFirstScene({
-            tenantId: video.tenantId,
-            prompt: promptForScene,
-            size,
-          });
-      imageModel = generated.model;
-      previous = generated.buffer;
-      scenePrompts.push(promptForScene);
-      continuityModes.push(generated.continuity);
-
-      const sceneStorageUrl = await saveObject(generated.buffer, "image/png", "video-generate/scenes", "png");
-      const sceneAssetId = await registerScene({
-        tenantId: video.tenantId,
-        projectId: video.projectId,
-        userId,
-        storageUrl: sceneStorageUrl,
-        buffer: generated.buffer,
-        index,
-        prompt: promptForScene,
-        model: imageModel,
-        continuity: generated.continuity,
-      });
-      sceneAssetIds.push(sceneAssetId);
-
-      const sceneImagePath = join(tmpdir(), `video-generate-${video.id}-scene-${index}.png`);
+    for (let index = 0; index < visualInputs.length; index += 1) {
+      const asset = visualInputs[index]!;
+      const sourcePath = join(tmpdir(), `video-generate-${video.id}-input-${index}.${extensionForMediaInput(asset)}`);
       const sceneVideoPath = join(tmpdir(), `video-generate-${video.id}-scene-${index}.mp4`);
-      tempPaths.push(sceneImagePath, sceneVideoPath);
-      await writeFile(sceneImagePath, generated.buffer);
-      await renderScene({
-        imagePath: sceneImagePath,
-        outputPath: sceneVideoPath,
-        sceneIndex: index,
-        duration: sceneDuration,
-        width,
-        height,
-        effects,
-      });
+      tempPaths.push(sourcePath, sceneVideoPath);
+      await writeFile(sourcePath, asset.buffer);
+      if (asset.type === "image") {
+        await renderImageScene({ imagePath: sourcePath, outputPath: sceneVideoPath, sceneIndex: index, duration: sceneDuration, width, height, effects });
+        previous = asset.buffer;
+        previousMimeType = asset.mimeType;
+        continuityModes.push("provided_image");
+      } else {
+        await renderVideoScene({ sourcePath, outputPath: sceneVideoPath, duration: sceneDuration, width, height });
+        continuityModes.push("provided_video");
+      }
       sceneVideoPaths.push(sceneVideoPath);
-
+      sceneAssetIds.push(asset.assetId);
+      scenePrompts.push(`Mídia fornecida: ${asset.originalFilename}${asset.note ? ` — ${asset.note}` : ""}`);
       await persistRunning({
         video,
         runnerToken,
-        progress: 8 + ((index + 1) / sceneCount) * 72,
+        progress: 8 + ((index + 1) / Math.max(1, sceneCount)) * 62,
         output: {
-          prompt,
+          prompt: rawPrompt ?? "",
           style,
           aspectRatio,
           duration,
@@ -516,9 +666,93 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
           continuityModes,
           effects,
           transitionDuration,
+          generationMode: mode,
+          inputAssetIds,
+          documentSources: briefing.documentSources,
         },
       });
     }
+
+    if (mode !== "media_only") {
+      const reference = referenceImageInput(resolvedInputs);
+      if (!previous && reference) {
+        previous = reference.buffer;
+        previousMimeType = reference.mimeType;
+      }
+      for (let index = visualInputs.length; index < sceneCount; index += 1) {
+        const promptForScene = scenePrompt({
+          prompt: briefing.prompt,
+          style,
+          sceneIndex: index,
+          sceneCount,
+          aspectRatio,
+          continuity: Boolean(previous),
+        });
+        const generated = previous
+          ? await generateNextScene({
+              tenantId: video.tenantId,
+              previous,
+              previousMimeType,
+              prompt: promptForScene,
+              size,
+              model: imageModel,
+            })
+          : await generateFirstScene({
+              tenantId: video.tenantId,
+              prompt: promptForScene,
+              size,
+            });
+        imageModel = generated.model;
+        previous = generated.buffer;
+        previousMimeType = "image/png";
+        scenePrompts.push(promptForScene);
+        continuityModes.push(generated.continuity);
+
+        const sceneStorageUrl = await saveObject(generated.buffer, "image/png", "video-generate/scenes", "png");
+        const sceneAssetId = await registerScene({
+          tenantId: video.tenantId,
+          projectId: video.projectId,
+          userId,
+          storageUrl: sceneStorageUrl,
+          buffer: generated.buffer,
+          index,
+          prompt: promptForScene,
+          model: imageModel,
+          continuity: generated.continuity,
+        });
+        sceneAssetIds.push(sceneAssetId);
+
+        const sceneImagePath = join(tmpdir(), `video-generate-${video.id}-generated-${index}.png`);
+        const sceneVideoPath = join(tmpdir(), `video-generate-${video.id}-scene-${index}.mp4`);
+        tempPaths.push(sceneImagePath, sceneVideoPath);
+        await writeFile(sceneImagePath, generated.buffer);
+        await renderImageScene({ imagePath: sceneImagePath, outputPath: sceneVideoPath, sceneIndex: index, duration: sceneDuration, width, height, effects });
+        sceneVideoPaths.push(sceneVideoPath);
+
+        await persistRunning({
+          video,
+          runnerToken,
+          progress: 8 + ((index + 1) / Math.max(1, sceneCount)) * 62,
+          output: {
+            prompt: rawPrompt ?? "",
+            style,
+            aspectRatio,
+            duration,
+            sceneCount,
+            imageModel,
+            sceneAssetIds,
+            continuityModes,
+            effects,
+            transitionDuration,
+            generationMode: mode,
+            inputAssetIds,
+            documentSources: briefing.documentSources,
+          },
+        });
+      }
+    }
+
+    if (!sceneVideoPaths.length) throw new Error("Nenhuma cena visual ficou disponível para compor o vídeo");
 
     const listPath = join(tmpdir(), `video-generate-${video.id}-concat.txt`);
     const basePath = join(tmpdir(), `video-generate-${video.id}-base.mp4`);
@@ -541,12 +775,26 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
       composedPath = sfxPath;
     }
 
+    const audioOutputPath = join(tmpdir(), `video-generate-${video.id}-audio.mp4`);
+    const mixed = await applyProjectAudio({
+      sourcePath: composedPath,
+      outputPath: audioOutputPath,
+      audioInputs,
+      duration,
+      tempPaths,
+      jobId: video.id,
+    });
+    if (mixed.applied) {
+      tempPaths.push(audioOutputPath);
+      composedPath = mixed.outputPath;
+    }
+
     await persistRunning({
       video,
       runnerToken,
       progress: 85,
       output: {
-        prompt,
+        prompt: rawPrompt ?? "",
         style,
         aspectRatio,
         duration,
@@ -556,6 +804,11 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         continuityModes,
         effects,
         transitionDuration,
+        generationMode: mode,
+        inputAssetIds,
+        documentSources: briefing.documentSources,
+        audioApplied: mixed.applied,
+        audioAssetIds: mixed.assetIds,
       },
     });
 
@@ -580,7 +833,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
       label: "Vídeo gerado com IA",
       metadata: {
         jobId: video.id,
-        prompt,
+        prompt: rawPrompt ?? "",
         style,
         aspectRatio,
         duration,
@@ -592,6 +845,19 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         effects,
         transitionDuration,
         transitionTimes,
+        generationMode: mode,
+        inputAssetIds,
+        mediaInputs: resolvedInputs.map((item) => ({
+          assetId: item.assetId,
+          type: item.type,
+          role: item.role,
+          importance: item.importance,
+          order: item.order,
+          note: item.note,
+        })),
+        documentSources: briefing.documentSources,
+        audioApplied: mixed.applied,
+        audioAssetIds: mixed.assetIds,
         logoAssetId: branded.logoAssetId,
         introAssetId: branded.introAssetId,
         outroAssetId: branded.outroAssetId,
@@ -600,7 +866,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         outroApplied: branded.outroApplied,
         logoWarning: branded.logoWarning,
         engine: "vendorai",
-        generationMode: "ai-scenes-ffmpeg-effects-v2",
+        generationEngine: "media-workspace-hybrid-v1",
       },
     });
 
@@ -611,7 +877,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
       output: {
         videoUrl: `/api/storage${storageUrl}`,
         videoAssetId: output.assetId,
-        prompt,
+        prompt: rawPrompt ?? "",
         style,
         aspectRatio,
         duration,
@@ -621,6 +887,11 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         continuityModes,
         effects,
         transitionDuration,
+        generationMode: mode,
+        inputAssetIds,
+        documentSources: briefing.documentSources,
+        audioApplied: mixed.applied,
+        audioAssetIds: mixed.assetIds,
         logoAssetId: branded.logoAssetId,
         introAssetId: branded.introAssetId,
         outroAssetId: branded.outroAssetId,
@@ -629,13 +900,13 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         outroApplied: branded.outroApplied,
         logoWarning: branded.logoWarning,
         engine: "vendorai",
-        generationMode: "ai-scenes-ffmpeg-effects-v2",
+        generationEngine: "media-workspace-hybrid-v1",
       },
     });
   } catch (error) {
     const message = (error instanceof Error ? error.message : "Falha ao gerar vídeo").slice(0, 1_000);
     logger.error({ err: error, jobId: video.id, tenantId: video.tenantId }, "media-video-generate: geração falhou");
-    await setMediaProjectStatus(video.tenantId, video.projectId, "draft").catch(() => undefined);
+    if (video.projectId) await setMediaProjectStatus(video.tenantId, video.projectId, "draft").catch(() => undefined);
     await persistFinished({ video, runnerToken, status: "error", error: message }).catch(() => undefined);
   } finally {
     if (brandCleanup) await brandCleanup().catch(() => undefined);
