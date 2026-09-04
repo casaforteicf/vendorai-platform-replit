@@ -1,0 +1,220 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bot, Bug, CheckCircle2, Code2, Loader2, Send, ShieldCheck, Sparkles, X } from "lucide-react";
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
+type CachedUser = {
+  platformRole?: string | null;
+  name?: string | null;
+  email?: string | null;
+};
+
+const DEV_BOOTSTRAP = `MODO DEV IA DO SUPER ADMIN.
+Você está atuando como o desenvolvedor residente da plataforma VendorAI. Responda como engenheiro de software responsável pela plataforma, em português brasileiro.
+Regras permanentes: não criar módulos paralelos sem necessidade; preservar arquitetura e fluxos existentes; diagnosticar antes de alterar; separar claramente diagnóstico, mudança proposta, risco e validação; mudanças destrutivas, financeiras, autenticação, exclusão de dados, migrações críticas, permissões globais ou infraestrutura exigem aprovação explícita do Super Admin; nunca afirmar que algo foi corrigido sem evidência de alteração/teste/deploy.
+Quando eu mencionar "esta tela", "aqui", "isso" ou semelhante, use a rota atual enviada junto da mensagem como contexto.
+Seu papel aqui é receber bugs, melhorias, novas funções, dúvidas técnicas e pedidos de auditoria da plataforma.`;
+
+function getCachedUser(): CachedUser | null {
+  try {
+    const raw = localStorage.getItem("vendorai_user_cache");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function quickPrompt(label: string, pathname: string) {
+  if (label === "Auditar esta tela") return `Audite a tela atual (${pathname}). Procure inconsistências de UX, bugs prováveis, duplicidades e riscos técnicos. Priorize correções pequenas e seguras.`;
+  if (label === "Reportar bug") return `Tenho um bug na tela atual (${pathname}). Ajude a diagnosticar a causa e organize a menor correção possível.`;
+  if (label === "Melhorar esta tela") return `Quero melhorar a tela atual (${pathname}). Analise o fluxo existente e proponha melhorias sem criar módulos paralelos.`;
+  return `Revise tecnicamente a rota atual (${pathname}) e me diga o que merece atenção.`;
+}
+
+export default function DevAgentOverlay() {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const endRef = useRef<HTMLDivElement | null>(null);
+
+  const user = useMemo(() => getCachedUser(), [open]);
+  const isSuperAdmin = user?.platformRole === "super_admin";
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, sending]);
+
+  if (!isSuperAdmin) return null;
+
+  async function sendMessage(raw: string) {
+    const text = raw.trim();
+    if (!text || sending) return;
+
+    const userMessage: ChatMessage = { role: "user", content: text };
+    const prior = messages;
+    setMessages((current) => [...current, userMessage]);
+    setInput("");
+    setSending(true);
+
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const contextMessage: ChatMessage = {
+        role: "user",
+        content: `${DEV_BOOTSTRAP}\n\nCONTEXTO ATUAL DA INTERFACE:\n- rota: ${window.location.pathname}${window.location.search}\n- usuário: Super Admin\n\nPEDIDO:\n${text}`,
+      };
+
+      const payloadMessages: ChatMessage[] = [
+        contextMessage,
+        ...prior.slice(-10),
+      ];
+
+      const response = await fetch("/api/support/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ messages: payloadMessages }),
+      });
+
+      if (!response.ok || !response.body) throw new Error(`Falha no Dev IA (${response.status})`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let assistant = "";
+      setMessages((current) => [...current, { role: "assistant", content: "" }]);
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+
+        for (const frame of frames) {
+          const dataLine = frame.split("\n").find((line) => line.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const data = JSON.parse(dataLine.slice(6));
+            if (typeof data?.content === "string") {
+              assistant += data.content;
+              setMessages((current) => {
+                const next = [...current];
+                const last = next[next.length - 1];
+                if (last?.role === "assistant") next[next.length - 1] = { role: "assistant", content: assistant };
+                return next;
+              });
+            }
+          } catch {
+            // ignora eventos SSE que não sejam JSON de conteúdo
+          }
+        }
+      }
+
+      if (!assistant.trim()) {
+        setMessages((current) => {
+          const next = [...current];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant" && !last.content) {
+            next[next.length - 1] = { role: "assistant", content: "Não recebi uma resposta válida. Verifique o serviço de IA e tente novamente." };
+          }
+          return next;
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      setMessages((current) => [...current, { role: "assistant", content: `Não consegui concluir a análise: ${message}.` }]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="fixed bottom-5 right-5 z-[80] flex items-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-2xl transition hover:scale-[1.02] hover:bg-slate-900"
+        aria-label="Abrir Dev IA"
+      >
+        <Code2 className="h-4 w-4" />
+        Dev IA
+        <span className="h-2 w-2 rounded-full bg-emerald-400" />
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-end bg-black/20 p-0 sm:p-5" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+          <section className="flex h-[92vh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-[82vh] sm:max-w-[520px] sm:rounded-2xl sm:border">
+            <header className="border-b bg-slate-950 px-5 py-4 text-white">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-base font-semibold"><Bot className="h-5 w-5" /> Dev IA · Engenharia</div>
+                  <p className="mt-1 text-xs text-slate-300">Desenvolvedor residente da plataforma · contexto: {pathname}</p>
+                </div>
+                <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 hover:bg-white/10" aria-label="Fechar Dev IA"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-200">
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1"><ShieldCheck className="h-3 w-3" /> mudanças críticas pedem aprovação</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1"><CheckCircle2 className="h-3 w-3" /> evidência antes de concluir</span>
+              </div>
+            </header>
+
+            <div className="border-b bg-slate-50 px-4 py-3">
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {["Auditar esta tela", "Reportar bug", "Melhorar esta tela"].map((label) => (
+                  <button key={label} onClick={() => sendMessage(quickPrompt(label, pathname))} disabled={sending} className="shrink-0 rounded-full border bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+                    {label === "Reportar bug" ? <Bug className="mr-1 inline h-3 w-3" /> : <Sparkles className="mr-1 inline h-3 w-3" />}{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
+              {messages.length === 0 && (
+                <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700 shadow-sm">
+                  <p className="font-semibold text-slate-900">Pode falar comigo como fala com seu desenvolvedor.</p>
+                  <p className="mt-2">Ex.: “essa tela está escondendo informações”, “corrige esse erro”, “quero mudar esse fluxo” ou “audita o que foi feito aqui”.</p>
+                  <p className="mt-2 text-xs text-slate-500">Eu recebo automaticamente a rota atual para entender onde você está.</p>
+                </div>
+              )}
+
+              {messages.map((message, index) => (
+                <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "bg-slate-950 text-white" : "border bg-white text-slate-800 shadow-sm"}`}>
+                    {message.content || (sending && index === messages.length - 1 ? <span className="inline-flex items-center gap-2 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> analisando...</span> : "")}
+                  </div>
+                </div>
+              ))}
+              <div ref={endRef} />
+            </div>
+
+            <form className="border-t bg-white p-3" onSubmit={(e) => { e.preventDefault(); void sendMessage(input); }}>
+              <div className="flex items-end gap-2 rounded-2xl border bg-slate-50 p-2 focus-within:border-slate-400">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMessage(input);
+                    }
+                  }}
+                  rows={2}
+                  placeholder="Fale o que quer corrigir, melhorar ou construir..."
+                  className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none"
+                />
+                <button type="submit" disabled={!input.trim() || sending} className="rounded-xl bg-slate-950 p-2.5 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar">
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="mt-2 px-1 text-[10px] text-slate-500">Baixo risco: pode orientar e preparar correção. Alto risco: exige sua aprovação antes de executar.</p>
+            </form>
+          </section>
+        </div>
+      )}
+    </>
+  );
+}
