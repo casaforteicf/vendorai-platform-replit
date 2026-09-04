@@ -12,6 +12,7 @@ import { MediaContentStudioBridge } from "./components/media/MediaContentStudioB
 import { MediaMarketingContentBridge } from "./components/media/MediaMarketingContentBridge";
 import { MediaConversationsBridge } from "./components/media/MediaConversationsBridge";
 import { MediaAiBaseBridge } from "./components/media/MediaAiBaseBridge";
+import { MediaAiBaseWorkspaceNav } from "./components/media/MediaAiBaseWorkspaceNav";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { I18nProvider } from "./i18n";
 import "./index.css";
@@ -73,6 +74,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaMarketingContentBridge />
           <MediaConversationsBridge />
           <MediaAiBaseBridge />
+          <MediaAiBaseWorkspaceNav />
         </>
       )}
     </I18nProvider>
