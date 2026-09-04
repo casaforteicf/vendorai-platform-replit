@@ -20,27 +20,51 @@ Responder dúvidas de uso, configuração e integrações do Vendor.ai. Quando o
 - Planos com limites de tokens, mensagens e módulos por tenant
 
 ## Quando o usuário descrever um bug, problema ou sugestão
-
 Colete sistematicamente:
-1. **O que aconteceu** — descrição do comportamento observado
-2. **Em qual tela/rota** — ex: "Tela de Leads", "/leads", "configuração de agente"
-3. **O que era esperado** — o comportamento correto
-4. **Mensagem de erro** (se houver) — texto exato do erro
+1. O que aconteceu
+2. Em qual tela/rota
+3. O que era esperado
+4. Mensagem de erro, se houver
 
-Após coletar todas as informações, informe ao usuário que está registrando o chamado. Classifique automaticamente:
-- **categoria**: "bug" (algo não funciona), "duvida" (como usar), "sugestao" (melhoria)
-- **prioridade**: "critica" (sistema inutilizável), "alta" (funcionalidade importante travada), "media" (workaround existe), "baixa" (cosmético/sugestão)
+Após coletar as informações, classifique automaticamente categoria e prioridade.
 
-Ao registrar, inclua EXATAMENTE ao final da sua resposta (nunca antes, nunca dentro do texto visível):
+Ao registrar, inclua EXATAMENTE ao final da sua resposta:
 <!--VENDORAI_REPORT:{"titulo":"...","descricao":"...","categoria":"bug|duvida|sugestao","prioridade":"baixa|media|alta|critica","rotaAfetada":"...ou null"}-->
 
 ## Regras
-- Responda SEMPRE em português brasileiro
-- Seja direto, empático e conciso
-- Nunca peça informações que já foram fornecidas
-- Máximo 1 pergunta de cada vez para coletar informações
-- Se for uma dúvida simples, responda diretamente; o sistema registrará o atendimento como resolvido pelo agente
+- Responda sempre em português brasileiro
+- Seja direto e conciso
+- Nunca peça informações já fornecidas
+- Máximo 1 pergunta por vez
 - Use o marcador somente quando houver problema, sugestão ou necessidade de acompanhamento humano`;
+
+const DEV_AGENT_SYSTEM_PROMPT = `Você é o Dev IA residente da plataforma VendorAI e atua exclusivamente para o Super Admin como engenheiro de software responsável pela plataforma.
+
+## Missão
+Receber bugs, melhorias, novas funções, auditorias e dúvidas técnicas em linguagem natural e transformar cada pedido em diagnóstico técnico claro, seguro e rastreável.
+
+## Regras permanentes
+- Responda sempre em português brasileiro.
+- Preserve arquitetura e fluxos existentes.
+- Não crie módulos paralelos sem necessidade.
+- Antes de propor alteração, diagnostique causa provável, impacto e menor correção segura.
+- Quando o usuário disser "esta tela", "aqui" ou "isso", use a rota enviada no contexto.
+- Diferencie explicitamente: diagnóstico, mudança proposta, risco, testes necessários e evidência de conclusão.
+- Nunca afirme que código foi alterado, testado, publicado ou validado se isso não tiver acontecido de fato.
+- Mudanças destrutivas, financeiras, autenticação, exclusão de dados, migrações críticas, permissões globais, segredos, infraestrutura ou rollback exigem aprovação explícita do Super Admin.
+- Nunca revele chaves, tokens, secrets ou credenciais.
+- Nunca instrua alteração direta da main; prefira branch, PR, testes e validação.
+- Priorize mudanças pequenas, reversíveis e observáveis.
+
+## Formato preferencial
+Quando houver um problema técnico, organize a resposta em:
+1. Diagnóstico
+2. Causa provável
+3. Correção mínima
+4. Risco
+5. Validação necessária
+
+Você não é o assistente de suporte ao cliente. Você é o agente de engenharia da plataforma.`;
 
 const reportMarkerRegex = /<!--VENDORAI_REPORT:([\s\S]*?)-->/;
 
@@ -62,6 +86,80 @@ const devGithubTaskSchema = z.object({
   route: z.string().min(1).max(500),
 });
 
+function setSseHeaders(res: any) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+}
+
+function flushSse(res: any) {
+  if (typeof res.flush === "function") res.flush();
+}
+
+router.post("/support/dev/chat", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin") {
+    return res.status(403).json({ error: "Somente Super Admin pode usar o Dev IA." });
+  }
+
+  const parsed = chatBodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
+
+  setSseHeaders(res);
+  let fullResponse = "";
+
+  try {
+    try {
+      const stream = anthropic.messages.stream({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        system: DEV_AGENT_SYSTEM_PROMPT,
+        messages: parsed.data.messages,
+      });
+
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          fullResponse += event.delta.text;
+          res.write(`data: ${JSON.stringify({ content: event.delta.text })}\n\n`);
+          flushSse(res);
+        }
+      }
+    } catch (anthropicErr) {
+      if (fullResponse) throw anthropicErr;
+      req.log?.warn({ err: anthropicErr }, "dev-ia: anthropic falhou, caindo para OpenAI");
+
+      const openai = await getOpenAIForTenant("");
+      const stream = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_tokens: 8192,
+        stream: true,
+        messages: [
+          { role: "system", content: DEV_AGENT_SYSTEM_PROMPT },
+          ...parsed.data.messages,
+        ],
+      });
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content ?? "";
+        if (!delta) continue;
+        fullResponse += delta;
+        res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
+        flushSse(res);
+      }
+    }
+
+    res.write(`data: ${JSON.stringify({ done: true, status: "diagnosticado" })}\n\n`);
+    res.end();
+  } catch (err) {
+    req.log?.error({ err }, "dev-ia: chat stream error");
+    res.write(`data: ${JSON.stringify({ error: "Erro ao processar resposta do Dev IA" })}\n\n`);
+    res.end();
+  }
+
+  return;
+});
+
 router.post("/support/dev/github-task", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") {
     return res.status(403).json({ error: "Somente Super Admin pode criar tarefas técnicas." });
@@ -70,16 +168,10 @@ router.post("/support/dev/github-task", async (req, res) => {
   const parsed = devGithubTaskSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
 
-  const token =
-    process.env["GITHUB_DEV_TOKEN"] ??
-    process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ??
-    process.env["GITHUB_TOKEN"];
+  const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
   const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
   if (!token) {
-    return res.status(503).json({
-      error: "Integração GitHub do Dev IA ainda não configurada no backend.",
-      code: "GITHUB_DEV_TOKEN_MISSING",
-    });
+    return res.status(503).json({ error: "Integração GitHub do Dev IA ainda não configurada no backend.", code: "GITHUB_DEV_TOKEN_MISSING" });
   }
 
   const { requestId, title, request, diagnosis, route } = parsed.data;
@@ -119,17 +211,11 @@ router.post("/support/dev/github-task", async (req, res) => {
 
     const data = await gh.json() as { number?: number; html_url?: string; message?: string };
     if (!gh.ok || !data.number || !data.html_url) {
-      req.log?.warn({ status: gh.status, data }, "dev-ia: GitHub issue creation failed");
+      req.log?.warn({ status: gh.status, message: data.message }, "dev-ia: GitHub issue creation failed");
       return res.status(502).json({ error: data.message ?? "Falha ao criar tarefa no GitHub" });
     }
 
-    return res.status(201).json({
-      success: true,
-      issueNumber: data.number,
-      issueUrl: data.html_url,
-      repository,
-      status: "github_task_created",
-    });
+    return res.status(201).json({ success: true, issueNumber: data.number, issueUrl: data.html_url, repository, status: "github_task_created" });
   } catch (err) {
     req.log?.error({ err }, "dev-ia: GitHub task request failed");
     return res.status(502).json({ error: "Não foi possível conectar ao GitHub." });
@@ -138,20 +224,10 @@ router.post("/support/dev/github-task", async (req, res) => {
 
 router.post("/support/chat", async (req, res) => {
   const parsed = chatBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Payload inválido" });
-  }
+  if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
 
   const tenantId = req.user?.tenantId ?? null;
-
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-
-  const flush = () => { if (typeof (res as any).flush === "function") (res as any).flush(); };
-
+  setSseHeaders(res);
   let fullResponse = "";
 
   try {
@@ -169,33 +245,30 @@ router.post("/support/chat", async (req, res) => {
           const visibleChunk = event.delta.text.replace(reportMarkerRegex, "");
           if (visibleChunk) {
             res.write(`data: ${JSON.stringify({ content: visibleChunk })}\n\n`);
-            flush();
+            flushSse(res);
           }
         }
       }
     } catch (anthropicErr) {
-      if (fullResponse !== "") throw anthropicErr;
+      if (fullResponse) throw anthropicErr;
       req.log?.warn({ err: anthropicErr }, "support: anthropic falhou, caindo pro OpenAI");
 
       const openai = await getOpenAIForTenant(tenantId ?? "");
-      const openaiStream = await openai.chat.completions.create({
+      const stream = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         max_tokens: 8192,
         stream: true,
-        messages: [
-          { role: "system", content: SUPPORT_SYSTEM_PROMPT },
-          ...parsed.data.messages,
-        ],
+        messages: [{ role: "system", content: SUPPORT_SYSTEM_PROMPT }, ...parsed.data.messages],
       });
 
-      for await (const chunk of openaiStream) {
+      for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta?.content ?? "";
         if (!delta) continue;
         fullResponse += delta;
         const visibleChunk = delta.replace(reportMarkerRegex, "");
         if (visibleChunk) {
           res.write(`data: ${JSON.stringify({ content: visibleChunk })}\n\n`);
-          flush();
+          flushSse(res);
         }
       }
     }
@@ -217,13 +290,7 @@ router.post("/support/chat", async (req, res) => {
           categoria: "bug" | "duvida" | "sugestao";
           prioridade: "baixa" | "media" | "alta" | "critica";
           rotaAfetada?: string | null;
-        } = {
-          titulo: tituloPadrao,
-          descricao: primeiraMensagem,
-          categoria: "duvida",
-          prioridade: "baixa",
-          rotaAfetada: null,
-        };
+        } = { titulo: tituloPadrao, descricao: primeiraMensagem, categoria: "duvida", prioridade: "baixa", rotaAfetada: null };
 
         if (match?.[1]) {
           reportData = { ...reportData, ...JSON.parse(match[1].trim()) };
@@ -233,10 +300,7 @@ router.post("/support/chat", async (req, res) => {
 
         const conversationId = parsed.data.conversationId ?? null;
         const [existing] = conversationId
-          ? await db.select().from(bugReportsTable).where(and(
-              eq(bugReportsTable.tenantId, tenantId),
-              eq(bugReportsTable.conversationId, conversationId),
-            )).limit(1)
+          ? await db.select().from(bugReportsTable).where(and(eq(bugReportsTable.tenantId, tenantId), eq(bugReportsTable.conversationId, conversationId))).limit(1)
           : [];
 
         if (existing && existing.status !== "resolvido" && !match) {
@@ -263,10 +327,7 @@ router.post("/support/chat", async (req, res) => {
 
         let saved;
         if (existing) {
-          [saved] = await db.update(bugReportsTable)
-            .set(values as any)
-            .where(eq(bugReportsTable.id, existing.id))
-            .returning();
+          [saved] = await db.update(bugReportsTable).set(values as any).where(eq(bugReportsTable.id, existing.id)).returning();
         } else {
           [saved] = await db.insert(bugReportsTable).values(values as any).returning();
         }
@@ -284,30 +345,16 @@ router.post("/support/chat", async (req, res) => {
       if (tenantId && parsed.data.conversationId) {
         const conversationId = parsed.data.conversationId;
         const userId = req.user?.sub ?? null;
-        const transcript =
-          parsed.data.messages.map((m) => `${m.role === "user" ? "Usuário" : "Suporte"}: ${m.content}`).join("\n\n") +
-          (visibleResponse ? `\n\nSuporte: ${visibleResponse}` : "");
+        const transcript = parsed.data.messages.map((m) => `${m.role === "user" ? "Usuário" : "Suporte"}: ${m.content}`).join("\n\n") + (visibleResponse ? `\n\nSuporte: ${visibleResponse}` : "");
         const primeiraMensagem = parsed.data.messages.find((m) => m.role === "user")?.content ?? "Conversa com o Suporte";
         const titulo = primeiraMensagem.length > 80 ? primeiraMensagem.slice(0, 77) + "..." : primeiraMensagem;
 
-        const [existente] = await db.select({ id: relatosTecnicosTable.id })
-          .from(relatosTecnicosTable)
-          .where(and(eq(relatosTecnicosTable.conversationId, conversationId), eq(relatosTecnicosTable.tenantId, tenantId)));
+        const [existente] = await db.select({ id: relatosTecnicosTable.id }).from(relatosTecnicosTable).where(and(eq(relatosTecnicosTable.conversationId, conversationId), eq(relatosTecnicosTable.tenantId, tenantId)));
 
         if (existente) {
-          await db.update(relatosTecnicosTable)
-            .set({ transcriptRelevante: transcript })
-            .where(eq(relatosTecnicosTable.id, existente.id));
+          await db.update(relatosTecnicosTable).set({ transcriptRelevante: transcript }).where(eq(relatosTecnicosTable.id, existente.id));
         } else {
-          await db.insert(relatosTecnicosTable).values({
-            tenantId,
-            conversationId,
-            usuarioId: userId,
-            titulo,
-            descricaoProblema: titulo,
-            transcriptRelevante: transcript,
-            status: "pendente_revisao",
-          });
+          await db.insert(relatosTecnicosTable).values({ tenantId, conversationId, usuarioId: userId, titulo, descricaoProblema: titulo, transcriptRelevante: transcript, status: "pendente_revisao" });
         }
       }
     } catch (err) {
@@ -317,7 +364,7 @@ router.post("/support/chat", async (req, res) => {
     res.write(`data: ${JSON.stringify({ done: true, bugReportId, protocolo, status: atendimentoStatus, resolvidoPor })}\n\n`);
     res.end();
   } catch (err) {
-    req.log?.error({ err }, "support: claude stream error");
+    req.log?.error({ err }, "support: chat stream error");
     res.write(`data: ${JSON.stringify({ error: "Erro ao processar resposta" })}\n\n`);
     res.end();
   }
