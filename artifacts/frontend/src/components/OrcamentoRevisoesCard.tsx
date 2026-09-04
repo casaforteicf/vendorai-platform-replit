@@ -193,12 +193,14 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
         note.style.marginTop = "6px";
         host.appendChild(note);
       }
-      note.textContent = empty
+      const nextText = empty
         ? hasOrcamento
           ? "Seleção obrigatória: escolha qual orçamento será usado nesta proposta."
           : "Crie um orçamento antes de gerar a proposta."
         : "O orçamento selecionado será a base comercial desta proposta.";
-      note.style.color = empty ? "rgb(180 83 9)" : "rgb(100 116 139)";
+      if (note.textContent !== nextText) note.textContent = nextText;
+      const nextColor = empty ? "rgb(180, 83, 9)" : "rgb(100, 116, 139)";
+      if (note.style.color !== nextColor) note.style.color = nextColor;
     };
 
     const handleGenerateClick = (event: MouseEvent) => {
