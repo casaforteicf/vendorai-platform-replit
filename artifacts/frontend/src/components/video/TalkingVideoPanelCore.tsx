@@ -76,9 +76,22 @@ type StyledReference = {
   market: MarketItem;
 };
 
+type VoiceSelectionInfo = {
+  requestedVoiceProfileId: string;
+  voiceProfileId: string;
+  requestedLocale: string;
+  selectedLocale: string | null;
+  selectedMarket: string | null;
+  match: string;
+  warning: string | null;
+};
+
 type TalkingVideoResult = {
   provider: "vendorai";
   operation: "talking_video";
+  requestedVoiceProfileId?: string;
+  voiceProfileId?: string;
+  voiceSelection?: VoiceSelectionInfo;
   style?: StyledReference | null;
   voice: {
     audioUrl: string;
@@ -86,6 +99,9 @@ type TalkingVideoResult = {
     projectId: string;
     jobId: string;
     versionId: string;
+    requestedVoiceProfileId?: string;
+    voiceProfileId?: string;
+    selection?: VoiceSelectionInfo;
   };
   video: {
     videoUrl: string;
@@ -189,6 +205,10 @@ function scoreTone(score: number | null | undefined) {
   if (score >= 80) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
   if (score >= 60) return "border-amber-500/30 bg-amber-500/10 text-amber-200";
   return "border-red-500/30 bg-red-500/10 text-red-200";
+}
+
+function isExactVoiceMatch(selection: VoiceSelectionInfo | undefined): boolean {
+  return selection?.match === "preferred_exact_locale" || selection?.match === "exact_locale";
 }
 
 function selectionPayload(input: {
@@ -360,6 +380,7 @@ export default function TalkingVideoPanel({
   const changeMarket = (nextMarket: MarketCode) => {
     setMarket(nextMarket);
     setPreview(null);
+    setResult(null);
     if (script === DEFAULT_SCRIPTS[market] || !script.trim()) setScript(DEFAULT_SCRIPTS[nextMarket]);
   };
 
@@ -372,6 +393,7 @@ export default function TalkingVideoPanel({
     setPose(favorite.pose);
     setLighting(favorite.lighting);
     setPreview(null);
+    setResult(null);
     toast({ title: "Estilo favorito aplicado", description: "As próximas gerações usarão esta combinação até você alterar algum item." });
   };
 
@@ -383,6 +405,7 @@ export default function TalkingVideoPanel({
     setLighting("auto");
     setAntiRepeat(true);
     setPreview(null);
+    setResult(null);
   };
 
   const previewStyle = async () => {
@@ -478,11 +501,14 @@ export default function TalkingVideoPanel({
       const data = await responseJson<TalkingVideoResult>(response);
       setResult(data);
       if (data.style) setPreview(data.style);
+      const voiceSelection = data.voiceSelection ?? data.voice.selection;
       toast({
         title: mode === "duble_test" ? "Teste do Dublê gerado" : "Vídeo falado gerado",
-        description: mode === "duble_test"
-          ? `Resultado gerado para ${marketConfig.name}. Assista e avalie semelhança, voz, lip-sync, expressão e naturalidade.`
-          : `Referência visual regional, narração e MP4 foram salvos na Biblioteca Audiovisual.`,
+        description: voiceSelection?.warning
+          ? voiceSelection.warning
+          : mode === "duble_test"
+            ? `Resultado gerado para ${marketConfig.name}. A voz local mais adequada foi selecionada automaticamente.`
+            : `Referência visual regional, voz compatível e MP4 foram salvos na Biblioteca Audiovisual.`,
       });
     } catch (error) {
       toast({ title: mode === "duble_test" ? "Não foi possível testar o Dublê" : "Não foi possível gerar o vídeo", description: error instanceof Error ? error.message : "Erro desconhecido", variant: "destructive" });
@@ -514,12 +540,14 @@ export default function TalkingVideoPanel({
     }
   };
 
+  const resultVoiceSelection = result?.voiceSelection ?? result?.voice.selection;
+
   return (
     <section className="rounded-xl border border-purple-500/25 bg-purple-500/5 p-4 space-y-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2"><Video className="h-4 w-4 text-purple-300" /><p className="text-sm font-semibold">Dublê Digital & Vídeo falado</p></div>
-          <p className="text-[11px] text-gray-500 mt-1">Identidade autorizada → estilo regional → voz → lip-sync → teste humano → MP4 na Biblioteca.</p>
+          <p className="text-[11px] text-gray-500 mt-1">Identidade autorizada → estilo regional → voz inteligente → lip-sync → teste humano → MP4 na Biblioteca.</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <span className={cn("rounded-full border px-2 py-1 text-[10px]", voiceEngineReady ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-amber-500/30 bg-amber-500/10 text-amber-200")}>Voz {voiceEngineReady ? "pronta" : "aguardando GPU"}</span>
@@ -550,11 +578,11 @@ export default function TalkingVideoPanel({
                   {catalog.markets.map((item) => <option key={item.code} value={item.code}>{item.name} · {item.locale} · {item.currency}</option>)}
                 </select>
               </label>
-              <OptionSelect label="Cenário" value={scenario} onChange={(value) => { setScenario(value); setPreview(null); }} items={catalog.scenarios} />
-              <OptionSelect label="Vestimenta" value={outfit} onChange={(value) => { setOutfit(value); setPreview(null); }} items={catalog.outfits} />
-              <OptionSelect label="Enquadramento" value={framing} onChange={(value) => { setFraming(value); setPreview(null); }} items={catalog.framings} />
-              <OptionSelect label="Pose" value={pose} onChange={(value) => { setPose(value); setPreview(null); }} items={catalog.poses} />
-              <OptionSelect label="Iluminação" value={lighting} onChange={(value) => { setLighting(value); setPreview(null); }} items={catalog.lighting} />
+              <OptionSelect label="Cenário" value={scenario} onChange={(value) => { setScenario(value); setPreview(null); setResult(null); }} items={catalog.scenarios} />
+              <OptionSelect label="Vestimenta" value={outfit} onChange={(value) => { setOutfit(value); setPreview(null); setResult(null); }} items={catalog.outfits} />
+              <OptionSelect label="Enquadramento" value={framing} onChange={(value) => { setFraming(value); setPreview(null); setResult(null); }} items={catalog.framings} />
+              <OptionSelect label="Pose" value={pose} onChange={(value) => { setPose(value); setPreview(null); setResult(null); }} items={catalog.poses} />
+              <OptionSelect label="Iluminação" value={lighting} onChange={(value) => { setLighting(value); setPreview(null); setResult(null); }} items={catalog.lighting} />
             </div>
 
             <label className="flex items-start gap-2 rounded-lg border border-white/10 bg-black/10 p-3 cursor-pointer">
@@ -610,7 +638,7 @@ export default function TalkingVideoPanel({
       </section>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
-        <label className="space-y-1.5"><span className="text-xs font-medium text-gray-300">Voz autorizada</span><select value={selectedVoiceId} onChange={(event) => setVoiceProfileId(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#171126] px-3 py-2.5 text-sm outline-none focus:border-purple-500/50">{readyVoices.length === 0 && <option value="">Nenhuma voz pronta</option>}{readyVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}</option>)}</select></label>
+        <label className="space-y-1.5"><span className="text-xs font-medium text-gray-300">Voz preferida</span><select value={selectedVoiceId} onChange={(event) => { setVoiceProfileId(event.target.value); setResult(null); }} className="w-full rounded-xl border border-white/10 bg-[#171126] px-3 py-2.5 text-sm outline-none focus:border-purple-500/50">{readyVoices.length === 0 && <option value="">Nenhuma voz pronta</option>}{readyVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}</option>)}</select><span className="block text-[10px] text-gray-600">O Voice Engine pode substituir esta preferência por uma referência do locale exato do mercado.</span></label>
         <label className="space-y-1.5"><span className="text-xs font-medium text-gray-300">Ajuste facial</span><input type="number" min={-20} max={20} value={bboxShift} onChange={(event) => setBboxShift(Math.max(-20, Math.min(20, Number(event.target.value) || 0)))} className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm outline-none focus:border-purple-500/50" /></label>
       </div>
 
@@ -628,16 +656,26 @@ export default function TalkingVideoPanel({
 
       <div className="flex flex-wrap items-center gap-3">
         <button disabled={!canGenerate} onClick={() => void generate("talking")} className="inline-flex items-center gap-2 rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed">{generating && generationMode === "talking" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}{generating && generationMode === "talking" ? "Gerando estilo, voz e vídeo..." : "Gerar vídeo falado"}</button>
-        {generating && <span className="text-[11px] text-gray-500">O pipeline agora cria a referência visual regional antes do lip-sync; pode levar alguns minutos conforme imagem, GPU e duração da fala.</span>}
+        {generating && <span className="text-[11px] text-gray-500">O pipeline cria a referência visual regional, resolve a voz mais compatível e só então executa o lip-sync.</span>}
       </div>
 
       {result && (
         <div className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_220px] rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+          <div className="grid gap-3 lg:grid-cols-[1fr_240px] rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
             <video controls src={result.video.videoUrl} className="w-full max-h-[460px] rounded-lg bg-black" />
             <div className="space-y-3">
               <div><p className="text-xs font-semibold text-emerald-200">{generationMode === "duble_test" ? "Teste do Dublê pronto" : "Vídeo pronto"}</p><p className="text-[11px] text-gray-500 mt-1">MP4, narração e referência visual foram versionados na Biblioteca Audiovisual.</p></div>
               {result.style && <div className="rounded-lg border border-white/10 p-2"><p className="text-[10px] text-gray-500">Estilo aplicado</p><p className="text-[11px] text-gray-300 mt-1">{result.style.market.name} · {result.style.labels.scenario} · {result.style.labels.outfit}</p></div>}
+              {resultVoiceSelection && (
+                <div className={cn("rounded-lg border p-2", isExactVoiceMatch(resultVoiceSelection) ? "border-emerald-500/25 bg-emerald-500/10" : "border-amber-500/25 bg-amber-500/10")}>
+                  <p className="text-[10px] text-gray-500">Voz resolvida automaticamente</p>
+                  <p className={cn("text-[11px] font-medium mt-1", isExactVoiceMatch(resultVoiceSelection) ? "text-emerald-200" : "text-amber-200")}>
+                    {resultVoiceSelection.selectedLocale ?? "locale não informado"} {isExactVoiceMatch(resultVoiceSelection) ? "· correspondência exata" : "· fallback compatível"}
+                  </p>
+                  <p className="text-[10px] text-gray-500 mt-1">Solicitado: {resultVoiceSelection.requestedLocale}</p>
+                  {resultVoiceSelection.warning && <p className="text-[10px] text-amber-200 mt-1.5">{resultVoiceSelection.warning}</p>}
+                </div>
+              )}
               <div className="flex items-center gap-2 text-xs text-gray-300"><Volume2 className="h-3.5 w-3.5 text-cyan-300" /> Narração gerada</div><audio controls src={result.voice.audioUrl} className="h-8 w-full" />
             </div>
           </div>
