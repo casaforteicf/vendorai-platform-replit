@@ -34,6 +34,14 @@ type WebsiteConnectionResponse = {
   connection?: WebsiteConnection | null;
 };
 
+type GeneratedSiteSummary = {
+  id: string;
+  name?: string | null;
+  siteType?: string | null;
+  published?: boolean;
+  siteSlug?: string | null;
+};
+
 type DnsCheck = {
   checked?: boolean;
   matches?: boolean;
@@ -143,6 +151,7 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
   const { toast } = useToast();
   const [provider, setProvider] = useState<ProviderKey>("registro_br");
   const [domains, setDomains] = useState<DomainRow[]>([]);
+  const [sites, setSites] = useState<GeneratedSiteSummary[]>([]);
   const [connection, setConnection] = useState<WebsiteConnection | null>(null);
   const [statusById, setStatusById] = useState<Record<string, DomainStatusResponse>>({});
   const [domainInput, setDomainInput] = useState("");
@@ -152,20 +161,27 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
 
   const selectedProvider = PROVIDERS[provider];
   const suggested = useMemo(() => suggestLpDomain(connection), [connection]);
+  const publishedSites = useMemo(
+    () => sites.filter((site) => site.published && site.siteSlug),
+    [sites],
+  );
 
   async function load() {
     if (!tenantId) return;
     setLoading(true);
     try {
-      const [domainsRes, connectionRes] = await Promise.all([
+      const [domainsRes, connectionRes, sitesRes] = await Promise.all([
         fetch(`/api/tenants/${tenantId}/domains`, { headers: authHeaders(), cache: "no-store" }),
         fetch(`/api/tenants/${tenantId}/content-autopilot/website-connection`, { headers: authHeaders(), cache: "no-store" }),
+        fetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, { headers: authHeaders(), cache: "no-store" }),
       ]);
       const domainsBody = await domainsRes.json().catch(() => ({})) as DomainsResponse;
       const connectionBody = await connectionRes.json().catch(() => ({})) as WebsiteConnectionResponse;
+      const sitesBody = await sitesRes.json().catch(() => ([])) as GeneratedSiteSummary[];
       if (!domainsRes.ok) throw new Error("Não foi possível carregar os domínios deste cliente.");
       const resolvedConnection = connectionRes.ok ? connectionBody.connection ?? null : null;
       setDomains(Array.isArray(domainsBody.domains) ? domainsBody.domains : []);
+      setSites(sitesRes.ok && Array.isArray(sitesBody) ? sitesBody : []);
       setConnection(resolvedConnection);
       if (!domainInput && resolvedConnection) {
         const next = suggestLpDomain(resolvedConnection);
@@ -324,7 +340,28 @@ export function SiteDomainAssistant({ tenantId }: { tenantId: string }) {
 
                       {dnsCheck?.error && <p className="mt-2 text-xs text-destructive">Verificação DNS: {dnsCheck.error}</p>}
                       {live && live.provisioningAvailable === false && dnsCheck?.matches && <p className="mt-2 text-xs text-amber-700">O CNAME está correto, mas o provisionamento de hostname/SSL do VendorAI ainda não está disponível neste ambiente. Por segurança, a publicação continua bloqueada.</p>}
-                      {status === "active" && <p className="mt-2 text-xs text-green-700">DNS + SSL confirmados. Este domínio pode ser usado para publicação automática de sites/LPs hospedados pelo VendorAI.</p>}
+                      {status === "active" && (
+                        <div className="mt-3 space-y-2 rounded-lg border border-green-200 bg-green-50/60 p-3 dark:border-green-900/40 dark:bg-green-950/20">
+                          <p className="text-xs font-semibold text-green-800 dark:text-green-300">DNS + SSL confirmados · publicação automática liberada</p>
+                          <p className="text-xs text-muted-foreground">A raiz <strong>https://{domain.domain}</strong> abre a página publicada mais recente. Cada site/LP publicado também recebe um endereço próprio neste domínio.</p>
+                          {publishedSites.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Ainda não há site ou LP publicado. Gere o conteúdo e clique em Publicar no Gerador de Sites.</p>
+                          ) : (
+                            <div className="space-y-1.5 pt-1">
+                              {publishedSites.map((site) => {
+                                const url = `https://${domain.domain}/${site.siteSlug}`;
+                                return (
+                                  <div key={`${domain.id}-${site.id}`} className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-xs">
+                                    <span className="min-w-0 flex-1 truncate"><strong>{site.name || site.siteSlug}</strong> · {url}</span>
+                                    <Button size="icon" variant="ghost" onClick={() => void copyText(url).then(() => toast({ title: "URL copiada" }))}><Copy className="h-3.5 w-3.5" /></Button>
+                                    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir<ExternalLink className="h-3 w-3" /></a>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
