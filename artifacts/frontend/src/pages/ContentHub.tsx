@@ -4,7 +4,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Content from "@/pages/Content";
 import Campanhas from "@/pages/Campanhas";
 import CampanhasHub from "@/pages/CampanhasHub";
-import PracaVariedades from "@/pages/supermercado/SupermercadoCampanhas";
 import { Images, Megaphone, Sparkles } from "lucide-react";
 
 const REDUNDANT_CHILD_TITLES = new Set([
@@ -20,8 +19,6 @@ const COPY_REPLACEMENTS: Array<[string, string]> = [
   ["Produto interno VendorAI", "Funcionalidade VendorAI"],
   ["Patrocinar este conteúdo", "Criar campanha"],
 ];
-
-const MARKETING_TABS = new Set(["gerador", "campanhas", "variedades"]);
 
 function applyMarketingRedundancyFilter(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>("h1").forEach((heading) => {
@@ -60,8 +57,11 @@ export default function ContentHub() {
   const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
   const params = new URLSearchParams(queryString);
   const requestedTab = params.get("tab") ?? "gerador";
-  const activeTab = MARKETING_TABS.has(requestedTab) ? requestedTab : "gerador";
-  const campaignView = params.get("view") ?? "overview";
+  // Compatibilidade: o antigo ?tab=variedades agora abre a modalidade Praça.ai
+  // dentro de Campanhas, sem manter uma terceira área paralela no Marketing.
+  const legacyPracaView = requestedTab === "variedades";
+  const activeTab = requestedTab === "campanhas" || legacyPracaView ? "campanhas" : "gerador";
+  const campaignView = legacyPracaView ? "praca" : params.get("view") ?? "overview";
 
   function handleTabChange(nextTab: string) {
     if (nextTab === "gerador") {
@@ -96,13 +96,11 @@ export default function ContentHub() {
           <TabsList className="h-auto flex flex-wrap">
             <TabsTrigger value="gerador" className="gap-2"><Images className="h-4 w-4"/>Gerador de conteúdo</TabsTrigger>
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>Campanhas</TabsTrigger>
-            <TabsTrigger value="variedades" className="gap-2"><Sparkles className="h-4 w-4"/>Variedades Praça.ai</TabsTrigger>
           </TabsList>
           <TabsContent value="gerador" className="-mx-4 md:-mx-6"><Content /></TabsContent>
           <TabsContent value="campanhas" className="-mx-4 md:-mx-6">
             {campaignView === "organicas" ? <Campanhas /> : <CampanhasHub />}
           </TabsContent>
-          <TabsContent value="variedades" className="-mx-4 md:-mx-6"><PracaVariedades /></TabsContent>
         </Tabs>
       </div>
     </div>
