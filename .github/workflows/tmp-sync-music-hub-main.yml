@@ -1,0 +1,120 @@
+name: Temporary Sync Music Hub With Main
+
+on:
+  push:
+    branches:
+      - feat/media-center-music-hub
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/media-center-music-hub
+          fetch-depth: 0
+      - name: Merge current main and preserve the new video editor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          set +e
+          git merge --no-commit --no-ff origin/main
+          merge_status=$?
+          set -e
+          if [ "$merge_status" -ne 0 ]; then
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            echo "Conflicts: $conflicts"
+            unexpected="$(printf '%s\n' "$conflicts" | grep -v '^artifacts/frontend/src/components/video/VideoTimelineEditor.tsx$' || true)"
+            if [ -n "$unexpected" ]; then
+              echo "Unexpected merge conflicts: $unexpected"
+              exit 1
+            fi
+            git checkout --theirs artifacts/frontend/src/components/video/VideoTimelineEditor.tsx
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('artifacts/frontend/src/components/video/VideoTimelineEditor.tsx')
+          text = path.read_text()
+
+          old_state = '''  const [musicMode, setMusicMode] = useState<MusicMode>("none");
+          const [musicFile, setMusicFile] = useState<File | null>(null);
+          const [musicAssetId, setMusicAssetId] = useState("");'''
+          new_state = '''  const requestedMusicAssetId = useRef(new URLSearchParams(window.location.search).get("musicAssetId") ?? "");
+          const [musicMode, setMusicMode] = useState<MusicMode>(requestedMusicAssetId.current ? "library" : "none");
+          const [musicFile, setMusicFile] = useState<File | null>(null);
+          const [musicAssetId, setMusicAssetId] = useState(requestedMusicAssetId.current);'''
+          if 'const requestedMusicAssetId = useRef(' not in text:
+              if old_state not in text:
+                  raise SystemExit('music state anchor not found')
+              text = text.replace(old_state, new_state, 1)
+
+          load_anchor = '''  useEffect(() => {
+            void loadAssets();
+            void loadMusic();
+          }, [loadAssets, loadMusic]);
+
+          useEffect(() => {
+            if (!projectId || !tenantId) return;'''
+          load_replacement = '''  useEffect(() => {
+            void loadAssets();
+            void loadMusic();
+          }, [loadAssets, loadMusic]);
+
+          useEffect(() => {
+            const requested = requestedMusicAssetId.current;
+            if (!requested || musicTracks.length === 0) return;
+            if (musicTracks.some((track) => track.id === requested)) {
+              setMusicMode("library");
+              setMusicAssetId(requested);
+              setTool("audio");
+              requestedMusicAssetId.current = "";
+            }
+          }, [musicTracks]);
+
+          useEffect(() => {
+            if (!projectId || !tenantId) return;'''
+          if 'const requested = requestedMusicAssetId.current;' not in text:
+              if load_anchor not in text:
+                  raise SystemExit('music handoff effect anchor not found')
+              text = text.replace(load_anchor, load_replacement, 1)
+
+          old_meta = '          metadata: type === "audio" ? { rights: { status: "pending", origin: "user_upload" } } : {},'
+          new_meta = '''          metadata: type === "audio"
+            ? {
+                audioKind: "music",
+                rights: {
+                  status: "pending",
+                  origin: "unknown",
+                  commercialUse: false,
+                  paidAds: false,
+                  territories: ["*"],
+                  expiresAt: null,
+                  attributionRequired: false,
+                  attributionText: null,
+                  licenseReference: null,
+                  evidenceAssetId: null,
+                },
+              }
+            : {},'''
+          if 'audioKind: "music"' not in text:
+              if old_meta not in text:
+                  raise SystemExit('music upload metadata anchor not found')
+              text = text.replace(old_meta, new_meta, 1)
+
+          path.write_text(text)
+          PY
+
+          git add artifacts/frontend/src/components/video/VideoTimelineEditor.tsx
+          if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            git commit -m "chore: reconcile Music Hub with current main"
+          elif ! git diff --cached --quiet; then
+            git commit -m "fix(media): preserve Music Hub on current video editor"
+          fi
+          git push origin HEAD:feat/media-center-music-hub
