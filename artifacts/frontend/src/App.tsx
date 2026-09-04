@@ -66,6 +66,7 @@ const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
 const AdminTenants       = lazy(() => import("@/pages/AdminTenants"));
 const AdminTenantDetail  = lazy(() => import("@/pages/AdminTenantDetail"));
 const AdminVerticals     = lazy(() => import("@/pages/AdminVerticals"));
+const AdminAppBuilder    = lazy(() => import("@/pages/AdminAppBuilder"));
 const AdminProdutosInternos = lazy(() => import("@/pages/AdminProdutosInternos"));
 const AgentDefaults      = lazy(() => import("@/pages/admin/AgentDefaults"));
 const SupportAdmin       = lazy(() => import("@/pages/admin/SupportAdmin"));
@@ -625,6 +626,7 @@ function AppRoutes() {
         <Route path="/admin/ai-usage">{() => <SuperAdminRoute component={AdminAIUsage} />}</Route>
         <Route path="/admin/partners">{() => <SuperAdminRoute component={AdminPartners} />}</Route>
         <Route path="/admin/verticais">{() => <SuperAdminRoute component={AdminVerticals} />}</Route>
+        <Route path="/admin/app-builder">{() => <SuperAdminRoute component={AdminAppBuilder} />}</Route>
         <Route path="/admin/produtos-internos">{() => <SuperAdminRoute component={AdminProdutosInternos} />}</Route>
         <Route path="/admin/agent-defaults">{() => <SuperAdminRoute component={AgentDefaults} />}</Route>
         <Route path="/admin/suporte">{() => <SuperAdminRoute component={SupportAdmin} />}</Route>
