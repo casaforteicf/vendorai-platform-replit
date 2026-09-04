@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles, Clock, Users, Zap } from "lucide-react";
 import { Link } from "wouter";
 import {
@@ -10,22 +10,13 @@ import {
   getLaunchAttribution,
   setAdDataConsent,
 } from "@/lib/launchAttribution";
+import { PUBLIC_COUNTRIES, type PublicCountryCode, usePublicCountry } from "@/lib/publicCountry";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com").replace(/\/$/, "");
 
-const COUNTRY_OPTIONS = {
-  BR: { label: "Brasil", locale: "pt-BR", phone: "+55 48 99999-9999" },
-  PY: { label: "Paraguay", locale: "es-PY", phone: "+595 981 234567" },
-  AR: { label: "Argentina", locale: "es-AR", phone: "+54 9 11 1234-5678" },
-  UY: { label: "Uruguay", locale: "es-UY", phone: "+598 99 123 456" },
-  CL: { label: "Chile", locale: "es-CL", phone: "+56 9 1234 5678" },
-} as const;
-
-type CountryCode = keyof typeof COUNTRY_OPTIONS;
-
 type TrialForm = {
-  countryCode: CountryCode;
+  countryCode: PublicCountryCode;
   nomeEmpresa: string;
   nomePessoa: string;
   email: string;
@@ -44,18 +35,8 @@ type TrialForm = {
   adDataConsent: boolean;
 };
 
-function initialCountry(): CountryCode {
-  if (typeof navigator === "undefined") return "BR";
-  const locale = navigator.language.toLowerCase();
-  if (locale.includes("es-py")) return "PY";
-  if (locale.includes("es-ar")) return "AR";
-  if (locale.includes("es-uy")) return "UY";
-  if (locale.includes("es-cl")) return "CL";
-  return "BR";
-}
-
-const initialForm = (): TrialForm => ({
-  countryCode: initialCountry(),
+const initialForm = (countryCode: PublicCountryCode): TrialForm => ({
+  countryCode,
   nomeEmpresa: "",
   nomePessoa: "",
   email: "",
@@ -256,18 +237,27 @@ const ES = {
 
 export default function Demo() {
   const { toast } = useToast();
+  const { countryCode, setCountryCode, country, isSpanish } = usePublicCountry();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [form, setForm] = useState<TrialForm>(initialForm);
-  const isSpanish = form.countryCode !== "BR";
+  const [form, setForm] = useState<TrialForm>(() => initialForm(countryCode));
   const copy = isSpanish ? ES : PT;
-  const country = COUNTRY_OPTIONS[form.countryCode];
+
+  useEffect(() => {
+    setForm((current) => current.countryCode === countryCode ? current : { ...current, countryCode });
+  }, [countryCode]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, type, value } = e.target;
     const checked = type === "checkbox" ? (e.target as HTMLInputElement).checked : false;
     if (name === "adDataConsent" && type === "checkbox") setAdDataConsent(checked);
     setForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value } as TrialForm));
+  };
+
+  const handleCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value as PublicCountryCode;
+    setCountryCode(next);
+    setForm((current) => ({ ...current, countryCode: next }));
   };
 
   const captureWarmLead = async () => {
@@ -408,7 +398,7 @@ export default function Demo() {
       <div className="container relative z-10 mx-auto -mt-6 px-3 md:-mt-8 md:px-4">
         <div className="mx-auto grid max-w-5xl overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl md:grid-cols-5">
           <div className="p-5 sm:p-8 md:col-span-3 md:p-12">
-            <div className="mb-6 flex items-center gap-2" aria-label={`${copy.stepAria} ${step} ${isSpanish ? "de" : "de"} 3`}>
+            <div className="mb-6 flex items-center gap-2" aria-label={`${copy.stepAria} ${step} de 3`}>
               {[1, 2, 3].map((n) => (
                 <div key={n} className={`h-1.5 flex-1 rounded-full ${n <= step ? "bg-primary" : "bg-slate-200"}`} />
               ))}
@@ -422,8 +412,8 @@ export default function Demo() {
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="countryCode">{copy.country}</Label>
-                    <select id="countryCode" name="countryCode" value={form.countryCode} onChange={handleChange} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required>
-                      {Object.entries(COUNTRY_OPTIONS).map(([code, option]) => (
+                    <select id="countryCode" name="countryCode" value={form.countryCode} onChange={handleCountryChange} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required>
+                      {Object.entries(PUBLIC_COUNTRIES).map(([code, option]) => (
                         <option key={code} value={code}>{option.label}</option>
                       ))}
                     </select>
