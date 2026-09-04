@@ -1,6 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "dist/public",
+  "redirects": [
+    {
+      "source": "/content-studio/video/avatar",
+      "has": [
+        {
+          "type": "query",
+          "key": "capture",
+          "value": "mobile"
+        }
+      ],
+      "destination": "/content-studio/video/avatar/captura",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
