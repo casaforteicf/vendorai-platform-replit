@@ -206,6 +206,18 @@ export default function PlanoMidia() {
     return items.filter((item) => item.mediaPlanId === planId);
   }
 
+  async function reloadCalendarAfterMissingItem() {
+    if (!plan) return;
+    const items = await loadCalendar(plan.id);
+    setCalendario(items);
+    setEditingItemId(null);
+    setItemDraft(null);
+    toast({
+      title: "Calendário atualizado",
+      description: "A ação mudou durante uma atualização do calendário. A versão mais recente foi recarregada.",
+    });
+  }
+
   async function requestCalendar(createdPlan: MediaPlan, substituirPlanejado = false) {
     const days = createdPlan.conteudo.periodoDias ?? periodoDias;
     setGerandoCalendario(true);
@@ -321,7 +333,7 @@ export default function PlanoMidia() {
   }
 
   async function aprovarPlano() {
-    if (!plan) return;
+    if (!plan || gerandoCalendario) return;
     setAprovando(true);
     try {
       const response = await fetch(`/api/tenants/${tenantId}/media-plan/${plan.id}`, {
@@ -385,12 +397,13 @@ export default function PlanoMidia() {
   }
 
   function startItemEdit(item: CalendarItem) {
+    if (gerandoCalendario) return;
     setEditingItemId(item.id);
     setItemDraft({ ...item });
   }
 
   async function saveItem(item: CalendarItem) {
-    if (!itemDraft) return;
+    if (!itemDraft || gerandoCalendario) return;
     setSavingItemId(item.id);
     try {
       await markPlanBackToReview();
@@ -407,6 +420,10 @@ export default function PlanoMidia() {
         }),
       });
       const data = (await response.json()) as CalendarItem & { error?: string };
+      if (response.status === 404) {
+        await reloadCalendarAfterMissingItem();
+        return;
+      }
       if (!response.ok) throw new Error(data.error ?? "Falha ao salvar a ação");
       setCalendario((current) => current.map((row) => row.id === item.id ? data : row));
       setEditingItemId(null);
@@ -420,6 +437,7 @@ export default function PlanoMidia() {
   }
 
   async function setItemStatus(item: CalendarItem, status: "planejado" | "aprovado" | "recusado") {
+    if (gerandoCalendario) return;
     setSavingItemId(item.id);
     try {
       await markPlanBackToReview();
@@ -429,6 +447,10 @@ export default function PlanoMidia() {
         body: JSON.stringify({ status }),
       });
       const data = (await response.json()) as CalendarItem & { error?: string };
+      if (response.status === 404) {
+        await reloadCalendarAfterMissingItem();
+        return;
+      }
       if (!response.ok) throw new Error(data.error ?? "Falha ao atualizar o status");
       setCalendario((current) => current.map((row) => row.id === item.id ? data : row));
     } catch (err) {
@@ -440,6 +462,8 @@ export default function PlanoMidia() {
 
   async function rebuildCalendar() {
     if (!plan) return;
+    setEditingItemId(null);
+    setItemDraft(null);
     try {
       const items = await requestCalendar(plan, true);
       const preserved = calendario.filter((item) => item.status !== "planejado");
@@ -669,7 +693,7 @@ export default function PlanoMidia() {
             </div>
             <div className="flex gap-2 flex-wrap">
               {!approved ? (
-                <Button type="button" onClick={aprovarPlano} disabled={aprovando || campanhas.length === 0}>
+                <Button type="button" onClick={aprovarPlano} disabled={aprovando || campanhas.length === 0 || gerandoCalendario}>
                   {aprovando ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1.5" />}Aprovar planejamento
                 </Button>
               ) : (
@@ -767,6 +791,15 @@ export default function PlanoMidia() {
               </div>
             </div>
 
+            {gerandoCalendario && (
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="py-3 text-sm flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  Atualizando o calendário. As ações ficam temporariamente bloqueadas para evitar conflito entre versões.
+                </CardContent>
+              </Card>
+            )}
+
             {calendario.length === 0 ? (
               <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">O plano foi salvo, mas o calendário ainda não foi distribuído.</CardContent></Card>
             ) : (
@@ -789,7 +822,7 @@ export default function PlanoMidia() {
                                   <select className="h-10 rounded-md border bg-background px-3 text-sm" value={itemDraft.tipo} onChange={(event) => setItemDraft({ ...itemDraft, tipo: event.target.value })}>{CALENDAR_TYPES.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>
                                   <Input className="sm:col-span-2" value={itemDraft.pilar} onChange={(event) => setItemDraft({ ...itemDraft, pilar: event.target.value })} placeholder="Campanha · pilar" />
                                 </div>
-                                <div className="flex gap-2 justify-end"><Button type="button" size="sm" variant="ghost" onClick={() => { setEditingItemId(null); setItemDraft(null); }} disabled={busy}><X className="h-3.5 w-3.5 mr-1" />Cancelar</Button><Button type="button" size="sm" onClick={() => void saveItem(item)} disabled={busy || !itemDraft.temaSugerido.trim() || !itemDraft.canal.trim()}>{busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1" />}Salvar edição</Button></div>
+                                <div className="flex gap-2 justify-end"><Button type="button" size="sm" variant="ghost" onClick={() => { setEditingItemId(null); setItemDraft(null); }} disabled={busy}><X className="h-3.5 w-3.5 mr-1" />Cancelar</Button><Button type="button" size="sm" onClick={() => void saveItem(item)} disabled={busy || gerandoCalendario || !itemDraft.temaSugerido.trim() || !itemDraft.canal.trim()}>{busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1" />}Salvar edição</Button></div>
                               </div>
                             ) : (
                               <>
@@ -808,12 +841,12 @@ export default function PlanoMidia() {
                               <Badge variant="outline" className={item.status === "aprovado" ? "border-emerald-300 text-emerald-700" : item.status === "recusado" ? "border-red-300 text-red-700" : ""}>{ITEM_STATUS_LABEL[item.status]}</Badge>
                               {item.status !== "publicado" && item.status !== "gerado" && (
                                 <div className="flex items-center gap-1 flex-wrap justify-end">
-                                  {item.status !== "aprovado" && <Button type="button" size="sm" variant="ghost" className="h-8 text-emerald-700" disabled={busy} onClick={() => void setItemStatus(item, "aprovado")}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Aprovar</Button>}
-                                  <Button type="button" size="sm" variant="ghost" className="h-8" disabled={busy} onClick={() => startItemEdit(item)}><Pencil className="h-3.5 w-3.5 mr-1" />Editar</Button>
+                                  {item.status !== "aprovado" && <Button type="button" size="sm" variant="ghost" className="h-8 text-emerald-700" disabled={busy || gerandoCalendario} onClick={() => void setItemStatus(item, "aprovado")}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Aprovar</Button>}
+                                  <Button type="button" size="sm" variant="ghost" className="h-8" disabled={busy || gerandoCalendario} onClick={() => startItemEdit(item)}><Pencil className="h-3.5 w-3.5 mr-1" />Editar</Button>
                                   {item.status !== "recusado" ? (
-                                    <Button type="button" size="sm" variant="ghost" className="h-8 text-red-700" disabled={busy} onClick={() => void setItemStatus(item, "recusado")}><Ban className="h-3.5 w-3.5 mr-1" />Recusar</Button>
+                                    <Button type="button" size="sm" variant="ghost" className="h-8 text-red-700" disabled={busy || gerandoCalendario} onClick={() => void setItemStatus(item, "recusado")}><Ban className="h-3.5 w-3.5 mr-1" />Recusar</Button>
                                   ) : (
-                                    <Button type="button" size="sm" variant="ghost" className="h-8" disabled={busy} onClick={() => void setItemStatus(item, "planejado")}><Undo2 className="h-3.5 w-3.5 mr-1" />Reativar</Button>
+                                    <Button type="button" size="sm" variant="ghost" className="h-8" disabled={busy || gerandoCalendario} onClick={() => void setItemStatus(item, "planejado")}><Undo2 className="h-3.5 w-3.5 mr-1" />Reativar</Button>
                                   )}
                                 </div>
                               )}
