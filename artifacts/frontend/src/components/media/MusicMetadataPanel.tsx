@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, Gauge, Heart, Loader2, Music2, Save, Sparkles } from "lucide-react";
+import { BadgeCheck, Clock3, Gauge, Heart, Library, Loader2, Music2, Plus, Save, Sparkles, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type MusicAsset = {
@@ -8,11 +8,21 @@ type MusicAsset = {
 };
 
 type EnergyLevel = "" | "low" | "medium" | "high";
+type BrandUse = "institutional" | "reels" | "ads" | "product" | "stories" | "presentation";
 
 const ENERGY_LABELS: Record<Exclude<EnergyLevel, "">, string> = {
   low: "Baixa",
   medium: "Média",
   high: "Alta",
+};
+
+const BRAND_USE_LABELS: Record<BrandUse, string> = {
+  institutional: "Institucional",
+  reels: "Reels / Shorts",
+  ads: "Anúncios",
+  product: "Produto",
+  stories: "Stories",
+  presentation: "Apresentações",
 };
 
 function text(value: unknown): string {
@@ -26,6 +36,19 @@ function numberText(value: unknown): string {
 
 function energyValue(value: unknown): EnergyLevel {
   return value === "low" || value === "medium" || value === "high" ? value : "";
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function brandUses(value: unknown): BrandUse[] {
+  const valid = new Set<BrandUse>(Object.keys(BRAND_USE_LABELS) as BrandUse[]);
+  return stringList(value).filter((item): item is BrandUse => valid.has(item as BrandUse));
 }
 
 function secondsLabel(value: string): string {
@@ -55,6 +78,10 @@ export default function MusicMetadataPanel({
   const [bpm, setBpm] = useState("");
   const [durationSeconds, setDurationSeconds] = useState("");
   const [favorite, setFavorite] = useState(false);
+  const [collections, setCollections] = useState<string[]>([]);
+  const [collectionDraft, setCollectionDraft] = useState("");
+  const [brandUse, setBrandUse] = useState<BrandUse[]>([]);
+  const [brandOfficial, setBrandOfficial] = useState(false);
   const [saving, setSaving] = useState(false);
   const [detecting, setDetecting] = useState(false);
 
@@ -66,9 +93,32 @@ export default function MusicMetadataPanel({
     setBpm(numberText(metadata.bpm));
     setDurationSeconds(numberText(metadata.durationSeconds));
     setFavorite(metadata.favorite === true);
+    setCollections(stringList(metadata.collections));
+    setBrandUse(brandUses(metadata.brandUse));
+    setBrandOfficial(metadata.brandOfficial === true);
+    setCollectionDraft("");
   }, [asset.id, asset.metadata]);
 
   const duration = useMemo(() => secondsLabel(durationSeconds), [durationSeconds]);
+
+  function addCollection() {
+    const next = collectionDraft.trim().replace(/\s+/g, " ");
+    if (!next) return;
+    if (collections.some((item) => item.localeCompare(next, "pt-BR", { sensitivity: "accent" }) === 0)) {
+      setCollectionDraft("");
+      return;
+    }
+    if (collections.length >= 12) {
+      toast({ title: "Limite de coleções atingido", description: "Cada trilha pode participar de até 12 coleções.", variant: "destructive" });
+      return;
+    }
+    setCollections((current) => [...current, next]);
+    setCollectionDraft("");
+  }
+
+  function toggleBrandUse(value: BrandUse) {
+    setBrandUse((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  }
 
   async function detectDuration() {
     if (!resolvedUrl) return;
@@ -135,6 +185,9 @@ export default function MusicMetadataPanel({
             bpm: bpmNumber,
             durationSeconds: durationNumber,
             favorite,
+            collections,
+            brandUse,
+            brandOfficial,
           },
         }),
       });
@@ -160,7 +213,7 @@ export default function MusicMetadataPanel({
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Music2 className="h-4 w-4 text-primary" /> Metadados musicais
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Classifique a trilha para busca, Brand Kit e composição de vídeo.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Classifique a trilha para busca, identidade da marca e composição de vídeo.</p>
         </div>
         <button
           type="button"
@@ -209,6 +262,67 @@ export default function MusicMetadataPanel({
           </button>
         </div>
         <input type="number" min={0.1} max={21600} step={0.1} value={durationSeconds} onChange={(event) => setDurationSeconds(event.target.value)} placeholder="Segundos" className="mt-2 h-9 w-full rounded-lg border bg-background px-2 text-xs" />
+      </div>
+
+      <div className="mt-3 rounded-lg border p-3">
+        <div className="flex items-center gap-2 text-xs font-semibold"><Library className="h-3.5 w-3.5 text-primary" /> Playlists / coleções</div>
+        <p className="mt-1 text-[11px] text-muted-foreground">Uma trilha pode participar de várias coleções, como Institucional, Reels, Produtos ou Evento 2026.</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {collections.map((collection) => (
+            <span key={collection} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[11px] text-primary">
+              {collection}
+              <button type="button" onClick={() => setCollections((current) => current.filter((item) => item !== collection))} aria-label={`Remover ${collection}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-2">
+          <input
+            value={collectionDraft}
+            onChange={(event) => setCollectionDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addCollection();
+              }
+            }}
+            placeholder="Nova coleção"
+            className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-2 text-xs"
+          />
+          <button type="button" onClick={addCollection} className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs">
+            <Plus className="h-3.5 w-3.5" /> Adicionar
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-lg border p-3">
+        <div className="flex items-center gap-2 text-xs font-semibold"><BadgeCheck className="h-3.5 w-3.5 text-primary" /> Identidade sonora da marca</div>
+        <p className="mt-1 text-[11px] text-muted-foreground">Defina onde a trilha combina com a comunicação da marca. O editor poderá priorizar estas escolhas.</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {(Object.keys(BRAND_USE_LABELS) as BrandUse[]).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => toggleBrandUse(value)}
+              className={`rounded-full border px-2 py-1 text-[11px] ${brandUse.includes(value) ? "border-primary/30 bg-primary/10 text-primary" : "text-muted-foreground"}`}
+            >
+              {BRAND_USE_LABELS[value]}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setBrandOfficial((current) => !current)}
+          className={`mt-3 flex w-full items-center gap-3 rounded-lg border p-3 text-left ${brandOfficial ? "border-emerald-500/30 bg-emerald-500/10" : "bg-muted/20"}`}
+        >
+          <BadgeCheck className={`h-4 w-4 ${brandOfficial ? "text-emerald-600" : "text-muted-foreground"}`} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-medium">Trilha oficial da marca</span>
+            <span className="block text-[11px] text-muted-foreground">Prioritária para sugestões automáticas e produção de conteúdo.</span>
+          </span>
+          <span className="text-[11px] font-medium">{brandOfficial ? "Ativa" : "Inativa"}</span>
+        </button>
       </div>
 
       <button disabled={saving} onClick={() => void save()} className="mt-4 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50">
