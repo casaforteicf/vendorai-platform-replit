@@ -41,8 +41,6 @@ const trackingFields = {
   referrer: z.string().trim().max(2000).optional(),
   landingPageSlug: optionalTrackingString,
   behaviorSessionId: optionalBehaviorSessionId,
-  // Opt-in separado do aceite dos Termos. Ausência = denied/unspecified para
-  // fins de compartilhamento server-side com plataformas de anúncios.
   adDataConsent: z.boolean().optional(),
 };
 
@@ -100,10 +98,23 @@ const trialSignupSchema = z.object({
   email: z.email(),
   senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
   telefone: z.string().trim().max(40).optional(),
+  warmLeadId: z.string().uuid().optional().nullable(),
+  instagram: z.string().trim().max(180).optional(),
+  segmento: z.string().trim().max(180).optional(),
+  cidadeRegiao: z.string().trim().max(240).optional(),
+  produtos: z.string().trim().max(2000).optional(),
+  leadsPerMes: z.string().trim().max(120).optional(),
+  canaisVenda: z.string().trim().max(1000).optional(),
+  desafioPrincipal: z.string().trim().max(2000).optional(),
+  objetivo6meses: z.string().trim().max(2000).optional(),
   ...trackingFields,
 });
 
 type TrialSignupData = z.infer<typeof trialSignupSchema>;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
 
 export function attributionFromReferer(rawReferer?: string): Partial<TrackingData> {
   if (!rawReferer) return {};
@@ -187,13 +198,34 @@ async function linkBehaviorSessionToLead(params: {
       ))
       .returning({ id: webBehaviorEventsTable.id });
 
-    if (linked.length > 0) {
-      await syncBehaviorIntentForLead(leadId, tenantId);
-    }
+    if (linked.length > 0) await syncBehaviorIntentForLead(leadId, tenantId);
   } catch (err) {
-    // O vínculo comportamental é best-effort: nunca bloqueia intake ou trial.
     log.warn({ err, tenantId, leadId, context }, `${context}: behavior session link failed`);
   }
+}
+
+async function ensureWarmupDeal(tenantId: string, leadId: string, title: string): Promise<void> {
+  const [lead] = await db
+    .select({ pipelineExempt: leadsTable.pipelineExempt })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!lead || lead.pipelineExempt) return;
+
+  const [existingDeal] = await db
+    .select({ id: dealsTable.id })
+    .from(dealsTable)
+    .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.leadId, leadId)))
+    .limit(1);
+  if (existingDeal) return;
+
+  await db.insert(dealsTable).values({
+    tenantId,
+    leadId,
+    titulo: title,
+    etapa: "em_aquecimento",
+    probabilidade: 10,
+  });
 }
 
 function slugBase(value: string): string {
@@ -213,37 +245,27 @@ intakeRouter.get("/public/:tenantSlug/intake", async (req, res) => {
     .from(tenantsTable)
     .where(eq(tenantsTable.slug, slug));
 
-  if (!tenant) {
-    res.status(404).json({ error: "Empresa não encontrada" });
-    return;
-  }
-
-  res.json({ name: tenant.name, slug: tenant.slug });
+  if (!tenant) return res.status(404).json({ error: "Empresa não encontrada" });
+  return res.json({ name: tenant.name, slug: tenant.slug });
 });
 
 intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
   const slug = String(req.params["tenantSlug"]);
-
   const [tenant] = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
     .where(eq(tenantsTable.slug, slug));
 
-  if (!tenant) {
-    res.status(404).json({ error: "Empresa não encontrada" });
-    return;
-  }
+  if (!tenant) return res.status(404).json({ error: "Empresa não encontrada" });
 
   const parsed = intakeSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
-    return;
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
   }
 
   const d = mergeTracking(parsed.data, req.get("referer"));
   const adCampaignId = await resolveAdCampaignFromUtm(tenant.id, d.utmCampaign, req.log);
   const attribution = attributionRecord(d);
-
   const discoveryData: Record<string, unknown> = {
     segmento: d.segmento,
     descricaoNegocio: d.descricaoNegocio,
@@ -261,41 +283,41 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
     leadsPerMes: d.leadsPerMes,
     ticketMedio: d.ticketMedio,
     objetivo6meses: d.objetivo6meses,
+    desafioPrincipal: d.desafioPrincipal,
     cargo: d.cargo,
     attribution,
+    acquisitionStage: "aquecimento",
+    capturedAt: new Date().toISOString(),
   };
 
-  // Dedup: check for existing lead by phone or document. Attribution follows a
-  // first-touch rule: a known lead keeps its original ad campaign; a campaign
-  // is attached only when the lead does not have one yet.
   const match = await findLeadByDedup(tenant.id, d.telefone, d.documento, d.nome);
   let leadId: string | undefined;
   let attributedNow = false;
 
   if (match.found) {
     leadId = match.lead.id;
-    if (adCampaignId) {
-      const updated = await db
-        .update(leadsTable)
-        .set({ updatedAt: new Date(), adCampaignId })
-        .where(and(
-          eq(leadsTable.id, leadId),
-          eq(leadsTable.tenantId, tenant.id),
-          isNull(leadsTable.adCampaignId),
-        ))
-        .returning({ id: leadsTable.id });
-      attributedNow = updated.length > 0;
-      if (!attributedNow) {
-        await db.update(leadsTable).set({ updatedAt: new Date() }).where(eq(leadsTable.id, leadId));
-      }
-    } else {
-      await db
-        .update(leadsTable)
-        .set({ updatedAt: new Date() })
-        .where(eq(leadsTable.id, leadId));
+    const [current] = await db
+      .select({ discoveryData: leadsTable.discoveryData, adCampaignId: leadsTable.adCampaignId })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenant.id)))
+      .limit(1);
+    const updateData: Record<string, unknown> = {
+      nome: d.nome,
+      email: d.email || null,
+      telefone: storePhone(d.telefone),
+      empresa: d.empresa || null,
+      objetivo: d.objetivo6meses || null,
+      dorPrincipal: d.desafioPrincipal || null,
+      discoveryData: { ...asRecord(current?.discoveryData), ...discoveryData },
+      updatedAt: new Date(),
+    };
+    if (adCampaignId && !current?.adCampaignId) {
+      updateData.adCampaignId = adCampaignId;
+      attributedNow = true;
     }
+    await db.update(leadsTable).set(updateData).where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenant.id)));
   } else {
-    const insertData = {
+    const [lead] = await db.insert(leadsTable).values({
       tenantId: tenant.id,
       nome: d.nome,
       email: d.email || null,
@@ -307,16 +329,19 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
       urgencia: d.urgencia || null,
       orcamento: d.orcamento || null,
       tamanhoEquipe: d.tamanhoEquipe || null,
-      status: "novo" as const,
-      source: "website",
+      status: "novo",
+      source: slug === "vendorai" ? "website_warmup" : "website",
       adCampaignId,
       discoveryData,
       possivelDuplicata: match.similar ? true : false,
       leadSimilarId: match.similar?.id ?? null,
-    };
-    const [lead] = await db.insert(leadsTable).values(insertData).returning({ id: leadsTable.id });
+    }).returning({ id: leadsTable.id });
     leadId = lead?.id;
     attributedNow = Boolean(adCampaignId && leadId);
+  }
+
+  if (leadId) {
+    await ensureWarmupDeal(tenant.id, leadId, d.empresa || d.nome);
   }
 
   await linkBehaviorSessionToLead({
@@ -347,23 +372,19 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
         },
       });
     } catch (err) {
-      // Attribution telemetry must never block lead capture.
       req.log.warn({ err, tenantId: tenant.id, leadId, adCampaignId }, "intake: attribution event failed");
     }
   }
 
-  res.status(201).json({
+  return res.status(201).json({
     ok: true,
     leadId,
+    stage: "aquecimento",
     isDuplicate: match.found ? true : match.similar ? "possible" : false,
     attributedCampaign: adCampaignId,
   });
 });
 
-// Trial individual de 5 dias usado pelo site institucional. Esta rota vive no
-// router público já montado antes do middleware global de autenticação. Mantém o
-// /auth/demo-signup legado intacto enquanto o lançamento migra para um fluxo com
-// atribuição first-party e provisioningMethod explícito.
 intakeRouter.post("/auth/trial-signup", async (req, res) => {
   const parsed = trialSignupSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -372,7 +393,6 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
   }
 
   const d = mergeTracking(parsed.data as TrialSignupData & TrackingData, req.get("referer"));
-
   const [existingUser] = await db
     .select({ id: usersTable.id })
     .from(usersTable)
@@ -388,16 +408,27 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
   const slug = `${slugBase(d.nomeEmpresa)}-${Math.random().toString(36).slice(2, 8)}`;
 
   try {
+    const profileDescription = [
+      d.cidadeRegiao ? `Região: ${d.cidadeRegiao}` : null,
+      d.produtos ? `Produtos/serviços: ${d.produtos}` : null,
+      d.desafioPrincipal ? `Desafio: ${d.desafioPrincipal}` : null,
+      d.objetivo6meses ? `Objetivo: ${d.objetivo6meses}` : null,
+    ].filter(Boolean).join(" | ");
+
     const [tenant] = await db
       .insert(tenantsTable)
       .values({
         name: d.nomeEmpresa,
+        nomeEmpresa: d.nomeEmpresa,
         slug,
         status: "active",
         isDemo: true,
         demoExpiresAt: trialExpiresAt,
         provisioningMethod: "trial",
         planId: null,
+        vertical: d.segmento || null,
+        segmento: d.segmento || null,
+        descricao: profileDescription || null,
       })
       .returning({ id: tenantsTable.id, name: tenantsTable.name, slug: tenantsTable.slug });
 
@@ -425,9 +456,6 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
     let salesLeadId: string | null = null;
     let adCampaignId: string | null = null;
 
-    // O trial também entra no CRM comercial da própria VendorAI. A origem de
-    // mídia é resolvida no tenant VendorAI (onde estão as campanhas do lançamento),
-    // não no novo tenant vazio criado para o usuário experimentar o produto.
     try {
       const [vendorai] = await db
         .select({ id: tenantsTable.id })
@@ -440,42 +468,118 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
         const [funil] = await db
           .select({ id: funisTable.id })
           .from(funisTable)
-          .where(and(
-            eq(funisTable.tenantId, vendorai.id),
-            eq(funisTable.nome, "Funil de Vendas — VendorAI"),
-          ))
+          .where(and(eq(funisTable.tenantId, vendorai.id), eq(funisTable.nome, "Funil de Vendas — VendorAI")))
           .limit(1);
 
-        const [salesLead] = await db
-          .insert(leadsTable)
-          .values({
+        const qualification = {
+          segmento: d.segmento || null,
+          cidadeRegiao: d.cidadeRegiao || null,
+          produtos: d.produtos || null,
+          leadsPerMes: d.leadsPerMes || null,
+          canaisVenda: d.canaisVenda ? d.canaisVenda.split(",").map((item) => item.trim()).filter(Boolean) : [],
+          desafioPrincipal: d.desafioPrincipal || null,
+          objetivo6meses: d.objetivo6meses || null,
+          instagram: d.instagram || null,
+        };
+
+        let warmLead: {
+          id: string;
+          email: string | null;
+          discoveryData: unknown;
+          adCampaignId: string | null;
+        } | undefined;
+
+        if (d.warmLeadId) {
+          [warmLead] = await db
+            .select({
+              id: leadsTable.id,
+              email: leadsTable.email,
+              discoveryData: leadsTable.discoveryData,
+              adCampaignId: leadsTable.adCampaignId,
+            })
+            .from(leadsTable)
+            .where(and(eq(leadsTable.id, d.warmLeadId), eq(leadsTable.tenantId, vendorai.id)))
+            .limit(1);
+          if (warmLead && warmLead.email?.toLowerCase() !== d.email.toLowerCase()) warmLead = undefined;
+        }
+
+        const trialDiscovery = {
+          ...(warmLead ? asRecord(warmLead.discoveryData) : {}),
+          ...qualification,
+          acquisitionStage: "trial",
+          trialTenantId: tenant.id,
+          trialStartedAt: new Date().toISOString(),
+          trialExpiresAt: trialExpiresAt.toISOString(),
+          attribution: warmLead && asRecord(warmLead.discoveryData).attribution
+            ? asRecord(warmLead.discoveryData).attribution
+            : attributionRecord(d),
+          prePersonalization: {
+            segment: d.segmento || null,
+            products: d.produtos || null,
+            objective: d.objetivo6meses || null,
+            pain: d.desafioPrincipal || null,
+            channels: qualification.canaisVenda,
+            region: d.cidadeRegiao || null,
+          },
+        };
+
+        if (warmLead) {
+          salesLeadId = warmLead.id;
+          await db.update(leadsTable).set({
+            nome: d.nomePessoa,
+            empresa: d.nomeEmpresa,
+            email: d.email,
+            telefone: storePhone(d.telefone),
+            source: "trial_signup",
+            status: "novo",
+            objetivo: d.objetivo6meses || null,
+            dorPrincipal: d.desafioPrincipal || null,
+            adCampaignId: warmLead.adCampaignId || adCampaignId,
+            discoveryData: trialDiscovery,
+            updatedAt: new Date(),
+          }).where(and(eq(leadsTable.id, warmLead.id), eq(leadsTable.tenantId, vendorai.id)));
+        } else {
+          const [salesLead] = await db.insert(leadsTable).values({
             tenantId: vendorai.id,
             nome: d.nomePessoa,
             empresa: d.nomeEmpresa,
             email: d.email,
-            telefone: d.telefone || null,
+            telefone: storePhone(d.telefone),
             source: "trial_signup",
             status: "novo",
+            objetivo: d.objetivo6meses || null,
+            dorPrincipal: d.desafioPrincipal || null,
             adCampaignId,
-            discoveryData: {
-              trialTenantId: tenant.id,
-              trialStartedAt: new Date().toISOString(),
-              trialExpiresAt: trialExpiresAt.toISOString(),
-              attribution: attributionRecord(d),
-            },
-          })
-          .returning({ id: leadsTable.id });
+            discoveryData: trialDiscovery,
+          }).returning({ id: leadsTable.id });
+          salesLeadId = salesLead?.id ?? null;
+        }
 
-        salesLeadId = salesLead?.id ?? null;
         if (salesLeadId) {
-          await db.insert(dealsTable).values({
-            tenantId: vendorai.id,
-            leadId: salesLeadId,
-            titulo: `Trial — ${d.nomeEmpresa}`,
-            etapa: "novo",
-            funilId: funil?.id ?? null,
-            probabilidade: 30,
-          });
+          const [existingDeal] = await db
+            .select({ id: dealsTable.id })
+            .from(dealsTable)
+            .where(and(eq(dealsTable.tenantId, vendorai.id), eq(dealsTable.leadId, salesLeadId)))
+            .limit(1);
+
+          if (existingDeal) {
+            await db.update(dealsTable).set({
+              titulo: `Trial — ${d.nomeEmpresa}`,
+              etapa: "novo",
+              funilId: funil?.id ?? null,
+              probabilidade: 30,
+              updatedAt: new Date(),
+            }).where(eq(dealsTable.id, existingDeal.id));
+          } else {
+            await db.insert(dealsTable).values({
+              tenantId: vendorai.id,
+              leadId: salesLeadId,
+              titulo: `Trial — ${d.nomeEmpresa}`,
+              etapa: "novo",
+              funilId: funil?.id ?? null,
+              probabilidade: 30,
+            });
+          }
 
           await linkBehaviorSessionToLead({
             behaviorSessionId: d.behaviorSessionId,
@@ -510,7 +614,6 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
         }
       }
     } catch (err) {
-      // O CRM/telemetria nunca deve impedir o usuário de começar o trial.
       req.log.warn({ err, trialTenantId: tenant.id }, "trial-signup: commercial attribution failed");
     }
 
@@ -532,6 +635,7 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
         isDemo: true,
         provisioningMethod: "trial",
         demoExpiresAt: trialExpiresAt,
+        segmento: d.segmento || null,
       },
       salesLeadId,
       attributedCampaign: adCampaignId,
