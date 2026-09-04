@@ -1,6 +1,11 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import type { MediaPlanCampaign, MediaPlanCampaignChannel, MediaPlanConteudo } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import {
+  MEDIA_FUNCTION_VERSION,
+  alignMediaChannelFunction,
+  mediaFunctionCatalogForPrompt,
+} from "./media-channel-functions.js";
 
 const AVAILABLE_CHANNELS = [
   "Instagram",
@@ -45,7 +50,10 @@ function normalizeChannelName(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
 
-function normalizeChannel(raw: unknown): MediaPlanCampaignChannel | null {
+function normalizeChannel(
+  raw: unknown,
+  context: { phase?: string; objective?: string },
+): MediaPlanCampaignChannel | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const item = raw as Record<string, unknown>;
   const canal = normalizeText(item.canal, "");
@@ -53,7 +61,8 @@ function normalizeChannel(raw: unknown): MediaPlanCampaignChannel | null {
   const formatos = Array.isArray(item.formatos)
     ? item.formatos.filter((v): v is string => typeof v === "string" && Boolean(v.trim())).map((v) => v.trim())
     : [];
-  return {
+
+  return alignMediaChannelFunction({
     canal,
     funcao: normalizeText(item.funcao, "Apoiar o objetivo da campanha"),
     etapaFunil: normalizeText(item.etapaFunil, "consideração"),
@@ -63,26 +72,30 @@ function normalizeChannel(raw: unknown): MediaPlanCampaignChannel | null {
     kpiPrincipal: normalizeText(item.kpiPrincipal, "conversões"),
     percentualOrcamento:
       item.percentualOrcamento == null ? undefined : normalizeNumber(item.percentualOrcamento, 0, 0, 100),
-  };
+  }, context);
 }
 
 function normalizeCampaign(raw: unknown, index: number, periodoDias: 30 | 60 | 90): MediaPlanCampaign | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const item = raw as Record<string, unknown>;
+  const objective = normalizeText(item.objetivo, "Gerar oportunidades");
+  const phase = normalizeText(item.fase, "aquisição");
   const canais = Array.isArray(item.canais)
-    ? item.canais.map(normalizeChannel).filter((v): v is MediaPlanCampaignChannel => Boolean(v))
+    ? item.canais
+        .map((channel) => normalizeChannel(channel, { phase, objective }))
+        .filter((v): v is MediaPlanCampaignChannel => Boolean(v))
     : [];
   const duracaoDefault = Math.max(14, Math.round(periodoDias / Math.max(2, campaignCount(periodoDias) / 2)));
   return {
     id: `camp-${index + 1}`,
     nome: normalizeText(item.nome, `Campanha ${index + 1}`),
-    objetivo: normalizeText(item.objetivo, "Gerar oportunidades"),
+    objetivo: objective,
     produtoServico: normalizeText(item.produtoServico, "Oferta principal"),
     publico: normalizeText(item.publico, "Público prioritário do negócio"),
     regiao: typeof item.regiao === "string" ? item.regiao.trim() || undefined : undefined,
     oferta: normalizeText(item.oferta, "Próximo passo comercial claro"),
     mensagemCentral: normalizeText(item.mensagemCentral, "Conectar uma dor real do público à solução oferecida"),
-    fase: normalizeText(item.fase, "aquisição"),
+    fase: phase,
     inicioOffsetDias: normalizeNumber(item.inicioOffsetDias, Math.min(periodoDias - 1, index * Math.max(5, Math.floor(periodoDias / campaignCount(periodoDias)))), 0, periodoDias - 1),
     duracaoDias: normalizeNumber(item.duracaoDias, duracaoDefault, 3, periodoDias),
     intensidadeGeografica: normalizeIntensity(item.intensidadeGeografica),
@@ -103,34 +116,35 @@ function normalizeCampaign(raw: unknown, index: number, periodoDias: 30 | 60 | 9
   };
 }
 
-function fallbackChannels(conteudo: MediaPlanConteudo, campaignIndex: number): MediaPlanCampaignChannel[] {
+function fallbackChannels(
+  conteudo: MediaPlanConteudo,
+  campaignIndex: number,
+  context: { phase: string; objective: string },
+): MediaPlanCampaignChannel[] {
   const preferred = conteudo.canais?.map((c) => c.canal).filter(Boolean) ?? [];
-  const base = Array.from(new Set([...preferred, "Instagram", "Meta Ads", "Google Search", "WhatsApp", "Landing Page"])).slice(0, 8);
+  const base = Array.from(new Set([
+    ...preferred,
+    "Instagram",
+    "Meta Ads",
+    "Google Search",
+    "WhatsApp",
+    "Landing Page",
+  ])).slice(0, 10);
+
   return base.map((canal) => {
     const lower = normalizeChannelName(canal);
     const paid = lower.includes("ads") || lower.includes("google") || lower.includes("performance") || lower.includes("display");
     const direct = lower.includes("whatsapp") || lower.includes("landing") || lower.includes("email");
-    const formatos = lower.includes("instagram")
-      ? ["Reels", "Carrossel", "Stories"]
-      : lower.includes("google")
-        ? ["Anúncio de pesquisa", "Extensões", "Variações de headline"]
-        : lower.includes("whatsapp")
-          ? ["Mensagem", "Follow-up"]
-          : lower.includes("landing")
-            ? ["Landing Page", "Headline A/B"]
-            : lower.includes("email")
-              ? ["E-mail", "Automação"]
-              : ["Criativo", "Copy"];
-    return {
+    return alignMediaChannelFunction({
       canal,
       funcao: direct ? "Conversão e continuidade comercial" : paid ? "Aquisição e captura de demanda" : "Descoberta, educação e prova",
       etapaFunil: direct ? "conversão" : paid ? "aquisição" : "descoberta/consideração",
-      formatos,
+      formatos: [],
       frequencia: paid ? "contínuo com otimização por desempenho" : campaignIndex % 2 === 0 ? "3 ações por semana" : "2 ações por semana",
       quantidadeMateriais: paid ? 6 : lower.includes("instagram") ? 10 : direct ? 4 : 4,
       kpiPrincipal: direct ? "taxa de conversão" : paid ? "CPL / CPA" : "alcance e engajamento qualificado",
       percentualOrcamento: paid ? undefined : 0,
-    };
+    }, context);
   });
 }
 
@@ -148,18 +162,26 @@ function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: 30 | 60 | 9
     "Conversão final e aprendizado do ciclo",
   ];
   return Array.from({ length: count }, (_, index) => {
-    const canais = fallbackChannels(conteudo, index);
+    const objective = objectives[index] ?? "Gerar oportunidades";
+    const phase = index < Math.ceil(count / 3)
+      ? "aquisição"
+      : index < Math.ceil((count * 2) / 3)
+        ? "consideração"
+        : index === count - 1
+          ? "conversão/remarketing"
+          : "conversão";
+    const canais = fallbackChannels(conteudo, index, { phase, objective });
     const inicio = Math.min(periodoDias - 1, Math.round((index * periodoDias) / count));
     const duracao = Math.min(periodoDias - inicio, Math.max(14, Math.round(periodoDias / 2)));
     return {
       id: `camp-${index + 1}`,
-      nome: `${objectives[index] ?? `Campanha ${index + 1}`}`,
-      objetivo: objectives[index] ?? "Gerar oportunidades",
+      nome: objective,
+      objetivo: objective,
       produtoServico: "Produto ou serviço prioritário do período",
       publico: "Público prioritário definido no perfil do negócio",
       oferta: "Oferta ou próximo passo comercial adequado à etapa",
       mensagemCentral: pillars[index % pillars.length] ?? "Mensagem principal da campanha",
-      fase: index < Math.ceil(count / 3) ? "aquisição" : index < Math.ceil((count * 2) / 3) ? "consideração" : "conversão/remarketing",
+      fase: phase,
       inicioOffsetDias: inicio,
       duracaoDias: Math.max(3, duracao),
       intensidadeGeografica: "baixa",
@@ -173,17 +195,44 @@ function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: 30 | 60 | 9
   });
 }
 
+export function alignMediaFunctionsInContent(conteudo: MediaPlanConteudo): MediaPlanConteudo {
+  if (!conteudo.campanhas?.length) {
+    return { ...conteudo, versaoFuncoesMidia: MEDIA_FUNCTION_VERSION };
+  }
+  const campanhas = conteudo.campanhas.map((campaign) => {
+    const canais = campaign.canais.map((channel) => alignMediaChannelFunction(channel, {
+      phase: campaign.fase,
+      objective: campaign.objetivo,
+    }));
+    return {
+      ...campaign,
+      canais,
+      materiaisPlanejados: canais.reduce((sum, channel) => sum + channel.quantidadeMateriais, 0),
+    };
+  });
+  return {
+    ...conteudo,
+    campanhas,
+    totalAcoesPlanejadas: campanhas.reduce((sum, campaign) => sum + campaign.materiaisPlanejados, 0),
+    versaoFuncoesMidia: MEDIA_FUNCTION_VERSION,
+  };
+}
+
 function mergeChannelCoverage(aiCampaign: MediaPlanCampaign, fallbackCampaign: MediaPlanCampaign): MediaPlanCampaign {
-  const merged = [...aiCampaign.canais];
+  const merged = aiCampaign.canais.map((channel) => alignMediaChannelFunction(channel, {
+    phase: aiCampaign.fase,
+    objective: aiCampaign.objetivo,
+  }));
   const existing = new Set(merged.map((channel) => normalizeChannelName(channel.canal)));
 
-  // A IA decide mensagem e estratégia, mas não pode derrubar a arquitetura
-  // operacional para um único canal. O fallback representa os executores que
-  // já existem no VendorAI e é incorporado quando algum deles ficou ausente.
-  for (const channel of fallbackCampaign.canais) {
-    const key = normalizeChannelName(channel.canal);
+  for (const fallbackChannel of fallbackCampaign.canais) {
+    const aligned = alignMediaChannelFunction(fallbackChannel, {
+      phase: aiCampaign.fase,
+      objective: aiCampaign.objetivo,
+    });
+    const key = normalizeChannelName(aligned.canal);
     if (!existing.has(key)) {
-      merged.push(channel);
+      merged.push(aligned);
       existing.add(key);
     }
   }
@@ -200,17 +249,20 @@ const SYSTEM_PROMPT = `Você é o Planejador de Mídia do VendorAI. Sua função
 Crie campanhas completas para um período de 30, 60 ou 90 dias. Cada campanha deve agrupar todos os canais que fazem sentido para o mesmo objetivo; NÃO crie uma campanha separada por canal.
 
 Canais disponíveis no ecossistema: ${AVAILABLE_CHANNELS.join(", ")}.
-Escolha os canais relevantes para cada campanha e dê a cada canal uma função diferente no funil. Não repita a mesma mensagem literalmente em todos os canais.
+Escolha os canais relevantes para cada campanha. Cada canal e cada formato/mídia têm uma função própria no funil; não use todos como se fossem posts equivalentes e não copie a mesma mensagem literalmente entre plataformas.
+
+FUNÇÕES OFICIAIS DOS CANAIS E FORMATOS:
+${mediaFunctionCatalogForPrompt()}
 
 A arquitetura mínima precisa considerar descoberta/orgânico, mídia paga, captura de intenção, conversão direta e destino próprio. Na prática, quando fizer sentido ao negócio, use Instagram, Meta Ads, Google Search, WhatsApp e Landing Page, além de E-mail, Blog/SEO, YouTube, Performance Max, Site ou outros canais relevantes.
 
 REGRA GEOGRÁFICA IMPORTANTE: localização e bairro podem orientar a segmentação sem aparecer em todo material. Em campanhas locais, use normalmente intensidade baixa ou média. Em conteúdo orgânico e descoberta, priorize dor, benefício, educação, arquitetura, prova e produto. Mencione a localização explicitamente apenas em parte das peças (em geral 20–30%), aumentando o uso em Google Search, SEO local, LP e conteúdos de alta intenção. Evite títulos repetitivos do tipo “no bairro X” em todas as peças.
 
-Frequência: orgânico deve ser realista; mídia paga pode ficar contínua com renovação por fadiga/performance; WhatsApp/e-mail devem respeitar comportamento e não copiar posts sociais.
+Frequência: respeite a função oficial de cada canal. Mídia paga pode ficar contínua com renovação por fadiga/performance; WhatsApp/e-mail devem responder a comportamento e estágio; Site/LP são destinos e não devem receber uma falsa frequência de postagem; SMS é gatilho pontual, não mídia de descoberta.
 
 A quantidade de campanhas deve ser aproximadamente: 3 para 30 dias, 5 para 60 dias e 8 para 90 dias. Campanhas podem se sobrepor.
 
-Retorne APENAS JSON válido, sem markdown, no formato {"campanhas":[...]}. Cada campanha precisa: nome, objetivo, produtoServico, publico, regiao opcional, oferta, mensagemCentral, fase, inicioOffsetDias, duracaoDias, intensidadeGeografica (baixa|media|alta), regraComunicacaoGeografica, canais, kpiPrincipal, metaPrincipal, materiaisPlanejados. Cada canal precisa: canal, funcao, etapaFunil, formatos[], frequencia, quantidadeMateriais, kpiPrincipal e percentualOrcamento opcional.`;
+Retorne APENAS JSON válido, sem markdown, no formato {"campanhas":[...]}. Cada campanha precisa: nome, objetivo, produtoServico, publico, regiao opcional, oferta, mensagemCentral, fase, inicioOffsetDias, duracaoDias, intensidadeGeografica (baixa|media|alta), regraComunicacaoGeografica, canais, kpiPrincipal, metaPrincipal, materiaisPlanejados. Cada canal precisa: canal, funcao, etapaFunil, formatos[], frequencia, quantidadeMateriais, kpiPrincipal e percentualOrcamento opcional. A resposta da IA será normalizada pelas funções oficiais acima.`;
 
 export async function enrichMediaPlanForPeriod(
   tenantId: string,
@@ -261,5 +313,6 @@ export async function enrichMediaPlanForPeriod(
     statusPlanejamento: "em_revisao",
     aprovadoEm: null,
     versaoPlanejamento: Math.max(1, conteudoBase.versaoPlanejamento ?? 1),
+    versaoFuncoesMidia: MEDIA_FUNCTION_VERSION,
   };
 }
