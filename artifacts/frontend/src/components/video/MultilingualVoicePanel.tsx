@@ -27,6 +27,7 @@ type Props = {
   tenantId: string;
   identityId: string;
   identityName: string;
+  baseMarket: MarketCode;
   voices: MultilingualVoiceProfile[];
   voiceUseAuthorized: boolean;
   onVoiceAdded: (voice: MultilingualVoiceProfile) => void;
@@ -110,7 +111,7 @@ async function mediaDuration(file: File): Promise<number | null> {
   });
 }
 
-export default function MultilingualVoicePanel({ tenantId, identityId, identityName, voices, voiceUseAuthorized, onVoiceAdded }: Props) {
+export default function MultilingualVoicePanel({ tenantId, identityId, identityName, baseMarket, voices, voiceUseAuthorized, onVoiceAdded }: Props) {
   const { toast } = useToast();
   const fileInput = useRef<HTMLInputElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
@@ -120,7 +121,7 @@ export default function MultilingualVoicePanel({ tenantId, identityId, identityN
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [open, setOpen] = useState(false);
-  const [market, setMarket] = useState<MarketCode>("PY");
+  const [market, setMarket] = useState<MarketCode>(baseMarket);
   const [file, setFile] = useState<File | null>(null);
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>(null);
   const [duration, setDuration] = useState<number | null>(null);
@@ -144,6 +145,11 @@ export default function MultilingualVoicePanel({ tenantId, identityId, identityN
     setElapsed(0);
     if (fileInput.current) fileInput.current.value = "";
   };
+
+  useEffect(() => {
+    setMarket(baseMarket);
+    reset();
+  }, [identityId, baseMarket]);
 
   const chooseFile = async (next: File | null) => {
     setFile(next);
