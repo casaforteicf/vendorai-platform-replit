@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import {
   contentAutopilotArticlesTable,
   contentAutopilotConfigTable,
@@ -7,6 +7,7 @@ import {
   generatedSitesTable,
 } from "@workspace/db";
 import router from "./content_autopilot_core.js";
+import { resolveWebsiteConnection } from "../services/websiteConnector.js";
 
 function checkSitePlanAccess(req: any, res: any, tenantId: string): boolean {
   const user = req.user;
@@ -34,15 +35,16 @@ type PlanOpportunity = {
  * GET /tenants/:tenantId/content-autopilot/site-plan
  *
  * Plano editorial/comercial do site calculado apenas com dados reais já
- * existentes no tenant. Não cria métricas artificiais: sites, keywords,
- * artigos e estado do Autopilot são a fonte de verdade.
+ * existentes no tenant. O site principal cadastrado pelo cliente tem
+ * prioridade; um projeto no Gerador de Sites só é tratado como destino quando
+ * não existe site externo/oficial configurado.
  */
 router.get("/tenants/:tenantId/content-autopilot/site-plan", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!checkSitePlanAccess(req, res, tenantId)) return;
 
   try {
-    const [sites, keywords, articles, configs] = await Promise.all([
+    const [sites, keywords, articles, configs, websiteConnection] = await Promise.all([
       db
         .select({
           id: generatedSitesTable.id,
@@ -83,6 +85,7 @@ router.get("/tenants/:tenantId/content-autopilot/site-plan", async (req, res) =>
         .from(contentAutopilotConfigTable)
         .where(eq(contentAutopilotConfigTable.tenantId, tenantId))
         .limit(1),
+      resolveWebsiteConnection(tenantId),
     ]);
 
     const config = configs[0] ?? null;
@@ -101,16 +104,16 @@ router.get("/tenants/:tenantId/content-autopilot/site-plan", async (req, res) =>
 
     const opportunities: PlanOpportunity[] = [];
 
-    if (sites.length === 0) {
+    if (!websiteConnection.siteUrl && sites.length === 0) {
       opportunities.push({
         id: "create-site",
         priority: "alta",
         area: "site",
         title: "Criar o primeiro ativo digital",
-        description: "O tenant ainda não possui site ou landing page no Gerador de Sites.",
+        description: "O tenant ainda não possui site principal nem projeto no Gerador de Sites.",
         action: "Abrir Gerador de Sites",
       });
-    } else if (publishedSites.length === 0) {
+    } else if (!websiteConnection.siteUrl && sites.length > 0 && publishedSites.length === 0) {
       opportunities.push({
         id: "publish-site",
         priority: "alta",
@@ -121,22 +124,33 @@ router.get("/tenants/:tenantId/content-autopilot/site-plan", async (req, res) =>
       });
     }
 
-    if (!config?.siteUrl) {
+    if (!websiteConnection.siteUrl) {
       opportunities.push({
         id: "connect-site-url",
         priority: "alta",
         area: "autopilot",
-        title: "Conectar o site ao Content Autopilot",
-        description: "Defina a URL principal para o Autopilot analisar tom de marca e orientar o conteúdo.",
-        action: "Configurar URL do site",
+        title: "Definir o site principal do cliente",
+        description: "Informe a URL real do cliente para o Autopilot analisar a marca e usar o destino correto.",
+        action: "Configurar site principal",
       });
-    } else if (!config.brandTone) {
+    } else if (websiteConnection.needsCmsConnection) {
+      opportunities.push({
+        id: "connect-site-cms",
+        priority: "alta",
+        area: "autopilot",
+        title: "Conectar o CMS do site do cliente",
+        description: `${websiteConnection.hostname} já é o site principal. Falta autenticar o CMS para publicar artigos diretamente nele.`,
+        action: "Conectar CMS",
+      });
+    }
+
+    if (websiteConnection.siteUrl && !config?.brandTone) {
       opportunities.push({
         id: "analyze-brand-tone",
         priority: "media",
         area: "autopilot",
         title: "Analisar o tom de marca",
-        description: "A URL já está conectada, mas o tom de marca ainda não foi extraído do site.",
+        description: "O site principal já está identificado, mas o tom de marca ainda não foi extraído.",
         action: "Analisar site",
       });
     }
@@ -211,11 +225,12 @@ router.get("/tenants/:tenantId/content-autopilot/site-plan", async (req, res) =>
       return rank[a.priority] - rank[b.priority];
     });
 
+    const hasOfficialSite = Boolean(websiteConnection.siteUrl);
     const weeks = [
       {
         week: 1,
-        focus: sites.length === 0 ? "Base digital" : "Diagnóstico e intenção",
-        action: sites.length === 0 ? "Criar o site/LP inicial" : keywords.length === 0 ? "Pesquisar e selecionar keywords" : "Revisar oportunidades prioritárias",
+        focus: !hasOfficialSite && sites.length === 0 ? "Base digital" : "Diagnóstico e intenção",
+        action: !hasOfficialSite && sites.length === 0 ? "Criar o site/LP inicial" : keywords.length === 0 ? "Pesquisar e selecionar keywords" : "Revisar oportunidades prioritárias",
       },
       {
         week: 2,
@@ -247,7 +262,11 @@ router.get("/tenants/:tenantId/content-autopilot/site-plan", async (req, res) =>
         reviewArticles: reviewArticles.length,
         lowSeoArticles: lowSeoArticles.length,
         autopilotActive: Boolean(config?.ativo),
-        siteConnected: Boolean(config?.siteUrl),
+        siteConnected: hasOfficialSite,
+        siteUrl: websiteConnection.siteUrl,
+        siteSource: websiteConnection.source,
+        sitePlatform: websiteConnection.platform,
+        publicationReady: websiteConnection.canPublish,
       },
       opportunities: ordered,
       weeks,
