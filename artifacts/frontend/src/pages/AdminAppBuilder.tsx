@@ -5,8 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import AppUsersDialog from "@/components/app-builder/AppUsersDialog";
 import TemplateRuntimeEditorDialog from "@/components/app-builder/TemplateRuntimeEditorDialog";
 import TemplateRuntimePreviewDialog from "@/components/app-builder/TemplateRuntimePreviewDialog";
+import TemplateDataSourceEditorDialog from "@/components/app-builder/TemplateDataSourceEditorDialog";
 import AdminAppBuilderLegacy from "./AdminAppBuilderLegacy";
-import { ExternalLink, Layers3, Loader2, MonitorSmartphone, UserRoundCog } from "lucide-react";
+import { DatabaseZap, ExternalLink, Layers3, Loader2, MonitorSmartphone, UserRoundCog } from "lucide-react";
 
 type AppInstance = {
   id: string;
@@ -33,6 +34,7 @@ export default function AdminAppBuilder() {
   const [usersOpen, setUsersOpen] = useState(false);
   const [runtimeEditorOpen, setRuntimeEditorOpen] = useState(false);
   const [runtimePreviewOpen, setRuntimePreviewOpen] = useState(false);
+  const [dataSourceEditorOpen, setDataSourceEditorOpen] = useState(false);
   const [loadingControls, setLoadingControls] = useState(false);
 
   const loadControls = useCallback(async () => {
@@ -94,7 +96,7 @@ export default function AdminAppBuilder() {
         <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
           <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
             <Layers3 className="h-4 w-4 text-primary" />
-            <span>Páginas, blocos e regras de visibilidade do runtime publicado</span>
+            <span>Páginas, blocos, dados dinâmicos e regras de visibilidade do runtime publicado</span>
           </div>
           <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={loadingControls || templates.length === 0}>
             <SelectTrigger className="h-9 w-full sm:w-[280px]"><SelectValue placeholder={loadingControls ? "Carregando templates..." : "Selecione o template"} /></SelectTrigger>
@@ -103,6 +105,10 @@ export default function AdminAppBuilder() {
           <Button size="sm" variant="outline" onClick={() => setRuntimePreviewOpen(true)} disabled={!selectedTemplate || loadingControls}>
             <MonitorSmartphone className="mr-2 h-4 w-4" />
             Pré-visualizar
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setDataSourceEditorOpen(true)} disabled={!selectedTemplate || loadingControls}>
+            <DatabaseZap className="mr-2 h-4 w-4" />
+            Dados dinâmicos
           </Button>
           <Button size="sm" variant="outline" onClick={() => setRuntimeEditorOpen(true)} disabled={!selectedTemplate || loadingControls}>
             <Layers3 className="mr-2 h-4 w-4" />
@@ -126,6 +132,13 @@ export default function AdminAppBuilder() {
         token={token}
         open={runtimeEditorOpen}
         onOpenChange={setRuntimeEditorOpen}
+      />
+
+      <TemplateDataSourceEditorDialog
+        template={selectedTemplate}
+        token={token}
+        open={dataSourceEditorOpen}
+        onOpenChange={setDataSourceEditorOpen}
       />
 
       <TemplateRuntimePreviewDialog
