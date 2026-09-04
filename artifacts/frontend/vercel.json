@@ -17,6 +17,10 @@
   ],
   "rewrites": [
     {
+      "source": "/obrasgov/:path*",
+      "destination": "https://api-publica.obrasgov.gestao.gov.br/obras/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://vendorai-platform-replit-production.up.railway.app/api/:path*"
     },
@@ -32,6 +36,15 @@
         {
           "key": "x-vercel-enable-rewrite-caching",
           "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/obrasgov/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "private, max-age=60"
         }
       ]
     },

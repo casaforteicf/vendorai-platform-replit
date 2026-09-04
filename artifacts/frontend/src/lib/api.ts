@@ -1,5 +1,8 @@
 import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 
+const OBRAS_GOV_ORIGIN = "https://api-publica.obrasgov.gestao.gov.br";
+const OBRAS_GOV_PREFIX = "/obras/";
+
 export function setupApiClient() {
   const apiUrl = import.meta.env.VITE_API_URL;
   const isHostedProductionWeb =
@@ -25,10 +28,31 @@ export function setupApiClient() {
           ? input.toString()
           : input.url;
 
+    let requestInput: RequestInfo | URL = input;
     let requestInit = init;
 
     try {
-      const resolvedUrl = new URL(inputUrl, window.location.origin);
+      let resolvedUrl = new URL(inputUrl, window.location.origin);
+
+      // ObrasGov não libera CORS para app.appvendorai.com. Na web publicada,
+      // convertemos chamadas diretas ao domínio oficial em um caminho de mesma
+      // origem que o Vercel encaminha server-side. Isso preserva o fluxo atual
+      // do Radar de Obras sem expor credenciais nem criar um módulo paralelo.
+      const isObrasGovRequest =
+        isHostedProductionWeb &&
+        resolvedUrl.origin === OBRAS_GOV_ORIGIN &&
+        resolvedUrl.pathname.startsWith(OBRAS_GOV_PREFIX);
+
+      if (isObrasGovRequest) {
+        const relativePath = resolvedUrl.pathname.slice("/obras".length);
+        const proxiedUrl = new URL(`/obrasgov${relativePath}`, window.location.origin);
+        proxiedUrl.search = resolvedUrl.search;
+        requestInput = input instanceof Request
+          ? new Request(proxiedUrl.toString(), input)
+          : proxiedUrl.toString();
+        resolvedUrl = proxiedUrl;
+      }
+
       const isSameOriginApi =
         resolvedUrl.origin === window.location.origin &&
         resolvedUrl.pathname.startsWith("/api/");
@@ -37,7 +61,7 @@ export function setupApiClient() {
         // Vercel external rewrites can replace Host/X-Forwarded-Host with the
         // Railway hostname. Preserve the browser-facing CRM hostname explicitly
         // so the API never mistakes app.appvendorai.com for a tenant website.
-        const headers = new Headers(input instanceof Request ? input.headers : undefined);
+        const headers = new Headers(requestInput instanceof Request ? requestInput.headers : undefined);
         new Headers(init.headers).forEach((value, key) => headers.set(key, value));
         headers.set("X-Original-Host", window.location.hostname);
         requestInit = { ...init, headers };
@@ -46,7 +70,7 @@ export function setupApiClient() {
       // If URL resolution fails, keep the original request untouched.
     }
 
-    const response = await originalFetch(input, requestInit);
+    const response = await originalFetch(requestInput, requestInit);
     if (
       response.status === 403 &&
       !window.location.pathname.startsWith("/onboarding")
