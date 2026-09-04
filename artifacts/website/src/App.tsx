@@ -23,6 +23,7 @@ import UnifiedLpRouter from "@/pages/lp/UnifiedLpRouter";
 import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import ModernHomepageHero from "@/components/ModernHomepageHero";
 import NicheVisualShowcase from "@/components/NicheVisualShowcase";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
@@ -47,8 +48,6 @@ function FloatingActions() {
   const [location] = useLocation();
   const formFocusedPage = location === "/demo" || location === "/contato" || location === "/cadastro-praca";
 
-  // Nessas telas o CTA principal já é o formulário. Em mobile, botões fixed
-  // cobriam campos e o botão de envio, então não renderizamos ações concorrentes.
   if (formFocusedPage) return null;
 
   return (
@@ -62,8 +61,11 @@ function FloatingActions() {
 function HomeWithNicheVisuals() {
   return (
     <>
+      <ModernHomepageHero />
       <NicheVisualShowcase />
-      <Home />
+      <div className="[&>div>section:first-child]:hidden">
+        <Home />
+      </div>
     </>
   );
 }
@@ -71,13 +73,11 @@ function HomeWithNicheVisuals() {
 function Router() {
   return (
     <Switch>
-      {/* Standalone pages — own layout, no global Navbar/Footer */}
       <Route path="/verticais/:slug" component={VerticalPage} />
       <Route path="/parceiros" component={ParceirosPage} />
       <Route path="/segmentos/:slug" component={MacrosegmentHub} />
       <Route path="/lp/:slug" component={UnifiedLpRouter} />
 
-      {/* Standard layout — Navbar + Footer */}
       <Route>
         <div className="flex min-h-screen flex-col overflow-x-clip">
           <Navbar />
