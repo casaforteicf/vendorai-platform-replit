@@ -138,15 +138,15 @@ export default function AdminTenants() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{
     total: number; criados: number; comErro: number;
-    results: Array<{ linha: number; empresa: string; email: string; status: "criado" | "erro"; emailEnviado?: boolean; erro?: string }>;
+    results: Array<{ linha: number; empresa: string; email: string; countryCode?: CountryCode; status: "criado" | "erro"; emailEnviado?: boolean; erro?: string }>;
   } | null>(null);
 
   const selectedCountry = COUNTRY_OPTIONS[form.countryCode];
 
   const IMPORT_TEMPLATE =
-    "empresa,responsavel,email,telefone,cnpj\n" +
-    "Materiais Chapecó Ltda,João Silva,joao@materiaischapeco.com.br,49999998888,12345678000199\n" +
-    "Casa & Construção,Maria Souza,maria@casaeconstrucao.com.br,,\n";
+    "empresa,responsavel,email,telefone,pais,documento_fiscal\n" +
+    "Materiais Chapecó Ltda,João Silva,joao@materiaischapeco.com.br,5549999998888,BR,12.345.678/0001-99\n" +
+    "Comercial Asunción,Ana Gómez,ana@comercial.com.py,595981234567,PY,80012345-6\n";
 
   async function handleImport() {
     setImporting(true);
@@ -878,8 +878,8 @@ export default function AdminTenants() {
           <DialogHeader>
             <DialogTitle>Importar lojistas em massa</DialogTitle>
             <DialogDescription>
-              Cole abaixo um CSV com as colunas <code>empresa,responsavel,email,telefone,cnpj</code> (telefone e cnpj são opcionais).
-              Cada linha cria um tenant novo e envia automaticamente o e-mail de acesso com senha provisória.
+              Cole um CSV com <code>empresa,responsavel,email</code> e, opcionalmente, <code>telefone,pais,documento_fiscal</code>.
+              Se <code>pais</code> estiver vazio, o sistema usa Brasil. Aceita BR/PY/AR/UY/CL ou o nome do país. A coluna antiga <code>cnpj</code> continua compatível para planilhas brasileiras.
             </DialogDescription>
           </DialogHeader>
 
@@ -897,7 +897,7 @@ export default function AdminTenants() {
                 className="text-xs"
                 onClick={() => setImportCsv(IMPORT_TEMPLATE)}
               >
-                Usar modelo de exemplo
+                Usar modelo internacional de exemplo
               </Button>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={closeImport}>Cancelar</Button>
@@ -921,6 +921,7 @@ export default function AdminTenants() {
                     <TableRow>
                       <TableHead>Linha</TableHead>
                       <TableHead>Empresa</TableHead>
+                      <TableHead>País</TableHead>
                       <TableHead>E-mail</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
@@ -930,6 +931,7 @@ export default function AdminTenants() {
                       <TableRow key={r.linha}>
                         <TableCell className="text-xs text-muted-foreground">{r.linha}</TableCell>
                         <TableCell className="text-sm">{r.empresa || "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.countryCode ?? "—"}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{r.email || "—"}</TableCell>
                         <TableCell>
                           {r.status === "criado" ? (

@@ -922,6 +922,23 @@ const TENANT_COUNTRY_PROFILES = {
 
 type ProvisionCountryCode = keyof typeof TENANT_COUNTRY_PROFILES;
 
+function normalizeProvisionCountryCode(value?: string): ProvisionCountryCode | null {
+  if (!value?.trim()) return "BR";
+  const normalized = value
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const aliases: Record<string, ProvisionCountryCode> = {
+    br: "BR", brasil: "BR", brazil: "BR",
+    py: "PY", paraguai: "PY", paraguay: "PY",
+    ar: "AR", argentina: "AR",
+    uy: "UY", uruguai: "UY", uruguay: "UY",
+    cl: "CL", chile: "CL",
+  };
+  return aliases[normalized] ?? null;
+}
+
 router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (req, res) => {
   const { z } = await import("zod/v4");
   const schema = z.object({
@@ -1075,11 +1092,13 @@ router.post("/superadmin/tenants/import", requireRole("super_admin"), async (req
   const iResponsavel = idx(["responsavel", "nome_responsavel", "contato", "name"]);
   const iEmail = idx(["email", "e_mail"]);
   const iTelefone = idx(["telefone", "whatsapp", "phone", "celular"]);
+  const iPais = idx(["pais", "country", "country_code", "codigo_pais"]);
+  const iTaxIdentifier = idx(["documento_fiscal", "identificacao_fiscal", "identificador_fiscal", "tax_identifier", "ruc", "cuit", "rut"]);
   const iCnpj = idx(["cnpj"]);
 
   if (iEmpresa < 0 || iResponsavel < 0 || iEmail < 0) {
     res.status(422).json({
-      error: "CSV precisa das colunas: empresa, responsavel, email (telefone e cnpj são opcionais)",
+      error: "CSV precisa das colunas: empresa, responsavel, email (telefone, pais e documento_fiscal são opcionais)",
     });
     return;
   }
@@ -1088,6 +1107,7 @@ router.post("/superadmin/tenants/import", requireRole("super_admin"), async (req
     linha: number;
     empresa: string;
     email: string;
+    countryCode?: ProvisionCountryCode;
     status: "criado" | "erro";
     emailEnviado?: boolean;
     erro?: string;
@@ -1099,13 +1119,29 @@ router.post("/superadmin/tenants/import", requireRole("super_admin"), async (req
     const responsibleName = cols[iResponsavel]?.trim();
     const email = cols[iEmail]?.trim();
     const phone = iTelefone >= 0 ? cols[iTelefone]?.trim() || undefined : undefined;
-    const cnpj = iCnpj >= 0 ? cols[iCnpj]?.trim() || undefined : undefined;
+    const rawCountry = iPais >= 0 ? cols[iPais]?.trim() || undefined : undefined;
+    const countryCode = normalizeProvisionCountryCode(rawCountry);
+    const genericTaxIdentifier = iTaxIdentifier >= 0 ? cols[iTaxIdentifier]?.trim() || undefined : undefined;
+    const legacyCnpj = iCnpj >= 0 ? cols[iCnpj]?.trim() || undefined : undefined;
+    const taxIdentifier = genericTaxIdentifier ?? legacyCnpj ?? null;
 
     if (!companyName || !responsibleName || !email) {
       results.push({ linha: li + 1, empresa: companyName ?? "", email: email ?? "", status: "erro", erro: "Empresa, responsável e e-mail são obrigatórios" });
       continue;
     }
 
+    if (!countryCode) {
+      results.push({
+        linha: li + 1,
+        empresa: companyName,
+        email,
+        status: "erro",
+        erro: `País inválido: ${rawCountry}. Use BR, PY, AR, UY ou CL (ou o nome do país).`,
+      });
+      continue;
+    }
+
+    const countryProfile = TENANT_COUNTRY_PROFILES[countryCode];
     const slug = companyName
       .trim().toLowerCase()
       .replace(/\s+/g, "-")
@@ -1124,7 +1160,14 @@ router.post("/superadmin/tenants/import", requireRole("super_admin"), async (req
         status: "active",
         provisioningMethod: "manual",
         createdByAdminId: req.user?.sub,
-        internalNotes: cnpj ?? null,
+        countryCode,
+        defaultLocale: countryProfile.defaultLocale,
+        timezone: countryProfile.timezone,
+        defaultCurrency: countryProfile.defaultCurrency,
+        supportedCurrencies: [countryProfile.defaultCurrency],
+        taxIdentifierType: countryProfile.taxIdentifierType,
+        taxIdentifier,
+        internalNotes: null,
       }).returning();
 
       if (!tenant) throw new Error("Falha ao criar tenant");
@@ -1156,10 +1199,10 @@ router.post("/superadmin/tenants/import", requireRole("super_admin"), async (req
         await db.update(tenantsTable).set({ accessSentAt: new Date() }).where(eq(tenantsTable.id, tenant.id));
       }
 
-      results.push({ linha: li + 1, empresa: companyName, email, status: "criado", emailEnviado: emailSent });
+      results.push({ linha: li + 1, empresa: companyName, email, countryCode, status: "criado", emailEnviado: emailSent });
     } catch (err: unknown) {
       const erro = isUniqueViolation(err) ? "E-mail ou empresa já cadastrado" : (err instanceof Error ? err.message : "Erro desconhecido");
-      results.push({ linha: li + 1, empresa: companyName, email, status: "erro", erro });
+      results.push({ linha: li + 1, empresa: companyName, email, countryCode, status: "erro", erro });
     }
   }
 
