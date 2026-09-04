@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Link } from "wouter";
 import PracaPerguntas from "./PracaPerguntas";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -46,11 +47,28 @@ import {
   X,
   UserX,
   Search,
+  Inbox,
+  RefreshCcw,
+  Library,
+  Info,
+  Building2,
+  PhoneCall,
+  AtSign,
+  ExternalLink,
+  ShieldCheck,
+  Eye,
+  CheckCircle2,
 } from "lucide-react";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  MediaAssetPicker,
+  mediaAssetUrl,
+  type MediaPickerAsset,
+} from "@/components/media/MediaAssetPicker";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+type InboxFilter = "all" | "unread" | "human" | "ai";
+type ActiveView = "inbox" | "instagram" | "praca";
 
 function channelIcon(channel: string | null | undefined) {
   switch (channel) {
@@ -77,9 +95,9 @@ function channelLabel(channel: string | null | undefined): string {
   return labels[channel ?? ""] ?? channel ?? "—";
 }
 
-function formatConvTime(dateStr: string | null | undefined): string {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
+function formatConvTime(dateValue: string | Date | null | undefined): string {
+  if (!dateValue) return "";
+  const d = new Date(dateValue);
   if (isToday(d)) return format(d, "HH:mm");
   if (isYesterday(d)) return "Ontem";
   return format(d, "dd/MM/yy");
@@ -96,74 +114,108 @@ function formatMsgDate(dateStr: string): string {
   return format(d, "dd 'de' MMMM", { locale: ptBR });
 }
 
-// ─── Conversation List Item ───────────────────────────────────────────────────
+function mediaPreviewIcon(type: MediaPickerAsset["type"]) {
+  if (type === "video") return <VideoIcon className="h-5 w-5 text-muted-foreground" />;
+  if (type === "audio") return <Mic className="h-5 w-5 text-muted-foreground" />;
+  if (type === "document") return <FileText className="h-5 w-5 text-muted-foreground" />;
+  return <Library className="h-5 w-5 text-muted-foreground" />;
+}
 
 function ConvItem({
   conv,
-  leadName,
+  lead,
   isHumanLocked,
   selected,
   onClick,
 }: {
   conv: Conversation;
-  leadName: string | undefined;
+  lead: Lead | undefined;
   isHumanLocked: boolean;
   selected: boolean;
   onClick: () => void;
 }) {
+  const contactHint =
+    lead?.empresa ||
+    lead?.telefone ||
+    lead?.email ||
+    channelLabel(conv.channel);
+
   return (
     <button
       onClick={onClick}
       data-testid={`conv-item-${conv.id}`}
-      className={`w-full text-left px-4 py-3 min-h-[3rem] border-b border-border transition-colors flex gap-3 items-center ${
-        selected
-          ? "bg-primary/10 border-l-2 border-l-primary"
-          : "hover:bg-muted/50 active:bg-muted"
-      }`}
+      className="w-full px-2 py-1.5 text-left"
     >
-      {/* Avatar */}
-      <div className="h-9 w-9 shrink-0 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground uppercase">
-        {(leadName ?? "?")[0]}
-      </div>
+      <div
+        className={`group flex min-h-[76px] items-center gap-3 rounded-xl border px-3 py-2.5 transition-all ${
+          selected
+            ? "border-primary/40 bg-primary/10 shadow-sm"
+            : "border-transparent bg-background hover:border-border hover:bg-muted/45"
+        }`}
+      >
+        <div className="relative shrink-0">
+          <div
+            className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold uppercase ${
+              selected
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {(lead?.nome ?? "?")[0]}
+          </div>
+          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-background bg-background">
+            {channelIcon(conv.channel)}
+          </span>
+        </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <div className="flex items-center justify-between gap-1">
-          <span className="text-sm font-medium truncate">
-            {leadName ?? "Lead desconhecido"}
-          </span>
-          <span className="text-xs text-muted-foreground shrink-0">
-            {formatConvTime(conv.ultimaMensagemEm)}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {channelIcon(conv.channel)}
-          <span className="text-xs text-muted-foreground truncate flex-1">
-            {channelLabel(conv.channel)}
-          </span>
-          {isHumanLocked && (
-            <Badge className="h-4 text-[9px] px-1.5 rounded-full bg-amber-500/90 text-white shrink-0">
-              Humano
-            </Badge>
-          )}
-          {conv.naoLidas > 0 && (
-            <Badge className="h-4 min-w-[1rem] text-[10px] px-1 rounded-full bg-primary text-primary-foreground">
-              {conv.naoLidas}
-            </Badge>
-          )}
-        </div>
-        {conv.agentName && !isHumanLocked && (
-          <p className="text-xs text-muted-foreground/60 truncate flex items-center gap-1">
-            <Bot className="h-3 w-3 inline" />
-            {conv.agentName}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-semibold">
+              {lead?.nome ?? "Lead desconhecido"}
+            </span>
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {formatConvTime(conv.ultimaMensagemEm)}
+            </span>
+          </div>
+
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {contactHint}
           </p>
-        )}
+
+          <div className="mt-1.5 flex items-center gap-1.5">
+            {isHumanLocked ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                <UserCheck className="h-3 w-3" />
+                Humano
+              </span>
+            ) : conv.agentName ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                <Bot className="h-3 w-3" />
+                {conv.agentName}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {channelLabel(conv.channel)}
+              </span>
+            )}
+
+            {lead?.proximaAcao && (
+              <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
+                Próxima: {lead.proximaAcao}
+              </span>
+            )}
+
+            {conv.naoLidas > 0 && (
+              <Badge className="ml-auto h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px]">
+                {conv.naoLidas}
+              </Badge>
+            )}
+          </div>
+        </div>
       </div>
     </button>
   );
 }
-
-// ─── Message Bubble ───────────────────────────────────────────────────────────
 
 function MsgBubble({ msg }: { msg: Message }) {
   const isOutgoing = msg.direcao === "saida";
@@ -173,15 +225,16 @@ function MsgBubble({ msg }: { msg: Message }) {
   return (
     <div
       data-testid={`msg-${msg.id}`}
-      className={`flex flex-col gap-1 max-w-[72%] ${isOutgoing ? "self-end items-end" : "self-start items-start"}`}
+      className={`flex max-w-[78%] flex-col gap-1 ${
+        isOutgoing ? "self-end items-end" : "self-start items-start"
+      }`}
     >
-      {/* Sender badge (for outgoing) */}
       {isOutgoing && (
         <div className="flex items-center gap-1 px-1">
           {isAI && (
             <>
               <Bot className="h-3 w-3 text-violet-500" />
-              <span className="text-[10px] text-violet-500 font-medium">
+              <span className="text-[10px] font-medium text-violet-500">
                 {msg.agentName ?? "Agente IA"}
               </span>
             </>
@@ -189,30 +242,33 @@ function MsgBubble({ msg }: { msg: Message }) {
           {isHuman && (
             <>
               <User className="h-3 w-3 text-primary" />
-              <span className="text-[10px] text-primary font-medium">Você</span>
+              <span className="text-[10px] font-medium text-primary">Você</span>
             </>
           )}
         </div>
       )}
 
-      {/* Bubble */}
       <div
-        className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${
           isOutgoing
             ? isAI
-              ? "bg-violet-600 text-white rounded-tr-sm"
-              : "bg-primary text-primary-foreground rounded-tr-sm"
-            : "bg-muted text-foreground rounded-tl-sm"
+              ? "rounded-tr-sm bg-violet-600 text-white"
+              : "rounded-tr-sm bg-primary text-primary-foreground"
+            : "rounded-tl-sm border border-border/70 bg-background text-foreground"
         }`}
       >
         {msg.midiaUrl && (
           <div className="mb-1.5">
             {msg.tipoConteudo === "imagem" ? (
               <a href={msg.midiaUrl} target="_blank" rel="noopener noreferrer">
-                <img src={msg.midiaUrl} alt="Anexo" className="max-w-full max-h-64 rounded-lg object-cover" />
+                <img
+                  src={msg.midiaUrl}
+                  alt="Anexo"
+                  className="max-h-64 max-w-full rounded-lg object-cover"
+                />
               </a>
             ) : msg.tipoConteudo === "video" ? (
-              <video src={msg.midiaUrl} controls className="max-w-full max-h-64 rounded-lg" />
+              <video src={msg.midiaUrl} controls className="max-h-64 max-w-full rounded-lg" />
             ) : msg.tipoConteudo === "audio" ? (
               <audio src={msg.midiaUrl} controls className="max-w-full" />
             ) : (
@@ -220,7 +276,9 @@ function MsgBubble({ msg }: { msg: Message }) {
                 href={msg.midiaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs underline-offset-2 hover:underline ${isOutgoing ? "bg-white/15" : "bg-background"}`}
+                className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs underline-offset-2 hover:underline ${
+                  isOutgoing ? "bg-white/15" : "bg-muted"
+                }`}
               >
                 <FileText className="h-4 w-4 shrink-0" />
                 <span className="truncate">Ver documento</span>
@@ -231,15 +289,12 @@ function MsgBubble({ msg }: { msg: Message }) {
         {msg.conteudo && (!msg.midiaUrl || msg.conteudo !== "Anexo") && msg.conteudo}
       </div>
 
-      {/* Time */}
-      <span className="text-[10px] text-muted-foreground/60 px-1">
+      <span className="px-1 text-[10px] text-muted-foreground/60">
         {formatMsgTime(msg.createdAt)}
       </span>
     </div>
   );
 }
-
-// ─── Handoff Separator ────────────────────────────────────────────────────────
 
 const AGENT_LABELS: Record<string, string> = {
   sdr: "SDR",
@@ -264,14 +319,22 @@ interface HandoffEvent {
   toAgent: string;
 }
 
-function HandoffSeparator({ fromAgent, toAgent, timestamp }: { fromAgent: string; toAgent: string; timestamp: string }) {
+function HandoffSeparator({
+  fromAgent,
+  toAgent,
+  timestamp,
+}: {
+  fromAgent: string;
+  toAgent: string;
+  timestamp: string;
+}) {
   return (
-    <div className="flex items-center gap-2 py-2 my-1">
+    <div className="my-1 flex items-center gap-2 py-2">
       <div className="flex-1 border-t border-dashed border-violet-200 dark:border-violet-800" />
-      <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950 border border-violet-200 dark:border-violet-800 text-[10px] text-violet-600 dark:text-violet-400 font-medium whitespace-nowrap">
+      <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-400">
         <ArrowRight className="h-2.5 w-2.5 shrink-0" />
         {agentLabel(fromAgent)} → {agentLabel(toAgent)}
-        <span className="text-violet-400 dark:text-violet-600 font-normal ml-0.5">
+        <span className="ml-0.5 font-normal text-violet-400 dark:text-violet-600">
           · {formatDistanceToNow(new Date(timestamp), { locale: ptBR, addSuffix: true })}
         </span>
       </span>
@@ -280,13 +343,11 @@ function HandoffSeparator({ fromAgent, toAgent, timestamp }: { fromAgent: string
   );
 }
 
-// ─── Date Separator ───────────────────────────────────────────────────────────
-
 function DateSeparator({ date }: { date: string }) {
   return (
     <div className="flex items-center gap-3 py-2">
       <div className="flex-1 border-t border-border" />
-      <span className="text-[11px] text-muted-foreground font-medium px-2">
+      <span className="px-2 text-[11px] font-medium text-muted-foreground">
         {formatMsgDate(date)}
       </span>
       <div className="flex-1 border-t border-border" />
@@ -294,56 +355,110 @@ function DateSeparator({ date }: { date: string }) {
   );
 }
 
-// ─── Chat Panel ───────────────────────────────────────────────────────────────
-
 function ChatPanel({
   conv,
   lead,
   leadName,
   tenantId,
   onBack,
-  onLockReleased,
+  onLockChanged,
 }: {
   conv: Conversation;
   lead: Lead | undefined;
   leadName: string | undefined;
   tenantId: string;
   onBack?: () => void;
-  onLockReleased?: () => void;
+  onLockChanged?: () => void;
 }) {
   const [inputValue, setInputValue] = useState("");
   const [releasingLock, setReleasingLock] = useState(false);
+  const [takingLock, setTakingLock] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [handoffEvents, setHandoffEvents] = useState<HandoffEvent[]>([]);
-  const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<{
+    file: File;
+    previewUrl: string;
+  } | null>(null);
+  const [libraryAsset, setLibraryAsset] = useState<MediaPickerAsset | null>(null);
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [sendingLibraryAsset, setSendingLibraryAsset] = useState(false);
+  const [togglingAgentDisabled, setTogglingAgentDisabled] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const requestUploadUrl = useRequestUploadUrl();
+  const updateLead = useUpdateLead();
+  const createMessage = useCreateMessage();
 
   const isHumanLocked = lead?.activeAgentLock === "human";
   const isAgentDisabled = !!lead?.agenteDesativado;
-  const updateLead = useUpdateLead();
-  const [togglingAgentDisabled, setTogglingAgentDisabled] = useState(false);
+  const isBusy =
+    createMessage.isPending || uploadingAttachment || sendingLibraryAsset;
+
+  function invalidateConversationState() {
+    queryClient.invalidateQueries({
+      queryKey: getListTenantLeadsQueryKey(tenantId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: getListTenantConversationsQueryKey(tenantId),
+    });
+  }
 
   function handleToggleAgentDisabled() {
     if (!lead?.id) return;
+
+    if (
+      !isAgentDisabled &&
+      !window.confirm(
+        "Marcar este contato como não-lead? A IA deixará de responder automaticamente a novas mensagens deste contato."
+      )
+    ) {
+      return;
+    }
+
     setTogglingAgentDisabled(true);
     updateLead.mutate(
       { id: lead.id, data: { agenteDesativado: !isAgentDisabled } },
       {
         onSuccess: () => {
           toast({
-            title: isAgentDisabled ? "Agente reativado pra esse contato" : "Agente nunca vai interagir com esse contato",
-            description: isAgentDisabled ? undefined : "Marcado como não-lead (contato pessoal) — nenhuma mensagem futura será respondida automaticamente.",
+            title: isAgentDisabled
+              ? "Contato reativado para a IA"
+              : "Contato marcado como não-lead",
+            description: isAgentDisabled
+              ? "O agente poderá voltar a atender este contato."
+              : "A IA não responderá automaticamente enquanto esta classificação permanecer ativa.",
           });
-          queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
-          queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(tenantId) });
+          invalidateConversationState();
         },
-        onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+        onError: () =>
+          toast({ title: "Erro ao atualizar contato", variant: "destructive" }),
         onSettled: () => setTogglingAgentDisabled(false),
-      },
+      }
+    );
+  }
+
+  function handleTakeLock() {
+    if (!lead?.id || isHumanLocked || isAgentDisabled) return;
+    setTakingLock(true);
+    updateLead.mutate(
+      { id: lead.id, data: { activeAgentLock: "human" } },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Atendimento assumido",
+            description: "A IA foi pausada para este contato enquanto você atende.",
+          });
+          invalidateConversationState();
+          onLockChanged?.();
+        },
+        onError: () =>
+          toast({ title: "Erro ao assumir atendimento", variant: "destructive" }),
+        onSettled: () => setTakingLock(false),
+      }
     );
   }
 
@@ -359,12 +474,10 @@ function ChatPanel({
     }
   );
 
-  const createMessage = useCreateMessage();
-
-  // Fetch handoff events for this lead's conversation
   useEffect(() => {
     if (!conv.leadId) return;
     const token = localStorage.getItem("vendorai_token");
+
     fetch(`/api/tenants/${tenantId}/activities?leadId=${conv.leadId}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -372,32 +485,56 @@ function ChatPanel({
       .then((data: unknown) => {
         if (!Array.isArray(data)) return;
         const events: HandoffEvent[] = [];
+
         for (const a of data) {
           if (typeof a !== "object" || a === null) continue;
           const act = a as Record<string, unknown>;
-          if (act.tipo !== "handoff_agente" || typeof act.resultadoExecucao !== "string") continue;
+          if (
+            act.tipo !== "handoff_agente" ||
+            typeof act.resultadoExecucao !== "string"
+          ) {
+            continue;
+          }
+
           const match = act.resultadoExecucao.match(/^de:(.+)\|para:(.+)$/);
           if (!match) continue;
+
           const ts =
-            typeof act.concluidaEm === "string" ? act.concluidaEm :
-            typeof act.createdAt === "string" ? act.createdAt : null;
+            typeof act.concluidaEm === "string"
+              ? act.concluidaEm
+              : typeof act.createdAt === "string"
+                ? act.createdAt
+                : null;
+
           if (!ts) continue;
+
           events.push({
-            id: typeof act.id === "string" ? act.id : String(act.id ?? Math.random()),
+            id:
+              typeof act.id === "string"
+                ? act.id
+                : String(act.id ?? Math.random()),
             timestamp: ts,
             fromAgent: match[1],
             toAgent: match[2],
           });
         }
+
         setHandoffEvents(events);
       })
       .catch(() => undefined);
   }, [conv.leadId, tenantId]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingAttachment) {
+        URL.revokeObjectURL(pendingAttachment.previewUrl);
+      }
+    };
+  }, [pendingAttachment]);
 
   async function handleReleaseLock() {
     setReleasingLock(true);
@@ -410,52 +547,156 @@ function ChatPanel({
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      toast({ title: "IA reativada", description: "O agente voltará a responder automaticamente." });
-      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
-      queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(tenantId) });
-      onLockReleased?.();
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      toast({
+        title: "IA reativada",
+        description: "O agente voltará a responder automaticamente.",
+      });
+
+      invalidateConversationState();
+      onLockChanged?.();
     } catch (err) {
-      toast({ title: "Erro ao liberar IA", description: String(err), variant: "destructive" });
+      toast({
+        title: "Erro ao liberar IA",
+        description: String(err),
+        variant: "destructive",
+      });
     } finally {
       setReleasingLock(false);
     }
   }
 
   function handleFilePicked(file: File) {
-    if (pendingAttachment) URL.revokeObjectURL(pendingAttachment.previewUrl);
-    setPendingAttachment({ file, previewUrl: URL.createObjectURL(file) });
+    if (pendingAttachment) {
+      URL.revokeObjectURL(pendingAttachment.previewUrl);
+    }
+    setLibraryAsset(null);
+    setPendingAttachment({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    });
   }
 
   function clearAttachment() {
-    if (pendingAttachment) URL.revokeObjectURL(pendingAttachment.previewUrl);
+    if (pendingAttachment) {
+      URL.revokeObjectURL(pendingAttachment.previewUrl);
+    }
     setPendingAttachment(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  function handleLibrarySelection(selected: MediaPickerAsset[]) {
+    const next = selected[0] ?? null;
+    clearAttachment();
+    setLibraryAsset(next);
+  }
+
+  async function sendLibraryMessage(text: string) {
+    if (!libraryAsset || !conv.leadId) return;
+
+    setSendingLibraryAsset(true);
+
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          tenantId,
+          conversationId: conv.id,
+          leadId: conv.leadId,
+          direcao: MessageDirecao.saida,
+          canal: (conv.channel as MessageCanal) ?? MessageCanal.chat,
+          conteudo: text || libraryAsset.originalFilename || "Mídia",
+          enviadoPor: MessageEnviadoPor.humano,
+          midia: { mediaAssetId: libraryAsset.id },
+        }),
+      });
+
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          typeof body?.error === "string"
+            ? body.error
+            : "Não foi possível enviar a mídia da Biblioteca."
+        );
+      }
+
+      setInputValue("");
+      setLibraryAsset(null);
+      queryClient.invalidateQueries({
+        queryKey: getListConversationMessagesQueryKey(tenantId, conv.id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getListTenantConversationsQueryKey(tenantId),
+      });
+    } catch (err) {
+      toast({
+        title: "Erro ao enviar mídia",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSendingLibraryAsset(false);
+    }
+  }
+
   async function handleSend() {
     const text = inputValue.trim();
-    if ((!text && !pendingAttachment) || !conv.leadId) return;
 
-    let midia: { url: string; objectPath: string; mimeType: string; fileName: string } | undefined;
+    if ((!text && !pendingAttachment && !libraryAsset) || !conv.leadId) return;
+
+    if (libraryAsset && !pendingAttachment) {
+      await sendLibraryMessage(text);
+      return;
+    }
+
+    let midia:
+      | {
+          url: string;
+          objectPath: string;
+          mimeType: string;
+          fileName: string;
+        }
+      | undefined;
+
     if (pendingAttachment) {
       setUploadingAttachment(true);
+
       try {
         const file = pendingAttachment.file;
-        const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        const result = await new Promise<{
+          uploadURL: string;
+          objectPath: string;
+        }>((resolve, reject) => {
           requestUploadUrl.mutate(
-            { data: { name: file.name, size: file.size, contentType: file.type || "application/octet-stream" } },
-            { onSuccess: resolve, onError: reject },
+            {
+              data: {
+                name: file.name,
+                size: file.size,
+                contentType: file.type || "application/octet-stream",
+              },
+            },
+            { onSuccess: resolve, onError: reject }
           );
         });
+
         const uploadRes = await fetch(result.uploadURL, {
           method: "PUT",
           body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
         });
+
         if (!uploadRes.ok) throw new Error("Upload falhou");
+
         midia = {
           url: `${window.location.origin}/api/storage${result.objectPath}`,
           objectPath: result.objectPath,
@@ -463,10 +704,15 @@ function ChatPanel({
           fileName: file.name,
         };
       } catch (err) {
-        toast({ title: "Erro ao enviar anexo", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+        toast({
+          title: "Erro ao enviar anexo",
+          description: err instanceof Error ? err.message : undefined,
+          variant: "destructive",
+        });
         setUploadingAttachment(false);
         return;
       }
+
       setUploadingAttachment(false);
     }
 
@@ -505,6 +751,7 @@ function ChatPanel({
             typeof (err.data as Record<string, unknown>).error === "string"
               ? (err.data as { error: string }).error
               : null;
+
           toast({
             title: "Erro ao enviar mensagem",
             description: apiMsg ?? undefined,
@@ -518,132 +765,293 @@ function ChatPanel({
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   }
 
-  // Build unified timeline: merge messages and handoff events sorted by time
   type TimelineItem =
     | { kind: "msg"; msg: Message; date: string }
     | { kind: "handoff"; event: HandoffEvent };
 
   const timelineItems: TimelineItem[] = [];
+
   for (const msg of messages) {
-    timelineItems.push({ kind: "msg", msg, date: msg.createdAt.slice(0, 10) });
+    timelineItems.push({
+      kind: "msg",
+      msg,
+      date: msg.createdAt.slice(0, 10),
+    });
   }
+
   for (const event of handoffEvents) {
     timelineItems.push({ kind: "handoff", event });
   }
+
   timelineItems.sort((a, b) => {
-    const ta = a.kind === "msg" ? new Date(a.msg.createdAt).getTime() : new Date(a.event.timestamp).getTime();
-    const tb = b.kind === "msg" ? new Date(b.msg.createdAt).getTime() : new Date(b.event.timestamp).getTime();
+    const ta =
+      a.kind === "msg"
+        ? new Date(a.msg.createdAt).getTime()
+        : new Date(a.event.timestamp).getTime();
+
+    const tb =
+      b.kind === "msg"
+        ? new Date(b.msg.createdAt).getTime()
+        : new Date(b.event.timestamp).getTime();
+
     return ta - tb;
   });
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Chat header */}
-      <div className="flex items-center gap-3 px-4 md:px-6 py-4 border-b border-border shrink-0">
-        {onBack && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="md:hidden h-10 w-10 shrink-0 border-border shadow-sm"
-            onClick={onBack}
-            aria-label="Voltar para conversas"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-        )}
-        <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground uppercase shrink-0">
-          {(leadName ?? "?")[0]}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm">
-            {leadName ?? "Lead desconhecido"}
-          </p>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
-            {channelIcon(conv.channel)}
-            <span>{channelLabel(conv.channel)}</span>
-            {isHumanLocked ? (
-              <>
-                <span>·</span>
-                <UserCheck className="h-3 w-3 text-amber-500" />
-                <span className="text-amber-600 font-medium">Atendimento humano</span>
-              </>
-            ) : conv.agentName ? (
-              <>
-                <span>·</span>
-                <Bot className="h-3 w-3 text-violet-500" />
-                <span className="text-violet-500">{conv.agentName}</span>
-              </>
-            ) : null}
+    <div className="flex h-full flex-col overflow-hidden bg-background">
+      <div className="shrink-0 border-b border-border bg-background/95 px-4 py-3 backdrop-blur md:px-5">
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 md:hidden"
+              onClick={onBack}
+              aria-label="Voltar para conversas"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          )}
+
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold uppercase text-primary">
+            {(leadName ?? "?")[0]}
           </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {isHumanLocked && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
-              onClick={handleReleaseLock}
-              disabled={releasingLock}
-            >
-              <Bot className="h-3.5 w-3.5" />
-              {releasingLock ? "Liberando..." : "Devolver para IA"}
-            </Button>
-          )}
-          {lead?.id && (
-            <Button
-              variant="outline"
-              size="sm"
-              className={`h-8 text-xs gap-1.5 ${isAgentDisabled ? "border-red-300 text-red-700 hover:bg-red-50" : "text-muted-foreground"}`}
-              onClick={handleToggleAgentDisabled}
-              disabled={togglingAgentDisabled}
-              title={isAgentDisabled ? "Clique pra deixar o agente responder de novo" : "Marca como não-lead — agente nunca interage com esse contato"}
-            >
-              <UserX className="h-3.5 w-3.5" />
-              {togglingAgentDisabled ? "..." : isAgentDisabled ? "Não é lead" : "Marcar como não-lead"}
-            </Button>
-          )}
-          <div className="flex items-center gap-1.5">
-            <Wifi className="h-3.5 w-3.5 text-emerald-500" />
-            <span className="text-xs text-muted-foreground capitalize">{conv.status}</span>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate text-sm font-semibold">
+                {leadName ?? "Lead desconhecido"}
+              </p>
+
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {channelIcon(conv.channel)}
+                {channelLabel(conv.channel)}
+              </span>
+
+              {isAgentDisabled ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
+                  <UserX className="h-3 w-3" />
+                  Não-lead
+                </span>
+              ) : isHumanLocked ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                  <UserCheck className="h-3 w-3" />
+                  Atendimento humano
+                </span>
+              ) : conv.agentName ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                  <Bot className="h-3 w-3" />
+                  {conv.agentName}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              {lead?.empresa && (
+                <>
+                  <Building2 className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{lead.empresa}</span>
+                </>
+              )}
+              {!lead?.empresa && lead?.telefone && (
+                <>
+                  <PhoneCall className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{lead.telefone}</span>
+                </>
+              )}
+              <span className="inline-flex shrink-0 items-center gap-1">
+                <Wifi className="h-3.5 w-3.5 text-emerald-500" />
+                {conv.status}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {lead?.id && (
+              <Button
+                variant={showDetails ? "secondary" : "outline"}
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={() => setShowDetails((value) => !value)}
+              >
+                <Info className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">
+                  {showDetails ? "Ocultar" : "Detalhes"}
+                </span>
+              </Button>
+            )}
+
+            {isHumanLocked ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 border-amber-300 text-xs text-amber-700 hover:bg-amber-50"
+                onClick={handleReleaseLock}
+                disabled={releasingLock}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">
+                  {releasingLock ? "Liberando..." : "Devolver para IA"}
+                </span>
+              </Button>
+            ) : lead?.id && !isAgentDisabled ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={handleTakeLock}
+                disabled={takingLock}
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">
+                  {takingLock ? "Assumindo..." : "Assumir atendimento"}
+                </span>
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
 
-      {/* Human lock banner */}
-      {isHumanLocked && (
-        <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 shrink-0">
-          <UserCheck className="h-4 w-4 text-amber-600 shrink-0" />
-          <p className="text-xs text-amber-700">
-            A IA foi pausada para este lead. Um atendente humano deve responder. Clique em{" "}
-            <strong>Devolver para IA</strong> para reativar o agente.
-          </p>
+      {showDetails && lead && (
+        <div className="shrink-0 border-b border-border bg-muted/25 px-4 py-3 md:px-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="min-w-0 rounded-xl border bg-background px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Contato
+              </p>
+              <p className="mt-1 truncate text-xs font-medium">
+                {lead.telefone || "Telefone não informado"}
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {lead.email || "E-mail não informado"}
+              </p>
+            </div>
+
+            <div className="min-w-0 rounded-xl border bg-background px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Comercial
+              </p>
+              <p className="mt-1 truncate text-xs font-medium">
+                {lead.status || "Sem status"}
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {lead.urgencia ? `Urgência: ${lead.urgencia}` : "Urgência não informada"}
+              </p>
+            </div>
+
+            <div className="min-w-0 rounded-xl border bg-background px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Dor principal
+              </p>
+              <p className="mt-1 line-clamp-2 text-xs font-medium">
+                {lead.dorPrincipal || "Ainda não identificada"}
+              </p>
+            </div>
+
+            <div className="min-w-0 rounded-xl border bg-background px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Próxima ação
+              </p>
+              <p className="mt-1 line-clamp-2 text-xs font-medium">
+                {lead.proximaAcao || "Nenhuma próxima ação definida"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              {lead.empresa && (
+                <span className="inline-flex items-center gap-1">
+                  <Building2 className="h-3.5 w-3.5" />
+                  {lead.empresa}
+                </span>
+              )}
+              {lead.email && (
+                <span className="inline-flex items-center gap-1">
+                  <AtSign className="h-3.5 w-3.5" />
+                  {lead.email}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/leads/${lead.id}`}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Abrir no CRM
+              </Link>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-8 gap-1.5 text-xs ${
+                  isAgentDisabled
+                    ? "text-emerald-700 hover:bg-emerald-50"
+                    : "text-muted-foreground hover:text-destructive"
+                }`}
+                onClick={handleToggleAgentDisabled}
+                disabled={togglingAgentDisabled}
+              >
+                {isAgentDisabled ? (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                ) : (
+                  <UserX className="h-3.5 w-3.5" />
+                )}
+                {togglingAgentDisabled
+                  ? "Atualizando..."
+                  : isAgentDisabled
+                    ? "Reativar contato"
+                    : "Marcar como não-lead"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Messages area */}
-      <ScrollArea className="flex-1 px-4 md:px-8 py-4 bg-muted/25">
+      {isHumanLocked && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700 md:px-5">
+          <ShieldCheck className="h-4 w-4 shrink-0" />
+          <span>
+            A IA está pausada. Este atendimento está sob controle humano até você devolver para a IA.
+          </span>
+        </div>
+      )}
+
+      <ScrollArea className="flex-1 bg-gradient-to-b from-muted/10 to-muted/30 px-4 py-4 md:px-8">
         {isLoading ? (
           <div className="flex flex-col gap-3">
             {[...Array(5)].map((_, i) => (
               <div
                 key={i}
-                className={`h-10 bg-muted animate-pulse rounded-2xl ${i % 2 === 0 ? "w-2/3 self-start" : "w-1/2 self-end ml-auto"}`}
+                className={`h-10 animate-pulse rounded-2xl bg-muted ${
+                  i % 2 === 0 ? "w-2/3 self-start" : "ml-auto w-1/2 self-end"
+                }`}
               />
             ))}
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
-            <MessageSquare className="h-8 w-8 opacity-30" />
-            <p className="text-sm">Nenhuma mensagem ainda</p>
+          <div className="flex h-48 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-background shadow-sm">
+              <MessageSquare className="h-6 w-6 opacity-40" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">Conversa iniciada</p>
+              <p className="mt-1 text-xs">
+                Envie a primeira mensagem ou aguarde uma resposta do contato.
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-1 max-w-4xl mx-auto">
+          <div className="mx-auto flex max-w-4xl flex-col gap-1">
             {(() => {
               let lastDate: string | null = null;
+
               return timelineItems.map((item) => {
                 if (item.kind === "handoff") {
                   return (
@@ -655,9 +1063,10 @@ function ChatPanel({
                     />
                   );
                 }
-                const d = item.date;
-                const showDate = d !== lastDate;
-                lastDate = d;
+
+                const showDate = item.date !== lastDate;
+                lastDate = item.date;
+
                 return (
                   <div key={item.msg.id} className="flex flex-col gap-1">
                     {showDate && <DateSeparator date={item.msg.createdAt} />}
@@ -671,77 +1080,173 @@ function ChatPanel({
         )}
       </ScrollArea>
 
-      {/* Input */}
-      <div className="px-4 py-3 border-t border-border shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+      <div className="shrink-0 border-t border-border bg-background/95 px-3 py-3 backdrop-blur md:px-4">
         {!conv.leadId ? (
-          <p className="text-xs text-muted-foreground text-center py-1">
+          <p className="py-1 text-center text-xs text-muted-foreground">
             Conversa sem lead associado — envio desativado
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="mx-auto flex max-w-4xl flex-col gap-2">
             {pendingAttachment && (
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs">
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs">
                 {pendingAttachment.file.type.startsWith("image/") ? (
-                  <img src={pendingAttachment.previewUrl} alt="" className="h-10 w-10 object-cover rounded shrink-0" />
+                  <img
+                    src={pendingAttachment.previewUrl}
+                    alt=""
+                    className="h-11 w-11 shrink-0 rounded-lg object-cover"
+                  />
                 ) : pendingAttachment.file.type.startsWith("video/") ? (
-                  <VideoIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <VideoIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
                 ) : pendingAttachment.file.type.startsWith("audio/") ? (
-                  <Mic className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <Mic className="h-5 w-5 shrink-0 text-muted-foreground" />
                 ) : (
-                  <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
                 )}
-                <span className="truncate flex-1 font-mono">{pendingAttachment.file.name}</span>
-                <button type="button" onClick={clearAttachment} className="shrink-0 text-muted-foreground hover:text-destructive">
-                  <X className="h-3.5 w-3.5" />
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">
+                    {pendingAttachment.file.name}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Arquivo local
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={clearAttachment}
+                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"
+                  aria-label="Remover anexo"
+                >
+                  <X className="h-4 w-4" />
                 </button>
               </div>
             )}
-            <div className="flex items-center gap-2">
+
+            {libraryAsset && (
+              <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-background">
+                  {libraryAsset.type === "image" ? (
+                    <img
+                      src={mediaAssetUrl(libraryAsset.storageUrl)}
+                      alt={libraryAsset.originalFilename || "Mídia"}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    mediaPreviewIcon(libraryAsset.type)
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">
+                    {libraryAsset.originalFilename || `Mídia ${libraryAsset.type}`}
+                  </p>
+                  <p className="inline-flex items-center gap-1 text-[10px] text-primary">
+                    <Library className="h-3 w-3" />
+                    Biblioteca de Mídias
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setLibraryAsset(null)}
+                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"
+                  aria-label="Remover mídia da Biblioteca"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 rounded-2xl border border-border bg-background px-2 py-1.5 shadow-sm focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10">
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
                 className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFilePicked(f); e.target.value = ""; }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFilePicked(file);
+                  e.target.value = "";
+                }}
               />
+
               <Button
                 type="button"
-                size="icon"
+                size="sm"
                 variant="ghost"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={createMessage.isPending || uploadingAttachment}
-                title="Anexar arquivo"
-                className="rounded-full h-9 w-9 shrink-0 text-muted-foreground"
+                disabled={isBusy}
+                title="Anexar arquivo do computador"
+                className="h-8 gap-1.5 rounded-xl px-2 text-xs text-muted-foreground"
               >
                 <Paperclip className="h-4 w-4" />
+                <span className="hidden xl:inline">Arquivo</span>
               </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setLibraryPickerOpen(true)}
+                disabled={isBusy}
+                title="Escolher da Biblioteca de Mídias"
+                className="h-8 gap-1.5 rounded-xl px-2 text-xs text-muted-foreground"
+              >
+                <Library className="h-4 w-4" />
+                <span className="hidden xl:inline">Biblioteca</span>
+              </Button>
+
               <Input
                 data-testid="input-message"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isHumanLocked ? "IA pausada — escreva como atendente..." : pendingAttachment ? "Legenda (opcional)..." : "Digite uma mensagem..."}
-                className="flex-1 rounded-full bg-muted border-0 focus-visible:ring-1"
-                disabled={createMessage.isPending}
+                placeholder={
+                  isHumanLocked
+                    ? "Atendimento humano — escreva sua mensagem..."
+                    : pendingAttachment || libraryAsset
+                      ? "Adicionar legenda (opcional)..."
+                      : "Digite uma mensagem..."
+                }
+                className="h-9 flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
+                disabled={isBusy}
               />
+
               <Button
                 size="icon"
-                onClick={handleSend}
-                disabled={(!inputValue.trim() && !pendingAttachment) || createMessage.isPending || uploadingAttachment}
+                onClick={() => void handleSend()}
+                disabled={
+                  (!inputValue.trim() && !pendingAttachment && !libraryAsset) ||
+                  isBusy
+                }
                 data-testid="button-send-message"
-                className="rounded-full h-9 w-9 shrink-0"
+                className="h-9 w-9 shrink-0 rounded-xl"
               >
-                {uploadingAttachment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {isBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </Button>
             </div>
           </div>
         )}
       </div>
+
+      <MediaAssetPicker
+        tenantId={tenantId}
+        open={libraryPickerOpen}
+        onOpenChange={setLibraryPickerOpen}
+        allowedTypes={["image", "video", "audio", "document"]}
+        maxSelection={1}
+        title="Escolher mídia para a conversa"
+        confirmLabel="Usar na conversa"
+        onConfirm={handleLibrarySelection}
+      />
     </div>
   );
 }
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Conversations() {
   const { user } = useAuth();
@@ -752,10 +1257,17 @@ export default function Conversations() {
     queryKey: ["praca-perguntas-count", tenantId],
     queryFn: async () => {
       const token = localStorage.getItem("vendorai_token");
-      const response = await fetch(`/api/tenants/${tenantId}/praca-perguntas-pendentes/count`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!response.ok) throw new Error("Falha ao contar perguntas pendentes");
+      const response = await fetch(
+        `/api/tenants/${tenantId}/praca-perguntas-pendentes/count`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Falha ao contar perguntas pendentes");
+      }
+
       return response.json();
     },
     enabled: !!tenantId,
@@ -764,11 +1276,14 @@ export default function Conversations() {
 
   const initialConvId = new URLSearchParams(window.location.search).get("conv");
   const initialLeadId = new URLSearchParams(window.location.search).get("leadId");
+
   const [selectedId, setSelectedId] = useState<string | null>(initialConvId);
   const [showMobileChat, setShowMobileChat] = useState(!!initialConvId);
   const [channelFilter, setChannelFilter] = useState<string>("all");
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeView, setActiveView] = useState<"whatsapp" | "instagram" | "praca">("whatsapp");
+  const [activeView, setActiveView] = useState<ActiveView>("inbox");
+  const [refreshing, setRefreshing] = useState(false);
 
   const { data: conversations = [], isLoading: convsLoading } =
     useListTenantConversations(tenantId, {
@@ -787,53 +1302,159 @@ export default function Conversations() {
     },
   });
 
-  const leadMap = new Map(leads.map((l) => [l.id, l]));
-
+  const leadMap = new Map(leads.map((lead) => [lead.id, lead]));
   const markRead = useMarkConversationRead();
 
-  // Sort conversations by ultimaMensagemEm desc
-  const sorted = [...conversations]
-    .sort((a, b) => {
-      const ta = a.ultimaMensagemEm ? new Date(a.ultimaMensagemEm).getTime() : 0;
-      const tb = b.ultimaMensagemEm ? new Date(b.ultimaMensagemEm).getTime() : 0;
-      return tb - ta;
-    })
-    .filter((c) => channelFilter === "all" || c.channel === channelFilter)
-    .filter((c) => {
-      const query = searchQuery.trim().toLowerCase();
-      if (!query) return true;
-      const lead = c.leadId ? leadMap.get(c.leadId) : undefined;
-      return [lead?.nome, lead?.telefone, lead?.email, channelLabel(c.channel)]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query));
-    });
+  const totalUnread = conversations.reduce(
+    (acc, conversation) => acc + conversation.naoLidas,
+    0
+  );
+
+  const unreadConversationCount = conversations.filter(
+    (conversation) => conversation.naoLidas > 0
+  ).length;
+
+  const humanCount = conversations.filter((conversation) => {
+    const lead = conversation.leadId
+      ? leadMap.get(conversation.leadId)
+      : undefined;
+    return lead?.activeAgentLock === "human";
+  }).length;
+
+  const aiCount = conversations.filter((conversation) => {
+    const lead = conversation.leadId
+      ? leadMap.get(conversation.leadId)
+      : undefined;
+    return !!conversation.agentName && lead?.activeAgentLock !== "human";
+  }).length;
 
   const channelCounts = conversations.reduce<Record<string, number>>(
-    (acc, c) => {
-      const ch = c.channel ?? "other";
-      acc[ch] = (acc[ch] ?? 0) + 1;
+    (acc, conversation) => {
+      const channel = conversation.channel ?? "other";
+      acc[channel] = (acc[channel] ?? 0) + 1;
       return acc;
     },
     {}
   );
 
   const instagramUnread = conversations
-    .filter((c) => c.channel === "instagram")
-    .reduce((acc, c) => acc + c.naoLidas, 0);
+    .filter((conversation) => conversation.channel === "instagram")
+    .reduce((acc, conversation) => acc + conversation.naoLidas, 0);
+
+  const effectiveChannelFilter =
+    activeView === "instagram" ? "instagram" : channelFilter;
+
+  const filteredConversations = [...conversations]
+    .sort((a, b) => {
+      const ta = a.ultimaMensagemEm
+        ? new Date(a.ultimaMensagemEm).getTime()
+        : 0;
+      const tb = b.ultimaMensagemEm
+        ? new Date(b.ultimaMensagemEm).getTime()
+        : 0;
+      return tb - ta;
+    })
+    .filter(
+      (conversation) =>
+        effectiveChannelFilter === "all" ||
+        conversation.channel === effectiveChannelFilter
+    )
+    .filter((conversation) => {
+      const lead = conversation.leadId
+        ? leadMap.get(conversation.leadId)
+        : undefined;
+
+      if (inboxFilter === "unread") return conversation.naoLidas > 0;
+      if (inboxFilter === "human") return lead?.activeAgentLock === "human";
+      if (inboxFilter === "ai") {
+        return (
+          !!conversation.agentName &&
+          lead?.activeAgentLock !== "human" &&
+          !lead?.agenteDesativado
+        );
+      }
+
+      return true;
+    })
+    .filter((conversation) => {
+      const query = searchQuery.trim().toLowerCase();
+      if (!query) return true;
+
+      const lead = conversation.leadId
+        ? leadMap.get(conversation.leadId)
+        : undefined;
+
+      return [
+        lead?.nome,
+        lead?.telefone,
+        lead?.email,
+        lead?.empresa,
+        lead?.proximaAcao,
+        channelLabel(conversation.channel),
+        conversation.agentName,
+      ]
+        .filter(Boolean)
+        .some((value) =>
+          String(value).toLowerCase().includes(query)
+        );
+    });
 
   const filterChips: { key: string; label: string }[] = [
-    { key: "all", label: "Todas" },
-    ...(channelCounts["whatsapp"] ? [{ key: "whatsapp", label: "WhatsApp" }] : []),
-    ...(channelCounts["instagram"] ? [{ key: "instagram", label: "Instagram" }] : []),
-    ...(channelCounts["email"] ? [{ key: "email", label: "E-mail" }] : []),
-    ...(channelCounts["chat"] ? [{ key: "chat", label: "Chat" }] : []),
+    { key: "all", label: "Todos os canais" },
+    ...(channelCounts.whatsapp
+      ? [{ key: "whatsapp", label: "WhatsApp" }]
+      : []),
+    ...(channelCounts.instagram
+      ? [{ key: "instagram", label: "Instagram" }]
+      : []),
+    ...(channelCounts.email ? [{ key: "email", label: "E-mail" }] : []),
+    ...(channelCounts.chat ? [{ key: "chat", label: "Chat" }] : []),
   ];
 
-  const selectedConv = sorted.find((c) => c.id === selectedId) ?? null;
+  const quickFilters: {
+    key: InboxFilter;
+    label: string;
+    count: number;
+    icon: React.ReactNode;
+  }[] = [
+    {
+      key: "all",
+      label: "Todas",
+      count: conversations.length,
+      icon: <Inbox className="h-3.5 w-3.5" />,
+    },
+    {
+      key: "unread",
+      label: "Não lidas",
+      count: unreadConversationCount,
+      icon: <Eye className="h-3.5 w-3.5" />,
+    },
+    {
+      key: "human",
+      label: "Humano",
+      count: humanCount,
+      icon: <UserCheck className="h-3.5 w-3.5" />,
+    },
+    {
+      key: "ai",
+      label: "IA",
+      count: aiCount,
+      icon: <Bot className="h-3.5 w-3.5" />,
+    },
+  ];
+
+  const selectedConv =
+    filteredConversations.find(
+      (conversation) => conversation.id === selectedId
+    ) ?? null;
 
   useEffect(() => {
     if (!initialLeadId || selectedId || conversations.length === 0) return;
-    const leadConversation = conversations.find((conversation) => conversation.leadId === initialLeadId);
+
+    const leadConversation = conversations.find(
+      (conversation) => conversation.leadId === initialLeadId
+    );
+
     if (leadConversation) {
       setSelectedId(leadConversation.id);
       setShowMobileChat(true);
@@ -844,6 +1465,7 @@ export default function Conversations() {
     (conv: Conversation) => {
       setSelectedId(conv.id);
       setShowMobileChat(true);
+
       if (conv.naoLidas > 0) {
         markRead.mutate(
           { tenantId, conversationId: conv.id },
@@ -860,187 +1482,405 @@ export default function Conversations() {
     [tenantId, markRead, queryClient]
   );
 
-  // Auto-select first conversation on load (or when filter changes and current selection disappears)
   useEffect(() => {
-    const stillVisible = sorted.some((c) => c.id === selectedId);
+    const stillVisible = filteredConversations.some(
+      (conversation) => conversation.id === selectedId
+    );
+
     if (!stillVisible) {
-      const first = sorted[0]?.id ?? null;
+      const first = filteredConversations[0]?.id ?? null;
       setSelectedId(first);
       if (!first) setShowMobileChat(false);
     }
-  }, [sorted.length, channelFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    filteredConversations.length,
+    inboxFilter,
+    channelFilter,
+    activeView,
+    searchQuery,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const totalUnread = conversations.reduce((acc, c) => acc + c.naoLidas, 0);
+  async function handleRefresh() {
+    setRefreshing(true);
+
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: getListTenantConversationsQueryKey(tenantId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getListTenantLeadsQueryKey(tenantId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["praca-perguntas-count", tenantId],
+        }),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function clearFilters() {
+    setSearchQuery("");
+    setInboxFilter("all");
+    setChannelFilter("all");
+  }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-muted/20">
-      {/* ── View tabs: WhatsApp x Instagram x Perguntas Praça.ai ── */}
-      <div className="flex gap-1 px-4 pt-3 border-b border-border shrink-0 bg-background">
-        <button
-          onClick={() => { setActiveView("whatsapp"); setChannelFilter("all"); }}
-          className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-            activeView === "whatsapp"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Conversas
-        </button>
-        {channelCounts["instagram"] > 0 && (
+    <div className="flex h-full flex-col overflow-hidden bg-muted/10">
+      <div className="shrink-0 border-b border-border bg-background px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Inbox className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-semibold">Caixa de entrada</h1>
+                <span className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  sincronização ativa
+                </span>
+              </div>
+              <p className="truncate text-xs text-muted-foreground">
+                WhatsApp, Instagram, e-mail e chat com contexto de CRM e IA.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="hidden items-center gap-2 lg:flex">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveView("inbox");
+                  setInboxFilter("unread");
+                }}
+                className="rounded-xl border bg-background px-3 py-2 text-left transition-colors hover:bg-muted"
+              >
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Não lidas
+                </p>
+                <p className="text-sm font-semibold">{totalUnread}</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveView("inbox");
+                  setInboxFilter("human");
+                }}
+                className="rounded-xl border bg-background px-3 py-2 text-left transition-colors hover:bg-muted"
+              >
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Humano
+                </p>
+                <p className="text-sm font-semibold">{humanCount}</p>
+              </button>
+            </div>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              onClick={() => void handleRefresh()}
+              disabled={refreshing}
+              title="Atualizar caixa de entrada"
+            >
+              <RefreshCcw
+                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center gap-1 overflow-x-auto rounded-xl bg-muted/60 p-1">
           <button
-            onClick={() => { setActiveView("instagram"); setChannelFilter("instagram"); }}
-            className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-              activeView === "instagram"
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+            type="button"
+            onClick={() => {
+              setActiveView("inbox");
+              setChannelFilter("all");
+            }}
+            className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors ${
+              activeView === "inbox"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <span className="flex items-center gap-2">
-              <Instagram className="h-3.5 w-3.5 text-pink-500" />
-              Instagram
-              {instagramUnread > 0 && (
-                <Badge className="h-5 min-w-5 justify-center rounded-full px-1.5 text-[11px]">
-                  {instagramUnread}
-                </Badge>
-              )}
+            <Inbox className="h-3.5 w-3.5" />
+            Caixa de entrada
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
+              {conversations.length}
             </span>
           </button>
-        )}
-        <button
-          onClick={() => setActiveView("praca")}
-          className={`px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-            activeView === "praca"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <span className="flex items-center gap-2">
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveView("instagram");
+              setInboxFilter("all");
+            }}
+            className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors ${
+              activeView === "instagram"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Instagram className="h-3.5 w-3.5 text-pink-500" />
+            Instagram
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
+              {channelCounts.instagram ?? 0}
+            </span>
+            {instagramUnread > 0 && (
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                {instagramUnread}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView("praca")}
+            className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors ${
+              activeView === "praca"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
             Perguntas Praça.ai
             {pracaPending.count > 0 && (
-              <Badge className="h-5 min-w-5 justify-center rounded-full px-1.5 text-[11px]">
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
                 {pracaPending.count}
-              </Badge>
+              </span>
             )}
-          </span>
-        </button>
+          </button>
+        </div>
       </div>
 
       {activeView === "praca" ? (
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <PracaPerguntas />
         </div>
       ) : (
-      <div className="flex flex-1 overflow-hidden">
-      {/* ── Left sidebar ── */}
-      <div className={`${showMobileChat ? "hidden md:flex" : "flex"} flex-col border-r border-border bg-background w-full md:w-[360px] md:shrink-0`}>
-        {/* Sidebar header */}
-        <div className="px-4 py-3 border-b border-border shrink-0 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-base font-semibold">{activeView === "instagram" ? "Instagram" : "Conversas"}</h1>
-              <p className="text-[11px] text-muted-foreground">
-                {activeView === "instagram"
-                  ? "DMs, comentários em posts, reels e anúncios"
-                  : "WhatsApp, Instagram, e-mail e chat em uma caixa de entrada"}
-              </p>
+        <div className="flex flex-1 overflow-hidden">
+          <div
+            className={`${
+              showMobileChat ? "hidden md:flex" : "flex"
+            } w-full flex-col border-r border-border bg-background md:w-[372px] md:shrink-0`}
+          >
+            <div className="shrink-0 border-b border-border px-3 py-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Buscar contato, empresa, telefone ou e-mail..."
+                  className="h-9 rounded-xl border-border bg-muted/40 pl-9 pr-3 text-sm"
+                />
+              </div>
+
+              <div className="mt-3 grid grid-cols-4 gap-1">
+                {quickFilters.map((filter) => (
+                  <button
+                    type="button"
+                    key={filter.key}
+                    onClick={() => setInboxFilter(filter.key)}
+                    className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors ${
+                      inboxFilter === filter.key
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted/60 text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {filter.icon}
+                      <strong className="text-[11px]">{filter.count}</strong>
+                    </span>
+                    <span className="truncate">{filter.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            {totalUnread > 0 && (
-              <Badge variant="default" className="text-xs">
-                {totalUnread} não lidas
-              </Badge>
+
+            {activeView !== "instagram" && filterChips.length > 1 && (
+              <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-border px-3 py-2 scrollbar-none">
+                {filterChips.map((chip) => (
+                  <button
+                    type="button"
+                    key={chip.key}
+                    onClick={() => setChannelFilter(chip.key)}
+                    className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                      channelFilter === chip.key
+                        ? "bg-foreground text-background"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                  >
+                    {chip.key !== "all" && channelIcon(chip.key)}
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex shrink-0 items-center justify-between px-3 py-2 text-[11px] text-muted-foreground">
+              <span>
+                {filteredConversations.length} conversa
+                {filteredConversations.length === 1 ? "" : "s"}
+              </span>
+              {(searchQuery ||
+                inboxFilter !== "all" ||
+                channelFilter !== "all") && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+
+            <ScrollArea className="flex-1">
+              {convsLoading ? (
+                <div className="space-y-2 p-3">
+                  {[...Array(6)].map((_, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-3 rounded-xl border p-3"
+                    >
+                      <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-muted" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+                        <div className="h-2.5 w-1/2 animate-pulse rounded bg-muted" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredConversations.length === 0 ? (
+                <div className="flex h-64 flex-col items-center justify-center gap-3 p-6 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                    <MessageSquare className="h-6 w-6 text-muted-foreground" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {conversations.length === 0
+                        ? "Nenhuma conversa ainda"
+                        : "Nenhuma conversa neste filtro"}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      {conversations.length === 0
+                        ? "As conversas dos canais conectados aparecerão aqui automaticamente."
+                        : "Tente remover filtros ou buscar outro contato."}
+                    </p>
+                  </div>
+
+                  {conversations.length === 0 ? (
+                    <Link
+                      href="/configuracoes"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium hover:bg-muted"
+                    >
+                      Configurar canais
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={clearFilters}
+                    >
+                      Limpar filtros
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="pb-2">
+                  {filteredConversations.map((conversation) => {
+                    const lead = conversation.leadId
+                      ? leadMap.get(conversation.leadId)
+                      : undefined;
+
+                    return (
+                      <ConvItem
+                        key={conversation.id}
+                        conv={conversation}
+                        lead={lead}
+                        isHumanLocked={lead?.activeAgentLock === "human"}
+                        selected={selectedId === conversation.id}
+                        onClick={() => handleSelectConv(conversation)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          <div
+            className={`${
+              showMobileChat ? "flex" : "hidden md:flex"
+            } flex-1 flex-col overflow-hidden`}
+          >
+            {selectedConv ? (
+              <ChatPanel
+                key={selectedConv.id}
+                conv={selectedConv}
+                lead={
+                  selectedConv.leadId
+                    ? leadMap.get(selectedConv.leadId)
+                    : undefined
+                }
+                leadName={
+                  selectedConv.leadId
+                    ? leadMap.get(selectedConv.leadId)?.nome
+                    : undefined
+                }
+                tenantId={tenantId}
+                onBack={() => setShowMobileChat(false)}
+                onLockChanged={() => {
+                  queryClient.invalidateQueries({
+                    queryKey: getListTenantLeadsQueryKey(tenantId),
+                  });
+                }}
+              />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-3xl border bg-background shadow-sm">
+                  {conversations.length === 0 ? (
+                    <Inbox className="h-7 w-7 text-muted-foreground" />
+                  ) : (
+                    <MessageSquare className="h-7 w-7 text-muted-foreground" />
+                  )}
+                </div>
+
+                <div className="max-w-sm">
+                  <p className="text-sm font-semibold">
+                    {conversations.length === 0
+                      ? "Sua caixa de entrada está pronta"
+                      : "Selecione uma conversa"}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {conversations.length === 0
+                      ? "Conecte seus canais em Configurações. Quando chegar uma nova mensagem, ela aparecerá aqui com o contexto do CRM."
+                      : "Escolha um contato na lista para ver o histórico, assumir o atendimento ou responder com apoio da Biblioteca de Mídias."}
+                  </p>
+                </div>
+
+                {conversations.length === 0 && (
+                  <Link
+                    href="/configuracoes"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    Configurar canais
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
             )}
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Buscar contato, telefone ou e-mail..."
-              className="h-9 pl-9 rounded-full bg-muted/60 border-0 focus-visible:ring-1"
-            />
-          </div>
         </div>
-
-        {/* Channel filter chips -- escondido na aba dedicada do Instagram,
-            já vem pré-filtrado, mostrar de novo seria redundante */}
-        {activeView !== "instagram" && filterChips.length > 1 && (
-          <div className="flex gap-2 px-4 py-2 overflow-x-auto scrollbar-none border-b border-border shrink-0">
-            {filterChips.map((chip) => (
-              <button
-                key={chip.key}
-                onClick={() => setChannelFilter(chip.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
-                  channelFilter === chip.key
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted/60"
-                }`}
-              >
-                {chip.key !== "all" && channelIcon(chip.key)}
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Conversation list */}
-        <ScrollArea className="flex-1">
-          {convsLoading ? (
-            <div className="p-4 space-y-3">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="flex gap-3 items-start">
-                  <div className="h-9 w-9 rounded-full bg-muted animate-pulse shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-muted animate-pulse rounded w-3/4" />
-                    <div className="h-2.5 bg-muted animate-pulse rounded w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : sorted.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground p-4 text-center">
-              <MessageSquare className="h-8 w-8 opacity-30" />
-              <p className="text-sm">Nenhuma conversa encontrada</p>
-            </div>
-          ) : (
-            sorted.map((conv) => {
-              const convLead = conv.leadId ? leadMap.get(conv.leadId) : undefined;
-              return (
-                <ConvItem
-                  key={conv.id}
-                  conv={conv}
-                  leadName={convLead?.nome}
-                  isHumanLocked={convLead?.activeAgentLock === "human"}
-                  selected={selectedId === conv.id}
-                  onClick={() => handleSelectConv(conv)}
-                />
-              );
-            })
-          )}
-        </ScrollArea>
-      </div>
-
-      {/* ── Right chat panel ── */}
-      <div className={`${showMobileChat ? "flex" : "hidden md:flex"} flex-1 flex-col overflow-hidden`}>
-        {selectedConv ? (
-          <ChatPanel
-            key={selectedConv.id}
-            conv={selectedConv}
-            lead={selectedConv.leadId ? leadMap.get(selectedConv.leadId) : undefined}
-            leadName={selectedConv.leadId ? leadMap.get(selectedConv.leadId)?.nome : undefined}
-            tenantId={tenantId}
-            onBack={() => setShowMobileChat(false)}
-            onLockReleased={() => {
-              queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
-            }}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-            <MessageSquare className="h-12 w-12 opacity-20" />
-            <p className="text-sm">Selecione uma conversa para começar</p>
-          </div>
-        )}
-      </div>
-      </div>
       )}
     </div>
   );
