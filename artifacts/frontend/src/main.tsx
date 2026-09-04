@@ -16,6 +16,7 @@ import { MediaAiBaseWorkspaceNav } from "./components/media/MediaAiBaseWorkspace
 import { MediaDeleteSelectionBridge } from "./components/media/MediaDeleteSelectionBridge";
 import { ContentGeneratorQueueUxBridge } from "./components/marketing/ContentGeneratorQueueUxBridge";
 import { ContentPlanVisualCompletionBridge } from "./components/marketing/ContentPlanVisualCompletionBridge";
+import { MediaPlanAutoProductionBridge } from "./components/marketing/MediaPlanAutoProductionBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { I18nProvider } from "./i18n";
 import "./index.css";
@@ -81,6 +82,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaDeleteSelectionBridge />
           <ContentGeneratorQueueUxBridge />
           <ContentPlanVisualCompletionBridge />
+          <MediaPlanAutoProductionBridge />
         </>
       )}
     </I18nProvider>
