@@ -1,26 +1,19 @@
 type JsonObject = Record<string, unknown>;
 
-export type AppRuntimeBindingContext = {
-  "viewer.name": string;
-  "viewer.email": string;
-  "viewer.phone": string;
-  "viewer.locale": string;
-  "viewer.role": string;
-  "app.name": string;
+export type AppRuntimeBindingContext = Record<string, string>;
+
+const BINDABLE_LIMITS: Record<string, number> = {
+  title: 180,
+  subtitle: 300,
+  body: 6000,
+  label: 120,
+  value: 120,
+  detail: 300,
+  badge: 80,
+  eyebrow: 100,
 };
 
-const BINDABLE_KEYS = new Set([
-  "title",
-  "subtitle",
-  "body",
-  "label",
-  "value",
-  "detail",
-  "badge",
-  "eyebrow",
-]);
-
-const TOKEN_PATTERN = /\{\{\s*(viewer\.name|viewer\.email|viewer\.phone|viewer\.locale|viewer\.role|app\.name)\s*\}\}/g;
+const TOKEN_PATTERN = /\{\{\s*((?:viewer|app|data)\.[A-Za-z0-9_.-]+)\s*\}\}/g;
 
 function asObject(value: unknown): JsonObject | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -28,13 +21,24 @@ function asObject(value: unknown): JsonObject | null {
     : null;
 }
 
-export function bindRuntimeText(value: string, bindings: AppRuntimeBindingContext): string {
-  return value.replace(TOKEN_PATTERN, (_match, token: keyof AppRuntimeBindingContext) => bindings[token] ?? "");
+export function bindRuntimeText(
+  value: string,
+  bindings: AppRuntimeBindingContext,
+  maxLength = 6000,
+): string {
+  return value
+    .replace(TOKEN_PATTERN, (_match, token: string) => bindings[token] ?? "")
+    .slice(0, maxLength);
 }
 
-export function applyRuntimeBindings(value: unknown, bindings: AppRuntimeBindingContext, key?: string): unknown {
+export function applyRuntimeBindings(
+  value: unknown,
+  bindings: AppRuntimeBindingContext,
+  key?: string,
+): unknown {
   if (typeof value === "string") {
-    return key && BINDABLE_KEYS.has(key) ? bindRuntimeText(value, bindings) : value;
+    const maxLength = key ? BINDABLE_LIMITS[key] : undefined;
+    return maxLength ? bindRuntimeText(value, bindings, maxLength) : value;
   }
   if (Array.isArray(value)) {
     return value.map((item) => applyRuntimeBindings(item, bindings));

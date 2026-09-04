@@ -1,39 +1,21 @@
 import { Router, type IRouter, type Request, type RequestHandler } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import {
-  appDataSourceRegistryTable,
   appInstanceVersionsTable,
   appInstancesTable,
   appUserMembershipsTable,
   appUsersTable,
   db,
-  leadsTable,
 } from "@workspace/db";
 import { verifyAppUserToken, type AppUserJwtPayload } from "../lib/app_user_jwt.js";
+import {
+  resolveRuntimeDataSource,
+  type RuntimeViewer,
+} from "../lib/app_runtime_data_sources.js";
 
 const router: IRouter = Router();
 type JsonObject = Record<string, unknown>;
 type AppUserRequest = Request & { appUser?: AppUserJwtPayload };
-
-type RuntimeViewer = {
-  id: string;
-  tenantId: string;
-  leadId: string | null;
-  displayName: string;
-  email: string | null;
-  phone: string | null;
-  locale: string | null;
-  roleKey: string;
-  permissions: string[];
-};
-
-type ExecutorContext = {
-  tenantId: string;
-  appInstanceId: string;
-  viewer: RuntimeViewer;
-};
-
-type DataSourceExecutor = (context: ExecutorContext) => Promise<JsonObject | null>;
 
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -71,43 +53,6 @@ const authenticateAppUser: RequestHandler = (req, res, next) => {
   }
 };
 
-const DATA_SOURCE_EXECUTORS: Record<string, DataSourceExecutor> = {
-  "viewer.profile": async ({ viewer }) => ({
-    id: viewer.id,
-    displayName: viewer.displayName,
-    email: viewer.email,
-    phone: viewer.phone,
-    locale: viewer.locale,
-    roleKey: viewer.roleKey,
-    permissions: viewer.permissions,
-  }),
-
-  "viewer.linked_contact.summary": async ({ tenantId, viewer }) => {
-    if (!viewer.leadId) return null;
-    const [contact] = await db
-      .select({
-        id: leadsTable.id,
-        name: leadsTable.nome,
-        email: leadsTable.email,
-        phone: leadsTable.telefone,
-        company: leadsTable.empresa,
-        nonLeadKind: leadsTable.naoLeadTipo,
-      })
-      .from(leadsTable)
-      .where(and(eq(leadsTable.id, viewer.leadId), eq(leadsTable.tenantId, tenantId)))
-      .limit(1);
-    if (!contact) return null;
-    return {
-      id: contact.id,
-      name: contact.name,
-      email: contact.email,
-      phone: contact.phone,
-      company: contact.company,
-      contactKind: contact.nonLeadKind ?? "lead",
-    };
-  },
-};
-
 router.get(
   "/app-runtime/apps/:appId/data/:sourceKey",
   authenticateAppUser,
@@ -119,7 +64,12 @@ router.get(
     const [app] = await db
       .select({ id: appInstancesTable.id, tenantId: appInstancesTable.tenantId })
       .from(appInstancesTable)
-      .where(and(eq(appInstancesTable.id, appInstanceId), eq(appInstancesTable.status, "published")))
+      .where(
+        and(
+          eq(appInstancesTable.id, appInstanceId),
+          eq(appInstancesTable.status, "published"),
+        ),
+      )
       .limit(1);
     if (!app || app.tenantId !== identity.tenantId) {
       return res.status(401).json({ error: "UNAUTHENTICATED" });
@@ -135,7 +85,10 @@ router.get(
           eq(appInstanceVersionsTable.status, "published"),
         ),
       )
-      .orderBy(desc(appInstanceVersionsTable.publishedAt), desc(appInstanceVersionsTable.version))
+      .orderBy(
+        desc(appInstanceVersionsTable.publishedAt),
+        desc(appInstanceVersionsTable.version),
+      )
       .limit(1);
     if (!snapshot || !authEnabled(snapshot.definition)) {
       return res.status(401).json({ error: "UNAUTHENTICATED" });
@@ -155,7 +108,10 @@ router.get(
         permissions: appUserMembershipsTable.permissions,
       })
       .from(appUserMembershipsTable)
-      .innerJoin(appUsersTable, eq(appUsersTable.id, appUserMembershipsTable.appUserId))
+      .innerJoin(
+        appUsersTable,
+        eq(appUsersTable.id, appUserMembershipsTable.appUserId),
+      )
       .where(
         and(
           eq(appUsersTable.id, identity.sub),
@@ -166,35 +122,13 @@ router.get(
         ),
       )
       .limit(1);
-    if (!current || current.userStatus !== "active" || current.membershipStatus !== "active") {
+    if (
+      !current ||
+      current.userStatus !== "active" ||
+      current.membershipStatus !== "active"
+    ) {
       return res.status(401).json({ error: "UNAUTHENTICATED" });
     }
-
-    const [source] = await db
-      .select({
-        key: appDataSourceRegistryTable.key,
-        executorKey: appDataSourceRegistryTable.executorKey,
-        requiredPermissions: appDataSourceRegistryTable.requiredPermissions,
-      })
-      .from(appDataSourceRegistryTable)
-      .where(
-        and(
-          eq(appDataSourceRegistryTable.key, sourceKey),
-          eq(appDataSourceRegistryTable.status, "active"),
-        ),
-      )
-      .limit(1);
-    if (!source) return res.status(404).json({ error: "DATA_SOURCE_NOT_FOUND" });
-
-    const permissions = current.permissions ?? [];
-    const permissionSet = new Set(permissions);
-    const requiredPermissions = source.requiredPermissions ?? [];
-    if (!requiredPermissions.every((permission) => permissionSet.has(permission))) {
-      return res.status(403).json({ error: "DATA_SOURCE_FORBIDDEN" });
-    }
-
-    const executor = DATA_SOURCE_EXECUTORS[source.executorKey];
-    if (!executor) return res.status(404).json({ error: "DATA_SOURCE_NOT_FOUND" });
 
     const viewer: RuntimeViewer = {
       id: current.id,
@@ -205,12 +139,28 @@ router.get(
       phone: current.phone,
       locale: current.locale,
       roleKey: current.roleKey,
-      permissions,
+      permissions: current.permissions ?? [],
     };
 
-    const data = await executor({ tenantId: app.tenantId, appInstanceId: app.id, viewer });
+    const resolution = await resolveRuntimeDataSource(sourceKey, {
+      tenantId: app.tenantId,
+      appInstanceId: app.id,
+      viewer,
+    });
+
+    if (resolution.status === "not_found") {
+      return res.status(404).json({ error: "DATA_SOURCE_NOT_FOUND" });
+    }
+    if (resolution.status === "forbidden") {
+      return res.status(403).json({ error: "DATA_SOURCE_FORBIDDEN" });
+    }
+
     res.setHeader("Cache-Control", "private, no-store");
-    return res.json({ dataSourceVersion: 1, sourceKey: source.key, data });
+    return res.json({
+      dataSourceVersion: 1,
+      sourceKey: resolution.sourceKey,
+      data: resolution.data,
+    });
   },
 );
 

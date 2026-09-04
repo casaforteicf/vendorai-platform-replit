@@ -13,13 +13,25 @@ import {
   applyRuntimeBindings,
   type AppRuntimeBindingContext,
 } from "../lib/app_runtime_bindings.js";
+import {
+  normalizeRuntimeDataSourceKeys,
+  resolveRuntimeDataSources,
+  runtimeDataSourceBindings,
+  type RuntimeViewer,
+} from "../lib/app_runtime_data_sources.js";
 
 const router: IRouter = Router();
 type JsonObject = Record<string, unknown>;
 type AppUserRequest = Request & { appUser?: AppUserJwtPayload };
 
+type SanitizedRuntime = {
+  definition: JsonObject;
+  dataSourceKeys: string[];
+};
+
 const ALLOWED_BLOCK_TYPES = new Set(["hero", "text", "callout", "metrics", "list", "cards", "divider"]);
 const ALLOWED_TONES = new Set(["neutral", "info", "success", "warning", "danger"]);
+const MAX_RUNTIME_DATA_SOURCES = 20;
 
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
@@ -71,6 +83,13 @@ function visibleTo(value: unknown, roleKey: string, permissions: string[]): bool
   return mode === "any" ? required.some((permission) => current.has(permission)) : required.every((permission) => current.has(permission));
 }
 
+function collectBlockDataSources(value: unknown, target: Set<string>): void {
+  for (const sourceKey of normalizeRuntimeDataSourceKeys(value)) {
+    if (target.size >= MAX_RUNTIME_DATA_SOURCES) return;
+    target.add(sourceKey);
+  }
+}
+
 function sanitizeMetricItem(value: unknown): JsonObject | null {
   const source = asObject(value);
   const label = text(source.label, 100);
@@ -111,10 +130,19 @@ function sanitizeCardItem(value: unknown): JsonObject | null {
   };
 }
 
-function sanitizeBlock(value: unknown, index: number, roleKey: string, permissions: string[]): JsonObject | null {
+function sanitizeBlock(
+  value: unknown,
+  index: number,
+  roleKey: string,
+  permissions: string[],
+  dataSourceKeys: Set<string>,
+): JsonObject | null {
   const source = asObject(value);
   const type = text(source.type, 40);
   if (!type || !ALLOWED_BLOCK_TYPES.has(type) || !visibleTo(source.visibility, roleKey, permissions)) return null;
+
+  collectBlockDataSources(source.dataSources, dataSourceKeys);
+
   const props = asObject(source.props);
   const id = text(source.id, 100) ?? `block-${index + 1}`;
   const base: JsonObject = { id, type };
@@ -170,8 +198,9 @@ function sanitizeBlock(value: unknown, index: number, roleKey: string, permissio
   return { ...base, props: { ...(text(props.label, 100) ? { label: text(props.label, 100) } : {}) } };
 }
 
-function sanitizeRuntime(value: unknown, roleKey: string, permissions: string[]): JsonObject {
+function sanitizeRuntime(value: unknown, roleKey: string, permissions: string[]): SanitizedRuntime {
   const source = asObject(value);
+  const dataSourceKeys = new Set<string>();
   const rawPages = Array.isArray(source.pages) ? source.pages.slice(0, 50) : [];
   const pages = rawPages.flatMap((pageValue, pageIndex) => {
     const page = asObject(pageValue);
@@ -179,7 +208,18 @@ function sanitizeRuntime(value: unknown, roleKey: string, permissions: string[])
     const id = text(page.id, 100) ?? `page-${pageIndex + 1}`;
     const title = text(page.title, 160) ?? id;
     const blocks = Array.isArray(page.blocks)
-      ? page.blocks.map((block, blockIndex) => sanitizeBlock(block, blockIndex, roleKey, permissions)).filter(Boolean).slice(0, 100)
+      ? page.blocks
+          .map((block, blockIndex) =>
+            sanitizeBlock(
+              block,
+              blockIndex,
+              roleKey,
+              permissions,
+              dataSourceKeys,
+            ),
+          )
+          .filter(Boolean)
+          .slice(0, 100)
       : [];
     return [{
       id,
@@ -191,7 +231,10 @@ function sanitizeRuntime(value: unknown, roleKey: string, permissions: string[])
   });
   const requestedDefault = text(source.defaultPageId, 100);
   const defaultPageId = requestedDefault && pages.some((page) => page.id === requestedDefault) ? requestedDefault : pages[0]?.id ?? null;
-  return { version: 1, defaultPageId, pages };
+  return {
+    definition: { version: 1, defaultPageId, pages },
+    dataSourceKeys: Array.from(dataSourceKeys).slice(0, MAX_RUNTIME_DATA_SOURCES),
+  };
 }
 
 function sanitizeTheme(value: unknown): JsonObject {
@@ -267,6 +310,8 @@ router.get("/app-runtime/apps/:appId/runtime", authenticateAppUser, async (req, 
 
   const [current] = await db
     .select({
+      id: appUsersTable.id,
+      leadId: appUsersTable.leadId,
       userStatus: appUsersTable.status,
       displayName: appUsersTable.displayName,
       email: appUsersTable.email,
@@ -298,7 +343,8 @@ router.get("/app-runtime/apps/:appId/runtime", authenticateAppUser, async (req, 
   const snapshotDefinition = asObject(snapshot.definition);
   const templateDefinition = asObject(templateVersion.definition);
   const appName = text(snapshotDefinition.name, 120) ?? "Aplicativo";
-  const bindings: AppRuntimeBindingContext = {
+  const permissions = current.permissions ?? [];
+  const baseBindings: AppRuntimeBindingContext = {
     "viewer.name": current.displayName ?? "",
     "viewer.email": current.email ?? "",
     "viewer.phone": current.phone ?? "",
@@ -307,18 +353,49 @@ router.get("/app-runtime/apps/:appId/runtime", authenticateAppUser, async (req, 
     "app.name": appName,
   };
 
-  const sanitizedRuntime = sanitizeRuntime(templateDefinition.runtime, current.roleKey, current.permissions ?? []);
-  const runtime = applyRuntimeBindings(sanitizedRuntime, bindings) as JsonObject;
+  const sanitized = sanitizeRuntime(
+    templateDefinition.runtime,
+    current.roleKey,
+    permissions,
+  );
+  const viewer: RuntimeViewer = {
+    id: current.id,
+    tenantId: app.tenantId,
+    leadId: current.leadId,
+    displayName: current.displayName,
+    email: current.email,
+    phone: current.phone,
+    locale: current.locale,
+    roleKey: current.roleKey,
+    permissions,
+  };
+  const dataSourceResolutions = await resolveRuntimeDataSources(
+    sanitized.dataSourceKeys,
+    {
+      tenantId: app.tenantId,
+      appInstanceId: app.id,
+      viewer,
+    },
+  );
+  const runtimeBindings: AppRuntimeBindingContext = {
+    ...baseBindings,
+    ...runtimeDataSourceBindings(dataSourceResolutions),
+  };
+
+  const runtime = applyRuntimeBindings(
+    sanitized.definition,
+    runtimeBindings,
+  ) as JsonObject;
   const pageIds = new Set((runtime.pages as JsonObject[]).map((page) => String(page.id)));
   const navigation = applyRuntimeBindings(
     sanitizeNavigation(snapshotDefinition.navigation, pageIds),
-    bindings,
+    baseBindings,
   ) as JsonObject[];
 
   res.setHeader("Cache-Control", "private, no-store");
   return res.json({
     runtimeVersion: 1,
-    bindingVersion: 1,
+    bindingVersion: 2,
     publishedVersionId: snapshot.id,
     publishedVersion: snapshot.version,
     publishedAt: snapshot.publishedAt,
