@@ -1,8 +1,9 @@
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, Megaphone, ArrowLeft, ArrowRight, Layers3 } from "lucide-react";
+import { MessageCircle, Megaphone, ArrowLeft, ArrowRight, Layers3, Store } from "lucide-react";
 import MarketingVerticals from "@/pages/MarketingVerticals";
+import PracaVariedades from "@/pages/supermercado/SupermercadoCampanhas";
 import { LaunchCommandCenter } from "@/components/marketing/LaunchCommandCenter";
 import { AssistedMarketingManager } from "@/components/marketing/AssistedMarketingManager";
 
@@ -11,7 +12,10 @@ import { AssistedMarketingManager } from "@/components/marketing/AssistedMarketi
 // fluxos novos retornam para /content?tab=campanhas para evitar telas paralelas.
 export default function CampanhasHub() {
   const [location, setLocation] = useLocation();
-  const showMarkets = location.includes("view=mercados") || new URLSearchParams(window.location.search).get("view") === "mercados";
+  const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
+  const view = new URLSearchParams(queryString).get("view");
+  const showMarkets = view === "mercados";
+  const showPraca = view === "praca" || new URLSearchParams(window.location.search).get("tab") === "variedades";
 
   if (showMarkets) {
     return (
@@ -29,6 +33,22 @@ export default function CampanhasHub() {
     );
   }
 
+  if (showPraca) {
+    return (
+      <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => setLocation("/content?tab=campanhas")}
+        >
+          <ArrowLeft className="h-4 w-4" /> Voltar para Campanhas
+        </Button>
+        <PracaVariedades />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center gap-2">
@@ -42,7 +62,7 @@ export default function CampanhasHub() {
       <LaunchCommandCenter />
       <AssistedMarketingManager />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=organicas")} onKeyDown={(e) => e.key === "Enter" && setLocation("/content?tab=campanhas&view=organicas")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <CardContent className="pt-6 space-y-3 h-full flex flex-col">
             <div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-primary" /><h2 className="font-semibold">Campanha orgânica</h2></div>
@@ -58,6 +78,15 @@ export default function CampanhasHub() {
             <p className="text-sm text-muted-foreground">Google Ads ou Meta (Facebook/Instagram). Alcance gente nova com investimento real em mídia.</p>
             <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5"><li>Gera o criativo com IA</li><li>Usa intenção e contexto comercial</li><li>Você controla quando ativar gasto real</li></ul>
             <Button variant="secondary" className="w-full mt-auto">Criar anúncio pago <ArrowRight className="h-4 w-4 ml-1" /></Button>
+          </CardContent>
+        </Card>
+
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=praca")} onKeyDown={(e) => e.key === "Enter" && setLocation("/content?tab=campanhas&view=praca")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <CardContent className="pt-6 space-y-3 h-full flex flex-col">
+            <div className="flex items-center gap-2"><Store className="h-5 w-5 text-primary" /><h2 className="font-semibold">Praça.ai</h2></div>
+            <p className="text-sm text-muted-foreground">Publique conteúdo e ofertas no Praça.ai e, quando fizer sentido, envie também pelo WhatsApp.</p>
+            <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-0.5"><li>Conteúdo e promoções no Praça.ai</li><li>Oferta programada</li><li>Disparo opcional para contatos</li></ul>
+            <Button variant="secondary" className="w-full mt-auto">Gerenciar Praça.ai <ArrowRight className="h-4 w-4 ml-1" /></Button>
           </CardContent>
         </Card>
 
