@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-442",
+    "titulo": "adicionar coleções e identidade sonora ao Music Hub",
+    "descricao": "trilhas podem participar de múltiplas coleções/playlists; adiciona contextos de uso da marca: Institucional, Reels/Shorts, Anúncios, Produto, Stories e Apresentações; permite marcar trilhas como `Oficial da marca`; adiciona filtros por coleção e uso da marca;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T01:02:42.000Z",
+    "pullRequest": 442
+  },
+  {
     "id": "pr-435",
     "titulo": "Content Autopilot: usar o site real do tenant como destino do blog",
     "descricao": "adiciona uma camada `Website Connector` para resolver o site oficial de cada tenant; prioriza o site cadastrado do cliente quando uma configuração antiga ainda aponta para `appvendorai.com` / `www.appvendorai.com`; reconhece site gerado pelo VendorAI somente quando existe de fato um projeto de site do tenant; expõe o status da conexão do site ao Content Autopilot;",
