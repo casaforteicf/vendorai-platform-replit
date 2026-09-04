@@ -1,0 +1,22 @@
+/*
+ * Orçamento — política de UI.
+ *
+ * O fluxo legado de "Modelos de orçamento" continua preservado no código e no
+ * backend, mas não faz mais parte da experiência oficial de criação. Ocultamos
+ * apenas o ponto de entrada para evitar apagar funcionalidade histórica.
+ *
+ * O seletor fica restrito ao Dialog de orçamento pelo campo `titulo` e pela
+ * estrutura exclusiva da barra de origens do orçamento.
+ */
+[role="dialog"] form:has(input[name="titulo"])
+  > .flex.rounded-lg.border.overflow-hidden.text-sm
+  > button:first-child {
+  display: none;
+}
+
+/* Remove a frase antiga que orientava o usuário a escolher um modelo pronto. */
+[role="dialog"] form:has(input[name="titulo"])
+  > .rounded-lg.border.bg-muted\/20.p-3
+  > p:nth-child(2) {
+  display: none;
+}

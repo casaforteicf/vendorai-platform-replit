@@ -18,6 +18,7 @@ import "./sidebar-utilities.css";
 import "./logo-top-right.css";
 import "./site-generator-fix.css";
 import "./video-route-theme.css";
+import "./budget-dialog-policy.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
 import { setupApiClient } from "./lib/api";
 
