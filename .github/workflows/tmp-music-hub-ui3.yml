@@ -1,0 +1,105 @@
+name: Temporary Music Hub UI v3
+
+on:
+  push:
+    branches:
+      - feat/media-center-music-hub
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/media-center-music-hub
+          fetch-depth: 0
+      - name: Patch Music Hub UI and editor upload metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          media_path = Path('artifacts/frontend/src/pages/MediaCenter.tsx')
+          text = media_path.read_text()
+
+          def require(condition, label):
+              if not condition:
+                  raise SystemExit(f'anchor not found: {label}')
+
+          # 1. Insert Music Hub panel immediately before the search/filter box.
+          search_marker = 'placeholder="Buscar por nome, pasta, cliente, evento, produto..."'
+          search_pos = text.index(search_marker)
+          block_marker = '              <div className="mt-5 rounded-2xl border bg-background p-3 shadow-sm">'
+          insert_pos = text.rfind(block_marker, 0, search_pos)
+          require(insert_pos >= 0, 'music hub insertion point')
+          panel = '''              {filter === "audio" && (\n                <div className="mt-5 rounded-2xl border bg-background p-4 shadow-sm">\n                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">\n                    <div>\n                      <div className="flex items-center gap-2">\n                        <Music2 className="h-5 w-5 text-primary" />\n                        <h2 className="font-semibold">Music Hub</h2>\n                      </div>\n                      <p className="mt-1 text-xs text-muted-foreground">\n                        Organize músicas, locuções, efeitos, jingles e identidade sonora. Trilhas musicais carregam o passaporte de direitos para vídeos e anúncios.\n                      </p>\n                    </div>\n                    <button onClick={() => navigate("/content-studio/video/edicao")} className="top-btn shrink-0">\n                      <Sparkles className="h-4 w-4" /> Criar / gerar música\n                    </button>\n                  </div>\n                  <div className="mt-4 flex gap-2 overflow-x-auto pb-1">\n                    {(Object.keys(AUDIO_KIND_SHORT_LABELS) as AudioKindFilter[]).map((kind) => (\n                      <button\n                        key={kind}\n                        onClick={() => setAudioKindFilter(kind)}\n                        className={`folder-chip ${audioKindFilter === kind ? "folder-chip-active" : ""}`}\n                      >\n                        {AUDIO_KIND_SHORT_LABELS[kind]} · {audioKindCounts[kind]}\n                      </button>\n                    ))}\n                  </div>\n                </div>\n              )}\n\n'''
+          if '<h2 className="font-semibold">Music Hub</h2>' not in text:
+              text = text[:insert_pos] + panel + text[insert_pos:]
+
+          # 2. Add audio subtype selection to upload controls.
+          folder_label = '<label className="tiny-label">Pasta do novo upload</label>'
+          folder_pos = text.index(folder_label)
+          upload_div_pos = text.rfind('                    <div>', 0, folder_pos)
+          require(upload_div_pos >= 0, 'audio upload selector')
+          selector = '''                    {filter === "audio" && (\n                      <div>\n                        <label className="tiny-label">Tipo dos arquivos de áudio</label>\n                        <select\n                          value={uploadAudioKind}\n                          onChange={(e) => setUploadAudioKind(e.target.value as AudioKind)}\n                          className="h-9 rounded-lg border bg-background px-3 text-sm"\n                        >\n                          {Object.entries(AUDIO_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}\n                        </select>\n                      </div>\n                    )}\n'''
+          if 'Tipo dos arquivos de áudio' not in text:
+              text = text[:upload_div_pos] + selector + text[upload_div_pos:]
+
+          # 3. Show audio subtype on cards.
+          old = '                      const folder = assetFolder(asset);\n                      const isSelected = selected.includes(asset.id);'
+          new = '                      const folder = assetFolder(asset);\n                      const audioKind = assetAudioKind(asset);\n                      const isSelected = selected.includes(asset.id);'
+          require(old in text or 'const audioKind = assetAudioKind(asset);' in text, 'card audio kind')
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old_badge = '<span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase text-white">{TYPE_LABELS[asset.type]}</span>'
+          new_badge = '''<span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase text-white">\n                              {audioKind ? AUDIO_KIND_LABELS[audioKind] : TYPE_LABELS[asset.type]}\n                            </span>'''
+          require(old_badge in text or '{audioKind ? AUDIO_KIND_LABELS[audioKind]' in text, 'card subtype badge')
+          if old_badge in text:
+              text = text.replace(old_badge, new_badge, 1)
+
+          # 4. Inspector type and audio controls.
+          old_info = '<Info label="Tipo" value={TYPE_LABELS[inspected.type]} />'
+          new_info = '<Info label="Tipo" value={assetAudioKind(inspected) ? AUDIO_KIND_LABELS[assetAudioKind(inspected)!] : TYPE_LABELS[inspected.type]} />'
+          require(old_info in text or new_info in text, 'inspector type')
+          if old_info in text:
+              text = text.replace(old_info, new_info, 1)
+
+          aside_pos = text.index('<aside className="hidden border-l bg-background xl:block">')
+          advisor_marker = '              {inspected.type === "image" && ('
+          advisor_pos = text.index(advisor_marker, aside_pos)
+          audio_panels = '''              {inspected.type === "audio" && (\n                <div className="mt-3 rounded-xl border bg-muted/20 p-3">\n                  <label className="tiny-label">Classificação do áudio</label>\n                  <select\n                    value={assetAudioKind(inspected) ?? "other"}\n                    disabled={organizing}\n                    onChange={(event) => void classifyAudio(inspected, event.target.value as AudioKind)}\n                    className="h-9 w-full rounded-lg border bg-background px-2 text-xs"\n                  >\n                    {Object.entries(AUDIO_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}\n                  </select>\n                  <p className="mt-2 text-[11px] text-muted-foreground">\n                    Apenas músicas/trilhas entram na faixa musical do editor. Locuções, efeitos e jingles permanecem separados.\n                  </p>\n                </div>\n              )}\n              {inspected.type === "audio" && assetAudioKind(inspected) === "music" && (\n                <AudioRightsPanel tenantId={tenantId} asset={inspected} onUpdated={loadAll} />\n              )}\n'''
+          if 'Classificação do áudio' not in text:
+              text = text[:advisor_pos] + audio_panels + text[advisor_pos:]
+
+          text = text.replace('inspected.type === "audio" && inspected.role === "music"', 'inspected.type === "audio" && assetAudioKind(inspected) === "music"')
+          text = text.replace('inspected.type === "audio" && inspected.role !== "music"', 'inspected.type === "audio" && assetAudioKind(inspected) !== "music"')
+
+          media_path.write_text(text)
+
+          # 5. Normalize the video editor's own uploaded music metadata to the existing rights model.
+          editor_path = Path('artifacts/frontend/src/components/video/VideoTimelineEditor.tsx')
+          editor = editor_path.read_text()
+          old_meta = '          metadata: type === "audio" ? { rights: { status: "pending", origin: "user_upload" } } : {},'
+          new_meta = '''          metadata: type === "audio"\n            ? {\n                audioKind: "music",\n                rights: {\n                  status: "pending",\n                  origin: "unknown",\n                  commercialUse: false,\n                  paidAds: false,\n                  territories: ["*"],\n                  expiresAt: null,\n                  attributionRequired: false,\n                  attributionText: null,\n                  licenseReference: null,\n                  evidenceAssetId: null,\n                },\n              }\n            : {},'''
+          require(old_meta in editor or 'audioKind: "music"' in editor, 'editor music metadata')
+          if old_meta in editor:
+              editor = editor.replace(old_meta, new_meta, 1)
+          editor_path.write_text(editor)
+          PY
+      - name: Commit interface
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/pages/MediaCenter.tsx artifacts/frontend/src/components/video/VideoTimelineEditor.tsx
+          git commit -m "feat(media): expose Music Hub and normalize music uploads"
+          git push origin HEAD:feat/media-center-music-hub
