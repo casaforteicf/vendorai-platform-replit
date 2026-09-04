@@ -939,7 +939,7 @@ export default function VideoAvatarPage() {
                   <div className="flex flex-wrap items-center gap-3"><button disabled={!voiceEngineReady || testingVoice || !detail.voices.some((voice) => voice.status === "ready") || !activeConsentScopes.has("voice_use") || !activeConsentScopes.has("ai_generation")} onClick={() => void testVoice()} className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed">{testingVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Gerar amostra</button>{testAudioUrl && <audio controls src={testAudioUrl} className="h-8 max-w-full" />}</div>
                 </section>
 
-                <TalkingVideoPanel tenantId={tenantId} identityId={detail.identity.id} identityName={detail.identity.display_name} faceReferenceAssetId={detail.identity.face_reference_asset_id} voices={detail.voices} activeConsentScopes={activeConsentScopes} voiceEngineReady={voiceEngineReady} lipSyncEngineReady={lipSyncEngineReady} />
+                <TalkingVideoPanel tenantId={tenantId} identityId={detail.identity.id} identityName={detail.identity.display_name} baseMarket={detailMarket.code} faceReferenceAssetId={detail.identity.face_reference_asset_id} voices={detail.voices} activeConsentScopes={activeConsentScopes} voiceEngineReady={voiceEngineReady} lipSyncEngineReady={lipSyncEngineReady} />
               </div>
             )}
           </main>
