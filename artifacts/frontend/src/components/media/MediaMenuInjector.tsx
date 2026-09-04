@@ -1,13 +1,21 @@
 import { useEffect } from "react";
 
 const MEDIA_HREF = "/midias";
+const MEDIA_PLAN_HREF = "/marketing/plano-de-midia";
 
 export function MediaMenuInjector() {
   useEffect(() => {
-    const ensureMediaEntry = () => {
+    const ensureMarketingOrder = () => {
       document.querySelectorAll<HTMLAnchorElement>('a[href="/content"]').forEach((contentLink) => {
         const container = contentLink.parentElement;
         if (!container) return;
+
+        // O Planejador é a entrada oficial do Marketing: primeiro vem a direção,
+        // depois o Gerador e as ferramentas executoras.
+        const mediaPlanLink = container.querySelector<HTMLAnchorElement>(`a[href="${MEDIA_PLAN_HREF}"]`);
+        if (mediaPlanLink && container.firstElementChild !== mediaPlanLink) {
+          container.insertBefore(mediaPlanLink, contentLink);
+        }
 
         let mediaLink = container.querySelector<HTMLAnchorElement>(`a[href="${MEDIA_HREF}"]`);
         const isActive = window.location.pathname === MEDIA_HREF;
@@ -31,7 +39,7 @@ export function MediaMenuInjector() {
             window.location.assign(MEDIA_HREF);
           });
 
-          // Mantém Mídias junto dos demais recursos de Marketing.
+          // Mantém Mídias junto das ferramentas executoras de Marketing.
           const videoLink = container.querySelector<HTMLAnchorElement>('a[href="/content-studio/video"]');
           if (videoLink) videoLink.insertAdjacentElement("afterend", mediaLink);
           else contentLink.insertAdjacentElement("afterend", mediaLink);
@@ -46,8 +54,8 @@ export function MediaMenuInjector() {
       });
     };
 
-    ensureMediaEntry();
-    const observer = new MutationObserver(ensureMediaEntry);
+    ensureMarketingOrder();
+    const observer = new MutationObserver(ensureMarketingOrder);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
