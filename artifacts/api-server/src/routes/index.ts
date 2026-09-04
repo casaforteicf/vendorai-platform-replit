@@ -138,6 +138,7 @@ import renderRouter from "./render";
 import siteRouter from "./site";
 import spinRouter from "./spin";
 import supportRouter from "./support";
+import devAgentAutonomyRouter from "./dev_agent_autonomy";
 import adminBugReportsRouter from "./admin_bug_reports";
 import adminRelatosTecnicosRouter from "./admin_relatos_tecnicos";
 import contractTemplatesRouter from "./contract_templates";
@@ -451,8 +452,9 @@ router.use(renderRouter);
 // SPIN Selling Briefing Hub
 router.use(spinRouter);
 
-// Support chat
+// Support chat + Dev IA
 router.use(supportRouter);
+router.use(devAgentAutonomyRouter);
 
 // Contract Templates Hub
 router.use(contractTemplatesRouter);
