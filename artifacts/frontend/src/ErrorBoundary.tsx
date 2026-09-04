@@ -1,8 +1,13 @@
 import * as React from "react";
 
 const CHUNK_ERROR_PATTERN =
-  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html/i;
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html/i;
+const STALE_LAZY_MODULE_PATTERN =
+  /Cannot read properties of undefined \(reading ["']default["']\)/i;
+
 const RELOAD_FLAG_PREFIX = "vendorai_error_boundary_recovered_bundle";
+const RECOVERY_AT_KEY = "vendorai_stale_asset_recovery_at";
+const RECOVERY_WINDOW_MS = 30_000;
 
 function currentBundleReloadKey() {
   const entryScript = Array.from(document.scripts).find((script) =>
@@ -11,15 +16,66 @@ function currentBundleReloadKey() {
   return `${RELOAD_FLAG_PREFIX}:${entryScript?.src || "bootstrap"}`;
 }
 
+async function clearObsoleteFrontendState() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.allSettled(registrations.map((registration) => registration.unregister()));
+    }
+  } catch {
+    // Recuperação best-effort: a limpeza não pode impedir o reload.
+  }
+
+  try {
+    if ("caches" in window) {
+      const cacheNames = await caches.keys();
+      await Promise.allSettled(cacheNames.map((cacheName) => caches.delete(cacheName)));
+    }
+  } catch {
+    // Mesmo princípio para Cache Storage.
+  }
+}
+
+function wasRecoveredRecently() {
+  try {
+    const lastRecoveryAt = Number(sessionStorage.getItem(RECOVERY_AT_KEY) || "0");
+    return Date.now() - lastRecoveryAt < RECOVERY_WINDOW_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function carregarVersaoAtual(force = false) {
+  const now = Date.now();
+  try {
+    if (!force && wasRecoveredRecently()) return;
+    sessionStorage.setItem(RECOVERY_AT_KEY, String(now));
+    sessionStorage.removeItem(currentBundleReloadKey());
+  } catch {
+    // sessionStorage indisponível não deve bloquear a recuperação.
+  }
+
+  await clearObsoleteFrontendState();
+
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("__vendorai_refresh", String(now));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+}
+
 // A sessão pode permanecer aberta enquanto um novo deploy troca os hashes dos
-// chunks. Recuperamos automaticamente uma vez por bundle de entrada. Se o mesmo
-// bundle falhar novamente, paramos e mostramos o erro em vez de criar um loop.
-function tentarRecuperarDeChunkAntigo(error: Error): boolean {
-  if (!CHUNK_ERROR_PATTERN.test(error.message)) return false;
-  const key = currentBundleReloadKey();
-  if (sessionStorage.getItem(key) === "1") return false;
-  sessionStorage.setItem(key, "1");
-  window.location.reload();
+// chunks. Recuperamos automaticamente uma única vez numa janela curta. Se a
+// versão recém-carregada falhar de novo, paramos e mostramos o erro em vez de
+// criar um loop de recarregamento.
+function tentarRecuperarDeVersaoAntiga(error: Error): boolean {
+  if (!CHUNK_ERROR_PATTERN.test(error.message) && !STALE_LAZY_MODULE_PATTERN.test(error.message)) {
+    return false;
+  }
+  if (wasRecoveredRecently()) return false;
+  void carregarVersaoAtual(false);
   return true;
 }
 
@@ -38,7 +94,7 @@ export class ErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("ErrorBoundary capturou:", error, info);
-    if (tentarRecuperarDeChunkAntigo(error)) {
+    if (tentarRecuperarDeVersaoAntiga(error)) {
       this.setState({ reloading: true });
     }
   }
@@ -63,8 +119,8 @@ export class ErrorBoundary extends React.Component<
               type="button"
               style={{ marginTop: 16, border: 0, borderRadius: 8, padding: "10px 14px", fontWeight: 600, cursor: "pointer", background: "#D9673E", color: "white" }}
               onClick={() => {
-                sessionStorage.removeItem(currentBundleReloadKey());
-                window.location.reload();
+                this.setState({ reloading: true });
+                void carregarVersaoAtual(true);
               }}
             >
               Carregar versão atual

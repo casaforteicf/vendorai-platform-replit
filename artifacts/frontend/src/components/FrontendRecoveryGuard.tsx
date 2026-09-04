@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const RECOVERY_KEY_PREFIX = "vendorai_frontend_recovered_bundle";
+const RECOVERY_AT_KEY = "vendorai_stale_asset_recovery_at";
+const RECOVERY_WINDOW_MS = 30_000;
 const STUCK_SPINNER_MS = 12_000;
 const CHUNK_ERROR_PATTERN =
   /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html/i;
@@ -32,22 +34,50 @@ async function clearObsoleteFrontendState() {
   }
 }
 
+function wasRecoveredRecently() {
+  try {
+    const lastRecoveryAt = Number(sessionStorage.getItem(RECOVERY_AT_KEY) || "0");
+    return Date.now() - lastRecoveryAt < RECOVERY_WINDOW_MS;
+  } catch {
+    return false;
+  }
+}
+
 function canAutoRecoverCurrentBundle() {
-  return sessionStorage.getItem(currentBundleRecoveryKey()) !== "1";
+  try {
+    return sessionStorage.getItem(currentBundleRecoveryKey()) !== "1" && !wasRecoveredRecently();
+  } catch {
+    return !wasRecoveredRecently();
+  }
+}
+
+function navigateToLatestVersion(timestamp = Date.now()) {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("__vendorai_refresh", String(timestamp));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
 }
 
 async function recoverFrontendOnce(reason: string) {
   const recoveryKey = currentBundleRecoveryKey();
   if (!canAutoRecoverCurrentBundle()) return false;
 
-  // One automatic reload PER entry bundle, rather than one reload per minute.
-  // When a new deploy changes index-<hash>.js, that new bundle gets its own
-  // recovery allowance. If the same broken bundle comes back, we stop and show
-  // an explicit recovery UI instead of creating a reload loop.
-  sessionStorage.setItem(recoveryKey, "1");
+  // Uma recuperação automática por bundle e, adicionalmente, uma janela curta
+  // compartilhada com o guard pré-bootstrap e o ErrorBoundary. Isso impede que
+  // três camadas de proteção transformem um erro persistente num reload loop.
+  const now = Date.now();
+  try {
+    sessionStorage.setItem(recoveryKey, "1");
+    sessionStorage.setItem(RECOVERY_AT_KEY, String(now));
+  } catch {
+    // sessionStorage indisponível não deve impedir a tentativa de recuperação.
+  }
   console.warn(`[VendorAI] Recuperando frontend após ${reason}.`);
   await clearObsoleteFrontendState();
-  window.location.reload();
+  navigateToLatestVersion(now);
   return true;
 }
 
@@ -161,9 +191,15 @@ export function FrontendRecoveryGuard() {
             type="button"
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
             onClick={async () => {
-              sessionStorage.removeItem(currentBundleRecoveryKey());
+              const now = Date.now();
+              try {
+                sessionStorage.removeItem(currentBundleRecoveryKey());
+                sessionStorage.setItem(RECOVERY_AT_KEY, String(now));
+              } catch {
+                // Continua mesmo sem sessionStorage.
+              }
               await clearObsoleteFrontendState();
-              window.location.reload();
+              navigateToLatestVersion(now);
             }}
           >
             Carregar versão atual
