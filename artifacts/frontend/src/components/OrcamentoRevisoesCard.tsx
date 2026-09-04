@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,9 +8,28 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useListPropostas } from "@workspace/api-client-react";
-import { History, Paperclip, Plus, FileText, Loader2, Trash2, X, Receipt, ArrowRight } from "lucide-react";
+import { useListPropostas, useUpdatePropostaStatus } from "@workspace/api-client-react";
+import {
+  Download,
+  ExternalLink,
+  FileText,
+  History,
+  Loader2,
+  Paperclip,
+  Pencil,
+  Plus,
+  Receipt,
+  Trash2,
+  X,
+} from "lucide-react";
 
 type Anexo = { nome: string; url: string; mimeType?: string; tamanho?: number };
 type Revisao = {
@@ -23,12 +42,33 @@ type Revisao = {
   createdAt: string;
 };
 
+type Orcamento = {
+  id: string;
+  numero?: string | null;
+  titulo: string;
+  valorTotal?: string | number | null;
+  status: string;
+  createdAt?: string | null;
+  validadeAte?: string | null;
+};
+
+const ORCAMENTO_LABELS = [
+  { value: "em_analise", label: "Em análise", targetStatus: "enviada", className: "bg-blue-50 text-blue-700 border-blue-200" },
+  { value: "aprovado", label: "Aprovado", targetStatus: "aceita", className: "bg-green-50 text-green-700 border-green-200" },
+  { value: "descartado", label: "Descartado", targetStatus: "rejeitada", className: "bg-red-50 text-red-600 border-red-200" },
+  { value: "finalizado", label: "Finalizado", targetStatus: "expirada", className: "bg-gray-100 text-gray-600 border-gray-200" },
+] as const;
+
+type OrcLabel = (typeof ORCAMENTO_LABELS)[number]["value"];
+
 function authHeaders() {
-  return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
+  return { Authorization: `Bearer ${localStorage.getItem("vendorai_token") ?? ""}` };
 }
+
 function authHeadersJson() {
   return { ...authHeaders(), "Content-Type": "application/json" };
 }
+
 async function readJson(response: Response) {
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error ?? "Falha na operação.");
@@ -37,6 +77,39 @@ async function readJson(response: Response) {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "—";
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("pt-BR");
+}
+
+function formatMoney(value?: string | number | null) {
+  const number = typeof value === "number" ? value : Number(value ?? 0);
+  if (!Number.isFinite(number)) return "—";
+  return number.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function getOrcLabel(status: string): OrcLabel {
+  if (status === "aceita") return "aprovado";
+  if (status === "rejeitada") return "descartado";
+  if (status === "expirada") return "finalizado";
+  return "em_analise";
+}
+
+function isTerminalStatus(status: string) {
+  return status === "aceita" || status === "rejeitada" || status === "expirada";
+}
+
+function budgetReference(orc: Orcamento) {
+  return String(orc.numero || orc.id);
+}
+
+function revisionMatchesBudget(revisao: Revisao, orc: Orcamento) {
+  const refs = [orc.numero, orc.id, orc.titulo].filter(Boolean).map(String);
+  return refs.includes(String(revisao.numeroOrcamento));
 }
 
 export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: string; tenantId: string; dealId?: string }) {
@@ -51,13 +124,19 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
     enabled: !!leadId && !!tenantId,
   });
 
-  const { data: orcamentos = [], isLoading: loadingOrcamentos } = useListPropostas(
+  const { data: propostasData = [], isLoading: loadingOrcamentos } = useListPropostas(
     tenantId,
     { leadId },
     { request: { headers: { Authorization: `Bearer ${token}` } } },
   );
+  const orcamentos = propostasData as unknown as Orcamento[];
   const hasOrcamento = orcamentos.length > 0;
 
+  const updatePropostaStatus = useUpdatePropostaStatus({
+    request: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+  const [changingStatus, setChangingStatus] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [numero, setNumero] = useState("");
@@ -68,8 +147,95 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const [viewerAnexos, setViewerAnexos] = useState<{ titulo: string; anexos: Anexo[] } | null>(null);
+
+  useEffect(() => {
+    const legacy = document.querySelector<HTMLElement>('[data-testid="card-orcamentos-lead"]');
+    if (!legacy) return;
+    const previousDisplay = legacy.style.display;
+    legacy.style.display = "none";
+    return () => {
+      legacy.style.display = previousDisplay;
+    };
+  }, []);
+
+  useEffect(() => {
+    const getBudgetTrigger = () => {
+      const card = document.querySelector<HTMLElement>('[data-testid="card-propostas-geradas"]');
+      if (!card) return null;
+      const label = Array.from(card.querySelectorAll("label")).find((node) =>
+        /orçamento.*proposta/i.test(node.textContent ?? ""),
+      );
+      if (!label) return null;
+      if (label.getAttribute("data-required-budget") !== "1") {
+        label.setAttribute("data-required-budget", "1");
+        label.textContent = "Orçamento para gerar a proposta *";
+      }
+      const container = label.parentElement;
+      return (container?.querySelector('button[role="combobox"]') ?? null) as HTMLButtonElement | null;
+    };
+
+    const syncRequiredState = () => {
+      const trigger = getBudgetTrigger();
+      if (!trigger) return;
+      const empty = /nenhum orçamento/i.test(trigger.textContent ?? "") || !(trigger.textContent ?? "").trim();
+      trigger.setAttribute("aria-required", "true");
+      trigger.style.borderColor = empty ? "rgb(245 158 11)" : "";
+      trigger.style.boxShadow = empty ? "0 0 0 1px rgba(245,158,11,.22)" : "";
+
+      const host = trigger.parentElement;
+      if (!host) return;
+      let note = host.querySelector<HTMLElement>('[data-testid="proposal-budget-required-note"]');
+      if (!note) {
+        note = document.createElement("p");
+        note.setAttribute("data-testid", "proposal-budget-required-note");
+        note.style.fontSize = "12px";
+        note.style.marginTop = "6px";
+        host.appendChild(note);
+      }
+      note.textContent = empty
+        ? hasOrcamento
+          ? "Seleção obrigatória: escolha qual orçamento será usado nesta proposta."
+          : "Crie um orçamento antes de gerar a proposta."
+        : "O orçamento selecionado será a base comercial desta proposta.";
+      note.style.color = empty ? "rgb(180 83 9)" : "rgb(100 116 139)";
+    };
+
+    const handleGenerateClick = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target.closest("button") : null;
+      if (!target) return;
+      const text = (target.textContent ?? "").trim();
+      if (!/gerar.*proposta|gerar primeira proposta/i.test(text)) return;
+      const proposalCard = target.closest('[data-testid="card-propostas-geradas"]');
+      if (!proposalCard) return;
+
+      const trigger = getBudgetTrigger();
+      const empty = !trigger || /nenhum orçamento/i.test(trigger.textContent ?? "") || !(trigger.textContent ?? "").trim();
+      if (!empty) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      toast({
+        title: hasOrcamento ? "Selecione o orçamento" : "Crie um orçamento primeiro",
+        description: hasOrcamento
+          ? "A proposta deve indicar explicitamente qual orçamento será usado como base."
+          : "Não é possível gerar uma proposta comercial sem um orçamento de origem.",
+        variant: "destructive",
+      });
+      trigger?.focus();
+      trigger?.click();
+    };
+
+    syncRequiredState();
+    const observer = new MutationObserver(syncRequiredState);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    document.addEventListener("click", handleGenerateClick, true);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("click", handleGenerateClick, true);
+    };
+  }, [hasOrcamento, toast]);
 
   function openBudgetCreation() {
     const budgetButton = document.querySelector<HTMLElement>('[data-testid="btn-new-budget"]');
@@ -78,19 +244,19 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
       return;
     }
     toast({
-      title: "Crie primeiro o orçamento deste cliente",
-      description: "Use a ação “Gerar orçamento” no topo do atendimento para manter o contexto do lead.",
+      title: "Criar orçamento",
+      description: "Use a ação de novo orçamento neste atendimento para manter o contexto do lead.",
     });
   }
 
-  function openNew() {
+  function openNew(orc?: Orcamento) {
     if (!hasOrcamento) {
       openBudgetCreation();
       return;
     }
-    const latestBudget = orcamentos[0] as any;
+    const selected = orc ?? orcamentos[0];
     setEditingId(null);
-    setNumero(latestBudget?.titulo ?? "");
+    setNumero(selected ? budgetReference(selected) : "");
     setData(todayISO());
     setApresentacao("");
     setObservacao("");
@@ -98,14 +264,55 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
     setFormOpen(true);
   }
 
-  function openEdit(r: Revisao) {
-    setEditingId(r.id);
-    setNumero(r.numeroOrcamento);
-    setData(r.dataOrcamento.slice(0, 10));
-    setApresentacao(r.apresentacao ?? "");
-    setObservacao(r.observacao ?? "");
-    setAnexos(r.anexos ?? []);
+  function openEdit(revisao: Revisao) {
+    setEditingId(revisao.id);
+    setNumero(revisao.numeroOrcamento);
+    setData(revisao.dataOrcamento.slice(0, 10));
+    setApresentacao(revisao.apresentacao ?? "");
+    setObservacao(revisao.observacao ?? "");
+    setAnexos(revisao.anexos ?? []);
     setFormOpen(true);
+  }
+
+  async function handleChangeStatus(orc: Orcamento, newLabel: string) {
+    const config = ORCAMENTO_LABELS.find((item) => item.value === newLabel);
+    if (!config || getOrcLabel(orc.status) === newLabel) return;
+    setChangingStatus(orc.id);
+    try {
+      await updatePropostaStatus.mutateAsync({ id: orc.id, data: { status: config.targetStatus } });
+      await qc.invalidateQueries();
+      toast({ title: "Situação do orçamento atualizada." });
+    } catch (error) {
+      toast({
+        title: "Não foi possível atualizar o orçamento",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setChangingStatus(null);
+    }
+  }
+
+  async function downloadOrcamentoPdf(orc: Orcamento) {
+    try {
+      const response = await fetch(`/api/propostas/${orc.id}/pdf`, { headers: authHeaders() });
+      if (!response.ok) throw new Error("Não foi possível gerar o PDF.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${orc.numero || orc.titulo || "orcamento"}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: "Erro ao baixar orçamento",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
   }
 
   async function uploadFile(file: File) {
@@ -118,27 +325,33 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
       });
       if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
       const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
-
-      const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+      const putRes = await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
       if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
-
       const url = `${window.location.origin}/api/storage${objectPath}`;
       setAnexos((prev) => [...prev, { nome: file.name, url, mimeType: file.type, tamanho: file.size }]);
     } catch (error) {
-      toast({ title: "Erro no upload", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      toast({
+        title: "Erro no upload",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
     }
   }
 
   async function save() {
-    if (!editingId && !hasOrcamento) {
+    if (!hasOrcamento) {
       setFormOpen(false);
       openBudgetCreation();
       return;
     }
     if (!numero.trim() || !data) {
-      toast({ title: "Preencha ao menos o número e a data do orçamento.", variant: "destructive" });
+      toast({ title: "Selecione o orçamento e informe a data.", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -154,12 +367,20 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
       const url = editingId
         ? `/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes/${editingId}`
         : `/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes`;
-      await fetch(url, { method: editingId ? "PATCH" : "POST", headers: authHeadersJson(), body: JSON.stringify(payload) }).then(readJson);
+      await fetch(url, {
+        method: editingId ? "PATCH" : "POST",
+        headers: authHeadersJson(),
+        body: JSON.stringify(payload),
+      }).then(readJson);
       await qc.invalidateQueries({ queryKey });
-      toast({ title: editingId ? "Revisão atualizada." : "Revisão registrada." });
+      toast({ title: editingId ? "Revisão atualizada." : "Nova rodada de negociação registrada." });
       setFormOpen(false);
     } catch (error) {
-      toast({ title: "Erro ao salvar", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      toast({
+        title: "Erro ao salvar",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -168,137 +389,262 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
   async function removeRevisao(id: string) {
     if (!confirm("Excluir esta revisão do histórico? Essa ação não pode ser desfeita.")) return;
     try {
-      await fetch(`/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes/${id}`, { method: "DELETE", headers: authHeaders() }).then(readJson);
+      await fetch(`/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      }).then(readJson);
       await qc.invalidateQueries({ queryKey });
     } catch {
       toast({ title: "Erro ao excluir", variant: "destructive" });
     }
   }
 
+  const matchedRevisionIds = new Set(
+    revisoes
+      .filter((revisao) => orcamentos.some((orc) => revisionMatchesBudget(revisao, orc)))
+      .map((revisao) => revisao.id),
+  );
+  const orphanRevisions = revisoes.filter((revisao) => !matchedRevisionIds.has(revisao.id));
+  const currentBudgetRefs = new Set(orcamentos.map(budgetReference));
+  const selectedReferenceIsLegacy = !!numero && !currentBudgetRefs.has(numero);
+
   return (
-    <Card data-testid="card-orcamento-revisoes">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2 min-w-0">
-            <History className="h-4 w-4 shrink-0" />
-            Negociação e revisões
-            {revisoes.length > 0 && <Badge variant="outline" className="text-xs">{revisoes.length}</Badge>}
-          </span>
-          {hasOrcamento ? (
-            <Button size="sm" className="h-7 text-xs gap-1" onClick={openNew}>
+    <>
+      <Card data-testid="card-orcamento-revisoes">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2 min-w-0">
+              <Receipt className="h-4 w-4 shrink-0" />
+              Orçamentos, negociações e revisões
+              {orcamentos.length > 0 && <Badge variant="outline" className="text-xs">{orcamentos.length}</Badge>}
+            </span>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openBudgetCreation}>
               <Plus className="h-3 w-3" />
-              Nova revisão
+              Novo orçamento
             </Button>
-          ) : (
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openBudgetCreation} disabled={loadingOrcamentos}>
-              <Receipt className="h-3 w-3" />
-              Criar orçamento
-            </Button>
-          )}
-        </CardTitle>
-        <p className="text-xs text-muted-foreground pt-1">
-          Registre aqui cada nova rodada depois que um orçamento real for criado e apresentado ao cliente.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {isLoading || loadingOrcamentos ? (
-          <div className="space-y-2">
-            {[1, 2].map((i) => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}
-          </div>
-        ) : !hasOrcamento ? (
-          <div className="rounded-lg border border-dashed p-4 text-center">
-            <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-              <Receipt className="h-4 w-4 text-muted-foreground" />
+          </CardTitle>
+          <p className="text-xs text-muted-foreground pt-1">
+            O orçamento base e todas as rodadas de negociação ficam no mesmo histórico, sem duplicar informações em cards separados.
+          </p>
+        </CardHeader>
+
+        <CardContent>
+          {isLoading || loadingOrcamentos ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((item) => <div key={item} className="h-11 bg-muted animate-pulse rounded" />)}
             </div>
-            <p className="text-sm font-medium">Crie o primeiro orçamento antes de iniciar as revisões.</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Assim o histórico representa uma negociação real e não cria revisões soltas sem orçamento de origem.
-            </p>
-            <Button size="sm" variant="outline" className="mt-3 gap-1.5" onClick={openBudgetCreation}>
-              Gerar orçamento para este cliente
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ) : revisoes.length === 0 ? (
-          <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm">
-            <p className="font-medium">Orçamento criado. Nenhuma revisão necessária até agora.</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Use “Nova revisão” somente quando houver uma nova rodada de negociação, alteração solicitada ou novo documento apresentado ao cliente.
-            </p>
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Orçamento</TableHead>
-                <TableHead>Data</TableHead>
-                <TableHead>Apresentação</TableHead>
-                <TableHead>O que mudou</TableHead>
-                <TableHead>Anexos</TableHead>
-                <TableHead className="w-0" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {revisoes.map((r) => (
-                <TableRow key={r.id} className="cursor-pointer hover:bg-muted/40" onClick={() => openEdit(r)}>
-                  <TableCell className="font-medium">{r.numeroOrcamento}</TableCell>
-                  <TableCell className="whitespace-nowrap">{new Date(r.dataOrcamento).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</TableCell>
-                  <TableCell className="max-w-[160px] truncate">{r.apresentacao || "—"}</TableCell>
-                  <TableCell className="max-w-[220px] truncate">{r.observacao || "—"}</TableCell>
-                  <TableCell>
-                    {r.anexos?.length ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1"
-                        onClick={(e) => { e.stopPropagation(); setViewerAnexos({ titulo: r.numeroOrcamento, anexos: r.anexos }); }}
-                      >
-                        <Paperclip className="h-3 w-3" />
-                        {r.anexos.length}
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); removeRevisao(r.id); }}>
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
+          ) : !hasOrcamento ? (
+            <div className="rounded-lg border border-dashed p-5 text-center">
+              <Receipt className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
+              <p className="text-sm font-medium">Nenhum orçamento criado para este cliente.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Crie o primeiro orçamento; depois as revisões serão registradas abaixo dele nesta mesma tabela.</p>
+              <Button size="sm" className="mt-3 gap-1.5" onClick={openBudgetCreation}>
+                <Plus className="h-3.5 w-3.5" />
+                Criar orçamento
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[210px]">Orçamento / rodada</TableHead>
+                    <TableHead className="min-w-[100px]">Data</TableHead>
+                    <TableHead className="min-w-[110px]">Valor</TableHead>
+                    <TableHead className="min-w-[130px]">Situação</TableHead>
+                    <TableHead className="min-w-[240px]">Negociação / alteração</TableHead>
+                    <TableHead className="min-w-[210px] text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orcamentos.map((orc) => {
+                    const revisions = revisoes.filter((revisao) => revisionMatchesBudget(revisao, orc));
+                    const labelValue = getOrcLabel(orc.status);
+                    const labelConfig = ORCAMENTO_LABELS.find((item) => item.value === labelValue)!;
+                    const terminal = isTerminalStatus(orc.status);
+                    const changing = changingStatus === orc.id;
+
+                    return (
+                      <Fragment key={orc.id}>
+                        <TableRow className="bg-muted/20">
+                          <TableCell>
+                            <div className="flex items-start gap-2">
+                              <Receipt className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                              <div className="min-w-0">
+                                <p className="font-medium text-sm truncate">{orc.titulo}</p>
+                                <p className="text-[11px] text-muted-foreground">{orc.numero ? `Nº ${orc.numero}` : `ID ${orc.id.slice(0, 8)}`}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{formatDate(orc.createdAt)}</TableCell>
+                          <TableCell className="text-sm font-medium whitespace-nowrap">{formatMoney(orc.valorTotal)}</TableCell>
+                          <TableCell>
+                            {terminal ? (
+                              <Badge variant="outline" className={`text-[10px] ${labelConfig.className}`}>{labelConfig.label}</Badge>
+                            ) : (
+                              <Select value={labelValue} onValueChange={(value) => void handleChangeStatus(orc, value)} disabled={changing}>
+                                <SelectTrigger className={`h-7 w-32 text-[10px] font-medium ${labelConfig.className}`}>
+                                  {changing ? <Loader2 className="h-3 w-3 animate-spin" /> : <SelectValue />}
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ORCAMENTO_LABELS.map((item) => (
+                                    <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium text-foreground">Orçamento base</span>
+                              <span className="ml-2">{revisions.length} {revisions.length === 1 ? "revisão" : "revisões"}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex justify-end gap-1">
+                              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => openNew(orc)}>
+                                <History className="h-3 w-3" />
+                                Nova revisão
+                              </Button>
+                              <a href={`${import.meta.env.BASE_URL}propostas/${orc.id}/print`} target="_blank" rel="noopener noreferrer">
+                                <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver orçamento">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </Button>
+                              </a>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" title="Baixar PDF" onClick={() => void downloadOrcamentoPdf(orc)}>
+                                <Download className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+
+                        {revisions.map((revisao, index) => (
+                          <TableRow key={revisao.id} className="bg-background/70 hover:bg-muted/30">
+                            <TableCell>
+                              <div className="pl-6 flex items-start gap-2">
+                                <History className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <div>
+                                  <p className="text-sm font-medium">Revisão {index + 1}</p>
+                                  <p className="text-[11px] text-muted-foreground">do orçamento {orc.numero || orc.titulo}</p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm whitespace-nowrap">{formatDate(revisao.dataOrcamento)}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                            <TableCell><Badge variant="secondary" className="text-[10px]">Negociação</Badge></TableCell>
+                            <TableCell>
+                              <p className="text-xs line-clamp-2">{revisao.observacao || "Sem alteração descrita."}</p>
+                              {revisao.apresentacao && <p className="mt-1 text-[11px] text-muted-foreground">Apresentado por: {revisao.apresentacao}</p>}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex justify-end gap-1">
+                                {revisao.anexos?.length ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1"
+                                    onClick={() => setViewerAnexos({ titulo: `Revisão ${index + 1}`, anexos: revisao.anexos })}
+                                  >
+                                    <Paperclip className="h-3 w-3" />
+                                    {revisao.anexos.length}
+                                  </Button>
+                                ) : null}
+                                <Button size="icon" variant="ghost" className="h-7 w-7" title="Editar revisão" onClick={() => openEdit(revisao)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-7 w-7" title="Excluir revisão" onClick={() => void removeRevisao(revisao.id)}>
+                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
+
+                  {orphanRevisions.map((revisao) => (
+                    <TableRow key={revisao.id} className="bg-amber-50/30">
+                      <TableCell>
+                        <div className="pl-6">
+                          <p className="text-sm font-medium">Revisão anterior</p>
+                          <p className="text-[11px] text-muted-foreground">Referência antiga: {revisao.numeroOrcamento}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{formatDate(revisao.dataOrcamento)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                      <TableCell><Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">Histórico</Badge></TableCell>
+                      <TableCell>
+                        <p className="text-xs line-clamp-2">{revisao.observacao || "Sem alteração descrita."}</p>
+                        {revisao.apresentacao && <p className="mt-1 text-[11px] text-muted-foreground">Apresentado por: {revisao.apresentacao}</p>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-1">
+                          {revisao.anexos?.length ? (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setViewerAnexos({ titulo: "Revisão anterior", anexos: revisao.anexos })}>
+                              <Paperclip className="h-3 w-3" />
+                              {revisao.anexos.length}
+                            </Button>
+                          ) : null}
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(revisao)} title="Editar revisão">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => void removeRevisao(revisao.id)} title="Excluir revisão">
+                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar revisão" : "Registrar nova rodada de negociação"}</DialogTitle>
           </DialogHeader>
+
           <div className="grid gap-3 py-2">
             <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              Esta revisão deve corresponder a um orçamento já criado para este cliente. Registre apenas o que mudou nesta rodada.
+              A revisão fica vinculada ao orçamento selecionado e aparece imediatamente abaixo dele na tabela única.
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label>Orçamento de referência</Label>
-                <Input value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: ORC-0123" />
+                <Select value={numero} onValueChange={setNumero}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o orçamento" /></SelectTrigger>
+                  <SelectContent>
+                    {orcamentos.map((orc) => (
+                      <SelectItem key={orc.id} value={budgetReference(orc)}>
+                        {orc.numero ? `${orc.numero} — ` : ""}{orc.titulo}
+                      </SelectItem>
+                    ))}
+                    {selectedReferenceIsLegacy && <SelectItem value={numero}>Referência antiga — {numero}</SelectItem>}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-1.5">
                 <Label>Data</Label>
-                <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+                <Input type="date" value={data} onChange={(event) => setData(event.target.value)} />
               </div>
             </div>
+
             <div className="grid gap-1.5">
               <Label>Como foi apresentado</Label>
-              <Input value={apresentacao} onChange={(e) => setApresentacao(e.target.value)} placeholder="Ex: WhatsApp, reunião, e-mail…" />
+              <Input value={apresentacao} onChange={(event) => setApresentacao(event.target.value)} placeholder="Ex: WhatsApp, reunião, e-mail…" />
             </div>
+
             <div className="grid gap-1.5">
               <Label>O que mudou nesta revisão</Label>
-              <Textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Ex: cliente pediu retirada de item, nova condição, desconto, alteração de prazo…" rows={3} />
+              <Textarea value={observacao} onChange={(event) => setObservacao(event.target.value)} placeholder="Ex: retirada de item, desconto, nova condição, alteração de prazo…" rows={3} />
             </div>
+
             <div className="grid gap-1.5">
               <Label>Documentos desta rodada</Label>
               <input
@@ -306,55 +652,59 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
                 type="file"
                 multiple
                 className="hidden"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files ?? []);
-                  files.forEach((f) => void uploadFile(f));
-                  e.target.value = "";
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  files.forEach((file) => void uploadFile(file));
+                  event.target.value = "";
                 }}
               />
               <Button type="button" variant="outline" size="sm" className="gap-1.5 justify-start" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
                 {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
                 {uploading ? "Enviando…" : "Anexar documento"}
               </Button>
+
               {anexos.length > 0 && (
                 <div className="space-y-1.5 pt-1">
-                  {anexos.map((a, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2 rounded border px-2 py-1.5 text-sm">
-                      <a href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 min-w-0 hover:underline">
-                        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{a.nome}</span>
+                  {anexos.map((anexo, index) => (
+                    <div key={`${anexo.url}-${index}`} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-xs">
+                      <a href={anexo.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-1.5 hover:underline">
+                        <FileText className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{anexo.nome}</span>
                       </a>
-                      <button type="button" onClick={() => setAnexos((prev) => prev.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-foreground shrink-0">
+                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setAnexos((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}>
                         <X className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button>
-            <Button disabled={saving} onClick={save}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Salvar revisão</Button>
+            <Button disabled={saving || uploading || !numero} onClick={() => void save()}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar revisão
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!viewerAnexos} onOpenChange={(open) => !open && setViewerAnexos(null)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Documentos — {viewerAnexos?.titulo}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            {viewerAnexos?.anexos.map((a, i) => (
-              <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded border px-2 py-2 text-sm hover:bg-muted/50">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">{a.nome}</span>
+          <DialogHeader><DialogTitle>{viewerAnexos?.titulo ?? "Documentos"}</DialogTitle></DialogHeader>
+          <div className="space-y-2 py-2">
+            {viewerAnexos?.anexos.map((anexo, index) => (
+              <a key={`${anexo.url}-${index}`} href={anexo.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-md border p-3 text-sm hover:bg-muted/40">
+                <FileText className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{anexo.nome}</span>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
               </a>
             ))}
           </div>
         </DialogContent>
       </Dialog>
-    </Card>
+    </>
   );
 }
