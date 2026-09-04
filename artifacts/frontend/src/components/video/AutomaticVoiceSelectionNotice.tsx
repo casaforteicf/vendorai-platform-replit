@@ -14,9 +14,13 @@ const MARKET_LOCALES = [
   { code: "BO", label: "Bolívia", locale: "es-BO" },
 ] as const;
 
+function normalizeLocale(value: string): string {
+  return value.trim().replace(/_/g, "-").toLowerCase();
+}
+
 function voiceLocale(voice: MultilingualVoiceProfile): string | null {
   const value = voice.metadata?.locale;
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  return typeof value === "string" && value.trim() ? normalizeLocale(value) : null;
 }
 
 export default function AutomaticVoiceSelectionNotice({ voices }: Props) {
@@ -44,7 +48,7 @@ export default function AutomaticVoiceSelectionNotice({ voices }: Props) {
 
       <div className="flex flex-wrap gap-1.5">
         {MARKET_LOCALES.map((market) => {
-          const ready = readyLocales.has(market.locale);
+          const ready = readyLocales.has(normalizeLocale(market.locale));
           return (
             <span key={market.code} className={cn("rounded-full border px-2 py-1 text-[10px]", ready ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border-white/10 bg-white/[0.02] text-gray-500") }>
               {ready ? "✓" : "—"} {market.label} · {market.locale}
