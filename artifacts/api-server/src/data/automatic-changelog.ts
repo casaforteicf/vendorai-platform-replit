@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-507",
+    "titulo": "internacionalizar Google Auth e conta suspensa",
+    "descricao": "internacionaliza o retorno do Google Auth para português e espanhol conforme o locale ativo neutraliza a mensagem de conta Google sem acesso, sem expor marca dentro do fluxo internacionaliza a tela de conta suspensa usa cobrança genérica no espanhol em vez de referências brasileiras como boleto/PIX",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T03:32:22.000Z",
+    "pullRequest": 507
+  },
+  {
     "id": "pr-498",
     "titulo": "internacionalizar primeiro acesso e convites",
     "descricao": "internacionaliza a troca obrigatória de senha para português e espanhol internacionaliza o aceite de convite, incluindo validações, estados do link, formulário e mensagens institucionais usa o locale global já existente (`pt-BR` / `es-*`)",
