@@ -80,15 +80,32 @@ function normalizeItems(definition: JsonObject): ActionUiItem[] {
     }];
   });
 }
+function requiredKeys(action?: ActionRegistry): Set<string> {
+  const schema = asObject(action?.inputSchema);
+  const raw = Array.isArray(schema.required) ? schema.required : [];
+  return new Set(raw.filter((item): item is string => typeof item === "string"));
+}
+function minimumProperties(action?: ActionRegistry): number {
+  const value = asObject(action?.inputSchema).minProperties;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+function actionRequiresInput(action?: ActionRegistry): boolean {
+  return requiredKeys(action).size > 0 || minimumProperties(action) > 0;
+}
 function fieldsFromSchema(action?: ActionRegistry): ActionField[] {
   const properties = asObject(asObject(action?.inputSchema).properties);
-  return Object.entries(properties).slice(0, 20).map(([key, schemaValue]) => {
+  const required = requiredKeys(action);
+  const minimum = minimumProperties(action);
+  return Object.entries(properties).slice(0, 20).map(([key, schemaValue], index) => {
     const schema = asObject(schemaValue);
     const lower = key.toLowerCase();
-    const inputType: ActionField["inputType"] = lower.includes("email") ? "email" : lower.includes("phone") || lower.includes("tel") ? "tel" : schema.type === "number" ? "number" : "text";
+    const inputType: ActionField["inputType"] = lower.includes("email") ? "email" : lower.includes("phone") || lower.includes("tel") ? "tel" : schema.type === "number" || schema.type === "integer" ? "number" : "text";
     const label = key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]/g, " ").replace(/^./, (char) => char.toUpperCase());
-    return { key, label, inputType, placeholder: "", required: false };
+    return { key, label, inputType, placeholder: "", required: required.has(key) || index < minimum };
   });
+}
+function isContractRequired(action: ActionRegistry | undefined, key: string): boolean {
+  return fieldsFromSchema(action).some((field) => field.key === key && field.required);
 }
 
 export default function TemplateActionEditorDialog({ template, token, open, onOpenChange }: Props) {
@@ -141,6 +158,7 @@ export default function TemplateActionEditorDialog({ template, token, open, onOp
   const pages = useMemo(() => pagesFrom(sourceDefinition), [sourceDefinition]);
   const selected = useMemo(() => items.find((item) => item.id === selectedId) ?? null, [items, selectedId]);
   const selectedAction = useMemo(() => actions.find((action) => action.key === selected?.actionKey), [actions, selected]);
+  const selectedActionRequiresInput = useMemo(() => actionRequiresInput(selectedAction), [selectedAction]);
 
   function chooseVersion(id: string) {
     hydrate(versions.find((version) => version.id === id));
@@ -165,11 +183,21 @@ export default function TemplateActionEditorDialog({ template, token, open, onOp
   }
   function changeAction(actionKey: string) {
     const action = actions.find((item) => item.key === actionKey);
-    updateItem({ actionKey, title: selected?.title || action?.name || "", fields: selected?.kind === "form" ? fieldsFromSchema(action) : [] });
+    const nextKind: ActionUiItem["kind"] = selected?.kind === "cta" && actionRequiresInput(action) ? "form" : selected?.kind ?? "form";
+    updateItem({ actionKey, kind: nextKind, title: selected?.title || action?.name || "", fields: nextKind === "form" ? fieldsFromSchema(action) : [] });
+  }
+  function changeKind(kind: string) {
+    const requested = kind as ActionUiItem["kind"];
+    const nextKind: ActionUiItem["kind"] = requested === "cta" && selectedActionRequiresInput ? "form" : requested;
+    updateItem({ kind: nextKind, fields: nextKind === "form" ? fieldsFromSchema(selectedAction) : [] });
   }
   function updateField(index: number, patch: Partial<ActionField>) {
     if (!selected) return;
-    const fields = selected.fields.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...patch } : field);
+    const fields = selected.fields.map((field, fieldIndex) => {
+      if (fieldIndex !== index) return field;
+      if (patch.required === false && isContractRequired(selectedAction, field.key)) return { ...field, ...patch, required: true };
+      return { ...field, ...patch };
+    });
     updateItem({ fields });
   }
 
@@ -179,14 +207,23 @@ export default function TemplateActionEditorDialog({ template, token, open, onOp
       toast({ title: "Preencha página, Action e texto do botão em todos os itens", variant: "destructive" });
       return;
     }
+    const invalidCta = items.find((item) => item.kind === "cta" && actionRequiresInput(actions.find((action) => action.key === item.actionKey)));
+    if (invalidCta) {
+      toast({ title: "Esta Action exige dados de entrada", description: "Use um formulário para Actions que exigem pelo menos um campo.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const definition = JSON.parse(JSON.stringify(sourceDefinition ?? {})) as JsonObject;
-      definition.actionUi = items.map((item) => ({
-        id: item.id, pageId: item.pageId, kind: item.kind, actionKey: item.actionKey,
-        title: item.title.trim(), body: item.body.trim(), buttonLabel: item.buttonLabel.trim(), successMessage: item.successMessage.trim() || "Ação concluída.",
-        ...(item.kind === "form" ? { fields: item.fields.map((field) => ({ key: field.key, label: field.label.trim() || field.key, inputType: field.inputType, placeholder: field.placeholder.trim(), required: field.required })) } : { input: {} }),
-      }));
+      definition.actionUi = items.map((item) => {
+        const action = actions.find((registryAction) => registryAction.key === item.actionKey);
+        const contractRequired = new Set(fieldsFromSchema(action).filter((field) => field.required).map((field) => field.key));
+        return {
+          id: item.id, pageId: item.pageId, kind: item.kind, actionKey: item.actionKey,
+          title: item.title.trim(), body: item.body.trim(), buttonLabel: item.buttonLabel.trim(), successMessage: item.successMessage.trim() || "Ação concluída.",
+          ...(item.kind === "form" ? { fields: item.fields.map((field) => ({ key: field.key, label: field.label.trim() || field.key, inputType: field.inputType, placeholder: field.placeholder.trim(), required: field.required || contractRequired.has(field.key) })) } : { input: {} }),
+        };
+      });
       await requestJson(`/admin/app-builder/templates/${template.id}/versions`, {
         method: "POST",
         body: JSON.stringify({ definition, changeLog: changeLog.trim() || "Configuração visual de Actions/CTAs" }),
@@ -216,14 +253,14 @@ export default function TemplateActionEditorDialog({ template, token, open, onOp
                 <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold">Configuração visual</p><p className="mt-1 text-xs text-muted-foreground">A execução continua protegida pelo Action Registry e pela policy do App Instance.</p></div><Button size="sm" variant="destructive" onClick={removeItem}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Remover</Button></div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5"><p className="text-xs font-semibold">Página</p><Select value={selected.pageId} onValueChange={(pageId) => updateItem({ pageId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{pages.map((page) => <SelectItem key={page.id} value={page.id}>{page.title}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-1.5"><p className="text-xs font-semibold">Tipo</p><Select value={selected.kind} onValueChange={(kind) => updateItem({ kind: kind as ActionUiItem["kind"], fields: kind === "form" ? fieldsFromSchema(selectedAction) : [] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cta">Botão / CTA</SelectItem><SelectItem value="form">Formulário</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-1.5"><p className="text-xs font-semibold">Tipo</p><Select value={selected.kind} onValueChange={changeKind}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cta" disabled={selectedActionRequiresInput}>Botão / CTA</SelectItem><SelectItem value="form">Formulário</SelectItem></SelectContent></Select>{selectedActionRequiresInput && <p className="text-[10px] text-amber-700">Esta Action exige entrada e deve ser usada como formulário.</p>}</div>
                   <div className="space-y-1.5 sm:col-span-2"><p className="text-xs font-semibold">Action Registry</p><Select value={selected.actionKey} onValueChange={changeAction}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{actions.map((action) => <SelectItem key={action.key} value={action.key}>{action.name} · {action.key}</SelectItem>)}</SelectContent></Select>{selectedAction && <p className="text-[10px] text-muted-foreground">Risco: {selectedAction.riskLevel ?? "low"}{selectedAction.requiredPermissions?.length ? ` · Permissões: ${selectedAction.requiredPermissions.join(", ")}` : ""}</p>}</div>
                   <div className="space-y-1.5"><p className="text-xs font-semibold">Título</p><Input value={selected.title} onChange={(event) => updateItem({ title: event.target.value })} /></div>
                   <div className="space-y-1.5"><p className="text-xs font-semibold">Texto do botão</p><Input value={selected.buttonLabel} onChange={(event) => updateItem({ buttonLabel: event.target.value })} /></div>
                   <div className="space-y-1.5 sm:col-span-2"><p className="text-xs font-semibold">Descrição</p><Textarea rows={3} value={selected.body} onChange={(event) => updateItem({ body: event.target.value })} /></div>
                   <div className="space-y-1.5 sm:col-span-2"><p className="text-xs font-semibold">Mensagem de sucesso</p><Input value={selected.successMessage} onChange={(event) => updateItem({ successMessage: event.target.value })} /></div>
                 </div>
-                {selected.kind === "form" && <div className="space-y-3"><div><p className="text-sm font-semibold">Campos do formulário</p><p className="text-xs text-muted-foreground">Gerados somente a partir do input_schema do Registry; o runtime não aceita campos fora desse contrato.</p></div>{selected.fields.length === 0 ? <div className="rounded-lg border border-dashed p-4 text-xs text-muted-foreground">Esta Action não declara campos de entrada.</div> : selected.fields.map((field, index) => <div key={field.key} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_140px_1fr_auto]"><Input value={field.label} onChange={(event) => updateField(index, { label: event.target.value })} placeholder="Rótulo" /><Select value={field.inputType} onValueChange={(inputType) => updateField(index, { inputType: inputType as ActionField["inputType"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="text">Texto</SelectItem><SelectItem value="email">E-mail</SelectItem><SelectItem value="tel">Telefone</SelectItem><SelectItem value="number">Número</SelectItem><SelectItem value="textarea">Texto longo</SelectItem></SelectContent></Select><Input value={field.placeholder} onChange={(event) => updateField(index, { placeholder: event.target.value })} placeholder={field.key} /><Button type="button" variant={field.required ? "default" : "outline"} size="sm" onClick={() => updateField(index, { required: !field.required })}>{field.required ? "Obrigatório" : "Opcional"}</Button></div>)}</div>}
+                {selected.kind === "form" && <div className="space-y-3"><div><p className="text-sm font-semibold">Campos do formulário</p><p className="text-xs text-muted-foreground">Gerados somente a partir do input_schema do Registry; requisitos mínimos do contrato não podem ser removidos.</p></div>{selected.fields.length === 0 ? <div className="rounded-lg border border-dashed p-4 text-xs text-muted-foreground">Esta Action não declara campos de entrada.</div> : selected.fields.map((field, index) => { const lockedRequired = isContractRequired(selectedAction, field.key); return <div key={field.key} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_140px_1fr_auto]"><Input value={field.label} onChange={(event) => updateField(index, { label: event.target.value })} placeholder="Rótulo" /><Select value={field.inputType} onValueChange={(inputType) => updateField(index, { inputType: inputType as ActionField["inputType"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="text">Texto</SelectItem><SelectItem value="email">E-mail</SelectItem><SelectItem value="tel">Telefone</SelectItem><SelectItem value="number">Número</SelectItem><SelectItem value="textarea">Texto longo</SelectItem></SelectContent></Select><Input value={field.placeholder} onChange={(event) => updateField(index, { placeholder: event.target.value })} placeholder={field.key} /><Button type="button" variant={field.required ? "default" : "outline"} size="sm" disabled={lockedRequired} onClick={() => updateField(index, { required: !field.required })}>{lockedRequired ? "Obrigatório" : field.required ? "Obrigatório" : "Opcional"}</Button></div>; })}</div>}
               </div>
             )}
           </section>
