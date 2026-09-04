@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, CheckCircle2, Link2, MapPin, PackageSearch, Plus, Search, Target } from "lucide-react";
-import { CampaignMarketingIntelligencePanel } from "@/components/marketing/CampaignMarketingIntelligencePanel";
+import { CampaignMarketingIntelligencePanel, type CampaignMarketingIntelligence } from "@/components/marketing/CampaignMarketingIntelligencePanel";
 
 type Product = { id: string; nome: string; ativo?: boolean };
 
@@ -39,6 +39,7 @@ export type MarketingContextValue = {
   primaryKpi?: string;
   researchEnabled?: boolean;
   seoTrackingEnabled?: boolean;
+  marketingIntelligence?: CampaignMarketingIntelligence;
   campaignId?: string;
   campaignName?: string;
 };
@@ -82,6 +83,7 @@ function normalizeContext(source: Partial<MarketingContextValue> | null | undefi
     primaryKpi: source?.primaryKpi,
     researchEnabled: source?.researchEnabled,
     seoTrackingEnabled: source?.seoTrackingEnabled,
+    marketingIntelligence: source?.marketingIntelligence,
     campaignId: source?.campaignId,
     campaignName: source?.campaignName,
   };
@@ -113,6 +115,7 @@ function buildContextSummary(value: {
   differentiators?: string;
   restrictions?: string;
   primaryKpi?: string;
+  intelligence?: CampaignMarketingIntelligence;
 }) {
   const location = [value.city, value.state].filter(Boolean).join("/");
   return [
@@ -127,6 +130,11 @@ function buildContextSummary(value: {
     value.differentiators && `Diferenciais obrigatórios: ${value.differentiators}`,
     value.restrictions && `Restrições: ${value.restrictions}`,
     value.primaryKpi && `Meta/KPI: ${value.primaryKpi}`,
+    value.intelligence?.seo?.primaryKeyword && `Keyword principal: ${value.intelligence.seo.primaryKeyword}`,
+    value.intelligence?.seo?.secondaryKeywords?.length
+      ? `Keywords apoio: ${value.intelligence.seo.secondaryKeywords.slice(0, 4).join(", ")}`
+      : "",
+    value.intelligence?.tracking?.utmCampaign && `Tracking: ${value.intelligence.tracking.utmCampaign}`,
   ].filter(Boolean).join(" | ");
 }
 
@@ -246,6 +254,7 @@ export function MarketingContextSelector({
       differentiators: next.mandatoryDifferentiators?.trim(),
       restrictions: next.restrictions?.trim(),
       primaryKpi: next.primaryKpi?.trim(),
+      intelligence: next.marketingIntelligence,
     });
   }
 
@@ -339,6 +348,7 @@ export function MarketingContextSelector({
     value.mandatoryDifferentiators,
     value.restrictions,
     value.primaryKpi,
+    value.marketingIntelligence?.generatedAt,
   ]);
 
   function emit(patch: Partial<MarketingContextValue>) {
@@ -361,7 +371,7 @@ export function MarketingContextSelector({
   function detachCampaign() {
     if (typeof window !== "undefined") sessionStorage.removeItem(ACTIVE_BRIEFING_KEY);
     hydrationKeyRef.current = "manual";
-    emit({ campaignId: undefined, campaignName: undefined });
+    emit({ campaignId: undefined, campaignName: undefined, marketingIntelligence: undefined });
   }
 
   function toggleProduct(product: Product) {
@@ -583,9 +593,17 @@ export function MarketingContextSelector({
           </div>
         </div>
 
+        {value.marketingIntelligence && (
+          <div className="flex flex-wrap gap-2 rounded-lg border border-primary/20 bg-primary/[0.035] px-3 py-2.5 text-[11px]">
+            <Badge variant="outline">Keyword: {value.marketingIntelligence.seo.primaryKeyword}</Badge>
+            <Badge variant="outline">Tracking: {value.marketingIntelligence.tracking.utmCampaign}</Badge>
+            <span className="text-muted-foreground self-center">Pesquisa & estratégia desta campanha já estão sendo usadas neste gerador.</span>
+          </div>
+        )}
+
         <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <p><strong className="text-foreground">Briefing mestre conectado:</strong> oferta, público, objetivo, local, empreendimento e detalhes seguem para o gerador e para as próximas superfícies compatíveis.</p>
+          <p><strong className="text-foreground">Briefing mestre conectado:</strong> oferta, público, objetivo, local, empreendimento, pesquisa, SEO e tracking seguem para o gerador e para as próximas superfícies compatíveis.</p>
         </div>
       </section>
     );
@@ -685,6 +703,7 @@ export function MarketingContextSelector({
           campaignId={value.campaignId}
           campaignName={value.campaignName}
           researchEnabled={value.researchEnabled}
+          onGenerated={(pack) => emit({ marketingIntelligence: pack })}
         />
       ) : (
         <div className="rounded-lg border border-dashed bg-background/50 px-3 py-3 text-xs text-muted-foreground">
@@ -694,7 +713,7 @@ export function MarketingContextSelector({
 
       <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
         <Search className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <p><strong className="text-foreground">Contexto preservado:</strong> campanhas antigas continuam válidas, enquanto as novas guardam localização, empreendimento, detalhes, diferenciais, restrições, KPI e preferências de pesquisa/SEO de forma estruturada.</p>
+        <p><strong className="text-foreground">Contexto preservado:</strong> campanhas antigas continuam válidas, enquanto as novas guardam localização, empreendimento, detalhes, diferenciais, restrições, KPI, pesquisa, SEO e tracking de forma estruturada para todos os executores.</p>
       </div>
     </section>
   );
