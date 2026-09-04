@@ -120,6 +120,7 @@ import tenantDistribuicaoConfigRouter from "./tenant_distribuicao_config";
 import leadSpouseConsentRouter from "./lead_spouse_consent";
 import aiGatewayRouter from "./ai_gateway";
 import prospectorRouter from "./prospector";
+import prospectorMultiRouter from "./prospector-multi";
 import partnerProspectorRouter from "./partner-prospector";
 import prospectorFlowsRouter from "./prospector-flows";
 import contentStudioRouter from "./content_studio";
@@ -403,6 +404,7 @@ router.use(aiGatewayRouter);
 
 // Prospector Hub
 router.use(prospectorRouter);
+router.use(prospectorMultiRouter);
 router.use(prospectorFlowsRouter);
 
 // Partner Prospector Hub (admin)
