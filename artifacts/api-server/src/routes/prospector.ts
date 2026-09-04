@@ -668,6 +668,11 @@ router.post("/prospector/enrich", async (req, res) => {
     }
   }
 
+  // Todo lead novo de Google Places entra no mesmo motor preditivo/fila do Prospector.
+  if (resolvedLeadId && !isDuplicate) {
+    enrichLead({ leadId: resolvedLeadId, tenantId, log: req.log }).catch(() => undefined);
+  }
+
   // 7. Persiste o enriquecimento
   const [record] = await db
     .insert(prospectEnrichmentsTable)
@@ -1227,7 +1232,7 @@ router.get("/prospector/fila", async (req, res) => {
     .where(
       and(
         eq(leadsTable.tenantId, tenantId),
-        inArray(leadsTable.source, ["prospector_auto", "prospector"]),
+        inArray(leadsTable.source, ["prospector_auto", "prospector", "cnpj", "recem_aberta", "ad_library"]),
         inArray(leadsTable.enrichmentStatus, ["pending", "enriched", "scored"]),
       ),
     )
@@ -1565,26 +1570,45 @@ router.post("/prospector/cnpj/prospectar", async (req, res) => {
 
   if (!lead) return res.status(500).json({ error: "Falha ao criar lead" });
 
-  // Create deal
+  // Create deal in the same CRM funnel used by the canonical Prospector.
+  let cnpjDealId: string | null = null;
   if (firstFunil) {
-    await db.insert(dealsTable).values({
+    const [createdDeal] = await db.insert(dealsTable).values({
       tenantId,
       leadId: lead.id,
       funilId: firstFunil.id,
       titulo: `${d.nomeFantasia || d.razaoSocial} — Prospector CNPJ`,
       etapa: "novo",
-    });
+    }).returning({ id: dealsTable.id });
+    cnpjDealId = createdDeal?.id ?? null;
   }
 
   // Activity
   await db.insert(activitiesTable).values({
     tenantId,
     leadId: lead.id,
+    dealId: cnpjDealId,
     tipo: "tarefa",
     titulo: "Lead importado via Busca CNPJ",
     descricao: `Lead importado via Busca CNPJ (CNAE ${d.cnaeCode ?? "?"}) — ${d.municipio ?? ""}`,
     status: "concluida",
   });
+
+  if (cnpjDealId) {
+    gerarBriefingDeal(
+      tenantId,
+      cnpjDealId,
+      d.nomeFantasia || d.razaoSocial,
+      d.endereco ?? null,
+      d.telefone ?? null,
+      null,
+      null,
+      null,
+      [],
+      [],
+      req.log,
+    ).catch(() => undefined);
+  }
 
   // Enrich (fire-and-forget) with boost if recently opened
   enrichLead({
@@ -1629,6 +1653,158 @@ router.post("/prospector/ads/search", async (req, res) => {
     hasAds: result.hasAds,
     searchTerms: parsed.data.searchTerms,
   });
+});
+
+/** POST /prospector/ads/prospectar — ingest a Meta/Instagram advertiser into the canonical Prospector */
+router.post("/prospector/ads/prospectar", async (req, res) => {
+  const schema = z.object({
+    pageId: z.string().min(1),
+    pageName: z.string().min(2),
+    snapshotUrl: z.string().url().nullish(),
+    startDate: z.string().nullish(),
+    searchTerms: z.string().optional(),
+    tenantId: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
+
+  const tenantId = resolveTenantId(req, parsed.data.tenantId);
+  const d = parsed.data;
+
+  // Cross-enrich Meta discovery with Google Places when quota/provider are available.
+  let place: PlacesResult | null = null;
+  try {
+    await checkApiQuota(tenantId, "google_places", req.log);
+    place = await searchPlace(d.pageName, req.log);
+  } catch (err) {
+    req.log.warn({ err, pageId: d.pageId }, "prospector/meta: Google cross-enrichment unavailable (non-fatal)");
+  }
+
+  const telefone = place?.telefone ?? null;
+  const whatsapp = deriveWhatsapp(telefone);
+  const now = new Date().toISOString();
+  const metaSignal = {
+    origem: "ad_library",
+    meta_page_id: d.pageId,
+    meta_page_name: d.pageName,
+    meta_ad_snapshot_url: d.snapshotUrl ?? null,
+    meta_ad_start_date: d.startDate ?? null,
+    meta_search_terms: d.searchTerms ?? null,
+    meta_anunciante_ativo: true,
+    rating: place?.rating ?? null,
+    total_ratings: place?.reviewCount ?? null,
+    prospectado_em: now,
+  };
+
+  // Deduplicate inside the tenant by Meta page id, phone or exact business name.
+  const [existing] = await db
+    .select({ id: leadsTable.id, nome: leadsTable.nome, metadata: leadsTable.metadata })
+    .from(leadsTable)
+    .where(and(
+      eq(leadsTable.tenantId, tenantId),
+      or(
+        sql`${leadsTable.metadata}->>'meta_page_id' = ${d.pageId}`,
+        telefone ? eq(leadsTable.telefone, telefone) : sql`FALSE`,
+        sql`lower(${leadsTable.nome}) = lower(${d.pageName})`,
+      ),
+    ))
+    .limit(1);
+
+  if (existing) {
+    await db.update(leadsTable)
+      .set({
+        telefone: telefone ?? undefined,
+        websiteUrl: place?.siteOficial ?? undefined,
+        endereco: place?.endereco ?? undefined,
+        metadata: {
+          ...((existing.metadata ?? {}) as Record<string, unknown>),
+          ...metaSignal,
+        },
+        priorityReason: "Anunciante Meta/Instagram ativo — sinal comercial atualizado",
+        updatedAt: new Date(),
+      })
+      .where(eq(leadsTable.id, existing.id));
+
+    return res.status(200).json({
+      leadId: existing.id,
+      dealId: null,
+      merged: true,
+      message: `Lead "${existing.nome}" já existe — sinal Meta atualizado`,
+    });
+  }
+
+  const [lead] = await db.insert(leadsTable).values({
+    tenantId,
+    nome: d.pageName,
+    empresa: d.pageName,
+    telefone: telefone ?? undefined,
+    endereco: place?.endereco ?? undefined,
+    websiteUrl: place?.siteOficial ?? undefined,
+    source: "ad_library",
+    tipoPessoa: "juridica",
+    enrichmentStatus: "pending",
+    mercadoSegmento: d.searchTerms ?? undefined,
+    priorityReason: "Investindo em anúncios Meta/Instagram — sinal de intenção comercial",
+    metadata: metaSignal,
+  }).returning({ id: leadsTable.id });
+
+  if (!lead) return res.status(500).json({ error: "Falha ao criar lead Meta" });
+
+  const [firstFunil] = await db
+    .select({ id: funisTable.id })
+    .from(funisTable)
+    .where(eq(funisTable.tenantId, tenantId))
+    .orderBy(asc(funisTable.createdAt))
+    .limit(1);
+
+  let dealId: string | null = null;
+  if (firstFunil) {
+    const [deal] = await db.insert(dealsTable).values({
+      tenantId,
+      leadId: lead.id,
+      funilId: firstFunil.id,
+      titulo: `${d.pageName} — Prospector Meta`,
+      etapa: "novo",
+    }).returning({ id: dealsTable.id });
+    dealId = deal?.id ?? null;
+  }
+
+  await db.insert(activitiesTable).values({
+    tenantId,
+    leadId: lead.id,
+    dealId,
+    tipo: "tarefa",
+    titulo: "Lead importado via Prospector Meta/Instagram",
+    descricao: `Anunciante ativo identificado na Meta Ad Library${d.searchTerms ? ` para "${d.searchTerms}"` : ""}.`,
+    status: "concluida",
+  });
+
+  if (dealId) {
+    gerarBriefingDeal(
+      tenantId,
+      dealId,
+      d.pageName,
+      place?.endereco ?? null,
+      telefone,
+      place?.siteOficial ?? null,
+      place?.rating ?? null,
+      place?.reviewCount ?? null,
+      ["Investe ativamente em mídia paga"],
+      ["Risco de perda de leads entre anúncio e atendimento"],
+      req.log,
+    ).catch(() => undefined);
+  }
+
+  enrichLead({
+    leadId: lead.id,
+    tenantId,
+    log: req.log,
+    scoreBoost: 5,
+    boostReason: "meta_advertiser",
+  }).catch(() => undefined);
+
+  return res.status(201).json({ leadId: lead.id, dealId, merged: false, whatsapp });
 });
 
 /** POST /prospector/cnpj/recem-abertas — manual trigger of new-company scan */

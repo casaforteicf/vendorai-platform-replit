@@ -465,6 +465,9 @@ export default function Prospector() {
   const [adsResultados, setAdsResultados] = useState<AdResult[]>([]);
   const [adsSearched, setAdsSearched] = useState(false);
   const [adsSearching, setAdsSearching] = useState(false);
+  const [adsProspectandoPageId, setAdsProspectandoPageId] = useState<string | null>(null);
+  const [adsProspectadosPageIds, setAdsProspectadosPageIds] = useState<Set<string>>(new Set());
+  const [adsDuplicadosPageIds, setAdsDuplicadosPageIds] = useState<Set<string>>(new Set());
 
   // ── Fila Preditiva (Cmd 22) ──────────────────────────────────────────────
   function getAuthHeaders() {
@@ -558,6 +561,38 @@ export default function Prospector() {
       setAdsSearching(false);
     }
   }
+
+  const adsProspectMutation = useMutation({
+    mutationFn: async (ad: AdResult) => {
+      const res = await fetch("/api/prospector/ads/prospectar", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          ...ad,
+          searchTerms: adsSearchTerms,
+          tenantId,
+        }),
+      });
+      const data = await res.json() as { leadId?: string; dealId?: string | null; merged?: boolean; message?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Falha ao prospectar anunciante");
+      return data;
+    },
+    onSuccess: (data, ad) => {
+      if (data.merged) {
+        setAdsDuplicadosPageIds((prev) => new Set(prev).add(ad.pageId));
+        toast({ title: "Lead já estava no CRM", description: data.message ?? "Sinal Meta atualizado no lead existente." });
+      } else {
+        setAdsProspectadosPageIds((prev) => new Set(prev).add(ad.pageId));
+        toast({ title: "Lead Meta criado", description: "Enriquecimento, score, briefing e fila foram acionados." });
+      }
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: (err) => toast({
+      title: "Falha ao prospectar anunciante",
+      description: err instanceof Error ? err.message : undefined,
+      variant: "destructive",
+    }),
+  });
 
   const filaQuery = useQuery({
     queryKey: ["prospector-fila", tenantId],
@@ -1435,6 +1470,25 @@ export default function Prospector() {
                                 </a>
                               </Button>
                             )}
+                            <Button
+                              size="sm"
+                              variant={adsProspectadosPageIds.has(ad.pageId) || adsDuplicadosPageIds.has(ad.pageId) ? "outline" : "default"}
+                              disabled={adsProspectMutation.isPending || adsProspectadosPageIds.has(ad.pageId) || adsDuplicadosPageIds.has(ad.pageId)}
+                              onClick={() => {
+                                setAdsProspectandoPageId(ad.pageId);
+                                adsProspectMutation.mutate(ad, { onSettled: () => setAdsProspectandoPageId(null) });
+                              }}
+                            >
+                              {adsProspectandoPageId === ad.pageId && adsProspectMutation.isPending ? (
+                                <><Spinner className="h-3.5 w-3.5 mr-1" /> Prospectando...</>
+                              ) : adsDuplicadosPageIds.has(ad.pageId) ? (
+                                <><CheckCircle2 className="h-3.5 w-3.5 mr-1 text-amber-600" /> Já no CRM</>
+                              ) : adsProspectadosPageIds.has(ad.pageId) ? (
+                                <><CheckCircle2 className="h-3.5 w-3.5 mr-1 text-emerald-600" /> Prospectado</>
+                              ) : (
+                                <><UserPlus className="h-3.5 w-3.5 mr-1" /> Prospectar</>
+                              )}
+                            </Button>
                           </div>
                         </div>
                       </CardContent>

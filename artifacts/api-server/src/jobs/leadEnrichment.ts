@@ -318,20 +318,30 @@ export async function enrichLead(
       discoveryData: lead.discoveryData as Record<string, unknown> | null,
     });
 
-    // Phase 2C: Meta Ads check + Google presence cross-reference
+    // Phase 2C: Meta Ads check + Google presence cross-reference.
+    // A lead discovered in Ad Library already carries a verified ad signal, so it does not
+    // depend on a global token being available again during enrichment.
+    const leadMetadata = (lead.metadata ?? {}) as Record<string, unknown>;
+    const metaAdvertiserSignal =
+      lead.source === "ad_library" ||
+      leadMetadata["origem"] === "ad_library" ||
+      leadMetadata["meta_anunciante_ativo"] === true ||
+      Boolean(leadMetadata["meta_page_id"]);
+    const mustCheckGooglePresence = ["cnpj", "recem_aberta", "ad_library"].includes(lead.source ?? "");
+
     const [metaAds, googlePresence] = await Promise.allSettled([
-      checkHasMetaAds(lead.empresa ?? lead.nome),
-      lead.source === "cnpj" || lead.source === "recem_aberta"
-        ? checkGooglePresence(lead.empresa ?? lead.nome, (lead.metadata as Record<string, unknown>)?.["cidade"] as string ?? "")
-        : Promise.resolve(true), // for Google Places leads, presence is assumed
+      metaAdvertiserSignal ? Promise.resolve(true) : checkHasMetaAds(lead.empresa ?? lead.nome),
+      mustCheckGooglePresence
+        ? checkGooglePresence(lead.empresa ?? lead.nome, leadMetadata["cidade"] as string ?? "")
+        : Promise.resolve(true), // Google Places-origin leads are already verified there
     ]);
 
-    growth.anuncios_ativos = metaAds.status === "fulfilled" ? metaAds.value : false;
+    growth.anuncios_ativos = metaAds.status === "fulfilled" ? metaAds.value : metaAdvertiserSignal;
     const temPresencaGoogle = googlePresence.status === "fulfilled" ? googlePresence.value : true;
     digital.presenca_google = temPresencaGoogle;
 
-    // If company from CNPJ with no Google presence → flag as "digital invisible"
-    if ((lead.source === "cnpj" || lead.source === "recem_aberta") && !temPresencaGoogle) {
+    // Non-Google discovery with no Places presence → flag as digitally invisible.
+    if (mustCheckGooglePresence && !temPresencaGoogle) {
       lead.priorityReason = lead.priorityReason
         ? `${lead.priorityReason} • Sem presença no Google`
         : "Empresa ativa sem presença digital";
@@ -340,7 +350,12 @@ export async function enrichLead(
     // Save enrichment_data + mark enriched
     await db.update(leadsTable)
       .set({
-        enrichmentData: { digital, growth, enriquecido_em: new Date().toISOString() },
+        enrichmentData: {
+          digital,
+          growth,
+          signals: { origem: lead.source, meta_anunciante: metaAdvertiserSignal },
+          enriquecido_em: new Date().toISOString(),
+        },
         enrichmentStatus: "enriched",
         ...(lead.priorityReason ? { priorityReason: lead.priorityReason } : {}),
         updatedAt: new Date(),
@@ -371,6 +386,10 @@ export async function enrichLead(
         scoreResult.priority_reason = scoreResult.priority_reason
           ? `${scoreResult.priority_reason} (+${scoreBoost} pts: empresa recém-aberta)`
           : `Empresa recém-aberta — oportunidade de primeiro sistema`;
+      } else if (boostReason === "meta_advertiser") {
+        scoreResult.priority_reason = scoreResult.priority_reason
+          ? `${scoreResult.priority_reason} (+${scoreBoost} pts: anunciante Meta/Instagram)`
+          : `Anunciante Meta/Instagram ativo (+${scoreBoost} pts)`;
       }
     }
 
@@ -383,7 +402,7 @@ export async function enrichLead(
     }
 
     // Boost +15 if no Google presence (invisible = maximum pain)
-    if (!digital.presenca_google && (lead.source === "cnpj" || lead.source === "recem_aberta")) {
+    if (!digital.presenca_google && mustCheckGooglePresence) {
       scoreResult.propensity_score = Math.min(100, scoreResult.propensity_score + 15);
     }
 
@@ -410,6 +429,7 @@ export async function enrichLead(
         enrichmentData: {
           digital,
           growth,
+          signals: { origem: lead.source, meta_anunciante: metaAdvertiserSignal },
           score_breakdown: scoreResult.score_breakdown,
           enriquecido_em: new Date().toISOString(),
         },
