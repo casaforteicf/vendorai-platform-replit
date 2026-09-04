@@ -6,30 +6,12 @@ import { Label } from "@/components/ui/label";
 import { MapPin, Mail, MessageCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getLaunchAttribution } from "@/lib/launchAttribution";
+import { PUBLIC_COUNTRIES, type PublicCountryCode, usePublicCountry } from "@/lib/publicCountry";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "/api";
 const WHATSAPP_NUMBER = "5549988164436";
 
-const COUNTRY_OPTIONS = {
-  BR: { label: "Brasil", locale: "pt-BR", phone: "+55 49 99999-9999" },
-  PY: { label: "Paraguay", locale: "es-PY", phone: "+595 981 234567" },
-  AR: { label: "Argentina", locale: "es-AR", phone: "+54 9 11 1234-5678" },
-  UY: { label: "Uruguay", locale: "es-UY", phone: "+598 99 123 456" },
-  CL: { label: "Chile", locale: "es-CL", phone: "+56 9 1234 5678" },
-} as const;
-
-type CountryCode = keyof typeof COUNTRY_OPTIONS;
 type FormState = "idle" | "loading" | "success";
-
-function initialCountry(): CountryCode {
-  if (typeof navigator === "undefined") return "BR";
-  const locale = navigator.language.toLowerCase();
-  if (locale.includes("es-py")) return "PY";
-  if (locale.includes("es-ar")) return "AR";
-  if (locale.includes("es-uy")) return "UY";
-  if (locale.includes("es-cl")) return "CL";
-  return "BR";
-}
 
 const PT = {
   whatsappMessage: "Olá! Vim pelo site do VendorAI e quero falar com a equipe comercial.",
@@ -143,12 +125,10 @@ export default function Contato() {
   const { toast } = useToast();
   const [formState, setFormState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [countryCode, setCountryCode] = useState<CountryCode>(initialCountry);
+  const { countryCode, setCountryCode, country, isSpanish } = usePublicCountry();
   const formRef = useRef<HTMLFormElement>(null);
 
-  const isSpanish = countryCode !== "BR";
   const copy = isSpanish ? ES : PT;
-  const country = COUNTRY_OPTIONS[countryCode];
   const whatsappHref = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(copy.whatsappMessage)}`;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -237,8 +217,8 @@ export default function Contato() {
 
                 <div className="space-y-2">
                   <Label htmlFor="countryCode">{copy.country}</Label>
-                  <select id="countryCode" value={countryCode} onChange={(e) => setCountryCode(e.target.value as CountryCode)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-                    {Object.entries(COUNTRY_OPTIONS).map(([code, option]) => <option key={code} value={code}>{option.label}</option>)}
+                  <select id="countryCode" value={countryCode} onChange={(e) => setCountryCode(e.target.value as PublicCountryCode)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    {Object.entries(PUBLIC_COUNTRIES).map(([code, option]) => <option key={code} value={code}>{option.label}</option>)}
                   </select>
                 </div>
 
