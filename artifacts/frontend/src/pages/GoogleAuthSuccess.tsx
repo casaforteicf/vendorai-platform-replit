@@ -27,7 +27,7 @@ const ES_COPY = {
 export default function GoogleAuthSuccess() {
   const { login } = useAuth();
   const { locale } = useI18n();
-  const copy = locale.startsWith("es") ? ES_COPY : PT_COPY;
+  const [copy] = useState(() => locale.startsWith("es") ? ES_COPY : PT_COPY);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
