@@ -217,6 +217,18 @@ interface ImportedContentDraft {
   creativeDraft: { headlines: string[]; descriptions: string[]; imagens: string[] };
 }
 
+interface RevenueScoutAdsDraft {
+  campaignId: string;
+  campaignName?: string;
+  suggestedPlatform?: "google" | "meta";
+  marketingContext?: MarketingContextValue;
+  region?: string;
+  opportunity?: string;
+  offer?: string;
+  headline?: string;
+  description?: string;
+}
+
 const STATUS_LABEL: Record<string, string> = {
   rascunho: "Rascunho",
   aguardando_conexao_plataforma: "Aguardando conexão",
@@ -296,7 +308,44 @@ export default function Ads() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("from") !== "content") return;
+    const source = params.get("from");
+
+    if (source === "revenue-scout") {
+      try {
+        const raw = sessionStorage.getItem("vendorai_ads_revenue_scout_draft_v1");
+        if (!raw) return;
+        const draft = JSON.parse(raw) as RevenueScoutAdsDraft;
+        if (!draft.campaignId) return;
+        const context = draft.marketingContext ?? { nicheId: "", nicheName: "", productIds: [], productNames: [] };
+        setMarketingContext({
+          ...context,
+          campaignGoal: [context.campaignGoal, draft.description, draft.opportunity].filter(Boolean).join(" | "),
+        });
+        const platform = draft.suggestedPlatform ?? "meta";
+        setSourceDraft(null);
+        setAutoGenerateAfterCreate(false);
+        setForm({
+          ...EMPTY_FORM,
+          plataforma: platform,
+          tipoAnuncio: platform === "meta" ? "imagem" : "rsa_pmax",
+          itemTipo: "livre",
+          itemLabel: draft.offer || draft.campaignName || "Campanha do Revenue Scout",
+          destinoClique: "whatsapp",
+          vertical: context.businessVertical || context.audienceNiche || "",
+          locais: draft.region ?? "",
+          termosPesquisa: [context.audienceNiche, draft.opportunity].filter((value): value is string => Boolean(value)),
+          objective: "lead",
+        });
+        setOpen(true);
+        sessionStorage.removeItem("vendorai_ads_revenue_scout_draft_v1");
+        toast({ title: "Plano do Revenue Scout carregado", description: "O anúncio continua em rascunho até você revisar orçamento, público e ativação." });
+      } catch {
+        sessionStorage.removeItem("vendorai_ads_revenue_scout_draft_v1");
+      }
+      return;
+    }
+
+    if (source !== "content") return;
     try {
       const raw = sessionStorage.getItem("vendorai_ads_content_draft_v1");
       if (!raw) return;
@@ -322,7 +371,7 @@ export default function Ads() {
     } catch {
       sessionStorage.removeItem("vendorai_ads_content_draft_v1");
     }
-  }, []); // Executa só ao entrar em Anúncios vindo do gerador.
+  }, []); // Executa só ao entrar em Anúncios por um handoff de Marketing/Revenue Scout.
 
   const { data: campaigns = [], isLoading } = useQuery<AdCampaign[]>({
     queryKey: ["ad-campaigns", tenantId],

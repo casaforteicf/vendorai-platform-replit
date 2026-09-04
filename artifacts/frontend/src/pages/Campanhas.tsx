@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSegmentHints } from "@/lib/segmentHints";
@@ -140,6 +140,35 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+type RevenueScoutCampaignContext = {
+  origin?: string;
+  prospectorBatchId?: string;
+  leadIds?: string[];
+  tenantName?: string;
+  businessVertical?: string;
+  region?: string;
+  opportunity?: string;
+  averageScore?: number;
+  offer?: string;
+  productIds?: string[];
+  productNames?: string[];
+  audienceSegment?: string;
+  audienceNiche?: string;
+  campaignGoal?: string;
+  recommendedChannel?: "whatsapp" | "email" | "instagram";
+  recommendedPaidPlatform?: "meta" | "google";
+  adsHeadline?: string;
+  adsDescription?: string;
+  lpHeadline?: string;
+  lpSubheadline?: string;
+  marketingContext?: MarketingContextValue;
+};
+
+function getRevenueScoutContext(campaign: Campaign | null | undefined): RevenueScoutCampaignContext | null {
+  const context = (campaign as any)?.contexto as RevenueScoutCampaignContext | null | undefined;
+  return context?.origin === "revenue_scout" ? context : null;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -183,6 +212,7 @@ function CampaignModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isEdit = !!editingCampaign;
+  const revenueScoutContext = getRevenueScoutContext(editingCampaign);
 
   // "form" → filling | "preview" → showing audience after create-as-rascunho
   const [step, setStep] = useState<"form" | "preview">("form");
@@ -209,6 +239,49 @@ function CampaignModal({
         : "",
     },
   });
+
+  useEffect(() => {
+    if (!open) return;
+    if (!editingCampaign) {
+      form.reset({
+        nome: "",
+        tipo: "whatsapp",
+        mensagem: "",
+        churnRiskMin: undefined,
+        journeyStage: "",
+        dealEtapas: [],
+        mensagensEtapa: {},
+        agendadaPara: "",
+      });
+      setMarketingContext({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
+      return;
+    }
+    const filtro = (editingCampaign.segmentoFiltro ?? {}) as any;
+    form.reset({
+      nome: editingCampaign.nome ?? "",
+      tipo: editingCampaign.tipo ?? "whatsapp",
+      mensagem: editingCampaign.mensagem ?? "",
+      churnRiskMin: typeof filtro.churnRisk === "object" && filtro.churnRisk !== null ? filtro.churnRisk.gte : undefined,
+      journeyStage: filtro.journeyStage ?? "",
+      dealEtapas: filtro.dealEtapas ?? [],
+      mensagensEtapa: (editingCampaign.mensagensEtapa as Record<string, string>) ?? {},
+      agendadaPara: editingCampaign.agendadaPara ? editingCampaign.agendadaPara.slice(0, 16) : "",
+    });
+    const context = revenueScoutContext?.marketingContext ?? filtro.marketingContext;
+    if (context) {
+      setMarketingContext({
+        nicheId: context.nicheId ?? "",
+        nicheName: context.nicheName ?? "",
+        productIds: context.productIds ?? [],
+        productNames: context.productNames ?? [],
+        businessVertical: context.businessVertical,
+        businessVerticalSlug: context.businessVerticalSlug,
+        audienceSegment: context.audienceSegment,
+        audienceNiche: context.audienceNiche,
+        campaignGoal: context.campaignGoal,
+      });
+    }
+  }, [open, editingCampaign?.id]);
 
   const createMutation = useCreateCampaign();
   const updateMutation = useUpdateCampaign();
@@ -435,7 +508,13 @@ function CampaignModal({
           nome: values.nome,
           tipo: values.tipo,
           mensagem: values.mensagem,
-          segmentoFiltro: { ...buildSegmentoFiltro(values), marketingContext } as any,
+          segmentoFiltro: {
+            ...buildSegmentoFiltro(values),
+            ...(((editingCampaign.segmentoFiltro as any)?.leadIds?.length ?? 0) > 0
+              ? { leadIds: (editingCampaign.segmentoFiltro as any).leadIds }
+              : {}),
+            marketingContext,
+          } as any,
           mensagensEtapa: (values.mensagensEtapa && Object.keys(values.mensagensEtapa).length > 0)
             ? values.mensagensEtapa
             : undefined,
@@ -504,6 +583,37 @@ function CampaignModal({
       deleteMutation.mutate({ id: previewCampaignId });
     }
     handleClose();
+  }
+
+  function prepareRevenueScoutAds() {
+    if (!editingCampaign || !revenueScoutContext) return;
+    sessionStorage.setItem("vendorai_ads_revenue_scout_draft_v1", JSON.stringify({
+      campaignId: editingCampaign.id,
+      campaignName: editingCampaign.nome,
+      suggestedPlatform: revenueScoutContext.recommendedPaidPlatform ?? "meta",
+      marketingContext: revenueScoutContext.marketingContext ?? marketingContext,
+      region: revenueScoutContext.region,
+      opportunity: revenueScoutContext.opportunity,
+      offer: revenueScoutContext.offer,
+      headline: revenueScoutContext.adsHeadline,
+      description: revenueScoutContext.adsDescription,
+    }));
+    window.location.assign(`/ads?from=revenue-scout&campaignId=${encodeURIComponent(editingCampaign.id)}`);
+  }
+
+  function prepareRevenueScoutLp() {
+    if (!editingCampaign || !revenueScoutContext) return;
+    sessionStorage.setItem("vendorai_lp_revenue_scout_draft_v1", JSON.stringify({
+      campaignId: editingCampaign.id,
+      audience: revenueScoutContext.audienceNiche,
+      offer: revenueScoutContext.offer,
+      objective: revenueScoutContext.campaignGoal,
+      notes: [revenueScoutContext.opportunity, revenueScoutContext.lpHeadline, revenueScoutContext.lpSubheadline].filter(Boolean).join("\n"),
+      productIds: revenueScoutContext.productIds ?? [],
+      headline: revenueScoutContext.lpHeadline,
+      subheadline: revenueScoutContext.lpSubheadline,
+    }));
+    window.location.assign(`/content?tab=campanhas&view=lp&campaignId=${encodeURIComponent(editingCampaign.id)}&from=revenue-scout`);
   }
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
@@ -651,6 +761,41 @@ function CampaignModal({
               className="space-y-4"
             >
               <MarketingContextSelector tenantId={tenantId} value={marketingContext} onChange={setMarketingContext} />
+
+              {revenueScoutContext && editingCampaign && (
+                <Card className="border-emerald-200 bg-emerald-50/50">
+                  <CardContent className="pt-4 pb-4 space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300">Revenue Scout</Badge>
+                          <span className="text-xs text-muted-foreground">{revenueScoutContext.leadIds?.length ?? 0} prospect(s)</span>
+                          {typeof revenueScoutContext.averageScore === "number" && (
+                            <span className="text-xs font-medium text-emerald-700">Score médio {revenueScoutContext.averageScore}</span>
+                          )}
+                        </div>
+                        {revenueScoutContext.opportunity && (
+                          <p className="text-sm mt-2">{revenueScoutContext.opportunity}</p>
+                        )}
+                        {revenueScoutContext.region && (
+                          <p className="text-xs text-muted-foreground mt-1">Região: {revenueScoutContext.region}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => window.location.assign(`/prospector?tab=fila&campaignId=${encodeURIComponent(editingCampaign.id)}`)}>
+                        <Users className="h-3.5 w-3.5 mr-1" /> Ver prospects
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={prepareRevenueScoutLp}>
+                        <Sparkles className="h-3.5 w-3.5 mr-1" /> Preparar LP
+                      </Button>
+                      <Button type="button" size="sm" onClick={prepareRevenueScoutAds}>
+                        <Megaphone className="h-3.5 w-3.5 mr-1" /> Preparar anúncio
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               <FormField
                 control={form.control}
@@ -1282,6 +1427,17 @@ export default function Campanhas() {
     setModalOpen(true);
   }
 
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
+  useEffect(() => {
+    if (deepLinkHandled || campaigns.length === 0) return;
+    const campaignId = new URLSearchParams(window.location.search).get("campaignId");
+    if (!campaignId) return;
+    const campaign = campaigns.find((item) => item.id === campaignId);
+    if (!campaign) return;
+    setDeepLinkHandled(true);
+    openEdit(campaign);
+  }, [campaigns, deepLinkHandled]);
+
   function handlePauseResume(c: Campaign) {
     const canPause = c.status === "agendada" || c.status === "enviando";
     const newStatus: CampaignStatus = canPause ? "pausada" : "agendada";
@@ -1409,6 +1565,9 @@ export default function Campanhas() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline" className={`text-xs ${tipoCfg.className}`}>{tipoCfg.label}</Badge>
                       <Badge variant="outline" className={`text-xs ${statusCfg.className}`}>{statusCfg.label}</Badge>
+                      {getRevenueScoutContext(c) && (
+                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-xs">Revenue Scout</Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span>{c.totalDestinatarios.toLocaleString("pt-BR")} destinatários</span>
@@ -1444,8 +1603,13 @@ export default function Campanhas() {
 
                   return (
                     <TableRow key={c.id}>
-                      <TableCell className="font-medium max-w-[200px] truncate">
-                        {c.nome}
+                      <TableCell className="font-medium max-w-[240px]">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="truncate">{c.nome}</span>
+                          {getRevenueScoutContext(c) && (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px] shrink-0">Scout</Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge
