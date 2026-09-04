@@ -16,7 +16,7 @@ import {
   type MediaPlanCampaign,
   type MediaPlanCampaignChannel,
 } from "@workspace/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { alignMediaChannelFunction, mediaActionFunction } from "./media-channel-functions.js";
 
@@ -297,18 +297,6 @@ export async function generateContentCalendar(
     throw new ContentCalendarError("Plano de mídia não encontrado.");
   }
 
-  if (options.substituirPlanejado) {
-    await db
-      .delete(contentCalendarItemsTable)
-      .where(
-        and(
-          eq(contentCalendarItemsTable.tenantId, tenantId),
-          eq(contentCalendarItemsTable.mediaPlanId, mediaPlanId),
-          eq(contentCalendarItemsTable.status, "planejado"),
-        ),
-      );
-  }
-
   const campanhas: PlannerCampaign[] = (plan.conteudo.campanhas?.length
     ? plan.conteudo.campanhas
     : [buildLegacyCampaign(plan, semanas)]) as PlannerCampaign[];
@@ -323,10 +311,18 @@ export async function generateContentCalendar(
     throw new ContentCalendarError("O plano não possui materiais distribuíveis entre os canais.");
   }
 
+  const calendarBaseConditions = [
+    eq(contentCalendarItemsTable.tenantId, tenantId),
+    eq(contentCalendarItemsTable.mediaPlanId, mediaPlanId),
+  ];
+  if (options.substituirPlanejado) {
+    calendarBaseConditions.push(ne(contentCalendarItemsTable.status, "planejado"));
+  }
+
   const [ultimoAgendado] = await db
     .select({ dataAgendada: contentCalendarItemsTable.dataAgendada })
     .from(contentCalendarItemsTable)
-    .where(and(eq(contentCalendarItemsTable.tenantId, tenantId), eq(contentCalendarItemsTable.mediaPlanId, mediaPlanId)))
+    .where(and(...calendarBaseConditions))
     .orderBy(desc(contentCalendarItemsTable.dataAgendada))
     .limit(1);
 
@@ -392,6 +388,22 @@ export async function generateContentCalendar(
       canal: item.canal,
     };
   });
+
+  if (options.substituirPlanejado) {
+    const items = await db.transaction(async (tx) => {
+      await tx
+        .delete(contentCalendarItemsTable)
+        .where(
+          and(
+            eq(contentCalendarItemsTable.tenantId, tenantId),
+            eq(contentCalendarItemsTable.mediaPlanId, mediaPlanId),
+            eq(contentCalendarItemsTable.status, "planejado"),
+          ),
+        );
+      return tx.insert(contentCalendarItemsTable).values(rows).returning();
+    });
+    return { items };
+  }
 
   const items = await db.insert(contentCalendarItemsTable).values(rows).returning();
   return { items };
