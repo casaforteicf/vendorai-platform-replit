@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, KeyRound, Loader2, LogOut, Mail, Menu, ShieldCheck, Smartphone, UserRound } from "lucide-react";
+import { KeyRound, Loader2, LogOut, Mail, Menu, ShieldCheck, Smartphone, UserRound } from "lucide-react";
+import SchemaRuntimeRenderer, { type RuntimePayload } from "./SchemaRuntimeRenderer";
 
 type JsonObject = Record<string, unknown>;
 
@@ -36,9 +37,7 @@ type RuntimeSession = {
 };
 
 type VerifyResponse = RuntimeSession & { token: string };
-
 type Props = { appId: string };
-
 type Stage = "email" | "code";
 
 const COPY = {
@@ -61,18 +60,17 @@ const COPY = {
     genericCode: "Se a conta tiver acesso a este app, o código será enviado.",
     invalid: "Código inválido ou expirado.",
     requestError: "Não foi possível solicitar o código.",
-    sessionError: "Sua sessão não é mais válida.",
-    welcome: "Olá",
     role: "Perfil",
     permissions: "Permissões",
     noPermissions: "Sem permissões adicionais",
     published: "Versão publicada",
     secure: "Acesso protegido por identidade externa do aplicativo.",
     logout: "Sair",
-    publicOnly: "Aplicativo publicado",
     publicOnlyBody: "Este aplicativo está disponível publicamente e não exige login nesta versão.",
     modules: "Navegação",
     moduleReady: "disponível no manifesto publicado",
+    runtimeLoading: "Carregando conteúdo publicado...",
+    runtimeError: "Não foi possível carregar o conteúdo deste perfil.",
   },
   es: {
     loading: "Cargando aplicación...",
@@ -93,18 +91,17 @@ const COPY = {
     genericCode: "Si la cuenta tiene acceso a esta app, el código será enviado.",
     invalid: "Código inválido o vencido.",
     requestError: "No fue posible solicitar el código.",
-    sessionError: "Tu sesión ya no es válida.",
-    welcome: "Hola",
     role: "Perfil",
     permissions: "Permisos",
     noPermissions: "Sin permisos adicionales",
     published: "Versión publicada",
     secure: "Acceso protegido por la identidad externa de la aplicación.",
     logout: "Salir",
-    publicOnly: "Aplicación publicada",
     publicOnlyBody: "Esta aplicación está disponible públicamente y no requiere inicio de sesión en esta versión.",
     modules: "Navegación",
     moduleReady: "disponible en el manifiesto publicado",
+    runtimeLoading: "Cargando contenido publicado...",
+    runtimeError: "No fue posible cargar el contenido de este perfil.",
   },
 } as const;
 
@@ -138,23 +135,14 @@ function appIdentity(manifest: RuntimeManifest | null) {
   const theme = asObject(app.theme);
   return {
     name: stringValue(app.name) ?? "Aplicativo",
-    logoUrl:
-      stringValue(whiteLabel.logoUrl) ??
-      stringValue(whiteLabel.logo) ??
-      stringValue(whiteLabel.iconUrl) ??
-      stringValue(whiteLabel.appIcon) ??
-      null,
-    primary:
-      stringValue(theme.primaryColor) ??
-      stringValue(theme.primary) ??
-      stringValue(whiteLabel.primaryColor) ??
-      null,
+    logoUrl: stringValue(whiteLabel.logoUrl) ?? stringValue(whiteLabel.logo) ?? stringValue(whiteLabel.iconUrl) ?? stringValue(whiteLabel.appIcon) ?? null,
+    primary: stringValue(theme.primaryColor) ?? stringValue(theme.primary) ?? stringValue(whiteLabel.primaryColor) ?? null,
     navigation: navigationItems(app.navigation),
   };
 }
 
 export default function AppRuntimeShell({ appId }: Props) {
-  const lang = typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "pt";
+  const lang: "pt" | "es" = typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "pt";
   const copy = COPY[lang];
   const [manifest, setManifest] = useState<RuntimeManifest | null>(null);
   const [manifestLoading, setManifestLoading] = useState(true);
@@ -165,12 +153,24 @@ export default function AppRuntimeShell({ appId }: Props) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [session, setSession] = useState<RuntimeSession | null>(null);
+  const [runtimeToken, setRuntimeToken] = useState<string | null>(null);
   const [sessionChecking, setSessionChecking] = useState(false);
+  const [runtimePayload, setRuntimePayload] = useState<RuntimePayload | null>(null);
+  const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const [runtimeError, setRuntimeError] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const identity = useMemo(() => appIdentity(manifest), [manifest]);
   const authEnabled = manifest?.capabilities?.auth?.enabled === true && (manifest.capabilities.auth.methods ?? []).includes("email_code");
   const publicContent = manifest?.capabilities?.publicContent === true;
+
+  const clearSession = useCallback(() => {
+    localStorage.removeItem(storageKey(appId));
+    setSession(null);
+    setRuntimeToken(null);
+    setRuntimePayload(null);
+    setRuntimeError(false);
+  }, [appId]);
 
   const validateSession = useCallback(async (token: string) => {
     setSessionChecking(true);
@@ -181,23 +181,21 @@ export default function AppRuntimeShell({ appId }: Props) {
       if (!response.ok) throw new Error("invalid_session");
       const current = await response.json() as RuntimeSession;
       setSession(current);
+      setRuntimeToken(token);
       setMessage(null);
     } catch {
-      localStorage.removeItem(storageKey(appId));
-      setSession(null);
+      clearSession();
     } finally {
       setSessionChecking(false);
     }
-  }, [appId]);
+  }, [appId, clearSession]);
 
   useEffect(() => {
     let alive = true;
     async function load() {
       setManifestLoading(true);
       try {
-        const response = await fetch(`/api/app-runtime/apps/${encodeURIComponent(appId)}/manifest`, {
-          headers: { Accept: "application/json" },
-        });
+        const response = await fetch(`/api/app-runtime/apps/${encodeURIComponent(appId)}/manifest`, { headers: { Accept: "application/json" } });
         if (!response.ok) throw new Error("not_found");
         const payload = await response.json() as RuntimeManifest;
         if (!alive) return;
@@ -216,6 +214,36 @@ export default function AppRuntimeShell({ appId }: Props) {
     void load();
     return () => { alive = false; };
   }, [appId, validateSession]);
+
+  useEffect(() => {
+    if (!session || !runtimeToken) {
+      setRuntimePayload(null);
+      return;
+    }
+    let alive = true;
+    async function loadRuntime() {
+      setRuntimeLoading(true);
+      setRuntimeError(false);
+      try {
+        const response = await fetch(`/api/app-runtime/apps/${encodeURIComponent(appId)}/runtime`, {
+          headers: { Authorization: `Bearer ${runtimeToken}`, Accept: "application/json" },
+        });
+        if (response.status === 401) {
+          clearSession();
+          return;
+        }
+        if (!response.ok) throw new Error("runtime_failed");
+        const payload = await response.json() as RuntimePayload;
+        if (alive) setRuntimePayload(payload);
+      } catch {
+        if (alive) setRuntimeError(true);
+      } finally {
+        if (alive) setRuntimeLoading(false);
+      }
+    }
+    void loadRuntime();
+    return () => { alive = false; };
+  }, [appId, clearSession, runtimeToken, session]);
 
   useEffect(() => {
     if (!identity.primary) return;
@@ -265,6 +293,7 @@ export default function AppRuntimeShell({ appId }: Props) {
       const payload = await response.json() as VerifyResponse;
       localStorage.setItem(storageKey(appId), payload.token);
       setSession({ user: payload.user, membership: payload.membership });
+      setRuntimeToken(payload.token);
       setCode("");
       setMessage(null);
     } catch {
@@ -275,8 +304,7 @@ export default function AppRuntimeShell({ appId }: Props) {
   }
 
   function logout() {
-    localStorage.removeItem(storageKey(appId));
-    setSession(null);
+    clearSession();
     setStage("email");
     setCode("");
     setMessage(null);
@@ -342,7 +370,7 @@ export default function AppRuntimeShell({ appId }: Props) {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b bg-white">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
           {identity.logoUrl ? <img src={identity.logoUrl} alt="" className="h-9 max-w-[150px] object-contain" /> : <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white"><Smartphone className="h-4 w-4" /></div>}
           <span className="truncate text-sm font-semibold text-slate-900">{identity.name}</span>
           <div className="ml-auto hidden items-center gap-2 sm:flex"><Badge variant="secondary">{session?.membership.roleKey}</Badge><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-1.5 h-4 w-4" />{copy.logout}</Button></div>
@@ -350,16 +378,17 @@ export default function AppRuntimeShell({ appId }: Props) {
         </div>
         {menuOpen && <div className="border-t px-4 py-3 sm:hidden"><div className="flex items-center justify-between"><Badge variant="secondary">{session?.membership.roleKey}</Badge><Button size="sm" variant="ghost" onClick={logout}><LogOut className="mr-1.5 h-4 w-4" />{copy.logout}</Button></div></div>}
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-9">
-        <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
-          <section className="rounded-2xl border bg-white p-5 shadow-sm sm:p-7">
-            <div className="flex items-start gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700"><CheckCircle2 className="h-5 w-5" /></div><div><h2 className="text-xl font-bold text-slate-950">{copy.welcome}, {session?.user.displayName}</h2><p className="mt-1 text-sm text-slate-500">{session?.user.email || session?.user.phone}</p></div></div>
-            {publicContent && identity.navigation.length > 0 && <div className="mt-7"><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.modules}</p><div className="grid gap-3 sm:grid-cols-2">{identity.navigation.map((item) => <div key={item.key} className="rounded-xl border p-4"><p className="text-sm font-semibold text-slate-800">{item.label}</p><p className="mt-1 text-xs text-slate-400">{copy.moduleReady}</p></div>)}</div></div>}
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-9">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+          <section className="min-w-0">
+            {runtimeLoading && <div className="rounded-2xl border bg-white p-10 text-center shadow-sm"><Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /><p className="mt-3 text-sm text-slate-500">{copy.runtimeLoading}</p></div>}
+            {!runtimeLoading && runtimeError && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">{copy.runtimeError}</div>}
+            {!runtimeLoading && !runtimeError && runtimePayload && <SchemaRuntimeRenderer payload={runtimePayload} lang={lang} />}
           </section>
           <aside className="space-y-4">
             <div className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex items-center gap-2"><UserRound className="h-4 w-4 text-slate-500" /><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.role}</p></div><p className="mt-2 font-mono text-sm font-semibold text-slate-800">{session?.membership.roleKey}</p></div>
             <div className="rounded-2xl border bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{copy.permissions}</p>{session?.membership.permissions?.length ? <div className="mt-3 flex flex-wrap gap-2">{session.membership.permissions.map((permission) => <Badge key={permission} variant="outline" className="font-mono text-[10px]">{permission}</Badge>)}</div> : <p className="mt-2 text-sm text-slate-500">{copy.noPermissions}</p>}</div>
-            <div className="rounded-2xl border bg-white p-5 text-xs leading-5 text-slate-500 shadow-sm"><ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />{copy.secure}<div className="mt-2 text-slate-400">{copy.published}: {manifest.publishedVersion}</div></div>
+            <div className="rounded-2xl border bg-white p-5 text-xs leading-5 text-slate-500 shadow-sm"><ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />{copy.secure}<div className="mt-2 text-slate-400">{copy.published}: {runtimePayload?.publishedVersion ?? manifest.publishedVersion}</div></div>
           </aside>
         </div>
       </main>

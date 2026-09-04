@@ -8,13 +8,15 @@ import {
   tenantsTable,
 } from "@workspace/db";
 import appUserAuthRouter from "./app_user_auth";
+import appUserRuntimeRouter from "./app_user_runtime";
 
 const router: IRouter = Router();
 
-// Public App Builder authentication is intentionally mounted before the
-// platform-wide JWT gate. It has its own token verifier and never emits the
+// Public App Builder authentication/runtime are intentionally mounted before the
+// platform-wide JWT gate. They use the isolated App User token, never the
 // internal VendorAI JWT shape.
 router.use(appUserAuthRouter);
+router.use(appUserRuntimeRouter);
 
 const GENERIC_ICONS = [
   { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
