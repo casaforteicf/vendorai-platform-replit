@@ -47,14 +47,14 @@ interface PlanFromApi {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const AGENT_CARDS = [
-  { key: "sdr",          label: "SDR",          desc: "Qualificação de leads",        Icon: UserSearch },
-  { key: "closer",       label: "Closer",        desc: "Fechamento de vendas",         Icon: Handshake },
-  { key: "relacionamento", label: "Financeiro",  desc: "Relacionamento e finanças",    Icon: BarChart2 },
-  { key: "reactivation", label: "Cobrança",      desc: "Reativação e cobrança",        Icon: AlertCircle },
-  { key: "service",      label: "Suporte",       desc: "Atendimento ao cliente",       Icon: Headphones },
-  { key: "scheduler",   label: "Agendamento",   desc: "Agenda e compromissos",        Icon: CalendarCheck },
-  { key: "followup",    label: "Pós-venda",     desc: "Follow-up e fidelização",      Icon: Star },
-  { key: "onboarding",  label: "Prospector",    desc: "Prospecção ativa de clientes", Icon: Telescope },
+  { key: "sdr",            label: "SDR",         descKey: "onboarding.agent.sdr",        Icon: UserSearch },
+  { key: "closer",         label: "Closer",      descKey: "onboarding.agent.closer",     Icon: Handshake },
+  { key: "relacionamento", label: "Financeiro",  descKey: "onboarding.agent.finance",    Icon: BarChart2 },
+  { key: "reactivation",   label: "Cobrança",    descKey: "onboarding.agent.collection", Icon: AlertCircle },
+  { key: "service",        label: "Suporte",     descKey: "onboarding.agent.support",    Icon: Headphones },
+  { key: "scheduler",      label: "Agendamento", descKey: "onboarding.agent.scheduler",  Icon: CalendarCheck },
+  { key: "followup",       label: "Pós-venda",   descKey: "onboarding.agent.afterSales", Icon: Star },
+  { key: "onboarding",     label: "Prospector",  descKey: "onboarding.agent.prospector", Icon: Telescope },
 ] as const;
 
 const PLAN_DISPLAY = [
@@ -67,11 +67,11 @@ const VENDORAI_BILLING_CURRENCY = "BRL";
 const PLANO_PARAM_INDEX: Record<string, number> = { growth: 0, pme: 1, enterprise: 2 };
 
 const TOM_OPTIONS = [
-  { value: "profissional", label: "Profissional" },
-  { value: "amigavel",     label: "Amigável" },
-  { value: "tecnico",      label: "Técnico" },
-  { value: "vendedor",     label: "Vendedor" },
-];
+  { value: "profissional", labelKey: "onboarding.tone.professional" },
+  { value: "amigavel",     labelKey: "onboarding.tone.friendly" },
+  { value: "tecnico",      labelKey: "onboarding.tone.technical" },
+  { value: "vendedor",     labelKey: "onboarding.tone.sales" },
+] as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("vendorai_token"); }
@@ -105,7 +105,7 @@ export default function Onboarding() {
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { formatCurrency } = useI18n();
+  const { t, formatCurrency } = useI18n();
 
   const [step, setStep] = useState<WizardStep>(1);
   const [loading, setLoading] = useState(true);
@@ -193,7 +193,7 @@ export default function Onboarding() {
   // ── Logo upload ─────────────────────────────────────────────────────────────
   async function handleLogoUpload(file: File) {
     if (!file.type.startsWith("image/")) {
-      toast({ title: "Selecione um arquivo de imagem", variant: "destructive" });
+      toast({ title: t("onboarding.error.selectImage"), variant: "destructive" });
       return;
     }
     setLogoUploading(true);
@@ -213,7 +213,7 @@ export default function Onboarding() {
         error?: string;
       };
       if (!requestRes.ok || !payload.uploadURL || !payload.objectPath) {
-        throw new Error(payload.error || `Falha ao preparar upload (HTTP ${requestRes.status})`);
+        throw new Error(payload.error || `HTTP ${requestRes.status}`);
       }
 
       const uploadRes = await fetch(payload.uploadURL, {
@@ -222,14 +222,14 @@ export default function Onboarding() {
         body: file,
       });
       if (!uploadRes.ok) {
-        throw new Error(`Falha ao enviar arquivo (HTTP ${uploadRes.status})`);
+        throw new Error(`HTTP ${uploadRes.status}`);
       }
 
       setS1Logo(payload.objectPath);
-      toast({ title: "Logo carregada!" });
+      toast({ title: t("onboarding.success.logoLoaded") });
     } catch (err) {
       toast({
-        title: err instanceof Error ? err.message : "Erro no upload. Tente novamente.",
+        title: err instanceof Error && !err.message.startsWith("HTTP ") ? err.message : t("onboarding.error.logoUpload"),
         variant: "destructive",
       });
     } finally {
@@ -240,11 +240,11 @@ export default function Onboarding() {
   // ── Step handlers ───────────────────────────────────────────────────────────
   async function handleStep1() {
     if (!s1NomeEmpresa.trim()) {
-      toast({ title: "Informe o nome da empresa", variant: "destructive" });
+      toast({ title: t("onboarding.error.companyName"), variant: "destructive" });
       return;
     }
     if (!s1Segmento) {
-      toast({ title: "Selecione o segmento", variant: "destructive" });
+      toast({ title: t("onboarding.error.segment"), variant: "destructive" });
       return;
     }
     setSubmitting(true);
@@ -256,7 +256,7 @@ export default function Onboarding() {
       });
       setStep(2);
     } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : "Erro ao salvar"), variant: "destructive" });
+      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -273,7 +273,7 @@ export default function Onboarding() {
     }
 
     if (!s2Numero.trim()) {
-      toast({ title: "Informe o número WhatsApp", variant: "destructive" });
+      toast({ title: t("onboarding.error.whatsappNumber"), variant: "destructive" });
       return;
     }
 
@@ -287,7 +287,7 @@ export default function Onboarding() {
       });
       setStep(3);
     } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : "Erro ao salvar"), variant: "destructive" });
+      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -304,7 +304,7 @@ export default function Onboarding() {
       await apiPatch("/api/onboarding/step/4", {});
       setStep("done");
     } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : "Erro ao salvar"), variant: "destructive" });
+      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -312,7 +312,7 @@ export default function Onboarding() {
 
   async function handleStep4() {
     if (!s4PlanoId) {
-      toast({ title: "Selecione um plano", variant: "destructive" });
+      toast({ title: t("onboarding.error.plan"), variant: "destructive" });
       return;
     }
     setSubmitting(true);
@@ -320,7 +320,7 @@ export default function Onboarding() {
       await apiPatch("/api/onboarding/step/4", { planoId: s4PlanoId, ciclo: s4Ciclo });
       setStep("done");
     } catch (err) {
-      toast({ title: String(err instanceof Error ? err.message : "Erro ao confirmar plano"), variant: "destructive" });
+      toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.confirmPlan")), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -337,7 +337,7 @@ export default function Onboarding() {
       window.location.assign("/dashboard");
     } catch (err) {
       toast({
-        title: String(err instanceof Error ? err.message : "Erro ao concluir onboarding"),
+        title: String(err instanceof Error ? err.message : t("onboarding.error.finish")),
         variant: "destructive",
       });
       setSubmitting(false);
@@ -348,7 +348,11 @@ export default function Onboarding() {
   const stepNum = step === "done" ? 3 : Math.min(step as number, 3);
   const progressPct = step === "done" ? 100 : ((stepNum - 1) / 3) * 100;
 
-  const STEP_LABELS = ["Empresa", "WhatsApp", "Primeiro Agente"];
+  const STEP_LABELS = [
+    t("onboarding.progress.company"),
+    t("onboarding.progress.whatsapp"),
+    t("onboarding.progress.firstAgent"),
+  ];
 
   if (loading) {
     return (
@@ -366,7 +370,7 @@ export default function Onboarding() {
         <div className="flex items-center gap-4">
           {step !== "done" && (
             <span className="text-sm text-muted-foreground">
-              Etapa {stepNum} de 4
+              {t("onboarding.header.step", { current: stepNum, total: 4 })}
             </span>
           )}
           <button
@@ -374,7 +378,7 @@ export default function Onboarding() {
             onClick={() => { logout(); setLocation("/"); }}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            Cancelar e sair
+            {t("onboarding.header.cancelExit")}
           </button>
         </div>
       </header>
@@ -442,21 +446,17 @@ export default function Onboarding() {
             <Card>
               <CardContent className="pt-6 space-y-5">
                 <div>
-                  <div>
-                    <h2 className="text-xl font-bold">Vamos começar!</h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Conta-nos um pouco sobre a sua empresa.
-                    </p>
-                  </div>
+                  <h2 className="text-xl font-bold">{t("onboarding.company.title")}</h2>
+                  <p className="text-sm text-muted-foreground mt-1">{t("onboarding.company.subtitle")}</p>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="nomeEmpresa">
-                    Nome da empresa <span className="text-destructive">*</span>
+                    {t("onboarding.company.name")} <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="nomeEmpresa"
-                    placeholder="Ex: Clínica da Ana, Distribuidora Silva..."
+                    placeholder={t("onboarding.company.namePlaceholder")}
                     value={s1NomeEmpresa}
                     onChange={(e) => setS1NomeEmpresa(e.target.value)}
                   />
@@ -464,25 +464,25 @@ export default function Onboarding() {
 
                 <div className="space-y-2">
                   <Label>
-                    Segmento <span className="text-destructive">*</span>
+                    {t("onboarding.company.segment")} <span className="text-destructive">*</span>
                   </Label>
                   <select
                     value={s1Segmento}
                     onChange={(event) => setS1Segmento(event.target.value)}
                     disabled={segmentsLoading}
-                    aria-label="Segmento da empresa"
+                    aria-label={t("onboarding.company.segment")}
                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-base shadow-sm outline-none ring-offset-background focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
                   >
-                    <option value="">{segmentsLoading ? "Carregando segmentos..." : "Selecione o segmento..."}</option>
+                    <option value="">{segmentsLoading ? t("onboarding.company.loadingSegments") : t("onboarding.company.selectSegment")}</option>
                     {segments.map((segment) => (
                       <option key={segment.id} value={segment.nome}>{segment.nome}</option>
                     ))}
-                    <option value="Outro">Outro</option>
+                    <option value="Outro">{t("onboarding.company.other")}</option>
                   </select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Logo da empresa <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+                  <Label>{t("onboarding.company.logo")} <span className="text-xs text-muted-foreground">({t("onboarding.optional")})</span></Label>
                   <input
                     ref={logoInputRef}
                     type="file"
@@ -502,7 +502,7 @@ export default function Onboarding() {
                         className="h-12 w-auto max-w-[160px] rounded object-contain"
                         onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
                       />
-                      <span className="flex-1 text-xs text-muted-foreground">Logo carregada</span>
+                      <span className="flex-1 text-xs text-muted-foreground">{t("onboarding.company.logoLoaded")}</span>
                       <Button
                         type="button" variant="ghost" size="sm"
                         onClick={() => setS1Logo("")}
@@ -523,8 +523,8 @@ export default function Onboarding() {
                       ) : (
                         <>
                           <ImageIcon className="h-7 w-7 text-muted-foreground/50" />
-                          <span className="text-sm font-medium">Clique para selecionar a logo</span>
-                          <span className="text-xs text-muted-foreground">PNG, JPG, SVG ou WebP</span>
+                          <span className="text-sm font-medium">{t("onboarding.company.selectLogo")}</span>
+                          <span className="text-xs text-muted-foreground">{t("onboarding.company.logoFormats")}</span>
                         </>
                       )}
                     </button>
@@ -537,7 +537,7 @@ export default function Onboarding() {
                   onClick={handleStep1}
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Próximo
+                  {t("common.next")}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </CardContent>
@@ -551,10 +551,10 @@ export default function Onboarding() {
             <Card>
               <CardContent className="pt-6 space-y-5">
                 <div>
-                  <h2 className="text-xl font-bold">Conecte seu WhatsApp</h2>
+                  <h2 className="text-xl font-bold">{t("onboarding.whatsapp.title")}</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Informe as credenciais da API Oficial Meta (WhatsApp Business Platform).{" "}
-                    <span className="text-muted-foreground/70">(pode pular e configurar depois)</span>
+                    {t("onboarding.whatsapp.subtitle")}{" "}
+                    <span className="text-muted-foreground/70">({t("onboarding.whatsapp.skipHint")})</span>
                   </p>
                 </div>
 
@@ -566,7 +566,7 @@ export default function Onboarding() {
                     value={s2PhoneNumberId}
                     onChange={(e) => setS2PhoneNumberId(e.target.value)}
                   />
-                  <p className="text-xs text-muted-foreground">Encontrado no Meta Business Manager → WhatsApp → Configuração</p>
+                  <p className="text-xs text-muted-foreground">{t("onboarding.whatsapp.phoneIdHelp")}</p>
                 </div>
 
                 <div className="space-y-2">
@@ -574,14 +574,14 @@ export default function Onboarding() {
                   <Input
                     id="metaAccessToken"
                     type="password"
-                    placeholder="Token de acesso permanente"
+                    placeholder={t("onboarding.whatsapp.tokenPlaceholder")}
                     value={s2AccessToken}
                     onChange={(e) => setS2AccessToken(e.target.value)}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="metaWabaId">WABA ID <span className="text-muted-foreground/60">(opcional)</span></Label>
+                  <Label htmlFor="metaWabaId">WABA ID <span className="text-muted-foreground/60">({t("onboarding.optional")})</span></Label>
                   <Input
                     id="metaWabaId"
                     placeholder="Ex: 987654321098765"
@@ -591,10 +591,10 @@ export default function Onboarding() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="waNumero">Número WhatsApp</Label>
+                  <Label htmlFor="waNumero">{t("onboarding.whatsapp.number")}</Label>
                   <Input
                     id="waNumero"
-                    placeholder="5511999999999 (apenas números, com DDI)"
+                    placeholder={t("onboarding.whatsapp.numberPlaceholder")}
                     value={s2Numero}
                     onChange={(e) => setS2Numero(e.target.value)}
                   />
@@ -602,11 +602,11 @@ export default function Onboarding() {
 
                 <div className="flex gap-3 pt-1">
                   <Button variant="ghost" onClick={() => setStep(1)} className="gap-1.5">
-                    <ChevronLeft className="h-4 w-4" /> Voltar
+                    <ChevronLeft className="h-4 w-4" /> {t("common.back")}
                   </Button>
                   <Button className="flex-1 gap-2" disabled={submitting} onClick={handleStep2}>
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {s2PhoneNumberId && s2AccessToken ? "Salvar e continuar" : "Pular por agora"}
+                    {s2PhoneNumberId && s2AccessToken ? t("onboarding.whatsapp.saveContinue") : t("onboarding.whatsapp.skipNow")}
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -621,14 +621,12 @@ export default function Onboarding() {
             <Card>
               <CardContent className="pt-6 space-y-5">
                 <div>
-                  <h2 className="text-xl font-bold">Ative seu primeiro agente de IA</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Escolha o agente que vai trabalhar para você desde o primeiro dia.
-                  </p>
+                  <h2 className="text-xl font-bold">{t("onboarding.agent.title")}</h2>
+                  <p className="text-sm text-muted-foreground mt-1">{t("onboarding.agent.subtitle")}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  {AGENT_CARDS.map(({ key, label, desc, Icon }) => {
+                  {AGENT_CARDS.map(({ key, label, descKey, Icon }) => {
                     const selected = s3AgentKey === key;
                     return (
                       <button
@@ -659,7 +657,7 @@ export default function Onboarding() {
                         <span className={`text-sm font-semibold leading-tight ${selected ? "text-primary" : ""}`}>
                           {label}
                         </span>
-                        <span className="text-[11px] text-muted-foreground leading-snug">{desc}</span>
+                        <span className="text-[11px] text-muted-foreground leading-snug">{t(descKey)}</span>
                       </button>
                     );
                   })}
@@ -667,23 +665,23 @@ export default function Onboarding() {
 
                 <div className="space-y-4 pt-1 border-t">
                   <div className="space-y-2">
-                    <Label htmlFor="nomePerfil">Nome do agente</Label>
+                    <Label htmlFor="nomePerfil">{t("onboarding.agent.name")}</Label>
                     <Input
                       id="nomePerfil"
-                      placeholder="Ex: Clara, Max, Ana..."
+                      placeholder={t("onboarding.agent.namePlaceholder")}
                       value={s3NomePerfil}
                       onChange={(e) => setS3NomePerfil(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Tom de comunicação</Label>
+                    <Label>{t("onboarding.agent.tone")}</Label>
                     <Select value={s3Tom} onValueChange={setS3Tom}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {TOM_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          <SelectItem key={o.value} value={o.value}>{t(o.labelKey)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -692,11 +690,11 @@ export default function Onboarding() {
 
                 <div className="flex gap-3 pt-1">
                   <Button variant="ghost" onClick={() => setStep(2)} className="gap-1.5">
-                    <ChevronLeft className="h-4 w-4" /> Voltar
+                    <ChevronLeft className="h-4 w-4" /> {t("common.back")}
                   </Button>
                   <Button className="flex-1 gap-2" disabled={submitting} onClick={handleStep3}>
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    Ativar e continuar
+                    {t("onboarding.agent.activateContinue")}
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -711,13 +709,9 @@ export default function Onboarding() {
             <Card>
               <CardContent className="pt-6 space-y-5">
                 <div>
-                  <h2 className="text-xl font-bold">Escolha seu plano</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Sem taxas surpresa. Cancele quando quiser.
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Valores de assinatura e implantação cobrados em BRL.
-                  </p>
+                  <h2 className="text-xl font-bold">{t("onboarding.plan.title")}</h2>
+                  <p className="text-sm text-muted-foreground mt-1">{t("onboarding.plan.subtitle")}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("onboarding.plan.billingBrl")}</p>
                 </div>
 
                 {/* Ciclo toggle */}
@@ -731,7 +725,7 @@ export default function Onboarding() {
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    Mensal
+                    {t("onboarding.plan.monthly")}
                   </button>
                   <button
                     type="button"
@@ -742,13 +736,13 @@ export default function Onboarding() {
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    Anual
+                    {t("onboarding.plan.annual")}
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                       s4Ciclo === "anual"
                         ? "bg-white/20 text-white"
                         : "bg-green-100 text-green-700"
                     }`}>
-                      2 meses grátis
+                      {t("onboarding.plan.freeMonths")}
                     </span>
                   </button>
                 </div>
@@ -759,9 +753,9 @@ export default function Onboarding() {
                   </div>
                 ) : plans.length === 0 ? (
                   <div className="rounded-lg border border-muted p-6 text-center text-sm text-muted-foreground">
-                    Nenhum plano disponível no momento.
+                    {t("onboarding.plan.none")}
                     <br />
-                    Entre em contato com o suporte.
+                    {t("onboarding.plan.contactSupport")}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -791,7 +785,7 @@ export default function Onboarding() {
                         >
                           {display.popular && (
                             <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[11px] font-bold px-3 py-0.5 rounded-full">
-                              Mais popular
+                              {t("onboarding.plan.popular")}
                             </span>
                           )}
                           <div className="flex items-start justify-between gap-3">
@@ -801,7 +795,7 @@ export default function Onboarding() {
                               </div>
                               <div className="text-2xl font-bold mt-1">
                                 {formatCurrency(priceCents / 100, VENDORAI_BILLING_CURRENCY)}
-                                <span className="text-sm font-normal text-muted-foreground">/mês</span>
+                                <span className="text-sm font-normal text-muted-foreground">{t("onboarding.plan.perMonth")}</span>
                               </div>
                             </div>
                             <div
@@ -814,14 +808,14 @@ export default function Onboarding() {
                           </div>
                           <div className="mt-3 pt-3 border-t flex gap-6 text-xs text-muted-foreground">
                             <span>
-                              Implantação{" "}
+                              {t("onboarding.plan.setup")}{" "}
                               <strong className="text-foreground">
                                 {formatCurrency(display.implantacao, VENDORAI_BILLING_CURRENCY)}
                               </strong>
                             </span>
                             <span>
-                              Quota IA{" "}
-                              <strong className="text-foreground">{display.quotaIA}/mês</strong>
+                              {t("onboarding.plan.aiQuota")}{" "}
+                              <strong className="text-foreground">{display.quotaIA}{t("onboarding.plan.perMonth")}</strong>
                             </span>
                           </div>
                         </button>
@@ -832,7 +826,7 @@ export default function Onboarding() {
 
                 <div className="flex gap-3 pt-1">
                   <Button variant="ghost" onClick={() => setStep(3)} className="gap-1.5">
-                    <ChevronLeft className="h-4 w-4" /> Voltar
+                    <ChevronLeft className="h-4 w-4" /> {t("common.back")}
                   </Button>
                   <Button
                     className="flex-1 gap-2"
@@ -842,11 +836,11 @@ export default function Onboarding() {
                     {submitting ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Configurando sua conta...
+                        {t("onboarding.plan.settingUp")}
                       </>
                     ) : (
                       <>
-                        Confirmar e começar
+                        {t("onboarding.plan.confirmStart")}
                         <ChevronRight className="h-4 w-4" />
                       </>
                     )}
@@ -876,10 +870,8 @@ export default function Onboarding() {
                 </div>
 
                 <div>
-                  <h2 className="text-2xl font-bold">Tudo pronto!</h2>
-                  <p className="text-muted-foreground mt-2 text-sm">
-                    Sua conta está configurada e seus agentes de IA já podem trabalhar.
-                  </p>
+                  <h2 className="text-2xl font-bold">{t("onboarding.done.title")}</h2>
+                  <p className="text-muted-foreground mt-2 text-sm">{t("onboarding.done.subtitle")}</p>
                 </div>
 
                 <Button
@@ -887,7 +879,7 @@ export default function Onboarding() {
                   className="w-full gap-2"
                   onClick={() => setLocation("/onboarding/integracoes")}
                 >
-                  Configurar integrações
+                  {t("onboarding.done.integrations")}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
                 <button
@@ -896,7 +888,7 @@ export default function Onboarding() {
                   onClick={goToDashboard}
                   disabled={submitting}
                 >
-                  {submitting ? "Concluindo..." : "Pular e ir direto para o dashboard"}
+                  {submitting ? t("onboarding.done.finishing") : t("onboarding.done.skipDashboard")}
                 </button>
               </div>
             </>
