@@ -59,6 +59,28 @@ type ClipMotion = "none" | "zoom-in" | "zoom-out" | "pan-left" | "pan-right";
 type EasingType = "linear" | "ease-in" | "ease-out" | "ease-in-out";
 type LayerAnimation = "none" | "fade" | "pop" | "zoom" | "slide-up" | "slide-down" | "slide-left" | "slide-right";
 type TextAlign = "left" | "center" | "right";
+type CaptionStylePreset = "impact" | "highlight" | "clean" | "minimal";
+
+type CaptionWord = {
+  word: string;
+  start: number;
+  end: number;
+};
+
+type TranscriptChunk = {
+  start: number;
+  end: number;
+  text: string;
+  words: CaptionWord[];
+};
+
+type TranscriptPayload = {
+  text: string;
+  words: CaptionWord[];
+  chunks: TranscriptChunk[];
+  language?: string;
+  captionPreset?: string;
+};
 
 type LayerKeyframe = {
   time: number;
@@ -98,6 +120,11 @@ type EditorLayer = {
   enterAnimation: LayerAnimation;
   exitAnimation: LayerAnimation;
   animationDuration: number;
+  contentKind?: "text" | "caption";
+  captionStyle?: CaptionStylePreset;
+  captionWords?: CaptionWord[];
+  activeWordColor?: string;
+  activeWordBackground?: string;
   keyframes?: LayerKeyframe[];
   url?: string;
   assetId?: string;
@@ -200,6 +227,22 @@ const CAPTION_TEMPLATES: Array<{
   { name: "CTA Social", text: "FALE COM A GENTE", fontSize: 44, y: 80, color: "#ffffff", background: "#b91c1c", textAlign: "center", enterAnimation: "zoom" },
 ];
 
+const AUTO_CAPTION_STYLES: Record<CaptionStylePreset, {
+  label: string;
+  fontSize: number;
+  y: number;
+  color: string;
+  background: string;
+  activeWordColor: string;
+  activeWordBackground: string;
+  enterAnimation: LayerAnimation;
+}> = {
+  impact: { label: "Impacto Reels", fontSize: 48, y: 70, color: "#ffffff", background: "#111827", activeWordColor: "#111827", activeWordBackground: "#facc15", enterAnimation: "pop" },
+  highlight: { label: "Destaque palavra", fontSize: 46, y: 72, color: "#ffffff", background: "#111827", activeWordColor: "#111827", activeWordBackground: "#22d3ee", enterAnimation: "slide-up" },
+  clean: { label: "Clean", fontSize: 40, y: 76, color: "#ffffff", background: "#000000", activeWordColor: "#facc15", activeWordBackground: "transparent", enterAnimation: "fade" },
+  minimal: { label: "Minimal", fontSize: 36, y: 80, color: "#ffffff", background: "transparent", activeWordColor: "#facc15", activeWordBackground: "transparent", enterAnimation: "fade" },
+};
+
 function tokenHeaders(json = false): Record<string, string> {
   return {
     Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
@@ -260,7 +303,7 @@ function projectDurationFor(clips: VideoClip[]): number {
 function cloneSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
   return {
     clips: snapshot.clips.map((clip) => ({ ...clip })),
-    layers: snapshot.layers.map((layer) => ({ ...layer, keyframes: layer.keyframes?.map((frame) => ({ ...frame })) })),
+    layers: snapshot.layers.map((layer) => ({ ...layer, captionWords: layer.captionWords?.map((word) => ({ ...word })), keyframes: layer.keyframes?.map((frame) => ({ ...frame })) })),
   };
 }
 
@@ -536,6 +579,83 @@ function layerIsVisible(layer: EditorLayer, time: number): boolean {
   return time >= layer.start && time <= layer.end;
 }
 
+function retimeCaptionWords(text: string, start: number, end: number, existing: CaptionWord[] = []): CaptionWord[] {
+  const tokens = text.trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return [];
+  if (tokens.length === existing.length) {
+    return existing.map((word, index) => ({ ...word, word: tokens[index] ?? word.word }));
+  }
+  const duration = Math.max(0.1, end - start);
+  const step = duration / tokens.length;
+  return tokens.map((word, index) => ({
+    word,
+    start: start + step * index,
+    end: index === tokens.length - 1 ? end : start + step * (index + 1),
+  }));
+}
+
+function splitCaptionWordLines(ctx: CanvasRenderingContext2D, words: CaptionWord[], maxWidth: number): CaptionWord[][] {
+  const lines: CaptionWord[][] = [];
+  let current: CaptionWord[] = [];
+  let width = 0;
+  const gap = ctx.measureText(" ").width;
+  for (const word of words) {
+    const wordWidth = ctx.measureText(word.word).width;
+    const nextWidth = width + (current.length ? gap : 0) + wordWidth;
+    if (current.length && nextWidth > maxWidth) {
+      lines.push(current);
+      current = [];
+      width = 0;
+    }
+    current.push(word);
+    width += (current.length > 1 ? gap : 0) + wordWidth;
+  }
+  if (current.length) lines.push(current);
+  return lines.slice(0, 4);
+}
+
+function drawCaptionWordsOnCanvas(
+  ctx: CanvasRenderingContext2D,
+  layer: EditorLayer,
+  time: number,
+  maxWidth: number,
+  fontSize: number,
+  padding: number,
+) {
+  const words = layer.captionWords ?? [];
+  if (!words.length) return;
+  const contentWidth = Math.max(40, maxWidth - padding * 2);
+  const lines = splitCaptionWordLines(ctx, words, contentWidth);
+  const lineHeight = fontSize * 1.22;
+  const blockHeight = lines.length * lineHeight + padding * 2;
+  if (layer.background && layer.background !== "transparent") {
+    ctx.fillStyle = layer.background;
+    ctx.fillRect(0, 0, maxWidth, blockHeight);
+  }
+  const gap = ctx.measureText(" ").width;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex] ?? [];
+    const widths = line.map((word) => ctx.measureText(word.word).width);
+    const lineWidth = widths.reduce((sum, value) => sum + value, 0) + Math.max(0, line.length - 1) * gap;
+    const align = layer.textAlign ?? "center";
+    let cursorX = align === "center" ? (maxWidth - lineWidth) / 2 : align === "right" ? maxWidth - padding - lineWidth : padding;
+    const y = padding + lineIndex * lineHeight;
+    for (let index = 0; index < line.length; index += 1) {
+      const word = line[index]!;
+      const wordWidth = widths[index] ?? 0;
+      const active = time >= word.start && time <= word.end;
+      if (active && layer.activeWordBackground && layer.activeWordBackground !== "transparent") {
+        ctx.fillStyle = layer.activeWordBackground;
+        ctx.fillRect(cursorX - padding * 0.22, y - padding * 0.12, wordWidth + padding * 0.44, lineHeight * 0.95);
+      }
+      ctx.fillStyle = active ? (layer.activeWordColor || layer.color) : layer.color;
+      ctx.textAlign = "left";
+      ctx.fillText(word.word, cursorX, y);
+      cursorX += wordWidth + gap;
+    }
+  }
+}
+
 function RangeField({ label, value, min, max, step = 1, suffix = "", onChange }: {
   label: string;
   value: number;
@@ -615,6 +735,7 @@ export default function VideoTimelineEditor() {
   const [jobStatus, setJobStatus] = useState<JobStatus>("idle");
   const [jobMessage, setJobMessage] = useState("");
   const [resultUrl, setResultUrl] = useState("");
+  const [autoCaptionStyle, setAutoCaptionStyle] = useState<CaptionStylePreset>("impact");
 
   const [handoffFile, setHandoffFile] = useState<File | null>(null);
   const [handoffPreview, setHandoffPreview] = useState<string | null>(null);
@@ -806,7 +927,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 7,
+    editorVersion: 8,
     channel,
     ratio,
     quality,
@@ -986,6 +1107,15 @@ export default function VideoTimelineEditor() {
           enterAnimation: (["none", "fade", "pop", "zoom", "slide-up", "slide-down", "slide-left", "slide-right"] as string[]).includes(String(layer.enterAnimation)) ? layer.enterAnimation as LayerAnimation : "none",
           exitAnimation: (["none", "fade", "pop", "zoom", "slide-up", "slide-down", "slide-left", "slide-right"] as string[]).includes(String(layer.exitAnimation)) ? layer.exitAnimation as LayerAnimation : "none",
           animationDuration: clamp(Number(layer.animationDuration) || 0.35, 0.1, 1.5),
+          contentKind: layer.contentKind === "caption" ? "caption" : "text",
+          captionStyle: (["impact", "highlight", "clean", "minimal"] as string[]).includes(String(layer.captionStyle)) ? layer.captionStyle as CaptionStylePreset : undefined,
+          captionWords: Array.isArray(layer.captionWords) ? layer.captionWords.map((word) => ({
+            word: String(word.word ?? "").trim(),
+            start: Math.max(0, Number(word.start) || 0),
+            end: Math.max(0, Number(word.end) || 0),
+          })).filter((word) => word.word && word.end >= word.start).sort((a, b) => a.start - b.start) : [],
+          activeWordColor: typeof layer.activeWordColor === "string" ? layer.activeWordColor : "#111827",
+          activeWordBackground: typeof layer.activeWordBackground === "string" ? layer.activeWordBackground : "#facc15",
           keyframes: Array.isArray(layer.keyframes) ? layer.keyframes.map((frame) => ({
             time: Number(frame.time) || 0,
             x: Number(frame.x) || 0,
@@ -1212,6 +1342,10 @@ export default function VideoTimelineEditor() {
       enterAnimation: template.enterAnimation,
       exitAnimation: "fade",
       animationDuration: 0.28,
+      contentKind: "caption",
+      captionStyle: template.name === "Destaque" ? "highlight" : template.name === "Minimal" ? "minimal" : "impact",
+      activeWordColor: "#111827",
+      activeWordBackground: "#facc15",
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
     selectLayer(layer.id);
@@ -1260,6 +1394,16 @@ export default function VideoTimelineEditor() {
   const updateLayer = (patch: Partial<EditorLayer>) => {
     if (!selectedLayerId) return;
     commitEditor(clipsRef.current, layersRef.current.map((layer) => layer.id === selectedLayerId ? { ...layer, ...patch } : layer));
+  };
+
+  const updateSelectedLayerText = (text: string) => {
+    if (!selectedLayer) return;
+    updateLayer({
+      text,
+      captionWords: selectedLayer.contentKind === "caption" && selectedLayer.captionWords?.length
+        ? retimeCaptionWords(text, selectedLayer.start, selectedLayer.end, selectedLayer.captionWords)
+        : selectedLayer.captionWords,
+    });
   };
 
   const updateClip = (patch: Partial<VideoClip>) => {
@@ -1353,7 +1497,13 @@ export default function VideoTimelineEditor() {
         if (mode === "trim-start") return { ...item, start: clamp(original.start + delta, 0, original.end - 0.1) };
         if (mode === "trim-end") return { ...item, end: clamp(original.end + delta, original.start + 0.1, total) };
         const start = clamp(original.start + delta, 0, Math.max(0, total - originalDuration));
-        return { ...item, start, end: start + originalDuration };
+        const shift = start - original.start;
+        return {
+          ...item,
+          start,
+          end: start + originalDuration,
+          captionWords: item.captionWords?.map((word) => ({ ...word, start: word.start + shift, end: word.end + shift })),
+        };
       });
       layersRef.current = nextLayers;
       setLayers(nextLayers);
@@ -1531,6 +1681,19 @@ export default function VideoTimelineEditor() {
     throw new Error("O processamento excedeu o tempo esperado.");
   };
 
+  const pollTranscriptJob = async (jobId: string): Promise<TranscriptPayload> => {
+    setJobStatus("processing");
+    setJobMessage("Transcrevendo fala e sincronizando cada palavra…");
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 3000));
+      const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/job/${jobId}`, { headers: tokenHeaders() });
+      const data = await response.json();
+      if (data.status === "done" && data.transcript) return data.transcript as TranscriptPayload;
+      if (data.status === "error") throw new Error(data.error ?? "Erro na transcrição do vídeo");
+    }
+    throw new Error("A transcrição excedeu o tempo esperado.");
+  };
+
   const finalizeWebm = async (blob: Blob): Promise<string> => {
     const form = new FormData();
     form.append("video", new File([blob], `${projectTitle || "vendorai-video"}.webm`, { type: blob.type || "video/webm" }));
@@ -1656,23 +1819,27 @@ export default function VideoTimelineEditor() {
             ctx.font = `700 ${fontSize}px Inter, Arial, sans-serif`;
             ctx.textBaseline = "top";
             const padding = 16 * scale;
-            const lines = wrapText(ctx, layer.text, Math.max(40, maxWidth - padding * 2));
-            const lineHeight = fontSize * 1.18;
-            if (layer.type === "card") {
-              ctx.fillStyle = layer.background;
-              ctx.fillRect(0, 0, maxWidth, lines.length * lineHeight + padding * 2);
-            } else if (layer.background !== "transparent" && layer.background !== "") {
-              ctx.fillStyle = `${layer.background}cc`;
-              const textWidth = Math.min(maxWidth, Math.max(...lines.map((line) => ctx.measureText(line).width), 0) + padding * 2);
-              ctx.fillRect(0, 0, textWidth, lines.length * lineHeight + padding * 2);
+            if (layer.contentKind === "caption" && layer.captionWords?.length) {
+              drawCaptionWordsOnCanvas(ctx, resolvedLayer, globalTime, maxWidth, fontSize, padding);
+            } else {
+              const lines = wrapText(ctx, layer.text, Math.max(40, maxWidth - padding * 2));
+              const lineHeight = fontSize * 1.18;
+              if (layer.type === "card") {
+                ctx.fillStyle = layer.background;
+                ctx.fillRect(0, 0, maxWidth, lines.length * lineHeight + padding * 2);
+              } else if (layer.background !== "transparent" && layer.background !== "") {
+                ctx.fillStyle = `${layer.background}cc`;
+                const textWidth = Math.min(maxWidth, Math.max(...lines.map((line) => ctx.measureText(line).width), 0) + padding * 2);
+                ctx.fillRect(0, 0, textWidth, lines.length * lineHeight + padding * 2);
+              }
+              ctx.fillStyle = layer.color;
+              const align = resolvedLayer.textAlign ?? "left";
+              ctx.textAlign = align;
+              const textX = layer.type === "card"
+                ? align === "center" ? maxWidth / 2 : align === "right" ? maxWidth - padding : padding
+                : align === "center" ? maxWidth / 2 : align === "right" ? maxWidth : 0;
+              lines.forEach((line, index) => ctx.fillText(line, textX, (layer.type === "card" ? padding : 0) + index * lineHeight, maxWidth - padding));
             }
-            ctx.fillStyle = layer.color;
-            const align = resolvedLayer.textAlign ?? "left";
-            ctx.textAlign = align;
-            const textX = layer.type === "card"
-              ? align === "center" ? maxWidth / 2 : align === "right" ? maxWidth - padding : padding
-              : align === "center" ? maxWidth / 2 : align === "right" ? maxWidth : 0;
-            lines.forEach((line, index) => ctx.fillText(line, textX, (layer.type === "card" ? padding : 0) + index * lineHeight, maxWidth - padding));
           }
           ctx.restore();
         }
@@ -1788,16 +1955,97 @@ export default function VideoTimelineEditor() {
     }
   };
 
-  const applyAutomaticCaption = async () => {
+  const createEditableAutomaticCaptions = async () => {
     if (!tenantId) return;
     if (clipsRef.current.length > 1 && !resultUrl) {
-      toast({ title: "Finalize a sequência primeiro", description: "Com vários clipes, exporte o MP4 único antes de aplicar a legenda automática." });
+      toast({ title: "Finalize a sequência primeiro", description: "Com vários clipes, exporte o MP4 único antes de transcrever para a timeline." });
       return;
     }
     const source = resultUrl || activeClip?.url;
     if (!source) return;
     setJobStatus("processing");
-    setJobMessage("Gerando legendas automáticas com sincronização de fala…");
+    setJobMessage("Preparando fala para legendas editáveis…");
+    try {
+      const response = await fetch(source, { headers: source.startsWith("/api/") ? tokenHeaders() : undefined });
+      if (!response.ok) throw new Error("Não foi possível carregar o vídeo para transcrição.");
+      const blob = await response.blob();
+      const form = new FormData();
+      form.append("video", new File([blob], "video-transcricao.mp4", { type: blob.type || "video/mp4" }));
+      const start = await fetch(`/api/tenants/${tenantId}/content-studio/video/transcribe`, { method: "POST", headers: tokenHeaders(), body: form });
+      const data = await start.json();
+      if (!start.ok) throw new Error(data.error ?? "Falha ao iniciar transcrição");
+      const transcript = await pollTranscriptJob(String(data.jobId));
+      const style = AUTO_CAPTION_STYLES[autoCaptionStyle];
+      const usingRenderedSequence = Boolean(resultUrl);
+      const sourceOffset = usingRenderedSequence ? 0 : (activeClip?.trimIn ?? 0);
+      const maxTime = projectDurationFor(clipsRef.current);
+      const generated: EditorLayer[] = [];
+
+      for (const chunk of transcript.chunks ?? []) {
+        const adjustedWords = (chunk.words ?? []).map((word) => ({
+          word: String(word.word ?? "").trim(),
+          start: Number(word.start) - sourceOffset,
+          end: Number(word.end) - sourceOffset,
+        })).filter((word) => word.word && word.end > 0 && word.start < maxTime);
+        if (!adjustedWords.length) continue;
+        const words = adjustedWords.map((word) => ({ ...word, start: clamp(word.start, 0, maxTime), end: clamp(word.end, 0, maxTime) })).filter((word) => word.end > word.start);
+        if (!words.length) continue;
+        const layerStart = words[0]!.start;
+        const layerEnd = words[words.length - 1]!.end;
+        generated.push({
+          id: uid("caption-auto"),
+          type: "text",
+          name: `Legenda automática · ${style.label}`,
+          text: words.map((word) => word.word).join(" "),
+          start: layerStart,
+          end: Math.max(layerStart + 0.08, layerEnd),
+          x: 7,
+          y: style.y,
+          width: 86,
+          fontSize: style.fontSize,
+          color: style.color,
+          background: style.background,
+          opacity: 1,
+          scale: 1,
+          rotation: 0,
+          easing: "ease-out",
+          textAlign: "center",
+          enterAnimation: style.enterAnimation,
+          exitAnimation: "fade",
+          animationDuration: 0.18,
+          contentKind: "caption",
+          captionStyle: autoCaptionStyle,
+          captionWords: words,
+          activeWordColor: style.activeWordColor,
+          activeWordBackground: style.activeWordBackground,
+        });
+      }
+
+      if (!generated.length) throw new Error("A fala foi transcrita, mas não houve segmentos dentro do trecho editado.");
+      const preserved = layersRef.current.filter((layer) => !(layer.contentKind === "caption" && layer.name.startsWith("Legenda automática")));
+      commitEditor(clipsRef.current, [...preserved, ...generated]);
+      selectLayer(generated[0]!.id);
+      setTimelineTime(generated[0]!.start);
+      setTool("captions");
+      setJobStatus("done");
+      setJobMessage(`${generated.length} legenda${generated.length === 1 ? "" : "s"} sincronizada${generated.length === 1 ? "" : "s"} adicionada${generated.length === 1 ? "" : "s"} à timeline.`);
+      toast({ title: "Legendas editáveis criadas", description: "Cada frase está na timeline e a palavra falada recebe destaque automático." });
+    } catch (error) {
+      setJobStatus("error");
+      setJobMessage(error instanceof Error ? error.message : "Falha ao gerar legendas editáveis");
+    }
+  };
+
+  const applyBurnedAutomaticCaption = async () => {
+    if (!tenantId) return;
+    if (clipsRef.current.length > 1 && !resultUrl) {
+      toast({ title: "Finalize a sequência primeiro", description: "Com vários clipes, exporte o MP4 único antes de aplicar a legenda fixa." });
+      return;
+    }
+    const source = resultUrl || activeClip?.url;
+    if (!source) return;
+    setJobStatus("processing");
+    setJobMessage("Gerando versão com legenda fixa…");
     try {
       const response = await fetch(source, { headers: source.startsWith("/api/") ? tokenHeaders() : undefined });
       if (!response.ok) throw new Error("Não foi possível carregar o vídeo para legendagem.");
@@ -1810,7 +2058,7 @@ export default function VideoTimelineEditor() {
       const url = await pollJob(String(data.jobId));
       setResultUrl(url);
       setJobStatus("done");
-      setJobMessage("Legenda automática aplicada e salva como nova versão.");
+      setJobMessage("Versão com legenda fixa salva na Biblioteca Audiovisual.");
     } catch (error) {
       setJobStatus("error");
       setJobMessage(error instanceof Error ? error.message : "Falha ao aplicar legenda");
@@ -1825,11 +2073,11 @@ export default function VideoTimelineEditor() {
   const PropertiesPanel = selectedLayer ? (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-2">
-        <div><p className="text-sm font-semibold">{selectedLayer.name}</p><p className="text-xs text-muted-foreground">{selectedLayer.type === "image" ? "Imagem" : selectedLayer.type === "card" ? "Card" : "Texto"}</p></div>
+        <div><p className="text-sm font-semibold">{selectedLayer.name}</p><p className="text-xs text-muted-foreground">{selectedLayer.type === "image" ? "Imagem" : selectedLayer.type === "card" ? "Card" : selectedLayer.contentKind === "caption" ? "Legenda sincronizada" : "Texto"}</p></div>
         <div className="flex gap-1"><button onClick={() => duplicateLayer(selectedLayer.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" title="Duplicar"><Copy className="h-4 w-4" /></button><button onClick={() => removeLayer(selectedLayer.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="Excluir"><Trash2 className="h-4 w-4" /></button></div>
       </div>
       <div className="rounded-lg border bg-muted/30 px-2.5 py-2 text-[10px] text-muted-foreground">Arraste no preview para reposicionar. Puxe a alça inferior para redimensionar.</div>
-      {selectedLayer.type !== "image" && <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Conteúdo</span><textarea value={selectedLayer.text} onChange={(event) => updateLayer({ text: event.target.value })} rows={4} className="w-full resize-none rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:border-primary" /></label>}
+      {selectedLayer.type !== "image" && <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Conteúdo</span><textarea value={selectedLayer.text} onChange={(event) => updateSelectedLayerText(event.target.value)} rows={4} className="w-full resize-none rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:border-primary" /></label>}
       <div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input type="number" min={0} max={projectDuration} step={0.1} value={selectedLayer.start.toFixed(1)} onChange={(event) => updateLayer({ start: clamp(Number(event.target.value), 0, selectedLayer.end - 0.1) })} className="h-9 w-full rounded-lg border bg-background px-2 text-sm" /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input type="number" min={0.1} max={projectDuration} step={0.1} value={selectedLayer.end.toFixed(1)} onChange={(event) => updateLayer({ end: clamp(Number(event.target.value), selectedLayer.start + 0.1, projectDuration) })} className="h-9 w-full rounded-lg border bg-background px-2 text-sm" /></label></div>
       <RangeField label="Posição horizontal" value={selectedLayer.x} min={0} max={Math.max(0, 100 - selectedLayer.width)} onChange={(value) => updateLayer({ x: value })} suffix="%" />
       <RangeField label="Posição vertical" value={selectedLayer.y} min={0} max={95} onChange={(value) => updateLayer({ y: value })} suffix="%" />
@@ -1853,6 +2101,7 @@ export default function VideoTimelineEditor() {
         {(selectedLayer.keyframes ?? []).length ? <div className="flex flex-wrap gap-1.5">{(selectedLayer.keyframes ?? []).map((frame) => <div key={frame.time} className="inline-flex items-center overflow-hidden rounded-lg border bg-background"><button onClick={() => seekTimeline(frame.time)} className="px-2 py-1 text-[10px] font-medium">◆ {timeLabel(frame.time)}</button><button onClick={() => removeLayerKeyframe(frame.time)} className="border-l px-1.5 py-1 text-muted-foreground hover:text-destructive" title="Remover keyframe">×</button></div>)}</div> : <p className="text-[10px] text-muted-foreground">Mova o cursor, ajuste o elemento e clique em + Keyframe. Repita em outro momento para criar a animação.</p>}
       </div>
       {selectedLayer.type !== "image" && <div className="grid grid-cols-2 gap-3"><label className="space-y-1.5"><span className="text-xs text-muted-foreground">Texto</span><input type="color" value={selectedLayer.color} onChange={(event) => updateLayer({ color: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label><label className="space-y-1.5"><span className="text-xs text-muted-foreground">Fundo</span><input type="color" value={selectedLayer.background || "#000000"} onChange={(event) => updateLayer({ background: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label></div>}
+      {selectedLayer.contentKind === "caption" && <div className="space-y-3 rounded-xl border bg-muted/20 p-3"><div><p className="text-xs font-semibold">Destaque palavra a palavra</p><p className="text-[10px] text-muted-foreground">{selectedLayer.captionWords?.length ?? 0} palavras sincronizadas com a fala.</p></div><label className="block space-y-1.5"><span className="text-[10px] text-muted-foreground">Estilo</span><select value={selectedLayer.captionStyle ?? "impact"} onChange={(event) => { const preset = event.target.value as CaptionStylePreset; const style = AUTO_CAPTION_STYLES[preset]; updateLayer({ captionStyle: preset, fontSize: style.fontSize, y: style.y, color: style.color, background: style.background, activeWordColor: style.activeWordColor, activeWordBackground: style.activeWordBackground, enterAnimation: style.enterAnimation }); }} className="h-9 w-full rounded-lg border bg-background px-2 text-xs">{Object.entries(AUTO_CAPTION_STYLES).map(([id, style]) => <option key={id} value={id}>{style.label}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5"><span className="text-[10px] text-muted-foreground">Palavra ativa</span><input type="color" value={selectedLayer.activeWordColor || "#111827"} onChange={(event) => updateLayer({ activeWordColor: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label><label className="space-y-1.5"><span className="text-[10px] text-muted-foreground">Fundo ativo</span><input type="color" value={selectedLayer.activeWordBackground && selectedLayer.activeWordBackground !== "transparent" ? selectedLayer.activeWordBackground : "#facc15"} onChange={(event) => updateLayer({ activeWordBackground: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label></div></div>}
     </div>
   ) : selectedClip ? (
     <div className="space-y-4">
@@ -1877,13 +2126,14 @@ export default function VideoTimelineEditor() {
     if (tool === "text") return <div className="space-y-3"><div><p className="text-sm font-semibold">Adicionar texto</p><p className="text-xs text-muted-foreground">Faixas escritas independentes sobre toda a sequência.</p></div><button onClick={() => addTextLayer("title")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-semibold">Título</p><p className="text-xs text-muted-foreground">Gancho ou headline principal</p></button><button onClick={() => addTextLayer("subtitle")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">Subtítulo</p><p className="text-xs text-muted-foreground">Mensagem de apoio e benefício</p></button><button onClick={() => addTextLayer("cta")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">CTA</p><p className="text-xs text-muted-foreground">WhatsApp, site ou chamada final</p></button></div>;
     if (tool === "cards") return <div className="space-y-3"><div><p className="text-sm font-semibold">Cards</p><p className="text-xs text-muted-foreground">Oferta, benefício e CTA no ponto atual da timeline.</p></div>{CARD_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCardLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40"><div className="h-12 rounded-lg p-2 text-xs font-bold" style={{ background: template.background, color: template.color }}>{template.text.split("\n").map((line) => <div key={line}>{line}</div>)}</div><p className="mt-2 text-xs font-medium">{template.name}</p></button>)}</div>;
     if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}<RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
-    if (tool === "captions") return <div className="space-y-3"><div><p className="text-sm font-semibold">Legendas modernas</p><p className="text-xs text-muted-foreground">Modelos rápidos para Reels, Stories e vídeos comerciais, além da legenda automática.</p></div><div className="space-y-2">{CAPTION_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCaptionLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><div className="rounded-lg px-2.5 py-2 text-xs font-bold" style={{ background: template.background, color: template.color, textAlign: template.textAlign }}>{template.text}</div><p className="mt-2 text-xs font-medium">{template.name}</p><p className="text-[10px] text-muted-foreground">Entrada {template.enterAnimation === "pop" ? "Pop" : template.enterAnimation === "slide-up" ? "Subir" : template.enterAnimation === "zoom" ? "Zoom" : "Fade"} · editável na timeline</p></button>)}</div><button disabled={!clips.length || jobStatus === "processing"} onClick={() => void applyAutomaticCaption()} className="w-full rounded-xl bg-foreground px-3 py-2.5 text-sm font-semibold text-background disabled:opacity-40"><Captions className="mr-2 inline h-4 w-4" />Legenda automática</button><p className="text-[11px] text-muted-foreground">As faixas estilizadas ficam totalmente editáveis. Em projetos com vários clipes, exporte a sequência antes de aplicar a legenda automática.</p></div>;
+    if (tool === "captions") return <div className="space-y-4"><div><p className="text-sm font-semibold">Legendas inteligentes</p><p className="text-xs text-muted-foreground">Transcreva a fala para a timeline e destaque cada palavra no momento exato.</p></div><div className="space-y-2"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Estilo automático</p><div className="grid grid-cols-2 gap-2">{Object.entries(AUTO_CAPTION_STYLES).map(([id, style]) => <button key={id} onClick={() => setAutoCaptionStyle(id as CaptionStylePreset)} className={cn("rounded-xl border p-2 text-left", autoCaptionStyle === id ? "border-primary bg-primary/5" : "hover:border-primary/30")}><div className="truncate text-xs font-semibold">{style.label}</div><div className="mt-1 flex gap-1"><span className="h-2 w-5 rounded-sm" style={{ background: style.color }} /><span className="h-2 w-5 rounded-sm" style={{ background: style.activeWordBackground === "transparent" ? style.activeWordColor : style.activeWordBackground }} /></div></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void createEditableAutomaticCaptions()} className="w-full rounded-xl bg-foreground px-3 py-3 text-sm font-semibold text-background disabled:opacity-40"><Captions className="mr-2 inline h-4 w-4" />Transcrever para a timeline</button><div className="rounded-xl border bg-muted/20 p-3"><p className="text-xs font-semibold">Adicionar manualmente</p><div className="mt-2 space-y-2">{CAPTION_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCaptionLayer(template)} className="w-full rounded-lg border bg-background p-2 text-left hover:border-primary/40"><div className="rounded-md px-2 py-1.5 text-[10px] font-bold" style={{ background: template.background, color: template.color, textAlign: template.textAlign }}>{template.text}</div><p className="mt-1.5 text-[10px] font-medium">{template.name}</p></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void applyBurnedAutomaticCaption()} className="w-full rounded-xl border px-3 py-2.5 text-xs font-medium disabled:opacity-40">Gerar versão com legenda fixa</button><p className="text-[11px] text-muted-foreground">A opção principal cria faixas editáveis e mantém o original intacto. A versão fixa continua disponível para compatibilidade.</p></div>;
     if (tool === "settings") return <div className="space-y-4"><div><p className="text-sm font-semibold">Ajustes de saída</p><p className="text-xs text-muted-foreground">Tratamento aplicado depois da composição.</p></div><label className="flex items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-medium">Normalizar volume</p><p className="text-xs text-muted-foreground">Equaliza o resultado final</p></div><input type="checkbox" checked={normalizeAudio} onChange={(event) => setNormalizeAudio(event.target.checked)} className="accent-primary" /></label><label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Velocidade final</span><select value={speed} onChange={(event) => setSpeed(event.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm"><option value="1.0">Normal · 1x</option><option value="1.1">Levemente rápido · 1.1x</option><option value="1.25">Rápido · 1.25x</option></select></label><div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Fluxo não destrutivo</p><p className="mt-1">Cada clipe mantém seu arquivo original; cortes, ordem e sobreposições ficam salvos no projeto.</p></div></div>;
     return <div className="space-y-4"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold">Central de Mídias</p><p className="text-xs text-muted-foreground">Adicione quantos clipes precisar.</p></div><button onClick={() => void loadAssets()} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><RefreshCw className={cn("h-4 w-4", assetsLoading && "animate-spin")} /></button></div><div className="grid grid-cols-3 gap-2"><button onClick={() => videoInputRef.current?.click()} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><Plus className="mx-auto mb-1.5 h-4 w-4" />Clipes</button><button onClick={() => imageInputRef.current?.click()} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><ImageIcon className="mx-auto mb-1.5 h-4 w-4" />Imagem</button><button onClick={() => { setTool("audio"); setMusicMode("upload"); musicInputRef.current?.click(); }} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><Music2 className="mx-auto mb-1.5 h-4 w-4" />Áudio</button></div>{mediaVideos.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Vídeos recentes · clique para adicionar</p>{mediaVideos.slice(0, 8).map((asset) => <button key={asset.id} onClick={() => void addLibraryClip(asset)} className="flex w-full items-center gap-2 rounded-lg border p-2 text-left hover:border-primary/30"><Film className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-xs">{assetName(asset)}</span><Plus className="h-3.5 w-3.5 text-muted-foreground" /></button>)}</div>}{mediaImages.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Imagens recentes</p><div className="grid grid-cols-2 gap-2">{mediaImages.slice(0, 8).map((asset) => <button key={asset.id} onClick={() => addLibraryImage(asset)} className="overflow-hidden rounded-xl border text-left hover:border-primary/40"><div className="aspect-video bg-muted"><img src={assetUrl(asset)} alt="" className="h-full w-full object-cover" /></div><p className="truncate p-1.5 text-[10px]">{assetName(asset)}</p></button>)}</div></div>}</div>;
   })();
 
   const trackRows: Array<{ id: string; label: string; icon: typeof Film; items: EditorLayer[] }> = [
-    { id: "text", label: "Texto", icon: Type, items: layers.filter((layer) => layer.type === "text") },
+    { id: "text", label: "Texto", icon: Type, items: layers.filter((layer) => layer.type === "text" && layer.contentKind !== "caption") },
+    { id: "caption", label: "Legendas", icon: Captions, items: layers.filter((layer) => layer.contentKind === "caption") },
     { id: "card", label: "Cards", icon: Square, items: layers.filter((layer) => layer.type === "card") },
     { id: "image", label: "Imagens", icon: ImageIcon, items: layers.filter((layer) => layer.type === "image") },
   ];
@@ -1892,8 +2142,8 @@ export default function VideoTimelineEditor() {
     const resolvedLayer = resolveAnimatedLayerAtTime(layer, timelineTime);
     const style: CSSProperties = { position: "absolute", left: `${resolvedLayer.x}%`, top: `${resolvedLayer.y}%`, width: `${resolvedLayer.width}%`, opacity: resolvedLayer.opacity, transform: `rotate(${resolvedLayer.rotation ?? 0}deg) scale(${resolvedLayer.scale ?? 1})`, transformOrigin: "top left" };
     const selected = selectedLayerId === layer.id;
-    const previewBackground = layer.type === "card" || (resolvedLayer.background && resolvedLayer.background !== "transparent") ? resolvedLayer.background : "transparent";
-    return <div key={layer.id} style={style} className={cn("group touch-none select-none", selected && "z-20")} onPointerDown={(event) => startStageGesture(event, layer, "move")}>{layer.type === "image" ? <img src={layer.url} alt="" draggable={false} className={cn("block h-auto max-h-[85%] w-full object-contain", selected && "outline outline-2 outline-primary")} /> : <div style={{ color: layer.color, background: previewBackground, fontSize: `${Math.max(11, layer.fontSize * 0.38)}px`, whiteSpace: "pre-wrap", textAlign: resolvedLayer.textAlign ?? "left" }} className={cn("rounded-lg p-2 font-bold leading-tight", selected && "outline outline-2 outline-primary")}>{layer.text}</div>}{selected && <button type="button" aria-label="Redimensionar camada" onPointerDown={(event) => startStageGesture(event, layer, "resize")} className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow" />}</div>;
+    const synchronized = layer.contentKind === "caption" && Boolean(layer.captionWords?.length);
+    return <div key={layer.id} style={style} className={cn("group touch-none select-none", selected && "z-20")} onPointerDown={(event) => startStageGesture(event, layer, "move")}>{layer.type === "image" ? <img src={layer.url} alt="" draggable={false} className={cn("block h-auto max-h-[85%] w-full object-contain", selected && "outline outline-2 outline-primary")} /> : <div style={{ color: layer.color, background: layer.type === "card" || layer.contentKind === "caption" ? layer.background : "transparent", fontSize: `${Math.max(11, layer.fontSize * 0.38)}px`, whiteSpace: "normal", textAlign: layer.textAlign ?? "left" }} className={cn("rounded-lg p-2 font-bold leading-tight", selected && "outline outline-2 outline-primary")}>{synchronized ? layer.captionWords!.map((word, index) => { const active = timelineTime >= word.start && timelineTime <= word.end; return <span key={`${word.start}-${index}`} className="inline-block rounded px-0.5" style={{ color: active ? (layer.activeWordColor || layer.color) : layer.color, background: active && layer.activeWordBackground !== "transparent" ? (layer.activeWordBackground || "transparent") : "transparent" }}>{word.word}{index < layer.captionWords!.length - 1 ? " " : ""}</span>; }) : layer.text}</div>}{selected && <button type="button" aria-label="Redimensionar camada" onPointerDown={(event) => startStageGesture(event, layer, "resize")} className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow" />}</div>;
   };
 
   const renderTimelineLayer = (layer: EditorLayer) => <div key={layer.id} onPointerDown={(event) => startLayerTimelineGesture(event, layer, "move")} className={cn("absolute inset-y-1 touch-none select-none overflow-hidden rounded px-2 text-left text-[10px] leading-6 text-white", layer.type === "text" ? "bg-blue-500/80" : layer.type === "card" ? "bg-violet-500/80" : "bg-emerald-500/80", selectedLayerId === layer.id && "ring-2 ring-primary ring-offset-1")} style={{ left: `${clamp(layer.start / projectDuration * 100, 0, 100)}%`, width: `${Math.max(1, clamp((layer.end - layer.start) / projectDuration * 100, 0, 100))}%` }}><button type="button" aria-label="Ajustar início" onPointerDown={(event) => startLayerTimelineGesture(event, layer, "trim-start")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/35" /><span className="pointer-events-none block truncate px-1">{layer.name}</span><button type="button" aria-label="Ajustar fim" onPointerDown={(event) => startLayerTimelineGesture(event, layer, "trim-end")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/35" /></div>;

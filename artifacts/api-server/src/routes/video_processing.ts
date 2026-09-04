@@ -401,8 +401,15 @@ async function resolveBrandCaptionPreset(tenantId: string): Promise<CaptionPrese
   return preset in CAPTION_STYLES ? preset : "reels_bold";
 }
 
-function buildCaptionChunks(words: TranscriptionWord[]): { start: number; end: number; text: string }[] {
-  const chunks: { start: number; end: number; text: string }[] = [];
+type EditableCaptionChunk = {
+  start: number;
+  end: number;
+  text: string;
+  words: TranscriptionWord[];
+};
+
+function buildCaptionChunks(words: TranscriptionWord[]): EditableCaptionChunk[] {
+  const chunks: EditableCaptionChunk[] = [];
   let current: TranscriptionWord[] = [];
 
   const flush = () => {
@@ -411,6 +418,7 @@ function buildCaptionChunks(words: TranscriptionWord[]): { start: number; end: n
       start: current[0]!.start,
       end: current[current.length - 1]!.end,
       text: current.map((w) => w.word).join(" ").trim(),
+      words: current.map((word) => ({ ...word })),
     });
     current = [];
   };
@@ -454,6 +462,68 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     .join("\n");
   return header + lines;
 }
+
+router.post(
+  "/tenants/:tenantId/content-studio/video/transcribe",
+  upload.single("video"),
+  async (req, res) => {
+    if (!authCheck(req, res)) return;
+    if (!req.file) { res.status(422).json({ error: "Arquivo de vídeo obrigatório" }); return; }
+
+    const tenantId = String(req.params["tenantId"]);
+    const captionPreset = await resolveBrandCaptionPreset(tenantId);
+    const jobId = randomUUID();
+    await createMediaJob({
+      id: jobId,
+      tenantId,
+      operation: "video_transcribe",
+      input: { captionPreset, originalFilename: req.file.originalname },
+      snapshot: { status: "running", progress: 0, total: 3 },
+    });
+    res.status(202).json({ jobId, captionPreset });
+
+    void (async () => {
+      const inPath = join(tmpdir(), `transcribe-in-${jobId}.mp4`);
+      const audioPath = join(tmpdir(), `transcribe-audio-${jobId}.wav`);
+      try {
+        await writeFile(inPath, req.file!.buffer);
+        await updateMediaJob(jobId, tenantId, { status: "running", progress: 1, total: 3 });
+        await execFileAsync("ffmpeg", ["-y", "-i", inPath, "-vn", "-ac", "1", "-ar", "16000", audioPath]);
+        const audioBuffer = await readFile(audioPath);
+        await updateMediaJob(jobId, tenantId, { status: "running", progress: 2, total: 3 });
+
+        const { text, words } = await transcribeAudioWithWordTimestamps(tenantId, "audio_transcription", audioBuffer, {
+          mimeType: "audio/wav",
+          language: "pt",
+          log: req.log,
+        });
+        if (!words.length) {
+          await updateMediaJob(jobId, tenantId, {
+            status: "error",
+            error: "Não foi possível identificar fala no vídeo — confirme se o áudio está audível.",
+          });
+          return;
+        }
+
+        const chunks = buildCaptionChunks(words);
+        await updateMediaJob(jobId, tenantId, {
+          status: "done",
+          progress: 3,
+          total: 3,
+          transcript: { text, words, chunks, language: "pt", captionPreset },
+        });
+      } catch (err) {
+        await updateMediaJob(jobId, tenantId, {
+          status: "error",
+          error: err instanceof Error ? err.message : "Erro na transcrição do vídeo",
+        }).catch(() => undefined);
+      } finally {
+        await unlink(inPath).catch(() => {});
+        await unlink(audioPath).catch(() => {});
+      }
+    })();
+  },
+);
 
 router.post(
   "/tenants/:tenantId/content-studio/video/caption",
