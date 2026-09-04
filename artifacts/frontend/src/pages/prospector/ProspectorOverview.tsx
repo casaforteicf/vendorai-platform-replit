@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
-  Building2,
   CheckCircle2,
   FileSearch,
   Flame,
@@ -160,29 +159,10 @@ export default function ProspectorOverview({ onNavigate }: Props) {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="gap-1.5">
-              <Radar className="h-3.5 w-3.5" /> Command Center
-            </Badge>
-            <Badge variant="secondary">Sinal → score → ação</Badge>
-          </div>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight">Prospector Inteligente</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Um único lugar para descobrir empresas, antecipar obras, priorizar oportunidades e entregar os melhores prospects para o comercial.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => queueQuery.refetch()} disabled={queueQuery.isFetching}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${queueQuery.isFetching ? "animate-spin" : ""}`} />
-          Atualizar inteligência
-        </Button>
-      </div>
-
+    <div className="mx-auto max-w-6xl space-y-4">
       {queueQuery.isLoading ? (
         <Card>
-          <CardContent className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+          <CardContent className="flex items-center justify-center py-8 text-sm text-muted-foreground">
             <Spinner className="mr-2 h-5 w-5" /> Calculando prioridades...
           </CardContent>
         </Card>
@@ -262,10 +242,24 @@ export default function ProspectorOverview({ onNavigate }: Props) {
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Target className="h-4 w-4 text-primary" /> Prioridades comerciais
-            </CardTitle>
-            <CardDescription>Os prospects com maior propensão no momento.</CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Target className="h-4 w-4 text-primary" /> Prioridades comerciais
+                </CardTitle>
+                <CardDescription>Os prospects com maior propensão no momento.</CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => queueQuery.refetch()}
+                disabled={queueQuery.isFetching}
+                className="h-8 shrink-0 px-2 text-xs"
+              >
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${queueQuery.isFetching ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {queueQuery.isError ? (
@@ -345,33 +339,6 @@ export default function ProspectorOverview({ onNavigate }: Props) {
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Building2 className="h-4 w-4 text-primary" /> Cobertura que estamos construindo
-          </CardTitle>
-          <CardDescription>
-            O Prospector passa a trabalhar por sinais de mercado, e não apenas por listas de empresas.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ["Prefeituras / alvarás", "Projetos aprovados, alvarás, demolições e terraplenagem."],
-              ["CREA / CAU", "ART/RRT quando existir consulta pública ou integração autorizada."],
-              ["Diários Oficiais", "Publicações que indiquem novas obras, contratos e movimentações."],
-              ["Fontes imobiliárias", "Loteamentos e registros somente por fontes públicas ou autorizadas."],
-            ].map(([title, description]) => (
-              <div key={title} className="rounded-lg border border-dashed p-3">
-                <p className="text-sm font-semibold">{title}</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
-                <Badge variant="secondary" className="mt-2 text-[10px]">Próximo conector</Badge>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
