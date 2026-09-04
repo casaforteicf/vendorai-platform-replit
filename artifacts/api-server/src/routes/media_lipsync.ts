@@ -25,8 +25,8 @@ import {
   analyzeVendorAiIdentityReferences,
   saveVendorAiDubleEvaluation,
 } from "../services/vendorai-identity-quality.js";
+import { createVendorAiDiverseStyleReference as createVendorAiDubleStyleReference } from "../services/vendorai-duble-diversity.js";
 import {
-  createVendorAiDubleStyleReference,
   DubleStyleConsentError,
   DubleStyleValidationError,
   getDubleStyleCatalog,
