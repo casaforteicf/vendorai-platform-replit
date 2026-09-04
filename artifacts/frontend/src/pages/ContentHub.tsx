@@ -7,6 +7,7 @@ import Campanhas from "@/pages/Campanhas";
 import CampanhasHub from "@/pages/CampanhasHub";
 import PlanoMidia from "@/pages/PlanoMidia";
 import SiteGenerator from "@/pages/SiteGenerator";
+import ContentProductionQueue from "@/components/marketing/ContentProductionQueue";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -401,7 +402,7 @@ export default function ContentHub() {
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>Campanhas</TabsTrigger>
           </TabsList>
           <TabsContent value="planejamento" className="-mx-4 md:-mx-6"><div className="p-4 md:p-6"><PlanoMidia /></div></TabsContent>
-          <TabsContent value="gerador" className="-mx-4 md:-mx-6"><Content /></TabsContent>
+          <TabsContent value="gerador" className="-mx-4 md:-mx-6"><ContentProductionQueue tenantId={tenantId} /><Content /></TabsContent>
           <TabsContent value="campanhas" className="-mx-4 md:-mx-6">
             {campaignView === "organicas" ? (
               <Campanhas />
