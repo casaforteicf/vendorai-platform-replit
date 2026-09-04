@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -101,7 +103,7 @@ function formatNumber(value: number | undefined | null): string {
 
 function LoadingCard({ className = "" }: { className?: string }) {
   return (
-    <Card className={`min-h-[180px] flex items-center justify-center ${className}`}>
+    <Card className={`min-h-[140px] flex items-center justify-center ${className}`}>
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
     </Card>
   );
@@ -112,19 +114,28 @@ function EmptyState({
   title,
   description,
   compact = false,
+  actionLabel,
+  onAction,
 }: {
   icon: typeof Bot;
   title: string;
   description: string;
   compact?: boolean;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   return (
-    <div className={`flex flex-col items-center justify-center text-center ${compact ? "py-8" : "py-12"}`}>
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-        <Icon className="h-5 w-5 text-muted-foreground" />
+    <div className={`flex flex-col items-center justify-center text-center ${compact ? "py-5" : "py-10"}`}>
+      <div className="mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-muted">
+        <Icon className="h-4.5 w-4.5 text-muted-foreground" />
       </div>
       <p className="text-sm font-medium text-foreground">{title}</p>
       <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">{description}</p>
+      {actionLabel && onAction ? (
+        <Button variant="outline" size="sm" className="mt-3 h-8" onClick={onAction}>
+          {actionLabel}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -143,7 +154,7 @@ function MetricCard({
   tone?: "default" | "success" | "warning" | "danger";
 }) {
   const toneClass = {
-    default: "text-primary",
+    default: "text-muted-foreground",
     success: "text-emerald-600",
     warning: "text-amber-600",
     danger: "text-red-600",
@@ -151,15 +162,15 @@ function MetricCard({
 
   return (
     <Card className="shadow-sm">
-      <CardHeader className="pb-2">
+      <CardHeader className="px-5 pb-1.5 pt-4">
         <CardTitle className="flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground">
           <span>{title}</span>
           <Icon className={`h-4 w-4 ${toneClass}`} />
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-5 pb-4 pt-0">
         <div className="text-2xl font-bold tracking-tight">{value}</div>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+        <p className="mt-1 min-h-[32px] text-xs leading-relaxed text-muted-foreground">{description}</p>
       </CardContent>
     </Card>
   );
@@ -169,15 +180,23 @@ function SectionTitle({
   icon: Icon,
   title,
   description,
+  tone = "default",
 }: {
   icon: typeof Bot;
   title: string;
   description?: string;
+  tone?: "default" | "success" | "danger";
 }) {
+  const toneClass = {
+    default: "text-muted-foreground",
+    success: "text-emerald-600",
+    danger: "text-red-600",
+  }[tone];
+
   return (
     <div>
       <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-primary" />
+        <Icon className={`h-4 w-4 ${toneClass}`} />
         <h2 className="text-base font-semibold">{title}</h2>
       </div>
       {description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
@@ -187,6 +206,7 @@ function SectionTitle({
 
 export default function Analytics() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const tenantId = user?.tenantId ?? "";
   const [activeTab, setActiveTab] = useState("agents");
 
@@ -229,9 +249,10 @@ export default function Analytics() {
   const actionRate = totalActions > 0 ? executedActions / totalActions : null;
   const taskRate = totalTasks > 0 ? completedTasks / totalTasks : null;
   const operationalAlerts = rejectedActions + failedTasks + pendingActions + pendingTasks;
+  const hasOperationalAlerts = operationalAlerts > 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
@@ -267,9 +288,9 @@ export default function Analytics() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="agents" className="space-y-4">
+        <TabsContent value="agents" className="space-y-3">
           {agentsQuery.isLoading ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <LoadingCard />
               <LoadingCard />
               <LoadingCard />
@@ -287,7 +308,7 @@ export default function Analytics() {
             </Card>
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard
                   title="Agentes com atividade"
                   value={formatNumber(agents.agents.length)}
@@ -308,7 +329,7 @@ export default function Analytics() {
                   icon={MessageCircle}
                 />
                 <MetricCard
-                  title="Deals ganhos"
+                  title="Vendas ganhas"
                   value={formatNumber(totalConversions)}
                   description={`Valor associado: ${formatCurrency(totalConversionRevenue)}`}
                   icon={TrendingUp}
@@ -316,7 +337,7 @@ export default function Analytics() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard
                   title="Ações executadas"
                   value={formatNumber(executedActions)}
@@ -346,9 +367,9 @@ export default function Analytics() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_1fr]">
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.35fr_1fr]">
                 <Card className="shadow-sm">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-2.5">
                     <SectionTitle
                       icon={Bot}
                       title="Performance por agente"
@@ -361,11 +382,13 @@ export default function Analytics() {
                         icon={Bot}
                         title="Ainda não há atividade de agentes"
                         description="Quando os agentes executarem ações ou tarefas, o desempenho individual aparecerá aqui."
+                        actionLabel="Ver agentes"
+                        onAction={() => setLocation("/agentes")}
                         compact
                       />
                     ) : (
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[680px] text-sm">
+                        <table className="w-full min-w-[760px] text-sm">
                           <thead>
                             <tr className="border-b text-left text-xs text-muted-foreground">
                               <th className="pb-3 pr-4 font-medium">Agente</th>
@@ -373,13 +396,21 @@ export default function Analytics() {
                               <th className="pb-3 pr-4 text-right font-medium">Execução</th>
                               <th className="pb-3 pr-4 text-right font-medium">Tarefas</th>
                               <th className="pb-3 pr-4 text-right font-medium">Conclusão</th>
-                              <th className="pb-3 text-right font-medium">Falhas</th>
+                              <th className="pb-3 pr-4 text-right font-medium">Falhas</th>
+                              <th className="pb-3 text-right font-medium">Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {agents.agents.map((agent) => {
                               const agentActionRate = agent.actions.total > 0 ? agent.actions.executed / agent.actions.total : null;
                               const agentTaskRate = agent.tasks.total > 0 ? agent.tasks.completed / agent.tasks.total : null;
+                              const agentFailures = agent.tasks.failed + agent.actions.rejected;
+                              const agentPending = agent.tasks.pending + agent.actions.pending;
+                              const health = agentFailures > 0
+                                ? { label: "Crítico", className: "border-red-200 bg-red-50 text-red-700" }
+                                : agentPending > 0
+                                  ? { label: "Atenção", className: "border-amber-200 bg-amber-50 text-amber-700" }
+                                  : { label: "Saudável", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
                               return (
                                 <tr key={agent.agentName} className="border-b last:border-0">
                                   <td className="py-3 pr-4 font-medium">{agent.agentName}</td>
@@ -387,10 +418,13 @@ export default function Analytics() {
                                   <td className="py-3 pr-4 text-right">{formatPercent(agentActionRate, true)}</td>
                                   <td className="py-3 pr-4 text-right">{formatNumber(agent.tasks.total)}</td>
                                   <td className="py-3 pr-4 text-right">{formatPercent(agentTaskRate, true)}</td>
-                                  <td className="py-3 text-right">
-                                    <span className={agent.tasks.failed + agent.actions.rejected > 0 ? "font-medium text-red-600" : "text-muted-foreground"}>
-                                      {formatNumber(agent.tasks.failed + agent.actions.rejected)}
+                                  <td className="py-3 pr-4 text-right">
+                                    <span className={agentFailures > 0 ? "font-medium text-red-600" : "text-muted-foreground"}>
+                                      {formatNumber(agentFailures)}
                                     </span>
+                                  </td>
+                                  <td className="py-3 text-right">
+                                    <Badge variant="outline" className={health.className}>{health.label}</Badge>
                                   </td>
                                 </tr>
                               );
@@ -403,16 +437,17 @@ export default function Analytics() {
                 </Card>
 
                 <Card className="shadow-sm">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-2.5">
                     <SectionTitle
-                      icon={AlertTriangle}
-                      title="Atenção necessária"
-                      description="Itens que podem exigir revisão do gestor."
+                      icon={hasOperationalAlerts ? AlertTriangle : CheckCircle2}
+                      title={hasOperationalAlerts ? "Atenção necessária" : "Operação saudável"}
+                      description={hasOperationalAlerts ? "Itens que podem exigir revisão do gestor." : "Nenhuma falha, rejeição ou pendência operacional registrada."}
+                      tone={hasOperationalAlerts ? "danger" : "success"}
                     />
                   </CardHeader>
                   <CardContent>
                     {operationalAlerts === 0 ? (
-                      <div className="rounded-lg border border-dashed p-5 text-center">
+                      <div className="rounded-lg border border-dashed p-4 text-center">
                         <CheckCircle2 className="mx-auto h-6 w-6 text-emerald-600" />
                         <p className="mt-2 text-sm font-medium">Sem alertas operacionais</p>
                         <p className="mt-1 text-xs text-muted-foreground">Não há falhas, rejeições ou pendências registradas neste período.</p>
@@ -446,17 +481,19 @@ export default function Analytics() {
                 </Card>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                 <Card className="shadow-sm">
-                  <CardHeader className="pb-3">
-                    <SectionTitle icon={TrendingUp} title="Deals ganhos por origem" description="Mostra de onde vieram os leads associados às vendas registradas." />
+                  <CardHeader className="pb-2.5">
+                    <SectionTitle icon={TrendingUp} title="Vendas ganhas por origem" description="Mostra de onde vieram os leads associados às vendas registradas." />
                   </CardHeader>
                   <CardContent>
                     {agents.dealConversionsBySource.length === 0 ? (
                       <EmptyState
                         icon={Target}
-                        title="Nenhuma conversão registrada"
-                        description="Quando houver deals ganhos com origem identificada, a distribuição aparecerá aqui."
+                        title="Nenhuma venda registrada"
+                        description="Quando houver vendas ganhas com origem identificada, a distribuição aparecerá aqui."
+                        actionLabel="Ver pipeline"
+                        onAction={() => setLocation("/deals")}
                         compact
                       />
                     ) : (
@@ -466,7 +503,7 @@ export default function Analytics() {
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="source" tick={{ fontSize: 11 }} />
                             <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                            <Tooltip formatter={(value: number) => [formatNumber(value), "Deals"]} contentStyle={{ fontSize: 12 }} />
+                            <Tooltip formatter={(value: number) => [formatNumber(value), "Vendas"]} contentStyle={{ fontSize: 12 }} />
                             <Bar dataKey="total" fill="#10B981" radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
@@ -476,7 +513,7 @@ export default function Analytics() {
                 </Card>
 
                 <Card className="shadow-sm">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-2.5">
                     <SectionTitle icon={MessageCircle} title="Mensagens por canal" description="Distribuição das mensagens de saída registradas no período." />
                   </CardHeader>
                   <CardContent>
@@ -485,6 +522,8 @@ export default function Analytics() {
                         icon={MessageCircle}
                         title="Nenhuma mensagem de saída registrada"
                         description="Assim que os canais começarem a registrar atendimentos, a distribuição aparecerá aqui."
+                        actionLabel="Configurar canais"
+                        onAction={() => setLocation("/configuracoes")}
                         compact
                       />
                     ) : (
@@ -537,16 +576,16 @@ export default function Analytics() {
                   icon={Users}
                 />
                 <MetricCard
-                  title="Deals ganhos"
+                  title="Vendas ganhas"
                   value={formatNumber(channels.dealsBySource.reduce((sum, item) => sum + item.total, 0))}
-                  description="Base consolidada de ganhos por origem"
+                  description="Base consolidada de vendas por origem"
                   icon={TrendingUp}
                   tone="success"
                 />
                 <MetricCard
                   title="Faturamento"
                   value={formatCurrency(channels.dealsBySource.reduce((sum, item) => sum + (Number.parseFloat(item.valor || "0") || 0), 0))}
-                  description="Valor consolidado dos deals ganhos"
+                  description="Valor consolidado das vendas ganhas"
                   icon={WalletCards}
                   tone="success"
                 />
