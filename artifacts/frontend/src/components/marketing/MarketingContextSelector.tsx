@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, CheckCircle2, PackageSearch, Plus, Target } from "lucide-react";
+import { Building2, CheckCircle2, MapPin, PackageSearch, Plus, Search, Target } from "lucide-react";
 
 type Product = { id: string; nome: string; ativo?: boolean };
 
@@ -20,6 +20,16 @@ export type MarketingContextValue = {
   audienceSegment?: string;
   audienceNiche?: string;
   campaignGoal?: string;
+  locationCity?: string;
+  locationState?: string;
+  locationRegion?: string;
+  projectName?: string;
+  specificDetails?: string;
+  mandatoryDifferentiators?: string;
+  restrictions?: string;
+  primaryKpi?: string;
+  researchEnabled?: boolean;
+  seoTrackingEnabled?: boolean;
 };
 
 const AUDIENCE_SEGMENTS = [
@@ -40,22 +50,65 @@ function headers(): Record<string, string> {
 }
 
 /**
- * `nicheName` é um campo legado consumido por geração de copy/imagem e Ads.
- * Mantemos compatibilidade, mas agora o texto deixa explícita a separação entre:
- * negócio que anuncia → público desejado → nicho do público → objetivo.
+ * `nicheName` continua como ponte de compatibilidade para geradores antigos.
+ * Os dados novos permanecem estruturados no marketingContext, mas entram também
+ * neste resumo enquanto todos os consumidores migram para o briefing mestre.
  */
-function buildContextSummary(
-  businessVertical: string,
-  segment: string,
-  niche: string,
-  goal: string,
-) {
+function buildContextSummary(value: {
+  businessVertical: string;
+  segment: string;
+  niche: string;
+  goal: string;
+  city?: string;
+  state?: string;
+  region?: string;
+  project?: string;
+  details?: string;
+  differentiators?: string;
+  restrictions?: string;
+  primaryKpi?: string;
+}) {
+  const location = [value.city, value.state].filter(Boolean).join("/");
   return [
-    businessVertical && `Negócio: ${businessVertical}`,
-    segment && `Público: ${segment}`,
-    niche && `Nicho do público: ${niche}`,
-    goal && `Objetivo: ${goal}`,
+    value.businessVertical && `Negócio: ${value.businessVertical}`,
+    value.segment && `Público: ${value.segment}`,
+    value.niche && `Nicho do público: ${value.niche}`,
+    value.goal && `Objetivo: ${value.goal}`,
+    location && `Local: ${location}`,
+    value.region && `Região/bairro: ${value.region}`,
+    value.project && `Empreendimento/local: ${value.project}`,
+    value.details && `Contexto específico: ${value.details}`,
+    value.differentiators && `Diferenciais obrigatórios: ${value.differentiators}`,
+    value.restrictions && `Restrições: ${value.restrictions}`,
+    value.primaryKpi && `Meta/KPI: ${value.primaryKpi}`,
   ].filter(Boolean).join(" | ");
+}
+
+function BriefingToggle({
+  checked,
+  onChange,
+  title,
+  description,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  title: string;
+  description: string;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-background px-3 py-2.5">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+      />
+      <span className="min-w-0">
+        <span className="block text-xs font-medium text-foreground">{title}</span>
+        <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">{description}</span>
+      </span>
+    </label>
+  );
 }
 
 export function MarketingContextSelector({
@@ -111,36 +164,56 @@ export function MarketingContextSelector({
       .finally(() => setLoading(false));
   }, [tenantId, productsOverride]);
 
+  function summaryFor(next: MarketingContextValue, nextBusinessVertical = businessVertical || "") {
+    return buildContextSummary({
+      businessVertical: nextBusinessVertical,
+      segment: next.audienceSegment ?? "",
+      niche: next.audienceNiche ?? "",
+      goal: next.campaignGoal ?? "",
+      city: next.locationCity?.trim(),
+      state: next.locationState?.trim(),
+      region: next.locationRegion?.trim(),
+      project: next.projectName?.trim(),
+      details: next.specificDetails?.trim(),
+      differentiators: next.mandatoryDifferentiators?.trim(),
+      restrictions: next.restrictions?.trim(),
+      primaryKpi: next.primaryKpi?.trim(),
+    });
+  }
+
   useEffect(() => {
     if (!businessVertical) return;
-    const summary = buildContextSummary(
+    const next: MarketingContextValue = {
+      ...value,
       businessVertical,
-      audienceSegment,
-      audienceNiche,
-      campaignGoal,
-    );
-
+      businessVerticalSlug: businessVerticalSlug || undefined,
+    };
+    const summary = summaryFor(next, businessVertical);
     const currentBusinessVerticalSlug = value.businessVerticalSlug ?? "";
+
     if (
       value.businessVertical === businessVertical &&
       currentBusinessVerticalSlug === businessVerticalSlug &&
       value.nicheName === summary
     ) return;
 
-    onChange({
-      ...value,
-      businessVertical,
-      businessVerticalSlug: businessVerticalSlug || undefined,
-      nicheName: summary,
-    });
+    onChange({ ...next, nicheName: summary });
+    // value/onChange são intencionalmente observados para manter o resumo legado sincronizado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     businessVertical,
     businessVerticalSlug,
     audienceSegment,
     audienceNiche,
     campaignGoal,
-    value,
-    onChange,
+    value.locationCity,
+    value.locationState,
+    value.locationRegion,
+    value.projectName,
+    value.specificDetails,
+    value.mandatoryDifferentiators,
+    value.restrictions,
+    value.primaryKpi,
   ]);
 
   function emit(patch: Partial<MarketingContextValue>) {
@@ -148,13 +221,16 @@ export function MarketingContextSelector({
     const nextBusinessVertical = next.businessVertical || businessVertical || "";
     const segment = next.audienceSegment ?? "";
     const niche = next.audienceNiche ?? "";
-    const goal = next.campaignGoal ?? "";
-    onChange({
+    const normalized: MarketingContextValue = {
       ...next,
       businessVertical: nextBusinessVertical || undefined,
       businessVerticalSlug: next.businessVerticalSlug || businessVerticalSlug || undefined,
       nicheId: segment && niche.trim() ? `${segment}:${niche.trim()}` : "",
-      nicheName: buildContextSummary(nextBusinessVertical, segment, niche, goal),
+      nicheName: "",
+    };
+    onChange({
+      ...normalized,
+      nicheName: summaryFor(normalized, nextBusinessVertical),
     });
   }
 
@@ -214,9 +290,8 @@ export function MarketingContextSelector({
       return;
     }
 
-    const id = `custom:${crypto.randomUUID()}`;
     emit({
-      productIds: [...value.productIds, id],
+      productIds: [...value.productIds, `custom:${crypto.randomUUID()}`],
       productNames: [...value.productNames, name],
     });
     setCustomOffer("");
@@ -230,6 +305,11 @@ export function MarketingContextSelector({
     });
   }
 
+  const locationLabel = [value.locationCity, value.locationState].filter(Boolean).join("/");
+  const hasSpecificContext = Boolean(
+    locationLabel || value.locationRegion || value.projectName || value.specificDetails || value.mandatoryDifferentiators || value.restrictions || value.primaryKpi,
+  );
+
   if (hideExpandedInContentAutopilot && !compact) return null;
 
   if (compact) {
@@ -242,7 +322,7 @@ export function MarketingContextSelector({
               Estratégia da divulgação
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Informe uma vez a oferta, o público e o objetivo. O mesmo contexto será usado pela IA na criação, publicação e patrocínio.
+              Defina o briefing uma vez. Oferta, público, objetivo e contexto específico acompanham a campanha nas próximas criações.
             </p>
           </div>
           {businessVertical ? (
@@ -269,9 +349,7 @@ export function MarketingContextSelector({
                   if (product && !value.productIds.includes(product.id)) toggleProduct(product);
                 }}
               >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Escolher do catálogo" />
-                </SelectTrigger>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Escolher do catálogo" /></SelectTrigger>
                 <SelectContent>
                   {availableProducts.map((product) => (
                     <SelectItem key={product.id} value={product.id} disabled={value.productIds.includes(product.id)}>
@@ -305,7 +383,7 @@ export function MarketingContextSelector({
               </button>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              O texto digitado já entra no resumo e no contexto da IA. Use + somente para fixar esta oferta e escrever outra.
+              O texto digitado já entra no briefing. Use + somente para fixar a oferta e escrever outra.
             </p>
             {!productsLoading && availableProducts.length === 0 && value.productNames.length === 0 && (
               <p className="text-[11px] text-muted-foreground">Catálogo vazio — use a oferta manual acima.</p>
@@ -337,7 +415,7 @@ export function MarketingContextSelector({
               <Input
                 value={audienceNiche}
                 onChange={(event) => emit({ audienceNiche: event.target.value })}
-                placeholder="Ex.: lojas de roupas, indústrias..."
+                placeholder="Ex.: condomínios, indústrias..."
                 className="h-9"
               />
             </div>
@@ -353,14 +431,57 @@ export function MarketingContextSelector({
               rows={4}
               className="resize-none"
             />
-            <p className="text-[11px] text-muted-foreground">A IA usa este objetivo para decidir abordagem, dor, CTA e composição.</p>
+            <p className="text-[11px] text-muted-foreground">A IA usa o objetivo para decidir abordagem, dor, CTA e composição.</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-primary" />
+            <p className="text-sm font-semibold">4. Contexto específico</p>
+            <Badge variant={hasSpecificContext ? "secondary" : "outline"} className="ml-auto text-[10px]">
+              {hasSpecificContext ? "Definido" : "Opcional"}
+            </Badge>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Use quando a peça for para uma cidade, bairro, condomínio, obra, evento ou oportunidade específica.
+          </p>
+
+          <div className="grid gap-2 md:grid-cols-4">
+            <Input value={value.locationCity ?? ""} onChange={(e) => emit({ locationCity: e.target.value })} placeholder="Cidade, ex.: Chapecó" className="h-9" />
+            <Input value={value.locationState ?? ""} onChange={(e) => emit({ locationState: e.target.value.toUpperCase().slice(0, 2) })} placeholder="UF, ex.: SC" className="h-9" maxLength={2} />
+            <Input value={value.locationRegion ?? ""} onChange={(e) => emit({ locationRegion: e.target.value })} placeholder="Bairro/região" className="h-9" />
+            <Input value={value.projectName ?? ""} onChange={(e) => emit({ projectName: e.target.value })} placeholder="Empreendimento/local" className="h-9" />
+          </div>
+
+          <div className="grid gap-2 lg:grid-cols-3">
+            <Textarea value={value.specificDetails ?? ""} onChange={(e) => emit({ specificDetails: e.target.value })} placeholder="Detalhes: ex. Condomínio Jardim, público dos moradores, ação de orçamento..." rows={2} />
+            <Textarea value={value.mandatoryDifferentiators ?? ""} onChange={(e) => emit({ mandatoryDifferentiators: e.target.value })} placeholder="Diferenciais que precisam aparecer" rows={2} />
+            <Textarea value={value.restrictions ?? ""} onChange={(e) => emit({ restrictions: e.target.value })} placeholder="Restrições/cuidados: o que não afirmar ou mostrar" rows={2} />
+          </div>
+
+          <Input value={value.primaryKpi ?? ""} onChange={(e) => emit({ primaryKpi: e.target.value })} placeholder="Meta principal/KPI, ex.: 20 leads qualificados ou 10 pedidos de orçamento" className="h-9" />
+
+          <div className="grid gap-2 md:grid-cols-2">
+            <BriefingToggle
+              checked={value.researchEnabled === true}
+              onChange={(checked) => emit({ researchEnabled: checked })}
+              title="Pesquisar contexto público"
+              description="Prepara a campanha para usar pesquisa real do local/mercado quando a integração de pesquisa estiver disponível. Não inventa dados do empreendimento."
+            />
+            <BriefingToggle
+              checked={value.seoTrackingEnabled === true}
+              onChange={(checked) => emit({ seoTrackingEnabled: checked })}
+              title="Gerar SEO e tracking"
+              description="Marca o briefing para gerar palavras-chave, metadados e rastreamento consistentes nas peças conectadas."
+            />
           </div>
         </div>
 
         <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <p>
-            <strong className="text-foreground">Conectado ao gerador abaixo:</strong> oferta, público e objetivo definidos aqui alimentam automaticamente o resumo da peça e o contexto enviado para a IA.
+            <strong className="text-foreground">Briefing mestre conectado:</strong> oferta, público, objetivo, local, empreendimento e detalhes ficam no contexto da campanha e seguem para os consumidores compatíveis da IA.
           </p>
         </div>
       </section>
@@ -372,141 +493,159 @@ export function MarketingContextSelector({
       <div>
         <div className="flex items-center gap-2 font-semibold">
           <Target className="h-5 w-5 text-primary" />
-          Para quem e o que você quer divulgar?
+          Briefing mestre da campanha
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          O contexto do seu negócio fica separado do público que receberá a campanha e da oferta que será divulgada.
+          Defina uma vez o que divulgar, para quem, onde e em qual contexto. A campanha guarda esse briefing para reutilizar nas criações.
         </p>
       </div>
 
       <div className="space-y-3 rounded-lg border bg-background/70 p-3">
         <div className="flex items-start gap-3">
-          <div className="rounded-md bg-primary/10 p-2 text-primary">
-            <Building2 className="h-4 w-4" />
-          </div>
+          <div className="rounded-md bg-primary/10 p-2 text-primary"><Building2 className="h-4 w-4" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">1. Seu negócio</p>
+            <p className="text-sm font-semibold">Seu negócio</p>
             {businessVertical ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{businessVertical}</Badge>
                 {requestedProfile && <Badge variant="outline">Vertical oficial VendorAI</Badge>}
               </div>
             ) : (
-              <p className="mt-1 text-xs text-amber-700">
-                A vertical do negócio ainda não foi identificada. Complete o perfil da empresa para melhorar o contexto da IA.
-              </p>
+              <p className="mt-1 text-xs text-amber-700">A vertical ainda não foi identificada. Complete o perfil da empresa para melhorar o contexto da IA.</p>
             )}
-            <p className="mt-2 text-xs text-muted-foreground">
-              Esta é a empresa que está anunciando. Ela não define quem receberá a campanha.
-            </p>
+            <p className="mt-2 text-xs text-muted-foreground">Esta é a empresa que anuncia. Ela não define quem receberá a campanha.</p>
           </div>
         </div>
       </div>
 
-      <div className="space-y-3 rounded-lg border bg-background/70 p-3">
-        <p className="text-sm font-semibold">2. Público que você quer atingir</p>
-        <div className="space-y-2">
-          <Label>Tipo de público {required ? "*" : ""}</Label>
-          <Select value={audienceSegment} onValueChange={(item) => emit({ audienceSegment: item })}>
-            <SelectTrigger><SelectValue placeholder="Ex.: Empresas (B2B)" /></SelectTrigger>
-            <SelectContent>
-              {AUDIENCE_SEGMENTS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-            </SelectContent>
-          </Select>
+      <div className="grid gap-3 xl:grid-cols-3">
+        <div className="space-y-3 rounded-lg border bg-background/70 p-3">
+          <p className="text-sm font-semibold flex items-center gap-2"><PackageSearch className="h-4 w-4 text-primary" />1. Oferta</p>
+          <div className="flex gap-2">
+            <Input
+              value={customOffer}
+              onChange={(event) => syncCustomOffer(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addCustomOffer();
+                }
+              }}
+              placeholder="Ex.: Esquadrias de PVC"
+            />
+            <button type="button" onClick={addCustomOffer} className="inline-flex items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">
+              <Plus className="h-4 w-4" /> Adicionar
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">O texto digitado já faz parte do briefing; Adicionar apenas fixa a oferta para incluir outra.</p>
+
+          {availableProducts.length > 0 && (
+            <div className="max-h-44 overflow-y-auto rounded-lg border bg-background p-2">
+              {availableProducts.map((product) => {
+                const selected = value.productIds.includes(product.id);
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => toggleProduct(product)}
+                    className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${selected ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                  >
+                    <span>{product.nome}</span>
+                    {selected && <CheckCircle2 className="h-4 w-4" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {!productsLoading && availableProducts.length === 0 && (
+            <p className="text-xs text-muted-foreground">O catálogo está vazio, mas você pode escrever a oferta manualmente.</p>
+          )}
+          {value.productNames.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {value.productNames.map((name, index) => (
+                <button key={`${name}-${index}`} type="button" onClick={() => removeOffer(index)}>
+                  <Badge variant="secondary">{name} ×</Badge>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="space-y-2">
-          <Label>Nicho ou ramo desse público {required ? "*" : ""}</Label>
-          <Input
-            value={audienceNiche}
-            onChange={(event) => emit({ audienceNiche: event.target.value })}
-            placeholder="Ex.: lojas de roupas, indústrias, escolas..."
-          />
-          <p className="text-xs text-muted-foreground">
-            Este campo descreve quem receberá a campanha, não o ramo da sua própria empresa.
-          </p>
+        <div className="space-y-3 rounded-lg border bg-background/70 p-3">
+          <p className="text-sm font-semibold">2. Público</p>
+          <div className="space-y-2">
+            <Label>Tipo de público {required ? "*" : ""}</Label>
+            <Select value={audienceSegment} onValueChange={(item) => emit({ audienceSegment: item })}>
+              <SelectTrigger><SelectValue placeholder="Ex.: Condomínios" /></SelectTrigger>
+              <SelectContent>{AUDIENCE_SEGMENTS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Nicho ou ramo {required ? "*" : ""}</Label>
+            <Input value={audienceNiche} onChange={(event) => emit({ audienceNiche: event.target.value })} placeholder="Ex.: condomínios residenciais" />
+          </div>
         </div>
 
-        <div className="space-y-2">
-          <Label>Objetivo da divulgação</Label>
-          <Textarea
-            value={campaignGoal}
-            onChange={(event) => emit({ campaignGoal: event.target.value })}
-            placeholder="Ex.: criar parceria e oferecer um cartão especial aos colaboradores"
-            rows={2}
-          />
+        <div className="space-y-3 rounded-lg border bg-background/70 p-3">
+          <p className="text-sm font-semibold">3. Objetivo</p>
+          <Label>O que esta campanha deve conseguir?</Label>
+          <Textarea value={campaignGoal} onChange={(event) => emit({ campaignGoal: event.target.value })} placeholder="Ex.: gerar pedidos de orçamento de moradores" rows={4} />
+          <Input value={value.primaryKpi ?? ""} onChange={(event) => emit({ primaryKpi: event.target.value })} placeholder="Meta/KPI, ex.: 20 leads qualificados" />
         </div>
       </div>
 
       <div className="space-y-3 rounded-lg border bg-background/70 p-3">
-        <div>
-          <p className="text-sm font-semibold flex items-center gap-2">
-            <PackageSearch className="h-4 w-4 text-primary" />
-            3. Produto, serviço ou oferta
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Selecione algo do catálogo ou escreva uma oferta que ainda não esteja cadastrada.
-          </p>
-        </div>
-
-        <div className="flex gap-2">
-          <Input
-            value={customOffer}
-            onChange={(event) => syncCustomOffer(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                addCustomOffer();
-              }
-            }}
-            placeholder="Ex.: Cartão Cliente Especial"
-          />
-          <button
-            type="button"
-            onClick={addCustomOffer}
-            className="inline-flex items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
-          >
-            <Plus className="h-4 w-4" /> Adicionar
-          </button>
+        <div className="flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold">4. Local e contexto específico</p>
         </div>
         <p className="text-xs text-muted-foreground">
-          O texto digitado já faz parte do contexto da campanha; Adicionar apenas fixa a oferta para você incluir outra.
+          Exemplo: Chapecó/SC → Condomínio Jardim → ação exclusiva para moradores. Esses campos evitam peças genéricas e deixam o briefing reutilizável.
         </p>
 
-        {availableProducts.length > 0 && (
-          <div className="max-h-44 overflow-y-auto rounded-lg border bg-background p-2">
-            {availableProducts.map((product) => {
-              const selected = value.productIds.includes(product.id);
-              return (
-                <button
-                  key={product.id}
-                  type="button"
-                  onClick={() => toggleProduct(product)}
-                  className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${selected ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
-                >
-                  <span>{product.nome}</span>
-                  {selected && <CheckCircle2 className="h-4 w-4" />}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <div className="grid gap-2 md:grid-cols-4">
+          <Input value={value.locationCity ?? ""} onChange={(e) => emit({ locationCity: e.target.value })} placeholder="Cidade" />
+          <Input value={value.locationState ?? ""} onChange={(e) => emit({ locationState: e.target.value.toUpperCase().slice(0, 2) })} placeholder="UF" maxLength={2} />
+          <Input value={value.locationRegion ?? ""} onChange={(e) => emit({ locationRegion: e.target.value })} placeholder="Bairro/região" />
+          <Input value={value.projectName ?? ""} onChange={(e) => emit({ projectName: e.target.value })} placeholder="Empreendimento/local" />
+        </div>
 
-        {!productsLoading && availableProducts.length === 0 && (
-          <p className="text-xs text-muted-foreground">
-            O catálogo está vazio, mas você pode adicionar a oferta manualmente acima.
-          </p>
-        )}
-
-        {value.productNames.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {value.productNames.map((name, index) => (
-              <button key={`${name}-${index}`} type="button" onClick={() => removeOffer(index)}>
-                <Badge variant="secondary">{name} ×</Badge>
-              </button>
-            ))}
+        <div className="grid gap-2 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Detalhes da ação</Label>
+            <Textarea value={value.specificDetails ?? ""} onChange={(e) => emit({ specificDetails: e.target.value })} placeholder="Condição, ocasião, público local, mensagem específica..." rows={3} />
           </div>
-        )}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Diferenciais obrigatórios</Label>
+            <Textarea value={value.mandatoryDifferentiators ?? ""} onChange={(e) => emit({ mandatoryDifferentiators: e.target.value })} placeholder="Benefícios, diferenciais ou argumentos que precisam aparecer" rows={3} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Restrições e cuidados</Label>
+            <Textarea value={value.restrictions ?? ""} onChange={(e) => emit({ restrictions: e.target.value })} placeholder="O que a IA não deve afirmar, inventar ou mostrar" rows={3} />
+          </div>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-2">
+          <BriefingToggle
+            checked={value.researchEnabled === true}
+            onChange={(checked) => emit({ researchEnabled: checked })}
+            title="Pesquisar contexto público"
+            description="Reserva a pesquisa para dados reais e verificáveis do mercado/local. Informações não confirmadas não devem ser tratadas como fato."
+          />
+          <BriefingToggle
+            checked={value.seoTrackingEnabled === true}
+            onChange={(checked) => emit({ seoTrackingEnabled: checked })}
+            title="Gerar SEO e tracking"
+            description="Mantém o briefing preparado para palavras-chave, metadados, UTMs e eventos de conversão das peças conectadas."
+          />
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
+        <Search className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <p>
+          <strong className="text-foreground">Contexto preservado:</strong> campanhas antigas continuam válidas, enquanto as novas passam a guardar localização, empreendimento, detalhes, diferenciais, restrições, KPI e preferências de pesquisa/SEO de forma estruturada.
+        </p>
       </div>
     </section>
   );
