@@ -23,6 +23,8 @@ const GENERIC_ICONS = [
 ];
 
 const PUBLIC_APP_FIELDS = new Set(["name", "slug", "theme", "navigation", "whiteLabel"]);
+const AUTH_SHELL_FIELDS = ["name", "theme", "whiteLabel"];
+const PUBLIC_AUTH_METHODS = new Set(["email_code"]);
 
 type JsonObject = Record<string, unknown>;
 
@@ -31,6 +33,11 @@ type PublicRuntimePolicy = {
   fields: string[];
   settingsKeys: string[];
   templateKeys: string[];
+};
+
+type RuntimeAuthCapabilities = {
+  enabled: boolean;
+  methods: string[];
 };
 
 function asObject(value: unknown): JsonObject {
@@ -52,6 +59,18 @@ function publicRuntimePolicy(definition: unknown): PublicRuntimePolicy {
     fields: stringArray(publicPolicy.fields).filter((field) => PUBLIC_APP_FIELDS.has(field)),
     settingsKeys: stringArray(publicPolicy.settingsKeys).filter((key) => key !== "runtimeAccess"),
     templateKeys: stringArray(publicPolicy.templateKeys),
+  };
+}
+
+function runtimeAuthCapabilities(definition: unknown): RuntimeAuthCapabilities {
+  const snapshot = asObject(definition);
+  const settings = asObject(snapshot.settings);
+  const runtimeAccess = asObject(settings.runtimeAccess);
+  const auth = asObject(runtimeAccess.auth);
+  const methods = stringArray(auth.methods).filter((method) => PUBLIC_AUTH_METHODS.has(method));
+  return {
+    enabled: auth.enabled === true && methods.length > 0,
+    methods,
   };
 }
 
@@ -89,9 +108,6 @@ router.get("/manifest.json", async (req, res) => {
     if (tenant?.logoUrl) {
       name = tenant.name;
       shortName = tenant.name.substring(0, 30);
-      // Não sabemos o tamanho real da imagem que o lojista subiu — os
-      // navegadores escalam sem problema, então usa a mesma URL nas 3
-      // entradas em vez de gerar variações que não existem.
       icons = [
         { src: tenant.logoUrl, sizes: "192x192", type: "image/png", purpose: "any" },
         { src: tenant.logoUrl, sizes: "512x512", type: "image/png", purpose: "any" },
@@ -121,11 +137,15 @@ router.get("/manifest.json", async (req, res) => {
 });
 
 /**
- * Manifesto público e sanitizado de uma App Instance publicada.
+ * Manifesto sanitizado de uma App Instance publicada.
  *
- * Default deny: publicar um app NÃO o torna automaticamente público. O próprio
- * snapshot publicado precisa declarar settings.runtimeAccess.public.enabled=true
- * e listar os campos liberados. A regra é universal e não conhece nichos.
+ * Default deny: publicar um app NÃO o torna automaticamente público. Existem
+ * duas formas explícitas de habilitar uma superfície externa:
+ * - runtimeAccess.public libera somente os campos allowlisted pelo SuperAdmin;
+ * - runtimeAccess.auth libera apenas a identidade mínima do shell de login.
+ *
+ * Um app privado com autenticação habilitada não expõe navegação, settings nem
+ * template antes da sessão. A regra é universal e não conhece nichos.
  */
 router.get("/app-runtime/apps/:appId/manifest", async (req, res) => {
   const appInstanceId = String(req.params.appId);
@@ -157,45 +177,58 @@ router.get("/app-runtime/apps/:appId/manifest", async (req, res) => {
     .orderBy(desc(appInstanceVersionsTable.publishedAt), desc(appInstanceVersionsTable.version))
     .limit(1);
 
-  if (!snapshot?.templateVersionId) {
+  if (!snapshot) {
     res.status(404).json({ error: "APP_MANIFEST_NOT_FOUND" });
     return;
   }
 
   const policy = publicRuntimePolicy(snapshot.definition);
-  if (!policy.enabled) {
-    // Mesma resposta de inexistência para não revelar apps privados.
+  const auth = runtimeAuthCapabilities(snapshot.definition);
+  if (!policy.enabled && !auth.enabled) {
     res.status(404).json({ error: "APP_MANIFEST_NOT_FOUND" });
     return;
   }
 
-  const [templateVersion] = await db
-    .select({ id: appTemplateVersionsTable.id, version: appTemplateVersionsTable.version, definition: appTemplateVersionsTable.definition })
-    .from(appTemplateVersionsTable)
-    .where(and(
-      eq(appTemplateVersionsTable.id, snapshot.templateVersionId),
-      eq(appTemplateVersionsTable.templateId, app.templateId),
-    ));
+  let template: { versionId: string; version: number; definition: JsonObject } | undefined;
+  if (policy.enabled && snapshot.templateVersionId) {
+    const [templateVersion] = await db
+      .select({ id: appTemplateVersionsTable.id, version: appTemplateVersionsTable.version, definition: appTemplateVersionsTable.definition })
+      .from(appTemplateVersionsTable)
+      .where(and(
+        eq(appTemplateVersionsTable.id, snapshot.templateVersionId),
+        eq(appTemplateVersionsTable.templateId, app.templateId),
+      ));
 
-  if (!templateVersion) {
-    res.status(404).json({ error: "APP_MANIFEST_NOT_FOUND" });
-    return;
+    if (!templateVersion) {
+      res.status(404).json({ error: "APP_MANIFEST_NOT_FOUND" });
+      return;
+    }
+
+    template = {
+      versionId: templateVersion.id,
+      version: templateVersion.version,
+      definition: pickKeys(templateVersion.definition, policy.templateKeys),
+    };
   }
+
+  const appDefinition = policy.enabled
+    ? sanitizePublishedDefinition(snapshot.definition, policy)
+    : pickKeys(snapshot.definition, AUTH_SHELL_FIELDS);
 
   res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
   res.setHeader("ETag", `W/\"app-${app.id}-v${snapshot.version}\"`);
   res.json({
-    manifestVersion: 1,
+    manifestVersion: 2,
     appInstanceId: app.id,
     publishedVersionId: snapshot.id,
     publishedVersion: snapshot.version,
     publishedAt: snapshot.publishedAt,
-    app: sanitizePublishedDefinition(snapshot.definition, policy),
-    template: {
-      versionId: templateVersion.id,
-      version: templateVersion.version,
-      definition: pickKeys(templateVersion.definition, policy.templateKeys),
+    capabilities: {
+      publicContent: policy.enabled,
+      auth,
     },
+    app: appDefinition,
+    ...(template ? { template } : {}),
   });
 });
 

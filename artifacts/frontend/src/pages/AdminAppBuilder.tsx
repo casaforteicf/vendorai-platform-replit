@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AppUsersDialog from "@/components/app-builder/AppUsersDialog";
 import AdminAppBuilderLegacy from "./AdminAppBuilderLegacy";
-import { Loader2, UserRoundCog } from "lucide-react";
+import { ExternalLink, Loader2, UserRoundCog } from "lucide-react";
 
 type AppInstance = {
   id: string;
@@ -45,6 +45,11 @@ export default function AdminAppBuilder() {
     [apps, selectedAppId],
   );
 
+  function openRuntime() {
+    if (!selectedApp) return;
+    window.open(`/apps/${encodeURIComponent(selectedApp.id)}`, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <>
       <div className="mx-auto mb-3 flex max-w-7xl flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
@@ -56,6 +61,10 @@ export default function AdminAppBuilder() {
           <SelectTrigger className="h-9 w-full sm:w-[280px]"><SelectValue placeholder={loadingApps ? "Carregando apps..." : "Selecione o app"} /></SelectTrigger>
           <SelectContent>{apps.map((app) => <SelectItem key={app.id} value={app.id}>{app.name} · {app.status}</SelectItem>)}</SelectContent>
         </Select>
+        <Button size="sm" variant="outline" onClick={openRuntime} disabled={!selectedApp || loadingApps}>
+          <ExternalLink className="mr-2 h-4 w-4" />
+          Abrir app
+        </Button>
         <Button size="sm" onClick={() => setUsersOpen(true)} disabled={!selectedApp || loadingApps}>
           {loadingApps ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserRoundCog className="mr-2 h-4 w-4" />}
           Gerenciar usuários
