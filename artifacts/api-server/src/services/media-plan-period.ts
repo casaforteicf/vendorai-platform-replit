@@ -41,6 +41,10 @@ function normalizeIntensity(value: unknown): "baixa" | "media" | "alta" {
   return "baixa";
 }
 
+function normalizeChannelName(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
 function normalizeChannel(raw: unknown): MediaPlanCampaignChannel | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const item = raw as Record<string, unknown>;
@@ -101,9 +105,9 @@ function normalizeCampaign(raw: unknown, index: number, periodoDias: 30 | 60 | 9
 
 function fallbackChannels(conteudo: MediaPlanConteudo, campaignIndex: number): MediaPlanCampaignChannel[] {
   const preferred = conteudo.canais?.map((c) => c.canal).filter(Boolean) ?? [];
-  const base = Array.from(new Set([...preferred, "Instagram", "Meta Ads", "Google Search", "WhatsApp", "Landing Page"])).slice(0, 7);
-  return base.map((canal, index) => {
-    const lower = canal.toLowerCase();
+  const base = Array.from(new Set([...preferred, "Instagram", "Meta Ads", "Google Search", "WhatsApp", "Landing Page"])).slice(0, 8);
+  return base.map((canal) => {
+    const lower = normalizeChannelName(canal);
     const paid = lower.includes("ads") || lower.includes("google") || lower.includes("performance") || lower.includes("display");
     const direct = lower.includes("whatsapp") || lower.includes("landing") || lower.includes("email");
     const formatos = lower.includes("instagram")
@@ -114,7 +118,9 @@ function fallbackChannels(conteudo: MediaPlanConteudo, campaignIndex: number): M
           ? ["Mensagem", "Follow-up"]
           : lower.includes("landing")
             ? ["Landing Page", "Headline A/B"]
-            : ["Criativo", "Copy"];
+            : lower.includes("email")
+              ? ["E-mail", "Automação"]
+              : ["Criativo", "Copy"];
     return {
       canal,
       funcao: direct ? "Conversão e continuidade comercial" : paid ? "Aquisição e captura de demanda" : "Descoberta, educação e prova",
@@ -167,12 +173,36 @@ function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: 30 | 60 | 9
   });
 }
 
+function mergeChannelCoverage(aiCampaign: MediaPlanCampaign, fallbackCampaign: MediaPlanCampaign): MediaPlanCampaign {
+  const merged = [...aiCampaign.canais];
+  const existing = new Set(merged.map((channel) => normalizeChannelName(channel.canal)));
+
+  // A IA decide mensagem e estratégia, mas não pode derrubar a arquitetura
+  // operacional para um único canal. O fallback representa os executores que
+  // já existem no VendorAI e é incorporado quando algum deles ficou ausente.
+  for (const channel of fallbackCampaign.canais) {
+    const key = normalizeChannelName(channel.canal);
+    if (!existing.has(key)) {
+      merged.push(channel);
+      existing.add(key);
+    }
+  }
+
+  return {
+    ...aiCampaign,
+    canais: merged,
+    materiaisPlanejados: merged.reduce((sum, channel) => sum + channel.quantidadeMateriais, 0),
+  };
+}
+
 const SYSTEM_PROMPT = `Você é o Planejador de Mídia do VendorAI. Sua função é DIREÇÃO ESTRATÉGICA; a execução ocorrerá depois no Gerador de Conteúdo.
 
 Crie campanhas completas para um período de 30, 60 ou 90 dias. Cada campanha deve agrupar todos os canais que fazem sentido para o mesmo objetivo; NÃO crie uma campanha separada por canal.
 
 Canais disponíveis no ecossistema: ${AVAILABLE_CHANNELS.join(", ")}.
 Escolha os canais relevantes para cada campanha e dê a cada canal uma função diferente no funil. Não repita a mesma mensagem literalmente em todos os canais.
+
+A arquitetura mínima precisa considerar descoberta/orgânico, mídia paga, captura de intenção, conversão direta e destino próprio. Na prática, quando fizer sentido ao negócio, use Instagram, Meta Ads, Google Search, WhatsApp e Landing Page, além de E-mail, Blog/SEO, YouTube, Performance Max, Site ou outros canais relevantes.
 
 REGRA GEOGRÁFICA IMPORTANTE: localização e bairro podem orientar a segmentação sem aparecer em todo material. Em campanhas locais, use normalmente intensidade baixa ou média. Em conteúdo orgânico e descoberta, priorize dor, benefício, educação, arquitetura, prova e produto. Mencione a localização explicitamente apenas em parte das peças (em geral 20–30%), aumentando o uso em Google Search, SEO local, LP e conteúdos de alta intenção. Evite títulos repetitivos do tipo “no bairro X” em todas as peças.
 
@@ -215,7 +245,9 @@ export async function enrichMediaPlanForPeriod(
     const normalized = Array.isArray(parsed.campanhas)
       ? parsed.campanhas.map((item, index) => normalizeCampaign(item, index, periodoDias)).filter((item): item is MediaPlanCampaign => Boolean(item))
       : [];
-    if (normalized.length >= 2) campanhas = normalized;
+    if (normalized.length >= 2) {
+      campanhas = normalized.map((campaign, index) => mergeChannelCoverage(campaign, fallback[index % fallback.length]!));
+    }
   } catch (err) {
     logger.warn({ err, tenantId, periodoDias }, "media-plan-period: IA falhou; usando campanhas determinísticas");
   }
