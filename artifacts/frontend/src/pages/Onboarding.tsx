@@ -4,6 +4,7 @@ import { useListSegmentTemplates } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/i18n";
 import { useToast } from "@/hooks/use-toast";
+import { TenantBrand, normalizeTenantLogoUrl } from "@/components/TenantBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,7 +34,6 @@ import {
   X,
   ImageIcon,
 } from "lucide-react";
-import logoLight from "/logo-full-light.svg";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type WizardStep = 1 | 2 | 3 | 4 | "done";
@@ -77,9 +77,9 @@ const TOM_OPTIONS = [
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
 
-async function apiPatch(path: string, body: unknown) {
+async function apiRequest(path: string, method: "POST" | "PATCH", body: unknown) {
   const res = await fetch(`${getBase()}${path}`, {
-    method: "PATCH",
+    method,
     headers: {
       "Content-Type": "application/json",
       ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
@@ -89,6 +89,14 @@ async function apiPatch(path: string, body: unknown) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
   return data;
+}
+
+async function apiPatch(path: string, body: unknown) {
+  return apiRequest(path, "PATCH", body);
+}
+
+async function apiPost(path: string, body: unknown) {
+  return apiRequest(path, "POST", body);
 }
 
 async function apiGet(path: string) {
@@ -237,6 +245,30 @@ export default function Onboarding() {
     }
   }
 
+  async function saveCanonicalBusinessBrand(nomeEmpresa: string, logoUrl?: string) {
+    if (!user?.tenantId) return;
+
+    const profile = await apiGet(`/api/tenants/${user.tenantId}/business-profile`) as {
+      id?: string;
+    } | null;
+    const normalizedLogoUrl = normalizeTenantLogoUrl(logoUrl);
+    const brandPayload = {
+      nomeFantasia: nomeEmpresa,
+      ...(normalizedLogoUrl ? { logoUrl: normalizedLogoUrl } : {}),
+    };
+
+    if (profile?.id) {
+      await apiPatch(`/api/business-profiles/${profile.id}`, brandPayload);
+      return;
+    }
+
+    await apiPost("/api/business-profiles", {
+      tenantId: user.tenantId,
+      razaoSocial: nomeEmpresa,
+      ...brandPayload,
+    });
+  }
+
   // ── Step handlers ───────────────────────────────────────────────────────────
   async function handleStep1() {
     if (!s1NomeEmpresa.trim()) {
@@ -249,11 +281,12 @@ export default function Onboarding() {
     }
     setSubmitting(true);
     try {
+      const companyName = s1NomeEmpresa.trim();
       await apiPatch("/api/onboarding/step/1", {
-        nomeEmpresa: s1NomeEmpresa.trim(),
+        nomeEmpresa: companyName,
         segmento: s1Segmento,
-        ...(s1Logo ? { logoUrl: s1Logo } : {}),
       });
+      await saveCanonicalBusinessBrand(companyName, s1Logo || undefined);
       setStep(2);
     } catch (err) {
       toast({ title: String(err instanceof Error ? err.message : t("onboarding.error.save")), variant: "destructive" });
@@ -366,7 +399,7 @@ export default function Onboarding() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* ── Header ── */}
       <header className="border-b bg-card px-6 py-3 flex items-center justify-between shrink-0">
-        <img src={logoLight} alt="VendorAI" className="h-7" />
+        <TenantBrand pendingName={s1NomeEmpresa} pendingLogoUrl={s1Logo} />
         <div className="flex items-center gap-4">
           {step !== "done" && (
             <span className="text-sm text-muted-foreground">
@@ -497,7 +530,7 @@ export default function Onboarding() {
                   {s1Logo ? (
                     <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
                       <img
-                        src={s1Logo.startsWith("/objects/") ? `/api/storage${s1Logo}` : s1Logo}
+                        src={normalizeTenantLogoUrl(s1Logo)}
                         alt="Logo preview"
                         className="h-12 w-auto max-w-[160px] rounded object-contain"
                         onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
