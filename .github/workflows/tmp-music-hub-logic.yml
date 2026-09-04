@@ -1,0 +1,211 @@
+name: Temporary Music Hub Logic
+
+on:
+  push:
+    branches:
+      - feat/media-center-music-hub
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/media-center-music-hub
+          fetch-depth: 0
+      - name: Patch Media Center logic
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('artifacts/frontend/src/pages/MediaCenter.tsx')
+          text = path.read_text()
+
+          def rep(old, new):
+              global text
+              if old not in text:
+                  raise SystemExit(f'anchor not found: {old[:80]}')
+              text = text.replace(old, new, 1)
+
+          rep('import MediaPostGenerationPanel from "@/components/media/MediaPostGenerationPanel";\n', 'import MediaPostGenerationPanel from "@/components/media/MediaPostGenerationPanel";\nimport AudioRightsPanel from "@/components/media/AudioRightsPanel";\n')
+          rep('type MediaContextType = "none" | "client" | "event" | "campaign" | "product" | "project" | "other";\ntype WorkspaceSection = "library" | "projects" | "ai" | "production";', 'type MediaContextType = "none" | "client" | "event" | "campaign" | "product" | "project" | "other";\ntype AudioKind = "music" | "voiceover" | "sound_effect" | "jingle" | "sonic_identity" | "other";\ntype AudioKindFilter = "all" | AudioKind;\ntype WorkspaceSection = "library" | "projects" | "ai" | "production";')
+          rep('''const TYPE_LABELS: Record<MediaType, string> = {
+            image: "Foto",
+            video: "Vídeo",
+            audio: "Áudio",
+            document: "Arquivo",
+          };
+          ''', '''const TYPE_LABELS: Record<MediaType, string> = {
+            image: "Foto",
+            video: "Vídeo",
+            audio: "Áudio",
+            document: "Arquivo",
+          };
+
+          const AUDIO_KIND_LABELS: Record<AudioKind, string> = {
+            music: "Música / Trilha",
+            voiceover: "Locução / Voz",
+            sound_effect: "Efeito sonoro",
+            jingle: "Jingle",
+            sonic_identity: "Identidade sonora",
+            other: "Outro áudio",
+          };
+
+          const AUDIO_KIND_SHORT_LABELS: Record<AudioKindFilter, string> = {
+            all: "Todos",
+            music: "Músicas",
+            voiceover: "Locuções",
+            sound_effect: "Efeitos",
+            jingle: "Jingles",
+            sonic_identity: "Identidade",
+            other: "Outros",
+          };
+          ''')
+          rep('''function typeIcon(type: MediaType) {
+            return type === "image" ? ImageIcon : type === "video" ? Film : type === "audio" ? AudioLines : FileText;
+          }
+          ''', '''function assetAudioKind(asset: MediaAsset): AudioKind | null {
+            if (asset.type !== "audio") return null;
+            const value = asset.metadata?.audioKind;
+            if (typeof value === "string" && value in AUDIO_KIND_LABELS) return value as AudioKind;
+            if (asset.role === "music") return "music";
+            if (asset.role === "voice") return "voiceover";
+            return "other";
+          }
+
+          function audioRole(kind: AudioKind): "source" | "voice" | "music" {
+            if (kind === "music") return "music";
+            if (kind === "voiceover") return "voice";
+            return "source";
+          }
+
+          function defaultMusicRights() {
+            return {
+              status: "pending",
+              origin: "unknown",
+              commercialUse: false,
+              paidAds: false,
+              territories: ["*"],
+              expiresAt: null,
+              attributionRequired: false,
+              attributionText: null,
+              licenseReference: null,
+              evidenceAssetId: null,
+            };
+          }
+
+          function typeIcon(type: MediaType) {
+            return type === "image" ? ImageIcon : type === "video" ? Film : type === "audio" ? AudioLines : FileText;
+          }
+          ''')
+          rep('''  const [uploadContextLabel, setUploadContextLabel] = useState("");
+            const [uploadFolderPath, setUploadFolderPath] = useState("");
+          ''', '''  const [uploadContextLabel, setUploadContextLabel] = useState("");
+            const [uploadFolderPath, setUploadFolderPath] = useState("");
+            const [audioKindFilter, setAudioKindFilter] = useState<AudioKindFilter>("all");
+            const [uploadAudioKind, setUploadAudioKind] = useState<AudioKind>("other");
+          ''')
+          rep('''            type,
+                      role: "source",
+                      source: "upload",
+          ''', '''            type,
+                      role: type === "audio" ? audioRole(uploadAudioKind) : "source",
+                      source: "upload",
+          ''')
+          rep('''              uploadedFrom: "media_hub",
+                        uploadedAt: new Date().toISOString(),
+                        ...(folderPath ? { folderPath } : {}),
+          ''', '''              uploadedFrom: "media_hub",
+                        uploadedAt: new Date().toISOString(),
+                        ...(type === "audio"
+                          ? {
+                              audioKind: uploadAudioKind,
+                              ...(uploadAudioKind === "music" ? { rights: defaultMusicRights() } : {}),
+                            }
+                          : {}),
+                        ...(folderPath ? { folderPath } : {}),
+          ''')
+          rep('''  const counts = useMemo(
+              () => ({
+          ''', '''  async function classifyAudio(asset: MediaAsset, kind: AudioKind) {
+              if (!tenantId || asset.type !== "audio") return;
+              setOrganizing(true);
+              try {
+                const response = await fetch(`/api/tenants/${tenantId}/media/assets/${asset.id}`, {
+                  method: "PATCH",
+                  headers: authHeaders(true),
+                  body: JSON.stringify({
+                    role: audioRole(kind),
+                    metadata: {
+                      audioKind: kind,
+                      ...(kind === "music" && !asset.metadata?.rights ? { rights: defaultMusicRights() } : {}),
+                    },
+                  }),
+                });
+                const body = await response.json();
+                if (!response.ok) throw new Error(body.error || "Falha ao classificar áudio");
+                toast({ title: "Áudio classificado", description: `${asset.originalFilename || "Arquivo"} agora está em ${AUDIO_KIND_LABELS[kind]}.` });
+                await loadAll();
+              } catch (error) {
+                toast({ title: "Não foi possível classificar o áudio", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+              } finally {
+                setOrganizing(false);
+              }
+            }
+
+            const counts = useMemo(
+              () => ({
+          ''')
+          rep('''    [assets],
+            );
+
+            const visible = useMemo(
+          ''', '''    [assets],
+            );
+
+            const audioKindCounts = useMemo(() => {
+              const result: Record<AudioKindFilter, number> = { all: 0, music: 0, voiceover: 0, sound_effect: 0, jingle: 0, sonic_identity: 0, other: 0 };
+              for (const asset of assets) {
+                const kind = assetAudioKind(asset);
+                if (!kind) continue;
+                result.all += 1;
+                result[kind] += 1;
+              }
+              return result;
+            }, [assets]);
+
+            const visible = useMemo(
+          ''')
+          rep('''        if (filter !== "all" && asset.type !== filter) return false;
+                  if (sourceFilter !== "all" && asset.source !== sourceFilter) return false;
+          ''', '''        if (filter !== "all" && asset.type !== filter) return false;
+                  if (filter === "audio" && audioKindFilter !== "all" && assetAudioKind(asset) !== audioKindFilter) return false;
+                  if (sourceFilter !== "all" && asset.source !== sourceFilter) return false;
+          ''')
+          rep('''          asset.role,
+                    sourceLabel(asset),
+                    TYPE_LABELS[asset.type],
+          ''', '''          asset.role,
+                    assetAudioKind(asset) ? AUDIO_KIND_LABELS[assetAudioKind(asset)!] : null,
+                    typeof asset.metadata?.genre === "string" ? asset.metadata.genre : null,
+                    typeof asset.metadata?.mood === "string" ? asset.metadata.mood : null,
+                    sourceLabel(asset),
+                    TYPE_LABELS[asset.type],
+          ''')
+          rep('[assets, filter, sourceFilter, contextFilter, folderFilter, search],', '[assets, filter, audioKindFilter, sourceFilter, contextFilter, folderFilter, search],')
+
+          path.write_text(text)
+          PY
+      - name: Commit
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/pages/MediaCenter.tsx
+          git commit -m "feat(media): add music hub classification logic"
+          git push origin HEAD:feat/media-center-music-hub
