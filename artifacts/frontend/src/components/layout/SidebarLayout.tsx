@@ -117,6 +117,33 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     return () => observer.disconnect();
   }, [erpEntitled]);
 
+  // Orçamentos já faz parte da Central de Trabalho. Mantemos /propostas e
+  // todo o fluxo funcional, removendo apenas o atalho duplicado do menu lateral.
+  useEffect(() => {
+    const enforceBudgetSidebarPolicy = () => {
+      document.querySelectorAll<HTMLAnchorElement>('a[href="/propostas"]').forEach((link) => {
+        if (link.textContent?.trim() !== "Orçamentos") return;
+        link.style.display = "none";
+        link.setAttribute("aria-hidden", "true");
+        link.setAttribute("tabindex", "-1");
+        link.dataset.budgetSidebarHidden = "true";
+      });
+    };
+
+    enforceBudgetSidebarPolicy();
+    const observer = new MutationObserver(enforceBudgetSidebarPolicy);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      document.querySelectorAll<HTMLAnchorElement>('a[data-budget-sidebar-hidden="true"]').forEach((link) => {
+        link.style.display = "";
+        link.removeAttribute("aria-hidden");
+        link.removeAttribute("tabindex");
+        delete link.dataset.budgetSidebarHidden;
+      });
+    };
+  }, []);
+
   // Praça.AI é um conjunto opcional por tenant. Fica oculto por padrão e
   // só aparece quando o Super Admin ativa o módulo "Praça.AI" no painel
   // gerencial do tenant. O bloqueio cobre tanto os itens de Marketing
