@@ -14,7 +14,18 @@ import {
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const CRM_BASE = (import.meta.env.VITE_CRM_URL || "https://app.appvendorai.com").replace(/\/$/, "");
 
+const COUNTRY_OPTIONS = {
+  BR: { label: "Brasil", locale: "pt-BR", phone: "+55 48 99999-9999" },
+  PY: { label: "Paraguay", locale: "es-PY", phone: "+595 981 234567" },
+  AR: { label: "Argentina", locale: "es-AR", phone: "+54 9 11 1234-5678" },
+  UY: { label: "Uruguay", locale: "es-UY", phone: "+598 99 123 456" },
+  CL: { label: "Chile", locale: "es-CL", phone: "+56 9 1234 5678" },
+} as const;
+
+type CountryCode = keyof typeof COUNTRY_OPTIONS;
+
 type TrialForm = {
+  countryCode: CountryCode;
   nomeEmpresa: string;
   nomePessoa: string;
   email: string;
@@ -33,7 +44,18 @@ type TrialForm = {
   adDataConsent: boolean;
 };
 
+function initialCountry(): CountryCode {
+  if (typeof navigator === "undefined") return "BR";
+  const locale = navigator.language.toLowerCase();
+  if (locale.includes("es-py")) return "PY";
+  if (locale.includes("es-ar")) return "AR";
+  if (locale.includes("es-uy")) return "UY";
+  if (locale.includes("es-cl")) return "CL";
+  return "BR";
+}
+
 const initialForm = (): TrialForm => ({
+  countryCode: initialCountry(),
   nomeEmpresa: "",
   nomePessoa: "",
   email: "",
@@ -52,33 +74,217 @@ const initialForm = (): TrialForm => ({
   adDataConsent: getAdDataConsentState()?.granted ?? false,
 });
 
+const PT = {
+  requiredStep1: "Preencha os campos obrigatórios para continuar",
+  requiredStep2: "Conte um pouco mais sobre seu negócio",
+  passwordRequired: "Crie uma senha para ativar seu teste",
+  passwordMin: "A senha deve ter pelo menos 8 caracteres",
+  accountError: "Erro ao criar conta",
+  createdTitle: "Seu teste foi criado!",
+  createdDescription: "Redirecionando para o VendorAI...",
+  connectionError: "Erro de conexão",
+  tryAgain: "Tente novamente.",
+  defaultWarmMessage: "Iniciou o cadastro para o trial de 5 dias do VendorAI.",
+  details: {
+    country: "País",
+    segment: "Segmento",
+    niche: "Nicho",
+    products: "Produtos/serviços",
+    idealCustomer: "Cliente ideal",
+    objective: "Objetivo",
+    pain: "Principal dificuldade",
+    channel: "Canal principal",
+    region: "Região",
+    volume: "Volume aproximado de leads/mês",
+    team: "Equipe comercial/atendimento",
+  },
+  featureTexts: [
+    "VendorAI preparado para o seu segmento",
+    "Até 3 usuários no teste",
+    "Canais e automações para acompanhar seus leads",
+    "5 dias de acesso completo",
+  ],
+  heroTitle: "Prepare o VendorAI para o seu negócio.",
+  heroDescription: "Em poucos passos entendemos sua operação para que você não entre em um sistema vazio.",
+  stepAria: "Etapa",
+  stepTitles: ["Vamos conhecer você", "Personalize sua demonstração", "Ative seus 5 dias grátis"],
+  stepDescriptions: [
+    "Só o essencial agora. O restante será enriquecido conforme você avançar.",
+    "Essas respostas ajudam a IA a preparar uma experiência relevante para sua empresa.",
+    "Sem cobrança durante o teste. Sua configuração seguirá com você se decidir continuar.",
+  ],
+  country: "País *",
+  company: "Nome da empresa *",
+  companyPlaceholder: "Ex: Construtora Horizonte",
+  name: "Seu nome *",
+  namePlaceholder: "Ex: João Silva",
+  whatsapp: "WhatsApp *",
+  email: "E-mail *",
+  segment: "Segmento *",
+  segmentPlaceholder: "Ex: materiais de construção, seguros, piscinas",
+  niche: "Nicho / especialidade",
+  nichePlaceholder: "Ex: pisos e revestimentos",
+  region: "Cidade / região de atuação",
+  regionPlaceholder: "Ex: Chapecó e região",
+  products: "O que sua empresa vende ou oferece? *",
+  productsPlaceholder: "Principais produtos ou serviços",
+  idealCustomer: "Quem é seu principal cliente?",
+  idealCustomerPlaceholder: "Ex: construtoras, consumidor final, indústrias",
+  objective: "O que você quer melhorar primeiro? *",
+  objectivePlaceholder: "Ex: responder mais rápido e converter mais",
+  pain: "Qual a maior dificuldade hoje? *",
+  painPlaceholder: "Ex: leads esfriam antes do vendedor responder",
+  mainChannel: "Canal principal",
+  leadsMonth: "Leads / mês",
+  team: "Equipe",
+  select: "Selecione",
+  phoneChannel: "Telefone",
+  inPerson: "Presencial",
+  others: "Outros",
+  upTo50: "Até 50",
+  moreThan1000: "Mais de 1.000",
+  onePerson: "1 pessoa",
+  moreThan50: "Mais de 50",
+  readyTitle: "Pré-personalização pronta.",
+  readyText: "Vamos usar seu segmento, oferta, objetivo e dificuldade para orientar seu primeiro acesso.",
+  password: "Crie sua senha *",
+  passwordPlaceholder: "Mínimo 8 caracteres",
+  optional: "Opcional:",
+  consent: "autorizo o VendorAI a usar dados de conversão e identificadores protegidos para medir e otimizar campanhas.",
+  privacy: "Política de Privacidade",
+  back: "Voltar",
+  continue: "Continuar",
+  creating: "Criando seu teste...",
+  startTrial: "Começar meus 5 dias grátis",
+  termsPrefix: "Ao criar a conta, você concorda com os",
+  terms: "Termos de Uso",
+  termsJoin: "e reconhece a",
+  duringTrial: "Durante o teste você recebe:",
+  freeTrial: "Os 5 dias são gratuitos e não há cobrança durante o teste.",
+  contextNote: "As respostas desta etapa servem para pré-configurar a experiência e também ajudam nossa equipe a entender o contexto da sua empresa.",
+} as const;
+
+const ES = {
+  requiredStep1: "Completa los campos obligatorios para continuar",
+  requiredStep2: "Cuéntanos un poco más sobre tu negocio",
+  passwordRequired: "Crea una contraseña para activar tu prueba",
+  passwordMin: "La contraseña debe tener al menos 8 caracteres",
+  accountError: "Error al crear la cuenta",
+  createdTitle: "¡Tu prueba fue creada!",
+  createdDescription: "Redirigiendo a VendorAI...",
+  connectionError: "Error de conexión",
+  tryAgain: "Inténtalo nuevamente.",
+  defaultWarmMessage: "Inició el registro para la prueba de 5 días de VendorAI.",
+  details: {
+    country: "País",
+    segment: "Segmento",
+    niche: "Nicho",
+    products: "Productos/servicios",
+    idealCustomer: "Cliente ideal",
+    objective: "Objetivo",
+    pain: "Principal dificultad",
+    channel: "Canal principal",
+    region: "Región",
+    volume: "Volumen aproximado de leads/mes",
+    team: "Equipo comercial/atención",
+  },
+  featureTexts: [
+    "VendorAI preparado para tu segmento",
+    "Hasta 3 usuarios durante la prueba",
+    "Canales y automatizaciones para acompañar tus leads",
+    "5 días de acceso completo",
+  ],
+  heroTitle: "Prepara VendorAI para tu negocio.",
+  heroDescription: "En pocos pasos entendemos tu operación para que no ingreses a un sistema vacío.",
+  stepAria: "Paso",
+  stepTitles: ["Queremos conocerte", "Personaliza tu demostración", "Activa tus 5 días gratis"],
+  stepDescriptions: [
+    "Solo lo esencial por ahora. El resto se enriquecerá a medida que avances.",
+    "Estas respuestas ayudan a la IA a preparar una experiencia relevante para tu empresa.",
+    "Sin cobro durante la prueba. Tu configuración continuará contigo si decides seguir.",
+  ],
+  country: "País *",
+  company: "Nombre de la empresa *",
+  companyPlaceholder: "Ej.: Comercial Horizonte",
+  name: "Tu nombre *",
+  namePlaceholder: "Ej.: Juan Pérez",
+  whatsapp: "WhatsApp *",
+  email: "Correo electrónico *",
+  segment: "Segmento *",
+  segmentPlaceholder: "Ej.: materiales de construcción, seguros, piscinas",
+  niche: "Nicho / especialidad",
+  nichePlaceholder: "Ej.: pisos y revestimientos",
+  region: "Ciudad / región de actuación",
+  regionPlaceholder: "Ej.: Asunción y alrededores",
+  products: "¿Qué vende u ofrece tu empresa? *",
+  productsPlaceholder: "Principales productos o servicios",
+  idealCustomer: "¿Quién es tu principal cliente?",
+  idealCustomerPlaceholder: "Ej.: constructoras, consumidor final, industrias",
+  objective: "¿Qué quieres mejorar primero? *",
+  objectivePlaceholder: "Ej.: responder más rápido y convertir más",
+  pain: "¿Cuál es la mayor dificultad hoy? *",
+  painPlaceholder: "Ej.: los leads se enfrían antes de recibir respuesta",
+  mainChannel: "Canal principal",
+  leadsMonth: "Leads / mes",
+  team: "Equipo",
+  select: "Selecciona",
+  phoneChannel: "Teléfono",
+  inPerson: "Presencial",
+  others: "Otros",
+  upTo50: "Hasta 50",
+  moreThan1000: "Más de 1.000",
+  onePerson: "1 persona",
+  moreThan50: "Más de 50",
+  readyTitle: "Prepersonalización lista.",
+  readyText: "Usaremos tu segmento, oferta, objetivo y dificultad para orientar tu primer acceso.",
+  password: "Crea tu contraseña *",
+  passwordPlaceholder: "Mínimo 8 caracteres",
+  optional: "Opcional:",
+  consent: "autorizo a VendorAI a utilizar datos de conversión e identificadores protegidos para medir y optimizar campañas.",
+  privacy: "Política de Privacidad",
+  back: "Volver",
+  continue: "Continuar",
+  creating: "Creando tu prueba...",
+  startTrial: "Comenzar mis 5 días gratis",
+  termsPrefix: "Al crear la cuenta, aceptas los",
+  terms: "Términos de Uso",
+  termsJoin: "y reconoces la",
+  duringTrial: "Durante la prueba recibes:",
+  freeTrial: "Los 5 días son gratuitos y no hay cobro durante la prueba.",
+  contextNote: "Las respuestas de esta etapa sirven para preconfigurar la experiencia y también ayudan a nuestro equipo a entender el contexto de tu empresa.",
+} as const;
+
 export default function Demo() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [form, setForm] = useState<TrialForm>(initialForm);
+  const isSpanish = form.countryCode !== "BR";
+  const copy = isSpanish ? ES : PT;
+  const country = COUNTRY_OPTIONS[form.countryCode];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, type, value } = e.target;
     const checked = type === "checkbox" ? (e.target as HTMLInputElement).checked : false;
     if (name === "adDataConsent" && type === "checkbox") setAdDataConsent(checked);
-    setForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
+    setForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value } as TrialForm));
   };
 
   const captureWarmLead = async () => {
     if (!form.nomePessoa || !form.email || !form.nomeEmpresa) return;
     const attribution = getLaunchAttribution();
     const details = [
-      form.segmento && `Segmento: ${form.segmento}`,
-      form.nicho && `Nicho: ${form.nicho}`,
-      form.produtosServicos && `Produtos/serviços: ${form.produtosServicos}`,
-      form.clienteIdeal && `Cliente ideal: ${form.clienteIdeal}`,
-      form.objetivoPrincipal && `Objetivo: ${form.objetivoPrincipal}`,
-      form.dorPrincipal && `Principal dificuldade: ${form.dorPrincipal}`,
-      form.canalPrincipal && `Canal principal: ${form.canalPrincipal}`,
-      form.regiaoAtuacao && `Região: ${form.regiaoAtuacao}`,
-      form.volumeLeads && `Volume aproximado de leads/mês: ${form.volumeLeads}`,
-      form.tamanhoEquipe && `Equipe comercial/atendimento: ${form.tamanhoEquipe}`,
+      `${copy.details.country}: ${country.label} (${form.countryCode})`,
+      form.segmento && `${copy.details.segment}: ${form.segmento}`,
+      form.nicho && `${copy.details.niche}: ${form.nicho}`,
+      form.produtosServicos && `${copy.details.products}: ${form.produtosServicos}`,
+      form.clienteIdeal && `${copy.details.idealCustomer}: ${form.clienteIdeal}`,
+      form.objetivoPrincipal && `${copy.details.objective}: ${form.objetivoPrincipal}`,
+      form.dorPrincipal && `${copy.details.pain}: ${form.dorPrincipal}`,
+      form.canalPrincipal && `${copy.details.channel}: ${form.canalPrincipal}`,
+      form.regiaoAtuacao && `${copy.details.region}: ${form.regiaoAtuacao}`,
+      form.volumeLeads && `${copy.details.volume}: ${form.volumeLeads}`,
+      form.tamanhoEquipe && `${copy.details.team}: ${form.tamanhoEquipe}`,
     ].filter(Boolean).join("\n");
 
     try {
@@ -90,7 +296,7 @@ export default function Demo() {
           email: form.email,
           telefone: form.telefone || undefined,
           empresa: form.nomeEmpresa,
-          mensagem: details || "Iniciou o cadastro para o trial de 5 dias do VendorAI.",
+          mensagem: details || copy.defaultWarmMessage,
           origem: "trial_progressivo",
           ...attribution,
           adDataConsent: form.adDataConsent,
@@ -104,7 +310,7 @@ export default function Demo() {
   const goNext = async () => {
     if (step === 1) {
       if (!form.nomeEmpresa || !form.nomePessoa || !form.email || !form.telefone || !form.segmento) {
-        toast({ title: "Preencha os campos obrigatórios para continuar", variant: "destructive" });
+        toast({ title: copy.requiredStep1, variant: "destructive" });
         return;
       }
       await captureWarmLead();
@@ -114,7 +320,7 @@ export default function Demo() {
 
     if (step === 2) {
       if (!form.produtosServicos || !form.objetivoPrincipal || !form.dorPrincipal) {
-        toast({ title: "Conte um pouco mais sobre seu negócio", variant: "destructive" });
+        toast({ title: copy.requiredStep2, variant: "destructive" });
         return;
       }
       await captureWarmLead();
@@ -126,11 +332,11 @@ export default function Demo() {
     e.preventDefault();
     if (step !== 3) return;
     if (!form.senha) {
-      toast({ title: "Crie uma senha para ativar seu teste", variant: "destructive" });
+      toast({ title: copy.passwordRequired, variant: "destructive" });
       return;
     }
     if (form.senha.length < 8) {
-      toast({ title: "A senha deve ter pelo menos 8 caracteres", variant: "destructive" });
+      toast({ title: copy.passwordMin, variant: "destructive" });
       return;
     }
 
@@ -142,6 +348,7 @@ export default function Demo() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          countryCode: form.countryCode,
           nomeEmpresa: form.nomeEmpresa,
           nomePessoa: form.nomePessoa,
           email: form.email,
@@ -163,11 +370,11 @@ export default function Demo() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast({ title: data.error || "Erro ao criar conta", variant: "destructive" });
+        toast({ title: data.error || copy.accountError, variant: "destructive" });
         return;
       }
 
-      toast({ title: "Seu teste foi criado!", description: "Redirecionando para o VendorAI..." });
+      toast({ title: copy.createdTitle, description: copy.createdDescription });
       const handoff = new URLSearchParams({ vendorai_token: data.token });
       if (data.tenant?.demoExpiresAt) handoff.set("demo_expires_at", data.tenant.demoExpiresAt);
       handoff.set("onboarding_segmento", form.segmento);
@@ -181,74 +388,69 @@ export default function Demo() {
         window.location.href = `${CRM_BASE}/dashboard#${handoff.toString()}`;
       }, 900);
     } catch {
-      toast({ title: "Erro de conexão", description: "Tente novamente.", variant: "destructive" });
+      toast({ title: copy.connectionError, description: copy.tryAgain, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const features = [
-    { icon: Sparkles, text: "VendorAI preparado para o seu segmento" },
-    { icon: Users, text: "Até 3 usuários no teste" },
-    { icon: Zap, text: "Canais e automações para acompanhar seus leads" },
-    { icon: Clock, text: "5 dias de acesso completo" },
-  ];
+  const features = [Sparkles, Users, Zap, Clock].map((icon, index) => ({ icon, text: copy.featureTexts[index]! }));
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 sm:pb-0">
+    <div className="min-h-screen bg-slate-50 pb-24 sm:pb-0" lang={country.locale}>
       <div className="bg-slate-900 px-4 py-12 md:py-16">
         <div className="container mx-auto text-center">
-          <h1 className="mb-4 text-3xl font-bold text-white md:mb-6 md:text-5xl">Prepare o VendorAI para o seu negócio.</h1>
-          <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-xl">Em poucos passos entendemos sua operação para que você não entre em um sistema vazio.</p>
+          <h1 className="mb-4 text-3xl font-bold text-white md:mb-6 md:text-5xl">{copy.heroTitle}</h1>
+          <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-xl">{copy.heroDescription}</p>
         </div>
       </div>
 
       <div className="container relative z-10 mx-auto -mt-6 px-3 md:-mt-8 md:px-4">
         <div className="mx-auto grid max-w-5xl overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl md:grid-cols-5">
           <div className="p-5 sm:p-8 md:col-span-3 md:p-12">
-            <div className="mb-6 flex items-center gap-2" aria-label={`Etapa ${step} de 3`}>
+            <div className="mb-6 flex items-center gap-2" aria-label={`${copy.stepAria} ${step} ${isSpanish ? "de" : "de"} 3`}>
               {[1, 2, 3].map((n) => (
                 <div key={n} className={`h-1.5 flex-1 rounded-full ${n <= step ? "bg-primary" : "bg-slate-200"}`} />
               ))}
             </div>
 
-            <h2 className="mb-2 text-2xl font-bold text-slate-900">
-              {step === 1 ? "Vamos conhecer você" : step === 2 ? "Personalize sua demonstração" : "Ative seus 5 dias grátis"}
-            </h2>
-            <p className="mb-7 text-slate-500">
-              {step === 1
-                ? "Só o essencial agora. O restante será enriquecido conforme você avançar."
-                : step === 2
-                  ? "Essas respostas ajudam a IA a preparar uma experiência relevante para sua empresa."
-                  : "Sem cobrança durante o teste. Sua configuração seguirá com você se decidir continuar."}
-            </p>
+            <h2 className="mb-2 text-2xl font-bold text-slate-900">{copy.stepTitles[step - 1]}</h2>
+            <p className="mb-7 text-slate-500">{copy.stepDescriptions[step - 1]}</p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               {step === 1 && (
                 <>
+                  <div className="space-y-2">
+                    <Label htmlFor="countryCode">{copy.country}</Label>
+                    <select id="countryCode" name="countryCode" value={form.countryCode} onChange={handleChange} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" required>
+                      {Object.entries(COUNTRY_OPTIONS).map(([code, option]) => (
+                        <option key={code} value={code}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="grid gap-5 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="nomeEmpresa">Nome da empresa *</Label>
-                      <Input id="nomeEmpresa" name="nomeEmpresa" value={form.nomeEmpresa} onChange={handleChange} placeholder="Ex: Construtora Horizonte" required />
+                      <Label htmlFor="nomeEmpresa">{copy.company}</Label>
+                      <Input id="nomeEmpresa" name="nomeEmpresa" value={form.nomeEmpresa} onChange={handleChange} placeholder={copy.companyPlaceholder} required />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="nomePessoa">Seu nome *</Label>
-                      <Input id="nomePessoa" name="nomePessoa" value={form.nomePessoa} onChange={handleChange} placeholder="Ex: João Silva" required />
+                      <Label htmlFor="nomePessoa">{copy.name}</Label>
+                      <Input id="nomePessoa" name="nomePessoa" value={form.nomePessoa} onChange={handleChange} placeholder={copy.namePlaceholder} required />
                     </div>
                   </div>
                   <div className="grid gap-5 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="telefone">WhatsApp *</Label>
-                      <Input id="telefone" name="telefone" value={form.telefone} onChange={handleChange} placeholder="(48) 99999-9999" required inputMode="tel" />
+                      <Label htmlFor="telefone">{copy.whatsapp}</Label>
+                      <Input id="telefone" name="telefone" value={form.telefone} onChange={handleChange} placeholder={country.phone} required inputMode="tel" />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email">E-mail *</Label>
-                      <Input id="email" name="email" type="email" value={form.email} onChange={handleChange} placeholder="joao@empresa.com" required />
+                      <Label htmlFor="email">{copy.email}</Label>
+                      <Input id="email" name="email" type="email" value={form.email} onChange={handleChange} placeholder="email@empresa.com" required />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="segmento">Segmento *</Label>
-                    <Input id="segmento" name="segmento" value={form.segmento} onChange={handleChange} placeholder="Ex: materiais de construção, seguros, piscinas" required />
+                    <Label htmlFor="segmento">{copy.segment}</Label>
+                    <Input id="segmento" name="segmento" value={form.segmento} onChange={handleChange} placeholder={copy.segmentPlaceholder} required />
                   </div>
                 </>
               )}
@@ -257,63 +459,63 @@ export default function Demo() {
                 <>
                   <div className="grid gap-5 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="nicho">Nicho / especialidade</Label>
-                      <Input id="nicho" name="nicho" value={form.nicho} onChange={handleChange} placeholder="Ex: pisos e revestimentos" />
+                      <Label htmlFor="nicho">{copy.niche}</Label>
+                      <Input id="nicho" name="nicho" value={form.nicho} onChange={handleChange} placeholder={copy.nichePlaceholder} />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="regiaoAtuacao">Cidade / região de atuação</Label>
-                      <Input id="regiaoAtuacao" name="regiaoAtuacao" value={form.regiaoAtuacao} onChange={handleChange} placeholder="Ex: Chapecó e região" />
+                      <Label htmlFor="regiaoAtuacao">{copy.region}</Label>
+                      <Input id="regiaoAtuacao" name="regiaoAtuacao" value={form.regiaoAtuacao} onChange={handleChange} placeholder={copy.regionPlaceholder} />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="produtosServicos">O que sua empresa vende ou oferece? *</Label>
-                    <Input id="produtosServicos" name="produtosServicos" value={form.produtosServicos} onChange={handleChange} placeholder="Principais produtos ou serviços" required />
+                    <Label htmlFor="produtosServicos">{copy.products}</Label>
+                    <Input id="produtosServicos" name="produtosServicos" value={form.produtosServicos} onChange={handleChange} placeholder={copy.productsPlaceholder} required />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="clienteIdeal">Quem é seu principal cliente?</Label>
-                    <Input id="clienteIdeal" name="clienteIdeal" value={form.clienteIdeal} onChange={handleChange} placeholder="Ex: construtoras, consumidor final, indústrias" />
+                    <Label htmlFor="clienteIdeal">{copy.idealCustomer}</Label>
+                    <Input id="clienteIdeal" name="clienteIdeal" value={form.clienteIdeal} onChange={handleChange} placeholder={copy.idealCustomerPlaceholder} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="objetivoPrincipal">O que você quer melhorar primeiro? *</Label>
-                    <Input id="objetivoPrincipal" name="objetivoPrincipal" value={form.objetivoPrincipal} onChange={handleChange} placeholder="Ex: responder mais rápido e converter mais" required />
+                    <Label htmlFor="objetivoPrincipal">{copy.objective}</Label>
+                    <Input id="objetivoPrincipal" name="objetivoPrincipal" value={form.objetivoPrincipal} onChange={handleChange} placeholder={copy.objectivePlaceholder} required />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dorPrincipal">Qual a maior dificuldade hoje? *</Label>
-                    <Input id="dorPrincipal" name="dorPrincipal" value={form.dorPrincipal} onChange={handleChange} placeholder="Ex: leads esfriam antes do vendedor responder" required />
+                    <Label htmlFor="dorPrincipal">{copy.pain}</Label>
+                    <Input id="dorPrincipal" name="dorPrincipal" value={form.dorPrincipal} onChange={handleChange} placeholder={copy.painPlaceholder} required />
                   </div>
                   <div className="grid gap-5 md:grid-cols-3">
                     <div className="space-y-2">
-                      <Label htmlFor="canalPrincipal">Canal principal</Label>
+                      <Label htmlFor="canalPrincipal">{copy.mainChannel}</Label>
                       <select id="canalPrincipal" name="canalPrincipal" value={form.canalPrincipal} onChange={handleChange} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-                        <option value="">Selecione</option>
-                        <option>WhatsApp</option>
-                        <option>Instagram</option>
-                        <option>Site</option>
-                        <option>Telefone</option>
-                        <option>Presencial</option>
-                        <option>Outros</option>
+                        <option value="">{copy.select}</option>
+                        <option value="WhatsApp">WhatsApp</option>
+                        <option value="Instagram">Instagram</option>
+                        <option value="Site">Site</option>
+                        <option value="Telefone">{copy.phoneChannel}</option>
+                        <option value="Presencial">{copy.inPerson}</option>
+                        <option value="Outros">{copy.others}</option>
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="volumeLeads">Leads / mês</Label>
+                      <Label htmlFor="volumeLeads">{copy.leadsMonth}</Label>
                       <select id="volumeLeads" name="volumeLeads" value={form.volumeLeads} onChange={handleChange} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-                        <option value="">Selecione</option>
-                        <option>Até 50</option>
-                        <option>51 a 200</option>
-                        <option>201 a 500</option>
-                        <option>501 a 1.000</option>
-                        <option>Mais de 1.000</option>
+                        <option value="">{copy.select}</option>
+                        <option value="Até 50">{copy.upTo50}</option>
+                        <option value="51 a 200">51 a 200</option>
+                        <option value="201 a 500">201 a 500</option>
+                        <option value="501 a 1.000">501 a 1.000</option>
+                        <option value="Mais de 1.000">{copy.moreThan1000}</option>
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="tamanhoEquipe">Equipe</Label>
+                      <Label htmlFor="tamanhoEquipe">{copy.team}</Label>
                       <select id="tamanhoEquipe" name="tamanhoEquipe" value={form.tamanhoEquipe} onChange={handleChange} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-                        <option value="">Selecione</option>
-                        <option>1 pessoa</option>
-                        <option>2 a 5</option>
-                        <option>6 a 15</option>
-                        <option>16 a 50</option>
-                        <option>Mais de 50</option>
+                        <option value="">{copy.select}</option>
+                        <option value="1 pessoa">{copy.onePerson}</option>
+                        <option value="2 a 5">2 a 5</option>
+                        <option value="6 a 15">6 a 15</option>
+                        <option value="16 a 50">16 a 50</option>
+                        <option value="Mais de 50">{copy.moreThan50}</option>
                       </select>
                     </div>
                   </div>
@@ -323,17 +525,17 @@ export default function Demo() {
               {step === 3 && (
                 <>
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                    <strong>Pré-personalização pronta.</strong> Vamos usar seu segmento, oferta, objetivo e dificuldade para orientar seu primeiro acesso.
+                    <strong>{copy.readyTitle}</strong> {copy.readyText}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="senha">Crie sua senha *</Label>
-                    <Input id="senha" name="senha" type="password" value={form.senha} onChange={handleChange} placeholder="Mínimo 8 caracteres" required data-testid="input-senha" />
+                    <Label htmlFor="senha">{copy.password}</Label>
+                    <Input id="senha" name="senha" type="password" value={form.senha} onChange={handleChange} placeholder={copy.passwordPlaceholder} required data-testid="input-senha" />
                   </div>
                   <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                     <input type="checkbox" name="adDataConsent" checked={form.adDataConsent} onChange={handleChange} className="mt-1 h-4 w-4 rounded border-slate-300" />
                     <span>
-                      <strong className="font-medium text-slate-800">Opcional:</strong> autorizo o VendorAI a usar dados de conversão e identificadores protegidos para medir e otimizar campanhas.{" "}
-                      <Link href="/privacy" className="underline hover:text-slate-900">Política de Privacidade</Link>.
+                      <strong className="font-medium text-slate-800">{copy.optional}</strong> {copy.consent}{" "}
+                      <Link href="/privacy" className="underline hover:text-slate-900">{copy.privacy}</Link>.
                     </span>
                   </label>
                 </>
@@ -342,29 +544,29 @@ export default function Demo() {
               <div className="flex gap-3 pt-1">
                 {step > 1 && (
                   <Button type="button" variant="outline" className="h-12 flex-1" onClick={() => setStep((current) => (current === 3 ? 2 : 1))} disabled={loading}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+                    <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
                   </Button>
                 )}
                 {step < 3 ? (
                   <Button type="button" className="h-12 flex-1 font-bold" onClick={goNext}>
-                    Continuar <ArrowRight className="ml-2 h-5 w-5" />
+                    {copy.continue} <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 ) : (
                   <Button type="submit" className="h-12 flex-1 font-bold" disabled={loading} data-testid="btn-criar-demo">
-                    {loading ? "Criando seu teste..." : "Começar meus 5 dias grátis"}
+                    {loading ? copy.creating : copy.startTrial}
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 )}
               </div>
 
               <p className="text-center text-xs text-slate-400">
-                Ao criar a conta, você concorda com os <Link href="/terms" className="underline hover:text-slate-600">Termos de Uso</Link> e reconhece a <Link href="/privacy" className="underline hover:text-slate-600">Política de Privacidade</Link>.
+                {copy.termsPrefix} <Link href="/terms" className="underline hover:text-slate-600">{copy.terms}</Link> {copy.termsJoin} <Link href="/privacy" className="underline hover:text-slate-600">{copy.privacy}</Link>.
               </p>
             </form>
           </div>
 
           <div className="flex flex-col justify-center bg-slate-900 p-8 text-white md:col-span-2 md:p-12">
-            <h3 className="mb-6 text-xl font-bold">Durante o teste você recebe:</h3>
+            <h3 className="mb-6 text-xl font-bold">{copy.duringTrial}</h3>
             <ul className="space-y-4">
               {features.map((feature, index) => (
                 <li key={index} className="flex items-center gap-3">
@@ -379,11 +581,9 @@ export default function Demo() {
             <div className="mt-8 space-y-4 border-t border-slate-700 pt-8">
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
-                <p className="text-sm text-slate-300">Os 5 dias são gratuitos e não há cobrança durante o teste.</p>
+                <p className="text-sm text-slate-300">{copy.freeTrial}</p>
               </div>
-              <div className="rounded-xl bg-white/5 p-4 text-sm text-slate-300">
-                As respostas desta etapa servem para pré-configurar a experiência e também ajudam nossa equipe a entender o contexto da sua empresa.
-              </div>
+              <div className="rounded-xl bg-white/5 p-4 text-sm text-slate-300">{copy.contextNote}</div>
             </div>
           </div>
         </div>
