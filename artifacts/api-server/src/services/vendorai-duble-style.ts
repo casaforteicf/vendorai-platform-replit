@@ -47,6 +47,24 @@ type MarketDefinition = {
   culturalPrompt: string;
 };
 
+type SegmentStyleRule = {
+  key: string;
+  label: string;
+  keywords: string[];
+  scenarios: string[];
+  outfits: string[];
+};
+
+type TenantStyleProfile = {
+  key: string;
+  label: string;
+  segment: string | null;
+  vertical: string | null;
+  matchedBy: "segmento" | "vertical" | "descricao" | "fallback";
+  scenarioCandidates: string[];
+  outfitCandidates: string[];
+};
+
 export class DubleStyleValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -222,6 +240,115 @@ const CATALOGS = {
   lighting: LIGHTING,
 };
 
+const DEFAULT_SEGMENT_STYLE: SegmentStyleRule = {
+  key: "geral-profissional",
+  label: "Geral profissional",
+  keywords: [],
+  scenarios: ["escritorio-contemporaneo", "sala-reuniao", "estudio-clean", "evento-corporativo", "recepcao"],
+  outfits: ["blazer-neutro", "blazer-camiseta", "camisa-social-clara", "polo-premium", "casual-local-neutro"],
+};
+
+const SEGMENT_STYLE_RULES: SegmentStyleRule[] = [
+  {
+    key: "piscinas",
+    label: "Piscinas e área externa",
+    keywords: ["piscina", "piscinas", "spa", "area externa", "lazer"],
+    scenarios: ["showroom-piscinas", "showroom", "area-urbana", "estudio-clean"],
+    outfits: ["piscinas", "showroom-profissional", "polo-premium", "verao-profissional", "camiseta-premium"],
+  },
+  {
+    key: "esquadrias",
+    label: "Esquadrias, portas e janelas",
+    keywords: ["esquadria", "esquadrias", "janela", "janelas", "porta", "portas", "pvc", "aluminio"],
+    scenarios: ["fabrica-esquadrias", "showroom", "fabrica", "escritorio-contemporaneo"],
+    outfits: ["engenharia-casual", "fabrica-operacional", "showroom-profissional", "polo-premium", "jaqueta-corporativa"],
+  },
+  {
+    key: "materiais-construcao",
+    label: "Materiais de construção e acabamentos",
+    keywords: ["material de construcao", "materiais de construcao", "acabamento", "acabamentos", "revestimento", "revestimentos", "piso", "pisos"],
+    scenarios: ["loja-materiais-construcao", "showroom", "loja-varejo", "distribuidora"],
+    outfits: ["materiais-construcao", "showroom-profissional", "varejo-profissional", "polo-premium", "atendimento-premium"],
+  },
+  {
+    key: "construcao",
+    label: "Construção, engenharia e arquitetura",
+    keywords: ["construtora", "construcao", "engenharia", "obra", "obras", "arquitetura", "icf"],
+    scenarios: ["obra-construcao", "escritorio-contemporaneo", "sala-reuniao", "showroom"],
+    outfits: ["engenharia-casual", "obra-epi", "polo-premium", "blazer-camiseta", "camisa-social-clara"],
+  },
+  {
+    key: "autopecas",
+    label: "Autopeças e automotivo",
+    keywords: ["autopeca", "autopecas", "peca automotiva", "pecas automotivas", "automotivo", "automotiva"],
+    scenarios: ["distribuidora-autopecas", "distribuidora", "loja-varejo", "escritorio-contemporaneo"],
+    outfits: ["autopecas", "distribuidora", "polo-premium", "jaqueta-corporativa", "varejo-profissional"],
+  },
+  {
+    key: "farmacia",
+    label: "Farmácia e saúde administrativa",
+    keywords: ["farmacia", "drogaria", "saude", "healthcare"],
+    scenarios: ["farmacia", "recepcao", "escritorio-contemporaneo", "sala-reuniao"],
+    outfits: ["farmacia-varejo", "saude-administrativo", "atendimento-premium", "polo-premium", "camisa-social-clara"],
+  },
+  {
+    key: "seguros-financeiro",
+    label: "Seguros, financeiro e consultivo",
+    keywords: ["seguro", "seguros", "corretora", "financeiro", "contabilidade", "contabil", "credito"],
+    scenarios: ["corretora-seguros", "escritorio-contemporaneo", "sala-reuniao", "recepcao"],
+    outfits: ["seguros-consultivo", "consultoria", "blazer-camisa", "terno-azul", "camisa-social-clara"],
+  },
+  {
+    key: "imobiliario",
+    label: "Imobiliário",
+    keywords: ["imobiliaria", "imobiliario", "imoveis", "corretor de imoveis", "real estate"],
+    scenarios: ["imobiliaria", "escritorio-contemporaneo", "area-urbana", "sala-reuniao"],
+    outfits: ["imobiliario", "blazer-camisa", "blazer-neutro", "camisa-social-clara", "atendimento-premium"],
+  },
+  {
+    key: "distribuicao-logistica",
+    label: "Distribuição e logística",
+    keywords: ["distribuidora", "distribuicao", "atacado", "atacadista", "logistica", "centro de distribuicao"],
+    scenarios: ["distribuidora", "fabrica", "escritorio-contemporaneo", "sala-reuniao"],
+    outfits: ["distribuidora", "logistica", "polo-premium", "jaqueta-corporativa", "camisa-social-clara"],
+  },
+  {
+    key: "industria",
+    label: "Indústria e manufatura",
+    keywords: ["industria", "industrial", "fabrica", "manufatura", "fabricacao"],
+    scenarios: ["fabrica", "escritorio-contemporaneo", "sala-reuniao", "showroom"],
+    outfits: ["fabrica-operacional", "engenharia-casual", "jaqueta-corporativa", "polo-premium", "camisa-social-clara"],
+  },
+  {
+    key: "tecnologia",
+    label: "Tecnologia e software",
+    keywords: ["tecnologia", "software", "saas", "inteligencia artificial", "automacao", "startup", "crm"],
+    scenarios: ["escritorio-contemporaneo", "home-office", "estudio-clean", "sala-reuniao", "evento-corporativo"],
+    outfits: ["tecnologia", "blazer-camiseta", "camiseta-premium", "criativo-contemporaneo", "polo-premium"],
+  },
+  {
+    key: "marketing-criativo",
+    label: "Marketing, design e comunicação",
+    keywords: ["marketing", "agencia", "publicidade", "design", "comunicacao", "conteudo"],
+    scenarios: ["estudio-clean", "escritorio-contemporaneo", "cafeteria", "evento-corporativo", "home-office"],
+    outfits: ["marketing", "criativo-contemporaneo", "blazer-camiseta", "camiseta-premium", "palestra"],
+  },
+  {
+    key: "gastronomia-cafe",
+    label: "Gastronomia, café e hospitalidade",
+    keywords: ["cafeteria", "cafe", "restaurante", "gastronomia", "alimentacao", "hospitalidade"],
+    scenarios: ["cafeteria", "loja-varejo", "recepcao", "estudio-clean"],
+    outfits: ["cafe-casual", "gastronomia-smart", "varejo-profissional", "atendimento-premium", "camisa-social-clara"],
+  },
+  {
+    key: "varejo",
+    label: "Varejo e comércio",
+    keywords: ["varejo", "loja", "comercio", "retail", "ecommerce", "e-commerce"],
+    scenarios: ["loja-varejo", "showroom", "recepcao", "escritorio-contemporaneo"],
+    outfits: ["varejo-profissional", "atendimento-premium", "showroom-profissional", "polo-premium", "camisa-social-clara"],
+  },
+];
+
 function isMarketCode(value: unknown): value is MercosulMarketCode {
   return typeof value === "string" && value in MERCOSUL_MARKETS;
 }
@@ -229,6 +356,53 @@ function isMarketCode(value: unknown): value is MercosulMarketCode {
 function findItem(items: CatalogItem[], id: string | undefined): CatalogItem | null {
   if (!id || id === "auto") return null;
   return items.find((item) => item.id === id) ?? null;
+}
+
+function normalizeBusinessText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function matchSegmentRule(value: unknown): SegmentStyleRule | null {
+  const text = normalizeBusinessText(value);
+  if (!text) return null;
+  return SEGMENT_STYLE_RULES.find((rule) => rule.keywords.some((keyword) => text.includes(keyword))) ?? null;
+}
+
+async function loadTenantStyleProfile(tenantId: string): Promise<TenantStyleProfile> {
+  const result = await pool.query(
+    `SELECT segmento, vertical, descricao
+       FROM tenants
+      WHERE id = $1
+      LIMIT 1`,
+    [tenantId],
+  );
+  const tenant = result.rows[0] as Record<string, unknown> | undefined;
+  const segment = tenant?.["segmento"] ? String(tenant["segmento"]) : null;
+  const vertical = tenant?.["vertical"] ? String(tenant["vertical"]) : null;
+  const description = tenant?.["descricao"] ? String(tenant["descricao"]) : null;
+
+  const matches: Array<{ source: TenantStyleProfile["matchedBy"]; rule: SegmentStyleRule | null }> = [
+    { source: "segmento", rule: matchSegmentRule(segment) },
+    { source: "vertical", rule: matchSegmentRule(vertical) },
+    { source: "descricao", rule: matchSegmentRule(description) },
+  ];
+  const match = matches.find((item) => item.rule) ?? null;
+  const rule = match?.rule ?? DEFAULT_SEGMENT_STYLE;
+
+  return {
+    key: rule.key,
+    label: rule.label,
+    segment,
+    vertical,
+    matchedBy: match?.source ?? "fallback",
+    scenarioCandidates: rule.scenarios.filter((id) => Boolean(findItem(SCENARIOS, id))),
+    outfitCandidates: rule.outfits.filter((id) => Boolean(findItem(OUTFITS, id))),
+  };
 }
 
 function historySelections(metadata: JsonRecord): DubleStyleSelection[] {
@@ -263,15 +437,28 @@ function favoriteSelection(metadata: JsonRecord): DubleStyleSelection | null {
   return selection.scenario && selection.outfit && selection.framing && selection.pose && selection.lighting ? selection : null;
 }
 
-function chooseItem(items: CatalogItem[], requested: string | undefined, recentIds: string[], antiRepeat: boolean): CatalogItem {
+function chooseItem(
+  items: CatalogItem[],
+  requested: string | undefined,
+  recentIds: string[],
+  antiRepeat: boolean,
+  preferredIds: string[] = [],
+): CatalogItem {
   const explicit = findItem(items, requested);
   if (requested && requested !== "auto" && !explicit) throw new DubleStyleValidationError(`Opção de estilo inválida: ${requested}`);
   if (explicit) return explicit;
 
   const recent = new Set(recentIds.slice(0, 6));
+  const preferred = preferredIds
+    .map((id) => findItem(items, id))
+    .filter((item): item is CatalogItem => Boolean(item));
+  const preferredFresh = antiRepeat ? preferred.filter((item) => !recent.has(item.id)) : preferred;
+  if (preferredFresh.length) return preferredFresh[randomInt(0, preferredFresh.length)]!;
+
   const candidates = antiRepeat ? items.filter((item) => !recent.has(item.id)) : items;
-  const poolItems = candidates.length ? candidates : items;
-  return poolItems[randomInt(0, poolItems.length)]!;
+  if (candidates.length) return candidates[randomInt(0, candidates.length)]!;
+  if (preferred.length) return preferred[randomInt(0, preferred.length)]!;
+  return items[randomInt(0, items.length)]!;
 }
 
 async function loadIdentity(tenantId: string, identityId: string) {
@@ -334,7 +521,11 @@ function buildStylePrompt(selection: DubleStyleSelection) {
   ].join(" ");
 }
 
-function resolveSelection(input: DubleStyleSelectionInput, metadata: JsonRecord): DubleStyleSelection {
+function resolveSelection(
+  input: DubleStyleSelectionInput,
+  metadata: JsonRecord,
+  businessStyle: TenantStyleProfile,
+): DubleStyleSelection {
   const favorite = input.useFavorite ? favoriteSelection(metadata) : null;
   const history = historySelections(metadata);
   const identityCountry = String(metadata["country"] ?? "").toUpperCase();
@@ -344,8 +535,20 @@ function resolveSelection(input: DubleStyleSelectionInput, metadata: JsonRecord)
 
   return {
     market: requestedMarket,
-    scenario: chooseItem(SCENARIOS, input.scenario ?? favorite?.scenario, history.map((item) => item.scenario), antiRepeat).id,
-    outfit: chooseItem(OUTFITS, input.outfit ?? favorite?.outfit, history.map((item) => item.outfit), antiRepeat).id,
+    scenario: chooseItem(
+      SCENARIOS,
+      input.scenario ?? favorite?.scenario,
+      history.map((item) => item.scenario),
+      antiRepeat,
+      businessStyle.scenarioCandidates,
+    ).id,
+    outfit: chooseItem(
+      OUTFITS,
+      input.outfit ?? favorite?.outfit,
+      history.map((item) => item.outfit),
+      antiRepeat,
+      businessStyle.outfitCandidates,
+    ).id,
     framing: chooseItem(FRAMINGS, input.framing ?? favorite?.framing, history.map((item) => item.framing), antiRepeat).id,
     pose: chooseItem(POSES, input.pose ?? favorite?.pose, history.map((item) => item.pose), antiRepeat).id,
     lighting: chooseItem(LIGHTING, input.lighting ?? favorite?.lighting, history.map((item) => item.lighting), antiRepeat).id,
@@ -368,9 +571,10 @@ async function persistHistory(params: {
   identityId: string;
   metadata: JsonRecord;
   selection: DubleStyleSelection;
+  businessStyle: TenantStyleProfile;
   assetId: string;
 }) {
-  const { tenantId, identityId, metadata, selection, assetId } = params;
+  const { tenantId, identityId, metadata, selection, businessStyle, assetId } = params;
   const currentStyle = asRecord(metadata["dubleStyle"]);
   const existingHistory = Array.isArray(currentStyle["history"]) ? currentStyle["history"] : [];
   const market = MERCOSUL_MARKETS[selection.market];
@@ -379,6 +583,11 @@ async function persistHistory(params: {
     createdAt: new Date().toISOString(),
     assetId,
     selection,
+    businessStyle: {
+      key: businessStyle.key,
+      label: businessStyle.label,
+      matchedBy: businessStyle.matchedBy,
+    },
   };
   const nextMetadata = {
     ...metadata,
@@ -390,6 +599,13 @@ async function persistHistory(params: {
       market: market.code,
       antiRepeat: true,
       lastSelection: selection,
+      lastBusinessStyle: {
+        key: businessStyle.key,
+        label: businessStyle.label,
+        segment: businessStyle.segment,
+        vertical: businessStyle.vertical,
+        matchedBy: businessStyle.matchedBy,
+      },
       history: [historyItem, ...existingHistory].slice(0, 30),
     },
   };
@@ -423,7 +639,10 @@ export function getDubleStyleCatalog(marketInput?: unknown) {
 }
 
 export async function getVendorAiDubleStyleProfile(params: { tenantId: string; identityId: string }) {
-  const identity = await loadIdentity(params.tenantId, params.identityId);
+  const [identity, businessStyle] = await Promise.all([
+    loadIdentity(params.tenantId, params.identityId),
+    loadTenantStyleProfile(params.tenantId),
+  ]);
   const metadata = asRecord(identity["metadata"]);
   const identityCountry = String(metadata["country"] ?? "").toUpperCase();
   const marketCode: MercosulMarketCode = isMarketCode(identityCountry) ? identityCountry : "BR";
@@ -433,6 +652,16 @@ export async function getVendorAiDubleStyleProfile(params: { tenantId: string; i
     lastSelection: asRecord(asRecord(metadata["dubleStyle"])["lastSelection"]),
     recent: historySelections(metadata).slice(0, 8),
     antiRepeat: asRecord(metadata["dubleStyle"])["antiRepeat"] !== false,
+    intelligentSelection: {
+      enabled: true,
+      key: businessStyle.key,
+      label: businessStyle.label,
+      segment: businessStyle.segment,
+      vertical: businessStyle.vertical,
+      matchedBy: businessStyle.matchedBy,
+      scenarios: businessStyle.scenarioCandidates.map((id) => ({ id, label: findItem(SCENARIOS, id)?.label ?? id })),
+      outfits: businessStyle.outfitCandidates.map((id) => ({ id, label: findItem(OUTFITS, id)?.label ?? id })),
+    },
   };
 }
 
@@ -474,9 +703,12 @@ export async function createVendorAiDubleStyleReference(params: {
   title?: string;
 }) {
   await assertStyleConsent(params.tenantId, params.identityId);
-  const identity = await loadIdentity(params.tenantId, params.identityId);
+  const [identity, businessStyle] = await Promise.all([
+    loadIdentity(params.tenantId, params.identityId),
+    loadTenantStyleProfile(params.tenantId),
+  ]);
   const metadata = asRecord(identity["metadata"]);
-  const selection = resolveSelection(params.style ?? {}, metadata);
+  const selection = resolveSelection(params.style ?? {}, metadata, businessStyle);
   validateFullSelection(selection);
   const market = MERCOSUL_MARKETS[selection.market];
   const prompt = buildStylePrompt(selection);
@@ -496,6 +728,14 @@ export async function createVendorAiDubleStyleReference(params: {
       market,
       generatedByAi: true,
       antiRepeat: params.style?.antiRepeat !== false,
+      intelligentSelection: {
+        enabled: true,
+        key: businessStyle.key,
+        label: businessStyle.label,
+        segment: businessStyle.segment,
+        vertical: businessStyle.vertical,
+        matchedBy: businessStyle.matchedBy,
+      },
     },
   });
 
@@ -527,6 +767,14 @@ export async function createVendorAiDubleStyleReference(params: {
       generatedByAi: true,
       authorizedIdentity: true,
       purpose: "duble_lipsync_reference",
+      intelligentSelection: {
+        enabled: true,
+        key: businessStyle.key,
+        label: businessStyle.label,
+        segment: businessStyle.segment,
+        vertical: businessStyle.vertical,
+        matchedBy: businessStyle.matchedBy,
+      },
     },
   });
 
@@ -535,6 +783,7 @@ export async function createVendorAiDubleStyleReference(params: {
     identityId: params.identityId,
     metadata,
     selection,
+    businessStyle,
     assetId: registered.assetId,
   });
 
@@ -547,5 +796,13 @@ export async function createVendorAiDubleStyleReference(params: {
     selection,
     labels: selectionLabels(selection),
     market,
+    intelligentSelection: {
+      enabled: true,
+      key: businessStyle.key,
+      label: businessStyle.label,
+      segment: businessStyle.segment,
+      vertical: businessStyle.vertical,
+      matchedBy: businessStyle.matchedBy,
+    },
   };
 }
