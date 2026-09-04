@@ -385,10 +385,19 @@ router.patch("/tenants/:tenantId/media/assets/:assetId", async (req, res) => {
     return;
   }
 
-  const changes: { metadata?: Record<string, unknown>; projectId?: string | null } = {};
+  const changes: { metadata?: Record<string, unknown>; projectId?: string | null; role?: string } = {};
 
   if (body["metadata"] !== undefined) {
     changes.metadata = { ...asRecord(existing.metadata), ...asRecord(body["metadata"]) };
+  }
+
+  if (body["role"] !== undefined) {
+    const role = nonEmptyString(body["role"]);
+    if (!role || !ASSET_ROLES.has(role)) {
+      res.status(422).json({ error: "role de ativo inválido" });
+      return;
+    }
+    changes.role = role;
   }
 
   if (body["projectId"] !== undefined) {

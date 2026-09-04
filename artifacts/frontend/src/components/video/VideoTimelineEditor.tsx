@@ -286,9 +286,10 @@ export default function VideoTimelineEditor() {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
 
-  const [musicMode, setMusicMode] = useState<MusicMode>("none");
+  const requestedMusicAssetId = useRef(new URLSearchParams(window.location.search).get("musicAssetId") ?? "");
+  const [musicMode, setMusicMode] = useState<MusicMode>(requestedMusicAssetId.current ? "library" : "none");
   const [musicFile, setMusicFile] = useState<File | null>(null);
-  const [musicAssetId, setMusicAssetId] = useState("");
+  const [musicAssetId, setMusicAssetId] = useState(requestedMusicAssetId.current);
   const [musicTracks, setMusicTracks] = useState<LibraryTrack[]>([]);
   const [brandDefaultTrackId, setBrandDefaultTrackId] = useState("");
   const [musicVolume, setMusicVolume] = useState(0.22);
@@ -516,6 +517,17 @@ export default function VideoTimelineEditor() {
     void loadAssets();
     void loadMusic();
   }, [loadAssets, loadMusic]);
+
+  useEffect(() => {
+    const requested = requestedMusicAssetId.current;
+    if (!requested || musicTracks.length === 0) return;
+    if (musicTracks.some((track) => track.id === requested)) {
+      setMusicMode("library");
+      setMusicAssetId(requested);
+      setTool("audio");
+      requestedMusicAssetId.current = "";
+    }
+  }, [musicTracks]);
 
   useEffect(() => {
     if (!projectId || !tenantId) return;
