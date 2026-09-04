@@ -18,6 +18,219 @@ export class VoiceConsentError extends Error {
 }
 export class VoiceProfileInvalidError extends Error {}
 
+export type VoiceSelectionMatch =
+  | "preferred_exact_locale"
+  | "exact_locale"
+  | "preferred_same_language"
+  | "same_language_fallback"
+  | "preferred_generic_fallback"
+  | "primary_generic_fallback"
+  | "first_ready_fallback";
+
+export type VoiceSelectionResult = {
+  requestedVoiceProfileId: string;
+  voiceProfileId: string;
+  requestedLocale: string;
+  selectedLocale: string | null;
+  selectedMarket: string | null;
+  match: VoiceSelectionMatch;
+  warning: string | null;
+};
+
+type VoiceCandidate = {
+  id: string;
+  metadata: Record<string, unknown>;
+  updatedAt: Date | null;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeLocale(value: string | undefined | null): string {
+  return (value ?? "pt-br").trim().replace(/_/g, "-").toLowerCase();
+}
+
+function localeLanguage(locale: string | null): string | null {
+  if (!locale) return null;
+  const normalized = normalizeLocale(locale);
+  return normalized.split("-")[0] || null;
+}
+
+function candidateLocale(candidate: VoiceCandidate): string | null {
+  const locale = metadataString(candidate.metadata, "locale");
+  return locale ? normalizeLocale(locale) : null;
+}
+
+function candidateMarket(candidate: VoiceCandidate): string | null {
+  return metadataString(candidate.metadata, "market") ?? metadataString(candidate.metadata, "country");
+}
+
+function candidatePrimary(candidate: VoiceCandidate): boolean {
+  return candidate.metadata["primary"] === true;
+}
+
+function sameSpanishAccentFamily(requestedLocale: string, candidateLocaleValue: string | null): boolean {
+  if (!candidateLocaleValue) return false;
+  const voseoLocales = new Set(["es-ar", "es-uy", "es-py"]);
+  return voseoLocales.has(requestedLocale) && voseoLocales.has(candidateLocaleValue);
+}
+
+function candidateScore(candidate: VoiceCandidate, requestedLocale: string): number {
+  const locale = candidateLocale(candidate);
+  const requestedLanguage = localeLanguage(requestedLocale);
+  const language = localeLanguage(locale);
+  let score = 0;
+
+  if (locale === requestedLocale) score += 1000;
+  else if (requestedLanguage && language === requestedLanguage) {
+    score += 500;
+    if (sameSpanishAccentFamily(requestedLocale, locale)) score += 120;
+    if (requestedLocale === "es-bo" && locale === "es-py") score += 40;
+  }
+
+  if (candidatePrimary(candidate)) score += 20;
+  const updatedAt = candidate.updatedAt?.getTime() ?? 0;
+  score += Math.min(10, Math.max(0, Math.floor(updatedAt / 1_000_000_000_000)));
+  return score;
+}
+
+async function listReadyVoiceCandidates(tenantId: string, identityId: string): Promise<VoiceCandidate[]> {
+  const result = await pool.query(
+    `SELECT id, metadata, updated_at
+       FROM media_voice_profiles
+      WHERE tenant_id = $1
+        AND identity_id = $2
+        AND status = 'ready'
+        AND reference_asset_id IS NOT NULL
+      ORDER BY updated_at DESC, created_at DESC`,
+    [tenantId, identityId],
+  );
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    metadata: asRecord(row.metadata),
+    updatedAt: row.updated_at ? new Date(row.updated_at) : null,
+  }));
+}
+
+export async function resolveVendorAiVoiceProfile(input: {
+  tenantId: string;
+  identityId: string;
+  preferredVoiceProfileId: string;
+  language?: string;
+}): Promise<VoiceSelectionResult> {
+  const requestedLocale = normalizeLocale(input.language);
+  const candidates = await listReadyVoiceCandidates(input.tenantId, input.identityId);
+
+  if (!candidates.length) {
+    return {
+      requestedVoiceProfileId: input.preferredVoiceProfileId,
+      voiceProfileId: input.preferredVoiceProfileId,
+      requestedLocale,
+      selectedLocale: null,
+      selectedMarket: null,
+      match: "preferred_generic_fallback",
+      warning: null,
+    };
+  }
+
+  const preferred = candidates.find((candidate) => candidate.id === input.preferredVoiceProfileId) ?? null;
+  const preferredLocale = preferred ? candidateLocale(preferred) : null;
+  const requestedLanguage = localeLanguage(requestedLocale);
+
+  if (preferred && preferredLocale === requestedLocale) {
+    return {
+      requestedVoiceProfileId: input.preferredVoiceProfileId,
+      voiceProfileId: preferred.id,
+      requestedLocale,
+      selectedLocale: preferredLocale,
+      selectedMarket: candidateMarket(preferred),
+      match: "preferred_exact_locale",
+      warning: null,
+    };
+  }
+
+  const exact = candidates.find((candidate) => candidateLocale(candidate) === requestedLocale) ?? null;
+  if (exact) {
+    return {
+      requestedVoiceProfileId: input.preferredVoiceProfileId,
+      voiceProfileId: exact.id,
+      requestedLocale,
+      selectedLocale: candidateLocale(exact),
+      selectedMarket: candidateMarket(exact),
+      match: "exact_locale",
+      warning: preferred
+        ? `A voz selecionada manualmente não corresponde a ${requestedLocale}; o VendorAI usou automaticamente a referência exata deste mercado.`
+        : null,
+    };
+  }
+
+  if (preferred && preferredLocale && localeLanguage(preferredLocale) === requestedLanguage) {
+    return {
+      requestedVoiceProfileId: input.preferredVoiceProfileId,
+      voiceProfileId: preferred.id,
+      requestedLocale,
+      selectedLocale: preferredLocale,
+      selectedMarket: candidateMarket(preferred),
+      match: "preferred_same_language",
+      warning: `Não existe uma referência exata em ${requestedLocale}; usando ${preferredLocale} como fallback do mesmo idioma.`,
+    };
+  }
+
+  const sameLanguage = candidates
+    .filter((candidate) => localeLanguage(candidateLocale(candidate)) === requestedLanguage)
+    .sort((left, right) => candidateScore(right, requestedLocale) - candidateScore(left, requestedLocale))[0] ?? null;
+
+  if (sameLanguage) {
+    const selectedLocale = candidateLocale(sameLanguage);
+    return {
+      requestedVoiceProfileId: input.preferredVoiceProfileId,
+      voiceProfileId: sameLanguage.id,
+      requestedLocale,
+      selectedLocale,
+      selectedMarket: candidateMarket(sameLanguage),
+      match: "same_language_fallback",
+      warning: selectedLocale
+        ? `Não existe uma referência exata em ${requestedLocale}; usando ${selectedLocale}, a opção compatível mais próxima disponível.`
+        : `Não existe uma referência exata em ${requestedLocale}; usando uma voz disponível do mesmo idioma.`,
+    };
+  }
+
+  if (preferred) {
+    return {
+      requestedVoiceProfileId: input.preferredVoiceProfileId,
+      voiceProfileId: preferred.id,
+      requestedLocale,
+      selectedLocale: preferredLocale,
+      selectedMarket: candidateMarket(preferred),
+      match: "preferred_generic_fallback",
+      warning: preferredLocale
+        ? `Não há voz no idioma ${requestedLanguage ?? requestedLocale}; usando a voz preferida ${preferredLocale} como fallback.`
+        : `Não há voz no idioma ${requestedLanguage ?? requestedLocale}; usando a voz preferida disponível como fallback.`,
+    };
+  }
+
+  const primary = candidates.find(candidatePrimary) ?? null;
+  const fallback = primary ?? candidates[0];
+  const selectedLocale = candidateLocale(fallback);
+  return {
+    requestedVoiceProfileId: input.preferredVoiceProfileId,
+    voiceProfileId: fallback.id,
+    requestedLocale,
+    selectedLocale,
+    selectedMarket: candidateMarket(fallback),
+    match: primary ? "primary_generic_fallback" : "first_ready_fallback",
+    warning: selectedLocale
+      ? `Não há voz no idioma ${requestedLanguage ?? requestedLocale}; usando ${selectedLocale} como fallback disponível.`
+      : `Não há voz no idioma ${requestedLanguage ?? requestedLocale}; usando o perfil de voz disponível.`,
+  };
+}
+
 export function isVendorAiVoiceWorkerConfigured(): boolean {
   return Boolean(process.env["VENDORAI_MEDIA_WORKER_URL"]);
 }
@@ -42,6 +255,7 @@ async function loadVoiceReference(tenantId: string, identityId: string, voicePro
        v.status,
        v.reference_asset_id,
        v.model_config,
+       v.metadata,
        i.status AS identity_status,
        a.storage_url,
        a.mime_type,
@@ -71,6 +285,7 @@ async function loadVoiceReference(tenantId: string, identityId: string, voicePro
     mimeType: typeof row["mime_type"] === "string" ? row["mime_type"] : "audio/wav",
     originalFilename: typeof row["original_filename"] === "string" ? row["original_filename"] : "voice-reference.wav",
     modelConfig: row["model_config"] && typeof row["model_config"] === "object" ? row["model_config"] as Record<string, unknown> : {},
+    metadata: asRecord(row["metadata"]),
   };
 }
 
@@ -82,12 +297,27 @@ export async function synthesizeVendorAiVoice(input: {
   text: string;
   language?: string;
   title?: string;
-}): Promise<{ projectId: string; jobId: string; audioUrl: string; assetId: string; versionId: string }> {
+}): Promise<{
+  projectId: string;
+  jobId: string;
+  audioUrl: string;
+  assetId: string;
+  versionId: string;
+  voiceProfileId: string;
+  requestedVoiceProfileId: string;
+  voiceSelection: VoiceSelectionResult;
+}> {
   const workerUrl = process.env["VENDORAI_MEDIA_WORKER_URL"]?.replace(/\/$/, "");
   if (!workerUrl) throw new VoiceEngineNotReadyError("Voice worker do VendorAI ainda não está configurado");
 
   await assertVoiceConsent(input.tenantId, input.identityId);
-  const reference = await loadVoiceReference(input.tenantId, input.identityId, input.voiceProfileId);
+  const selection = await resolveVendorAiVoiceProfile({
+    tenantId: input.tenantId,
+    identityId: input.identityId,
+    preferredVoiceProfileId: input.voiceProfileId,
+    language: input.language,
+  });
+  const reference = await loadVoiceReference(input.tenantId, input.identityId, selection.voiceProfileId);
 
   const projectId = await createProcessingMediaProject({
     tenantId: input.tenantId,
@@ -97,8 +327,10 @@ export async function synthesizeVendorAiVoice(input: {
     operation: "voice_synthesize",
     context: {
       identityId: input.identityId,
-      voiceProfileId: input.voiceProfileId,
+      requestedVoiceProfileId: input.voiceProfileId,
+      voiceProfileId: selection.voiceProfileId,
       language: input.language ?? "pt-br",
+      voiceSelection: selection,
       engine: "vendorai",
     },
   });
@@ -111,8 +343,10 @@ export async function synthesizeVendorAiVoice(input: {
     provider: "vendorai",
     input: {
       identityId: input.identityId,
-      voiceProfileId: input.voiceProfileId,
+      requestedVoiceProfileId: input.voiceProfileId,
+      voiceProfileId: selection.voiceProfileId,
       language: input.language ?? "pt-br",
+      voiceSelection: selection,
       textLength: input.text.length,
     },
     snapshot: { status: "running", progress: 5 },
@@ -160,13 +394,27 @@ export async function synthesizeVendorAiVoice(input: {
       label: "Voz sintetizada",
       metadata: {
         identityId: input.identityId,
-        voiceProfileId: input.voiceProfileId,
+        requestedVoiceProfileId: input.voiceProfileId,
+        voiceProfileId: selection.voiceProfileId,
+        requestedLocale: selection.requestedLocale,
+        selectedLocale: selection.selectedLocale,
+        selectedMarket: selection.selectedMarket,
+        voiceSelectionMatch: selection.match,
+        voiceSelectionWarning: selection.warning,
         language: input.language ?? "pt-br",
         engine: "vendorai",
       },
     });
     await updateMediaJob(jobId, input.tenantId, { status: "done", progress: 100, audioUrl });
-    return { projectId, jobId, audioUrl, ...registered };
+    return {
+      projectId,
+      jobId,
+      audioUrl,
+      ...registered,
+      voiceProfileId: selection.voiceProfileId,
+      requestedVoiceProfileId: input.voiceProfileId,
+      voiceSelection: selection,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida na síntese de voz";
     await updateMediaJob(jobId, input.tenantId, { status: "error", error: message });

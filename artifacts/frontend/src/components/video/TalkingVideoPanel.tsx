@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AutomaticVoiceSelectionNotice from "./AutomaticVoiceSelectionNotice";
 import TalkingVideoPanelCore from "./TalkingVideoPanelCore";
 import MultilingualVoicePanel, { type MultilingualVoiceProfile } from "./MultilingualVoicePanel";
 
@@ -36,6 +37,7 @@ export default function TalkingVideoPanel(props: Props) {
         voiceUseAuthorized={props.activeConsentScopes.has("voice_use")}
         onVoiceAdded={handleVoiceAdded}
       />
+      <AutomaticVoiceSelectionNotice voices={voices} />
       <TalkingVideoPanelCore
         tenantId={props.tenantId}
         identityId={props.identityId}
