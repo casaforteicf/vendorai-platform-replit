@@ -80,6 +80,24 @@ function canManageTenant(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
 
+function isTenantAdministrator(user: { platformRole?: string | null; userFunction?: string | null }) {
+  return user.platformRole === "tenant_admin" || user.userFunction === "administrador";
+}
+
+async function hasOtherActiveTenantAdministrator(tenantId: string, excludedUserId: string) {
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      active: usersTable.active,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+    })
+    .from(usersTable)
+    .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)));
+
+  return rows.some((row) => row.id !== excludedUserId && isTenantAdministrator(row));
+}
+
 async function findTenantUserFunction(id: string, tenantId: string) {
   const [customFunction] = await db
     .select()
@@ -205,6 +223,11 @@ router.post("/users", requireRole("super_admin", "tenant_admin"), async (req, re
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && parsed.data.platformRole === "super_admin") {
+    res.status(403).json({ error: "Tenant administrators cannot create super administrators" });
+    return;
+  }
+
   const userData = { ...parsed.data };
   if (userData.customFunctionId) {
     const customFunction = await findTenantUserFunction(userData.customFunctionId, userData.tenantId);
@@ -250,6 +273,11 @@ router.get("/users/:id", requireRole("super_admin", "tenant_admin"), async (req,
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && user.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   res.json(user);
 });
 
@@ -261,7 +289,13 @@ router.patch("/users/:id", requireRole("super_admin", "tenant_admin"), async (re
   }
 
   const [existing] = await db
-    .select({ id: usersTable.id, tenantId: usersTable.tenantId })
+    .select({
+      id: usersTable.id,
+      tenantId: usersTable.tenantId,
+      active: usersTable.active,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, (req.params.id as string)));
 
@@ -275,6 +309,20 @@ router.patch("/users/:id", requireRole("super_admin", "tenant_admin"), async (re
     return;
   }
 
+  if (
+    req.user?.platformRole !== "super_admin" &&
+    parsed.data.platformRole !== undefined &&
+    parsed.data.platformRole !== existing.platformRole
+  ) {
+    res.status(403).json({ error: "Tenant administrators cannot change platform roles" });
+    return;
+  }
+
+  if (req.user?.sub === existing.id && parsed.data.active === false) {
+    res.status(409).json({ error: "Você não pode desativar o próprio usuário." });
+    return;
+  }
+
   const data: typeof parsed.data = { ...parsed.data };
   if (data.customFunctionId) {
     const customFunction = await findTenantUserFunction(data.customFunctionId, existing.tenantId);
@@ -285,6 +333,24 @@ router.patch("/users/:id", requireRole("super_admin", "tenant_admin"), async (re
     data.userFunction = "outro";
     if (!Array.isArray(data.permissions)) {
       data.permissions = customFunction.permissions;
+    }
+  }
+
+  const nextAdministratorState = {
+    platformRole: data.platformRole ?? existing.platformRole,
+    userFunction: data.userFunction ?? existing.userFunction,
+  };
+  const nextActive = data.active ?? existing.active;
+  const losesLastAdminAccess =
+    existing.active &&
+    isTenantAdministrator(existing) &&
+    (!nextActive || !isTenantAdministrator(nextAdministratorState));
+
+  if (losesLastAdminAccess) {
+    const hasOtherAdmin = await hasOtherActiveTenantAdministrator(existing.tenantId, existing.id);
+    if (!hasOtherAdmin) {
+      res.status(409).json({ error: "O tenant precisa manter pelo menos um administrador ativo." });
+      return;
     }
   }
 
@@ -361,7 +427,13 @@ router.patch("/users/:id/password", async (req, res) => {
 
 router.delete("/users/:id", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const [existing] = await db
-    .select({ id: usersTable.id, tenantId: usersTable.tenantId })
+    .select({
+      id: usersTable.id,
+      tenantId: usersTable.tenantId,
+      active: usersTable.active,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, (req.params.id as string)));
 
@@ -373,6 +445,19 @@ router.delete("/users/:id", requireRole("super_admin", "tenant_admin"), async (r
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
+  }
+
+  if (req.user?.sub === existing.id) {
+    res.status(409).json({ error: "Você não pode excluir o próprio usuário." });
+    return;
+  }
+
+  if (existing.active && isTenantAdministrator(existing)) {
+    const hasOtherAdmin = await hasOtherActiveTenantAdministrator(existing.tenantId, existing.id);
+    if (!hasOtherAdmin) {
+      res.status(409).json({ error: "O tenant precisa manter pelo menos um administrador ativo." });
+      return;
+    }
   }
 
   await (db as any)
