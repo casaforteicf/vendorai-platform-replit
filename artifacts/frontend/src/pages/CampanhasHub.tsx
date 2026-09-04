@@ -1,19 +1,33 @@
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, Megaphone, ArrowRight, Layers3 } from "lucide-react";
+import { MessageCircle, Megaphone, ArrowLeft, ArrowRight, Layers3 } from "lucide-react";
 import MarketingVerticals from "@/pages/MarketingVerticals";
 import { LaunchCommandCenter } from "@/components/marketing/LaunchCommandCenter";
 import { AssistedMarketingManager } from "@/components/marketing/AssistedMarketingManager";
 
-// Ponto de entrada único para marketing: primeiro mostra resultado financeiro
-// e gargalo real, oferece rascunhos assistidos, e preserva a arquitetura oficial
-// de mercados/LPs junto aos fluxos orgânico e pago existentes.
+// Visão geral das campanhas dentro do hub canônico de Marketing.
+// As URLs antigas continuam disponíveis por compatibilidade, mas todos os
+// fluxos novos retornam para /content?tab=campanhas para evitar telas paralelas.
 export default function CampanhasHub() {
   const [location, setLocation] = useLocation();
   const showMarkets = location.includes("view=mercados") || new URLSearchParams(window.location.search).get("view") === "mercados";
 
-  if (showMarkets) return <MarketingVerticals />;
+  if (showMarkets) {
+    return (
+      <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => setLocation("/content?tab=campanhas")}
+        >
+          <ArrowLeft className="h-4 w-4" /> Voltar para Campanhas
+        </Button>
+        <MarketingVerticals />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
@@ -29,7 +43,7 @@ export default function CampanhasHub() {
       <AssistedMarketingManager />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card role="button" tabIndex={0} onClick={() => setLocation("/campanhas")} onKeyDown={(e) => e.key === "Enter" && setLocation("/campanhas")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=organicas")} onKeyDown={(e) => e.key === "Enter" && setLocation("/content?tab=campanhas&view=organicas")} className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <CardContent className="pt-6 space-y-3 h-full flex flex-col">
             <div className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-primary" /><h2 className="font-semibold">Campanha orgânica</h2></div>
             <p className="text-sm text-muted-foreground">WhatsApp, e-mail ou Instagram. Mensagem direta para o público — sem custo de mídia e sem aprovação de plataforma.</p>
@@ -47,7 +61,7 @@ export default function CampanhasHub() {
           </CardContent>
         </Card>
 
-        <Card role="button" tabIndex={0} onClick={() => setLocation("/campanhas-nova?view=mercados")} onKeyDown={(e) => e.key === "Enter" && setLocation("/campanhas-nova?view=mercados")} className="cursor-pointer border-primary/20 bg-primary/[0.02] transition-colors hover:border-primary/50 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=mercados")} onKeyDown={(e) => e.key === "Enter" && setLocation("/content?tab=campanhas&view=mercados")} className="cursor-pointer border-primary/20 bg-primary/[0.02] transition-colors hover:border-primary/50 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <CardContent className="pt-6 space-y-3 h-full flex flex-col">
             <div className="flex items-center gap-2"><Layers3 className="h-5 w-5 text-primary" /><h2 className="font-semibold">Mercados & LPs</h2></div>
             <p className="text-sm text-muted-foreground">Escolha uma das 50 verticais oficiais antes de criar a campanha e veja a arquitetura comercial daquele mercado.</p>
