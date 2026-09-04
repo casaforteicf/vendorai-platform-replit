@@ -41,6 +41,11 @@ function jsonResponse(payload: unknown, status = 201) {
   });
 }
 
+function authHeaders(): HeadersInit {
+  const token = localStorage.getItem("vendorai_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export default function VideoAvatarCaptureTenantGate({ children }: { children: ReactNode }) {
   const { user, rawUser, logout, setTenantOverride } = useAuth();
   const captureContext = useMemo(() => {
@@ -86,7 +91,7 @@ export default function VideoAvatarCaptureTenantGate({ children }: { children: R
           : null;
         const captureSessionId = typeof metadata?.captureSessionId === "string" ? metadata.captureSessionId : "";
         if (captureSessionId) {
-          const existingResponse = await originalFetch(`/api/tenants/${targetTenantId}/media-engine/identities`);
+          const existingResponse = await originalFetch(`/api/tenants/${targetTenantId}/media-engine/identities`, { headers: authHeaders() });
           if (existingResponse.ok) {
             const data = await existingResponse.json().catch(() => ({})) as { identities?: CaptureIdentity[] };
             const existing = (data.identities ?? []).find((item) => item.metadata?.captureSessionId === captureSessionId && item.status !== "archived");
@@ -108,7 +113,7 @@ export default function VideoAvatarCaptureTenantGate({ children }: { children: R
           : null;
         const captureSessionId = typeof metadata?.captureSessionId === "string" ? metadata.captureSessionId : "";
         if (captureSessionId) {
-          const detailResponse = await originalFetch(`/api/tenants/${targetTenantId}/media-engine/identities/${voiceCreateMatch[2]}`);
+          const detailResponse = await originalFetch(`/api/tenants/${targetTenantId}/media-engine/identities/${voiceCreateMatch[2]}`, { headers: authHeaders() });
           if (detailResponse.ok) {
             const detail = await detailResponse.json().catch(() => ({})) as CaptureIdentityDetail;
             const existingVoice = (detail.voices ?? []).find((voice) => voice.metadata?.captureSessionId === captureSessionId);
@@ -122,7 +127,7 @@ export default function VideoAvatarCaptureTenantGate({ children }: { children: R
         const body = jsonBody(init);
         const scope = typeof body?.scope === "string" ? body.scope : "";
         if (scope) {
-          const detailResponse = await originalFetch(`/api/tenants/${targetTenantId}/media-engine/identities/${consentCreateMatch[2]}`);
+          const detailResponse = await originalFetch(`/api/tenants/${targetTenantId}/media-engine/identities/${consentCreateMatch[2]}`, { headers: authHeaders() });
           if (detailResponse.ok) {
             const detail = await detailResponse.json().catch(() => ({})) as CaptureIdentityDetail;
             const existingConsent = (detail.consents ?? []).find((consent) => consent.scope === scope && consent.status === "active");
