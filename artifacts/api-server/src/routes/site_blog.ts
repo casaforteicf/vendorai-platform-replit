@@ -3,6 +3,7 @@ import { and, desc, eq, or } from "drizzle-orm";
 import { db, siteBlogPostsTable, generatedSitesTable, tenantsTable } from "@workspace/db";
 import { marked } from "marked";
 import { publishToNativeSite } from "../services/contentAutopilotPublicador.js";
+import { resolveWebsiteConnection } from "../services/websiteConnector.js";
 
 /**
  * Blog nativo — ver justificativa completa em schema/site_blog_posts.ts.
@@ -142,16 +143,56 @@ function checkAccess(req: any, res: any, tenantId: string): boolean {
   return true;
 }
 
+async function ensureNativePublicationTarget(tenantId: string, res: any) {
+  const connection = await resolveWebsiteConnection(tenantId);
+  if (connection.canPublish) return connection;
+
+  if (connection.status === "not_configured") {
+    res.status(422).json({
+      error: "Defina o site principal do cliente antes de publicar.",
+      code: "WEBSITE_NOT_CONFIGURED",
+      connection,
+    });
+    return null;
+  }
+
+  res.status(409).json({
+    error: `O site principal (${connection.hostname ?? "site externo"}) não é hospedado pelo VendorAI. Conecte o CMS antes de publicar nele.`,
+    code: "CMS_CONNECTION_REQUIRED",
+    connection,
+  });
+  return null;
+}
+
+// GET /tenants/:tenantId/content-autopilot/website-connection
+// Expõe o destino efetivo usado por análise e publicação. Não inventa uma
+// conexão externa: CMS de terceiros só fica publicável depois de autenticação.
+siteBlogAdminRouter.get("/tenants/:tenantId/content-autopilot/website-connection", async (req, res) => {
+  const tenantId = req.params.tenantId as string;
+  if (!checkAccess(req, res, tenantId)) return;
+
+  try {
+    const connection = await resolveWebsiteConnection(tenantId);
+    res.json({ connection });
+  } catch (err) {
+    req.log?.error({ err, tenantId }, "content-autopilot/website-connection: falhou");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Falha ao resolver o site do cliente" });
+  }
+});
+
 // POST /tenants/:tenantId/content-autopilot/articles/:id/publish-native
-// Aciona o Publicador (canal site próprio): cria/atualiza o rascunho de blog.
-// Nunca publica sozinho — publicado fica false até PATCH .../publish explícito.
+// Só permite o publicador nativo quando o site principal resolvido pertence ao
+// VendorAI. Site externo nunca recebe um falso status de "publicado".
 siteBlogAdminRouter.post("/tenants/:tenantId/content-autopilot/articles/:id/publish-native", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!checkAccess(req, res, tenantId)) return;
 
   try {
+    const connection = await ensureNativePublicationTarget(tenantId, res);
+    if (!connection) return;
+
     const result = await publishToNativeSite(tenantId, req.params.id as string);
-    res.status(201).json(result);
+    res.status(201).json({ ...result, connection });
   } catch (err) {
     req.log?.error({ err, tenantId, articleId: req.params.id }, "content-autopilot/publish-native: falhou");
     res.status(502).json({ error: err instanceof Error ? err.message : "Falha ao publicar no site próprio" });
@@ -177,6 +218,9 @@ siteBlogAdminRouter.patch("/tenants/:tenantId/content-autopilot/site-blog-posts/
   const tenantId = req.params.tenantId as string;
   if (!checkAccess(req, res, tenantId)) return;
 
+  const connection = await ensureNativePublicationTarget(tenantId, res);
+  if (!connection) return;
+
   const [updated] = await db
     .update(siteBlogPostsTable)
     .set({ publicado: true, publicadoEm: new Date(), updatedAt: new Date() })
@@ -187,13 +231,16 @@ siteBlogAdminRouter.patch("/tenants/:tenantId/content-autopilot/site-blog-posts/
     res.status(404).json({ error: "Post não encontrado" });
     return;
   }
-  res.json({ post: updated });
+  res.json({ post: updated, connection });
 });
 
 // PATCH /tenants/:tenantId/content-autopilot/site-blog-posts/:id/unpublish
 siteBlogAdminRouter.patch("/tenants/:tenantId/content-autopilot/site-blog-posts/:id/unpublish", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!checkAccess(req, res, tenantId)) return;
+
+  const connection = await ensureNativePublicationTarget(tenantId, res);
+  if (!connection) return;
 
   const [updated] = await db
     .update(siteBlogPostsTable)
@@ -205,5 +252,5 @@ siteBlogAdminRouter.patch("/tenants/:tenantId/content-autopilot/site-blog-posts/
     res.status(404).json({ error: "Post não encontrado" });
     return;
   }
-  res.json({ post: updated });
+  res.json({ post: updated, connection });
 });
