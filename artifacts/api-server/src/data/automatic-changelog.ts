@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-486",
+    "titulo": "respeitar locale do tenant na transcrição de áudio",
+    "descricao": "remove o `language: pt` fixo do fluxo ativo de transcrição de áudio resolve o idioma pelo `tenant.defaultLocale` `es-PY`, `es-AR`, `es-UY` e `es-CL` usam `es` demais tenants mantêm `pt`",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-04T02:47:01.000Z",
+    "pullRequest": 486
+  },
+  {
     "id": "pr-483",
     "titulo": "persistir e aplicar white-label do tenant",
     "descricao": "cria um componente único `TenantBrand` usando o mesmo `BusinessProfile` já consumido pelo shell remove a logo VendorAI fixa do onboarding principal e da tela de integrações normaliza `/objects/...` para `/api/storage/objects/...` ao concluir o passo 1, cria/atualiza o `BusinessProfile` existente com `nomeFantasia` e `logoUrl`",
