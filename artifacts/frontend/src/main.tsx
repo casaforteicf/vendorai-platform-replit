@@ -13,6 +13,7 @@ import { MediaConversationsBridge } from "./components/media/MediaConversationsB
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { I18nProvider } from "./i18n";
 import "./index.css";
+import "./ui-standard.css";
 import "./sidebar-utilities.css";
 import "./site-generator-fix.css";
 import "./video-route-theme.css";
