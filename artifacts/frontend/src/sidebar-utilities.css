@@ -1,0 +1,94 @@
+/*
+ * Global utilities — desktop
+ *
+ * Keep the left sidebar focused on work navigation. The existing account,
+ * Help/FAQ, What's new and Logout controls remain the same React elements
+ * (and therefore keep all current handlers/state), but are visually moved to
+ * a compact global utility cluster in the top-right corner.
+ *
+ * Mobile keeps the existing drawer footer, where these actions are already
+ * compact and do not compete with the work navigation.
+ */
+@media (min-width: 768px) {
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t {
+    position: fixed;
+    top: 12px;
+    right: 18px;
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 14px;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.09);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  /* User identity: avatar + name only. Email stays available in the user
+     session but is intentionally removed from the always-visible chrome. */
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 {
+    margin-bottom: 0 !important;
+    padding: 0 10px 0 0 !important;
+    gap: 8px !important;
+    border-right: 1px solid hsl(var(--border));
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 {
+    max-width: 150px;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 > p:last-child {
+    display: none;
+  }
+
+  /* Help + What's new become horizontal global actions. */
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 0 !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > * {
+    margin-top: 0 !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > a,
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > button,
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > button {
+    width: auto !important;
+    min-height: 36px !important;
+    height: 36px;
+    white-space: nowrap;
+    border-radius: 9px;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > a {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > button {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > button {
+    justify-content: center !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    margin-left: 2px;
+  }
+}
+
+/* On narrower desktop/tablet widths, keep the avatar but collapse the name so
+   the utility cluster does not cover page-level actions. */
+@media (min-width: 768px) and (max-width: 1100px) {
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 {
+    display: none;
+  }
+}
