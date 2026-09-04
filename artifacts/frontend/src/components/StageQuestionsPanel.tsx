@@ -59,6 +59,26 @@ export function StageQuestionsPanel({
     );
   }
 
+  if (!editing && perguntas.length === 0) {
+    return (
+      <Card data-testid="card-stage-questions" className="border-border/70 shadow-sm">
+        <CardContent className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="rounded-md bg-muted p-1.5"><ClipboardList className="h-4 w-4 text-muted-foreground" /></div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{stage.label}</p>
+              <p className="truncate text-xs text-muted-foreground">Sem perguntas obrigatórias nesta etapa.</p>
+            </div>
+          </div>
+          <Button size="sm" variant="ghost" className="h-7 w-fit shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing(true)}>
+            <Settings2 className="h-3.5 w-3.5" />
+            Configurar perguntas
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card data-testid="card-stage-questions" className="border-border/70 shadow-sm">
       <CardHeader className="px-4 pb-2 pt-3">
@@ -66,7 +86,7 @@ export function StageQuestionsPanel({
           <div className="min-w-0">
             <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-semibold">
               <ClipboardList className="h-4 w-4 text-primary" />
-              <span>Jornada de Atendimento</span>
+              <span>Perguntas da etapa</span>
               {perguntas.length > 0 && (
                 <Badge variant={answeredCount === perguntas.length ? "outline" : "secondary"} className="h-5 px-1.5 text-[11px]">
                   {answeredCount}/{perguntas.length}
@@ -74,7 +94,7 @@ export function StageQuestionsPanel({
               )}
             </CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              {stage.label} · registre apenas o necessário para avançar o atendimento.
+              {stage.label} · registre somente o que ajuda a conduzir o próximo passo.
             </p>
           </div>
           <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing((v) => !v)}>
@@ -129,24 +149,20 @@ export function StageQuestionsPanel({
               <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setEditList(stage.perguntas ?? []); }}>Cancelar</Button>
             </div>
           </div>
-        ) : perguntas.length === 0 ? (
-          <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
-            Nenhuma pergunta configurada para esta etapa. Use “Editar perguntas” para adicionar.
-          </p>
         ) : (
           <>
             <div className="space-y-1.5">
               {perguntas.map((p, index) => {
                 const answered = Boolean(draft[p.id]?.trim());
                 return (
-                  <div key={p.id} className="flex gap-2.5 rounded-lg border border-border/60 bg-background px-2.5 py-2">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/[0.08] text-[11px] font-semibold text-primary">
+                  <div key={p.id} className="flex gap-2 rounded-lg border border-border/60 bg-background px-2.5 py-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/[0.08] text-[10px] font-semibold text-primary">
                       {index + 1}
                     </span>
-                    <span className="pt-1">
+                    <span className="pt-0.5">
                       {answered
-                        ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                        : <Circle className="h-4 w-4 text-muted-foreground/50" />}
+                        ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                        : <Circle className="h-3.5 w-3.5 text-muted-foreground/50" />}
                     </span>
                     <div className="min-w-0 flex-1 lg:grid lg:grid-cols-[minmax(220px,0.8fr)_minmax(280px,1.2fr)] lg:items-center lg:gap-3">
                       <label className="mb-1 block text-xs font-medium leading-snug text-foreground lg:mb-0">{p.texto}</label>
@@ -159,7 +175,7 @@ export function StageQuestionsPanel({
                           onSaveAnswers(next);
                         }}
                         rows={1}
-                        className="h-8 min-h-8 resize-none py-1.5 text-sm transition-[height] focus:h-16 focus:min-h-16"
+                        className="h-8 min-h-8 resize-none py-1.5 text-sm transition-[height] focus:h-14 focus:min-h-14"
                         placeholder="Adicionar resposta…"
                       />
                     </div>
