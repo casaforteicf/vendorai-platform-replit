@@ -1,0 +1,171 @@
+name: Temporary Music Hub UI
+
+on:
+  push:
+    branches:
+      - feat/media-center-music-hub
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/media-center-music-hub
+          fetch-depth: 0
+      - name: Patch Music Hub UI
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('artifacts/frontend/src/pages/MediaCenter.tsx')
+          text = path.read_text()
+
+          def rep(old, new, label):
+              global text
+              if old not in text:
+                  raise SystemExit(f'anchor not found: {label}')
+              text = text.replace(old, new, 1)
+
+          rep(
+          '''              <div className="mt-5 rounded-2xl border bg-background p-3 shadow-sm">
+          ''',
+          '''              {filter === "audio" && (
+                <div className="mt-5 rounded-2xl border bg-background p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Music2 className="h-5 w-5 text-primary" />
+                        <h2 className="font-semibold">Music Hub</h2>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Organize músicas, locuções, efeitos, jingles e identidade sonora. Trilhas musicais carregam o passaporte de direitos para uso em vídeos e anúncios.
+                      </p>
+                    </div>
+                    <button onClick={() => navigate("/content-studio/video/edicao")} className="top-btn shrink-0">
+                      <Sparkles className="h-4 w-4" /> Criar / gerar música
+                    </button>
+                  </div>
+                  <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                    {(Object.keys(AUDIO_KIND_SHORT_LABELS) as AudioKindFilter[]).map((kind) => (
+                      <button
+                        key={kind}
+                        onClick={() => setAudioKindFilter(kind)}
+                        className={`folder-chip ${audioKindFilter === kind ? "folder-chip-active" : ""}`}
+                      >
+                        {AUDIO_KIND_SHORT_LABELS[kind]} · {audioKindCounts[kind]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 rounded-2xl border bg-background p-3 shadow-sm">
+          ''',
+          'music hub header')
+
+          rep(
+          '''                  <div className="flex flex-wrap items-end gap-2">
+                    <div>
+                      <label className="tiny-label">Pasta do novo upload</label>
+          ''',
+          '''                  <div className="flex flex-wrap items-end gap-2">
+                    <div>
+                      <label className="tiny-label">Tipo dos arquivos de áudio</label>
+                      <select
+                        value={uploadAudioKind}
+                        onChange={(e) => setUploadAudioKind(e.target.value as AudioKind)}
+                        className="h-9 rounded-lg border bg-background px-3 text-sm"
+                      >
+                        {Object.entries(AUDIO_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="tiny-label">Pasta do novo upload</label>
+          ''',
+          'audio upload selector')
+
+          rep(
+          '''                      const folder = assetFolder(asset);
+                      const isSelected = selected.includes(asset.id);
+          ''',
+          '''                      const folder = assetFolder(asset);
+                      const audioKind = assetAudioKind(asset);
+                      const isSelected = selected.includes(asset.id);
+          ''',
+          'card audio kind')
+
+          rep(
+          '''                            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase text-white">{TYPE_LABELS[asset.type]}</span>
+          ''',
+          '''                            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase text-white">
+                              {audioKind ? AUDIO_KIND_LABELS[audioKind] : TYPE_LABELS[asset.type]}
+                            </span>
+          ''',
+          'card badge')
+
+          rep(
+          '''                <Info label="Tipo" value={TYPE_LABELS[inspected.type]} />
+          ''',
+          '''                <Info label="Tipo" value={assetAudioKind(inspected) ? AUDIO_KIND_LABELS[assetAudioKind(inspected)!] : TYPE_LABELS[inspected.type]} />
+          ''',
+          'inspector type')
+
+          rep(
+          '''              {inspected.type === "image" && (
+                <ImageAdvisorPanel tenantId={tenantId} assetId={inspected.id} filename={inspected.originalFilename} canGenerateAi={ready("image_variations")} onUpdated={loadAll} />
+              )}
+          ''',
+          '''              {inspected.type === "audio" && (
+                <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+                  <label className="tiny-label">Classificação do áudio</label>
+                  <select
+                    value={assetAudioKind(inspected) ?? "other"}
+                    disabled={organizing}
+                    onChange={(event) => void classifyAudio(inspected, event.target.value as AudioKind)}
+                    className="h-9 w-full rounded-lg border bg-background px-2 text-xs"
+                  >
+                    {Object.entries(AUDIO_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Apenas músicas/trilhas entram na faixa musical do editor. Locuções, efeitos e jingles continuam identificados separadamente.
+                  </p>
+                </div>
+              )}
+              {inspected.type === "audio" && assetAudioKind(inspected) === "music" && (
+                <AudioRightsPanel tenantId={tenantId} asset={inspected} onUpdated={loadAll} />
+              )}
+              {inspected.type === "image" && (
+                <ImageAdvisorPanel tenantId={tenantId} assetId={inspected.id} filename={inspected.originalFilename} canGenerateAi={ready("image_variations")} onUpdated={loadAll} />
+              )}
+          ''',
+          'inspector audio panels')
+
+          rep(
+          '''                {inspected.type === "audio" && inspected.role === "music" && (
+          ''',
+          '''                {inspected.type === "audio" && assetAudioKind(inspected) === "music" && (
+          ''',
+          'music action')
+          rep(
+          '''                {inspected.type === "audio" && inspected.role !== "music" && (
+          ''',
+          '''                {inspected.type === "audio" && assetAudioKind(inspected) !== "music" && (
+          ''',
+          'nonmusic action')
+
+          path.write_text(text)
+          PY
+      - name: Commit interface
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/pages/MediaCenter.tsx
+          git commit -m "feat(media): expose music hub in media center"
+          git push origin HEAD:feat/media-center-music-hub
