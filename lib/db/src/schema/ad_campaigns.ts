@@ -68,17 +68,28 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
       nicheName: string;
       productIds: string[];
       productNames: string[];
+      businessVertical?: string;
+      businessVerticalSlug?: string;
       audienceSegment?: string;
       audienceNiche?: string;
       campaignGoal?: string;
+      locationCity?: string;
+      locationState?: string;
+      locationRegion?: string;
+      projectName?: string;
+      specificDetails?: string;
+      mandatoryDifferentiators?: string;
+      restrictions?: string;
+      primaryKpi?: string;
+      researchEnabled?: boolean;
+      seoTrackingEnabled?: boolean;
+      campaignId?: string;
+      campaignName?: string;
     };
     audiencePlan?: {
       summary: string;
       google: { keywords: string[] };
-      meta: {
-        interestQueries: string[];
-        resolvedInterests?: Array<{ id: string; name: string }>;
-      };
+      meta: { interestQueries: string[]; resolvedInterests?: Array<{ id: string; name: string }> };
     };
     campaignControl?: {
       objective: "whatsapp" | "lead" | "sale" | "visit" | "awareness";
@@ -86,10 +97,7 @@ export const adCampaignsTable = pgTable("ad_campaigns", {
       endDate: string;
       totalBudget: number;
       specialAdCategory: "NONE" | "HOUSING" | "EMPLOYMENT" | "CREDIT" | "ISSUES_ELECTIONS_POLITICS";
-      conversionTracking: {
-        mode: "vendorai" | "platform" | "clicks";
-        confirmed: boolean;
-      };
+      conversionTracking: { mode: "vendorai" | "platform" | "clicks"; confirmed: boolean };
       automation: {
         autoPauseNoResults: boolean;
         spendWithoutResultLimit?: number | null;
