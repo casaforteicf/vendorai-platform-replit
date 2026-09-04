@@ -4,16 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useProspectorEnrich,
   useProspectorGenerateMessage,
-  useProspectorGetConfig,
-  useProspectorSearch,
-  useProspectorUpdateConfig,
   prospectorExport,
   type ProspectEnrichment,
   type ProspectorSearchResult,
 } from "@workspace/api-client-react";
 import {
   AlertCircle,
-  ArrowRight,
   BarChart3,
   Bot,
   Building2,
@@ -25,7 +21,6 @@ import {
   FileSearch,
   Filter,
   Flame,
-  Gauge,
   Globe,
   Mail,
   MapPin,
@@ -45,6 +40,7 @@ import {
   TrendingUp,
   UserPlus,
   Users,
+  X,
   Zap,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -64,6 +60,12 @@ import { ProspectorAprovacoesContent } from "./ProspectorAprovacoes";
 type SearchFilter = "todos" | "fortes" | "com_contato";
 type QueueFilter = "todos" | "quentes" | "aquecendo" | "analisando";
 type ApprovalDecision = "approved" | "approved_edited" | "rejected";
+
+type TaggedSearchResult = ProspectorSearchResult & {
+  prospectNichos: string[];
+  prospectLocalidades: string[];
+  prospectFonte: string;
+};
 
 interface CnpjEmpresa {
   cnpj: string;
@@ -106,14 +108,44 @@ type QueueLead = {
   };
   enrichmentData?: { digital?: Record<string, unknown>; growth?: Record<string, unknown> };
   priorityReason?: string;
-  metadata?: { revenue_scout_campaign_ids?: string[] };
+  metadata?: {
+    revenue_scout_campaign_ids?: string[];
+    prospector_nichos?: string[];
+    prospector_localidades?: string[];
+    prospector_fontes?: string[];
+  };
   createdAt: string;
   events: Array<{ tipo: string; descricao: string }>;
+};
+
+type MultiConfigResponse = {
+  config: {
+    setores: string[];
+    cidades: string[];
+    ritmoDiario: number;
+    ativo: boolean;
+    combinacoes?: Array<{ id: string; setor: string; cidade: string; ativo: boolean }>;
+    totalCombinacoes?: number;
+  } | null;
 };
 
 function authHeaders() {
   const token = localStorage.getItem("vendorai_token") ?? "";
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
+
+function cleanUnique(values: string[]) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const raw of values) {
+    const value = raw.trim().replace(/\s+/g, " ");
+    if (value.length < 2) continue;
+    const key = value.toLocaleLowerCase("pt-BR");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(value);
+  }
+  return output;
 }
 
 function scoreClass(score: number) {
@@ -141,6 +173,14 @@ function searchReason(result: ProspectorSearchResult, score: number) {
   if ((result.reviewCount ?? 0) >= 100) signals.push("volume relevante de avaliações");
   if (signals.length === 0) return "Poucos sinais públicos. Enriqueça apenas se o perfil fizer sentido para o seu ICP.";
   return `${score >= 80 ? "Prioridade alta" : score >= 60 ? "Bom candidato" : "Candidato"}: ${signals.join(", ")}.`;
+}
+
+function resultKey(result: ProspectorSearchResult) {
+  return [result.nomeEmpresa ?? "", result.endereco ?? "", result.telefone ?? "", result.siteOficial ?? ""]
+    .join("|")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function daysOpen(value?: string | null) {
@@ -172,6 +212,68 @@ function formatMoney(value?: number | null) {
   }).format(value);
 }
 
+function MultiValueInput({
+  label,
+  values,
+  onChange,
+  placeholder,
+  maxItems,
+  helper,
+}: {
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+  maxItems: number;
+  helper?: string;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function commit() {
+    const candidates = draft.split(/[,;\n]/g).map((item) => item.trim()).filter(Boolean);
+    if (!candidates.length) return;
+    onChange(cleanUnique([...values, ...candidates]).slice(0, maxItems));
+    setDraft("");
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <Label>{label}</Label>
+        <span className="text-[11px] text-muted-foreground">{values.length}/{maxItems}</span>
+      </div>
+      <div className="min-h-10 rounded-lg border bg-background px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {values.map((value) => (
+            <Badge key={value} variant="secondary" className="gap-1 pr-1">
+              {value}
+              <button type="button" onClick={() => onChange(values.filter((item) => item !== value))} className="rounded-full p-0.5 hover:bg-background/70" aria-label={`Remover ${value}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+          {values.length < maxItems && (
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={commit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === "," || event.key === ";") {
+                  event.preventDefault();
+                  commit();
+                }
+              }}
+              placeholder={values.length ? "Adicionar..." : placeholder}
+              className="h-7 min-w-[160px] flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
+            />
+          )}
+        </div>
+      </div>
+      {helper && <p className="text-[11px] text-muted-foreground">{helper}</p>}
+    </div>
+  );
+}
+
 function EnrichmentResult({ data }: { data: ProspectEnrichment }) {
   return (
     <Card className="border-primary/25">
@@ -182,7 +284,7 @@ function EnrichmentResult({ data }: { data: ProspectEnrichment }) {
             {data.endereco && <CardDescription className="mt-1 flex items-start gap-1.5"><MapPin className="mt-0.5 h-3.5 w-3.5" />{data.endereco}</CardDescription>}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {data.scoreProspector != null && <Badge><Gauge className="mr-1 h-3.5 w-3.5" />Score {data.scoreProspector}</Badge>}
+            {data.scoreProspector != null && <Badge><Target className="mr-1 h-3.5 w-3.5" />Score {data.scoreProspector}</Badge>}
             <Badge variant={data.temContato ? "secondary" : "outline"}>{data.temContato ? "Com contato" : "Sem contato"}</Badge>
           </div>
         </div>
@@ -197,18 +299,8 @@ function EnrichmentResult({ data }: { data: ProspectEnrichment }) {
         </div>
         {data.resumoNegocio && <p className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">{data.resumoNegocio}</p>}
         <div className="grid gap-3 md:grid-cols-2">
-          {data.pontosFortes && data.pontosFortes.length > 0 && (
-            <div className="rounded-lg border p-3">
-              <p className="text-xs font-semibold">Sinais positivos</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">{data.pontosFortes.map((item) => <Badge variant="outline" key={item}>{item}</Badge>)}</div>
-            </div>
-          )}
-          {data.doresPrincipais && data.doresPrincipais.length > 0 && (
-            <div className="rounded-lg border p-3">
-              <p className="text-xs font-semibold">Dores prováveis</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">{data.doresPrincipais.map((item) => <Badge variant="outline" key={item}>{item}</Badge>)}</div>
-            </div>
-          )}
+          {data.pontosFortes && data.pontosFortes.length > 0 && <div className="rounded-lg border p-3"><p className="text-xs font-semibold">Sinais positivos</p><div className="mt-2 flex flex-wrap gap-1.5">{data.pontosFortes.map((item) => <Badge variant="outline" key={item}>{item}</Badge>)}</div></div>}
+          {data.doresPrincipais && data.doresPrincipais.length > 0 && <div className="rounded-lg border p-3"><p className="text-xs font-semibold">Dores prováveis</p><div className="mt-2 flex flex-wrap gap-1.5">{data.doresPrincipais.map((item) => <Badge variant="outline" key={item}>{item}</Badge>)}</div></div>}
         </div>
       </CardContent>
     </Card>
@@ -244,32 +336,57 @@ function MessageApproval({ generatedText }: { generatedText: string }) {
   );
 }
 
-function ProspectorAutoConfig() {
+function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; isSuperAdmin: boolean }) {
   const { toast } = useToast();
-  const { data, isLoading } = useProspectorGetConfig();
-  const update = useProspectorUpdateConfig();
-  const [setor, setSetor] = useState("");
-  const [cidade, setCidade] = useState("");
+  const queryClient = useQueryClient();
+  const [setores, setSetores] = useState<string[]>([]);
+  const [cidades, setCidades] = useState<string[]>([]);
   const [ritmoDiario, setRitmoDiario] = useState(10);
   const [ativo, setAtivo] = useState(false);
 
-  useEffect(() => {
-    if (isLoading) return;
-    setSetor(data?.config?.setor ?? "");
-    setCidade(data?.config?.cidade ?? "");
-    setRitmoDiario(data?.config?.ritmoDiario ?? 10);
-    setAtivo(data?.config?.ativo ?? false);
-  }, [data, isLoading]);
+  const configQuery = useQuery({
+    queryKey: ["prospector-config-multi", tenantId],
+    enabled: !isSuperAdmin || Boolean(tenantId),
+    queryFn: async () => {
+      const params = isSuperAdmin && tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : "";
+      const response = await fetch(`/api/prospector/config-multi${params}`, { headers: authHeaders() });
+      if (!response.ok) throw new Error("Falha ao carregar configuração");
+      return response.json() as Promise<MultiConfigResponse>;
+    },
+    staleTime: 30_000,
+  });
 
-  function save() {
-    update.mutate(
-      { data: { setor: setor || null, cidade: cidade || null, ritmoDiario, ativo } },
-      {
-        onSuccess: () => toast({ title: "Busca automática atualizada" }),
-        onError: () => toast({ title: "Falha ao salvar configuração", variant: "destructive" }),
-      },
-    );
-  }
+  useEffect(() => {
+    const config = configQuery.data?.config;
+    if (!config) return;
+    setSetores(config.setores ?? []);
+    setCidades(config.cidades ?? []);
+    setRitmoDiario(config.ritmoDiario ?? 10);
+    setAtivo(Boolean(config.ativo));
+  }, [configQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const total = setores.length * cidades.length;
+      if (ativo && (!setores.length || !cidades.length)) throw new Error("Adicione pelo menos um nicho e uma localidade antes de ativar.");
+      if (total > 60) throw new Error("Reduza para no máximo 60 combinações de nicho × localidade.");
+      const response = await fetch("/api/prospector/config-multi", {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ setores, cidades, ritmoDiario, ativo, ...(isSuperAdmin && tenantId ? { tenantId } : {}) }),
+      });
+      const data = await response.json() as MultiConfigResponse & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao salvar configuração");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prospector-config-multi", tenantId] });
+      toast({ title: "Busca automática atualizada", description: `${setores.length} nicho(s) × ${cidades.length} localidade(s), com limite total de ${ritmoDiario} lead(s)/dia.` });
+    },
+    onError: (error) => toast({ title: "Falha ao salvar configuração", description: error instanceof Error ? error.message : undefined, variant: "destructive" }),
+  });
+
+  const totalCombinacoes = setores.length * cidades.length;
 
   return (
     <Card className={ativo ? "border-emerald-200" : ""}>
@@ -277,25 +394,29 @@ function ProspectorAutoConfig() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base"><Bot className="h-4 w-4 text-primary" />Busca automática</CardTitle>
-            <CardDescription>O Prospector alimenta a fila diariamente com o ICP e a cidade escolhidos.</CardDescription>
+            <CardDescription>Combine vários nichos e localidades. O ritmo diário continua sendo um limite total do tenant, não por combinação.</CardDescription>
           </div>
           <Badge variant="outline" className={ativo ? "w-fit border-emerald-200 bg-emerald-50 text-emerald-700" : "w-fit"}>{ativo ? "Ativa" : "Desativada"}</Badge>
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {configQuery.isLoading ? (
           <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="h-4 w-4" />Carregando...</div>
+        ) : configQuery.isError ? (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">Não foi possível carregar a configuração automática.</div>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_180px_auto] lg:items-end">
-            <div className="space-y-1.5"><Label>Setor / ICP</Label><Input value={setor} onChange={(event) => setSetor(event.target.value)} placeholder="Ex: materiais de construção" /></div>
-            <div className="space-y-1.5"><Label>Cidade</Label><Input value={cidade} onChange={(event) => setCidade(event.target.value)} placeholder="Ex: Chapecó, SC" /></div>
-            <div className="space-y-1.5">
-              <Label>Ritmo: {ritmoDiario}/dia</Label>
-              <input type="range" min={1} max={100} value={ritmoDiario} onChange={(event) => setRitmoDiario(Number(event.target.value))} className="h-9 w-full accent-primary" />
+          <div className="space-y-4">
+            <div className="grid gap-3 lg:grid-cols-2">
+              <MultiValueInput label="Nichos / ICP" values={setores} onChange={setSetores} placeholder="Ex: materiais de construção" maxItems={10} helper="Enter, vírgula ou ponto e vírgula adiciona outro nicho." />
+              <MultiValueInput label="Localidades" values={cidades} onChange={setCidades} placeholder="Ex: Chapecó, SC" maxItems={20} helper="Pode usar cidade, região ou praça comercial." />
             </div>
-            <div className="flex items-center gap-2 lg:pb-0.5">
-              <Switch checked={ativo} onCheckedChange={setAtivo} />
-              <Button size="sm" onClick={save} disabled={update.isPending}>{update.isPending ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}Salvar</Button>
+            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between"><Label>Ritmo total: {ritmoDiario}/dia</Label><Badge variant="secondary">{totalCombinacoes} combinação(ões)</Badge></div>
+                <input type="range" min={1} max={100} value={ritmoDiario} onChange={(event) => setRitmoDiario(Number(event.target.value))} className="h-9 w-full accent-primary" />
+              </div>
+              <div className="flex items-center gap-2 pb-0.5"><Switch checked={ativo} onCheckedChange={setAtivo} /><span className="text-sm">{ativo ? "Ativa" : "Pausada"}</span></div>
+              <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || (isSuperAdmin && !tenantId)}>{saveMutation.isPending ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}Salvar</Button>
             </div>
           </div>
         )}
@@ -316,15 +437,15 @@ export default function ProspectorClassic() {
     if (tenantOverride?.id || user?.tenantId) setTenantId(tenantOverride?.id ?? user?.tenantId ?? "");
   }, [tenantOverride?.id, user?.tenantId]);
 
-  const search = useProspectorSearch();
   const enrich = useProspectorEnrich();
   const generate = useProspectorGenerateMessage();
 
-  const [atividade, setAtividade] = useState("");
-  const [localidade, setLocalidade] = useState("");
+  const [nichos, setNichos] = useState<string[]>([]);
+  const [localidades, setLocalidades] = useState<string[]>([]);
   const [maxResults, setMaxResults] = useState(20);
-  const [results, setResults] = useState<ProspectorSearchResult[]>([]);
+  const [results, setResults] = useState<TaggedSearchResult[]>([]);
   const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [searchFilter, setSearchFilter] = useState<SearchFilter>("todos");
   const [selectedSearchIndexes, setSelectedSearchIndexes] = useState<Set<number>>(new Set());
   const [prospectingIndex, setProspectingIndex] = useState<number | null>(null);
@@ -371,6 +492,18 @@ export default function ProspectorClassic() {
     return isSuperAdmin && tenantId ? { tenantId } : {};
   }
 
+  async function tagProspectorLead(leadId: string, tagNichos: string[], tagLocalidades: string[], fonte: string) {
+    const response = await fetch(`/api/prospector/leads/${encodeURIComponent(leadId)}/tags`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ nichos: cleanUnique(tagNichos), localidades: cleanUnique(tagLocalidades), fonte, ...tenantField() }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(data.error ?? "Falha ao salvar tags do prospect");
+    }
+  }
+
   const scoredResults = useMemo(() => results.map((result, index) => ({ result, index, score: scoreSearchResult(result) }))
     .filter(({ result, score }) => {
       if (searchFilter === "fortes") return score >= 70;
@@ -391,11 +524,7 @@ export default function ProspectorClassic() {
 
   const cnpjSearchMutation = useMutation({
     mutationFn: async (payload: { cnae: string; uf?: string; municipio?: string; aberturaDias?: number; porte?: string }) => {
-      const response = await fetch("/api/prospector/cnpj/search", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ ...payload, limit: 30, tenantId: tenantId || undefined }),
-      });
+      const response = await fetch("/api/prospector/cnpj/search", { method: "POST", headers: authHeaders(), body: JSON.stringify({ ...payload, limit: 30, tenantId: tenantId || undefined }) });
       if (!response.ok) throw new Error("Falha na busca CNPJ");
       return response.json() as Promise<{ empresas: CnpjEmpresa[]; total: number; apiKeyRequired: boolean }>;
     },
@@ -431,6 +560,10 @@ export default function ProspectorClassic() {
       });
       const data = await response.json() as { leadId?: string; merged?: boolean; message?: string; isRecemAberta?: boolean; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha ao prospectar");
+      if (data.leadId) {
+        const local = [empresa.municipio, empresa.uf].filter(Boolean).join("/");
+        await tagProspectorLead(data.leadId, [empresa.cnaeDescricao], local ? [local] : [], "CNPJ/CNAE").catch(() => undefined);
+      }
       return data;
     },
     onSuccess: (data, empresa) => {
@@ -464,38 +597,15 @@ export default function ProspectorClassic() {
 
   const createCampaignPackageMutation = useMutation({
     mutationFn: async (leadIds: string[]) => {
-      const response = await fetch("/api/prospector/campaign-package", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ leadIds, tenantId: tenantId || undefined }),
-      });
+      const response = await fetch("/api/prospector/campaign-package", { method: "POST", headers: authHeaders(), body: JSON.stringify({ leadIds, tenantId: tenantId || undefined }) });
       const data = await response.json() as any;
       if (!response.ok) throw new Error(data.error ?? "Falha ao criar pacote comercial");
       return data;
     },
     onSuccess: (data) => {
       const strategy = data.strategy ?? {};
-      sessionStorage.setItem("vendorai_ads_revenue_scout_draft_v1", JSON.stringify({
-        campaignId: data.campaignId,
-        campaignName: data.campaign?.nome ?? strategy.campaignName,
-        suggestedPlatform: strategy.recommendedPaidPlatform ?? "meta",
-        marketingContext: strategy.marketingContext,
-        region: strategy.region,
-        opportunity: strategy.opportunity,
-        offer: strategy.offer,
-        headline: strategy.adsHeadline,
-        description: strategy.adsDescription,
-      }));
-      sessionStorage.setItem("vendorai_lp_revenue_scout_draft_v1", JSON.stringify({
-        campaignId: data.campaignId,
-        audience: strategy.audienceNiche,
-        offer: strategy.offer,
-        objective: strategy.campaignGoal,
-        notes: [strategy.opportunity, strategy.lpHeadline, strategy.lpSubheadline].filter(Boolean).join("\n"),
-        productIds: strategy.productIds ?? [],
-        headline: strategy.lpHeadline,
-        subheadline: strategy.lpSubheadline,
-      }));
+      sessionStorage.setItem("vendorai_ads_revenue_scout_draft_v1", JSON.stringify({ campaignId: data.campaignId, campaignName: data.campaign?.nome ?? strategy.campaignName, suggestedPlatform: strategy.recommendedPaidPlatform ?? "meta", marketingContext: strategy.marketingContext, region: strategy.region, opportunity: strategy.opportunity, offer: strategy.offer, headline: strategy.adsHeadline, description: strategy.adsDescription }));
+      sessionStorage.setItem("vendorai_lp_revenue_scout_draft_v1", JSON.stringify({ campaignId: data.campaignId, audience: strategy.audienceNiche, offer: strategy.offer, objective: strategy.campaignGoal, notes: [strategy.opportunity, strategy.lpHeadline, strategy.lpSubheadline].filter(Boolean).join("\n"), productIds: strategy.productIds ?? [], headline: strategy.lpHeadline, subheadline: strategy.lpSubheadline }));
       setSelectedFilaLeadIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
       toast({ title: "Pacote comercial criado", description: "Campanha, LP e anúncios ficaram preparados para revisão." });
@@ -510,10 +620,7 @@ export default function ProspectorClassic() {
       if (!response.ok) throw new Error("Falha ao disparar SDR");
       return response.json();
     },
-    onSuccess: () => {
-      toast({ title: "SDR disparado" });
-      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
-    },
+    onSuccess: () => { toast({ title: "SDR disparado" }); queryClient.invalidateQueries({ queryKey: ["prospector-fila"] }); },
     onError: () => toast({ title: "Falha ao disparar SDR", variant: "destructive" }),
   });
 
@@ -523,10 +630,7 @@ export default function ProspectorClassic() {
       if (!response.ok) throw new Error("Falha ao disparar em lote");
       return response.json() as Promise<{ dispatched: number }>;
     },
-    onSuccess: (data) => {
-      toast({ title: `${data.dispatched} SDR(s) disparado(s)` });
-      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
-    },
+    onSuccess: (data) => { toast({ title: `${data.dispatched} SDR(s) disparado(s)` }); queryClient.invalidateQueries({ queryKey: ["prospector-fila"] }); },
     onError: () => toast({ title: "Falha no disparo em lote", variant: "destructive" }),
   });
 
@@ -536,52 +640,92 @@ export default function ProspectorClassic() {
       if (!response.ok) throw new Error("Falha ao descartar lead");
       return response.json();
     },
-    onSuccess: () => {
-      toast({ title: "Lead removido da fila" });
-      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
-      queryClient.invalidateQueries({ queryKey: ["prospector-command-center"] });
-    },
+    onSuccess: () => { toast({ title: "Lead removido da fila" }); queryClient.invalidateQueries({ queryKey: ["prospector-fila"] }); queryClient.invalidateQueries({ queryKey: ["prospector-command-center"] }); },
   });
 
-  function runSearch() {
-    if (atividade.trim().length < 2 || localidade.trim().length < 2) {
-      toast({ title: "Informe atividade e localidade", variant: "destructive" });
+  async function runSearch() {
+    if (!nichos.length || !localidades.length) {
+      toast({ title: "Adicione pelo menos um nicho e uma localidade", variant: "destructive" });
       return;
     }
-    search.mutate(
-      { data: { atividade: atividade.trim(), localidade: localidade.trim(), maxResults, ...tenantField() } },
-      {
-        onSuccess: (response) => {
-          setResults(response.results);
-          setSearched(true);
-          setSelectedSearchIndexes(new Set());
-          setProspectedIndexes(new Set());
-          setDuplicateIndexes(new Set());
-          setEnrichment(null);
-          toast({ title: response.total ? `${response.total} empresa(s) encontrada(s)` : "Nenhuma empresa encontrada" });
-        },
-        onError: (error) => toast({ title: "Falha na busca", description: error instanceof Error ? error.message : undefined, variant: "destructive" }),
-      },
-    );
+    const combinations = nichos.flatMap((nicho) => localidades.map((localidade) => ({ nicho, localidade })));
+    if (combinations.length > 60) {
+      toast({ title: "Muitas combinações", description: "Reduza para no máximo 60 combinações de nicho × localidade.", variant: "destructive" });
+      return;
+    }
+
+    setSearching(true);
+    setSearched(false);
+    try {
+      const perCombination = Math.max(1, Math.min(20, Math.ceil(maxResults / combinations.length)));
+      const merged = new Map<string, TaggedSearchResult>();
+      let failed = 0;
+
+      for (const combination of combinations) {
+        try {
+          const response = await fetch("/api/prospector/search", {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({ atividade: combination.nicho, localidade: combination.localidade, maxResults: perCombination, ...tenantField() }),
+          });
+          const data = await response.json() as { results?: ProspectorSearchResult[]; error?: string };
+          if (!response.ok) throw new Error(data.error ?? "Falha na busca");
+          for (const result of data.results ?? []) {
+            const key = resultKey(result);
+            const existing = merged.get(key);
+            if (existing) {
+              existing.prospectNichos = cleanUnique([...existing.prospectNichos, combination.nicho]);
+              existing.prospectLocalidades = cleanUnique([...existing.prospectLocalidades, combination.localidade]);
+            } else {
+              merged.set(key, { ...result, prospectNichos: [combination.nicho], prospectLocalidades: [combination.localidade], prospectFonte: "Google Places" });
+            }
+          }
+        } catch {
+          failed += 1;
+        }
+      }
+
+      const finalResults = [...merged.values()].sort((a, b) => scoreSearchResult(b) - scoreSearchResult(a)).slice(0, maxResults);
+      setResults(finalResults);
+      setSearched(true);
+      setSelectedSearchIndexes(new Set());
+      setProspectedIndexes(new Set());
+      setDuplicateIndexes(new Set());
+      setEnrichment(null);
+      toast({ title: finalResults.length ? `${finalResults.length} empresa(s) priorizada(s)` : "Nenhuma empresa encontrada", description: `${combinations.length - failed}/${combinations.length} combinação(ões) consultada(s) com sucesso.` });
+    } finally {
+      setSearching(false);
+    }
   }
 
-  async function prospectSearchResult(result: ProspectorSearchResult, index: number, silent = false) {
+  async function prospectSearchResult(result: TaggedSearchResult, index: number, silent = false) {
     const nome = result.nomeEmpresa?.trim();
     if (!nome) return "skipped" as const;
     if (!silent) setProspectingIndex(index);
     try {
-      const response = await enrich.mutateAsync({ data: { nomeEmpresa: nome, endereco: result.endereco ?? undefined, ...tenantField() } });
+      const response = await enrich.mutateAsync({ data: { nomeEmpresa: nome, endereco: result.endereco ?? undefined, ...tenantField() } } as any);
       setEnrichment(response.enrichment);
       if (!msgNomeEmpresa) setMsgNomeEmpresa(response.enrichment.nomeEmpresa ?? nome);
       const duplicate = Boolean((response as { isDuplicate?: boolean }).isDuplicate);
       if (!response.saved) return "skipped" as const;
+
+      const leadId = (response as { leadId?: string | null }).leadId;
+      let tagsOk = true;
+      if (leadId) {
+        try {
+          await tagProspectorLead(leadId, result.prospectNichos, result.prospectLocalidades, result.prospectFonte);
+        } catch {
+          tagsOk = false;
+        }
+      }
+
       if (duplicate) {
         setDuplicateIndexes((current) => new Set(current).add(index));
-        if (!silent) toast({ title: "Já estava no CRM", description: "O registro existente foi preservado." });
+        if (!silent) toast({ title: "Já estava no CRM", description: tagsOk ? "As novas tags de atividade/localidade foram incorporadas ao registro existente." : "O registro existente foi preservado." });
         return "duplicate" as const;
       }
       setProspectedIndexes((current) => new Set(current).add(index));
-      if (!silent) toast({ title: "Lead criado", description: "Enriquecimento, score, deal e briefing foram acionados." });
+      if (!silent) toast({ title: "Lead criado", description: tagsOk ? "Enriquecimento, score e tags de atividade/localidade foram salvos." : "Lead criado; as tags precisam ser sincronizadas." });
       queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
       queryClient.invalidateQueries({ queryKey: ["prospector-command-center"] });
       return "created" as const;
@@ -623,7 +767,7 @@ export default function ProspectorClassic() {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      toast({ title: "Falha ao exportar CSV", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      toast({ title: "Falha ao exportar prospects", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally {
       setExporting(false);
     }
@@ -633,10 +777,7 @@ export default function ProspectorClassic() {
     generate.mutate(
       { data: { messageType, nomeEmpresa: msgNomeEmpresa.trim() || undefined, contexto: contexto.trim() || undefined, ...tenantField() } },
       {
-        onSuccess: (response) => {
-          setGeneratedText(messageType === "email" ? response.email : response.whatsapp);
-          toast({ title: "Mensagem gerada" });
-        },
+        onSuccess: (response) => { setGeneratedText(messageType === "email" ? response.email : response.whatsapp); toast({ title: "Mensagem gerada" }); },
         onError: (error) => toast({ title: "Falha ao gerar mensagem", description: error instanceof Error ? error.message : undefined, variant: "destructive" }),
       },
     );
@@ -646,11 +787,7 @@ export default function ProspectorClassic() {
     if (!adsSearchTerms.trim()) return;
     setAdsSearching(true);
     try {
-      const response = await fetch("/api/prospector/ads/search", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ searchTerms: adsSearchTerms.trim(), limit: 30, tenantId: tenantId || undefined }),
-      });
+      const response = await fetch("/api/prospector/ads/search", { method: "POST", headers: authHeaders(), body: JSON.stringify({ searchTerms: adsSearchTerms.trim(), limit: 30, tenantId: tenantId || undefined }) });
       const data = await response.json() as { ads?: AdResult[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha na busca de anúncios");
       setAdsResultados(data.ads ?? []);
@@ -664,13 +801,10 @@ export default function ProspectorClassic() {
 
   const adsProspectMutation = useMutation({
     mutationFn: async (ad: AdResult) => {
-      const response = await fetch("/api/prospector/ads/prospectar", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ ...ad, searchTerms: adsSearchTerms, tenantId: tenantId || undefined }),
-      });
-      const data = await response.json() as { merged?: boolean; message?: string; error?: string };
+      const response = await fetch("/api/prospector/ads/prospectar", { method: "POST", headers: authHeaders(), body: JSON.stringify({ ...ad, searchTerms: adsSearchTerms, tenantId: tenantId || undefined }) });
+      const data = await response.json() as { leadId?: string; merged?: boolean; message?: string; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha ao prospectar anunciante");
+      if (data.leadId) await tagProspectorLead(data.leadId, [adsSearchTerms], [], "Anunciantes Meta").catch(() => undefined);
       return data;
     },
     onSuccess: (data, ad) => {
@@ -687,19 +821,14 @@ export default function ProspectorClassic() {
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><Building2 className="h-6 w-6 text-primary" />Empresas & Sinais</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Descubra empresas por presença local, CNPJ/CNAE ou investimento em anúncios. O Prospector pontua, enriquece, deduplica e entrega os melhores casos à fila comercial.</p>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><Building2 className="h-6 w-6 text-primary" />Empresas</h1>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Descubra empresas por presença local, CNPJ/CNAE ou sinais comerciais. O Prospector pontua, enriquece, deduplica e mantém a origem da oportunidade no CRM.</p>
         </div>
-        <Button variant="outline" onClick={exportCsv} disabled={exporting}>{exporting ? <Spinner className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}Exportar CRM</Button>
+        <Button variant="outline" onClick={exportCsv} disabled={exporting}>{exporting ? <Spinner className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}Exportar prospects</Button>
       </div>
 
       {isSuperAdmin && !tenantOverride?.id && !user?.tenantId && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="grid gap-2 p-3 sm:grid-cols-[1fr_2fr] sm:items-center">
-            <div><p className="text-sm font-semibold text-amber-900">Tenant alvo</p><p className="text-xs text-amber-800">Necessário quando o super admin não está visualizando um tenant.</p></div>
-            <Input value={tenantId} onChange={(event) => setTenantId(event.target.value)} placeholder="tenantId" />
-          </CardContent>
-        </Card>
+        <Card className="border-amber-200 bg-amber-50"><CardContent className="grid gap-2 p-3 sm:grid-cols-[1fr_2fr] sm:items-center"><div><p className="text-sm font-semibold text-amber-900">Tenant alvo</p><p className="text-xs text-amber-800">Necessário quando o super admin não está visualizando um tenant.</p></div><Input value={tenantId} onChange={(event) => setTenantId(event.target.value)} placeholder="tenantId" /></CardContent></Card>
       )}
 
       <Tabs defaultValue={defaultTab}>
@@ -712,51 +841,34 @@ export default function ProspectorClassic() {
         </TabsList>
 
         <TabsContent value="busca" className="mt-4 space-y-4">
-          <ProspectorAutoConfig />
+          <ProspectorAutoConfig tenantId={tenantId} isSuperAdmin={isSuperAdmin} />
 
-          <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base"><Search className="h-4 w-4 text-primary" />Descobrir empresas locais</CardTitle>
-                <CardDescription>Busque por atividade + localidade. Antes de importar, o sistema ordena pelos sinais públicos mais úteis.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5"><Label>Atividade / nicho</Label><Input value={atividade} onChange={(event) => setAtividade(event.target.value)} onKeyDown={(event) => event.key === "Enter" && runSearch()} placeholder="Ex: lojas de piscinas" /></div>
-                  <div className="space-y-1.5"><Label>Localidade</Label><Input value={localidade} onChange={(event) => setLocalidade(event.target.value)} onKeyDown={(event) => event.key === "Enter" && runSearch()} placeholder="Ex: Chapecó, SC" /></div>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between"><Label>Quantidade</Label><Badge variant="secondary">{maxResults} resultados</Badge></div>
-                  <input type="range" min={5} max={20} step={5} value={maxResults} onChange={(event) => setMaxResults(Number(event.target.value))} className="w-full accent-primary" />
-                </div>
-                <Button className="w-full" onClick={runSearch} disabled={search.isPending}>{search.isPending ? <><Spinner className="mr-2 h-4 w-4" />Buscando...</> : <><Search className="mr-2 h-4 w-4" />Buscar e priorizar</>}</Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" />Abordagem com IA</CardTitle>
-                <CardDescription>Gere o primeiro contato somente depois de entender por que aquele prospect vale a abordagem.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5"><Label>Canal</Label><Select value={messageType} onValueChange={(value) => setMessageType(value as "whatsapp" | "email")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="whatsapp">WhatsApp</SelectItem><SelectItem value="email">E-mail</SelectItem></SelectContent></Select></div>
-                  <div className="space-y-1.5"><Label>Empresa</Label><Input value={msgNomeEmpresa} onChange={(event) => setMsgNomeEmpresa(event.target.value)} placeholder="Nome do prospect" /></div>
-                </div>
-                <div className="space-y-1.5"><Label>Contexto / oferta</Label><Textarea rows={3} value={contexto} onChange={(event) => setContexto(event.target.value)} placeholder="O que você vende e por que faz sentido para esse prospect?" /></div>
-                <Button variant="secondary" className="w-full" onClick={generateMessage} disabled={generate.isPending}>{generate.isPending ? <Spinner className="mr-2 h-4 w-4" /> : messageType === "email" ? <Mail className="mr-2 h-4 w-4" /> : <MessageCircle className="mr-2 h-4 w-4" />}Gerar abordagem</Button>
-              </CardContent>
-            </Card>
-          </div>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base"><Search className="h-4 w-4 text-primary" />Descobrir empresas locais</CardTitle>
+              <CardDescription>Selecione vários nichos e localidades. O Prospector cruza as combinações, remove repetições e preserva as tags de origem em cada prospect.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 lg:grid-cols-2">
+                <MultiValueInput label="Atividades / nichos" values={nichos} onChange={setNichos} placeholder="Ex: lojas de piscinas" maxItems={10} />
+                <MultiValueInput label="Localidades" values={localidades} onChange={setLocalidades} placeholder="Ex: Chapecó, SC" maxItems={20} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2"><Label>Limite total de resultados</Label><div className="flex gap-2"><Badge variant="secondary">{maxResults} prospects</Badge><Badge variant="outline">{nichos.length * localidades.length} combinação(ões)</Badge></div></div>
+                <input type="range" min={5} max={100} step={5} value={maxResults} onChange={(event) => setMaxResults(Number(event.target.value))} className="w-full accent-primary" />
+              </div>
+              <Button className="w-full" onClick={() => void runSearch()} disabled={searching || !nichos.length || !localidades.length}>{searching ? <><Spinner className="mr-2 h-4 w-4" />Buscando combinações...</> : <><Search className="mr-2 h-4 w-4" />Buscar, deduplicar e priorizar</>}</Button>
+            </CardContent>
+          </Card>
 
           {searched && (
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div><CardTitle className="text-base">Empresas encontradas ({scoredResults.length})</CardTitle><CardDescription>Score prévio = qualidade dos sinais públicos. O score completo é calculado depois do enriquecimento.</CardDescription></div>
+                  <div><CardTitle className="text-base">Empresas encontradas ({scoredResults.length})</CardTitle><CardDescription>As etiquetas mostram em quais nichos e localidades cada empresa foi encontrada.</CardDescription></div>
                   <div className="flex flex-wrap gap-2">
                     <Select value={searchFilter} onValueChange={(value) => setSearchFilter(value as SearchFilter)}><SelectTrigger className="h-9 w-[160px]"><Filter className="mr-1.5 h-3.5 w-3.5" /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="fortes">Score ≥ 70</SelectItem><SelectItem value="com_contato">Com telefone</SelectItem></SelectContent></Select>
-                    {selectedSearchIndexes.size > 0 && <Button size="sm" onClick={prospectSelectedSearch} disabled={bulkProspecting || enrich.isPending}>{bulkProspecting ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <Users className="mr-1.5 h-3.5 w-3.5" />}Prospectar selecionadas ({selectedSearchIndexes.size})</Button>}
+                    {selectedSearchIndexes.size > 0 && <Button size="sm" onClick={() => void prospectSelectedSearch()} disabled={bulkProspecting || enrich.isPending}>{bulkProspecting ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <Users className="mr-1.5 h-3.5 w-3.5" />}Prospectar selecionadas ({selectedSearchIndexes.size})</Button>}
                   </div>
                 </div>
               </CardHeader>
@@ -768,13 +880,14 @@ export default function ProspectorClassic() {
                       const duplicate = duplicateIndexes.has(index);
                       const pending = prospectingIndex === index && enrich.isPending;
                       return (
-                        <div key={`${result.nomeEmpresa}-${index}`} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start">
+                        <div key={`${resultKey(result)}-${index}`} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start">
                           <div className="flex items-start gap-3 sm:flex-1">
                             <input type="checkbox" className="mt-1 h-4 w-4 accent-primary" checked={selectedSearchIndexes.has(index)} disabled={done || duplicate} onChange={() => setSelectedSearchIndexes((current) => { const next = new Set(current); if (next.has(index)) next.delete(index); else next.add(index); return next; })} />
                             <div className={`min-w-[58px] rounded-lg border px-2 py-2 text-center ${scoreClass(score)}`}><p className="text-lg font-bold leading-none">{score}</p><p className="mt-1 text-[10px]">pré-score</p></div>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{result.nomeEmpresa || "Sem nome"}</p>{result.rating != null && <Badge variant="outline"><Star className="mr-1 h-3 w-3" />{result.rating}</Badge>}</div>
-                              {result.endereco && <p className="mt-1 text-xs text-muted-foreground">{result.endereco}</p>}
+                              <div className="mt-1.5 flex flex-wrap gap-1">{result.prospectNichos.map((tag) => <Badge key={`n-${tag}`} variant="secondary" className="text-[10px]">{tag}</Badge>)}{result.prospectLocalidades.map((tag) => <Badge key={`l-${tag}`} variant="outline" className="text-[10px]"><MapPin className="mr-1 h-2.5 w-2.5" />{tag}</Badge>)}<Badge variant="outline" className="text-[10px]">Google Places</Badge></div>
+                              {result.endereco && <p className="mt-1.5 text-xs text-muted-foreground">{result.endereco}</p>}
                               <p className="mt-1.5 text-xs text-muted-foreground">{searchReason(result, score)}</p>
                               <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">{result.telefone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{result.telefone}</span>}{result.reviewCount != null && <span>{result.reviewCount} avaliações</span>}{result.siteOficial && <a href={result.siteOficial} target="_blank" rel="noreferrer" className="text-primary hover:underline">site</a>}</div>
                             </div>
@@ -790,6 +903,17 @@ export default function ProspectorClassic() {
           )}
 
           {enrichment && <EnrichmentResult data={enrichment} />}
+
+          {enrichment && (
+            <Card>
+              <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" />Abordagem com IA</CardTitle><CardDescription>Agora que o prospect foi analisado, gere uma abordagem com contexto real.</CardDescription></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label>Canal</Label><Select value={messageType} onValueChange={(value) => setMessageType(value as "whatsapp" | "email")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="whatsapp">WhatsApp</SelectItem><SelectItem value="email">E-mail</SelectItem></SelectContent></Select></div><div className="space-y-1.5"><Label>Empresa</Label><Input value={msgNomeEmpresa} onChange={(event) => setMsgNomeEmpresa(event.target.value)} placeholder="Nome do prospect" /></div></div>
+                <div className="space-y-1.5"><Label>Contexto / oferta</Label><Textarea rows={3} value={contexto} onChange={(event) => setContexto(event.target.value)} placeholder="O que você vende e por que faz sentido para esse prospect?" /></div>
+                <Button variant="secondary" className="w-full" onClick={generateMessage} disabled={generate.isPending}>{generate.isPending ? <Spinner className="mr-2 h-4 w-4" /> : messageType === "email" ? <Mail className="mr-2 h-4 w-4" /> : <MessageCircle className="mr-2 h-4 w-4" />}Gerar abordagem</Button>
+              </CardContent>
+            </Card>
+          )}
           {generatedText && <MessageApproval key={generatedText} generatedText={generatedText} />}
         </TabsContent>
 
@@ -798,56 +922,25 @@ export default function ProspectorClassic() {
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><FileSearch className="h-4 w-4 text-primary" />Empresas por CNPJ / CNAE</CardTitle><CardDescription>Encontre empresas por atividade, localização, porte e data de abertura. Empresas novas recebem prioridade por timing.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1.5"><Label>Atividade</Label><Input value={cnaeSearch} onChange={(event) => setCnaeSearch(event.target.value)} placeholder="Digite atividade ou CNAE" />{cnaeListQuery.data && <div className="max-h-28 overflow-y-auto rounded-lg border p-2"><div className="flex flex-wrap gap-1.5">{cnaeListQuery.data.cnaes.filter((item) => !cnaeSearch || item.label.toLowerCase().includes(cnaeSearch.toLowerCase()) || item.cnae.includes(cnaeSearch)).slice(0, 40).map((item) => <button type="button" key={item.cnae} onClick={() => { setCnaeSelected(item.cnae); setCnaeSearch(item.label); }} className={`rounded-full border px-2 py-1 text-xs ${cnaeSelected === item.cnae ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted"}`}>{item.label}</button>)}</div></div>}</div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-1.5"><Label>Município</Label><Input value={cnpjMunicipio} onChange={(event) => setCnpjMunicipio(event.target.value)} placeholder="Chapecó" /></div>
-                <div className="space-y-1.5"><Label>UF</Label><Input maxLength={2} value={cnpjUf} onChange={(event) => setCnpjUf(event.target.value.toUpperCase())} placeholder="SC" /></div>
-                <div className="space-y-1.5"><Label>Abertura</Label><Select value={cnpjAberturaDias} onValueChange={setCnpjAberturaDias}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="qualquer">Qualquer data</SelectItem><SelectItem value="30">Últimos 30 dias</SelectItem><SelectItem value="90">Últimos 90 dias</SelectItem><SelectItem value="180">Últimos 6 meses</SelectItem><SelectItem value="365">Último ano</SelectItem></SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Porte</Label><Select value={cnpjPorte} onValueChange={setCnpjPorte}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="MEI">MEI</SelectItem><SelectItem value="ME">ME</SelectItem><SelectItem value="EPP">EPP</SelectItem><SelectItem value="DEMAIS">Demais</SelectItem></SelectContent></Select></div>
-              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div className="space-y-1.5"><Label>Município</Label><Input value={cnpjMunicipio} onChange={(event) => setCnpjMunicipio(event.target.value)} placeholder="Chapecó" /></div><div className="space-y-1.5"><Label>UF</Label><Input maxLength={2} value={cnpjUf} onChange={(event) => setCnpjUf(event.target.value.toUpperCase())} placeholder="SC" /></div><div className="space-y-1.5"><Label>Abertura</Label><Select value={cnpjAberturaDias} onValueChange={setCnpjAberturaDias}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="qualquer">Qualquer data</SelectItem><SelectItem value="30">Últimos 30 dias</SelectItem><SelectItem value="90">Últimos 90 dias</SelectItem><SelectItem value="180">Últimos 6 meses</SelectItem><SelectItem value="365">Último ano</SelectItem></SelectContent></Select></div><div className="space-y-1.5"><Label>Porte</Label><Select value={cnpjPorte} onValueChange={setCnpjPorte}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="MEI">MEI</SelectItem><SelectItem value="ME">ME</SelectItem><SelectItem value="EPP">EPP</SelectItem><SelectItem value="DEMAIS">Demais</SelectItem></SelectContent></Select></div></div>
               <Button className="w-full" disabled={!cnaeSelected || cnpjSearchMutation.isPending} onClick={() => cnpjSearchMutation.mutate({ cnae: cnaeSelected, uf: cnpjUf || undefined, municipio: cnpjMunicipio || undefined, aberturaDias: cnpjAberturaDias === "qualquer" ? undefined : Number(cnpjAberturaDias), porte: cnpjPorte === "todos" ? undefined : cnpjPorte })}>{cnpjSearchMutation.isPending ? <Spinner className="mr-2 h-4 w-4" /> : <FileSearch className="mr-2 h-4 w-4" />}Buscar e priorizar empresas</Button>
             </CardContent>
           </Card>
 
-          {cnpjApiKeyRequired && <Card className="border-amber-200 bg-amber-50"><CardContent className="flex items-start gap-3 py-4"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="font-semibold text-amber-900">Integração CNPJ precisa ser configurada</p><p className="mt-1 text-sm text-amber-800">Configure a chave CNPJ_API_KEY no backend para habilitar busca em massa por CNAE.</p></div></CardContent></Card>}
+          {cnpjApiKeyRequired && <Card className="border-amber-200 bg-amber-50"><CardContent className="flex items-start gap-3 py-4"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="font-semibold text-amber-900">Fonte de registro empresarial indisponível</p><p className="mt-1 text-sm text-amber-800">A integração precisa ser habilitada pelo administrador da plataforma antes desta busca.</p></div></CardContent></Card>}
 
-          {cnpjSearched && !cnpjApiKeyRequired && (
-            <div className="space-y-2">
-              {cnpjResultados.length === 0 ? <Card className="border-dashed"><CardContent className="py-8 text-center text-sm text-muted-foreground">Nenhuma empresa encontrada.</CardContent></Card> : cnpjResultados.map((empresa, index) => {
-                const score = scoreCnpj(empresa);
-                const days = daysOpen(empresa.dataAbertura);
-                const done = cnpjProspectadoIds.has(empresa.cnpj);
-                const pending = cnpjProspectandoIndex === index && cnpjProspectMutation.isPending;
-                return <Card key={empresa.cnpj} className={score >= 80 ? "border-emerald-200" : ""}><CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start"><div className={`min-w-[64px] rounded-lg border px-2 py-2 text-center ${scoreClass(score)}`}><p className="text-xl font-bold">{score}</p><p className="text-[10px]">pré-score</p></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{empresa.nomeFantasia || empresa.razaoSocial}</p>{days != null && days <= 90 && <Badge className="bg-emerald-100 text-emerald-700"><CalendarDays className="mr-1 h-3 w-3" />Aberta há {days}d</Badge>}{empresa.porte && <Badge variant="outline">{empresa.porte}</Badge>}</div><p className="mt-1 text-xs text-muted-foreground">{empresa.cnaeDescricao}</p><p className="mt-1 text-xs text-muted-foreground"><MapPin className="mr-1 inline h-3 w-3" />{empresa.municipio}/{empresa.uf}</p><div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">{empresa.telefone && <span><Phone className="mr-1 inline h-3 w-3" />{empresa.telefone}</span>}{empresa.email && <span><Mail className="mr-1 inline h-3 w-3" />{empresa.email}</span>}{empresa.socios?.[0] && <span className="font-medium text-primary"><Users className="mr-1 inline h-3 w-3" />{empresa.socios[0].nome}</span>}</div></div><Button size="sm" variant={done ? "outline" : "default"} disabled={done || pending || cnpjProspectMutation.isPending} onClick={() => { setCnpjProspectandoIndex(index); cnpjProspectMutation.mutate(empresa, { onSettled: () => setCnpjProspectandoIndex(null) }); }}>{pending ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : done ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5 text-emerald-600" /> : <Zap className="mr-1.5 h-3.5 w-3.5" />}{done ? "Prospectado" : "Prospectar"}</Button></CardContent></Card>;
-              })}
-            </div>
-          )}
+          {cnpjSearched && !cnpjApiKeyRequired && <div className="space-y-2">{cnpjResultados.length === 0 ? <Card className="border-dashed"><CardContent className="py-8 text-center text-sm text-muted-foreground">Nenhuma empresa encontrada.</CardContent></Card> : cnpjResultados.map((empresa, index) => { const score = scoreCnpj(empresa); const days = daysOpen(empresa.dataAbertura); const done = cnpjProspectadoIds.has(empresa.cnpj); const pending = cnpjProspectandoIndex === index && cnpjProspectMutation.isPending; return <Card key={empresa.cnpj} className={score >= 80 ? "border-emerald-200" : ""}><CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start"><div className={`min-w-[64px] rounded-lg border px-2 py-2 text-center ${scoreClass(score)}`}><p className="text-xl font-bold">{score}</p><p className="text-[10px]">pré-score</p></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{empresa.nomeFantasia || empresa.razaoSocial}</p>{days != null && days <= 90 && <Badge className="bg-emerald-100 text-emerald-700"><CalendarDays className="mr-1 h-3 w-3" />Aberta há {days}d</Badge>}{empresa.porte && <Badge variant="outline">{empresa.porte}</Badge>}</div><div className="mt-1.5 flex flex-wrap gap-1"><Badge variant="secondary" className="text-[10px]">{empresa.cnaeDescricao}</Badge><Badge variant="outline" className="text-[10px]">{empresa.municipio}/{empresa.uf}</Badge><Badge variant="outline" className="text-[10px]">CNPJ/CNAE</Badge></div><div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">{empresa.telefone && <span><Phone className="mr-1 inline h-3 w-3" />{empresa.telefone}</span>}{empresa.email && <span><Mail className="mr-1 inline h-3 w-3" />{empresa.email}</span>}{empresa.socios?.[0] && <span className="font-medium text-primary"><Users className="mr-1 inline h-3 w-3" />{empresa.socios[0].nome}</span>}</div></div><Button size="sm" variant={done ? "outline" : "default"} disabled={done || pending || cnpjProspectMutation.isPending} onClick={() => { setCnpjProspectandoIndex(index); cnpjProspectMutation.mutate(empresa, { onSettled: () => setCnpjProspectandoIndex(null) }); }}>{pending ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : done ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5 text-emerald-600" /> : <Zap className="mr-1.5 h-3.5 w-3.5" />}{done ? "Prospectado" : "Prospectar"}</Button></CardContent></Card>; })}</div>}
         </TabsContent>
 
         <TabsContent value="anunciantes" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Megaphone className="h-4 w-4 text-primary" />Empresas investindo em anúncios</CardTitle><CardDescription>O investimento em mídia é um sinal de intenção: a empresa já está tentando gerar demanda e pode ter dor de atendimento, conversão ou follow-up.</CardDescription></CardHeader>
-            <CardContent className="space-y-3"><div className="flex gap-2"><Input value={adsSearchTerms} onChange={(event) => setAdsSearchTerms(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void searchAds()} placeholder="Ex: loja de piscinas, clínica, esquadrias..." /><Button onClick={() => void searchAds()} disabled={adsSearching || !adsSearchTerms.trim()}>{adsSearching ? <Spinner className="h-4 w-4" /> : <Search className="h-4 w-4" />}</Button></div><p className="text-xs text-muted-foreground">A fonte depende da integração Meta disponível para o tenant.</p></CardContent>
-          </Card>
-
-          {adsSearched && (adsResultados.length === 0 ? <Card className="border-dashed"><CardContent className="py-8 text-center text-sm text-muted-foreground">Nenhum anunciante encontrado para esse termo.</CardContent></Card> : <div className="space-y-2">{adsResultados.map((ad) => {
-            const done = adsProspectadosPageIds.has(ad.pageId);
-            const duplicate = adsDuplicadosPageIds.has(ad.pageId);
-            const pending = adsProspectandoPageId === ad.pageId && adsProspectMutation.isPending;
-            return <Card key={ad.pageId} className="border-amber-100"><CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{ad.pageName}</p><Badge className="bg-amber-100 text-amber-800">Anunciando agora</Badge></div>{ad.startDate && <p className="mt-1 text-xs text-muted-foreground"><CalendarDays className="mr-1 inline h-3 w-3" />Ativo desde {new Date(ad.startDate).toLocaleDateString("pt-BR")}</p>}<p className="mt-2 max-w-2xl text-xs text-muted-foreground">Sinal comercial: já existe investimento em aquisição. O briefing deve investigar tempo de resposta, perda de leads e conversão antes de oferecer solução.</p></div><div className="flex shrink-0 gap-2">{ad.snapshotUrl && <Button size="sm" variant="outline" asChild><a href={ad.snapshotUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Ver anúncio</a></Button>}<Button size="sm" variant={done || duplicate ? "outline" : "default"} disabled={done || duplicate || adsProspectMutation.isPending} onClick={() => { setAdsProspectandoPageId(ad.pageId); adsProspectMutation.mutate(ad, { onSettled: () => setAdsProspectandoPageId(null) }); }}>{pending ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : done || duplicate ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> : <UserPlus className="mr-1.5 h-3.5 w-3.5" />}{duplicate ? "Já no CRM" : done ? "Prospectado" : "Prospectar"}</Button></div></CardContent></Card>;
-          })}</div>)}
+          <Card><CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Megaphone className="h-4 w-4 text-primary" />Empresas investindo em anúncios</CardTitle><CardDescription>O investimento em mídia é um sinal comercial. A IA deve investigar atendimento, conversão e follow-up antes da abordagem.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="flex gap-2"><Input value={adsSearchTerms} onChange={(event) => setAdsSearchTerms(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void searchAds()} placeholder="Ex: loja de piscinas, clínica, esquadrias..." /><Button onClick={() => void searchAds()} disabled={adsSearching || !adsSearchTerms.trim()}>{adsSearching ? <Spinner className="h-4 w-4" /> : <Search className="h-4 w-4" />}</Button></div><p className="text-xs text-muted-foreground">A fonte depende da integração Meta disponível para o tenant.</p></CardContent></Card>
+          {adsSearched && (adsResultados.length === 0 ? <Card className="border-dashed"><CardContent className="py-8 text-center text-sm text-muted-foreground">Nenhum anunciante encontrado para esse termo.</CardContent></Card> : <div className="space-y-2">{adsResultados.map((ad) => { const done = adsProspectadosPageIds.has(ad.pageId); const duplicate = adsDuplicadosPageIds.has(ad.pageId); const pending = adsProspectandoPageId === ad.pageId && adsProspectMutation.isPending; return <Card key={ad.pageId} className="border-amber-100"><CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{ad.pageName}</p><Badge className="bg-amber-100 text-amber-800">Anunciando agora</Badge><Badge variant="outline" className="text-[10px]">{adsSearchTerms}</Badge></div>{ad.startDate && <p className="mt-1 text-xs text-muted-foreground"><CalendarDays className="mr-1 inline h-3 w-3" />Ativo desde {new Date(ad.startDate).toLocaleDateString("pt-BR")}</p>}<p className="mt-2 max-w-2xl text-xs text-muted-foreground">Sinal comercial: já existe investimento em aquisição. Investigue o processo de atendimento antes de oferecer solução.</p></div><div className="flex shrink-0 gap-2">{ad.snapshotUrl && <Button size="sm" variant="outline" asChild><a href={ad.snapshotUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Ver anúncio</a></Button>}<Button size="sm" variant={done || duplicate ? "outline" : "default"} disabled={done || duplicate || adsProspectMutation.isPending} onClick={() => { setAdsProspectandoPageId(ad.pageId); adsProspectMutation.mutate(ad, { onSettled: () => setAdsProspectandoPageId(null) }); }}>{pending ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : done || duplicate ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> : <UserPlus className="mr-1.5 h-3.5 w-3.5" />}{duplicate ? "Já no CRM" : done ? "Prospectado" : "Prospectar"}</Button></div></CardContent></Card>; })}</div>)}
         </TabsContent>
 
         <TabsContent value="fila" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader className="pb-3"><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-4 w-4 text-primary" />Fila de oportunidades</CardTitle><CardDescription>O Prospector deixa de ser apenas uma busca: aqui estão os prospects enriquecidos e ordenados por chance comercial.</CardDescription></div><div className="flex flex-wrap gap-2"><Select value={queueFilter} onValueChange={(value) => setQueueFilter(value as QueueFilter)}><SelectTrigger className="h-9 w-[160px]"><Filter className="mr-1.5 h-3.5 w-3.5" /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="quentes">Quentes ≥80</SelectItem><SelectItem value="aquecendo">50–79</SelectItem><SelectItem value="analisando">Analisando</SelectItem></SelectContent></Select><Button size="sm" variant="outline" onClick={() => filaQuery.refetch()} disabled={filaQuery.isFetching}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${filaQuery.isFetching ? "animate-spin" : ""}`} />Atualizar</Button>{selectedFilaLeadIds.size > 0 && <Button size="sm" variant="secondary" onClick={() => createCampaignPackageMutation.mutate([...selectedFilaLeadIds])} disabled={createCampaignPackageMutation.isPending}><Megaphone className="mr-1.5 h-3.5 w-3.5" />Criar pacote ({selectedFilaLeadIds.size})</Button>}<Button size="sm" onClick={() => dispatchTopMutation.mutate(10)} disabled={dispatchTopMutation.isPending || !queueLeads.length}><Zap className="mr-1.5 h-3.5 w-3.5" />Disparar top 10</Button></div></div></CardHeader>
-          </Card>
+          <Card><CardHeader className="pb-3"><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-4 w-4 text-primary" />Fila de oportunidades</CardTitle><CardDescription>Prospects enriquecidos e ordenados por chance comercial. As tags preservam a origem da prospecção.</CardDescription></div><div className="flex flex-wrap gap-2"><Select value={queueFilter} onValueChange={(value) => setQueueFilter(value as QueueFilter)}><SelectTrigger className="h-9 w-[160px]"><Filter className="mr-1.5 h-3.5 w-3.5" /><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="quentes">Quentes ≥80</SelectItem><SelectItem value="aquecendo">50–79</SelectItem><SelectItem value="analisando">Analisando</SelectItem></SelectContent></Select><Button size="sm" variant="outline" onClick={() => filaQuery.refetch()} disabled={filaQuery.isFetching}><RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${filaQuery.isFetching ? "animate-spin" : ""}`} />Atualizar</Button>{selectedFilaLeadIds.size > 0 && <Button size="sm" variant="secondary" onClick={() => createCampaignPackageMutation.mutate([...selectedFilaLeadIds])} disabled={createCampaignPackageMutation.isPending}><Megaphone className="mr-1.5 h-3.5 w-3.5" />Criar pacote ({selectedFilaLeadIds.size})</Button>}<Button size="sm" onClick={() => dispatchTopMutation.mutate(10)} disabled={dispatchTopMutation.isPending || !queueLeads.length}><Zap className="mr-1.5 h-3.5 w-3.5" />Disparar top 10</Button></div></div></CardHeader></Card>
 
-          {filaQuery.isLoading ? <div className="flex justify-center py-10 text-sm text-muted-foreground"><Spinner className="mr-2 h-5 w-5" />Carregando oportunidades...</div> : filaQuery.isError ? <Card className="border-destructive/30"><CardContent className="py-6 text-center text-sm text-destructive">Falha ao carregar a fila.</CardContent></Card> : queueLeads.length === 0 ? <Card className="border-dashed"><CardContent className="py-10 text-center text-sm text-muted-foreground"><Target className="mx-auto mb-2 h-8 w-8 opacity-40" />Nenhuma oportunidade neste filtro.</CardContent></Card> : <div className="space-y-2">{queueLeads.map((lead) => {
-            const score = lead.propensityScore ?? 0;
-            const pending = lead.enrichmentStatus === "pending";
-            const roi = lead.roiEstimate;
-            return <Card key={lead.id} className={score >= 80 ? "border-emerald-200" : ""}><CardContent className="flex items-start gap-3 py-4"><input type="checkbox" className="mt-3 h-4 w-4 accent-primary" checked={selectedFilaLeadIds.has(lead.id)} disabled={pending} onChange={() => setSelectedFilaLeadIds((current) => { const next = new Set(current); if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id); return next; })} /><div className={`min-w-[66px] rounded-lg border px-2 py-2 text-center ${pending ? "border-slate-200 bg-slate-50 text-slate-500" : scoreClass(score)}`}>{pending ? <><Spinner className="mx-auto h-4 w-4" /><p className="mt-1 text-[10px]">analisando</p></> : <><p className="text-xl font-bold leading-none">{score}</p><p className="mt-1 text-[10px]">/100</p></>}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{lead.nome}</p>{score >= 80 && !pending && <Badge className="bg-emerald-100 text-emerald-700"><Flame className="mr-1 h-3 w-3" />Quente</Badge>}{lead.enrichmentStatus !== "pending" && <Badge variant="outline">{lead.enrichmentStatus}</Badge>}</div>{lead.priorityReason && <p className="mt-1 text-sm text-muted-foreground">{lead.priorityReason}</p>}{lead.events.map((event) => <p key={`${event.tipo}-${event.descricao}`} className="mt-1 text-xs font-medium text-primary">{event.descricao}</p>)}<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">{lead.telefone && <span><Phone className="mr-1 inline h-3 w-3" />{lead.telefone}</span>}{lead.endereco && <span><MapPin className="mr-1 inline h-3 w-3" />{lead.endereco}</span>}{lead.mercadoSegmento && <span>{lead.mercadoSegmento}</span>}</div>{roi?.perda_estimada_mes != null && <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-emerald-700"><BarChart3 className="h-3.5 w-3.5" />Potencial recuperável: {formatMoney(roi.perda_estimada_mes)}/mês</div>}<div className="mt-3 flex flex-wrap gap-2"><Button size="sm" disabled={pending || dispatchSdrMutation.isPending} onClick={() => dispatchSdrMutation.mutate(lead.id)}><PlayCircle className="mr-1.5 h-3.5 w-3.5" />Disparar SDR</Button><Button size="sm" variant="outline" disabled={pending || createCampaignPackageMutation.isPending} onClick={() => createCampaignPackageMutation.mutate([lead.id])}><Sparkles className="mr-1.5 h-3.5 w-3.5" />Criar pacote</Button>{lead.metadata?.revenue_scout_campaign_ids?.[0] && <Link href={`/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(lead.metadata.revenue_scout_campaign_ids[0])}&from=revenue-scout`}><Button size="sm" variant="outline"><Megaphone className="mr-1.5 h-3.5 w-3.5" />Abrir campanha</Button></Link>}<Button size="sm" variant="outline" className="text-destructive hover:text-destructive" disabled={discardMutation.isPending} onClick={() => discardMutation.mutate(lead.id)}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Descartar</Button></div></div></CardContent></Card>;
-          })}</div>}
+          {filaQuery.isLoading ? <div className="flex justify-center py-10 text-sm text-muted-foreground"><Spinner className="mr-2 h-5 w-5" />Carregando oportunidades...</div> : filaQuery.isError ? <Card className="border-destructive/30"><CardContent className="py-6 text-center text-sm text-destructive">Falha ao carregar a fila.</CardContent></Card> : queueLeads.length === 0 ? <Card className="border-dashed"><CardContent className="py-10 text-center text-sm text-muted-foreground"><Target className="mx-auto mb-2 h-8 w-8 opacity-40" />Nenhuma oportunidade neste filtro.</CardContent></Card> : <div className="space-y-2">{queueLeads.map((lead) => { const score = lead.propensityScore ?? 0; const pending = lead.enrichmentStatus === "pending"; const roi = lead.roiEstimate; const tagNichos = lead.metadata?.prospector_nichos ?? []; const tagLocais = lead.metadata?.prospector_localidades ?? []; return <Card key={lead.id} className={score >= 80 ? "border-emerald-200" : ""}><CardContent className="flex items-start gap-3 py-4"><input type="checkbox" className="mt-3 h-4 w-4 accent-primary" checked={selectedFilaLeadIds.has(lead.id)} disabled={pending} onChange={() => setSelectedFilaLeadIds((current) => { const next = new Set(current); if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id); return next; })} /><div className={`min-w-[66px] rounded-lg border px-2 py-2 text-center ${pending ? "border-slate-200 bg-slate-50 text-slate-500" : scoreClass(score)}`}>{pending ? <><Spinner className="mx-auto h-4 w-4" /><p className="mt-1 text-[10px]">analisando</p></> : <><p className="text-xl font-bold leading-none">{score}</p><p className="mt-1 text-[10px]">/100</p></>}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{lead.nome}</p>{score >= 80 && !pending && <Badge className="bg-emerald-100 text-emerald-700"><Flame className="mr-1 h-3 w-3" />Quente</Badge>}{lead.enrichmentStatus !== "pending" && <Badge variant="outline">{lead.enrichmentStatus}</Badge>}</div>{(tagNichos.length > 0 || tagLocais.length > 0) && <div className="mt-1.5 flex flex-wrap gap-1">{tagNichos.map((tag) => <Badge key={`qn-${tag}`} variant="secondary" className="text-[10px]">{tag}</Badge>)}{tagLocais.map((tag) => <Badge key={`ql-${tag}`} variant="outline" className="text-[10px]"><MapPin className="mr-1 h-2.5 w-2.5" />{tag}</Badge>)}</div>}{lead.priorityReason && <p className="mt-1 text-sm text-muted-foreground">{lead.priorityReason}</p>}{lead.events.map((event) => <p key={`${event.tipo}-${event.descricao}`} className="mt-1 text-xs font-medium text-primary">{event.descricao}</p>)}<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">{lead.telefone && <span><Phone className="mr-1 inline h-3 w-3" />{lead.telefone}</span>}{lead.endereco && <span><MapPin className="mr-1 inline h-3 w-3" />{lead.endereco}</span>}{lead.mercadoSegmento && <span>{lead.mercadoSegmento}</span>}</div>{roi?.perda_estimada_mes != null && <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-emerald-700"><BarChart3 className="h-3.5 w-3.5" />Potencial recuperável: {formatMoney(roi.perda_estimada_mes)}/mês</div>}<div className="mt-3 flex flex-wrap gap-2"><Button size="sm" disabled={pending || dispatchSdrMutation.isPending} onClick={() => dispatchSdrMutation.mutate(lead.id)}><PlayCircle className="mr-1.5 h-3.5 w-3.5" />Disparar SDR</Button><Button size="sm" variant="outline" disabled={pending || createCampaignPackageMutation.isPending} onClick={() => createCampaignPackageMutation.mutate([lead.id])}><Sparkles className="mr-1.5 h-3.5 w-3.5" />Criar pacote</Button>{lead.metadata?.revenue_scout_campaign_ids?.[0] && <Link href={`/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(lead.metadata.revenue_scout_campaign_ids[0])}&from=revenue-scout`}><Button size="sm" variant="outline"><Megaphone className="mr-1.5 h-3.5 w-3.5" />Abrir campanha</Button></Link>}<Button size="sm" variant="outline" className="text-destructive hover:text-destructive" disabled={discardMutation.isPending} onClick={() => discardMutation.mutate(lead.id)}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Descartar</Button></div></div></CardContent></Card>; })}</div>}
         </TabsContent>
 
         <TabsContent value="aprovacoes" className="mt-4"><ProspectorAprovacoesContent /></TabsContent>
