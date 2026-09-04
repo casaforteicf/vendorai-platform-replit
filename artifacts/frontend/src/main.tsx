@@ -15,6 +15,7 @@ import { I18nProvider } from "./i18n";
 import "./index.css";
 import "./ui-standard.css";
 import "./sidebar-utilities.css";
+import "./logo-top-right.css";
 import "./site-generator-fix.css";
 import "./video-route-theme.css";
 import "./modules/arqdor/theme/arqdor-theme.css";
