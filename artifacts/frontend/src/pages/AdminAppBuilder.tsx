@@ -40,8 +40,24 @@ type AppTemplate = {
   status: string;
   settings?: Record<string, unknown>;
 };
-type AppTemplateVersion = { id: string; templateId: string; version: number; status: string; changeLog?: string | null; publishedAt?: string | null };
-type AppInstance = { id: string; tenantId: string; templateId: string; templateVersionId: string; name: string; slug: string; status: string };
+type AppTemplateVersion = {
+  id: string;
+  templateId: string;
+  version: number;
+  status: string;
+  changeLog?: string | null;
+  publishedAt?: string | null;
+};
+type AppInstance = {
+  id: string;
+  tenantId: string;
+  templateId: string;
+  templateVersionId: string;
+  name: string;
+  slug: string;
+  status: string;
+};
+type TenantSummary = { id: string; name: string; slug?: string | null; status?: string | null };
 type RegistryItem = { id: string; key: string; name: string; category?: string | null; description?: string | null; status?: string; riskLevel?: string };
 type RegistriesResponse = { components: RegistryItem[]; features: RegistryItem[]; actions: RegistryItem[]; workflows: RegistryItem[]; aiPolicies: RegistryItem[] };
 
@@ -88,7 +104,13 @@ export default function AdminAppBuilder() {
   const [verticals, setVerticals] = useState<AppVertical[]>([]);
   const [templates, setTemplates] = useState<AppTemplate[]>([]);
   const [apps, setApps] = useState<AppInstance[]>([]);
+  const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [registries, setRegistries] = useState<RegistriesResponse>(EMPTY_REGISTRIES);
+
+  const [appDialog, setAppDialog] = useState(false);
+  const [appVersions, setAppVersions] = useState<AppTemplateVersion[]>([]);
+  const [appVersionsLoading, setAppVersionsLoading] = useState(false);
+  const [appForm, setAppForm] = useState({ tenantId: "", templateId: "", templateVersionId: "", name: "", slug: "" });
 
   const [verticalDialog, setVerticalDialog] = useState(false);
   const [editingVertical, setEditingVertical] = useState<AppVertical | null>(null);
@@ -125,15 +147,17 @@ export default function AdminAppBuilder() {
     if (!token) return;
     setLoading(true);
     try {
-      const [verticalRows, templateRows, appRows, registryRows] = await Promise.all([
+      const [verticalRows, templateRows, appRows, tenantRows, registryRows] = await Promise.all([
         requestJson<AppVertical[]>("/admin/app-builder/verticals"),
         requestJson<AppTemplate[]>("/admin/app-builder/templates"),
         requestJson<AppInstance[]>("/admin/app-builder/apps"),
+        requestJson<TenantSummary[]>("/tenants"),
         requestJson<RegistriesResponse>("/admin/app-builder/registries"),
       ]);
       setVerticals(verticalRows);
       setTemplates(templateRows);
       setApps(appRows);
+      setTenants(tenantRows);
       setRegistries(registryRows);
     } catch (error) {
       toast({ title: "Não foi possível carregar o App Builder", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
@@ -146,6 +170,7 @@ export default function AdminAppBuilder() {
 
   const verticalNameById = useMemo(() => new Map(verticals.map((vertical) => [vertical.id, vertical.name])), [verticals]);
   const templateNameById = useMemo(() => new Map(templates.map((template) => [template.id, template.name])), [templates]);
+  const tenantNameById = useMemo(() => new Map(tenants.map((tenant) => [tenant.id, tenant.name])), [tenants]);
   const registryTotal = registries.components.length + registries.features.length + registries.actions.length + registries.workflows.length + registries.aiPolicies.length;
   const metrics = [
     { label: "Apps", value: apps.length, helper: "instâncias por tenant", icon: Smartphone },
@@ -153,6 +178,60 @@ export default function AdminAppBuilder() {
     { label: "Verticais", value: verticals.length, helper: "segmentos habilitados", icon: GitBranch },
     { label: "Registries", value: registryTotal, helper: "blocos reutilizáveis", icon: Boxes },
   ];
+
+  async function selectAppTemplate(templateId: string) {
+    setAppForm((current) => ({ ...current, templateId, templateVersionId: "" }));
+    setAppVersions([]);
+    if (!templateId) return;
+    setAppVersionsLoading(true);
+    try {
+      const rows = await requestJson<AppTemplateVersion[]>(`/admin/app-builder/templates/${templateId}/versions`);
+      const published = rows.filter((version) => version.status === "published");
+      setAppVersions(published);
+      if (published[0]) {
+        setAppForm((current) => ({ ...current, templateId, templateVersionId: published[0].id }));
+      }
+    } catch (error) {
+      toast({ title: "Erro ao carregar versões publicadas", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setAppVersionsLoading(false);
+    }
+  }
+
+  function openNewApp() {
+    setAppForm({ tenantId: tenants[0]?.id ?? "", templateId: "", templateVersionId: "", name: "", slug: "" });
+    setAppVersions([]);
+    setAppDialog(true);
+  }
+
+  async function createApp() {
+    if (!appForm.tenantId || !appForm.templateId || !appForm.templateVersionId || !appForm.name.trim() || !appForm.slug.trim()) return;
+    setSaving(true);
+    try {
+      await requestJson("/admin/app-builder/apps", {
+        method: "POST",
+        body: JSON.stringify({
+          tenantId: appForm.tenantId,
+          templateId: appForm.templateId,
+          templateVersionId: appForm.templateVersionId,
+          name: appForm.name.trim(),
+          slug: appForm.slug.trim(),
+          status: "draft",
+          theme: {},
+          navigation: [],
+          settings: {},
+          whiteLabel: {},
+        }),
+      });
+      setAppDialog(false);
+      await load();
+      toast({ title: "App Instance criado em rascunho" });
+    } catch (error) {
+      toast({ title: "Erro ao criar app", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function openNewVertical() {
     setEditingVertical(null);
@@ -289,11 +368,12 @@ export default function AdminAppBuilder() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><Smartphone className="h-5 w-5 text-primary" />App Builder</h1>
             <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">SuperAdmin</Badge>
-            <Badge variant="secondary">Autoria controlada</Badge>
+            <Badge variant="secondary">App Instances</Badge>
           </div>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Construa a base reutilizável de apps por vertical. Verticais, templates, versões e registries já podem ser administrados aqui; criação de App Instance continua reservada para a próxima fase.</p>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Crie apps por tenant somente a partir de templates versionados e publicados. A instância nasce em rascunho e permanece desacoplada de qualquer vertical específica.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {view === "apps" && <Button type="button" onClick={openNewApp} disabled={tenants.length === 0 || templates.length === 0}><Plus className="mr-2 h-4 w-4" />Novo app</Button>}
           {view === "verticals" && <Button type="button" onClick={openNewVertical}><Plus className="mr-2 h-4 w-4" />Nova vertical</Button>}
           {view === "templates" && <Button type="button" onClick={openNewTemplate} disabled={verticals.length === 0}><Plus className="mr-2 h-4 w-4" />Novo template</Button>}
           {view === "registries" && <Button type="button" onClick={openNewRegistry}><Plus className="mr-2 h-4 w-4" />Novo registry</Button>}
@@ -310,17 +390,29 @@ export default function AdminAppBuilder() {
       {loading ? <div className="flex min-h-[260px] items-center justify-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div> : view === "overview" ? (
         <div className="grid gap-4 lg:grid-cols-[1.25fr_.75fr]">
           <Card><CardContent className="p-5"><div className="flex items-center gap-2"><GitBranch className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Engenharia oficial</h2></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{[["1. Vertical", "Define segmento e família de negócio."], ["2. Template", "Modelo global administrado pelo SuperAdmin."], ["3. Versão", "Snapshot publicado e preservado no histórico."], ["4. App Instance", "Instância white-label isolada por tenant."]].map(([title, description]) => <div key={title} className="rounded-xl border bg-muted/20 p-4"><p className="text-sm font-medium">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p></div>)}</div></CardContent></Card>
-          <Card><CardContent className="p-5"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Guardrails</h2></div><div className="mt-4 space-y-3 text-xs text-muted-foreground"><p>• Autoria global exclusiva do SuperAdmin.</p><p>• Versões publicadas permanecem identificáveis no histórico.</p><p>• Nenhum app vertical é criado automaticamente nesta fase.</p><p>• PWA, iOS, Android e lojas continuam fora do escopo.</p></div></CardContent></Card>
+          <Card><CardContent className="p-5"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Guardrails</h2></div><div className="mt-4 space-y-3 text-xs text-muted-foreground"><p>• Autoria global exclusiva do SuperAdmin.</p><p>• App exige versão publicada do template.</p><p>• Nova instância sempre nasce em rascunho.</p><p>• PWA, iOS, Android e lojas continuam fora do escopo.</p></div></CardContent></Card>
         </div>
       ) : view === "apps" ? (
-        apps.length === 0 ? <EmptyState title="Nenhum app criado" description="Correto para esta fase. A criação de App Instance por tenant será habilitada no próximo PR, depois que houver templates publicados." /> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{apps.map((app) => <Card key={app.id}><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{app.name}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">/{app.slug}</p></div><StatusBadge status={app.status} /></div><div className="mt-4 space-y-1 text-xs text-muted-foreground"><p>Template: <span className="text-foreground">{templateNameById.get(app.templateId) ?? app.templateId}</span></p><p>Tenant: <span className="font-mono text-[11px] text-foreground">{app.tenantId}</span></p></div></CardContent></Card>)}</div>
+        apps.length === 0 ? <EmptyState title="Nenhum app criado" description="Crie o primeiro App Instance somente depois de existir uma versão de template publicada. Nenhum app vertical é gerado automaticamente." /> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{apps.map((app) => <Card key={app.id}><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{app.name}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">/{app.slug}</p></div><StatusBadge status={app.status} /></div><div className="mt-4 space-y-1 text-xs text-muted-foreground"><p>Template: <span className="text-foreground">{templateNameById.get(app.templateId) ?? app.templateId}</span></p><p>Tenant: <span className="text-foreground">{tenantNameById.get(app.tenantId) ?? app.tenantId}</span></p></div></CardContent></Card>)}</div>
       ) : view === "templates" ? (
-        templates.length === 0 ? <EmptyState title="Nenhum template criado" description="Crie primeiro uma vertical e depois cadastre o template base. A versão publicada será o contrato usado na futura criação de apps." /> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{templates.map((template) => <Card key={template.id}><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{template.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{verticalNameById.get(template.verticalId) ?? "Vertical"}</p></div><StatusBadge status={template.status} /></div>{template.description && <p className="mt-3 text-xs leading-5 text-muted-foreground">{template.description}</p>}<p className="mt-3 font-mono text-[10px] text-muted-foreground">{template.slug}</p><div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => openEditTemplate(template)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Editar</Button><Button size="sm" variant="outline" onClick={() => void openVersions(template)}><History className="mr-1.5 h-3.5 w-3.5" />Versões</Button></div></CardContent></Card>)}</div>
+        templates.length === 0 ? <EmptyState title="Nenhum template criado" description="Crie primeiro uma vertical e depois cadastre o template base. A versão publicada será o contrato usado na criação de apps." /> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{templates.map((template) => <Card key={template.id}><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{template.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{verticalNameById.get(template.verticalId) ?? "Vertical"}</p></div><StatusBadge status={template.status} /></div>{template.description && <p className="mt-3 text-xs leading-5 text-muted-foreground">{template.description}</p>}<p className="mt-3 font-mono text-[10px] text-muted-foreground">{template.slug}</p><div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => openEditTemplate(template)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Editar</Button><Button size="sm" variant="outline" onClick={() => void openVersions(template)}><History className="mr-1.5 h-3.5 w-3.5" />Versões</Button></div></CardContent></Card>)}</div>
       ) : view === "verticals" ? (
         verticals.length === 0 ? <EmptyState title="Nenhuma vertical de app cadastrada" description="Cadastre somente as verticais que realmente terão um modelo de app oficial. Isso não altera os segmentos comerciais já existentes do VendorAI." /> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{verticals.map((vertical) => <Card key={vertical.id}><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold">{vertical.name}</p><p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{vertical.key}</p></div><StatusBadge status={vertical.status} /></div><p className="mt-3 text-xs text-muted-foreground">Família: {vertical.familyKey || "Ainda não definida"}</p><Button size="sm" variant="outline" className="mt-4" onClick={() => openEditVertical(vertical)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Editar</Button></CardContent></Card>)}</div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">{[["Componentes", registries.components, Component], ["Funcionalidades", registries.features, Layers3], ["Ações", registries.actions, AppWindow], ["Workflows", registries.workflows, GitBranch], ["Políticas de IA", registries.aiPolicies, Bot]].map(([label, rawItems, Icon]) => { const items = rawItems as RegistryItem[]; const RegistryIcon = Icon as typeof Smartphone; return <Card key={label as string}><CardContent className="p-4"><div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><RegistryIcon className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">{label as string}</p></div><Badge variant="secondary">{items.length}</Badge></div>{items.length === 0 ? <p className="mt-4 text-xs leading-5 text-muted-foreground">Nenhum item registrado ainda.</p> : <div className="mt-3 space-y-2">{items.slice(0, 8).map((item) => <div key={item.id} className="rounded-lg border px-2.5 py-2"><div className="flex items-start justify-between gap-2"><p className="truncate text-xs font-medium">{item.name}</p>{item.riskLevel && <span className="text-[9px] uppercase text-muted-foreground">{item.riskLevel}</span>}</div><p className="mt-0.5 truncate font-mono text-[9px] text-muted-foreground">{item.key}</p></div>)}{items.length > 8 && <p className="text-[10px] text-muted-foreground">+ {items.length - 8} itens</p>}</div>}</CardContent></Card>; })}</div>
       )}
+
+      <Dialog open={appDialog} onOpenChange={setAppDialog}>
+        <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Novo App Instance</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5"><p className="text-sm font-medium">Tenant</p><Select value={appForm.tenantId} onValueChange={(tenantId) => setAppForm({ ...appForm, tenantId })}><SelectTrigger><SelectValue placeholder="Selecione o tenant" /></SelectTrigger><SelectContent>{tenants.map((tenant) => <SelectItem key={tenant.id} value={tenant.id}>{tenant.name}{tenant.status ? ` · ${tenant.status}` : ""}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><p className="text-sm font-medium">Template</p><Select value={appForm.templateId} onValueChange={(templateId) => void selectAppTemplate(templateId)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · {verticalNameById.get(template.verticalId) ?? "Vertical"}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><p className="text-sm font-medium">Versão publicada</p><Select value={appForm.templateVersionId} disabled={!appForm.templateId || appVersionsLoading || appVersions.length === 0} onValueChange={(templateVersionId) => setAppForm({ ...appForm, templateVersionId })}><SelectTrigger><SelectValue placeholder={appVersionsLoading ? "Carregando..." : "Selecione"} /></SelectTrigger><SelectContent>{appVersions.map((version) => <SelectItem key={version.id} value={version.id}>Versão {version.version}</SelectItem>)}</SelectContent></Select>{appForm.templateId && !appVersionsLoading && appVersions.length === 0 && <p className="text-xs text-amber-700">Este template ainda não possui versão publicada.</p>}</div></div>
+            <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><p className="text-sm font-medium">Nome do app</p><Input value={appForm.name} onChange={(e) => setAppForm({ ...appForm, name: e.target.value })} placeholder="Nome interno / white-label" /></div><div className="space-y-1.5"><p className="text-sm font-medium">Slug</p><Input value={appForm.slug} onChange={(e) => setAppForm({ ...appForm, slug: e.target.value })} placeholder="meu-app" /></div></div>
+            <div className="rounded-xl border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">A criação não publica nada. O App Instance nasce como <strong className="text-foreground">rascunho</strong>, associado ao tenant e à versão publicada escolhida.</div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setAppDialog(false)}>Cancelar</Button><Button onClick={() => void createApp()} disabled={saving || !appForm.templateVersionId}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar app</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={verticalDialog} onOpenChange={setVerticalDialog}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{editingVertical ? "Editar vertical" : "Nova vertical"}</DialogTitle></DialogHeader><div className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><p className="text-sm font-medium">Chave</p><Input value={verticalForm.key} disabled={!!editingVertical} onChange={(e) => setVerticalForm({ ...verticalForm, key: e.target.value })} placeholder="ex: advocacia" /></div><div className="space-y-1.5"><p className="text-sm font-medium">Nome</p><Input value={verticalForm.name} onChange={(e) => setVerticalForm({ ...verticalForm, name: e.target.value })} placeholder="Nome da vertical" /></div></div><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><p className="text-sm font-medium">Família</p><Input value={verticalForm.familyKey} onChange={(e) => setVerticalForm({ ...verticalForm, familyKey: e.target.value })} placeholder="ex: servicos" /></div><div className="space-y-1.5"><p className="text-sm font-medium">Status</p><Select value={verticalForm.status} onValueChange={(status) => setVerticalForm({ ...verticalForm, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Ativo</SelectItem><SelectItem value="inactive">Inativo</SelectItem><SelectItem value="archived">Arquivado</SelectItem></SelectContent></Select></div></div></div><DialogFooter><Button variant="outline" onClick={() => setVerticalDialog(false)}>Cancelar</Button><Button onClick={() => void saveVertical()} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar</Button></DialogFooter></DialogContent></Dialog>
 
