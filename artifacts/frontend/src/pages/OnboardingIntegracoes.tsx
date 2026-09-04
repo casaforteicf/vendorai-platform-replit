@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/i18n";
 import { useToast } from "@/hooks/use-toast";
+import { TenantBrand } from "@/components/TenantBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,7 +20,6 @@ import {
   FileSignature,
   ExternalLink,
 } from "lucide-react";
-import logoLight from "/logo-full-light.svg";
 
 function getToken() {
   return localStorage.getItem("vendorai_token");
@@ -627,7 +627,7 @@ export default function OnboardingIntegracoes() {
     <div className="min-h-screen bg-muted/20">
       <header className="border-b bg-background px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <img src={logoLight} alt="VendorAI" className="h-7 dark:invert" />
+          <TenantBrand />
           <Button variant="ghost" size="sm" onClick={complete}>
             {t("onboarding.integrations.continueLater")}
           </Button>
