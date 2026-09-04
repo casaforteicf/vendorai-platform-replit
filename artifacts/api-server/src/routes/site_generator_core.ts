@@ -246,6 +246,7 @@ function isDark(hex: string): boolean {
 
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
   const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], videos = [], servicos, headline, nicheName, productNames = [] } = config;
+  const ebookLeadMagnetBlock = !ebookLeadMagnet ? "" : `INSTRUÇÃO: Integração de Lead Magnet - E-book complementar: ${ebookLeadMagnet.title}, URL: ${ebookLeadMagnet.downloadUrl}, Usar EXATAMENTE UMA VEZ como oferta secundária (não substitua CTA principal), Ideal para final da página após serviços, IMPORTANTE: nunca no hero, meio ou repetido, CTA principal '${cta || "Entre em contato"}' continua preferencial, lead magnet para capturar emails de interesse educacional complementar`;
   const waNumber = whatsapp?.replace(/\D/g, "") || "5511999999999";
 
   const igHandle = instagram?.replace(/^@/, "").replace(/\s/g, "") || "";
@@ -259,9 +260,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
     ? `<img src="${logoUrl}" alt="${name}" style="height:40px;width:auto;max-width:160px;object-fit:contain;display:block">`
     : `<span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--primary);color:var(--btn-text);font-weight:800;font-size:1.1rem">${name.charAt(0).toUpperCase()}</span>`;
   const ctaText = cta || "Entre em contato";
-  const rgb = hexToRgb(color);
-  const dark = isDark(color);
-  const btnTextColor = dark ? "#ffffff" : "#0f0f0f";
+
 
   const FONT_PAIRS: Record<string, { display: string; body: string; googleUrl: string }> = {
     profissional: {
@@ -577,6 +576,8 @@ INSTRUÇÕES:
 - Se for ajuste de texto/copy: altere apenas aquele trecho
 - Se for nova seção: insira no lugar lógico mantendo o padrão visual do site
 - Retorne APENAS o HTML completo e atualizado
+  ✓ LEAD MAGNET (se disponível): ${ebookLeadMagnetBlock}
+
 - Sem explicações, sem markdown, sem blocos de código
 Comece diretamente com <!DOCTYPE html>`;
 }
@@ -921,8 +922,6 @@ async function runGenerateSite(
       imageUrl: toAbsolute(p.imageUrl) ?? p.imageUrl,
     }));
 
-    const enrichedConfig = { ...config, name, sector, desc, logoUrl: absoluteLogoUrl, products: absoluteProducts, images: absoluteImages, videos: absoluteVideos };
-    const prompt = buildGeneratePrompt(enrichedConfig);
 
     let result;
     try {
@@ -943,11 +942,9 @@ async function runGenerateSite(
       log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider }, "Site generation returned invalid HTML");
       await persistGenerationJob(jobId, { status: "error", error: "Resposta da IA inválida ou muito curta", createdAt: Date.now() });
       return;
-    }
-
-    let prepared = prepareSiteHtml(html);
-    if (!prepared.validation.valid) {
-      const issueSummary = prepared.validation.issues.map((issue) => `${issue.code}: ${issue.message}`).join("\n");
+    const ebookLeadMagnet = await resolveEbookLeadMagnet(tenantId, baseOrigin, config.type);
+    const enrichedConfig = { ...config, name, sector, desc, logoUrl: absoluteLogoUrl, products: absoluteProducts, images: absoluteImages, videos: absoluteVideos, ebookCtaUsed: Boolean(ebookLeadMagnet), ...(ebookLeadMagnet ? { ebookLeadMagnet } : {}) };
+    const prompt = buildGeneratePrompt(enrichedConfig, ebookLeadMagnet);
       log.info({ tenantId, issues: prepared.validation.issues }, "Site quality validation failed; requesting automatic repair");
       try {
         const repair = await callAI([{ role: "user", content: `Repare integralmente o HTML abaixo. Corrija todos os problemas listados, preserve o conteúdo e as funcionalidades e retorne somente o documento HTML completo.\n\nPROBLEMAS DETECTADOS:\n${issueSummary}\n\nHTML:\n${html}` }], tenantId, log);

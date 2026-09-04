@@ -5,8 +5,9 @@ import Content from "@/pages/Content";
 import Campanhas from "@/pages/Campanhas";
 import CampanhasHub from "@/pages/CampanhasHub";
 import SiteGenerator from "@/pages/SiteGenerator";
+import EbookGenerator from "@/pages/EbookGenerator";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Images, Megaphone, Sparkles } from "lucide-react";
+import { ArrowLeft, Images, Megaphone, Sparkles, BookOpen } from "lucide-react";
 
 const REDUNDANT_CHILD_TITLES = new Set([
   "Criar conteúdo",
@@ -59,11 +60,10 @@ export default function ContentHub() {
   const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
   const params = new URLSearchParams(queryString);
   const requestedTab = params.get("tab") ?? "gerador";
-  // Compatibilidade: o antigo ?tab=variedades agora abre a modalidade Praça.ai
-  // dentro de Campanhas, sem manter uma terceira área paralela no Marketing.
   const legacyPracaView = requestedTab === "variedades";
   const activeTab = requestedTab === "campanhas" || legacyPracaView ? "campanhas" : "gerador";
   const campaignView = legacyPracaView ? "praca" : params.get("view") ?? "overview";
+  const contentView = params.get("view") === "ebook" ? "ebook" : "conteudos";
 
   function handleTabChange(nextTab: string) {
     if (nextTab === "gerador") {
@@ -71,6 +71,14 @@ export default function ContentHub() {
       return;
     }
     setLocation(`/content?tab=${nextTab}`);
+  }
+
+  function handleContentViewChange(view: string) {
+    if (view === "conteudos") {
+      setLocation("/content");
+    } else if (view === "ebook") {
+      setLocation("/content?view=ebook");
+    }
   }
 
   useEffect(() => {
@@ -99,7 +107,29 @@ export default function ContentHub() {
             <TabsTrigger value="gerador" className="gap-2"><Images className="h-4 w-4"/>Gerador de conteúdo</TabsTrigger>
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>Campanhas</TabsTrigger>
           </TabsList>
-          <TabsContent value="gerador" className="-mx-4 md:-mx-6"><Content /></TabsContent>
+          <TabsContent value="gerador" className="-mx-4 md:-mx-6">
+            <div className="px-4 pt-4 md:px-6 md:pt-6">
+              <div className="mb-4 flex gap-2">
+                <Button
+                  variant={contentView === "conteudos" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleContentViewChange("conteudos")}
+                >
+                  Conteúdos
+                </Button>
+                <Button
+                  variant={contentView === "ebook" ? "default" : "outline"}
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => handleContentViewChange("ebook")}
+                >
+                  <BookOpen className="h-4 w-4" />
+                  E-book
+                </Button>
+              </div>
+              {contentView === "ebook" ? <EbookGenerator /> : <Content />}
+            </div>
+          </TabsContent>
           <TabsContent value="campanhas" className="-mx-4 md:-mx-6">
             {campaignView === "organicas" ? (
               <Campanhas />
