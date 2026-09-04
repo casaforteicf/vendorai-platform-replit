@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowDown, ArrowUp, Layers3, Loader2, Plus, Save, Trash2 } from "lucide-react";
 
 type JsonObject = Record<string, unknown>;
-type BlockType = "hero" | "text" | "callout" | "metrics" | "list" | "cards" | "divider";
+type BlockType = "hero" | "text" | "callout" | "metrics" | "list" | "cards" | "divider" | "action_form";
 type PermissionMode = "all" | "any";
 
 type TemplateLike = { id: string; name: string };
@@ -42,6 +42,7 @@ const BLOCK_LABEL: Record<BlockType, string> = {
   list: "Lista",
   cards: "Cards",
   divider: "Divisor",
+  action_form: "Formulário / Action",
 };
 
 const EMPTY_VISIBILITY: VisibilityForm = { roles: "", permissions: "", permissionMode: "all" };
@@ -93,6 +94,7 @@ function normalizeBlock(value: unknown, index: number): BlockForm | null {
   if (!Object.prototype.hasOwnProperty.call(BLOCK_LABEL, type)) return null;
   const props = { ...asObject(source.props) };
   if (Array.isArray(props.items)) props.items = objectArray(props.items).map((item) => ({ ...item }));
+  if (Array.isArray(props.fields)) props.fields = objectArray(props.fields).map((item) => ({ ...item }));
   return {
     id: stringValue(source.id) || `block-${index + 1}`,
     type,
@@ -145,6 +147,7 @@ function defaultProps(type: BlockType): JsonObject {
   if (type === "metrics") return { title: "Indicadores", items: [{ label: "Indicador", value: "0", detail: "" }] };
   if (type === "list") return { title: "Lista", items: [{ label: "", title: "Item", body: "Descrição" }] };
   if (type === "cards") return { title: "Cards", items: [{ badge: "", title: "Card", body: "Descrição", imageUrl: "" }] };
+  if (type === "action_form") return { title: "Formulário", body: "", actionKey: "", submitLabel: "Enviar", successMessage: "Dados salvos com sucesso.", fields: [] };
   return { label: "" };
 }
 
@@ -454,6 +457,7 @@ function BlockFields({ block, onProp }: { block: BlockForm; onProp: (key: string
   if (block.type === "hero") return <div className="grid gap-3 md:grid-cols-2"><Field label="Título" value={stringValue(props.title)} onChange={(value) => onProp("title", value)} /><Field label="Eyebrow" value={stringValue(props.eyebrow)} onChange={(value) => onProp("eyebrow", value)} /><Field label="Badge" value={stringValue(props.badge)} onChange={(value) => onProp("badge", value)} /><Field label="Imagem URL" value={stringValue(props.imageUrl)} onChange={(value) => onProp("imageUrl", value)} /><label className="space-y-1"><span className="text-xs font-medium">Alinhamento</span><Select value={props.align === "center" ? "center" : "left"} onValueChange={(value) => onProp("align", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="left">Esquerda</SelectItem><SelectItem value="center">Centro</SelectItem></SelectContent></Select></label><LongField label="Texto" value={stringValue(props.body)} onChange={(value) => onProp("body", value)} /></div>;
   if (block.type === "text") return <div className="space-y-3"><Field label="Título" value={stringValue(props.title)} onChange={(value) => onProp("title", value)} /><LongField label="Texto" value={stringValue(props.body)} onChange={(value) => onProp("body", value)} /></div>;
   if (block.type === "callout") return <div className="space-y-3"><div className="grid gap-3 md:grid-cols-2"><Field label="Título" value={stringValue(props.title)} onChange={(value) => onProp("title", value)} /><label className="space-y-1"><span className="text-xs font-medium">Tom</span><Select value={stringValue(props.tone) || "neutral"} onValueChange={(value) => onProp("tone", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["neutral", "info", "success", "warning", "danger"].map((tone) => <SelectItem key={tone} value={tone}>{tone}</SelectItem>)}</SelectContent></Select></label></div><LongField label="Mensagem" value={stringValue(props.body)} onChange={(value) => onProp("body", value)} /></div>;
+  if (block.type === "action_form") return <div className="space-y-3"><div className="grid gap-3 md:grid-cols-2"><Field label="Título" value={stringValue(props.title)} onChange={(value) => onProp("title", value)} /><Field label="Action key" value={stringValue(props.actionKey)} onChange={(value) => onProp("actionKey", value)} /><Field label="CTA" value={stringValue(props.submitLabel)} onChange={(value) => onProp("submitLabel", value)} /><Field label="Mensagem de sucesso" value={stringValue(props.successMessage)} onChange={(value) => onProp("successMessage", value)} /></div><LongField label="Texto de apoio" value={stringValue(props.body)} onChange={(value) => onProp("body", value)} /><p className="rounded-lg border bg-muted/20 px-3 py-2 text-[11px] leading-5 text-muted-foreground">Os campos do formulário são administrados em <strong>Formulários / Actions</strong> e continuam preservados ao salvar por este editor.</p></div>;
   if (block.type === "divider") return <Field label="Rótulo opcional" value={stringValue(props.label)} onChange={(value) => onProp("label", value)} />;
   return <Field label="Título da seção" value={stringValue(props.title)} onChange={(value) => onProp("title", value)} />;
 }

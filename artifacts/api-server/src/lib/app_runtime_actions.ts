@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   appActionRegistryTable,
@@ -23,6 +23,13 @@ type ActionExecutor = (
 export type RuntimeActionResolution =
   | { actionKey: string; status: "ok"; data: JsonObject }
   | { actionKey: string; status: "not_found" | "forbidden" | "invalid_input" };
+
+export type RuntimeActionDescriptor = {
+  key: string;
+  inputSchema: JsonObject;
+  requiredPermissions: string[];
+  riskLevel: "low";
+};
 
 class RuntimeActionInputError extends Error {}
 
@@ -80,6 +87,62 @@ const ACTION_EXECUTORS: Record<string, ActionExecutor> = {
   },
 };
 
+export async function loadInteractiveRuntimeActions(
+  actionKeys: string[],
+  permissions: string[],
+): Promise<Map<string, RuntimeActionDescriptor>> {
+  const normalized = Array.from(
+    new Set(
+      actionKeys
+        .filter((key) => /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(key))
+        .map((key) => key.slice(0, 100)),
+    ),
+  ).slice(0, 30);
+  if (normalized.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      key: appActionRegistryTable.key,
+      inputSchema: appActionRegistryTable.inputSchema,
+      executorKey: appActionRegistryTable.executorKey,
+      requiredPermissions: appActionRegistryTable.requiredPermissions,
+      riskLevel: appActionRegistryTable.riskLevel,
+    })
+    .from(appActionRegistryTable)
+    .where(
+      and(
+        inArray(appActionRegistryTable.key, normalized),
+        eq(appActionRegistryTable.status, "active"),
+      ),
+    );
+
+  const permissionSet = new Set(permissions);
+  return new Map(
+    rows.flatMap((row) => {
+      if (
+        row.riskLevel !== "low" ||
+        !row.executorKey ||
+        !ACTION_EXECUTORS[row.executorKey]
+      ) {
+        return [];
+      }
+      const requiredPermissions = row.requiredPermissions ?? [];
+      if (!requiredPermissions.every((permission) => permissionSet.has(permission))) {
+        return [];
+      }
+      return [[
+        row.key,
+        {
+          key: row.key,
+          inputSchema: (row.inputSchema ?? {}) as JsonObject,
+          requiredPermissions,
+          riskLevel: "low" as const,
+        },
+      ] as const];
+    }),
+  );
+}
+
 export async function executeRuntimeAction(
   actionKey: string,
   input: unknown,
@@ -90,6 +153,7 @@ export async function executeRuntimeAction(
       key: appActionRegistryTable.key,
       executorKey: appActionRegistryTable.executorKey,
       requiredPermissions: appActionRegistryTable.requiredPermissions,
+      riskLevel: appActionRegistryTable.riskLevel,
     })
     .from(appActionRegistryTable)
     .where(
@@ -101,6 +165,7 @@ export async function executeRuntimeAction(
     .limit(1);
 
   if (!action?.executorKey) return { actionKey, status: "not_found" };
+  if (action.riskLevel !== "low") return { actionKey, status: "forbidden" };
 
   const permissionSet = new Set(context.viewer.permissions);
   const requiredPermissions = action.requiredPermissions ?? [];
