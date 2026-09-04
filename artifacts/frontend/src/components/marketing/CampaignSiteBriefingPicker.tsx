@@ -50,6 +50,7 @@ function normalizeContext(source: Partial<MarketingContextValue> | null | undefi
     primaryKpi: source?.primaryKpi,
     researchEnabled: source?.researchEnabled,
     seoTrackingEnabled: source?.seoTrackingEnabled,
+    marketingIntelligence: source?.marketingIntelligence,
     campaignId: source?.campaignId,
     campaignName: source?.campaignName,
   };
@@ -103,6 +104,9 @@ export function buildCampaignSiteContextText(briefing: SiteCampaignBriefing | nu
   if (!briefing) return "";
   const context = briefing.marketingContext;
   const location = [context.locationCity, context.locationState].filter(Boolean).join("/");
+  const intelligence = context.marketingIntelligence;
+  const siteTracking = intelligence?.tracking?.channels?.site;
+  const landingTracking = intelligence?.tracking?.channels?.landing_page;
   return [
     `BRIEFING MESTRE DA CAMPANHA: ${briefing.campaignName} (${briefing.campaignId})`,
     context.businessVertical && `Negócio/vertical: ${context.businessVertical}`,
@@ -119,6 +123,19 @@ export function buildCampaignSiteContextText(briefing: SiteCampaignBriefing | nu
     context.primaryKpi && `Meta/KPI: ${context.primaryKpi}`,
     context.researchEnabled === true && "Pesquisa pública solicitada: usar apenas dados reais/verificáveis disponíveis. Se algo não estiver confirmado, não tratar como fato.",
     context.seoTrackingEnabled === true && "SEO e tracking solicitados: preparar a página para intenção de busca, título/meta description, headings, FAQ/alt quando fizer sentido e rastreamento consistente; não inventar volume, posição ou desempenho.",
+    intelligence && "MARKETING INTELLIGENCE DA CAMPANHA — usar como estratégia e estrutura; métricas de pesquisa são internas e nunca devem virar alegação pública.",
+    intelligence?.seo?.primaryKeyword && `Keyword principal: ${intelligence.seo.primaryKeyword}`,
+    intelligence?.seo?.secondaryKeywords?.length ? `Keywords secundárias: ${intelligence.seo.secondaryKeywords.slice(0, 8).join(", ")}` : "",
+    intelligence?.seo?.title && `SEO title sugerido: ${intelligence.seo.title}`,
+    intelligence?.seo?.metaDescription && `Meta description sugerida: ${intelligence.seo.metaDescription}`,
+    intelligence?.seo?.slug && `Slug SEO sugerido: /${intelligence.seo.slug}`,
+    intelligence?.seo?.h1 && `H1 recomendado: ${intelligence.seo.h1}`,
+    intelligence?.seo?.h2?.length ? `H2 recomendados: ${intelligence.seo.h2.join(" | ")}` : "",
+    intelligence?.seo?.faq?.length ? `FAQ recomendado: ${intelligence.seo.faq.slice(0, 3).map((item) => `P: ${item.question} R: ${item.answer}`).join(" | ")}` : "",
+    intelligence?.seo?.imageAlt?.length ? `Alt text sugerido para imagens: ${intelligence.seo.imageAlt.join(" | ")}` : "",
+    intelligence?.tracking?.utmCampaign && `Tracking estável da campanha: utm_campaign=${intelligence.tracking.utmCampaign}`,
+    siteTracking && `UTM Site: utm_source=${siteTracking.source}; utm_medium=${siteTracking.medium}; utm_content=${siteTracking.content}`,
+    landingTracking && `UTM Landing Page: utm_source=${landingTracking.source}; utm_medium=${landingTracking.medium}; utm_content=${landingTracking.content}`,
   ].filter(Boolean).join("\n");
 }
 
@@ -231,6 +248,7 @@ export function CampaignSiteBriefingPicker({
           {context.projectName && <Badge variant="outline">Local: {context.projectName}</Badge>}
           {context.researchEnabled && <Badge variant="outline"><Search className="mr-1 h-3 w-3" />Pesquisa solicitada</Badge>}
           {context.seoTrackingEnabled && <Badge variant="outline">SEO + tracking</Badge>}
+          {context.marketingIntelligence?.seo?.primaryKeyword && <Badge variant="outline">Keyword: {context.marketingIntelligence.seo.primaryKeyword}</Badge>}
         </div>
       )}
     </div>

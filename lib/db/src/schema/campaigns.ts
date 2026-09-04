@@ -53,6 +53,7 @@ export const campaignMarketingContextSchema = z.object({
   primaryKpi: z.string().optional(),
   researchEnabled: z.boolean().optional(),
   seoTrackingEnabled: z.boolean().optional(),
+  marketingIntelligence: z.unknown().optional(),
   campaignId: z.string().optional(),
   campaignName: z.string().optional(),
 });
@@ -99,6 +100,7 @@ export type CampaignContext = {
   primaryKpi?: string;
   researchEnabled?: boolean;
   seoTrackingEnabled?: boolean;
+  marketingIntelligence?: unknown;
   recommendedChannel?: "whatsapp" | "email" | "instagram";
   recommendedPaidPlatform?: "meta" | "google";
   adsHeadline?: string;
