@@ -420,7 +420,9 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/talking-vide
       provider: "vendorai",
       operation: "talking_video",
       identityId,
-      voiceProfileId,
+      requestedVoiceProfileId: voiceResult.requestedVoiceProfileId,
+      voiceProfileId: voiceResult.voiceProfileId,
+      voiceSelection: voiceResult.voiceSelection,
       style: styledReference,
       voice: {
         projectId: voiceResult.projectId,
@@ -428,6 +430,9 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/talking-vide
         assetId: voiceResult.assetId,
         versionId: voiceResult.versionId,
         audioUrl: voiceResult.audioUrl,
+        requestedVoiceProfileId: voiceResult.requestedVoiceProfileId,
+        voiceProfileId: voiceResult.voiceProfileId,
+        selection: voiceResult.voiceSelection,
       },
       video: videoResult,
     });
