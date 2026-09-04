@@ -13,6 +13,7 @@ import { MediaMarketingContentBridge } from "./components/media/MediaMarketingCo
 import { MediaConversationsBridge } from "./components/media/MediaConversationsBridge";
 import { MediaAiBaseBridge } from "./components/media/MediaAiBaseBridge";
 import { MediaAiBaseWorkspaceNav } from "./components/media/MediaAiBaseWorkspaceNav";
+import { MediaDeleteSelectionBridge } from "./components/media/MediaDeleteSelectionBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { I18nProvider } from "./i18n";
 import "./index.css";
@@ -75,6 +76,7 @@ createRoot(document.getElementById("root")!).render(
           <MediaConversationsBridge />
           <MediaAiBaseBridge />
           <MediaAiBaseWorkspaceNav />
+          <MediaDeleteSelectionBridge />
         </>
       )}
     </I18nProvider>
