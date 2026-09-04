@@ -20,6 +20,11 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
+  TENANT_COUNTRY_PROFILES,
+  buildTenantInternationalDefaults,
+  type TenantCountryCode,
+} from "@/lib/tenantInternational";
+import {
   Building2, Plus, Copy, Check, Mail, Loader2, RefreshCw, UserCheck, Clock,
   HardHat, Stethoscope, Car, Warehouse, Shirt, UtensilsCrossed, Briefcase, Cpu, Trash2, Upload,
 } from "lucide-react";
@@ -80,6 +85,20 @@ interface AvailablePlan {
   isActive: boolean;
 }
 
+function emptyTenantForm() {
+  return {
+    companyName: "",
+    responsibleName: "",
+    email: "",
+    phone: "",
+    countryCode: "BR" as TenantCountryCode,
+    taxIdentifier: "",
+    planId: "",
+    billingCycle: "monthly" as "monthly" | "annual",
+    internalNotes: "",
+  };
+}
+
 export default function AdminTenants() {
   const [, setLocation] = useLocation();
   const { token } = useAuth();
@@ -107,10 +126,7 @@ export default function AdminTenants() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    companyName: "", responsibleName: "", email: "", phone: "", cnpj: "",
-    planId: "", billingCycle: "monthly" as "monthly" | "annual", internalNotes: "",
-  });
+  const [form, setForm] = useState(emptyTenantForm);
 
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -188,7 +204,7 @@ export default function AdminTenants() {
   });
 
   function resetForm() {
-    setForm({ companyName: "", responsibleName: "", email: "", phone: "", cnpj: "", planId: "", billingCycle: "monthly", internalNotes: "" });
+    setForm(emptyTenantForm());
   }
 
   async function handleProvision(sendEmail: boolean) {
@@ -197,11 +213,42 @@ export default function AdminTenants() {
       const res = await fetch("/api/superadmin/tenants/provision", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...form, sendWelcomeEmailFlag: sendEmail }),
+        body: JSON.stringify({
+          companyName: form.companyName,
+          responsibleName: form.responsibleName,
+          email: form.email,
+          phone: form.phone,
+          planId: form.planId,
+          billingCycle: form.billingCycle,
+          internalNotes: form.internalNotes,
+          sendWelcomeEmailFlag: sendEmail,
+        }),
       });
-      const data = await res.json();
+      const data = await res.json() as ProvisionResult & { error?: string };
       if (!res.ok) { toast({ title: data.error ?? "Erro ao criar tenant", variant: "destructive" }); return; }
-      setResult(data as ProvisionResult);
+
+      const internationalDefaults = buildTenantInternationalDefaults(form.countryCode);
+      const profileResponse = await fetch(`/api/tenants/${data.tenant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          ...internationalDefaults,
+          taxIdentifier: form.taxIdentifier.trim() || null,
+        }),
+      });
+
+      if (profileResponse.ok) {
+        data.tenant = await profileResponse.json() as Tenant;
+      } else {
+        const profileError = await profileResponse.json().catch(() => ({})) as { error?: string };
+        toast({
+          title: "Tenant criado, mas o perfil internacional precisa ser revisado",
+          description: profileError.error ?? "Abra o tenant e salve o Perfil internacional.",
+          variant: "destructive",
+        });
+      }
+
+      setResult(data);
       setFormOpen(false);
       resetForm();
       void qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
@@ -334,6 +381,7 @@ export default function AdminTenants() {
 
   const tenantCountByVertical = (key: string) =>
     tenants.filter((t) => (t as any).vertical === key && t.status === "active").length;
+  const selectedCountry = TENANT_COUNTRY_PROFILES[form.countryCode];
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -671,7 +719,7 @@ export default function AdminTenants() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Novo Tenant</DialogTitle>
-            <DialogDescription>Cria a empresa e o usuário admin com senha temporária. Sem cobrança no Asaas.</DialogDescription>
+            <DialogDescription>Cria a empresa e o usuário admin com senha temporária. O país define idioma, fuso, moeda e documento fiscal iniciais.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="grid grid-cols-2 gap-3">
@@ -685,15 +733,40 @@ export default function AdminTenants() {
               </div>
               <div className="col-span-2 space-y-1.5">
                 <Label>E-mail *</Label>
-                <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="joao@empresa.com.br" />
+                <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="contato@empresa.com" />
               </div>
               <div className="space-y-1.5">
                 <Label>Telefone</Label>
-                <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="(47) 99999-9999" />
+                <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="Telefone com DDI/DDD" />
               </div>
               <div className="space-y-1.5">
-                <Label>CNPJ (opcional)</Label>
-                <Input value={form.cnpj} onChange={(e) => setForm((f) => ({ ...f, cnpj: e.target.value }))} placeholder="00.000.000/0001-00" />
+                <Label>País *</Label>
+                <Select
+                  value={form.countryCode}
+                  onValueChange={(value) => setForm((current) => ({
+                    ...current,
+                    countryCode: value as TenantCountryCode,
+                    taxIdentifier: "",
+                  }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(TENANT_COUNTRY_PROFILES).map(([code, profile]) => (
+                      <SelectItem key={code} value={code}>{profile.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label>{selectedCountry.taxType} / documento fiscal</Label>
+                <Input
+                  value={form.taxIdentifier}
+                  onChange={(e) => setForm((f) => ({ ...f, taxIdentifier: e.target.value }))}
+                  placeholder={selectedCountry.taxPlaceholder}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {selectedCountry.label}: {selectedCountry.locale} · {selectedCountry.timezone} · {selectedCountry.currency}
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>Plano</Label>
