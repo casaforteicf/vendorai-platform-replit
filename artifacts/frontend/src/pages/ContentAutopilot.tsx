@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { SiteGeneratorTab } from "./SiteGenerator";
 import ContentAutopilotCore from "./ContentAutopilotCore";
 import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
+import SiteDomainAssistant from "@/components/SiteDomainAssistant";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -106,7 +107,7 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
 }
 
-function SiteSettingsBridge() {
+function SiteSettingsBridge({ tenantId }: { tenantId: string }) {
   const [ready, setReady] = useState(false);
   const bridgeRef = useRef<HTMLDivElement>(null);
 
@@ -212,13 +213,16 @@ function SiteSettingsBridge() {
   if (!ready) return null;
 
   return (
-    <div ref={bridgeRef} className="vendor-site-settings-bridge">
-      <style>{`
-        .vendor-site-settings-bridge > div > div:first-child { display: none; }
-        .vendor-site-settings-bridge [role="tablist"] { display: none !important; }
-        .vendor-site-settings-bridge [role="tabpanel"] > div:first-child { display: none; }
-      `}</style>
-      <ConfiguracoesLegacy />
+    <div className="space-y-5">
+      <SiteDomainAssistant tenantId={tenantId} />
+      <div ref={bridgeRef} className="vendor-site-settings-bridge">
+        <style>{`
+          .vendor-site-settings-bridge > div > div:first-child { display: none; }
+          .vendor-site-settings-bridge [role="tablist"] { display: none !important; }
+          .vendor-site-settings-bridge [role="tabpanel"] > div:first-child { display: none; }
+        `}</style>
+        <ConfiguracoesLegacy />
+      </div>
     </div>
   );
 }
@@ -552,7 +556,7 @@ export default function MarketingSitesHub() {
         <TabsContent value="autopilot" className="mt-5"><ContentAutopilotCore /></TabsContent>
         <TabsContent value="seo" className="mt-5"><SeoOverview onNavigate={navigate} /></TabsContent>
         <TabsContent value="analytics" className="mt-5"><AnalyticsOverview tenantId={tenantId} onNavigate={navigate} /></TabsContent>
-        <TabsContent value="settings" className="mt-5"><SiteSettingsBridge /></TabsContent>
+        <TabsContent value="settings" className="mt-5"><SiteSettingsBridge tenantId={tenantId} /></TabsContent>
       </Tabs>
 
       <Card className="border-dashed">
