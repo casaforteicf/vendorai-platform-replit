@@ -7,6 +7,7 @@ import {
   appComponentRegistryTable,
   appFeatureRegistryTable,
   appInstancesTable,
+  appInstanceVersionsTable,
   appTemplateVersionsTable,
   appTemplatesTable,
   appVerticalsTable,
@@ -73,7 +74,8 @@ const appInstancePatchSchema = z
   .object({
     name: z.string().trim().min(2).max(120),
     slug: slugSchema,
-    status: z.enum(["draft", "preview", "published", "archived"]),
+    // "published" é deliberadamente excluído: publicar exige snapshot versionado.
+    status: z.enum(["draft", "preview", "archived"]),
     theme: jsonObjectSchema,
     navigation: z.array(z.unknown()),
     settings: jsonObjectSchema,
@@ -414,6 +416,121 @@ router.patch("/admin/app-builder/apps/:id", async (req, res) => {
     }
     throw error;
   }
+});
+
+router.get("/admin/app-builder/apps/:id/versions", async (req, res) => {
+  const appInstanceId = String(req.params.id);
+  const rows = await db
+    .select()
+    .from(appInstanceVersionsTable)
+    .where(eq(appInstanceVersionsTable.appInstanceId, appInstanceId))
+    .orderBy(desc(appInstanceVersionsTable.version));
+  res.json(rows);
+});
+
+router.post("/admin/app-builder/apps/:id/versions", async (req, res) => {
+  const appInstanceId = String(req.params.id);
+  const [app] = await db
+    .select()
+    .from(appInstancesTable)
+    .where(eq(appInstancesTable.id, appInstanceId));
+  if (!app) {
+    res.status(404).json({ error: "App não encontrado" });
+    return;
+  }
+  if (app.status === "archived") {
+    res.status(409).json({ error: "App arquivado não pode receber novas versões" });
+    return;
+  }
+
+  const [latest] = await db
+    .select({ version: max(appInstanceVersionsTable.version) })
+    .from(appInstanceVersionsTable)
+    .where(eq(appInstanceVersionsTable.appInstanceId, appInstanceId));
+  const version = (latest?.version ?? 0) + 1;
+
+  const definition = {
+    name: app.name,
+    slug: app.slug,
+    templateId: app.templateId,
+    templateVersionId: app.templateVersionId,
+    theme: app.theme,
+    navigation: app.navigation,
+    settings: app.settings,
+    whiteLabel: app.whiteLabel,
+  };
+
+  try {
+    const [row] = await db
+      .insert(appInstanceVersionsTable)
+      .values({
+        tenantId: app.tenantId,
+        appInstanceId: app.id,
+        templateVersionId: app.templateVersionId,
+        version,
+        status: "draft",
+        definition,
+      })
+      .returning();
+    res.status(201).json(row);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      res.status(409).json({ error: "Versão concorrente detectada; tente novamente" });
+      return;
+    }
+    throw error;
+  }
+});
+
+router.post("/admin/app-builder/apps/:appId/versions/:versionId/publish", async (req, res) => {
+  const appInstanceId = String(req.params.appId);
+  const versionId = String(req.params.versionId);
+
+  const [target] = await db
+    .select({ id: appInstanceVersionsTable.id })
+    .from(appInstanceVersionsTable)
+    .where(
+      and(
+        eq(appInstanceVersionsTable.id, versionId),
+        eq(appInstanceVersionsTable.appInstanceId, appInstanceId),
+      ),
+    );
+  if (!target) {
+    res.status(404).json({ error: "Versão do app não encontrada" });
+    return;
+  }
+
+  const published = await db.transaction(async (tx) => {
+    await tx
+      .update(appInstanceVersionsTable)
+      .set({ status: "archived" })
+      .where(
+        and(
+          eq(appInstanceVersionsTable.appInstanceId, appInstanceId),
+          eq(appInstanceVersionsTable.status, "published"),
+        ),
+      );
+
+    const [row] = await tx
+      .update(appInstanceVersionsTable)
+      .set({ status: "published", publishedAt: new Date() })
+      .where(
+        and(
+          eq(appInstanceVersionsTable.id, versionId),
+          eq(appInstanceVersionsTable.appInstanceId, appInstanceId),
+        ),
+      )
+      .returning();
+
+    await tx
+      .update(appInstancesTable)
+      .set({ status: "published", updatedAt: new Date() })
+      .where(eq(appInstancesTable.id, appInstanceId));
+
+    return row;
+  });
+
+  res.json(published);
 });
 
 router.get("/admin/app-builder/registries", async (_req, res) => {
