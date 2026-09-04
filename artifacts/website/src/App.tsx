@@ -62,8 +62,8 @@ function FloatingActions() {
 function HomeWithNicheVisuals() {
   return (
     <>
-      <Home />
       <NicheVisualShowcase />
+      <Home />
     </>
   );
 }
