@@ -290,7 +290,7 @@ export async function generateContentCalendar(
   tenantId: string,
   mediaPlanId: string,
   semanas: number,
-  options: { substituirPlanejado?: boolean } = {},
+  options: { substituirPlanejado?: boolean; refinarComIa?: boolean } = {},
 ): Promise<{ items: (typeof contentCalendarItemsTable.$inferSelect)[] }> {
   const [plan] = await db.select().from(mediaPlansTable).where(eq(mediaPlansTable.id, mediaPlanId));
   if (!plan || plan.tenantId !== tenantId) {
@@ -335,43 +335,45 @@ export async function generateContentCalendar(
     : new Date();
 
   let actions = baseActions;
-  try {
-    const representativeLimit = Math.min(36, baseActions.length);
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 6000,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: JSON.stringify({
-            periodoDias,
-            campanhas: campanhas.map((campaign) => ({
-              nome: campaign.nome,
-              objetivo: campaign.objetivo,
-              produtoServico: campaign.produtoServico,
-              publico: campaign.publico,
-              regiao: campaign.regiao,
-              oferta: campaign.oferta,
-              mensagemCentral: campaign.mensagemCentral,
-              fase: campaign.fase,
-              regraComunicacaoGeografica: campaign.regraComunicacaoGeografica,
-              canais: campaign.canais,
-            })),
-            amostraDeSlotsParaRefinar: baseActions.slice(0, representativeLimit),
-            instrucao: `Refine até ${representativeLimit} slots mantendo exatamente campanha, canal, formato, função, pilar e tipo. Não remova canais nem mude a função da mídia.`,
-          }),
-        },
-      ],
-    });
-    const textBlock = response.content.find((block) => block.type === "text");
-    const raw = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-    if (raw) {
-      const parsed = JSON.parse(raw.replace(/^```json\s*|```$/g, "").trim());
-      actions = overlayAiActions(baseActions, parsed);
+  if (options.refinarComIa !== false) {
+    try {
+      const representativeLimit = Math.min(36, baseActions.length);
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 6000,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: JSON.stringify({
+              periodoDias,
+              campanhas: campanhas.map((campaign) => ({
+                nome: campaign.nome,
+                objetivo: campaign.objetivo,
+                produtoServico: campaign.produtoServico,
+                publico: campaign.publico,
+                regiao: campaign.regiao,
+                oferta: campaign.oferta,
+                mensagemCentral: campaign.mensagemCentral,
+                fase: campaign.fase,
+                regraComunicacaoGeografica: campaign.regraComunicacaoGeografica,
+                canais: campaign.canais,
+              })),
+              amostraDeSlotsParaRefinar: baseActions.slice(0, representativeLimit),
+              instrucao: `Refine até ${representativeLimit} slots mantendo exatamente campanha, canal, formato, função, pilar e tipo. Não remova canais nem mude a função da mídia.`,
+            }),
+          },
+        ],
+      });
+      const textBlock = response.content.find((block) => block.type === "text");
+      const raw = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+      if (raw) {
+        const parsed = JSON.parse(raw.replace(/^```json\s*|```$/g, "").trim());
+        actions = overlayAiActions(baseActions, parsed);
+      }
+    } catch {
+      actions = baseActions;
     }
-  } catch {
-    actions = baseActions;
   }
 
   const maxOffset = Math.max(1, periodoDias - 1);
