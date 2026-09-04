@@ -84,21 +84,40 @@ const FormItem = React.forwardRef<
 })
 FormItem.displayName = "FormItem"
 
-const FormLabel = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
->(({ className, ...props }, ref) => {
-  const { error, formItemId } = useFormField()
+type FormLabelProps = React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
+type FormLabelRef = React.ElementRef<typeof LabelPrimitive.Root>
 
-  return (
-    <Label
-      ref={ref}
-      className={cn(error && "text-destructive", className)}
-      htmlFor={formItemId}
-      {...props}
-    />
-  )
-})
+const BoundFormLabel = React.forwardRef<FormLabelRef, FormLabelProps>(
+  ({ className, ...props }, ref) => {
+    const { error, formItemId } = useFormField()
+
+    return (
+      <Label
+        ref={ref}
+        className={cn(error && "text-destructive", className)}
+        htmlFor={formItemId}
+        {...props}
+      />
+    )
+  },
+)
+BoundFormLabel.displayName = "BoundFormLabel"
+
+const FormLabel = React.forwardRef<FormLabelRef, FormLabelProps>(
+  ({ className, ...props }, ref) => {
+    const fieldContext = React.useContext(FormFieldContext)
+    const itemContext = React.useContext(FormItemContext)
+
+    // Alguns fluxos usam o mesmo componente apenas como rótulo visual para
+    // controles que não pertencem ao react-hook-form (ex.: upload/importação).
+    // Nesses casos, renderizamos um Label normal em vez de derrubar o Dialog.
+    if (!fieldContext || !itemContext) {
+      return <Label ref={ref} className={className} {...props} />
+    }
+
+    return <BoundFormLabel ref={ref} className={className} {...props} />
+  },
+)
 FormLabel.displayName = "FormLabel"
 
 const FormControl = React.forwardRef<
