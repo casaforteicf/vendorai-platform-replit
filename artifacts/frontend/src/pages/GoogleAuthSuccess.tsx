@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/i18n";
 
+const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
+
 const PT_COPY = {
   accountNotFound: "Este e-mail do Google ainda não possui acesso à plataforma.",
   loginError: "Não foi possível concluir o login com Google.",
@@ -23,6 +25,13 @@ const ES_COPY = {
   backToLogin: "Volver al inicio de sesión",
   completing: "Completando el inicio de sesión con Google...",
 } as const;
+
+function consumeSafePostLoginPath(): string | null {
+  const path = sessionStorage.getItem(POST_LOGIN_PATH_KEY);
+  if (!path || !path.startsWith("/") || path.startsWith("//")) return null;
+  sessionStorage.removeItem(POST_LOGIN_PATH_KEY);
+  return path;
+}
 
 export default function GoogleAuthSuccess() {
   const { login } = useAuth();
@@ -65,7 +74,11 @@ export default function GoogleAuthSuccess() {
         }
 
         const user = await response.json();
-        if (!cancelled) login(token, user);
+        if (!cancelled) {
+          const returnPath = consumeSafePostLoginPath();
+          login(token, user);
+          if (returnPath) window.location.assign(returnPath);
+        }
       } catch {
         if (!cancelled) setError(copy.sessionValidationError);
       }
