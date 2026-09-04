@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { AccessLicenseAdminCard } from "@/components/billing/AccessLicenseAdminCard";
+import { TenantInternationalProfileCard } from "@/components/admin/TenantInternationalProfileCard";
 import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Building2, Shield, ShieldOff, Mail, Loader2, Zap, Bot,
@@ -33,6 +34,13 @@ type TenantDetail = {
   accessSentAt?: string | null;
   createdAt?: string | null;
   billingCycle?: "monthly" | "annual" | null;
+  countryCode?: string | null;
+  defaultLocale?: string | null;
+  timezone?: string | null;
+  defaultCurrency?: string | null;
+  supportedCurrencies?: string[] | null;
+  taxIdentifierType?: string | null;
+  taxIdentifier?: string | null;
 };
 
 type AdminPlan = {
@@ -904,6 +912,8 @@ export default function AdminTenantDetail() {
       </div>
 
       <AccessLicenseAdminCard tenantId={id} />
+
+      <TenantInternationalProfileCard tenantId={id} tenant={tenant} />
 
       <Card>
         <CardHeader className="pb-3">
