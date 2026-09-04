@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import AutomaticVoiceSelectionNotice from "./AutomaticVoiceSelectionNotice";
+import FidelityScorePanel from "./FidelityScorePanel";
 import TalkingVideoPanelCore from "./TalkingVideoPanelCore";
 import MultilingualVoicePanel, { type MultilingualVoiceProfile } from "./MultilingualVoicePanel";
 
@@ -38,6 +39,7 @@ export default function TalkingVideoPanel(props: Props) {
         onVoiceAdded={handleVoiceAdded}
       />
       <AutomaticVoiceSelectionNotice voices={voices} />
+      <FidelityScorePanel tenantId={props.tenantId} identityId={props.identityId} />
       <TalkingVideoPanelCore
         tenantId={props.tenantId}
         identityId={props.identityId}
