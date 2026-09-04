@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import ImageAdvisorPanel from "@/components/media/ImageAdvisorPanel";
 import MediaPostGenerationPanel from "@/components/media/MediaPostGenerationPanel";
+import AudioRightsPanel from "@/components/media/AudioRightsPanel";
 import {
   Archive,
   AudioLines,
@@ -37,6 +38,8 @@ import {
 type MediaType = "image" | "video" | "audio" | "document";
 type FilterType = "all" | MediaType;
 type MediaContextType = "none" | "client" | "event" | "campaign" | "product" | "project" | "other";
+type AudioKind = "music" | "voiceover" | "sound_effect" | "jingle" | "sonic_identity" | "other";
+type AudioKindFilter = "all" | AudioKind;
 type WorkspaceSection = "library" | "projects" | "ai" | "production";
 
 type MediaAsset = {
@@ -95,6 +98,25 @@ const TYPE_LABELS: Record<MediaType, string> = {
   video: "Vídeo",
   audio: "Áudio",
   document: "Arquivo",
+};
+
+const AUDIO_KIND_LABELS: Record<AudioKind, string> = {
+  music: "Música / Trilha",
+  voiceover: "Locução / Voz",
+  sound_effect: "Efeito sonoro",
+  jingle: "Jingle",
+  sonic_identity: "Identidade sonora",
+  other: "Outro áudio",
+};
+
+const AUDIO_KIND_SHORT_LABELS: Record<AudioKindFilter, string> = {
+  all: "Todos",
+  music: "Músicas",
+  voiceover: "Locuções",
+  sound_effect: "Efeitos",
+  jingle: "Jingles",
+  sonic_identity: "Identidade",
+  other: "Outros",
 };
 
 function authHeaders(json = false): Record<string, string> {
@@ -167,6 +189,36 @@ function sourceLabel(asset: MediaAsset): string {
   return "Upload";
 }
 
+function assetAudioKind(asset: MediaAsset): AudioKind | null {
+  if (asset.type !== "audio") return null;
+  const value = asset.metadata?.audioKind;
+  if (typeof value === "string" && value in AUDIO_KIND_LABELS) return value as AudioKind;
+  if (asset.role === "music") return "music";
+  if (asset.role === "voice") return "voiceover";
+  return "other";
+}
+
+function audioRole(kind: AudioKind): "source" | "voice" | "music" {
+  if (kind === "music") return "music";
+  if (kind === "voiceover") return "voice";
+  return "source";
+}
+
+function defaultMusicRights() {
+  return {
+    status: "pending",
+    origin: "unknown",
+    commercialUse: false,
+    paidAds: false,
+    territories: ["*"],
+    expiresAt: null,
+    attributionRequired: false,
+    attributionText: null,
+    licenseReference: null,
+    evidenceAssetId: null,
+  };
+}
+
 function typeIcon(type: MediaType) {
   return type === "image" ? ImageIcon : type === "video" ? Film : type === "audio" ? AudioLines : FileText;
 }
@@ -196,6 +248,8 @@ export default function MediaCenter() {
   const [uploadContextType, setUploadContextType] = useState<MediaContextType>("none");
   const [uploadContextLabel, setUploadContextLabel] = useState("");
   const [uploadFolderPath, setUploadFolderPath] = useState("");
+  const [audioKindFilter, setAudioKindFilter] = useState<AudioKindFilter>("all");
+  const [uploadAudioKind, setUploadAudioKind] = useState<AudioKind>("other");
 
   const selectedAssets = useMemo(
     () => assets.filter((asset) => selected.includes(asset.id)),
@@ -321,7 +375,7 @@ export default function MediaCenter() {
           headers: authHeaders(true),
           body: JSON.stringify({
             type,
-            role: "source",
+            role: type === "audio" ? audioRole(uploadAudioKind) : "source",
             source: "upload",
             storageUrl: requestBody.objectPath,
             originalFilename: file.name,
@@ -330,6 +384,12 @@ export default function MediaCenter() {
             metadata: {
               uploadedFrom: "media_hub",
               uploadedAt: new Date().toISOString(),
+              ...(type === "audio"
+                ? {
+                    audioKind: uploadAudioKind,
+                    ...(uploadAudioKind === "music" ? { rights: defaultMusicRights() } : {}),
+                  }
+                : {}),
               ...(folderPath ? { folderPath } : {}),
               ...(uploadContextType !== "none"
                 ? { context: { type: uploadContextType, label: contextLabel } }
@@ -567,6 +627,32 @@ export default function MediaCenter() {
     }
   }
 
+  async function classifyAudio(asset: MediaAsset, kind: AudioKind) {
+    if (!tenantId || asset.type !== "audio") return;
+    setOrganizing(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media/assets/${asset.id}`, {
+        method: "PATCH",
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          role: audioRole(kind),
+          metadata: {
+            audioKind: kind,
+            ...(kind === "music" && !asset.metadata?.rights ? { rights: defaultMusicRights() } : {}),
+          },
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Falha ao classificar áudio");
+      toast({ title: "Áudio classificado", description: `${asset.originalFilename || "Arquivo"} agora está em ${AUDIO_KIND_LABELS[kind]}.` });
+      await loadAll();
+    } catch (error) {
+      toast({ title: "Não foi possível classificar o áudio", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setOrganizing(false);
+    }
+  }
+
   const counts = useMemo(
     () => ({
       all: assets.length,
@@ -578,10 +664,22 @@ export default function MediaCenter() {
     [assets],
   );
 
+  const audioKindCounts = useMemo(() => {
+    const result: Record<AudioKindFilter, number> = { all: 0, music: 0, voiceover: 0, sound_effect: 0, jingle: 0, sonic_identity: 0, other: 0 };
+    for (const asset of assets) {
+      const kind = assetAudioKind(asset);
+      if (!kind) continue;
+      result.all += 1;
+      result[kind] += 1;
+    }
+    return result;
+  }, [assets]);
+
   const visible = useMemo(
     () =>
       assets.filter((asset) => {
         if (filter !== "all" && asset.type !== filter) return false;
+        if (filter === "audio" && audioKindFilter !== "all" && assetAudioKind(asset) !== audioKindFilter) return false;
         if (sourceFilter !== "all" && asset.source !== sourceFilter) return false;
         const context = assetContext(asset);
         const folder = assetFolder(asset);
@@ -599,13 +697,16 @@ export default function MediaCenter() {
           context?.label,
           folder,
           asset.role,
+          assetAudioKind(asset) ? AUDIO_KIND_LABELS[assetAudioKind(asset)!] : null,
+          typeof asset.metadata?.genre === "string" ? asset.metadata.genre : null,
+          typeof asset.metadata?.mood === "string" ? asset.metadata.mood : null,
           sourceLabel(asset),
           TYPE_LABELS[asset.type],
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(term));
       }),
-    [assets, filter, sourceFilter, contextFilter, folderFilter, search],
+    [assets, filter, audioKindFilter, sourceFilter, contextFilter, folderFilter, search],
   );
 
   const unfiledCount = assets.filter((asset) => !assetFolder(asset)).length;
