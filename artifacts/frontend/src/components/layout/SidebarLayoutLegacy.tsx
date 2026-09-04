@@ -334,9 +334,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Painel da Rede",href: "/organizacao",   icon: Network,       sellerHidden: true,  section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
-    // "Stories" agora é um item dentro do dropdown "Conteúdo" (renomeado
-    // "Stories Praça.ai"), não mais um item de topo — ver bloco do
-    // dropdown mais abaixo.
+    // "Stories" agora é um item dentro do dropdown "Marketing", não mais um item de topo.
     { name: "Obras",         href: "/obras",                    icon: Building2,   sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Composições",   href: "/composicoes",              icon: Layers,      sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
@@ -411,7 +409,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         ...(effectiveVertical === "Pet Shop (Varejo)" ? BUCKET_EXTRA_HREFS.salao : []),
       ])
     : undefined;
-
 
   const BUCKET_SCOUT_LABEL: Partial<Record<VerticalBucket, string>> = {
     construcao: "Construção",
@@ -569,14 +566,21 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     const [relatoriosOpen, setRelatoriosOpen] = useState(false);
-    const [conteudoOpen, setConteudoOpen] = useState(false);
     const isRelatorio = location.startsWith("/relatorios/");
-    const isConteudo = location === "/content" || location === "/content-autopilot";
+    const isConteudo =
+      location.startsWith("/content") ||
+      location === "/ads" ||
+      location === "/marketing/plano-de-midia" ||
+      location === "/variedades-dia" ||
+      location === "/stories";
+    const [conteudoOpen, setConteudoOpen] = useState(isConteudo);
+    const isGeradorConteudo = location === "/content";
+    const isCampanhas = location.startsWith("/content?tab=campanhas");
     return (
       <>
         {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
 
-        {/* Conteúdo submenu */}
+        {/* Marketing submenu — fonte declarativa oficial */}
         <div>
           <button
             onClick={() => setConteudoOpen((v) => !v)}
@@ -600,7 +604,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 onClick={onNavigate}
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
-                  location === "/content"
+                  isGeradorConteudo
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
@@ -608,8 +612,24 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 <Sparkles className="h-3.5 w-3.5" /> Gerador de Conteúdo
               </Link>
               <Link
+                href="/content-studio/video"
+                onClick={onNavigate}
+                aria-label="Vídeo com IA — VendorAI Media Engine"
+                title="Vídeo com IA — VendorAI Media Engine"
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location.startsWith("/content-studio/video")
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Clapperboard className="h-3.5 w-3.5" /> Vídeo com IA
+              </Link>
+              <Link
                 href="/content-autopilot"
                 onClick={onNavigate}
+                aria-label="Sites — Gerador de Sites e Content Autopilot"
+                title="Sites — Gerador de Sites e Content Autopilot"
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
                   location === "/content-autopilot"
@@ -617,12 +637,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                <Sparkles className="h-3.5 w-3.5" /> Content Autopilot
+                <Globe className="h-3.5 w-3.5" /> Sites
               </Link>
               <Link
                 href="/content?tab=campanhas"
                 onClick={onNavigate}
-                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  isCampanhas
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
               >
                 <Megaphone className="h-3.5 w-3.5" /> Campanhas
               </Link>
@@ -653,6 +678,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               <Link
                 href="/variedades-dia"
                 onClick={onNavigate}
+                aria-label="Variedades do Dia — conteúdo temporário do Praça.ai"
+                title="Variedades do Dia — conteúdo temporário do Praça.ai"
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
                   location === "/variedades-dia"
@@ -660,7 +687,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                <Sparkles className="h-3.5 w-3.5" /> Variedades Praça.ai
+                <Sparkles className="h-3.5 w-3.5" /> Variedades do Dia
               </Link>
               {!isStartPlan && (
                 <Link
@@ -692,7 +719,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             )}
           >
             <div className="flex items-center gap-3">
-              <BarChart3 className="h-4 w-4 shrink-0" />
+              <BarChart3 className="h-4 w-4" />
               Relatórios
             </div>
             {relatoriosOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
