@@ -8,6 +8,7 @@ import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { sendPasswordResetEmail } from "../lib/email.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
+import { getTenantCountryProfile } from "../lib/tenant-country-profile.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -87,6 +88,7 @@ const demoSignupSchema = z.object({
   email: z.email(),
   senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
   telefone: z.string().optional(),
+  countryCode: z.enum(["BR", "PY", "AR", "UY", "CL"]).optional().default("BR"),
   segmento: optionalTrialText,
   nicho: optionalTrialText,
   produtosServicos: optionalTrialText,
@@ -144,6 +146,7 @@ router.post("/auth/demo-signup", async (req, res) => {
     email,
     senha,
     telefone,
+    countryCode,
     codigoIndicacaoPraca,
     segmento,
     nicho,
@@ -168,6 +171,7 @@ router.post("/auth/demo-signup", async (req, res) => {
     behaviorSessionId,
     adDataConsent,
   } = parsed.data;
+  const countryProfile = getTenantCountryProfile(countryCode);
 
   const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
   const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
@@ -186,6 +190,12 @@ router.post("/auth/demo-signup", async (req, res) => {
         demoExpiresAt,
         planId: null,
         provisioningMethod: "trial",
+        countryCode,
+        defaultLocale: countryProfile.defaultLocale,
+        timezone: countryProfile.timezone,
+        defaultCurrency: countryProfile.defaultCurrency,
+        supportedCurrencies: [countryProfile.defaultCurrency],
+        taxIdentifierType: countryProfile.taxIdentifierType,
         codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
       })
       .returning();
@@ -231,6 +241,7 @@ router.post("/auth/demo-signup", async (req, res) => {
         const now = new Date();
         const normalizedPhone = storePhone(telefone);
         const qualification = compactRecord({
+          countryCode,
           segmento,
           nicho,
           produtosServicos,
@@ -378,7 +389,16 @@ router.post("/auth/demo-signup", async (req, res) => {
     res.status(201).json({
       token,
       user,
-      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, isDemo: true, demoExpiresAt },
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        isDemo: true,
+        demoExpiresAt,
+        countryCode,
+        defaultLocale: countryProfile.defaultLocale,
+        defaultCurrency: countryProfile.defaultCurrency,
+      },
       demoUrl: `/app?tenant=${tenant.slug}`,
     });
   } catch (err: unknown) {
