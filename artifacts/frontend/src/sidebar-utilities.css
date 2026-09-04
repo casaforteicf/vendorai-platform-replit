@@ -1,134 +1,93 @@
 /*
- * Global utilities — desktop
+ * Sidebar utilities — stable desktop/mobile behavior.
  *
- * Keep the left sidebar focused on work navigation. The existing account,
- * Help/FAQ, What's new and Logout controls remain the same React elements
- * (and therefore keep all current handlers/state), but are visually moved to
- * a compact global utility cluster in the top-right corner.
- *
- * Mobile keeps the existing drawer footer, where these actions are already
- * compact and do not compete with the work navigation.
+ * Keep account, Ajuda/FAQ, Novidades and Sair in the sidebar on desktop,
+ * matching the canonical navigation layout. Do not float these controls over
+ * page content. When the sidebar is collapsed, reuse the mobile brand header
+ * as a compact desktop brand strip so the logo never disappears.
  */
+
 @media (min-width: 768px) {
+  /* Explicitly keep footer utilities inside the sidebar. */
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t {
-    position: fixed;
-    top: 12px;
-    right: 18px;
-    z-index: 45;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 8px;
-    border: 1px solid hsl(var(--border));
-    border-radius: 14px;
-    background: hsl(var(--background));
-    color: hsl(var(--foreground));
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.09);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    position: static;
+    display: block;
+    padding: 1rem;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
-  /* User identity: avatar + name only. Email stays available in the user
-     session but is intentionally removed from the always-visible chrome. */
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 {
-    margin-bottom: 0 !important;
-    padding: 0 10px 0 0 !important;
-    gap: 8px !important;
-    border-right: 1px solid hsl(var(--border));
+    margin-bottom: 0.75rem !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    border-right: 0 !important;
   }
 
-  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 {
-    max-width: 150px;
-  }
-
-  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 > p:last-child {
-    display: none;
-  }
-
-  /* Help + What's new become horizontal global actions. */
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    margin-bottom: 0 !important;
+    display: block;
+    margin-bottom: 0.25rem !important;
   }
 
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > * {
-    margin-top: 0 !important;
+    margin-top: 0.25rem;
   }
 
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > a,
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > button,
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > button {
-    width: auto !important;
-    min-height: 36px !important;
-    height: 36px;
-    white-space: nowrap;
-    border-radius: 9px;
+    width: 100% !important;
+    min-height: 44px !important;
+    height: auto;
+    border-radius: 0.75rem;
   }
 
-  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > a {
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-  }
-
-  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > button {
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-  }
-
-  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > button {
-    justify-content: center !important;
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-    margin-left: 2px;
-  }
-
-  /* Branding stays anchored. When the sidebar is expanded, its normal brand
-     remains in the left rail. When it is collapsed, reuse the already-rendered
-     mobile brand header as a compact desktop top bar so the tenant/company logo
-     never disappears. The menu button stays hidden in this desktop-only state. */
-  .flex.h-screen.bg-background:has(> .hidden.md\:flex.w-\[68px\])
+  /* Collapsed desktop sidebar: show the already-rendered brand header from the
+     main column. The attribute selector is intentionally simpler than the old
+     escaped Tailwind selector and works reliably with the runtime class token. */
+  .flex.h-screen.bg-background:has(> div[class*="w-[68px]"])
     > .flex-1.flex.flex-col.min-w-0.overflow-hidden
     > header.md\:hidden {
     display: flex !important;
-    min-height: 56px;
-    height: 56px;
+    min-height: 52px;
+    height: 52px;
     padding: 8px 18px !important;
-    padding-right: 420px !important;
     border-bottom: 1px solid hsl(var(--border));
-    background: hsl(var(--background) / 0.94);
+    background: hsl(var(--background) / 0.96);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
   }
 
-  .flex.h-screen.bg-background:has(> .hidden.md\:flex.w-\[68px\])
+  .flex.h-screen.bg-background:has(> div[class*="w-[68px]"])
     > .flex-1.flex.flex-col.min-w-0.overflow-hidden
     > header.md\:hidden
     > button {
     display: none !important;
   }
 
-  .flex.h-screen.bg-background:has(> .hidden.md\:flex.w-\[68px\])
+  .flex.h-screen.bg-background:has(> div[class*="w-[68px]"])
     > .flex-1.flex.flex-col.min-w-0.overflow-hidden
     > header.md\:hidden
     img {
-    max-height: 36px !important;
+    display: block;
+    width: auto !important;
     max-width: 180px !important;
+    max-height: 34px !important;
     object-fit: contain;
   }
-}
 
-/* On narrower desktop/tablet widths, keep the avatar but collapse the name so
-   the utility cluster does not cover page-level actions. */
-@media (min-width: 768px) and (max-width: 1100px) {
-  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 > .flex-1 {
-    display: none;
-  }
-
-  .flex.h-screen.bg-background:has(> .hidden.md\:flex.w-\[68px\])
+  .flex.h-screen.bg-background:has(> div[class*="w-[68px]"])
     > .flex-1.flex.flex-col.min-w-0.overflow-hidden
-    > header.md\:hidden {
-    padding-right: 300px !important;
+    > header.md\:hidden
+    [data-tenant-brand-fallback] {
+    display: block !important;
+    max-width: 220px;
+    font-size: 0.875rem;
   }
 }
