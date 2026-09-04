@@ -8,8 +8,9 @@
 import { mkdtemp, writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
-import { db, tenantsTable, eq } from "@workspace/db";
+import { db, tenantsTable } from "@workspace/db";
 import { transcribeAudio as gatewayTranscribeAudio } from "../lib/ai-gateway.js";
 
 async function resolveTenantTranscriptionLanguage(tenantId: string, log?: Logger): Promise<"pt" | "es"> {
