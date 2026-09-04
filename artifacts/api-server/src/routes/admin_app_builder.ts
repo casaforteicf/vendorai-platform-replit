@@ -5,6 +5,7 @@ import {
   appActionRegistryTable,
   appAiPoliciesTable,
   appComponentRegistryTable,
+  appDataSourceRegistryTable,
   appFeatureRegistryTable,
   appInstancesTable,
   appInstanceVersionsTable,
@@ -534,14 +535,15 @@ router.post("/admin/app-builder/apps/:appId/versions/:versionId/publish", async 
 });
 
 router.get("/admin/app-builder/registries", async (_req, res) => {
-  const [components, features, actions, workflows, aiPolicies] = await Promise.all([
+  const [components, features, actions, workflows, aiPolicies, dataSources] = await Promise.all([
     db.select().from(appComponentRegistryTable).orderBy(asc(appComponentRegistryTable.name)),
     db.select().from(appFeatureRegistryTable).orderBy(asc(appFeatureRegistryTable.name)),
     db.select().from(appActionRegistryTable).orderBy(asc(appActionRegistryTable.name)),
     db.select().from(appWorkflowRegistryTable).orderBy(asc(appWorkflowRegistryTable.name)),
     db.select().from(appAiPoliciesTable).orderBy(asc(appAiPoliciesTable.name)),
+    db.select().from(appDataSourceRegistryTable).orderBy(asc(appDataSourceRegistryTable.name)),
   ]);
-  res.json({ components, features, actions, workflows, aiPolicies });
+  res.json({ components, features, actions, workflows, aiPolicies, dataSources });
 });
 
 router.post("/admin/app-builder/registries/:kind", async (req, res) => {
@@ -584,6 +586,8 @@ router.post("/admin/app-builder/registries/:kind", async (req, res) => {
       const [row] = await db.insert(appAiPoliciesTable).values(parsed.data).returning();
       return void res.status(201).json(row);
     }
+    // Data Sources são intencionalmente somente leitura nesta API. O executor_key
+    // continua controlado por código/migrations para impedir SQL/URL/código arbitrário.
     res.status(404).json({ error: "Registry desconhecido" });
   } catch (error) {
     if (isUniqueViolation(error)) {
