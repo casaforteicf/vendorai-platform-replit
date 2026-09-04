@@ -1,4 +1,12 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { messages, type TranslationKey } from "./messages";
 
 export const supportedLocales = ["pt-BR", "es-PY", "es-AR", "es-UY", "es-CL"] as const;
@@ -26,10 +34,15 @@ function normalizeLocale(locale?: string | null): SupportedLocale | null {
   return null;
 }
 
+export function getStoredLocalePreference(): SupportedLocale | null {
+  if (typeof window === "undefined") return null;
+  return normalizeLocale(window.localStorage.getItem(STORAGE_KEY));
+}
+
 function detectBrowserLocale(): SupportedLocale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
 
-  const stored = normalizeLocale(window.localStorage.getItem(STORAGE_KEY));
+  const stored = getStoredLocalePreference();
   if (stored) return stored;
 
   const browserLocales = navigator.languages?.length ? navigator.languages : [navigator.language];
@@ -76,6 +89,7 @@ export function resolveLocale(input: {
 type I18nContextValue = {
   locale: SupportedLocale;
   setLocale: (locale: SupportedLocale) => void;
+  syncLocale: (locale: SupportedLocale) => void;
   t: (key: TranslationKey, variables?: Record<string, string | number>) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   formatCurrency: (value: number, currency: string) => string;
@@ -87,13 +101,22 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<SupportedLocale>(detectBrowserLocale);
 
-  const setLocale = (nextLocale: SupportedLocale) => {
+  const setLocale = useCallback((nextLocale: SupportedLocale) => {
     setLocaleState(nextLocale);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, nextLocale);
-      document.documentElement.lang = nextLocale;
     }
-  };
+  }, []);
+
+  const syncLocale = useCallback((nextLocale: SupportedLocale) => {
+    setLocaleState(nextLocale);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = locale;
+    }
+  }, [locale]);
 
   const value = useMemo<I18nContextValue>(() => {
     const dictionary = dictionaryFor(locale);
@@ -101,6 +124,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     return {
       locale,
       setLocale,
+      syncLocale,
       t: (key, variables) => {
         let text: string = dictionary[key] ?? messages["pt-BR"][key] ?? key;
         if (!variables) return text;
@@ -115,7 +139,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       formatDate: (date, options) =>
         new Intl.DateTimeFormat(locale, options).format(date instanceof Date ? date : new Date(date)),
     };
-  }, [locale]);
+  }, [locale, setLocale, syncLocale]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
