@@ -28,6 +28,9 @@ import {
   MapPin,
   ArrowLeft,
   Send,
+  Ban,
+  Undo2,
+  AlertTriangle,
 } from "lucide-react";
 
 interface MediaPlanCanal {
@@ -93,6 +96,8 @@ interface MediaPlan {
   createdAt: string;
 }
 
+type CalendarStatus = "planejado" | "aprovado" | "recusado" | "gerado" | "publicado" | "pulado";
+
 interface CalendarItem {
   id: string;
   mediaPlanId?: string | null;
@@ -101,10 +106,31 @@ interface CalendarItem {
   temaSugerido: string;
   tipo: string;
   canal: string;
-  status: "planejado" | "gerado" | "publicado" | "pulado";
+  status: CalendarStatus;
 }
 
 type PeriodoDias = 30 | 60 | 90;
+
+const CALENDAR_TYPES = [
+  "feed",
+  "stories",
+  "reels",
+  "carrossel",
+  "meta_ad",
+  "search_ad",
+  "display_ad",
+  "performance_max",
+  "youtube_short",
+  "youtube_video",
+  "tiktok",
+  "linkedin_post",
+  "whatsapp",
+  "email",
+  "blog",
+  "landing_page",
+  "site",
+  "sms",
+];
 
 function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
@@ -126,6 +152,10 @@ function contentPillarFromPilar(pilar: string) {
   return parts.length > 1 ? parts.slice(1).join(" · ") : pilar;
 }
 
+function normalizeChannel(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
 const PRIORIDADE_STYLE: Record<string, string> = {
   alta: "border-primary/40 text-primary bg-primary/5",
   media: "border-amber-300 text-amber-700 bg-amber-50",
@@ -136,6 +166,15 @@ const STATUS_LABEL: Record<string, string> = {
   gerado: "Planejado pela IA",
   em_revisao: "Em revisão",
   aprovado: "Aprovado",
+};
+
+const ITEM_STATUS_LABEL: Record<CalendarStatus, string> = {
+  planejado: "Planejado",
+  aprovado: "Aprovado",
+  recusado: "Recusado",
+  gerado: "Em produção",
+  publicado: "Publicado",
+  pulado: "Ignorado",
 };
 
 export default function PlanoMidia() {
@@ -152,12 +191,13 @@ export default function PlanoMidia() {
   const [periodoDias, setPeriodoDias] = useState<PeriodoDias>(30);
   const [calendario, setCalendario] = useState<CalendarItem[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
-  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
-  const [savingTitleId, setSavingTitleId] = useState<string | null>(null);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [campaignDraft, setCampaignDraft] = useState<MediaPlanCampaign | null>(null);
   const [savingCampaign, setSavingCampaign] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemDraft, setItemDraft] = useState<CalendarItem | null>(null);
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [repairingLegacy, setRepairingLegacy] = useState(false);
 
   async function loadCalendar(planId: string) {
     const response = await fetch(`/api/tenants/${tenantId}/content-calendar`, { headers: authHeaders() });
@@ -166,17 +206,82 @@ export default function PlanoMidia() {
     return items.filter((item) => item.mediaPlanId === planId);
   }
 
+  async function requestCalendar(createdPlan: MediaPlan, substituirPlanejado = false) {
+    const days = createdPlan.conteudo.periodoDias ?? periodoDias;
+    setGerandoCalendario(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/content-calendar/gerar`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mediaPlanId: createdPlan.id,
+          semanas: weeksForPeriod(days as PeriodoDias),
+          substituirPlanejado,
+        }),
+      });
+      const data = (await response.json()) as CalendarItem[] | { error?: string };
+      if (!response.ok) throw new Error(!Array.isArray(data) ? data.error ?? "Falha ao gerar o calendário" : "Falha ao gerar o calendário");
+      return Array.isArray(data) ? data : [];
+    } finally {
+      setGerandoCalendario(false);
+    }
+  }
+
+  function calendarNeedsMultichannelRepair(currentPlan: MediaPlan, items: CalendarItem[]) {
+    if (currentPlan.conteudo.statusPlanejamento === "aprovado" || items.length === 0) return false;
+    const expectedChannels = new Set(
+      (currentPlan.conteudo.campanhas ?? []).flatMap((campaign) => campaign.canais.map((channel) => normalizeChannel(channel.canal))),
+    );
+    const currentChannels = new Set(items.map((item) => normalizeChannel(item.canal)));
+    const legacyLabels = items.every((item) => !item.pilar.includes(" · "));
+    return expectedChannels.size >= 3 && (currentChannels.size <= 1 || legacyLabels);
+  }
+
+  async function completeLegacyPlan(currentPlan: MediaPlan) {
+    const response = await fetch(`/api/tenants/${tenantId}/media-plan/${currentPlan.id}/completar`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ periodoDias: currentPlan.conteudo.periodoDias ?? periodoDias }),
+    });
+    const data = (await response.json()) as MediaPlan & { error?: string };
+    if (!response.ok) throw new Error(data.error ?? "Falha ao completar o planejamento anterior");
+    return data;
+  }
+
   async function carregar() {
     setLoading(true);
     try {
       const response = await fetch(`/api/tenants/${tenantId}/media-plan`, { headers: authHeaders() });
-      const data = (await response.json()) as MediaPlan | null;
+      let data = (await response.json()) as MediaPlan | null;
+      if (!data) {
+        setPlan(null);
+        setCalendario([]);
+        return;
+      }
+
+      let upgraded = false;
+      if ((data.conteudo.campanhas?.length ?? 0) === 0) {
+        setRepairingLegacy(true);
+        data = await completeLegacyPlan(data);
+        upgraded = true;
+      }
+
       setPlan(data);
-      if (data?.conteudo?.periodoDias) setPeriodoDias(data.conteudo.periodoDias);
-      if (data?.id) setCalendario(await loadCalendar(data.id));
-    } catch {
-      // Estado vazio é tratado pela própria tela.
+      if (data.conteudo.periodoDias) setPeriodoDias(data.conteudo.periodoDias);
+
+      let items = await loadCalendar(data.id);
+      if (upgraded || calendarNeedsMultichannelRepair(data, items)) {
+        items = await requestCalendar(data, true);
+      }
+      setCalendario(items);
+    } catch (err) {
+      toast({
+        title: "Não foi possível carregar o planejamento",
+        description: String(err instanceof Error ? err.message : err),
+        variant: "destructive",
+      });
     } finally {
+      setRepairingLegacy(false);
       setLoading(false);
     }
   }
@@ -185,24 +290,6 @@ export default function PlanoMidia() {
     if (tenantId) void carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
-
-  async function generateCalendarForPlan(createdPlan: MediaPlan) {
-    const days = createdPlan.conteudo.periodoDias ?? periodoDias;
-    setGerandoCalendario(true);
-    try {
-      const response = await fetch(`/api/tenants/${tenantId}/content-calendar/gerar`, {
-        method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ mediaPlanId: createdPlan.id, semanas: weeksForPeriod(days) }),
-      });
-      const data = (await response.json()) as CalendarItem[] | { error?: string };
-      if (!response.ok) throw new Error(!Array.isArray(data) ? data.error ?? "Falha ao gerar o calendário" : "Falha ao gerar o calendário");
-      setCalendario(Array.isArray(data) ? data : []);
-      return Array.isArray(data) ? data.length : 0;
-    } finally {
-      setGerandoCalendario(false);
-    }
-  }
 
   async function gerar() {
     setGerando(true);
@@ -216,10 +303,11 @@ export default function PlanoMidia() {
       const data = (await response.json()) as MediaPlan & { error?: string };
       if (!response.ok) throw new Error(data?.error ?? "Falha ao gerar o plano");
       setPlan(data);
-      const count = await generateCalendarForPlan(data);
+      const items = await requestCalendar(data, false);
+      setCalendario(items);
       toast({
         title: `Plano de ${periodoDias} dias pronto`,
-        description: `${data.conteudo.campanhas?.length ?? 0} campanhas e ${count} ações distribuídas no calendário para revisão.`,
+        description: `${data.conteudo.campanhas?.length ?? 0} campanhas, ${(new Set(items.map((item) => item.canal))).size} canais e ${items.length} ações para revisão.`,
       });
     } catch (err) {
       toast({
@@ -244,7 +332,11 @@ export default function PlanoMidia() {
       const data = (await response.json()) as MediaPlan & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha ao aprovar");
       setPlan(data);
-      toast({ title: "Planejamento aprovado", description: "A direção estratégica está pronta para ser executada no Gerador de Conteúdo." });
+      setCalendario((current) => current.map((item) => item.status === "planejado" ? { ...item, status: "aprovado" } : item));
+      toast({
+        title: "Planejamento aprovado",
+        description: "As ações pendentes foram aprovadas; as recusadas continuam fora da produção.",
+      });
     } catch (err) {
       toast({ title: "Não foi possível aprovar", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
     } finally {
@@ -252,28 +344,14 @@ export default function PlanoMidia() {
     }
   }
 
-  async function saveTitle(item: CalendarItem) {
-    const title = editingTitle.trim();
-    if (!title || title === item.temaSugerido) {
-      setEditingTitleId(null);
-      return;
-    }
-    setSavingTitleId(item.id);
-    try {
-      const response = await fetch(`/api/content-calendar/${item.id}`, {
-        method: "PATCH",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ temaSugerido: title }),
-      });
-      if (!response.ok) throw new Error("Falha ao salvar o título");
-      setCalendario((current) => current.map((row) => (row.id === item.id ? { ...row, temaSugerido: title } : row)));
-      setEditingTitleId(null);
-      toast({ title: "Título atualizado" });
-    } catch (err) {
-      toast({ title: "Não foi possível salvar", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
-    } finally {
-      setSavingTitleId(null);
-    }
+  async function markPlanBackToReview() {
+    if (!plan || plan.conteudo.statusPlanejamento !== "aprovado") return;
+    const response = await fetch(`/api/tenants/${tenantId}/media-plan/${plan.id}`, {
+      method: "PATCH",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ patch: { versaoPlanejamento: plan.conteudo.versaoPlanejamento ?? 1 } }),
+    });
+    if (response.ok) setPlan((await response.json()) as MediaPlan);
   }
 
   function startCampaignEdit(campaign: MediaPlanCampaign) {
@@ -306,6 +384,72 @@ export default function PlanoMidia() {
     }
   }
 
+  function startItemEdit(item: CalendarItem) {
+    setEditingItemId(item.id);
+    setItemDraft({ ...item });
+  }
+
+  async function saveItem(item: CalendarItem) {
+    if (!itemDraft) return;
+    setSavingItemId(item.id);
+    try {
+      await markPlanBackToReview();
+      const response = await fetch(`/api/content-calendar/${item.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          temaSugerido: itemDraft.temaSugerido.trim(),
+          dataAgendada: itemDraft.dataAgendada,
+          pilar: itemDraft.pilar.trim(),
+          canal: itemDraft.canal.trim(),
+          tipo: itemDraft.tipo,
+          status: item.status === "aprovado" ? "planejado" : item.status,
+        }),
+      });
+      const data = (await response.json()) as CalendarItem & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao salvar a ação");
+      setCalendario((current) => current.map((row) => row.id === item.id ? data : row));
+      setEditingItemId(null);
+      setItemDraft(null);
+      toast({ title: "Ação atualizada", description: item.status === "aprovado" ? "A edição voltou para revisão antes da produção." : undefined });
+    } catch (err) {
+      toast({ title: "Não foi possível salvar", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
+  async function setItemStatus(item: CalendarItem, status: "planejado" | "aprovado" | "recusado") {
+    setSavingItemId(item.id);
+    try {
+      await markPlanBackToReview();
+      const response = await fetch(`/api/content-calendar/${item.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const data = (await response.json()) as CalendarItem & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Falha ao atualizar o status");
+      setCalendario((current) => current.map((row) => row.id === item.id ? data : row));
+    } catch (err) {
+      toast({ title: "Não foi possível atualizar", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
+  async function rebuildCalendar() {
+    if (!plan) return;
+    try {
+      const items = await requestCalendar(plan, true);
+      const preserved = calendario.filter((item) => item.status !== "planejado");
+      setCalendario([...preserved, ...items].sort((a, b) => a.dataAgendada.localeCompare(b.dataAgendada)));
+      toast({ title: "Calendário multicanal atualizado", description: "Ações já aprovadas ou recusadas foram preservadas." });
+    } catch (err) {
+      toast({ title: "Não foi possível reconstruir o calendário", description: String(err instanceof Error ? err.message : err), variant: "destructive" });
+    }
+  }
+
   const conteudo = plan?.conteudo;
   const campanhas = conteudo?.campanhas ?? [];
   const selectedCampaign = campanhas.find((campaign) => campaign.id === selectedCampaignId) ?? null;
@@ -316,6 +460,44 @@ export default function PlanoMidia() {
   const totalMaterials = campanhas.reduce((sum, campaign) => sum + (campaign.materiaisPlanejados ?? 0), 0);
   const statusPlanejamento = conteudo?.statusPlanejamento ?? "gerado";
   const approved = statusPlanejamento === "aprovado";
+
+  const channelSummary = useMemo(() => {
+    const map = new Map<string, {
+      canal: string;
+      campanhas: Set<string>;
+      materiais: number;
+      formatos: Set<string>;
+      frequencias: Set<string>;
+      funcoes: Set<string>;
+      kpis: Set<string>;
+    }>();
+    for (const campaign of campanhas) {
+      for (const channel of campaign.canais) {
+        const key = normalizeChannel(channel.canal);
+        const current = map.get(key) ?? {
+          canal: channel.canal,
+          campanhas: new Set<string>(),
+          materiais: 0,
+          formatos: new Set<string>(),
+          frequencias: new Set<string>(),
+          funcoes: new Set<string>(),
+          kpis: new Set<string>(),
+        };
+        current.campanhas.add(campaign.nome);
+        current.materiais += channel.quantidadeMateriais ?? 0;
+        channel.formatos.forEach((format) => current.formatos.add(format));
+        if (channel.frequencia) current.frequencias.add(channel.frequencia);
+        if (channel.funcao) current.funcoes.add(channel.funcao);
+        if (channel.kpiPrincipal) current.kpis.add(channel.kpiPrincipal);
+        map.set(key, current);
+      }
+    }
+    return Array.from(map.values());
+  }, [campanhas]);
+
+  const pendingCount = calendario.filter((item) => item.status === "planejado").length;
+  const approvedCount = calendario.filter((item) => item.status === "aprovado").length;
+  const rejectedCount = calendario.filter((item) => item.status === "recusado").length;
 
   if (selectedCampaign && conteudo) {
     const editMode = editingCampaignId === selectedCampaign.id && campaignDraft;
@@ -338,7 +520,7 @@ export default function PlanoMidia() {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {editMode ? (
               <>
                 <Button type="button" variant="outline" onClick={() => { setEditingCampaignId(null); setCampaignDraft(null); }} disabled={savingCampaign}>
@@ -353,11 +535,7 @@ export default function PlanoMidia() {
                 <Pencil className="h-4 w-4 mr-1.5" /> Editar campanha
               </Button>
             )}
-            <Button
-              type="button"
-              disabled={!approved}
-              onClick={() => navigate(`/content?source=media-plan&mediaPlanId=${plan?.id}&campaignId=${selectedCampaign.id}`)}
-            >
+            <Button type="button" disabled={!approved} onClick={() => navigate(`/content?source=media-plan&mediaPlanId=${plan?.id}&campaignId=${selectedCampaign.id}`)}>
               <Send className="h-4 w-4 mr-1.5" /> Enviar para produção
             </Button>
           </div>
@@ -451,7 +629,7 @@ export default function PlanoMidia() {
         <div>
           <h1 className="vendor-page-title flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Plano de Mídia IA</h1>
           <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
-            O Planejador define a direção estratégica do período. A IA cria campanhas, canais, frequência, calendário e KPIs; você só edita se quiser. A produção acontece depois no Gerador de Conteúdo.
+            O Planejador define a direção estratégica do período. A IA cria campanhas multicanal, frequência, calendário e KPIs; você pode aprovar, editar ou recusar antes da produção. O Gerador de Conteúdo executa depois.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -462,20 +640,23 @@ export default function PlanoMidia() {
               </button>
             ))}
           </div>
-          <Button type="button" onClick={gerar} disabled={gerando || gerandoCalendario}>
-            {gerando || gerandoCalendario ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}
+          <Button type="button" onClick={gerar} disabled={gerando || gerandoCalendario || repairingLegacy}>
+            {gerando || gerandoCalendario || repairingLegacy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}
             {plan ? "Replanejar com IA" : "Planejar com IA"}
           </Button>
         </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
+        <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          {repairingLegacy && <span className="text-sm">Atualizando o plano salvo para a estrutura multicanal…</span>}
+        </div>
       ) : !conteudo ? (
         <Card>
           <CardContent className="py-14 text-center space-y-4">
             <Sparkles className="h-9 w-9 mx-auto text-primary" />
-            <div><p className="font-medium">Escolha 30, 60 ou 90 dias</p><p className="text-sm text-muted-foreground max-w-lg mx-auto mt-1">A IA monta o período completo sozinha: campanhas agrupadas, canais, frequência, títulos, ações e KPIs. Depois você revisa e aprova.</p></div>
+            <div><p className="font-medium">Escolha 30, 60 ou 90 dias</p><p className="text-sm text-muted-foreground max-w-lg mx-auto mt-1">A IA monta o período completo: campanhas agrupadas, todos os canais relevantes, frequência, títulos, ações e KPIs. Depois você revisa e aprova.</p></div>
             <Button type="button" onClick={gerar} disabled={gerando}>{gerando ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}Gerar planejamento</Button>
           </CardContent>
         </Card>
@@ -486,9 +667,9 @@ export default function PlanoMidia() {
               <Badge className={approved ? "bg-emerald-600" : ""}>{STATUS_LABEL[statusPlanejamento] ?? statusPlanejamento}</Badge>
               <span className="text-xs text-muted-foreground">Plano v{conteudo.versaoPlanejamento ?? 1} · {conteudo.periodoDias ?? periodoDias} dias · gerado em {new Date(plan!.createdAt).toLocaleDateString("pt-BR")}</span>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {!approved ? (
-                <Button type="button" onClick={aprovarPlano} disabled={aprovando}>
+                <Button type="button" onClick={aprovarPlano} disabled={aprovando || campanhas.length === 0}>
                   {aprovando ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1.5" />}Aprovar planejamento
                 </Button>
               ) : (
@@ -498,6 +679,15 @@ export default function PlanoMidia() {
               )}
             </div>
           </div>
+
+          {campanhas.length === 0 && (
+            <Card className="border-amber-300 bg-amber-50/50">
+              <CardContent className="py-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex gap-2"><AlertTriangle className="h-4 w-4 text-amber-700 mt-0.5" /><div><p className="text-sm font-medium text-amber-900">Este plano ainda está na estrutura antiga</p><p className="text-xs text-amber-800">Vamos completar campanhas e canais sem descartar o planejamento salvo.</p></div></div>
+                <Button type="button" size="sm" variant="outline" onClick={() => void carregar()}>Atualizar agora</Button>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <Card><CardContent className="py-4"><p className="text-xs text-muted-foreground">Período</p><p className="text-xl font-semibold">{conteudo.periodoDias ?? periodoDias} dias</p></CardContent></Card>
@@ -516,7 +706,7 @@ export default function PlanoMidia() {
           </Card>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" />Campanhas do período</p><p className="text-xs text-muted-foreground mt-0.5">Cada campanha agrupa todos os canais necessários. Clique para abrir a direção completa.</p></div><Badge variant="outline">{campanhas.length} campanhas</Badge></div>
+            <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" />Campanhas do período</p><p className="text-xs text-muted-foreground mt-0.5">Cada campanha agrupa os canais necessários para o mesmo objetivo. Clique para abrir a direção completa.</p></div><Badge variant="outline">{campanhas.length} campanhas</Badge></div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {campanhas.map((campaign) => (
                 <button key={campaign.id} type="button" className="text-left" onClick={() => setSelectedCampaignId(campaign.id)}>
@@ -524,7 +714,7 @@ export default function PlanoMidia() {
                     <CardContent className="pt-4 space-y-3">
                       <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{campaign.nome}</p><p className="text-xs text-muted-foreground mt-0.5">{campaign.objetivo}</p></div><Badge variant="outline" className="shrink-0 text-[10px]">{campaign.fase}</Badge></div>
                       <p className="text-sm text-muted-foreground line-clamp-2">{campaign.mensagemCentral}</p>
-                      <div className="flex flex-wrap gap-1">{campaign.canais.slice(0, 6).map((channel) => <span key={channel.canal} className="text-[10px] px-1.5 py-0.5 rounded bg-muted">{channel.canal}</span>)}{campaign.canais.length > 6 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted">+{campaign.canais.length - 6}</span>}</div>
+                      <div className="flex flex-wrap gap-1">{campaign.canais.slice(0, 7).map((channel) => <span key={channel.canal} className="text-[10px] px-1.5 py-0.5 rounded bg-muted">{channel.canal}</span>)}{campaign.canais.length > 7 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted">+{campaign.canais.length - 7}</span>}</div>
                       <div className="grid grid-cols-3 gap-2 pt-1 text-xs"><div><span className="text-muted-foreground">Início</span><p>Dia {campaign.inicioOffsetDias + 1}</p></div><div><span className="text-muted-foreground">Duração</span><p>{campaign.duracaoDias} dias</p></div><div><span className="text-muted-foreground">Materiais</span><p>{campaign.materiaisPlanejados}</p></div></div>
                       <div className="flex items-center justify-between border-t pt-2"><span className="text-xs text-muted-foreground">KPI: {campaign.kpiPrincipal}</span><span className="text-xs font-medium text-primary">Abrir campanha →</span></div>
                     </CardContent>
@@ -544,35 +734,96 @@ export default function PlanoMidia() {
           )}
 
           <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold flex items-center gap-2"><Radio className="h-4 w-4 text-primary" />Plano por canal</p><p className="text-xs text-muted-foreground mt-0.5">Aqui fica claro o papel, frequência, formatos e volume de cada canal no período inteiro.</p></div><Badge variant="outline">{channelSummary.length} canais</Badge></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {channelSummary.map((channel) => (
+                <Card key={channel.canal}>
+                  <CardContent className="pt-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold">{channel.canal}</p><Badge variant="outline" className="text-[10px]">{channel.materiais} materiais</Badge></div>
+                    <p className="text-xs text-muted-foreground">{Array.from(channel.funcoes).join(" · ")}</p>
+                    <div className="flex flex-wrap gap-1">{Array.from(channel.formatos).slice(0, 8).map((format) => <span key={format} className="text-[10px] px-1.5 py-0.5 rounded bg-muted">{format}</span>)}</div>
+                    <div className="text-xs"><span className="text-muted-foreground">Frequência:</span> {Array.from(channel.frequencias).join(" / ")}</div>
+                    <div className="text-xs"><span className="text-muted-foreground">Participa de:</span> {channel.campanhas.size} campanha(s)</div>
+                    <div className="text-xs"><span className="text-muted-foreground">KPI:</span> {Array.from(channel.kpis).join(" / ")}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div><p className="text-sm font-semibold flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />Calendário estratégico</p><p className="text-xs text-muted-foreground mt-0.5">Títulos e temas são sugestões da IA. Edite diretamente aqui antes de aprovar; a produção final será feita no Gerador.</p></div>
-              {calendario.length === 0 && (
-                <Button type="button" size="sm" variant="outline" disabled={gerandoCalendario} onClick={() => plan && generateCalendarForPlan(plan)}>
-                  {gerandoCalendario ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}Gerar calendário
+              <div>
+                <p className="text-sm font-semibold flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />Calendário estratégico</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Cada ação pode ser aprovada, editada ou recusada. Aprovar o plano inteiro aprova automaticamente o que ainda estiver pendente e preserva recusas.</p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline">{pendingCount} pendentes</Badge>
+                <Badge variant="outline" className="border-emerald-300 text-emerald-700">{approvedCount} aprovadas</Badge>
+                <Badge variant="outline" className="border-red-300 text-red-700">{rejectedCount} recusadas</Badge>
+                <Button type="button" size="sm" variant="outline" disabled={gerandoCalendario || approved} onClick={() => void rebuildCalendar()}>
+                  {gerandoCalendario ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}Reconstruir multicanal
                 </Button>
-              )}
+              </div>
             </div>
 
             {calendario.length === 0 ? (
               <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">O plano foi salvo, mas o calendário ainda não foi distribuído.</CardContent></Card>
             ) : (
               <div className="space-y-2">
-                {calendario.map((item) => (
-                  <Card key={item.id}>
-                    <CardContent className="py-3 flex items-center gap-3">
-                      <div className="text-center shrink-0 w-12"><p className="text-[10px] text-muted-foreground uppercase">{new Date(item.dataAgendada + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short" })}</p><p className="text-sm font-semibold">{new Date(item.dataAgendada + "T12:00:00").getDate()}</p></div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap"><Badge variant="outline" className="text-[10px]">{campaignNameFromPilar(item.pilar)}</Badge><span className="text-[10px] uppercase text-muted-foreground">{item.canal}</span><span className="text-[10px] uppercase text-muted-foreground">{item.tipo.replaceAll("_", " ")}</span><span className="text-[10px] text-muted-foreground">{contentPillarFromPilar(item.pilar)}</span></div>
-                        {editingTitleId === item.id ? (
-                          <div className="mt-1 flex gap-1.5"><Input autoFocus value={editingTitle} onChange={(event) => setEditingTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveTitle(item); if (event.key === "Escape") setEditingTitleId(null); }} /><Button type="button" size="icon" variant="ghost" onClick={() => saveTitle(item)} disabled={savingTitleId === item.id}>{savingTitleId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}</Button><Button type="button" size="icon" variant="ghost" onClick={() => setEditingTitleId(null)}><X className="h-4 w-4" /></Button></div>
-                        ) : (
-                          <button type="button" className="group mt-0.5 flex items-center gap-2 text-left max-w-full" onClick={() => { setEditingTitleId(item.id); setEditingTitle(item.temaSugerido); }}><span className="text-sm line-clamp-2">{item.temaSugerido}</span><Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" /></button>
-                        )}
-                      </div>
-                      <div className="shrink-0 hidden md:flex items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />Planejado</div>
-                    </CardContent>
-                  </Card>
-                ))}
+                {calendario.map((item) => {
+                  const editing = editingItemId === item.id && itemDraft;
+                  const busy = savingItemId === item.id;
+                  return (
+                    <Card key={item.id} className={item.status === "recusado" ? "opacity-70" : ""}>
+                      <CardContent className="py-3">
+                        <div className="flex items-start gap-3">
+                          <div className="text-center shrink-0 w-12 pt-0.5"><p className="text-[10px] text-muted-foreground uppercase">{new Date(item.dataAgendada + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short" })}</p><p className="text-sm font-semibold">{new Date(item.dataAgendada + "T12:00:00").getDate()}</p></div>
+                          <div className="flex-1 min-w-0">
+                            {editing ? (
+                              <div className="space-y-2">
+                                <Input value={itemDraft.temaSugerido} onChange={(event) => setItemDraft({ ...itemDraft, temaSugerido: event.target.value })} placeholder="Título / direção da ação" />
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                                  <Input type="date" value={itemDraft.dataAgendada} onChange={(event) => setItemDraft({ ...itemDraft, dataAgendada: event.target.value })} />
+                                  <Input value={itemDraft.canal} onChange={(event) => setItemDraft({ ...itemDraft, canal: event.target.value })} placeholder="Canal" />
+                                  <select className="h-10 rounded-md border bg-background px-3 text-sm" value={itemDraft.tipo} onChange={(event) => setItemDraft({ ...itemDraft, tipo: event.target.value })}>{CALENDAR_TYPES.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>
+                                  <Input className="sm:col-span-2" value={itemDraft.pilar} onChange={(event) => setItemDraft({ ...itemDraft, pilar: event.target.value })} placeholder="Campanha · pilar" />
+                                </div>
+                                <div className="flex gap-2 justify-end"><Button type="button" size="sm" variant="ghost" onClick={() => { setEditingItemId(null); setItemDraft(null); }} disabled={busy}><X className="h-3.5 w-3.5 mr-1" />Cancelar</Button><Button type="button" size="sm" onClick={() => void saveItem(item)} disabled={busy || !itemDraft.temaSugerido.trim() || !itemDraft.canal.trim()}>{busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1" />}Salvar edição</Button></div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge variant="outline" className="text-[10px]">{campaignNameFromPilar(item.pilar)}</Badge>
+                                  <span className="text-[10px] uppercase text-primary font-medium">{item.canal}</span>
+                                  <span className="text-[10px] uppercase text-muted-foreground">{item.tipo.replaceAll("_", " ")}</span>
+                                  <span className="text-[10px] text-muted-foreground">{contentPillarFromPilar(item.pilar)}</span>
+                                </div>
+                                <p className="text-sm mt-1 leading-relaxed">{item.temaSugerido}</p>
+                              </>
+                            )}
+                          </div>
+                          {!editing && (
+                            <div className="shrink-0 flex flex-col items-end gap-2">
+                              <Badge variant="outline" className={item.status === "aprovado" ? "border-emerald-300 text-emerald-700" : item.status === "recusado" ? "border-red-300 text-red-700" : ""}>{ITEM_STATUS_LABEL[item.status]}</Badge>
+                              {item.status !== "publicado" && item.status !== "gerado" && (
+                                <div className="flex items-center gap-1 flex-wrap justify-end">
+                                  {item.status !== "aprovado" && <Button type="button" size="sm" variant="ghost" className="h-8 text-emerald-700" disabled={busy} onClick={() => void setItemStatus(item, "aprovado")}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Aprovar</Button>}
+                                  <Button type="button" size="sm" variant="ghost" className="h-8" disabled={busy} onClick={() => startItemEdit(item)}><Pencil className="h-3.5 w-3.5 mr-1" />Editar</Button>
+                                  {item.status !== "recusado" ? (
+                                    <Button type="button" size="sm" variant="ghost" className="h-8 text-red-700" disabled={busy} onClick={() => void setItemStatus(item, "recusado")}><Ban className="h-3.5 w-3.5 mr-1" />Recusar</Button>
+                                  ) : (
+                                    <Button type="button" size="sm" variant="ghost" className="h-8" disabled={busy} onClick={() => void setItemStatus(item, "planejado")}><Undo2 className="h-3.5 w-3.5 mr-1" />Reativar</Button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>
