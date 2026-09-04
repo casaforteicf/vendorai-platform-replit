@@ -125,3 +125,77 @@ export const FEATURES: FeatureDetail[] = [
     ctaLabel: "Gerar meu plano de mídia",
   },
 ];
+
+const FEATURES_ES: Record<string, Omit<FeatureDetail, "slug" | "icon">> = {
+  "gerador-de-sites": {
+    eyebrow: "Presencia digital en minutos",
+    title: "Generador de Sitios con IA",
+    subtitle: "Describe tu empresa, tu público y lo que vendes. La IA crea el sitio completo — estructura, textos, secciones e identidad visual — listo para publicar, sin depender de una agencia o desarrollador.",
+    howItWorks: [
+      { title: "Describe tu negocio", desc: "Nombre, segmento, diferenciales y lo que vendes — en texto libre, a tu manera." },
+      { title: "La IA arma la estructura", desc: "Selecciona las secciones según el tipo de negocio: institucional, producto único o catálogo completo." },
+      { title: "Revisa y publica", desc: "Ajusta textos, imágenes y colores directamente en pantalla — el sitio puede salir con dominio propio en *.appvendorai.com." },
+    ],
+    seo: { title: "SEO incorporado, no como plugin aparte", desc: "Cada página generada ya incluye meta title, meta description, datos estructurados y jerarquía correcta de headings — la base técnica de SEO que muchos sitios hechos con prisa no tienen." },
+    learning: { title: "Aprende de lo que ya funciona en tu mercado", desc: "El generador usa los mismos 50 perfiles verticales de Revenue Scout, por lo que el sitio nace hablando el idioma de tu segmento en vez de reutilizar un texto genérico para cualquier nicho." },
+    ctaLabel: "Generar mi sitio gratis",
+  },
+  "analise-de-site": {
+    eyebrow: "Diagnóstico antes de cualquier acción",
+    title: "Análisis de tu sitio actual",
+    subtitle: "Pega la URL del sitio que ya tienes. La IA analiza estructura, contenido y señales de SEO y muestra exactamente qué está perjudicando visitas y conversión antes de sugerir cambios.",
+    howItWorks: [
+      { title: "Pega la URL", desc: "Sin instalar nada y sin acceso al servidor: solamente la dirección pública del sitio." },
+      { title: "La IA analiza toda la página", desc: "Estructura de secciones, textos, llamadas a la acción y señales técnicas de SEO." },
+      { title: "Recibe el diagnóstico", desc: "Qué está débil, qué falta y qué conviene priorizar primero para mejorar la conversión." },
+    ],
+    seo: { title: "Detecta errores técnicos que pasan desapercibidos", desc: "Título ausente, jerarquía de headings incorrecta, meta description genérica o repetida: detalles técnicos que afectan buscadores y visitantes aunque visualmente no sean evidentes." },
+    learning: { title: "Se convierte en el punto de partida para rediseñar", desc: "El diagnóstico alimenta directamente al Generador de Sitios; si decides rehacerlo, la IA ya sabe qué errores no debe repetir." },
+    ctaLabel: "Analizar mi sitio",
+  },
+  "content-autopilot": {
+    eyebrow: "Marketing de contenido sin redactor",
+    title: "Content Autopilot",
+    subtitle: "La IA investiga palabras clave de tu mercado, redacta artículos optimizados para SEO y los publica automáticamente, sin que tengas que abrir una pantalla de redacción o contratar una agencia de contenido.",
+    howItWorks: [
+      { title: "Investigación de palabras clave", desc: "La IA identifica qué está buscando realmente tu público dentro de tu segmento." },
+      { title: "Generación del artículo", desc: "Investigador → Creador → Optimizador → Publicador: cada etapa del pipeline mejora el texto antes de publicarlo." },
+      { title: "Publicación automática", desc: "El artículo va directo al blog, listo para indexarse, con revisión manual opcional si prefieres validar antes." },
+    ],
+    seo: { title: "Optimización real, no solamente un texto atractivo", desc: "Cada artículo pasa por una etapa dedicada de optimización de densidad de palabras clave, estructura de headings y meta description antes de publicarse." },
+    learning: { title: "Mejora con lo que genera resultados", desc: "Content Autopilot está conectado con la misma inteligencia comercial del CRM y aprende qué temas generan leads reales, no solamente tráfico." },
+    ctaLabel: "Ver Content Autopilot",
+  },
+  "lps-por-vertical": {
+    eyebrow: "Una página de venta para cada mercado",
+    title: "50 Landing Pages por Vertical",
+    subtitle: "Cada uno de los 50 perfiles de mercado de VendorAI tiene su propia LP con estructura de venta SPIN Selling; no es una plantilla genérica con el nombre cambiado.",
+    howItWorks: [
+      { title: "Elige tu mercado", desc: "Retail, clínicas, concesionarias, distribuidoras, servicios profesionales e industrias: 6 macrosegmentos y 50 mercados." },
+      { title: "La LP ya nace contextualizada", desc: "Jornada, dolores, agentes prioritarios y señales de oportunidad específicos de ese mercado." },
+      { title: "Se conecta directamente con el CRM", desc: "Cada lead que completa el formulario entra en el pipeline correcto con el Agente de Recepción tomando el primer contacto." },
+    ],
+    seo: { title: "Una página específica compite mejor que una página genérica", desc: "Una LP que habla el lenguaje exacto de una distribuidora de autopartes puede competir mejor en Google que una página genérica de CRM para empresas que intenta atender a todos." },
+    learning: { title: "Cada mercado tiene su propio Revenue Scout", desc: "No cambia solamente el texto: la LP refleja las señales de oportunidad que Revenue Scout de ese mercado sabe buscar." },
+    ctaLabel: "Ver las LPs por segmento",
+  },
+  "plano-de-midia": {
+    eyebrow: "Estrategia de marketing lista, no una hoja vacía",
+    title: "Plan de Medios con IA",
+    subtitle: "La IA analiza tu negocio, competidores y búsquedas del mercado y entrega un plan de medios completo: canales prioritarios, distribución sugerida del presupuesto y qué publicar.",
+    howItWorks: [
+      { title: "Diagnóstico automático", desc: "La IA mapea fortalezas actuales y oportunidades reales a partir del perfil del negocio y de lo que ya se está haciendo." },
+      { title: "Canales priorizados con % de presupuesto", desc: "Cada canal recomendado incluye prioridad, motivo y una distribución sugerida del presupuesto." },
+      { title: "Se convierte en calendario de contenido", desc: "Los pilares del plan se transforman en un calendario editorial por semana, pilar y formato: feed, stories y reels." },
+    ],
+    seo: { title: "Basado en competidores y búsquedas reales", desc: "El plan utiliza competidores encontrados en la investigación y palabras clave relevantes del mercado para construir una estrategia basada en datos." },
+    learning: { title: "Acciones inmediatas, no solamente teoría", desc: "Además del diagnóstico, el plan entrega acciones para comenzar a ejecutar y puede conectarse con Content Autopilot para poner el calendario en marcha." },
+    ctaLabel: "Generar mi plan de medios",
+  },
+};
+
+export function localizeFeatureDetail(feature: FeatureDetail, isSpanish: boolean): FeatureDetail {
+  if (!isSpanish) return feature;
+  const localized = FEATURES_ES[feature.slug];
+  return localized ? { ...feature, ...localized } : feature;
+}
