@@ -11,7 +11,9 @@ export const AGENT_KEYS = [
   "agendamento",
   "pos_venda",
   "prospector",
+  "recepcao",
   "farmacia",
+  "expansao_conta",
 ] as const;
 
 export type AgentKey = (typeof AGENT_KEYS)[number];
