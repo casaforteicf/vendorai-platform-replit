@@ -126,8 +126,24 @@ div:has(> .pipeline-nav) > div:first-child h1 + p {
   backdrop-filter: blur(8px);
 }
 
+/* O padrão global de páginas estiliza qualquer h2 como título de seção. Nas
+   pipelines operacionais os nomes das etapas também usam h2, então ficavam
+   maiores que no Comercial. Aqui a etapa volta ao padrão compacto do Kanban. */
+.pipeline-column-header :where(h2, strong) {
+  margin: 0 !important;
+  font-family: var(--app-font-sans) !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  line-height: 1.25rem !important;
+  letter-spacing: 0 !important;
+}
+
 .pipeline-card {
   min-width: 0;
+  font-family: var(--app-font-sans);
+}
+
+.pipeline-card :where(h1, h2, h3, h4, p, span, strong) {
   font-family: var(--app-font-sans);
 }
 
