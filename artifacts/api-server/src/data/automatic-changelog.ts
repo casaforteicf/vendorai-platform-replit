@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-539",
+    "titulo": "prévia antes de salvar e upload direto no Brand Kit",
+    "descricao": "adiciona **Pré-visualizar** antes de liberar o salvamento do Brand Video Kit; mostra abertura, vídeo principal com logo/legenda/B-roll, encerramento e player da trilha usando os arquivos reais da Biblioteca; qualquer alteração após a prévia marca a visualização como desatualizada e exige atualização antes de salvar; adiciona **Upload** ao lado dos seletores de Logo, Intro, Outro e Trilha;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T12:24:35.000Z",
+    "pullRequest": 539
+  },
+  {
     "id": "pr-507",
     "titulo": "internacionalizar Google Auth e conta suspensa",
     "descricao": "internacionaliza o retorno do Google Auth para português e espanhol conforme o locale ativo neutraliza a mensagem de conta Google sem acesso, sem expor marca dentro do fluxo internacionaliza a tela de conta suspensa usa cobrança genérica no espanhol em vez de referências brasileiras como boleto/PIX",
