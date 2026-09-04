@@ -168,6 +168,9 @@ const PT_COPY = {
   regions: "Regiões / UFs atendidas",
   regionsPlaceholder: "Ex.: Oeste de SC, SC, PR",
   territoryHelp: "Separe por vírgula. Cidade tem prioridade sobre região. Se ambos ficarem vazios, o usuário participa do rodízio geral.",
+  segments: "Linhas / segmentos atendidos",
+  segmentsPlaceholder: "Ex.: Óleos & Lubrificantes, Peças de Motor",
+  segmentsHelp: "Opcional. Se preenchido, o usuário só recebe automaticamente leads dessa(s) linha(s); a região ainda decide entre vendedores da mesma linha. Vazio = atende qualquer linha.",
   receivesLeads: "Atende leads",
 } as const;
 
@@ -240,6 +243,9 @@ const ES_COPY = {
   regions: "Regiones / departamentos",
   regionsPlaceholder: "Ej.: Central, Alto Paraná",
   territoryHelp: "Separa con comas. La ciudad tiene prioridad sobre la región. Si ambos quedan vacíos, el usuario participa en la rotación general.",
+  segments: "Líneas / segmentos atendidos",
+  segmentsPlaceholder: "Ej.: Aceites y lubricantes, Piezas de motor",
+  segmentsHelp: "Opcional. Si se completa, el usuario solo recibe automáticamente leads de esa línea; la región sigue decidiendo entre vendedores de la misma línea. Vacío = atiende cualquier línea.",
   receivesLeads: "Atiende leads",
 } as const;
 
@@ -290,6 +296,7 @@ export default function Usuarios() {
     leadAssignmentEnabled: false,
     leadAssignmentCities: "",
     leadAssignmentRegions: "",
+    leadAssignmentSegments: "",
   });
 
   const { data: users, isLoading } = useListTenantUsers(tenantId);
@@ -345,6 +352,7 @@ export default function Usuarios() {
       leadAssignmentEnabled: false,
       leadAssignmentCities: "",
       leadAssignmentRegions: "",
+      leadAssignmentSegments: "",
     });
     setEditingUser(null);
   }
@@ -367,6 +375,9 @@ export default function Usuarios() {
         : "",
       leadAssignmentRegions: Array.isArray(targetUser.leadAssignmentRegions)
         ? targetUser.leadAssignmentRegions.join(", ")
+        : "",
+      leadAssignmentSegments: Array.isArray(targetUser.leadAssignmentSegments)
+        ? targetUser.leadAssignmentSegments.join(", ")
         : "",
     });
     setDialogOpen(true);
@@ -491,6 +502,7 @@ export default function Usuarios() {
 
     const leadAssignmentCities = parseTerritories(formData.leadAssignmentCities);
     const leadAssignmentRegions = parseTerritories(formData.leadAssignmentRegions);
+    const leadAssignmentSegments = parseTerritories(formData.leadAssignmentSegments);
 
     try {
       if (editingUser) {
@@ -504,6 +516,7 @@ export default function Usuarios() {
           leadAssignmentEnabled: formData.leadAssignmentEnabled,
           leadAssignmentCities,
           leadAssignmentRegions,
+          leadAssignmentSegments,
         };
         if (formData.password) payload.password = formData.password;
         await updateUser.mutateAsync({
@@ -528,6 +541,7 @@ export default function Usuarios() {
             leadAssignmentEnabled: formData.leadAssignmentEnabled,
             leadAssignmentCities,
             leadAssignmentRegions,
+            leadAssignmentSegments,
           } as any,
         });
         toast({
@@ -902,6 +916,18 @@ export default function Usuarios() {
                 </div>
               )}
               <p className="text-xs text-muted-foreground">{copy.territoryHelp}</p>
+
+              {formData.leadAssignmentEnabled && (
+                <div>
+                  <Label>{copy.segments}</Label>
+                  <Input
+                    value={formData.leadAssignmentSegments}
+                    onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentSegments: e.target.value }))}
+                    placeholder={copy.segmentsPlaceholder}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">{copy.segmentsHelp}</p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-3 rounded-lg border p-4">

@@ -130,7 +130,10 @@ router.post("/leads", async (req, res) => {
   } else if (data.assignedTo) {
     resolvedAssignedTo = data.assignedTo;
   } else {
-    resolvedAssignedTo = await pickNextVendedor(data.tenantId);
+    resolvedAssignedTo = await pickNextVendedor(data.tenantId, {
+      segmento: data.mercadoSegmento,
+      location: data.endereco,
+    });
   }
 
   const [lead] = await db.insert(leadsTable).values({
@@ -283,7 +286,7 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
           .limit(1);
         importAssignedTo = vendedor?.id ?? null;
       }
-      if (!importAssignedTo) importAssignedTo = await pickNextVendedor(tenantId);
+      if (!importAssignedTo) importAssignedTo = await pickNextVendedor(tenantId, { location: row.endereco });
 
       const [importedLead] = await db.insert(leadsTable).values({
         tenantId,
@@ -475,6 +478,14 @@ router.patch("/leads/:id", async (req, res) => {
   const userFn2 = req.user?.userFunction as UserFunction | undefined;
   if (!isAdmin2 && userFn2 === "vendedor" && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  // Reatribuir o responsável do lead (do início ao fim, salvo intervenção)
+  // é ação exclusiva do admin do tenant — um vendedor pode editar os próprios
+  // leads normalmente, mas não pode se tirar (ou tirar outro) da carteira.
+  if (!isAdmin2 && "assignedTo" in parsed.data && parsed.data.assignedTo !== existing.assignedTo) {
+    res.status(403).json({ error: "Só o admin do tenant pode reatribuir o responsável pelo lead" });
     return;
   }
 

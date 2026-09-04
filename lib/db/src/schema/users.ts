@@ -51,6 +51,10 @@ export const usersTable = pgTable("users", {
   leadAssignmentEnabled: boolean("lead_assignment_enabled"),
   leadAssignmentCities: jsonb("lead_assignment_cities").$type<string[]>().notNull().default([]),
   leadAssignmentRegions: jsonb("lead_assignment_regions").$type<string[]>().notNull().default([]),
+  // Linha/segmento de produto atendido (ex: "Óleos & Lubrificantes" vs
+  // "Peças de Motor"). Comparado contra leads.mercadoSegmento. Vazio = sem
+  // restrição de segmento — mesmo padrão de compatibilidade das duas acima.
+  leadAssignmentSegments: jsonb("lead_assignment_segments").$type<string[]>().notNull().default([]),
   limiteEntregasPorTurno: numeric("limite_entregas_por_turno", { precision: 6, scale: 0 }),
   // Última vez que o usuário abriu o painel de "Novidades" — usado só pra
   // calcular o contador de não lidas, nada além disso.
@@ -63,6 +67,7 @@ export const insertUserSchema = createInsertSchema(usersTable, {
   permissions: z.array(z.string()).nullable(),
   leadAssignmentCities: z.array(z.string()),
   leadAssignmentRegions: z.array(z.string()),
+  leadAssignmentSegments: z.array(z.string()),
 }).omit({
   id: true,
   createdAt: true,
@@ -73,6 +78,7 @@ export const updateUserSchema = createSelectSchema(usersTable, {
   permissions: z.array(z.string()).nullable(),
   leadAssignmentCities: z.array(z.string()),
   leadAssignmentRegions: z.array(z.string()),
+  leadAssignmentSegments: z.array(z.string()),
 })
   .omit({
     id: true,

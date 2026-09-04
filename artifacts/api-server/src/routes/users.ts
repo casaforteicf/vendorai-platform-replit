@@ -50,6 +50,7 @@ const PUBLIC_FIELDS = {
   leadAssignmentEnabled: usersTable.leadAssignmentEnabled,
   leadAssignmentCities: usersTable.leadAssignmentCities,
   leadAssignmentRegions: usersTable.leadAssignmentRegions,
+  leadAssignmentSegments: usersTable.leadAssignmentSegments,
   createdAt: usersTable.createdAt,
   updatedAt: usersTable.updatedAt,
 } as const;
