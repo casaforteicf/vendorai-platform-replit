@@ -21,10 +21,8 @@ import {
   analyzeMediaImage,
   ImageAdvisorValidationError,
 } from "../services/vendorai-image-advisor.js";
-import {
-  analyzeVendorAiIdentityReferences,
-  saveVendorAiDubleEvaluation,
-} from "../services/vendorai-identity-quality.js";
+import { analyzeVendorAiIdentityReferencesWithVersion as analyzeVendorAiIdentityReferences } from "../services/vendorai-duble-versioning.js";
+import { saveVendorAiDubleEvaluation } from "../services/vendorai-identity-quality.js";
 import { createVendorAiDiverseStyleReference as createVendorAiDubleStyleReference } from "../services/vendorai-duble-diversity.js";
 import {
   DubleStyleConsentError,
