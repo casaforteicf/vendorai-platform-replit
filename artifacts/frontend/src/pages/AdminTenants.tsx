@@ -54,6 +54,16 @@ const PROV_LABELS: Record<string, string> = {
   trial:        "Trial",
 };
 
+const COUNTRY_OPTIONS = {
+  BR: { label: "Brasil", taxLabel: "CNPJ", taxPlaceholder: "00.000.000/0001-00" },
+  PY: { label: "Paraguai", taxLabel: "RUC", taxPlaceholder: "Ex: 80012345-6" },
+  AR: { label: "Argentina", taxLabel: "CUIT", taxPlaceholder: "Ex: 30-12345678-9" },
+  UY: { label: "Uruguai", taxLabel: "RUT", taxPlaceholder: "Ex: 21XXXXXXXXXX" },
+  CL: { label: "Chile", taxLabel: "RUT", taxPlaceholder: "Ex: 76.123.456-7" },
+} as const;
+
+type CountryCode = keyof typeof COUNTRY_OPTIONS;
+
 /**
  * Compares destructive-action confirmations without being tripped up by
  * invisible Unicode differences copied from the tenant name (for example,
@@ -108,7 +118,8 @@ export default function AdminTenants() {
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    companyName: "", responsibleName: "", email: "", phone: "", cnpj: "",
+    companyName: "", responsibleName: "", email: "", phone: "",
+    countryCode: "BR" as CountryCode, taxIdentifier: "",
     planId: "", billingCycle: "monthly" as "monthly" | "annual", internalNotes: "",
   });
 
@@ -129,6 +140,8 @@ export default function AdminTenants() {
     total: number; criados: number; comErro: number;
     results: Array<{ linha: number; empresa: string; email: string; status: "criado" | "erro"; emailEnviado?: boolean; erro?: string }>;
   } | null>(null);
+
+  const selectedCountry = COUNTRY_OPTIONS[form.countryCode];
 
   const IMPORT_TEMPLATE =
     "empresa,responsavel,email,telefone,cnpj\n" +
@@ -188,7 +201,11 @@ export default function AdminTenants() {
   });
 
   function resetForm() {
-    setForm({ companyName: "", responsibleName: "", email: "", phone: "", cnpj: "", planId: "", billingCycle: "monthly", internalNotes: "" });
+    setForm({
+      companyName: "", responsibleName: "", email: "", phone: "",
+      countryCode: "BR", taxIdentifier: "",
+      planId: "", billingCycle: "monthly", internalNotes: "",
+    });
   }
 
   async function handleProvision(sendEmail: boolean) {
@@ -671,7 +688,9 @@ export default function AdminTenants() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Novo Tenant</DialogTitle>
-            <DialogDescription>Cria a empresa e o usuário admin com senha temporária. Sem cobrança no Asaas.</DialogDescription>
+            <DialogDescription>
+              Cria a empresa e o usuário admin já com o perfil regional correto. Sem cobrança no Asaas.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="grid grid-cols-2 gap-3">
@@ -685,15 +704,40 @@ export default function AdminTenants() {
               </div>
               <div className="col-span-2 space-y-1.5">
                 <Label>E-mail *</Label>
-                <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="joao@empresa.com.br" />
+                <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="joao@empresa.com" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>País *</Label>
+                <Select
+                  value={form.countryCode}
+                  onValueChange={(value) => setForm((current) => ({
+                    ...current,
+                    countryCode: value as CountryCode,
+                    taxIdentifier: "",
+                  }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(COUNTRY_OPTIONS).map(([code, country]) => (
+                      <SelectItem key={code} value={code}>{country.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Telefone</Label>
-                <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="(47) 99999-9999" />
+                <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="Telefone com DDD/código local" />
               </div>
-              <div className="space-y-1.5">
-                <Label>CNPJ (opcional)</Label>
-                <Input value={form.cnpj} onChange={(e) => setForm((f) => ({ ...f, cnpj: e.target.value }))} placeholder="00.000.000/0001-00" />
+              <div className="col-span-2 space-y-1.5">
+                <Label>{selectedCountry.taxLabel} (opcional)</Label>
+                <Input
+                  value={form.taxIdentifier}
+                  onChange={(e) => setForm((f) => ({ ...f, taxIdentifier: e.target.value }))}
+                  placeholder={selectedCountry.taxPlaceholder}
+                />
+                <p className="text-xs text-muted-foreground">
+                  O país define automaticamente idioma, fuso horário, moeda principal e tipo de documento fiscal.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>Plano</Label>

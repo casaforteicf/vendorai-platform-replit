@@ -912,6 +912,16 @@ function generateTempPassword(length = 8): string {
   return result;
 }
 
+const TENANT_COUNTRY_PROFILES = {
+  BR: { defaultLocale: "pt-BR", timezone: "America/Sao_Paulo", defaultCurrency: "BRL", taxIdentifierType: "CNPJ" },
+  PY: { defaultLocale: "es-PY", timezone: "America/Asuncion", defaultCurrency: "PYG", taxIdentifierType: "RUC" },
+  AR: { defaultLocale: "es-AR", timezone: "America/Argentina/Buenos_Aires", defaultCurrency: "ARS", taxIdentifierType: "CUIT" },
+  UY: { defaultLocale: "es-UY", timezone: "America/Montevideo", defaultCurrency: "UYU", taxIdentifierType: "RUT" },
+  CL: { defaultLocale: "es-CL", timezone: "America/Santiago", defaultCurrency: "CLP", taxIdentifierType: "RUT" },
+} as const;
+
+type ProvisionCountryCode = keyof typeof TENANT_COUNTRY_PROFILES;
+
 router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (req, res) => {
   const { z } = await import("zod/v4");
   const schema = z.object({
@@ -919,6 +929,9 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     responsibleName: z.string().min(1),
     email: z.email(),
     phone: z.string().optional(),
+    countryCode: z.enum(["BR", "PY", "AR", "UY", "CL"]).optional().default("BR"),
+    taxIdentifier: z.string().optional(),
+    // Compatibilidade com clientes antigos do formulário brasileiro.
     cnpj: z.string().optional(),
     planId: z.string().optional(),
     billingCycle: z.enum(["monthly", "annual"]).optional(),
@@ -930,7 +943,21 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     res.status(422).json({ error: parsed.error.message });
     return;
   }
-  const { companyName, responsibleName, email, phone, cnpj, planId, billingCycle, internalNotes, sendWelcomeEmailFlag } = parsed.data;
+  const {
+    companyName,
+    responsibleName,
+    email,
+    phone,
+    countryCode,
+    taxIdentifier,
+    cnpj,
+    planId,
+    billingCycle,
+    internalNotes,
+    sendWelcomeEmailFlag,
+  } = parsed.data;
+  const countryProfile = TENANT_COUNTRY_PROFILES[countryCode as ProvisionCountryCode];
+  const normalizedTaxIdentifier = (taxIdentifier ?? cnpj)?.trim() || null;
 
   const slug = companyName
     .trim().toLowerCase()
@@ -960,7 +987,14 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
       status: "active",
       provisioningMethod: "manual",
       createdByAdminId: req.user?.sub,
-      ...(cnpj ? { internalNotes: [cnpj, internalNotes].filter(Boolean).join(" | ") } : { internalNotes: internalNotes ?? null }),
+      countryCode,
+      defaultLocale: countryProfile.defaultLocale,
+      timezone: countryProfile.timezone,
+      defaultCurrency: countryProfile.defaultCurrency,
+      supportedCurrencies: [countryProfile.defaultCurrency],
+      taxIdentifierType: countryProfile.taxIdentifierType,
+      taxIdentifier: normalizedTaxIdentifier,
+      internalNotes: internalNotes ?? null,
       ...(resolvedPlanId ? { planId: resolvedPlanId, billingCycle: billingCycle ?? "monthly", planStartedAt: new Date() } : {}),
     }).returning();
 
