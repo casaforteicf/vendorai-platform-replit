@@ -1,6 +1,13 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
-import { useGetMe, getGetMeQueryKey, User } from "@workspace/api-client-react";
+import {
+  useGetMe,
+  getGetMeQueryKey,
+  useGetTenant,
+  getGetTenantQueryKey,
+  User,
+} from "@workspace/api-client-react";
 import { useLocation } from "wouter";
+import { getStoredLocalePreference, resolveLocale, useI18n } from "@/i18n";
 
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
 
@@ -119,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [tenantOverride, setTenantOverrideState] = useState<TenantOverride | null>(readInitialOverride);
   const [location, setLocation] = useLocation();
   const passwordRedirectedUserRef = useRef<string | null>(null);
+  const { locale, syncLocale } = useI18n();
 
   // Some feature screens still use native fetch() instead of the generated API
   // client. Ensure all same-origin /api requests inherit the current session token
@@ -216,6 +224,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? { ...rawUser, tenantId: tenantOverride.id, tenantVertical: tenantOverride.vertical }
       : rawUser
     : null;
+
+  const shouldLoadLocaleTenant =
+    !!token &&
+    !!effectiveUser?.tenantId &&
+    !(rawUser?.platformRole === "super_admin" && !tenantOverride);
+
+  const { data: localeTenant } = useGetTenant(
+    effectiveUser?.tenantId ?? "",
+    {
+      query: {
+        enabled: shouldLoadLocaleTenant,
+        queryKey: getGetTenantQueryKey(effectiveUser?.tenantId ?? ""),
+        staleTime: 300_000,
+        refetchOnWindowFocus: false,
+      },
+    }
+  );
+
+  useEffect(() => {
+    if (!token || !effectiveUser) return;
+
+    // Super admin fora do modo de visualização de um tenant mantém a preferência
+    // local/navegador. Ao entrar em um tenant, passa a respeitar o perfil daquele tenant.
+    if (rawUser?.platformRole === "super_admin" && !tenantOverride) {
+      const storedPreference = getStoredLocalePreference();
+      if (storedPreference && storedPreference !== locale) {
+        syncLocale(storedPreference);
+      }
+      return;
+    }
+
+    if (shouldLoadLocaleTenant && !localeTenant) return;
+
+    const tenantSettings = localeTenant as
+      | { defaultLocale?: string | null; countryCode?: string | null }
+      | undefined;
+    const browserLocales =
+      typeof navigator !== "undefined"
+        ? navigator.languages?.length
+          ? navigator.languages
+          : [navigator.language]
+        : [];
+    const resolvedLocale = resolveLocale({
+      userLocale: getStoredLocalePreference(),
+      tenantLocale: tenantSettings?.defaultLocale,
+      browserLocales,
+      countryCode: tenantSettings?.countryCode,
+    });
+
+    if (resolvedLocale !== locale) {
+      // Locale herdado do tenant não vira preferência manual. Assim, se o país/
+      // locale do tenant mudar, o usuário sem override acompanha automaticamente.
+      syncLocale(resolvedLocale);
+    }
+  }, [
+    token,
+    effectiveUser?.id,
+    effectiveUser?.tenantId,
+    rawUser?.platformRole,
+    tenantOverride,
+    localeTenant,
+    locale,
+    syncLocale,
+    shouldLoadLocaleTenant,
+  ]);
 
   const login = (newToken: string, newUser: User, options?: { isDemo?: boolean }) => {
     localStorage.setItem(TOKEN_KEY, newToken);
