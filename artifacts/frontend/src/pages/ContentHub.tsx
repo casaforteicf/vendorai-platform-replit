@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Content from "@/pages/Content";
 import Campanhas from "@/pages/Campanhas";
-import PracaVariedades from "@/pages/supermercado/SupermercadoCampanhas";
+import CampanhasHub from "@/pages/CampanhasHub";
 import { Images, Megaphone, Sparkles } from "lucide-react";
 
 const REDUNDANT_CHILD_TITLES = new Set([
@@ -52,9 +53,23 @@ function applyMarketingRedundancyFilter(root: HTMLElement) {
 
 export default function ContentHub() {
   const rootRef = useRef<HTMLDivElement>(null);
-  const initialTab = typeof window !== "undefined"
-    ? new URLSearchParams(window.location.search).get("tab") ?? "gerador"
-    : "gerador";
+  const [location, setLocation] = useLocation();
+  const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
+  const params = new URLSearchParams(queryString);
+  const requestedTab = params.get("tab") ?? "gerador";
+  // Compatibilidade: o antigo ?tab=variedades agora abre a modalidade Praça.ai
+  // dentro de Campanhas, sem manter uma terceira área paralela no Marketing.
+  const legacyPracaView = requestedTab === "variedades";
+  const activeTab = requestedTab === "campanhas" || legacyPracaView ? "campanhas" : "gerador";
+  const campaignView = legacyPracaView ? "praca" : params.get("view") ?? "overview";
+
+  function handleTabChange(nextTab: string) {
+    if (nextTab === "gerador") {
+      setLocation("/content");
+      return;
+    }
+    setLocation(`/content?tab=${nextTab}`);
+  }
 
   useEffect(() => {
     const root = rootRef.current;
@@ -77,15 +92,15 @@ export default function ContentHub() {
           </h1>
           <p className="text-sm text-muted-foreground">Planeje, crie e ative ações em um único fluxo.</p>
         </div>
-        <Tabs defaultValue={initialTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="h-auto flex flex-wrap">
             <TabsTrigger value="gerador" className="gap-2"><Images className="h-4 w-4"/>Gerador de conteúdo</TabsTrigger>
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>Campanhas</TabsTrigger>
-            <TabsTrigger value="variedades" className="gap-2"><Sparkles className="h-4 w-4"/>Variedades Praça.ai</TabsTrigger>
           </TabsList>
           <TabsContent value="gerador" className="-mx-4 md:-mx-6"><Content /></TabsContent>
-          <TabsContent value="campanhas" className="-mx-4 md:-mx-6"><Campanhas /></TabsContent>
-          <TabsContent value="variedades" className="-mx-4 md:-mx-6"><PracaVariedades /></TabsContent>
+          <TabsContent value="campanhas" className="-mx-4 md:-mx-6">
+            {campaignView === "organicas" ? <Campanhas /> : <CampanhasHub />}
+          </TabsContent>
         </Tabs>
       </div>
     </div>

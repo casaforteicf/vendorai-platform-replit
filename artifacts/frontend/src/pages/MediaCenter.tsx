@@ -41,6 +41,7 @@ type FilterType = "all" | MediaType;
 type MediaContextType = "none" | "client" | "event" | "campaign" | "product" | "project" | "other";
 type AudioKind = "music" | "voiceover" | "sound_effect" | "jingle" | "sonic_identity" | "other";
 type AudioKindFilter = "all" | AudioKind;
+type MusicBrandUse = "institutional" | "reels" | "ads" | "product" | "stories" | "presentation";
 type WorkspaceSection = "library" | "projects" | "ai" | "production";
 
 type MediaAsset = {
@@ -118,6 +119,15 @@ const AUDIO_KIND_SHORT_LABELS: Record<AudioKindFilter, string> = {
   jingle: "Jingles",
   sonic_identity: "Identidade",
   other: "Outros",
+};
+
+const MUSIC_BRAND_USE_LABELS: Record<MusicBrandUse, string> = {
+  institutional: "Institucional",
+  reels: "Reels / Shorts",
+  ads: "Anúncios",
+  product: "Produto",
+  stories: "Stories",
+  presentation: "Apresentações",
 };
 
 function authHeaders(json = false): Record<string, string> {
@@ -205,6 +215,22 @@ function audioRole(kind: AudioKind): "source" | "voice" | "music" {
   return "source";
 }
 
+function assetMusicCollections(asset: MediaAsset): string[] {
+  if (assetAudioKind(asset) !== "music" || !Array.isArray(asset.metadata?.collections)) return [];
+  return asset.metadata.collections
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function assetMusicBrandUse(asset: MediaAsset): MusicBrandUse[] {
+  if (assetAudioKind(asset) !== "music" || !Array.isArray(asset.metadata?.brandUse)) return [];
+  const valid = new Set<MusicBrandUse>(Object.keys(MUSIC_BRAND_USE_LABELS) as MusicBrandUse[]);
+  return asset.metadata.brandUse
+    .filter((item): item is string => typeof item === "string")
+    .filter((item): item is MusicBrandUse => valid.has(item as MusicBrandUse));
+}
+
 function defaultMusicRights() {
   return {
     status: "pending",
@@ -253,7 +279,10 @@ export default function MediaCenter() {
   const [uploadAudioKind, setUploadAudioKind] = useState<AudioKind>("other");
   const [musicGenreFilter, setMusicGenreFilter] = useState("all");
   const [musicMoodFilter, setMusicMoodFilter] = useState("all");
+  const [musicCollectionFilter, setMusicCollectionFilter] = useState("all");
+  const [musicBrandUseFilter, setMusicBrandUseFilter] = useState("all");
   const [musicFavoritesOnly, setMusicFavoritesOnly] = useState(false);
+  const [musicBrandOfficialOnly, setMusicBrandOfficialOnly] = useState(false);
 
   const selectedAssets = useMemo(
     () => assets.filter((asset) => selected.includes(asset.id)),
@@ -704,6 +733,18 @@ export default function MediaCenter() {
     [assets],
   );
 
+  const musicCollections = useMemo(
+    () => Array.from(new Set(
+      assets.flatMap((asset) => assetMusicCollections(asset)),
+    )).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [assets],
+  );
+
+  const brandOfficialMusicCount = useMemo(
+    () => assets.filter((asset) => assetAudioKind(asset) === "music" && asset.metadata?.brandOfficial === true).length,
+    [assets],
+  );
+
   const visible = useMemo(
     () =>
       assets.filter((asset) => {
@@ -715,8 +756,17 @@ export default function MediaCenter() {
         if (filter === "audio" && musicMoodFilter !== "all") {
           if (assetAudioKind(asset) !== "music" || asset.metadata?.mood !== musicMoodFilter) return false;
         }
+        if (filter === "audio" && musicCollectionFilter !== "all") {
+          if (assetAudioKind(asset) !== "music" || !assetMusicCollections(asset).includes(musicCollectionFilter)) return false;
+        }
+        if (filter === "audio" && musicBrandUseFilter !== "all") {
+          if (assetAudioKind(asset) !== "music" || !assetMusicBrandUse(asset).includes(musicBrandUseFilter as MusicBrandUse)) return false;
+        }
         if (filter === "audio" && musicFavoritesOnly) {
           if (assetAudioKind(asset) !== "music" || asset.metadata?.favorite !== true) return false;
+        }
+        if (filter === "audio" && musicBrandOfficialOnly) {
+          if (assetAudioKind(asset) !== "music" || asset.metadata?.brandOfficial !== true) return false;
         }
         if (sourceFilter !== "all" && asset.source !== sourceFilter) return false;
         const context = assetContext(asset);
@@ -740,13 +790,16 @@ export default function MediaCenter() {
           typeof asset.metadata?.mood === "string" ? asset.metadata.mood : null,
           typeof asset.metadata?.energy === "string" ? asset.metadata.energy : null,
           typeof asset.metadata?.bpm === "number" ? `${asset.metadata.bpm} BPM` : null,
+          assetMusicCollections(asset).join(" "),
+          assetMusicBrandUse(asset).map((value) => MUSIC_BRAND_USE_LABELS[value]).join(" "),
+          asset.metadata?.brandOfficial === true ? "trilha oficial marca identidade sonora" : null,
           sourceLabel(asset),
           TYPE_LABELS[asset.type],
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(term));
       }),
-    [assets, filter, audioKindFilter, musicGenreFilter, musicMoodFilter, musicFavoritesOnly, sourceFilter, contextFilter, folderFilter, search],
+    [assets, filter, audioKindFilter, musicGenreFilter, musicMoodFilter, musicCollectionFilter, musicBrandUseFilter, musicFavoritesOnly, musicBrandOfficialOnly, sourceFilter, contextFilter, folderFilter, search],
   );
 
   const unfiledCount = assets.filter((asset) => !assetFolder(asset)).length;
@@ -976,7 +1029,10 @@ export default function MediaCenter() {
                           if (kind !== "all" && kind !== "music") {
                             setMusicGenreFilter("all");
                             setMusicMoodFilter("all");
+                            setMusicCollectionFilter("all");
+                            setMusicBrandUseFilter("all");
                             setMusicFavoritesOnly(false);
+                            setMusicBrandOfficialOnly(false);
                           }
                         }}
                         className={`folder-chip ${audioKindFilter === kind ? "folder-chip-active" : ""}`}
@@ -995,11 +1051,25 @@ export default function MediaCenter() {
                         <option value="all">Todos os moods</option>
                         {musicMoods.map((mood) => <option key={mood} value={mood}>{mood}</option>)}
                       </select>
+                      <select value={musicCollectionFilter} onChange={(event) => setMusicCollectionFilter(event.target.value)} className="h-9 rounded-lg border bg-background px-2 text-xs">
+                        <option value="all">Todas as coleções</option>
+                        {musicCollections.map((collection) => <option key={collection} value={collection}>{collection}</option>)}
+                      </select>
+                      <select value={musicBrandUseFilter} onChange={(event) => setMusicBrandUseFilter(event.target.value)} className="h-9 rounded-lg border bg-background px-2 text-xs">
+                        <option value="all">Todos os usos da marca</option>
+                        {(Object.keys(MUSIC_BRAND_USE_LABELS) as MusicBrandUse[]).map((value) => <option key={value} value={value}>{MUSIC_BRAND_USE_LABELS[value]}</option>)}
+                      </select>
                       <button
                         onClick={() => setMusicFavoritesOnly((current) => !current)}
                         className={`folder-chip ${musicFavoritesOnly ? "folder-chip-active" : ""}`}
                       >
                         Favoritas · {favoriteMusicCount}
+                      </button>
+                      <button
+                        onClick={() => setMusicBrandOfficialOnly((current) => !current)}
+                        className={`folder-chip ${musicBrandOfficialOnly ? "folder-chip-active" : ""}`}
+                      >
+                        Oficiais da marca · {brandOfficialMusicCount}
                       </button>
                     </div>
                   )}
@@ -1138,6 +1208,7 @@ export default function MediaCenter() {
                       const context = assetContext(asset);
                       const folder = assetFolder(asset);
                       const audioKind = assetAudioKind(asset);
+                      const musicCollectionsForAsset = assetMusicCollections(asset);
                       const isSelected = selected.includes(asset.id);
                       return (
                         <article
@@ -1182,6 +1253,12 @@ export default function MediaCenter() {
                               )}
                               {audioKind === "music" && asset.metadata?.favorite === true && (
                                 <span className="rounded-full bg-rose-500/10 px-2 py-1 text-[10px] text-rose-700 dark:text-rose-300">Favorita</span>
+                              )}
+                              {audioKind === "music" && musicCollectionsForAsset.length > 0 && (
+                                <span className="max-w-full truncate rounded-full bg-indigo-500/10 px-2 py-1 text-[10px] text-indigo-700 dark:text-indigo-300">Coleção · {musicCollectionsForAsset[0]}{musicCollectionsForAsset.length > 1 ? ` +${musicCollectionsForAsset.length - 1}` : ""}</span>
+                              )}
+                              {audioKind === "music" && asset.metadata?.brandOfficial === true && (
+                                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">Oficial da marca</span>
                               )}
                             </div>
                           </div>
