@@ -53,6 +53,8 @@ export const campaignMarketingContextSchema = z.object({
   primaryKpi: z.string().optional(),
   researchEnabled: z.boolean().optional(),
   seoTrackingEnabled: z.boolean().optional(),
+  campaignId: z.string().optional(),
+  campaignName: z.string().optional(),
 });
 
 export type CampaignMarketingContext = z.infer<typeof campaignMarketingContextSchema>;
