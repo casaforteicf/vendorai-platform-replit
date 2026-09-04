@@ -42,6 +42,22 @@ function ScrollToTop() {
   return null;
 }
 
+function FloatingActions() {
+  const [location] = useLocation();
+  const formFocusedPage = location === "/demo" || location === "/contato" || location === "/cadastro-praca";
+
+  // Nessas telas o CTA principal já é o formulário. Em mobile, botões fixed
+  // cobriam campos e o botão de envio, então não renderizamos ações concorrentes.
+  if (formFocusedPage) return null;
+
+  return (
+    <>
+      <WhatsAppFloatButton />
+      <AgentSimulatorWidget />
+    </>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -90,8 +106,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <ScrollToTop />
           <Router />
-          <WhatsAppFloatButton />
-          <AgentSimulatorWidget />
+          <FloatingActions />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
