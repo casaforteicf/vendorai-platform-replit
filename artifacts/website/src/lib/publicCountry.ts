@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 
 export const PUBLIC_COUNTRIES = {
-  BR: { label: "Brasil", locale: "pt-BR", short: "BR" },
-  PY: { label: "Paraguay", locale: "es-PY", short: "PY" },
-  AR: { label: "Argentina", locale: "es-AR", short: "AR" },
-  UY: { label: "Uruguay", locale: "es-UY", short: "UY" },
-  CL: { label: "Chile", locale: "es-CL", short: "CL" },
+  BR: { label: "Brasil", locale: "pt-BR", short: "BR", phone: "+55 49 99999-9999" },
+  PY: { label: "Paraguay", locale: "es-PY", short: "PY", phone: "+595 981 234567" },
+  AR: { label: "Argentina", locale: "es-AR", short: "AR", phone: "+54 9 11 1234-5678" },
+  UY: { label: "Uruguay", locale: "es-UY", short: "UY", phone: "+598 99 123 456" },
+  CL: { label: "Chile", locale: "es-CL", short: "CL", phone: "+56 9 1234 5678" },
 } as const;
 
 export type PublicCountryCode = keyof typeof PUBLIC_COUNTRIES;
