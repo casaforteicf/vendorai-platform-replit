@@ -227,7 +227,7 @@ main.vendor-scrollbar {
     min-height: 40px;
   }
 
-  .vendor-page-canvas :where(table) {
+  .vendor-page-canvas :where(.overflow-auto, .overflow-x-auto) > table {
     min-width: 640px;
   }
 
