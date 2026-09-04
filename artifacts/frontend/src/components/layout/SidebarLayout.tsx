@@ -157,9 +157,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }, [effectiveTenantId, location, pracaAiEntitled, setLocation, tenantNavModulesLoading]);
 
   useEffect(() => {
-    const relabelSitesEntry = () => {
-      const links = document.querySelectorAll<HTMLAnchorElement>('a[href="/content-autopilot"]');
-      links.forEach((link) => {
+    const relabelMarketingEntries = () => {
+      const siteLinks = document.querySelectorAll<HTMLAnchorElement>('a[href="/content-autopilot"]');
+      siteLinks.forEach((link) => {
         const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT);
         let node = walker.nextNode();
         while (node) {
@@ -171,10 +171,24 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         link.setAttribute("aria-label", "Sites — Gerador de Sites e Content Autopilot");
         link.setAttribute("title", "Sites — Gerador de Sites e Content Autopilot");
       });
+
+      const variedadesLinks = document.querySelectorAll<HTMLAnchorElement>('a[href="/variedades-dia"]');
+      variedadesLinks.forEach((link) => {
+        const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          if (node.nodeValue?.trim() === "Variedades Praça.ai") {
+            node.nodeValue = node.nodeValue.replace("Variedades Praça.ai", "Variedades do Dia");
+          }
+          node = walker.nextNode();
+        }
+        link.setAttribute("aria-label", "Variedades do Dia — conteúdo temporário do Praça.ai");
+        link.setAttribute("title", "Variedades do Dia — conteúdo temporário do Praça.ai");
+      });
     };
 
-    relabelSitesEntry();
-    const observer = new MutationObserver(relabelSitesEntry);
+    relabelMarketingEntries();
+    const observer = new MutationObserver(relabelMarketingEntries);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
