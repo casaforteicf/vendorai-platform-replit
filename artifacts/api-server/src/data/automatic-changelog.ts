@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-440",
+    "titulo": "enriquecer Music Hub com metadados e filtros",
+    "descricao": "adiciona metadados de música: gênero, mood, energia, BPM, duração e favorito; permite detectar a duração do áudio pelo próprio arquivo no navegador; adiciona filtros por gênero, mood e favoritas no Music Hub; inclui gênero, energia e BPM na busca;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T00:51:49.000Z",
+    "pullRequest": 440
+  },
+  {
     "id": "pr-434",
     "titulo": "criar Music Hub e integrar trilhas ao editor",
     "descricao": "classifica áudios em música/trilha, locução, efeito sonoro, jingle, identidade sonora e outros; adiciona filtros e contadores específicos do Music Hub; permite definir o tipo já no upload sem duplicar ou mover fisicamente o arquivo; adiciona passaporte de direitos com origem, status, uso comercial, mídia paga, territórios, validade, atribuição e referência da licença;",
