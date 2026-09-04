@@ -16,6 +16,7 @@ import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
 import { signToken } from "../lib/jwt.js";
+import { getTenantCountryProfile } from "../lib/tenant-country-profile.js";
 
 export const intakeRouter: IRouter = Router();
 
@@ -52,6 +53,7 @@ const intakeSchema = z.object({
   cargo: z.string().optional(),
   empresa: z.string().optional(),
   segmento: z.string().optional(),
+  countryCode: z.enum(["BR", "PY", "AR", "UY", "CL"]).optional(),
   descricaoNegocio: z.string().optional(),
   produtos: z.string().optional(),
   diferenciais: z.string().optional(),
@@ -98,6 +100,7 @@ const trialSignupSchema = z.object({
   email: z.email(),
   senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
   telefone: z.string().trim().max(40).optional(),
+  countryCode: z.enum(["BR", "PY", "AR", "UY", "CL"]).optional().default("BR"),
   warmLeadId: z.string().uuid().optional().nullable(),
   instagram: z.string().trim().max(180).optional(),
   segmento: z.string().trim().max(180).optional(),
@@ -268,6 +271,7 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
   const attribution = attributionRecord(d);
   const discoveryData: Record<string, unknown> = {
     segmento: d.segmento,
+    countryCode: d.countryCode,
     descricaoNegocio: d.descricaoNegocio,
     produtos: d.produtos,
     diferenciais: d.diferenciais,
@@ -393,6 +397,7 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
   }
 
   const d = mergeTracking(parsed.data as TrialSignupData & TrackingData, req.get("referer"));
+  const countryProfile = getTenantCountryProfile(d.countryCode);
   const [existingUser] = await db
     .select({ id: usersTable.id })
     .from(usersTable)
@@ -426,6 +431,12 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
         demoExpiresAt: trialExpiresAt,
         provisioningMethod: "trial",
         planId: null,
+        countryCode: d.countryCode,
+        defaultLocale: countryProfile.defaultLocale,
+        timezone: countryProfile.timezone,
+        defaultCurrency: countryProfile.defaultCurrency,
+        supportedCurrencies: [countryProfile.defaultCurrency],
+        taxIdentifierType: countryProfile.taxIdentifierType,
         vertical: d.segmento || null,
         segmento: d.segmento || null,
         descricao: profileDescription || null,
@@ -473,6 +484,7 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
 
         const qualification = {
           segmento: d.segmento || null,
+          countryCode: d.countryCode,
           cidadeRegiao: d.cidadeRegiao || null,
           produtos: d.produtos || null,
           leadsPerMes: d.leadsPerMes || null,
@@ -515,6 +527,7 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
             : attributionRecord(d),
           prePersonalization: {
             segment: d.segmento || null,
+            countryCode: d.countryCode,
             products: d.produtos || null,
             objective: d.objetivo6meses || null,
             pain: d.desafioPrincipal || null,
@@ -636,6 +649,9 @@ intakeRouter.post("/auth/trial-signup", async (req, res) => {
         provisioningMethod: "trial",
         demoExpiresAt: trialExpiresAt,
         segmento: d.segmento || null,
+        countryCode: d.countryCode,
+        defaultLocale: countryProfile.defaultLocale,
+        defaultCurrency: countryProfile.defaultCurrency,
       },
       salesLeadId,
       attributedCampaign: adCampaignId,
