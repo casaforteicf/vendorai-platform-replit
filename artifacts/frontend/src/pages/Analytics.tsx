@@ -19,21 +19,26 @@ import {
   CartesianGrid,
 } from "recharts";
 import {
-  Bot,
-  MessageCircle,
-  TrendingUp,
-  AlertTriangle,
-  BrainCircuit,
-  Users,
-  Clock,
   Activity,
-  Zap,
-  ArrowUpRight,
-  ArrowDownRight,
-  Loader2,
+  AlertTriangle,
   BarChart3,
+  Bot,
+  BrainCircuit,
+  CheckCircle2,
+  Clock,
+  Database,
   GitBranch,
+  ListChecks,
+  Loader2,
+  MessageCircle,
+  ShieldAlert,
+  Sparkles,
+  Target,
+  TrendingUp,
   UserX,
+  Users,
+  WalletCards,
+  Zap,
 } from "lucide-react";
 import {
   useGetTenantAnalyticsAgents,
@@ -45,8 +50,6 @@ import {
 } from "@workspace/api-client-react";
 
 const COLORS = ["#60A5FA", "#818CF8", "#A78BFA", "#F59E0B", "#10B981", "#EF4444", "#94A3B8"];
-
-// ─── Flow Metrics types & hook ────────────────────────────────────────────────
 
 interface FlowMetricsData {
   firstResponseTime: { ia: number | null; human: number | null };
@@ -72,24 +75,22 @@ function useFlowMetrics(tenantId: string, enabled: boolean) {
   });
 }
 
-function formatSeconds(s: number | null | undefined): string {
-  if (s === null || s === undefined) return "—";
-  if (s < 60) return `${Math.round(s)}s`;
-  if (s < 3600) return `${Math.round(s / 60)}min`;
-  return `${(s / 3600).toFixed(1)}h`;
+function formatSeconds(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  if (value < 60) return `${Math.round(value)}s`;
+  if (value < 3600) return `${Math.round(value / 60)}min`;
+  return `${(value / 3600).toFixed(1)}h`;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatPercent(value: number | undefined): string {
-  if (value === undefined || value === null) return "0%";
-  return (value * 100).toFixed(1) + "%";
+function formatPercent(value: number | null | undefined, emptyWhenUnavailable = false): string {
+  if (value === undefined || value === null) return emptyWhenUnavailable ? "—" : "0%";
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function formatCurrency(value: string | number | undefined | null): string {
   if (value === null || value === undefined || value === "") return "R$ 0,00";
   const num = typeof value === "number" ? value : parseFloat(String(value));
-  if (isNaN(num)) return "R$ 0,00";
+  if (Number.isNaN(num)) return "R$ 0,00";
   return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
@@ -98,11 +99,89 @@ function formatNumber(value: number | undefined | null): string {
   return value.toLocaleString("pt-BR");
 }
 
-function LoadingCard() {
+function LoadingCard({ className = "" }: { className?: string }) {
   return (
-    <Card className="min-h-[200px] flex items-center justify-center">
+    <Card className={`min-h-[180px] flex items-center justify-center ${className}`}>
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
     </Card>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  compact = false,
+}: {
+  icon: typeof Bot;
+  title: string;
+  description: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`flex flex-col items-center justify-center text-center ${compact ? "py-8" : "py-12"}`}>
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+        <Icon className="h-5 w-5 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  description,
+  icon: Icon,
+  tone = "default",
+}: {
+  title: string;
+  value: string;
+  description: string;
+  icon: typeof Bot;
+  tone?: "default" | "success" | "warning" | "danger";
+}) {
+  const toneClass = {
+    default: "text-primary",
+    success: "text-emerald-600",
+    warning: "text-amber-600",
+    danger: "text-red-600",
+  }[tone];
+
+  return (
+    <Card className="shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground">
+          <span>{title}</span>
+          <Icon className={`h-4 w-4 ${toneClass}`} />
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold tracking-tight">{value}</div>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SectionTitle({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: typeof Bot;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-primary" />
+        <h2 className="text-base font-semibold">{title}</h2>
+      </div>
+      {description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
+    </div>
   );
 }
 
@@ -126,618 +205,635 @@ export default function Analytics() {
   const channels = channelsQuery.data;
   const intel = intelQuery.data;
 
+  const periodLabel = {
+    agents: "Atividade: últimos 30 dias",
+    channels: "Atividade: últimos 30 dias",
+    intelligence: "Inteligência: estado atual",
+    flow: "Fluxo: histórico consolidado",
+  }[activeTab] ?? "Dados operacionais";
+
+  const totalActions = agents?.agents.reduce((sum, item) => sum + item.actions.total, 0) ?? 0;
+  const executedActions = agents?.agents.reduce((sum, item) => sum + item.actions.executed, 0) ?? 0;
+  const rejectedActions = agents?.agents.reduce((sum, item) => sum + item.actions.rejected, 0) ?? 0;
+  const pendingActions = agents?.agents.reduce((sum, item) => sum + item.actions.pending, 0) ?? 0;
+  const totalTasks = agents?.agents.reduce((sum, item) => sum + item.tasks.total, 0) ?? 0;
+  const completedTasks = agents?.agents.reduce((sum, item) => sum + item.tasks.completed, 0) ?? 0;
+  const failedTasks = agents?.agents.reduce((sum, item) => sum + item.tasks.failed, 0) ?? 0;
+  const pendingTasks = agents?.agents.reduce((sum, item) => sum + item.tasks.pending, 0) ?? 0;
+  const totalMessages = agents?.messagesByChannel.reduce((sum, item) => sum + item.total, 0) ?? 0;
+  const totalConversions = agents?.dealConversionsBySource.reduce((sum, item) => sum + item.total, 0) ?? 0;
+  const totalConversionRevenue = agents?.dealConversionsBySource.reduce(
+    (sum, item) => sum + (Number.parseFloat(String(item.valor ?? "0")) || 0),
+    0,
+  ) ?? 0;
+  const actionRate = totalActions > 0 ? executedActions / totalActions : null;
+  const taskRate = totalTasks > 0 ? completedTasks / totalTasks : null;
+  const operationalAlerts = rejectedActions + failedTasks + pendingActions + pendingTasks;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <BarChart3 className="h-6 w-6 text-primary" />
             Métricas de IA
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Relatórios de performance, conversão e inteligência de clientes
+          <p className="mt-1 text-sm text-muted-foreground">
+            Acompanhe execução dos agentes, canais, inteligência de clientes e gargalos do fluxo.
           </p>
         </div>
-        <Badge variant="outline" className="text-xs">Período: últimos 30 dias</Badge>
+        <Badge variant="outline" className="w-fit px-3 py-1 text-xs font-medium">
+          {periodLabel}
+        </Badge>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 md:w-auto">
-          <TabsTrigger value="agents" className="flex items-center gap-2">
+        <TabsList className="grid w-full grid-cols-4 rounded-xl p-1">
+          <TabsTrigger value="agents" className="flex items-center gap-2 rounded-lg">
             <Bot className="h-4 w-4" />
             <span className="hidden sm:inline">Agentes</span>
           </TabsTrigger>
-          <TabsTrigger value="channels" className="flex items-center gap-2">
+          <TabsTrigger value="channels" className="flex items-center gap-2 rounded-lg">
             <MessageCircle className="h-4 w-4" />
             <span className="hidden sm:inline">Canais</span>
           </TabsTrigger>
-          <TabsTrigger value="intelligence" className="flex items-center gap-2">
+          <TabsTrigger value="intelligence" className="flex items-center gap-2 rounded-lg">
             <BrainCircuit className="h-4 w-4" />
             <span className="hidden sm:inline">Inteligência</span>
           </TabsTrigger>
-          <TabsTrigger value="flow" className="flex items-center gap-2">
+          <TabsTrigger value="flow" className="flex items-center gap-2 rounded-lg">
             <GitBranch className="h-4 w-4" />
             <span className="hidden sm:inline">Fluxo</span>
           </TabsTrigger>
         </TabsList>
 
-        {/* ─── AGENTS TAB ─── */}
         <TabsContent value="agents" className="space-y-4">
           {agentsQuery.isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <LoadingCard />
               <LoadingCard />
               <LoadingCard />
               <LoadingCard />
             </div>
           ) : !agents ? (
-            <Card><CardContent className="p-6 text-center text-muted-foreground">Sem dados disponíveis</CardContent></Card>
+            <Card>
+              <CardContent>
+                <EmptyState
+                  icon={Database}
+                  title="Métricas indisponíveis"
+                  description="A API de analytics não retornou dados para este tenant. Verifique a conexão e tente novamente."
+                />
+              </CardContent>
+            </Card>
           ) : (
             <>
-              {/* KPI Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Total de Ações</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatNumber(agents.agents.reduce((a, b) => a + b.actions.total, 0))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Agentes ativos</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Taxa de Execução</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatPercent(
-                        agents.agents.reduce((a, b) => a + b.actions.executed, 0) /
-                        Math.max(agents.agents.reduce((a, b) => a + b.actions.total, 0), 1)
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Ações executadas</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Mensagens Enviadas</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatNumber(agents.messagesByChannel.reduce((a, b) => a + b.total, 0))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Via todos os canais</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Conversões</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatNumber(agents.dealConversionsBySource.reduce((a, b) => a + b.total, 0))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Deals ganhos</p>
-                  </CardContent>
-                </Card>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  title="Agentes com atividade"
+                  value={formatNumber(agents.agents.length)}
+                  description="Agentes com ações ou tarefas registradas no período"
+                  icon={Bot}
+                />
+                <MetricCard
+                  title="Taxa de execução"
+                  value={formatPercent(actionRate, true)}
+                  description={totalActions > 0 ? `${formatNumber(executedActions)} de ${formatNumber(totalActions)} ações executadas` : "Sem ações registradas no período"}
+                  icon={CheckCircle2}
+                  tone="success"
+                />
+                <MetricCard
+                  title="Mensagens enviadas"
+                  value={formatNumber(totalMessages)}
+                  description="Saídas registradas em todos os canais"
+                  icon={MessageCircle}
+                />
+                <MetricCard
+                  title="Deals ganhos"
+                  value={formatNumber(totalConversions)}
+                  description={`Valor associado: ${formatCurrency(totalConversionRevenue)}`}
+                  icon={TrendingUp}
+                  tone="success"
+                />
               </div>
 
-              {/* Agent Details */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Bot className="h-4 w-4" />
-                      Performance por Agente
-                    </CardTitle>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  title="Ações executadas"
+                  value={formatNumber(executedActions)}
+                  description={`${formatNumber(totalActions)} ações registradas no total`}
+                  icon={Zap}
+                />
+                <MetricCard
+                  title="Tarefas concluídas"
+                  value={formatNumber(completedTasks)}
+                  description={totalTasks > 0 ? `${formatPercent(taskRate, true)} de conclusão` : "Sem tarefas registradas"}
+                  icon={ListChecks}
+                  tone="success"
+                />
+                <MetricCard
+                  title="Falhas e rejeições"
+                  value={formatNumber(failedTasks + rejectedActions)}
+                  description="Tarefas com erro/rejeição e ações rejeitadas"
+                  icon={ShieldAlert}
+                  tone={failedTasks + rejectedActions > 0 ? "danger" : "default"}
+                />
+                <MetricCard
+                  title="Pendências operacionais"
+                  value={formatNumber(pendingActions + pendingTasks)}
+                  description="Ações e tarefas ainda aguardando conclusão"
+                  icon={Clock}
+                  tone={pendingActions + pendingTasks > 0 ? "warning" : "default"}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_1fr]">
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3">
+                    <SectionTitle
+                      icon={Bot}
+                      title="Performance por agente"
+                      description="Execução real de ações e tarefas, sem estimativas ou dados simulados."
+                    />
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    {agents.agents.map((agent) => {
-                      const actionRate = agent.actions.total > 0
-                        ? agent.actions.executed / agent.actions.total
-                        : 0;
-                      const taskRate = agent.tasks.total > 0
-                        ? agent.tasks.completed / agent.tasks.total
-                        : 0;
-                      return (
-                        <div key={agent.agentName} className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium">{agent.agentName}</span>
-                            <span className="text-muted-foreground">
-                              {agent.actions.total} ações / {agent.tasks.total} tarefas
-                            </span>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>Execução</span>
-                              <span>{formatPercent(actionRate)}</span>
-                            </div>
-                            <Progress value={actionRate * 100} className="h-2" />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>Tarefas</span>
-                              <span>{formatPercent(taskRate)}</span>
-                            </div>
-                            <Progress value={taskRate * 100} className="h-2" />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {agents.agents.length === 0 && (
-                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum agente com ações no período</p>
+                  <CardContent>
+                    {agents.agents.length === 0 ? (
+                      <EmptyState
+                        icon={Bot}
+                        title="Ainda não há atividade de agentes"
+                        description="Quando os agentes executarem ações ou tarefas, o desempenho individual aparecerá aqui."
+                        compact
+                      />
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[680px] text-sm">
+                          <thead>
+                            <tr className="border-b text-left text-xs text-muted-foreground">
+                              <th className="pb-3 pr-4 font-medium">Agente</th>
+                              <th className="pb-3 pr-4 text-right font-medium">Ações</th>
+                              <th className="pb-3 pr-4 text-right font-medium">Execução</th>
+                              <th className="pb-3 pr-4 text-right font-medium">Tarefas</th>
+                              <th className="pb-3 pr-4 text-right font-medium">Conclusão</th>
+                              <th className="pb-3 text-right font-medium">Falhas</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {agents.agents.map((agent) => {
+                              const agentActionRate = agent.actions.total > 0 ? agent.actions.executed / agent.actions.total : null;
+                              const agentTaskRate = agent.tasks.total > 0 ? agent.tasks.completed / agent.tasks.total : null;
+                              return (
+                                <tr key={agent.agentName} className="border-b last:border-0">
+                                  <td className="py-3 pr-4 font-medium">{agent.agentName}</td>
+                                  <td className="py-3 pr-4 text-right">{formatNumber(agent.actions.total)}</td>
+                                  <td className="py-3 pr-4 text-right">{formatPercent(agentActionRate, true)}</td>
+                                  <td className="py-3 pr-4 text-right">{formatNumber(agent.tasks.total)}</td>
+                                  <td className="py-3 pr-4 text-right">{formatPercent(agentTaskRate, true)}</td>
+                                  <td className="py-3 text-right">
+                                    <span className={agent.tasks.failed + agent.actions.rejected > 0 ? "font-medium text-red-600" : "text-muted-foreground"}>
+                                      {formatNumber(agent.tasks.failed + agent.actions.rejected)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4" />
-                      Conversão por Canal
-                    </CardTitle>
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3">
+                    <SectionTitle
+                      icon={AlertTriangle}
+                      title="Atenção necessária"
+                      description="Itens que podem exigir revisão do gestor."
+                    />
                   </CardHeader>
                   <CardContent>
-                    <div className="h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={agents.dealConversionsBySource}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="source" tick={{ fontSize: 12 }} />
-                          <YAxis tick={{ fontSize: 12 }} />
-                          <Tooltip
-                            formatter={(value: number) => [formatNumber(value), "Deals"]}
-                            contentStyle={{ fontSize: 12 }}
-                          />
-                          <Bar dataKey="total" fill="#10B981" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    {operationalAlerts === 0 ? (
+                      <div className="rounded-lg border border-dashed p-5 text-center">
+                        <CheckCircle2 className="mx-auto h-6 w-6 text-emerald-600" />
+                        <p className="mt-2 text-sm font-medium">Sem alertas operacionais</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Não há falhas, rejeições ou pendências registradas neste período.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div>
+                            <p className="text-sm font-medium">Falhas de tarefas</p>
+                            <p className="text-xs text-muted-foreground">Erros ou tarefas rejeitadas</p>
+                          </div>
+                          <Badge variant={failedTasks > 0 ? "destructive" : "secondary"}>{formatNumber(failedTasks)}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div>
+                            <p className="text-sm font-medium">Ações rejeitadas</p>
+                            <p className="text-xs text-muted-foreground">Ações que não seguiram para execução</p>
+                          </div>
+                          <Badge variant={rejectedActions > 0 ? "destructive" : "secondary"}>{formatNumber(rejectedActions)}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div>
+                            <p className="text-sm font-medium">Pendências</p>
+                            <p className="text-xs text-muted-foreground">Aguardando aprovação, execução ou conclusão</p>
+                          </div>
+                          <Badge variant="outline">{formatNumber(pendingActions + pendingTasks)}</Badge>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Messages by Channel */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4" />
-                    Mensagens por Canal
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[250px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={agents.messagesByChannel}
-                          dataKey="total"
-                          nameKey="canal"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          label={({ canal, total }) => `${canal}: ${total}`}
-                        >
-                          {agents.messagesByChannel.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Legend />
-                        <Tooltip contentStyle={{ fontSize: 12 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3">
+                    <SectionTitle icon={TrendingUp} title="Deals ganhos por origem" description="Mostra de onde vieram os leads associados às vendas registradas." />
+                  </CardHeader>
+                  <CardContent>
+                    {agents.dealConversionsBySource.length === 0 ? (
+                      <EmptyState
+                        icon={Target}
+                        title="Nenhuma conversão registrada"
+                        description="Quando houver deals ganhos com origem identificada, a distribuição aparecerá aqui."
+                        compact
+                      />
+                    ) : (
+                      <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={agents.dealConversionsBySource}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="source" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                            <Tooltip formatter={(value: number) => [formatNumber(value), "Deals"]} contentStyle={{ fontSize: 12 }} />
+                            <Bar dataKey="total" fill="#10B981" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3">
+                    <SectionTitle icon={MessageCircle} title="Mensagens por canal" description="Distribuição das mensagens de saída registradas no período." />
+                  </CardHeader>
+                  <CardContent>
+                    {agents.messagesByChannel.length === 0 ? (
+                      <EmptyState
+                        icon={MessageCircle}
+                        title="Nenhuma mensagem de saída registrada"
+                        description="Assim que os canais começarem a registrar atendimentos, a distribuição aparecerá aqui."
+                        compact
+                      />
+                    ) : (
+                      <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={agents.messagesByChannel}
+                              dataKey="total"
+                              nameKey="canal"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={82}
+                              label={({ canal, total }) => `${canal}: ${total}`}
+                            >
+                              {agents.messagesByChannel.map((_, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Legend />
+                            <Tooltip contentStyle={{ fontSize: 12 }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </>
           )}
         </TabsContent>
 
-        {/* ─── CHANNELS TAB ─── */}
         <TabsContent value="channels" className="space-y-4">
           {channelsQuery.isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <LoadingCard />
+              <LoadingCard />
               <LoadingCard />
               <LoadingCard />
             </div>
           ) : !channels ? (
-            <Card><CardContent className="p-6 text-center text-muted-foreground">Sem dados disponíveis</CardContent></Card>
+            <Card><CardContent><EmptyState icon={Database} title="Métricas de canais indisponíveis" description="A API de analytics não retornou dados de canais para este tenant." /></CardContent></Card>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Leads Novos</CardTitle>
-                  </CardHeader>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  title="Leads novos"
+                  value={formatNumber(channels.leadsBySource.reduce((sum, item) => sum + item.novos, 0))}
+                  description="Leads criados na janela de atividade"
+                  icon={Users}
+                />
+                <MetricCard
+                  title="Deals ganhos"
+                  value={formatNumber(channels.dealsBySource.reduce((sum, item) => sum + item.total, 0))}
+                  description="Base consolidada de ganhos por origem"
+                  icon={TrendingUp}
+                  tone="success"
+                />
+                <MetricCard
+                  title="Faturamento"
+                  value={formatCurrency(channels.dealsBySource.reduce((sum, item) => sum + (Number.parseFloat(item.valor || "0") || 0), 0))}
+                  description="Valor consolidado dos deals ganhos"
+                  icon={WalletCards}
+                  tone="success"
+                />
+                <MetricCard
+                  title="Tempo médio de resposta"
+                  value={(() => {
+                    const times = channels.avgResponseTimeSeconds.filter((item) => item.avgSeconds !== null).map((item) => item.avgSeconds ?? 0);
+                    if (times.length === 0) return "—";
+                    return formatSeconds(times.reduce((sum, value) => sum + value, 0) / times.length);
+                  })()}
+                  description="Considera canais com tempo de resposta disponível"
+                  icon={Clock}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3"><SectionTitle icon={Users} title="Leads por origem" description="Base total e novos leads por fonte de aquisição." /></CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatNumber(channels.leadsBySource.reduce((a, b) => a + b.novos, 0))}
-                    </div>
+                    {channels.leadsBySource.length === 0 ? (
+                      <EmptyState icon={Users} title="Nenhum lead por origem" description="Cadastre ou importe leads com origem identificada para acompanhar este indicador." compact />
+                    ) : (
+                      <div className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={channels.leadsBySource}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="source" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                            <Tooltip contentStyle={{ fontSize: 12 }} />
+                            <Bar dataKey="total" fill="#60A5FA" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="novos" fill="#818CF8" radius={[4, 4, 0, 0]} />
+                            <Legend />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Deals Ganhos</CardTitle>
-                  </CardHeader>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3"><SectionTitle icon={MessageCircle} title="Mensagens por canal" description="Compare entrada e saída para identificar canais com maior demanda." /></CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatNumber(channels.dealsBySource.reduce((a, b) => a + b.total, 0))}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Faturamento</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(channels.dealsBySource.reduce((a, b) => a + parseFloat(b.valor || "0"), 0))}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Tempo Médio Resposta</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {(() => {
-                        const times = channels.avgResponseTimeSeconds
-                          .filter((t) => t.avgSeconds !== null)
-                          .map((t) => t.avgSeconds ?? 0);
-                        const avg = times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
-                        return avg < 60 ? `${Math.round(avg)}s` : `${Math.round(avg / 60)}min`;
-                      })()}
-                    </div>
+                    {channels.messagesByChannel.length === 0 ? (
+                      <EmptyState icon={MessageCircle} title="Nenhuma mensagem registrada" description="Conecte e utilize os canais para acompanhar o volume de entrada e saída." compact />
+                    ) : (
+                      <div className="h-[280px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={channels.messagesByChannel}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="canal" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                            <Tooltip contentStyle={{ fontSize: 12 }} />
+                            <Bar dataKey="entrada" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="saida" fill="#10B981" radius={[4, 4, 0, 0]} />
+                            <Legend />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Leads por Fonte
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={channels.leadsBySource}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="source" tick={{ fontSize: 12 }} />
-                          <YAxis tick={{ fontSize: 12 }} />
-                          <Tooltip contentStyle={{ fontSize: 12 }} />
-                          <Bar dataKey="total" fill="#60A5FA" radius={[4, 4, 0, 0]} />
-                          <Bar dataKey="novos" fill="#818CF8" radius={[4, 4, 0, 0]} />
-                          <Legend />
-                        </BarChart>
-                      </ResponsiveContainer>
+              <Card className="shadow-sm">
+                <CardHeader className="pb-3"><SectionTitle icon={Clock} title="Resposta por canal" description="Tempo médio disponível para cada canal com dados suficientes." /></CardHeader>
+                <CardContent>
+                  {channels.avgResponseTimeSeconds.length === 0 ? (
+                    <EmptyState icon={Clock} title="Sem tempo de resposta calculável" description="É necessário histórico de mensagens de saída para calcular este indicador." compact />
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {channels.avgResponseTimeSeconds.map((item) => (
+                        <div key={item.canal} className="rounded-lg border p-3">
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{item.canal}</p>
+                          <p className="mt-1 text-xl font-semibold">{formatSeconds(item.avgSeconds)}</p>
+                        </div>
+                      ))}
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <MessageCircle className="h-4 w-4" />
-                      Mensagens (Entrada vs Saída)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={channels.messagesByChannel}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="canal" tick={{ fontSize: 12 }} />
-                          <YAxis tick={{ fontSize: 12 }} />
-                          <Tooltip contentStyle={{ fontSize: 12 }} />
-                          <Bar dataKey="entrada" fill="#F59E0B" radius={[4, 4, 0, 0]} />
-                          <Bar dataKey="saida" fill="#10B981" radius={[4, 4, 0, 0]} />
-                          <Legend />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                  )}
+                </CardContent>
+              </Card>
             </>
           )}
         </TabsContent>
 
-        {/* ─── INTELLIGENCE TAB ─── */}
         <TabsContent value="intelligence" className="space-y-4">
           {intelQuery.isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <LoadingCard />
+              <LoadingCard />
               <LoadingCard />
               <LoadingCard />
             </div>
           ) : !intel ? (
-            <Card><CardContent className="p-6 text-center text-muted-foreground">Sem dados disponíveis</CardContent></Card>
+            <Card><CardContent><EmptyState icon={Database} title="Inteligência indisponível" description="A API não retornou os dados de inteligência de clientes para este tenant." /></CardContent></Card>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Leads Analisados</CardTitle>
-                  </CardHeader>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard title="Leads analisados" value={formatNumber(intel.totalAnalyzed)} description="Perfis com inteligência registrada" icon={BrainCircuit} />
+                <MetricCard title="Risco alto de churn" value={formatNumber(intel.churnRisk.alto)} description="Clientes que exigem atenção prioritária" icon={AlertTriangle} tone={intel.churnRisk.alto > 0 ? "danger" : "default"} />
+                <MetricCard title="Score médio" value={intel.behaviorScore.avg?.toFixed(1) ?? "—"} description="Média do behavior score disponível" icon={Activity} />
+                <MetricCard title="Etapas da jornada" value={formatNumber(intel.journeyStageDistribution.length)} description="Estágios distintos identificados" icon={GitBranch} />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3"><SectionTitle icon={AlertTriangle} title="Distribuição de risco de churn" description="Visão da carteira analisada por faixa de risco." /></CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{formatNumber(intel.totalAnalyzed)}</div>
+                    {intel.churnRisk.baixo + intel.churnRisk.medio + intel.churnRisk.alto === 0 ? (
+                      <EmptyState icon={AlertTriangle} title="Nenhum risco calculado" description="A distribuição aparecerá quando houver churn risk registrado na inteligência dos clientes." compact />
+                    ) : (
+                      <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: "Baixo", value: intel.churnRisk.baixo },
+                                { name: "Médio", value: intel.churnRisk.medio },
+                                { name: "Alto", value: intel.churnRisk.alto },
+                              ]}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={82}
+                              label={({ name, value }) => `${name}: ${value}`}
+                            >
+                              <Cell fill="#10B981" />
+                              <Cell fill="#F59E0B" />
+                              <Cell fill="#EF4444" />
+                            </Pie>
+                            <Legend />
+                            <Tooltip contentStyle={{ fontSize: 12 }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Churn Alto</CardTitle>
-                  </CardHeader>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3"><SectionTitle icon={Sparkles} title="Jornada do cliente" description="Distribuição dos clientes pelos estágios detectados." /></CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-red-500 flex items-center gap-1">
-                      <AlertTriangle className="h-5 w-5" />
-                      {formatNumber(intel.churnRisk.alto)}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Score Médio</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {intel.behaviorScore.avg?.toFixed(1) ?? "—"}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Journey Stages</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{intel.journeyStageDistribution.length}</div>
+                    {intel.journeyStageDistribution.length === 0 ? (
+                      <EmptyState icon={GitBranch} title="Nenhuma etapa detectada" description="A jornada aparecerá quando customer intelligence registrar os estágios dos clientes." compact />
+                    ) : (
+                      <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={intel.journeyStageDistribution}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                            <Tooltip contentStyle={{ fontSize: 12 }} />
+                            <Bar dataKey="total" fill="#818CF8" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Activity className="h-4 w-4" />
-                      Distribuição de Churn Risk
-                    </CardTitle>
-                  </CardHeader>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_1fr]">
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3"><SectionTitle icon={AlertTriangle} title="Clientes que exigem atenção" description="Priorize os maiores riscos e use a próxima melhor ação já registrada pela inteligência." /></CardHeader>
                   <CardContent>
-                    <div className="h-[250px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={[
-                              { name: "Baixo", value: intel.churnRisk.baixo },
-                              { name: "Médio", value: intel.churnRisk.medio },
-                              { name: "Alto", value: intel.churnRisk.alto },
-                            ]}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            label={({ name, value }) => `${name}: ${value}`}
-                          >
-                            <Cell fill="#10B981" />
-                            <Cell fill="#F59E0B" />
-                            <Cell fill="#EF4444" />
-                          </Pie>
-                          <Legend />
-                          <Tooltip contentStyle={{ fontSize: 12 }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
+                    {intel.topChurnRisk.length === 0 ? (
+                      <EmptyState icon={CheckCircle2} title="Nenhum cliente em risco identificado" description="Não há leads com churn risk disponível para destacar agora." compact />
+                    ) : (
+                      <div className="space-y-2">
+                        {intel.topChurnRisk.map((lead) => (
+                          <div key={lead.leadId} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[72px_1fr_1.2fr] sm:items-center">
+                            <div className="text-lg font-bold text-red-600">{lead.churnRisk}%</div>
+                            <div>
+                              <p className="text-sm font-medium">{lead.nome}</p>
+                              <p className="text-xs text-muted-foreground">{lead.journeyStage ?? "Etapa não informada"}</p>
+                            </div>
+                            <p className="text-xs leading-relaxed text-muted-foreground">{lead.nextBestAction ?? "Próxima ação ainda não definida"}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Zap className="h-4 w-4" />
-                      Journey Stage Distribution
-                    </CardTitle>
-                  </CardHeader>
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3"><SectionTitle icon={BrainCircuit} title="Intenções detectadas" description="Assuntos e intenções mais frequentes registrados pela inteligência." /></CardHeader>
                   <CardContent>
-                    <div className="h-[250px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={intel.journeyStageDistribution}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
-                          <YAxis tick={{ fontSize: 12 }} />
-                          <Tooltip contentStyle={{ fontSize: 12 }} />
-                          <Bar dataKey="total" fill="#818CF8" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    {intel.intentDistribution.length === 0 ? (
+                      <EmptyState icon={BrainCircuit} title="Nenhuma intenção detectada" description="As intenções aparecerão quando houver dados de intent analysis nos clientes." compact />
+                    ) : (
+                      <div className="space-y-4">
+                        {intel.intentDistribution.map((intent) => (
+                          <div key={String(intent.intent)} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="truncate font-medium">{String(intent.intent)}</span>
+                              <span className="text-muted-foreground">{formatNumber(intent.total)}</span>
+                            </div>
+                            <Progress value={(intent.total / Math.max(...intel.intentDistribution.map((item) => item.total), 1)) * 100} className="h-2" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Top Churn Risk */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-red-500" />
-                    Top 10 Leads em Risco de Churn
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {intel.topChurnRisk.map((lead) => (
-                      <div key={lead.leadId} className="flex items-center gap-3">
-                        <div className="w-10 text-sm font-bold text-red-500">{lead.churnRisk}%</div>
-                        <div className="flex-1">
-                          <div className="text-sm font-medium">{lead.nome}</div>
-                          <div className="text-xs text-muted-foreground">{lead.journeyStage ?? "—"}</div>
-                        </div>
-                        <div className="text-xs text-muted-foreground max-w-[200px] truncate">
-                          {lead.nextBestAction ?? "—"}
-                        </div>
-                      </div>
-                    ))}
-                    {intel.topChurnRisk.length === 0 && (
-                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum lead em risco identificado</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Intent Distribution */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <BrainCircuit className="h-4 w-4" />
-                    Top Intenções Detectadas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {intel.intentDistribution.map((intent) => (
-                      <div key={intent.intent} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium">{intent.intent}</span>
-                          <span className="text-muted-foreground">{intent.total}</span>
-                        </div>
-                        <Progress
-                          value={
-                            (intent.total / Math.max(...intel.intentDistribution.map((i) => i.total), 1)) * 100
-                          }
-                          className="h-2"
-                        />
-                      </div>
-                    ))}
-                    {intel.intentDistribution.length === 0 && (
-                      <p className="text-sm text-muted-foreground text-center py-4">Nenhuma intenção detectada</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
             </>
           )}
         </TabsContent>
-        {/* ─── FLOW TAB ─── */}
+
         <TabsContent value="flow" className="space-y-4">
           {flowQuery.isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <LoadingCard />
               <LoadingCard />
               <LoadingCard />
               <LoadingCard />
             </div>
           ) : flowQuery.isError ? (
-            <Card><CardContent className="p-6 text-center text-muted-foreground">Erro ao carregar métricas de fluxo</CardContent></Card>
+            <Card><CardContent><EmptyState icon={AlertTriangle} title="Erro ao carregar o fluxo" description="Não foi possível consultar as métricas do fluxo agora. Tente novamente em alguns instantes." /></CardContent></Card>
           ) : !flowQuery.data ? (
-            <Card><CardContent className="p-6 text-center text-muted-foreground">Sem dados disponíveis</CardContent></Card>
+            <Card><CardContent><EmptyState icon={Database} title="Fluxo sem dados" description="Ainda não há métricas consolidadas disponíveis para este tenant." /></CardContent></Card>
           ) : (
             <>
-              {/* KPI row — 4 cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-                      <Bot className="h-3.5 w-3.5 text-violet-500" />
-                      Resposta IA
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatSeconds(flowQuery.data.firstResponseTime.ia)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Tempo médio 1ª resposta</p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-                      <Users className="h-3.5 w-3.5 text-blue-500" />
-                      Resposta Humana
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatSeconds(flowQuery.data.firstResponseTime.human)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Tempo médio 1ª resposta</p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-                      <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
-                      Conv → Agendamento
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatPercent(flowQuery.data.conversationToAppointment.rate)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {flowQuery.data.conversationToAppointment.converted}/{flowQuery.data.conversationToAppointment.total} leads
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-                      <Zap className="h-3.5 w-3.5 text-amber-500" />
-                      Agendamento → Venda
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatPercent(flowQuery.data.appointmentToSale.rate)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {flowQuery.data.appointmentToSale.converted}/{flowQuery.data.appointmentToSale.total} agendamentos
-                    </p>
-                  </CardContent>
-                </Card>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard title="1ª resposta da IA" value={formatSeconds(flowQuery.data.firstResponseTime.ia)} description="Tempo médio disponível para a primeira resposta" icon={Bot} />
+                <MetricCard title="1ª resposta humana" value={formatSeconds(flowQuery.data.firstResponseTime.human)} description="Tempo médio disponível para a primeira resposta" icon={Users} />
+                <MetricCard title="Conversa → agendamento" value={flowQuery.data.conversationToAppointment.total > 0 ? formatPercent(flowQuery.data.conversationToAppointment.rate, true) : "—"} description={`${flowQuery.data.conversationToAppointment.converted} de ${flowQuery.data.conversationToAppointment.total} leads`} icon={Target} tone="success" />
+                <MetricCard title="Agendamento → venda" value={flowQuery.data.appointmentToSale.total > 0 ? formatPercent(flowQuery.data.appointmentToSale.rate, true) : "—"} description={`${flowQuery.data.appointmentToSale.converted} de ${flowQuery.data.appointmentToSale.total} agendamentos`} icon={TrendingUp} tone="success" />
               </div>
 
-              {/* Second row — no-show + escalations */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <UserX className="h-4 w-4 text-red-500" />
-                      No-show de Agendamentos
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-end gap-3">
-                      <div className="text-4xl font-bold">{formatPercent(flowQuery.data.noShowRate.rate)}</div>
-                      <div className="text-sm text-muted-foreground pb-1">
-                        {flowQuery.data.noShowRate.noShow} de {flowQuery.data.noShowRate.total} agendamentos
-                      </div>
+              <Card className="shadow-sm">
+                <CardHeader className="pb-3"><SectionTitle icon={GitBranch} title="Funil operacional" description="Leitura direta das etapas já mensuradas pelo backend, sem fabricar estágios intermediários." /></CardHeader>
+                <CardContent>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-xl border p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conversas com lead</p>
+                      <p className="mt-2 text-2xl font-bold">{formatNumber(flowQuery.data.conversationToAppointment.total)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Base para conversão em agendamento</p>
                     </div>
-                    <Progress value={flowQuery.data.noShowRate.rate * 100} className="h-3" />
-                    <p className="text-xs text-muted-foreground">
-                      {flowQuery.data.noShowRate.total === 0
-                        ? "Nenhum agendamento registrado"
-                        : `${flowQuery.data.noShowRate.total - flowQuery.data.noShowRate.noShow} compareceram`}
-                    </p>
+                    <div className="rounded-xl border p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Agendados</p>
+                      <p className="mt-2 text-2xl font-bold">{formatNumber(flowQuery.data.conversationToAppointment.converted)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{flowQuery.data.conversationToAppointment.total > 0 ? formatPercent(flowQuery.data.conversationToAppointment.rate, true) : "Taxa indisponível"}</p>
+                    </div>
+                    <div className="rounded-xl border p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Vendas após agendamento</p>
+                      <p className="mt-2 text-2xl font-bold">{formatNumber(flowQuery.data.appointmentToSale.converted)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{flowQuery.data.appointmentToSale.total > 0 ? formatPercent(flowQuery.data.appointmentToSale.rate, true) : "Taxa indisponível"}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3"><SectionTitle icon={UserX} title="No-show de agendamentos" description="Compare faltas com a quantidade total de agendamentos registrada." /></CardHeader>
+                  <CardContent className="space-y-4">
+                    {flowQuery.data.noShowRate.total === 0 ? (
+                      <EmptyState icon={UserX} title="Nenhum agendamento registrado" description="O indicador de no-show ficará disponível quando houver agendamentos na base." compact />
+                    ) : (
+                      <>
+                        <div className="flex items-end gap-3">
+                          <div className="text-4xl font-bold">{formatPercent(flowQuery.data.noShowRate.rate)}</div>
+                          <div className="pb-1 text-sm text-muted-foreground">{flowQuery.data.noShowRate.noShow} de {flowQuery.data.noShowRate.total}</div>
+                        </div>
+                        <Progress value={flowQuery.data.noShowRate.rate * 100} className="h-3" />
+                        <p className="text-xs text-muted-foreground">{flowQuery.data.noShowRate.total - flowQuery.data.noShowRate.noShow} compareceram</p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-500" />
-                      Escalações por Razão
-                    </CardTitle>
-                  </CardHeader>
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3"><SectionTitle icon={AlertTriangle} title="Escalações para humano" description="Razões registradas quando o atendimento precisou sair da automação." /></CardHeader>
                   <CardContent className="space-y-3">
                     {flowQuery.data.escalationsByReason.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">Nenhuma escalação registrada</p>
+                      <EmptyState icon={CheckCircle2} title="Nenhuma escalação registrada" description="Não há handoffs para humano classificados nesta base." compact />
                     ) : (
-                      flowQuery.data.escalationsByReason.map((esc) => {
-                        const maxCount = Math.max(...flowQuery.data!.escalationsByReason.map((e) => e.count), 1);
+                      flowQuery.data.escalationsByReason.map((item) => {
+                        const maxCount = Math.max(...flowQuery.data!.escalationsByReason.map((entry) => entry.count), 1);
                         return (
-                          <div key={esc.reason} className="space-y-1">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium capitalize">{esc.reason.replace(/_/g, " ")}</span>
-                              <span className="text-muted-foreground">{esc.count}</span>
+                          <div key={item.reason} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="font-medium capitalize">{item.reason.replace(/_/g, " ")}</span>
+                              <span className="text-muted-foreground">{formatNumber(item.count)}</span>
                             </div>
-                            <Progress value={(esc.count / maxCount) * 100} className="h-2" />
+                            <Progress value={(item.count / maxCount) * 100} className="h-2" />
                           </div>
                         );
                       })
