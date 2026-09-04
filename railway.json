@@ -1,7 +1,20 @@
 {
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "backend/Dockerfile"
+    "dockerfilePath": "backend/Dockerfile",
+    "watchPatterns": [
+      "backend/**",
+      "artifacts/api-server/**",
+      "lib/**",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "tsconfig.json",
+      "tsconfig.base.json",
+      ".npmrc",
+      ".dockerignore",
+      "railway.json"
+    ]
   },
   "deploy": {
     "numReplicas": 1,
