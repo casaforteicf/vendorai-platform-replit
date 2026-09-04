@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from "crypto";
-import { Router, type IRouter, type RequestHandler } from "express";
+import { Router, type IRouter, type Request, type RequestHandler } from "express";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
@@ -37,6 +37,7 @@ type RuntimeAuthContext = {
   tenantId: string;
   appName: string;
 };
+type AppUserRequest = Request & { appUser?: AppUserJwtPayload };
 
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -174,12 +175,18 @@ router.post("/app-runtime/apps/:appId/auth/request-code", async (req, res) => {
     expiresAt: new Date(Date.now() + CODE_EXPIRES_MS),
   });
 
-  await sendAppUserLoginCodeEmail({
+  const sent = await sendAppUserLoginCodeEmail({
     to: appUser.email,
     code,
     appName: context.appName,
     expiresMinutes: CODE_EXPIRES_MINUTES,
   });
+  if (!sent) {
+    await db
+      .update(appUserAuthChallengesTable)
+      .set({ consumedAt: new Date() })
+      .where(eq(appUserAuthChallengesTable.id, challengeId));
+  }
 
   return res.status(202).json(accepted);
 });
@@ -230,16 +237,20 @@ router.post("/app-runtime/apps/:appId/auth/verify-code", async (req, res) => {
     return res.status(401).json({ error: "INVALID_CODE" });
   }
 
-  await db.transaction(async (tx) => {
-    await tx
+  const consumed = await db.transaction(async (tx) => {
+    const [claimed] = await tx
       .update(appUserAuthChallengesTable)
       .set({ consumedAt: now })
       .where(
         and(
           eq(appUserAuthChallengesTable.id, challenge.id),
           isNull(appUserAuthChallengesTable.consumedAt),
+          gt(appUserAuthChallengesTable.expiresAt, now),
         ),
-      );
+      )
+      .returning({ id: appUserAuthChallengesTable.id });
+
+    if (!claimed) return false;
 
     await tx
       .update(appUsersTable)
@@ -265,7 +276,10 @@ router.post("/app-runtime/apps/:appId/auth/verify-code", async (req, res) => {
           ),
         );
     }
+    return true;
   });
+
+  if (!consumed) return res.status(401).json({ error: "INVALID_CODE" });
 
   const token = signAppUserToken({
     sub: appUser.appUserId,
@@ -293,17 +307,16 @@ router.post("/app-runtime/apps/:appId/auth/verify-code", async (req, res) => {
   });
 });
 
-interface AppUserRequest extends Express.Request {
-  appUser?: AppUserJwtPayload;
-}
-
-const authenticateAppUser: RequestHandler = (req: AppUserRequest, res, next) => {
+const authenticateAppUser: RequestHandler = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "UNAUTHENTICATED" });
   }
   try {
-    req.appUser = verifyAppUserToken(authHeader.slice(7), String(req.params.appId));
+    (req as AppUserRequest).appUser = verifyAppUserToken(
+      authHeader.slice(7),
+      String(req.params.appId),
+    );
     next();
   } catch {
     return res.status(401).json({ error: "UNAUTHENTICATED" });
@@ -313,8 +326,8 @@ const authenticateAppUser: RequestHandler = (req: AppUserRequest, res, next) => 
 router.get(
   "/app-runtime/apps/:appId/session",
   authenticateAppUser,
-  async (req: AppUserRequest, res) => {
-    const identity = req.appUser!;
+  async (req, res) => {
+    const identity = (req as AppUserRequest).appUser!;
     const context = await runtimeAuthContext(String(req.params.appId));
     if (!context || context.tenantId !== identity.tenantId) {
       return res.status(401).json({ error: "UNAUTHENTICATED" });
