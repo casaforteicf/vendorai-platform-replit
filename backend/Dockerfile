@@ -15,10 +15,14 @@ WORKDIR /app
 # bold real pro libass usar na legenda queimada (Liberation Sans Bold,
 # metricamente compatível com Arial — a família "Arial Black" em si é
 # proprietária da Microsoft e não existe em nenhum pacote Debian).
+#
+# chromium: necessário pelo puppeteer-core para gerar PDFs reais das propostas.
+# Sem ele, o endpoint de PDF caía no fallback HTML e o navegador recebia um
+# arquivo .pdf inválido.
 RUN corepack enable \
   && corepack prepare pnpm@10.26.1 --activate \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-liberation \
+  && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-liberation chromium \
   && rm -rf /var/lib/apt/lists/*
 
 COPY . .
