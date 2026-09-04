@@ -33,12 +33,14 @@ import {
   servicosOrdensTable,
   veiculosTestDrivesTable,
   adCampaignsTable,
+  leadResponsavelHistoricoTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
+import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
@@ -166,6 +168,16 @@ router.post("/leads", async (req, res) => {
       etapa: "em_aquecimento",
       assignedTo: resolvedAssignedTo,
     });
+  }
+
+  if (resolvedAssignedTo) {
+    recordResponsavelChange({
+      leadId: lead.id,
+      responsavelAnteriorId: null,
+      responsavelNovoId: resolvedAssignedTo,
+      alteradoPorId: req.user?.sub ?? null,
+      motivo: isSellerCreator || data.assignedTo ? "manual" : "automatico",
+    }).catch(() => {});
   }
 
   // Leads atribuídos por UTM a uma campanha "Modo: Só este item" entram
@@ -317,6 +329,15 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
       }).returning();
       if (importedLead) {
         await db.insert(dealsTable).values({ tenantId, leadId: importedLead.id, titulo: importedLead.nome, etapa: "em_aquecimento", assignedTo: importAssignedTo });
+        if (importAssignedTo) {
+          recordResponsavelChange({
+            leadId: importedLead.id,
+            responsavelAnteriorId: null,
+            responsavelNovoId: importAssignedTo,
+            alteradoPorId: req.user?.sub ?? null,
+            motivo: row.responsavel?.trim() ? "manual" : "automatico",
+          }).catch(() => {});
+        }
       }
       imported++;
     } catch (err) {
@@ -507,6 +528,16 @@ router.patch("/leads/:id", async (req, res) => {
     .where(eq(leadsTable.id, existing.id))
     .returning();
 
+  if ("assignedTo" in parsed.data && parsed.data.assignedTo && parsed.data.assignedTo !== existing.assignedTo) {
+    recordResponsavelChange({
+      leadId: existing.id,
+      responsavelAnteriorId: existing.assignedTo,
+      responsavelNovoId: parsed.data.assignedTo,
+      alteradoPorId: req.user?.sub ?? null,
+      motivo: "manual",
+    }).catch(() => {});
+  }
+
   // Feature store — captura o momento da mudança de status, primeiro passo
   // real de ML (nada bloqueia por causa disso, é melhor esforço).
   if (parsed.data.status) {
@@ -514,6 +545,45 @@ router.patch("/leads/:id", async (req, res) => {
   }
 
   res.json(lead);
+});
+
+router.get("/leads/:id/responsavel-historico", async (req, res) => {
+  const [existing] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, req.params.id));
+
+  if (!existing) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn3 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin3 && userFn3 === "vendedor" && existing.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  const historico = await db
+    .select({
+      id: leadResponsavelHistoricoTable.id,
+      responsavelAnteriorId: leadResponsavelHistoricoTable.responsavelAnteriorId,
+      responsavelNovoId: leadResponsavelHistoricoTable.responsavelNovoId,
+      alteradoPorId: leadResponsavelHistoricoTable.alteradoPorId,
+      motivo: leadResponsavelHistoricoTable.motivo,
+      criadoEm: leadResponsavelHistoricoTable.criadoEm,
+    })
+    .from(leadResponsavelHistoricoTable)
+    .where(eq(leadResponsavelHistoricoTable.leadId, existing.id))
+    .orderBy(desc(leadResponsavelHistoricoTable.criadoEm));
+
+  res.json(historico);
 });
 
 router.delete("/leads/:id", async (req, res) => {

@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db, usersTable, tenantDistribuicaoConfigTable } from "@workspace/db";
 import { distanceKm } from "./geocoding.js";
 
-type AssignmentCandidate = {
+export type AssignmentCandidate = {
   id: string;
   lastAssignedAt: Date | null;
   platformRole: string;
@@ -30,7 +30,7 @@ export type LeadAssignmentContext = {
 };
 
 const CRITERIOS_PADRAO = ["segmento", "territorio"] as const;
-type Criterio = (typeof CRITERIOS_PADRAO)[number];
+export type Criterio = (typeof CRITERIOS_PADRAO)[number];
 
 export function canReceiveLeads(candidate: Pick<AssignmentCandidate, "platformRole" | "userFunction" | "leadAssignmentEnabled">): boolean {
   if (candidate.leadAssignmentEnabled === false) return false;
@@ -47,7 +47,7 @@ function normalizeTerritory(value?: string | null): string {
     .trim();
 }
 
-function matchesTerritory(location: string, territory: string): boolean {
+export function matchesTerritory(location: string, territory: string): boolean {
   const normalizedLocation = normalizeTerritory(location);
   const normalizedTerritory = normalizeTerritory(territory);
   if (!normalizedLocation || !normalizedTerritory) return false;
@@ -93,7 +93,7 @@ async function getCriteriosOrdenados(tenantId: string): Promise<Criterio[]> {
  * atual cobre essa linha — nesse caso o critério simplesmente não filtra
  * nada, e o próximo critério da ordem roda sobre o pool original.
  */
-function narrowBySegmento(pool: AssignmentCandidate[], context: LeadAssignmentContext): AssignmentCandidate[] | null {
+export function narrowBySegmento(pool: AssignmentCandidate[], context: LeadAssignmentContext): AssignmentCandidate[] | null {
   const segmentoValue = context.segmento || "";
   if (!segmentoValue) return null;
   const matches = pool.filter((candidate) => candidate.leadAssignmentSegments.some((segmento) => matchesTerritory(segmentoValue, segmento)));
@@ -106,7 +106,7 @@ function narrowBySegmento(pool: AssignmentCandidate[], context: LeadAssignmentCo
  * do pool). Cada nível só é tentado se o anterior não achou ninguém.
  * Retorna null se nada da cascata achou match — o critério não filtra nada.
  */
-function narrowByTerritorio(pool: AssignmentCandidate[], context: LeadAssignmentContext): AssignmentCandidate[] | null {
+export function narrowByTerritorio(pool: AssignmentCandidate[], context: LeadAssignmentContext): AssignmentCandidate[] | null {
   const cityLocation = context.city || context.location || "";
   const regionLocation = context.region || context.location || "";
 
@@ -137,8 +137,15 @@ function narrowByTerritorio(pool: AssignmentCandidate[], context: LeadAssignment
     if (raioMatches.length) return raioMatches;
   }
 
+  // Geral: vendedores sem NENHUM território configurado (cidade, região e
+  // raio) — quem só configurou raio e ficou de fora do alcance não cai
+  // aqui, porque configurar raio é uma restrição geográfica explícita,
+  // não deveria acabar recebendo lead de qualquer lugar por omissão.
   const generalPool = pool.filter(
-    (candidate) => candidate.leadAssignmentCities.length === 0 && candidate.leadAssignmentRegions.length === 0,
+    (candidate) =>
+      candidate.leadAssignmentCities.length === 0 &&
+      candidate.leadAssignmentRegions.length === 0 &&
+      candidate.leadAssignmentRaioKm == null,
   );
   if (generalPool.length) return generalPool;
 

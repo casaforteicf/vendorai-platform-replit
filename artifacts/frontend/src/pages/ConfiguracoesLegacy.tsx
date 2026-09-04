@@ -66,6 +66,7 @@ import {
   useRemoveAnthropicAIKey,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DistribuicaoConfigCard } from "@/components/DistribuicaoConfigCard";
 import {
   Form,
   FormControl,
@@ -5106,6 +5107,8 @@ Body:
         {isTenantAdmin && (
           <TabsContent value="equipe">
             <div className="space-y-6">
+
+              <DistribuicaoConfigCard tenantId={tenantId} />
 
               {/* Invite form */}
               <div className="rounded-xl border bg-card p-6 space-y-4">

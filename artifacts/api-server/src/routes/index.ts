@@ -116,6 +116,7 @@ import siteGeneratorRouter, { publicSiteGeneratorRouter } from "./site_generator
 import leadProposalsRouter from "./lead_proposals";
 import productPresentationsRouter from "./product_presentations";
 import tenantCalendarSettingsRouter from "./tenant_calendar_settings";
+import tenantDistribuicaoConfigRouter from "./tenant_distribuicao_config";
 import leadSpouseConsentRouter from "./lead_spouse_consent";
 import aiGatewayRouter from "./ai_gateway";
 import prospectorRouter from "./prospector";
@@ -394,6 +395,7 @@ router.use(notificationsRouter);
 
 // Relationship Hub
 router.use(tenantCalendarSettingsRouter);
+router.use(tenantDistribuicaoConfigRouter);
 router.use(leadSpouseConsentRouter);
 
 // AI Gateway Hub

@@ -24,6 +24,7 @@ export * from "./content_reference_creators";
 export * from "./content_performance";
 export * from "./solicitacoes_compra";
 export * from "./tenant_distribuicao_config";
+export * from "./lead_responsavel_historico";
 export * from "./changelog";
 export * from "./brand_programs";
 export * from "./ml_feature_snapshots";

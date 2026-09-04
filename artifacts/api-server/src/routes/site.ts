@@ -7,6 +7,7 @@ import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
 import { storePhone, findLeadByDedup } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
+import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
@@ -342,6 +343,16 @@ router.post("/site/contato", async (req, res) => {
 
         leadId = createdLead.id;
         attributedNow = Boolean(adCampaignId);
+
+        if (assignedTo) {
+          recordResponsavelChange({
+            leadId: createdLead.id,
+            responsavelAnteriorId: null,
+            responsavelNovoId: assignedTo,
+            alteradoPorId: null,
+            motivo: "automatico",
+          }).catch(() => {});
+        }
 
         const [createdDeal] = await db
           .insert(dealsTable)
