@@ -35,28 +35,38 @@ async function assertLipSyncConsent(tenantId: string, identityId: string): Promi
   if (missing.length) throw new LipSyncConsentError(missing);
 }
 
-async function loadInputs(tenantId: string, identityId: string, audioAssetId: string) {
+async function loadInputs(tenantId: string, identityId: string, audioAssetId: string, faceAssetId?: string | null) {
   const identityResult = await pool.query(
-    `SELECT i.status, a.storage_url, a.mime_type, a.original_filename
-     FROM media_identities i
-     LEFT JOIN media_assets a
-       ON a.id = i.face_reference_asset_id AND a.tenant_id = i.tenant_id
-     WHERE i.tenant_id = $1 AND i.id = $2
-     LIMIT 1`,
+    `SELECT status, face_reference_asset_id
+       FROM media_identities
+      WHERE tenant_id = $1 AND id = $2
+      LIMIT 1`,
     [tenantId, identityId],
   );
   const identity = identityResult.rows[0] as Record<string, unknown> | undefined;
   if (!identity) throw new LipSyncInputError("Identidade audiovisual não encontrada");
   if (identity["status"] !== "active") throw new LipSyncInputError("A identidade precisa estar ativa");
-  if (typeof identity["storage_url"] !== "string" || !identity["storage_url"]) {
-    throw new LipSyncInputError("A identidade precisa de uma foto de referência");
+
+  const selectedFaceAssetId = faceAssetId?.trim() || String(identity["face_reference_asset_id"] ?? "");
+  if (!selectedFaceAssetId) throw new LipSyncInputError("A identidade precisa de uma foto de referência");
+
+  const faceResult = await pool.query(
+    `SELECT storage_url, mime_type, original_filename
+       FROM media_assets
+      WHERE tenant_id = $1 AND id = $2 AND type = 'image'
+      LIMIT 1`,
+    [tenantId, selectedFaceAssetId],
+  );
+  const face = faceResult.rows[0] as Record<string, unknown> | undefined;
+  if (!face || typeof face["storage_url"] !== "string" || !face["storage_url"]) {
+    throw new LipSyncInputError("Imagem de referência não encontrada na Biblioteca Audiovisual");
   }
 
   const audioResult = await pool.query(
     `SELECT storage_url, mime_type, original_filename
-     FROM media_assets
-     WHERE tenant_id = $1 AND id = $2 AND type = 'audio'
-     LIMIT 1`,
+       FROM media_assets
+      WHERE tenant_id = $1 AND id = $2 AND type = 'audio'
+      LIMIT 1`,
     [tenantId, audioAssetId],
   );
   const audio = audioResult.rows[0] as Record<string, unknown> | undefined;
@@ -65,10 +75,11 @@ async function loadInputs(tenantId: string, identityId: string, audioAssetId: st
   }
 
   return {
+    faceAssetId: selectedFaceAssetId,
     face: {
-      storageUrl: String(identity["storage_url"]),
-      mimeType: typeof identity["mime_type"] === "string" ? identity["mime_type"] : "image/jpeg",
-      filename: typeof identity["original_filename"] === "string" ? identity["original_filename"] : "face-reference.jpg",
+      storageUrl: String(face["storage_url"]),
+      mimeType: typeof face["mime_type"] === "string" ? face["mime_type"] : "image/jpeg",
+      filename: typeof face["original_filename"] === "string" ? face["original_filename"] : "face-reference.jpg",
     },
     audio: {
       storageUrl: String(audio["storage_url"]),
@@ -83,6 +94,7 @@ export async function generateVendorAiLipSync(input: {
   userId?: string | null;
   identityId: string;
   audioAssetId: string;
+  faceAssetId?: string | null;
   title?: string;
   bboxShift?: number;
 }): Promise<{ projectId: string; jobId: string; videoUrl: string; assetId: string; versionId: string }> {
@@ -90,7 +102,7 @@ export async function generateVendorAiLipSync(input: {
   if (!workerUrl) throw new LipSyncEngineNotReadyError("Lip-sync worker do VendorAI ainda não está configurado");
 
   await assertLipSyncConsent(input.tenantId, input.identityId);
-  const sources = await loadInputs(input.tenantId, input.identityId, input.audioAssetId);
+  const sources = await loadInputs(input.tenantId, input.identityId, input.audioAssetId, input.faceAssetId);
   const bboxShift = Number.isFinite(input.bboxShift) ? Math.max(-20, Math.min(20, Number(input.bboxShift))) : 0;
 
   const projectId = await createProcessingMediaProject({
@@ -102,6 +114,7 @@ export async function generateVendorAiLipSync(input: {
     context: {
       identityId: input.identityId,
       audioAssetId: input.audioAssetId,
+      faceAssetId: sources.faceAssetId,
       bboxShift,
       engine: "vendorai",
     },
@@ -113,7 +126,12 @@ export async function generateVendorAiLipSync(input: {
     projectId,
     operation: "avatar_lipsync",
     provider: "vendorai",
-    input: { identityId: input.identityId, audioAssetId: input.audioAssetId, bboxShift },
+    input: {
+      identityId: input.identityId,
+      audioAssetId: input.audioAssetId,
+      faceAssetId: sources.faceAssetId,
+      bboxShift,
+    },
     snapshot: { status: "running", progress: 5 },
   });
 
@@ -167,6 +185,8 @@ export async function generateVendorAiLipSync(input: {
       metadata: {
         identityId: input.identityId,
         audioAssetId: input.audioAssetId,
+        faceAssetId: sources.faceAssetId,
+        styledFaceReference: Boolean(input.faceAssetId),
         bboxShift,
         engine: "vendorai",
       },

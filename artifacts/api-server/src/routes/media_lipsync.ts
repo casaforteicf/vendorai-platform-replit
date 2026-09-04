@@ -25,6 +25,16 @@ import {
   analyzeVendorAiIdentityReferences,
   saveVendorAiDubleEvaluation,
 } from "../services/vendorai-identity-quality.js";
+import {
+  createVendorAiDubleStyleReference,
+  DubleStyleConsentError,
+  DubleStyleValidationError,
+  getDubleStyleCatalog,
+  getVendorAiDubleStyleProfile,
+  saveVendorAiDubleFavorite,
+  type DubleStyleSelection,
+  type DubleStyleSelectionInput,
+} from "../services/vendorai-duble-style.js";
 
 const router: IRouter = Router();
 
@@ -38,6 +48,57 @@ function nonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function parseDubleStyle(value: unknown): DubleStyleSelectionInput | null {
+  const source = asRecord(value);
+  if (!Object.keys(source).length) return null;
+  const style: DubleStyleSelectionInput = {};
+  const market = nonEmptyString(source["market"]);
+  const scenario = nonEmptyString(source["scenario"]);
+  const outfit = nonEmptyString(source["outfit"]);
+  const framing = nonEmptyString(source["framing"]);
+  const pose = nonEmptyString(source["pose"]);
+  const lighting = nonEmptyString(source["lighting"]);
+  if (market) style.market = market as DubleStyleSelectionInput["market"];
+  if (scenario) style.scenario = scenario;
+  if (outfit) style.outfit = outfit;
+  if (framing) style.framing = framing;
+  if (pose) style.pose = pose;
+  if (lighting) style.lighting = lighting;
+  if (typeof source["antiRepeat"] === "boolean") style.antiRepeat = source["antiRepeat"] as boolean;
+  if (typeof source["useFavorite"] === "boolean") style.useFavorite = source["useFavorite"] as boolean;
+  return style;
+}
+
+function parseFavoriteSelection(value: unknown): DubleStyleSelection {
+  const source = asRecord(value);
+  const market = nonEmptyString(source["market"]);
+  const scenario = nonEmptyString(source["scenario"]);
+  const outfit = nonEmptyString(source["outfit"]);
+  const framing = nonEmptyString(source["framing"]);
+  const pose = nonEmptyString(source["pose"]);
+  const lighting = nonEmptyString(source["lighting"]);
+  if (!market || !scenario || !outfit || !framing || !pose || !lighting) {
+    throw new DubleStyleValidationError("Favorito exige mercado, cenário, vestimenta, enquadramento, pose e iluminação");
+  }
+  return { market: market as DubleStyleSelection["market"], scenario, outfit, framing, pose, lighting };
+}
+
+function sendDubleStyleError(res: Response, error: unknown): boolean {
+  if (error instanceof DubleStyleConsentError) {
+    res.status(403).json({
+      error: error.message,
+      code: "DUBLE_STYLE_CONSENT_REQUIRED",
+      missingScopes: error.missingScopes,
+    });
+    return true;
+  }
+  if (error instanceof DubleStyleValidationError) {
+    res.status(422).json({ error: error.message, code: "DUBLE_STYLE_INVALID" });
+    return true;
+  }
+  return false;
 }
 
 async function enforcePaidMetaMediaRights(req: Express.Request, res: Response, next: NextFunction) {
@@ -170,6 +231,54 @@ router.post("/tenants/:tenantId/media-engine/images/:assetId/analyze", async (re
   }
 });
 
+router.get("/tenants/:tenantId/media-engine/duble-style/catalog", async (req, res) => {
+  const market = nonEmptyString(req.query["market"]);
+  res.json(getDubleStyleCatalog(market ?? undefined));
+});
+
+router.get("/tenants/:tenantId/media-engine/identities/:identityId/duble-style", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const identityId = String(req.params["identityId"]);
+  try {
+    const profile = await getVendorAiDubleStyleProfile({ tenantId, identityId });
+    res.json({ provider: "vendorai", operation: "duble_style_profile", profile });
+  } catch (error) {
+    if (sendDubleStyleError(res, error)) return;
+    throw error;
+  }
+});
+
+router.post("/tenants/:tenantId/media-engine/identities/:identityId/duble-style/preview", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const identityId = String(req.params["identityId"]);
+  try {
+    const reference = await createVendorAiDubleStyleReference({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      identityId,
+      style: parseDubleStyle(req.body?.style) ?? {},
+      title: nonEmptyString(req.body?.title) ?? undefined,
+    });
+    res.status(201).json({ provider: "vendorai", operation: "duble_style_preview", reference });
+  } catch (error) {
+    if (sendDubleStyleError(res, error)) return;
+    throw error;
+  }
+});
+
+router.put("/tenants/:tenantId/media-engine/identities/:identityId/duble-style/favorite", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const identityId = String(req.params["identityId"]);
+  try {
+    const selection = parseFavoriteSelection(req.body?.selection);
+    const favorite = await saveVendorAiDubleFavorite({ tenantId, identityId, selection });
+    res.json({ provider: "vendorai", operation: "duble_style_favorite", favorite });
+  } catch (error) {
+    if (sendDubleStyleError(res, error)) return;
+    throw error;
+  }
+});
+
 router.post("/tenants/:tenantId/media-engine/identities/:identityId/analyze-references", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const identityId = String(req.params["identityId"]);
@@ -231,6 +340,7 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/lipsync", as
   const tenantId = String(req.params["tenantId"]);
   const identityId = String(req.params["identityId"]);
   const audioAssetId = nonEmptyString(req.body?.audioAssetId) ?? "";
+  const faceAssetId = nonEmptyString(req.body?.faceAssetId);
   const title = nonEmptyString(req.body?.title) ?? "Vídeo com pessoa autorizada";
   const bboxShift = Number(req.body?.bboxShift ?? 0);
 
@@ -245,6 +355,7 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/lipsync", as
       userId: req.user?.sub ?? null,
       identityId,
       audioAssetId,
+      faceAssetId,
       title,
       bboxShift,
     });
@@ -263,6 +374,7 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/talking-vide
   const language = nonEmptyString(req.body?.language) ?? "pt-br";
   const title = nonEmptyString(req.body?.title) ?? "Vídeo com pessoa autorizada";
   const bboxShift = Number(req.body?.bboxShift ?? 0);
+  const style = parseDubleStyle(req.body?.style);
 
   if (!voiceProfileId || !text) {
     res.status(422).json({ error: "voiceProfileId e text são obrigatórios" });
@@ -274,6 +386,16 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/talking-vide
   }
 
   try {
+    const styledReference = style
+      ? await createVendorAiDubleStyleReference({
+          tenantId,
+          userId: req.user?.sub ?? null,
+          identityId,
+          style,
+          title: `Referência visual — ${title}`,
+        })
+      : null;
+
     const voiceResult = await synthesizeVendorAiVoice({
       tenantId,
       userId: req.user?.sub ?? null,
@@ -289,6 +411,7 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/talking-vide
       userId: req.user?.sub ?? null,
       identityId,
       audioAssetId: voiceResult.assetId,
+      faceAssetId: styledReference?.assetId ?? null,
       title,
       bboxShift,
     });
@@ -298,6 +421,7 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/talking-vide
       operation: "talking_video",
       identityId,
       voiceProfileId,
+      style: styledReference,
       voice: {
         projectId: voiceResult.projectId,
         jobId: voiceResult.jobId,
@@ -308,6 +432,7 @@ router.post("/tenants/:tenantId/media-engine/identities/:identityId/talking-vide
       video: videoResult,
     });
   } catch (error) {
+    if (sendDubleStyleError(res, error)) return;
     if (error instanceof VoiceEngineNotReadyError) {
       res.status(503).json({ error: error.message, code: "VOICE_WORKER_NOT_READY" });
       return;
