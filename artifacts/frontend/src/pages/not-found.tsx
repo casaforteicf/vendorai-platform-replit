@@ -6,6 +6,9 @@ import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import MediaCenter from "@/pages/MediaCenter";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
+import VideoAvatarCapturePage from "@/pages/video/VideoAvatarCapturePage";
+
+const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
 
 export default function NotFound() {
   const { token, isLoading } = useAuth();
@@ -13,16 +16,26 @@ export default function NotFound() {
   const isMediaCenter = normalizedPath === "/midias";
   const isConversations = normalizedPath === "/conversas";
   const isAiMetrics = normalizedPath === "/metricas-ia";
-  const isProtectedAlias = isMediaCenter || isConversations || isAiMetrics;
+  const isDubleCapture = normalizedPath === "/content-studio/video/avatar/captura";
+  const isProtectedAlias = isMediaCenter || isConversations || isAiMetrics || isDubleCapture;
 
   useEffect(() => {
     if (isProtectedAlias && !isLoading && !token) {
+      if (isDubleCapture) {
+        const returnPath = `${window.location.pathname}${window.location.search}`;
+        sessionStorage.setItem(POST_LOGIN_PATH_KEY, returnPath);
+      }
       window.location.assign("/login");
     }
-  }, [isProtectedAlias, isLoading, token]);
+  }, [isProtectedAlias, isDubleCapture, isLoading, token]);
 
   if (isProtectedAlias) {
     if (isLoading || !token) return null;
+
+    if (isDubleCapture) {
+      return <VideoAvatarCapturePage />;
+    }
+
     return (
       <SidebarLayout>
         {isMediaCenter ? <MediaCenter /> : isConversations ? <Conversations /> : <Analytics />}
