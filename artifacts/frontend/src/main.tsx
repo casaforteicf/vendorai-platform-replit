@@ -18,6 +18,7 @@ import { ContentGeneratorQueueUxBridge } from "./components/marketing/ContentGen
 import { ContentPlanVisualCompletionBridge } from "./components/marketing/ContentPlanVisualCompletionBridge";
 import { MediaPlanProductionCompatibilityBridge } from "./components/marketing/MediaPlanProductionCompatibilityBridge";
 import { MediaPlanAutoProductionBridge } from "./components/marketing/MediaPlanAutoProductionBridge";
+import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePreviewBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
 import { I18nProvider } from "./i18n";
 import "./index.css";
@@ -86,6 +87,7 @@ createRoot(document.getElementById("root")!).render(
           <ContentPlanVisualCompletionBridge />
           <MediaPlanProductionCompatibilityBridge />
           <MediaPlanAutoProductionBridge />
+          <AdsCreativePreviewBridge />
         </>
       )}
     </I18nProvider>
