@@ -44,7 +44,7 @@ function publicRuntimePolicy(definition: unknown): PublicRuntimePolicy {
   return {
     enabled: publicPolicy.enabled === true,
     fields: stringArray(publicPolicy.fields).filter((field) => PUBLIC_APP_FIELDS.has(field)),
-    settingsKeys: stringArray(publicPolicy.settingsKeys),
+    settingsKeys: stringArray(publicPolicy.settingsKeys).filter((key) => key !== "runtimeAccess"),
     templateKeys: stringArray(publicPolicy.templateKeys),
   };
 }
