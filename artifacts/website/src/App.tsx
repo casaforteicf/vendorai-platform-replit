@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { useEffect } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -31,6 +32,16 @@ import {
 
 const queryClient = new QueryClient();
 
+function ScrollToTop() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location]);
+
+  return null;
+}
+
 function Router() {
   return (
     <Switch>
@@ -42,9 +53,9 @@ function Router() {
 
       {/* Standard layout — Navbar + Footer */}
       <Route>
-        <div className="flex flex-col min-h-screen">
+        <div className="flex min-h-screen flex-col overflow-x-clip">
           <Navbar />
-          <main className="flex-1">
+          <main className="min-w-0 flex-1">
             <Switch>
               <Route path="/" component={Home} />
               <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
@@ -70,17 +81,14 @@ function Router() {
 }
 
 function App() {
-  // Captura first-touch antes que a navegação client-side remova UTMs da URL.
-  // É best-effort e não bloqueia renderização caso sessionStorage esteja indisponível.
   captureLaunchAttribution();
-  // Injeta a escolha atual somente em payloads públicos de conversão conhecidos.
-  // A instalação é idempotente e não altera requests internos do produto.
   installPublicFormConsentBridge();
 
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <ScrollToTop />
           <Router />
           <WhatsAppFloatButton />
           <AgentSimulatorWidget />
