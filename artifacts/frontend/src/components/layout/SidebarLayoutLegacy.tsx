@@ -925,9 +925,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen bg-background">
       {/* ── Desktop sidebar ────────────────────────────────── */}
       <div
-        className={`hidden md:flex sticky top-0 h-screen ${sidebarExpanded ? "w-[272px]" : "w-[68px]"} bg-sidebar/92 backdrop-blur-2xl border-r border-sidebar-border/70 shrink-0 overflow-hidden transition-[width] duration-200 ease-out`}
+        className={`hidden md:flex sticky top-0 h-screen ${sidebarExpanded ? "w-[clamp(240px,14.2vw,272px)]" : "w-[68px]"} bg-sidebar/92 backdrop-blur-2xl border-r border-sidebar-border/70 shrink-0 overflow-hidden transition-[width] duration-200 ease-out`}
       >
-        <div className="w-[272px] shrink-0 flex flex-col h-full">
+        <div className="w-[clamp(240px,14.2vw,272px)] shrink-0 flex flex-col h-full">
           <div className="p-3 border-b border-sidebar-border/70 flex items-center gap-2">
             <button
               type="button"
