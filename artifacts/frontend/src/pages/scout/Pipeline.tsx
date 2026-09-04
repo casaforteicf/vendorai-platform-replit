@@ -6,13 +6,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PipelineNav } from "@/components/PipelineNav";
+import {
+  PipelineNav,
+  PIPELINE_CARD_CLASS,
+  PIPELINE_COLUMN_CLASS,
+  PIPELINE_COLUMN_HEADER_CLASS,
+} from "@/components/PipelineNav";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, Bot, ExternalLink, KanbanSquare, Trash2, UserRound } from "lucide-react";
+import { ArrowRight, Bot, ExternalLink, Trash2, UserRound } from "lucide-react";
 import { Link } from "wouter";
 
 const STAGES = [
-  ["identificada", "Identificadas"], ["em_analise", "Em analise"],
+  ["identificada", "Identificadas"], ["em_analise", "Em análise"],
   ["encaminhada", "Encaminhadas"], ["ia_aprovada", "IA aprovada"],
   ["em_contato", "Em contato"], ["convertida", "Convertidas"],
 ] as const;
@@ -21,7 +26,7 @@ function headers() {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`, "Content-Type": "application/json" };
 }
 function pretty(value: unknown): string {
-  if (!value) return "Nao informado";
+  if (!value) return "Não informado";
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(pretty).join("; ");
   return Object.entries(value as Record<string, unknown>)
@@ -30,7 +35,7 @@ function pretty(value: unknown): string {
 
 async function readJson(response: Response) {
   const data = await response.json();
-  if (!response.ok) throw new Error(data?.error ?? "Nao foi possivel concluir a operacao.");
+  if (!response.ok) throw new Error(data?.error ?? "Não foi possível concluir a operação.");
   return data;
 }
 
@@ -66,13 +71,13 @@ export default function ScoutPipeline() {
       method: "PATCH", headers: headers(), body: JSON.stringify({ etapa }),
     }).then(readJson),
     onSuccess: (data) => { refresh(); setSelected((old: any) => ({ ...old, ...data })); },
-    onError: (error: Error) => toast({ title: "Nao foi possivel mover", description: error.message, variant: "destructive" }),
+    onError: (error: Error) => toast({ title: "Não foi possível mover", description: error.message, variant: "destructive" }),
   });
   const approve = useMutation({
     mutationFn: (id: string) => fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}/aprovar`, { method: "POST", headers: headers(), body: "{}" })
       .then(readJson),
-    onSuccess: (data) => { refresh(); setSelected((old: any) => ({ ...old, ...data })); toast({ title: "IA aprovada e sequencia iniciada" }); },
-    onError: (error: Error) => toast({ title: "Nao foi possivel aprovar", description: error.message, variant: "destructive" }),
+    onSuccess: (data) => { refresh(); setSelected((old: any) => ({ ...old, ...data })); toast({ title: "IA aprovada e sequência iniciada" }); },
+    onError: (error: Error) => toast({ title: "Não foi possível aprovar", description: error.message, variant: "destructive" }),
   });
   const removeOpportunity = useMutation({
     mutationFn: (id: string) => fetch(`/api/tenants/${tenantId}/scout/oportunidades/${id}`, {
@@ -102,21 +107,31 @@ export default function ScoutPipeline() {
     [confirmedOpportunities],
   );
 
-  return <div className="space-y-5">
-    <PipelineNav active="scout" />
-    <div className="flex items-center justify-between gap-3 flex-wrap">
-      <div><h1 className="text-2xl font-bold flex items-center gap-2"><KanbanSquare className="h-6 w-6" /> Pipeline Revenue Scout</h1>
-      <p className="text-sm text-muted-foreground">Somente oportunidades confirmadas. Novos achados precisam ser validados antes de entrar aqui.</p></div>
+  return <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-8">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
+        <p className="text-sm text-muted-foreground">Revenue Scout — somente oportunidades confirmadas. Novos achados precisam ser validados antes de entrar aqui.</p>
+      </div>
       <Link href="/scout/oportunidades"><Button variant="outline">Ver lista completa</Button></Link>
     </div>
-    <div className="flex gap-4 overflow-x-auto pb-4">
-      {columns.map(column => <section key={column.id} className="w-[285px] shrink-0 rounded-xl bg-muted/40 border p-3">
-        <div className="flex justify-between mb-3"><strong className="text-sm">{column.label}</strong><Badge variant="secondary">{column.items.length}</Badge></div>
-        <div className="space-y-3">{column.items.map(op => <Card key={op.id} role="button" tabIndex={0} onClick={() => setSelected(op)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") setSelected(op); }} className="p-3 cursor-pointer hover:border-primary transition-colors">
-          <div className="flex justify-between gap-2"><p className="font-semibold truncate">{op.clienteNome}</p><ArrowRight className="h-4 w-4" /></div>
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{op.descricao || op.tipo}</p>
-          <div className="flex gap-1 mt-3 flex-wrap"><Badge variant="outline">{op.tipo}</Badge>{op.responsavelNome && <Badge variant="secondary">{op.responsavelNome}</Badge>}</div>
-        </Card>)}</div>
+
+    <PipelineNav active="scout" />
+
+    <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-3">
+      {columns.map(column => <section key={column.id} className={PIPELINE_COLUMN_CLASS}>
+        <div className={PIPELINE_COLUMN_HEADER_CLASS}>
+          <h2 className="text-sm font-semibold">{column.label}</h2>
+          <Badge variant="secondary">{column.items.length}</Badge>
+        </div>
+        <div className="flex-1 space-y-2 overflow-y-auto p-2">
+          {column.items.map(op => <Card key={op.id} role="button" tabIndex={0} onClick={() => setSelected(op)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") setSelected(op); }} className={`${PIPELINE_CARD_CLASS} hover:border-primary`}>
+            <div className="flex justify-between gap-2"><p className="truncate text-sm font-semibold">{op.clienteNome}</p><ArrowRight className="h-4 w-4" /></div>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{op.descricao || op.tipo}</p>
+            <div className="mt-3 flex flex-wrap gap-1"><Badge variant="outline">{op.tipo}</Badge>{op.responsavelNome && <Badge variant="secondary">{op.responsavelNome}</Badge>}</div>
+          </Card>)}
+          {!column.items.length && <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">Nenhuma oportunidade nesta etapa</div>}
+        </div>
       </section>)}
     </div>
 
@@ -128,18 +143,18 @@ export default function ScoutPipeline() {
             <Card className="p-4"><p className="text-xs text-muted-foreground">Oportunidade</p><p className="font-semibold mt-1">{selected.descricao || selected.tipo}</p></Card>
             <Card className="p-4"><p className="text-xs text-muted-foreground">Regra que identificou</p><p className="font-semibold mt-1">{selected.regraNome || "Revenue Scout"}</p></Card>
           </div>
-          <div><h3 className="font-semibold">Percepcao da oportunidade</h3><p className="text-sm text-muted-foreground mt-1">{pretty(selected.percepcao)}</p></div>
+          <div><h3 className="font-semibold">Percepção da oportunidade</h3><p className="text-sm text-muted-foreground mt-1">{pretty(selected.percepcao)}</p></div>
           <div><h3 className="font-semibold">Justificativa e sinais observados</h3><p className="text-sm text-muted-foreground mt-1">{pretty(selected.justificativa)}</p></div>
           <div><h3 className="font-semibold">Dados completos do lead</h3><div className="grid sm:grid-cols-2 gap-2 text-sm mt-2">
-            <p><b>Email:</b> {selected.cliente?.email || "Nao informado"}</p><p><b>Telefone:</b> {selected.cliente?.telefone || "Nao informado"}</p>
-            <p><b>Empresa:</b> {selected.cliente?.empresa || "Nao informado"}</p><p><b>Status:</b> {selected.cliente?.status || "Nao informado"}</p>
-            <p><b>Dor principal:</b> {selected.cliente?.dorPrincipal || "Nao informado"}</p><p><b>Proxima acao:</b> {selected.cliente?.proximaAcao || "Nao informado"}</p>
+            <p><b>Email:</b> {selected.cliente?.email || "Não informado"}</p><p><b>Telefone:</b> {selected.cliente?.telefone || "Não informado"}</p>
+            <p><b>Empresa:</b> {selected.cliente?.empresa || "Não informado"}</p><p><b>Status:</b> {selected.cliente?.status || "Não informado"}</p>
+            <p><b>Dor principal:</b> {selected.cliente?.dorPrincipal || "Não informado"}</p><p><b>Próxima ação:</b> {selected.cliente?.proximaAcao || "Não informado"}</p>
           </div><Link href={`/leads/${selected.clienteId}`}><Button variant="link" className="px-0 mt-1">Abrir cadastro completo <ExternalLink className="h-4 w-4 ml-1" /></Button></Link></div>
           <div className="grid sm:grid-cols-2 gap-3">
-            <div><label className="text-sm font-medium flex items-center gap-1"><UserRound className="h-4 w-4" /> Encaminhar para</label><Select value={selected.assignedTo ?? "sem"} onValueChange={value => assign.mutate({ id: selected.id, userId: value === "sem" ? "" : value })}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="sem">Sem responsavel</SelectItem>{users.filter(u => u.active).map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><label className="text-sm font-medium flex items-center gap-1"><UserRound className="h-4 w-4" /> Encaminhar para</label><Select value={selected.assignedTo ?? "sem"} onValueChange={value => assign.mutate({ id: selected.id, userId: value === "sem" ? "" : value })}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="sem">Sem responsável</SelectItem>{users.filter(u => u.active).map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm font-medium">Etapa da pipeline</label><Select value={selected.pipelineStage ?? "identificada"} onValueChange={etapa => move.mutate({ id: selected.id, etapa })}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{STAGES.map(([id, label]) => <SelectItem key={id} value={id}>{label}</SelectItem>)}</SelectContent></Select></div>
           </div>
-          <Button className="w-full" disabled={approve.isPending || selected.status === "enviado"} onClick={() => approve.mutate(selected.id)}><Bot className="h-4 w-4 mr-2" />{selected.status === "enviado" ? "IA aprovada - contato iniciado" : "Aprovar IA para dar sequencia"}</Button>
+          <Button className="w-full" disabled={approve.isPending || selected.status === "enviado"} onClick={() => approve.mutate(selected.id)}><Bot className="h-4 w-4 mr-2" />{selected.status === "enviado" ? "IA aprovada - contato iniciado" : "Aprovar IA para dar sequência"}</Button>
           {isAdmin && <div className="border-t pt-4 flex flex-col sm:flex-row gap-2">
             <Button variant="outline" className="text-destructive" disabled={removeOpportunity.isPending} onClick={() => {
               if (window.confirm("Excluir somente esta oportunidade do Revenue Scout? O cadastro do lead será mantido.")) removeOpportunity.mutate(selected.id);
