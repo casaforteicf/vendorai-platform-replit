@@ -365,7 +365,7 @@ export default function TemplateDataSourceEditorDialog({ template, token, open, 
                     <SelectTrigger><SelectValue placeholder="Sem blocos" /></SelectTrigger>
                     <SelectContent>{blocks.map((block, index) => {
                       const rawType = stringValue(block.type);
-                      const blockLabel = BLOCK_LABEL[rawType] ?? rawType || "Bloco";
+                      const blockLabel = BLOCK_LABEL[rawType] || rawType || "Bloco";
                       return <SelectItem key={`${stringValue(block.id)}-${index}`} value={String(index)}>{blockLabel} · {stringValue(block.id) || index + 1}</SelectItem>;
                     })}</SelectContent>
                   </Select>
