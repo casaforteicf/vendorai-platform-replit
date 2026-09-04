@@ -344,6 +344,45 @@ export async function incrementDailySpend(
     .where(eq(tenantsTable.id, tenantId as string));
 }
 
+async function localizeAgentOnboardingMessages(
+  tenantId: string,
+  feature: AiFeature,
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+): Promise<OpenAI.Chat.ChatCompletionMessageParam[]> {
+  if (feature !== "agent_onboarding") return messages;
+
+  const [tenant] = await db
+    .select({ defaultLocale: tenantsTable.defaultLocale })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  if (!tenant?.defaultLocale?.startsWith("es")) return messages;
+
+  const languageInstruction =
+    `INSTRUCCIÓN DE IDIOMA PRIORITARIA: responde siempre en español claro y natural, ` +
+    `adaptado al locale ${tenant.defaultLocale}. Esta instrucción de idioma sustituye cualquier instrucción anterior que pida responder en portugués.`;
+
+  const localizedMessages = [...messages];
+  const systemIndex = localizedMessages.findIndex(
+    (message) => message.role === "system" && typeof message.content === "string",
+  );
+
+  if (systemIndex < 0) {
+    return [{ role: "system", content: languageInstruction }, ...localizedMessages];
+  }
+
+  const systemMessage = localizedMessages[systemIndex];
+  if (systemMessage?.role === "system" && typeof systemMessage.content === "string") {
+    localizedMessages[systemIndex] = {
+      ...systemMessage,
+      content: `${systemMessage.content}\n\n${languageInstruction}`,
+    };
+  }
+
+  return localizedMessages;
+}
+
 // ── Unified OpenAI call ─────────────────────────────────────────────────────
 
 export async function callOpenAI(
@@ -360,9 +399,10 @@ export async function callOpenAI(
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
   const model = options.model ?? "gpt-4o-mini";
   const log = options.log;
+  const localizedMessages = await localizeAgentOnboardingMessages(tenantId, feature, messages);
 
   // 1. Estimate cost (rough pre-check based on message length)
-  const estimatedInputTokens = messages.reduce((acc, m) => acc + (typeof m.content === "string" ? m.content.length : 0), 0) / 4;
+  const estimatedInputTokens = localizedMessages.reduce((acc, m) => acc + (typeof m.content === "string" ? m.content.length : 0), 0) / 4;
   const estimatedCost = estimateCost((model ?? "unknown"), Math.ceil(estimatedInputTokens), options.maxTokens ?? 600);
 
   // 2. Check quota
@@ -382,7 +422,7 @@ export async function callOpenAI(
   try {
     completion = await openai.chat.completions.create({
       model: model!,
-      messages,
+      messages: localizedMessages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 600,
       ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
@@ -410,8 +450,8 @@ export async function callOpenAI(
     // 429 quota exceeded → attempt Anthropic fallback if key available
     if (err?.status === 429 && process.env["ANTHROPIC_API_KEY"]) {
       log?.info({ tenantId, feature }, "ai-gateway: OpenAI 429 → falling back to Anthropic");
-      const systemMsgRaw = messages.find((m) => m.role === "system");
-      const chatMsgs = messages
+      const systemMsgRaw = localizedMessages.find((m) => m.role === "system");
+      const chatMsgs = localizedMessages
         .filter((m) => m.role !== "system")
         .map((m) => ({
           role: m.role as "user" | "assistant",
