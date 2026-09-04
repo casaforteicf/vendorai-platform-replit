@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Bug, CheckCircle2, Code2, Loader2, Send, ShieldCheck, Sparkles, X } from "lucide-react";
+import { Bot, Bug, CheckCircle2, Clock3, Code2, History, Loader2, MessageSquare, RotateCcw, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
+type DevRequest = {
+  id: string;
+  text: string;
+  route: string;
+  createdAt: string;
+  status: "analisando" | "diagnosticado" | "erro";
+};
 
 type CachedUser = {
   platformRole?: string | null;
@@ -9,19 +16,26 @@ type CachedUser = {
   email?: string | null;
 };
 
+const STORAGE_MESSAGES = "vendorai_dev_ia_messages_v1";
+const STORAGE_REQUESTS = "vendorai_dev_ia_requests_v1";
+
 const DEV_BOOTSTRAP = `MODO DEV IA DO SUPER ADMIN.
 Você está atuando como o desenvolvedor residente da plataforma VendorAI. Responda como engenheiro de software responsável pela plataforma, em português brasileiro.
 Regras permanentes: não criar módulos paralelos sem necessidade; preservar arquitetura e fluxos existentes; diagnosticar antes de alterar; separar claramente diagnóstico, mudança proposta, risco e validação; mudanças destrutivas, financeiras, autenticação, exclusão de dados, migrações críticas, permissões globais ou infraestrutura exigem aprovação explícita do Super Admin; nunca afirmar que algo foi corrigido sem evidência de alteração/teste/deploy.
 Quando eu mencionar "esta tela", "aqui", "isso" ou semelhante, use a rota atual enviada junto da mensagem como contexto.
 Seu papel aqui é receber bugs, melhorias, novas funções, dúvidas técnicas e pedidos de auditoria da plataforma.`;
 
-function getCachedUser(): CachedUser | null {
+function readJson<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem("vendorai_user_cache");
-    return raw ? JSON.parse(raw) : null;
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
-    return null;
+    return fallback;
   }
+}
+
+function getCachedUser(): CachedUser | null {
+  return readJson<CachedUser | null>("vendorai_user_cache", null);
 }
 
 function quickPrompt(label: string, pathname: string) {
@@ -31,9 +45,17 @@ function quickPrompt(label: string, pathname: string) {
   return `Revise tecnicamente a rota atual (${pathname}) e me diga o que merece atenção.`;
 }
 
+function statusLabel(status: DevRequest["status"]) {
+  if (status === "analisando") return "Analisando";
+  if (status === "diagnosticado") return "Diagnosticado";
+  return "Falhou";
+}
+
 export default function DevAgentOverlay() {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [tab, setTab] = useState<"chat" | "history">("chat");
+  const [messages, setMessages] = useState<ChatMessage[]>(() => readJson(STORAGE_MESSAGES, []));
+  const [requests, setRequests] = useState<DevRequest[]>(() => readJson(STORAGE_REQUESTS, []));
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -43,17 +65,43 @@ export default function DevAgentOverlay() {
   const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
 
   useEffect(() => {
+    localStorage.setItem(STORAGE_MESSAGES, JSON.stringify(messages.slice(-80)));
+  }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_REQUESTS, JSON.stringify(requests.slice(0, 100)));
+  }, [requests]);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sending]);
+  }, [messages, sending, tab]);
 
   if (!isSuperAdmin) return null;
+
+  function clearHistory() {
+    setMessages([]);
+    setRequests([]);
+    localStorage.removeItem(STORAGE_MESSAGES);
+    localStorage.removeItem(STORAGE_REQUESTS);
+  }
 
   async function sendMessage(raw: string) {
     const text = raw.trim();
     if (!text || sending) return;
 
+    const requestId = crypto.randomUUID();
+    const route = `${window.location.pathname}${window.location.search}`;
     const userMessage: ChatMessage = { role: "user", content: text };
     const prior = messages;
+    const request: DevRequest = {
+      id: requestId,
+      text,
+      route,
+      createdAt: new Date().toISOString(),
+      status: "analisando",
+    };
+
+    setRequests((current) => [request, ...current].slice(0, 100));
     setMessages((current) => [...current, userMessage]);
     setInput("");
     setSending(true);
@@ -62,14 +110,10 @@ export default function DevAgentOverlay() {
       const token = localStorage.getItem("vendorai_token");
       const contextMessage: ChatMessage = {
         role: "user",
-        content: `${DEV_BOOTSTRAP}\n\nCONTEXTO ATUAL DA INTERFACE:\n- rota: ${window.location.pathname}${window.location.search}\n- usuário: Super Admin\n\nPEDIDO:\n${text}`,
+        content: `${DEV_BOOTSTRAP}\n\nCONTEXTO ATUAL DA INTERFACE:\n- rota: ${route}\n- usuário: Super Admin\n- requestId: ${requestId}\n\nPEDIDO:\n${text}`,
       };
 
-      const payloadMessages: ChatMessage[] = [
-        contextMessage,
-        ...prior.slice(-10),
-      ];
-
+      const payloadMessages: ChatMessage[] = [contextMessage, ...prior.slice(-10)];
       const response = await fetch("/api/support/chat", {
         method: "POST",
         headers: {
@@ -114,18 +158,11 @@ export default function DevAgentOverlay() {
         }
       }
 
-      if (!assistant.trim()) {
-        setMessages((current) => {
-          const next = [...current];
-          const last = next[next.length - 1];
-          if (last?.role === "assistant" && !last.content) {
-            next[next.length - 1] = { role: "assistant", content: "Não recebi uma resposta válida. Verifique o serviço de IA e tente novamente." };
-          }
-          return next;
-        });
-      }
+      if (!assistant.trim()) throw new Error("Resposta vazia do serviço de IA");
+      setRequests((current) => current.map((item) => item.id === requestId ? { ...item, status: "diagnosticado" } : item));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro desconhecido";
+      setRequests((current) => current.map((item) => item.id === requestId ? { ...item, status: "erro" } : item));
       setMessages((current) => [...current, { role: "assistant", content: `Não consegui concluir a análise: ${message}.` }]);
     } finally {
       setSending(false);
@@ -147,71 +184,102 @@ export default function DevAgentOverlay() {
 
       {open && (
         <div className="fixed inset-0 z-[100] flex items-end justify-end bg-black/20 p-0 sm:p-5" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <section className="flex h-[92vh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-[82vh] sm:max-w-[520px] sm:rounded-2xl sm:border">
+          <section className="flex h-[92vh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-[82vh] sm:max-w-[560px] sm:rounded-2xl sm:border">
             <header className="border-b bg-slate-950 px-5 py-4 text-white">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 text-base font-semibold"><Bot className="h-5 w-5" /> Dev IA · Engenharia</div>
-                  <p className="mt-1 text-xs text-slate-300">Desenvolvedor residente da plataforma · contexto: {pathname}</p>
+                  <p className="mt-1 text-xs text-slate-300">Desenvolvedor residente · contexto: {pathname}</p>
                 </div>
                 <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 hover:bg-white/10" aria-label="Fechar Dev IA"><X className="h-5 w-5" /></button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-200">
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1"><ShieldCheck className="h-3 w-3" /> mudanças críticas pedem aprovação</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1"><CheckCircle2 className="h-3 w-3" /> evidência antes de concluir</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1"><ShieldCheck className="h-3 w-3" /> crítico exige aprovação</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1"><CheckCircle2 className="h-3 w-3" /> sem falsa conclusão</span>
               </div>
             </header>
 
-            <div className="border-b bg-slate-50 px-4 py-3">
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {["Auditar esta tela", "Reportar bug", "Melhorar esta tela"].map((label) => (
-                  <button key={label} onClick={() => sendMessage(quickPrompt(label, pathname))} disabled={sending} className="shrink-0 rounded-full border bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50">
-                    {label === "Reportar bug" ? <Bug className="mr-1 inline h-3 w-3" /> : <Sparkles className="mr-1 inline h-3 w-3" />}{label}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center gap-1 border-b bg-white px-3 py-2">
+              <button onClick={() => setTab("chat")} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium ${tab === "chat" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}><MessageSquare className="h-3.5 w-3.5" /> Conversa</button>
+              <button onClick={() => setTab("history")} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium ${tab === "history" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}><History className="h-3.5 w-3.5" /> Histórico {requests.length > 0 ? `(${requests.length})` : ""}</button>
+              <button onClick={clearHistory} className="ml-auto rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Limpar histórico"><RotateCcw className="h-3.5 w-3.5" /></button>
             </div>
 
-            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
-              {messages.length === 0 && (
-                <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700 shadow-sm">
-                  <p className="font-semibold text-slate-900">Pode falar comigo como fala com seu desenvolvedor.</p>
-                  <p className="mt-2">Ex.: “essa tela está escondendo informações”, “corrige esse erro”, “quero mudar esse fluxo” ou “audita o que foi feito aqui”.</p>
-                  <p className="mt-2 text-xs text-slate-500">Eu recebo automaticamente a rota atual para entender onde você está.</p>
-                </div>
-              )}
-
-              {messages.map((message, index) => (
-                <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "bg-slate-950 text-white" : "border bg-white text-slate-800 shadow-sm"}`}>
-                    {message.content || (sending && index === messages.length - 1 ? <span className="inline-flex items-center gap-2 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> analisando...</span> : "")}
+            {tab === "chat" ? (
+              <>
+                <div className="border-b bg-slate-50 px-4 py-3">
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {["Auditar esta tela", "Reportar bug", "Melhorar esta tela"].map((label) => (
+                      <button key={label} onClick={() => sendMessage(quickPrompt(label, pathname))} disabled={sending} className="shrink-0 rounded-full border bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+                        {label === "Reportar bug" ? <Bug className="mr-1 inline h-3 w-3" /> : <Sparkles className="mr-1 inline h-3 w-3" />}{label}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ))}
-              <div ref={endRef} />
-            </div>
 
-            <form className="border-t bg-white p-3" onSubmit={(e) => { e.preventDefault(); void sendMessage(input); }}>
-              <div className="flex items-end gap-2 rounded-2xl border bg-slate-50 p-2 focus-within:border-slate-400">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void sendMessage(input);
-                    }
-                  }}
-                  rows={2}
-                  placeholder="Fale o que quer corrigir, melhorar ou construir..."
-                  className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none"
-                />
-                <button type="submit" disabled={!input.trim() || sending} className="rounded-xl bg-slate-950 p-2.5 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar">
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </button>
+                <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
+                  {messages.length === 0 && (
+                    <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700 shadow-sm">
+                      <p className="font-semibold text-slate-900">Pode falar comigo como fala com seu desenvolvedor.</p>
+                      <p className="mt-2">Ex.: “essa tela está escondendo informações”, “corrige esse erro”, “quero mudar esse fluxo” ou “audita o que foi feito aqui”.</p>
+                      <p className="mt-2 text-xs text-slate-500">A rota atual e o histórico recente entram automaticamente como contexto.</p>
+                    </div>
+                  )}
+
+                  {messages.map((message, index) => (
+                    <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "bg-slate-950 text-white" : "border bg-white text-slate-800 shadow-sm"}`}>
+                        {message.content || (sending && index === messages.length - 1 ? <span className="inline-flex items-center gap-2 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> analisando...</span> : "")}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={endRef} />
+                </div>
+
+                <form className="border-t bg-white p-3" onSubmit={(e) => { e.preventDefault(); void sendMessage(input); }}>
+                  <div className="flex items-end gap-2 rounded-2xl border bg-slate-50 p-2 focus-within:border-slate-400">
+                    <textarea
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void sendMessage(input);
+                        }
+                      }}
+                      rows={2}
+                      placeholder="Fale o que quer corrigir, melhorar ou construir..."
+                      className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none"
+                    />
+                    <button type="submit" disabled={!input.trim() || sending} className="rounded-xl bg-slate-950 p-2.5 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar">
+                      {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="mt-2 px-1 text-[10px] text-slate-500">Nesta etapa, “Diagnosticado” significa que a IA respondeu ao pedido — não que código ou produção foram alterados.</p>
+                </form>
+              </>
+            ) : (
+              <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
+                {requests.length === 0 ? (
+                  <div className="rounded-2xl border bg-white p-5 text-sm text-slate-600">Nenhum pedido técnico registrado ainda.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {requests.map((request) => (
+                      <article key={request.id} className="rounded-2xl border bg-white p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="line-clamp-2 text-sm font-medium text-slate-900">{request.text}</p>
+                            <p className="mt-1 truncate text-[11px] text-slate-500">{request.route}</p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${request.status === "diagnosticado" ? "bg-emerald-50 text-emerald-700" : request.status === "erro" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{statusLabel(request.status)}</span>
+                        </div>
+                        <div className="mt-3 flex items-center gap-1 text-[10px] text-slate-400"><Clock3 className="h-3 w-3" /> {new Date(request.createdAt).toLocaleString("pt-BR")}</div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
-              <p className="mt-2 px-1 text-[10px] text-slate-500">Baixo risco: pode orientar e preparar correção. Alto risco: exige sua aprovação antes de executar.</p>
-            </form>
+            )}
           </section>
         </div>
       )}
