@@ -20,6 +20,24 @@ export type MarketingContextForAds = {
   seoTrackingEnabled?: boolean;
   campaignId?: string;
   campaignName?: string;
+  marketingIntelligence?: {
+    source?: string;
+    keywords?: Array<{
+      text?: string;
+      avgMonthlySearches?: number;
+      competition?: string;
+    }>;
+    seo?: {
+      primaryKeyword?: string;
+      secondaryKeywords?: string[];
+    };
+    tracking?: {
+      campaignKey?: string;
+      utmCampaign?: string;
+      conversionGoal?: string;
+      channels?: Record<string, { source?: string; medium?: string; content?: string }>;
+    };
+  };
 };
 
 export type AdsAudiencePlan = {
@@ -35,6 +53,7 @@ type Segmentacao = {
   audiencias?: { termosPesquisa?: string[]; [key: string]: unknown };
   marketingContext?: MarketingContextForAds;
   audiencePlan?: AdsAudiencePlan;
+  marketingTracking?: MarketingContextForAds["marketingIntelligence"] extends { tracking?: infer T } ? T : never;
   [key: string]: unknown;
 };
 
@@ -89,12 +108,20 @@ export function buildAdsAudiencePlan(segmentacao: Segmentacao): AdsAudiencePlan 
   const campaignName = clean(context.campaignName);
   const offers = (context.productNames ?? []).map(clean).filter(Boolean);
   const manualKeywords = (segmentacao.audiencias?.termosPesquisa ?? []).map(clean).filter(Boolean);
+  const intelligence = context.marketingIntelligence;
+  const intelligenceKeywords = [
+    clean(intelligence?.seo?.primaryKeyword),
+    ...(intelligence?.seo?.secondaryKeywords ?? []).map(clean),
+    ...(intelligence?.keywords ?? []).map((item) => clean(item?.text)),
+  ].filter(Boolean);
 
   // Local, empreendimento e oferta entram como sinais de intenção. Restrições e
   // detalhes livres ficam fora das keywords para não transformar instruções
-  // internas em termos de compra ou segmentação.
+  // internas em termos de compra ou segmentação. Quando há pesquisa salva, os
+  // termos pesquisados entram antes dos derivados heurísticos.
   const keywords = unique([
     ...manualKeywords,
+    ...intelligenceKeywords,
     ...offers,
     ...offers.flatMap((offer) => [
       audienceNiche && `${offer} ${audienceNiche}`,
@@ -111,8 +138,9 @@ export function buildAdsAudiencePlan(segmentacao: Segmentacao): AdsAudiencePlan 
     campaignGoal,
   ], 15);
 
-  // Meta resolve interesses por entidades/categorias. Localização específica é
-  // preservada no targeting geográfico, não forçada como interesse inexistente.
+  // Meta resolve interesses por entidades/categorias. Localização e keywords de
+  // busca não são forçadas como interesses inexistentes; a pesquisa continua
+  // disponível para copy/landing page e o targeting geográfico segue separado.
   const interestQueries = unique([
     audienceNiche,
     audienceSegment.replace(/\([^)]*\)/g, "").trim(),
@@ -135,6 +163,8 @@ export function buildAdsAudiencePlan(segmentacao: Segmentacao): AdsAudiencePlan 
       differentiators && `Diferenciais obrigatórios: ${differentiators}`,
       restrictions && `Restrições criativas: ${restrictions}`,
       primaryKpi && `KPI: ${primaryKpi}`,
+      clean(intelligence?.seo?.primaryKeyword) && `Keyword principal: ${clean(intelligence?.seo?.primaryKeyword)}`,
+      clean(intelligence?.tracking?.utmCampaign) && `Tracking mestre: ${clean(intelligence?.tracking?.utmCampaign)}`,
       context.researchEnabled && "Pesquisa pública: solicitada",
       context.seoTrackingEnabled && "SEO/tracking: habilitado",
     ].filter(Boolean).join(" · "),
@@ -145,5 +175,11 @@ export function buildAdsAudiencePlan(segmentacao: Segmentacao): AdsAudiencePlan 
 
 export function enrichAdsSegmentacao(segmentacao: Segmentacao): Segmentacao {
   const audiencePlan = buildAdsAudiencePlan(segmentacao);
-  return audiencePlan ? { ...segmentacao, audiencePlan } : segmentacao;
+  const marketingTracking = segmentacao.marketingContext?.marketingIntelligence?.tracking;
+  if (!audiencePlan && !marketingTracking) return segmentacao;
+  return {
+    ...segmentacao,
+    ...(audiencePlan ? { audiencePlan } : {}),
+    ...(marketingTracking ? { marketingTracking } : {}),
+  };
 }

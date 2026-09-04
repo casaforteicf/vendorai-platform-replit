@@ -100,13 +100,19 @@ export function CampaignMarketingIntelligencePanel({
         return response.json();
       })
       .then((data) => {
-        if (!cancelled) setPack(data?.marketingIntelligence ?? null);
+        if (cancelled) return;
+        const next = (data?.marketingIntelligence ?? null) as CampaignMarketingIntelligence | null;
+        setPack(next);
+        if (next) onGenerated?.(next);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Erro ao carregar pesquisa.");
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
+    // onGenerated apenas hidrata o briefing atual; depender da identidade da callback
+    // faria a leitura remota repetir a cada render do formulário.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, campaignId]);
 
   async function runIntelligence() {
