@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   contentCalendarItemsTable,
+  mediaPlansTable,
   CONTENT_CALENDAR_STATUS,
   CONTENT_CALENDAR_TIPOS,
 } from "@workspace/db";
@@ -13,6 +14,12 @@ const router: IRouter = Router();
 
 function canAccess(req: import("express").Request, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+}
+
+function weeksForPeriod(periodoDias: number): number {
+  if (periodoDias >= 90) return 13;
+  if (periodoDias >= 60) return 8;
+  return 4;
 }
 
 const gerarBodySchema = z.object({
@@ -62,11 +69,47 @@ router.get("/tenants/:tenantId/content-calendar", async (req, res) => {
   if (typeof inicio === "string") conditions.push(gte(contentCalendarItemsTable.dataAgendada, inicio));
   if (typeof fim === "string") conditions.push(lte(contentCalendarItemsTable.dataAgendada, fim));
 
-  const items = await db
+  let items = await db
     .select()
     .from(contentCalendarItemsTable)
     .where(and(...conditions))
     .orderBy(asc(contentCalendarItemsTable.dataAgendada));
+
+  // Recuperação automática do fluxo do Planejador: se o plano mais recente
+  // já possui campanhas, mas nenhuma linha do calendário foi persistida,
+  // distribui as ações de forma determinística. Isso cobre falhas/timeout da
+  // segunda etapa sem exigir que o usuário gere todo o plano novamente.
+  if (typeof inicio !== "string" && typeof fim !== "string") {
+    const [latestPlan] = await db
+      .select()
+      .from(mediaPlansTable)
+      .where(eq(mediaPlansTable.tenantId, tenantId))
+      .orderBy(desc(mediaPlansTable.createdAt))
+      .limit(1);
+
+    const hasLatestPlanItems = latestPlan
+      ? items.some((item) => item.mediaPlanId === latestPlan.id)
+      : true;
+
+    if (latestPlan && !hasLatestPlanItems && (latestPlan.conteudo.campanhas?.length ?? 0) > 0) {
+      try {
+        await generateContentCalendar(
+          tenantId,
+          latestPlan.id,
+          weeksForPeriod(latestPlan.conteudo.periodoDias ?? 30),
+          { substituirPlanejado: true, refinarComIa: false },
+        );
+        items = await db
+          .select()
+          .from(contentCalendarItemsTable)
+          .where(and(...conditions))
+          .orderBy(asc(contentCalendarItemsTable.dataAgendada));
+      } catch (err) {
+        req.log.warn({ err, tenantId, mediaPlanId: latestPlan.id }, "content-calendar: recuperação automática falhou");
+      }
+    }
+  }
+
   res.json(items);
 });
 
