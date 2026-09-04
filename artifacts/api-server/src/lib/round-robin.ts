@@ -1,33 +1,120 @@
-import { and, eq, or, asc, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 
+type AssignmentCandidate = {
+  id: string;
+  lastAssignedAt: Date | null;
+  platformRole: string;
+  userFunction: string | null;
+  leadAssignmentEnabled: boolean | null;
+  leadAssignmentCities: string[];
+  leadAssignmentRegions: string[];
+};
+
+export type LeadAssignmentContext = {
+  city?: string | null;
+  region?: string | null;
+  location?: string | null;
+};
+
+export function canReceiveLeads(candidate: Pick<AssignmentCandidate, "platformRole" | "userFunction" | "leadAssignmentEnabled">): boolean {
+  if (candidate.leadAssignmentEnabled === false) return false;
+  if (candidate.leadAssignmentEnabled === true) return true;
+  return candidate.platformRole === "tenant_seller" || candidate.userFunction === "vendedor";
+}
+
+function normalizeTerritory(value?: string | null): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function matchesTerritory(location: string, territory: string): boolean {
+  const normalizedLocation = normalizeTerritory(location);
+  const normalizedTerritory = normalizeTerritory(territory);
+  if (!normalizedLocation || !normalizedTerritory) return false;
+
+  if (normalizedTerritory.length <= 3) {
+    const tokens = normalizedLocation.split(/[^a-z0-9]+/).filter(Boolean);
+    return tokens.includes(normalizedTerritory);
+  }
+
+  return normalizedLocation.includes(normalizedTerritory);
+}
+
+function oldestFirst(a: AssignmentCandidate, b: AssignmentCandidate): number {
+  if (!a.lastAssignedAt && b.lastAssignedAt) return -1;
+  if (a.lastAssignedAt && !b.lastAssignedAt) return 1;
+  if (!a.lastAssignedAt && !b.lastAssignedAt) return a.id.localeCompare(b.id);
+  return a.lastAssignedAt!.getTime() - b.lastAssignedAt!.getTime();
+}
+
 /**
- * Picks the next active vendedor for a tenant using round-robin rotation.
- * Sellers with lastAssignedAt = null (never assigned) get priority.
- * Among those with a date, the one with the oldest date goes first.
- * Updates lastAssignedAt on the selected seller.
- * Returns the seller's userId, or null if no active sellers exist.
+ * Distribuição de leads em quatro níveis:
+ * 1. vendedores elegíveis configurados para a cidade do lead;
+ * 2. vendedores elegíveis configurados para a região/UF;
+ * 3. vendedores elegíveis do rodízio geral (sem território configurado);
+ * 4. fallback para qualquer vendedor elegível.
+ *
+ * Dentro do grupo escolhido, quem nunca recebeu lead tem prioridade e depois
+ * vale o lastAssignedAt mais antigo. Usuários com leadAssignmentEnabled=false
+ * nunca entram na distribuição. Null mantém compatibilidade com vendedores antigos.
  */
-export async function pickNextVendedor(tenantId: string): Promise<string | null> {
-  const sellers = await db
-    .select({ id: usersTable.id, lastAssignedAt: usersTable.lastAssignedAt })
+export async function pickNextVendedor(
+  tenantId: string,
+  context: LeadAssignmentContext = {},
+): Promise<string | null> {
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      lastAssignedAt: usersTable.lastAssignedAt,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+      leadAssignmentEnabled: usersTable.leadAssignmentEnabled,
+      leadAssignmentCities: usersTable.leadAssignmentCities,
+      leadAssignmentRegions: usersTable.leadAssignmentRegions,
+    })
     .from(usersTable)
-    .where(
-      and(
-        eq(usersTable.tenantId, tenantId),
-        eq(usersTable.active, true),
-        or(
-          eq(usersTable.platformRole, "tenant_seller"),
-          eq(usersTable.userFunction, "vendedor")
-        )
-      )
-    )
-    .orderBy(asc(usersTable.lastAssignedAt))
-    .limit(1);
+    .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)));
 
-  if (!sellers.length || !sellers[0]) return null;
+  const candidates: AssignmentCandidate[] = rows
+    .filter(canReceiveLeads)
+    .map((candidate) => ({
+      ...candidate,
+      leadAssignmentCities: Array.isArray(candidate.leadAssignmentCities) ? candidate.leadAssignmentCities : [],
+      leadAssignmentRegions: Array.isArray(candidate.leadAssignmentRegions) ? candidate.leadAssignmentRegions : [],
+    }));
 
-  const seller = sellers[0];
+  if (!candidates.length) return null;
+
+  const cityLocation = context.city || context.location || "";
+  const regionLocation = context.region || context.location || "";
+
+  const cityMatches = cityLocation
+    ? candidates.filter((candidate) => candidate.leadAssignmentCities.some((city) => matchesTerritory(cityLocation, city)))
+    : [];
+
+  const regionMatches = regionLocation
+    ? candidates.filter((candidate) => candidate.leadAssignmentRegions.some((region) => matchesTerritory(regionLocation, region)))
+    : [];
+
+  const generalPool = candidates.filter(
+    (candidate) => candidate.leadAssignmentCities.length === 0 && candidate.leadAssignmentRegions.length === 0,
+  );
+
+  const pool = cityMatches.length
+    ? cityMatches
+    : regionMatches.length
+      ? regionMatches
+      : generalPool.length
+        ? generalPool
+        : candidates;
+
+  const seller = [...pool].sort(oldestFirst)[0];
+  if (!seller) return null;
 
   await db
     .update(usersTable)
