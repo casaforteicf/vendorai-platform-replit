@@ -58,6 +58,9 @@ export interface MediaPlanConteudo {
   statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
   aprovadoEm?: string | null;
   versaoPlanejamento?: number;
+  // Versão do catálogo que define a função oficial de cada canal/mídia.
+  // Fica dentro do JSON para permitir adequar planos antigos sem migration.
+  versaoFuncoesMidia?: number;
 }
 
 export const mediaPlansTable = pgTable("media_plans", {
