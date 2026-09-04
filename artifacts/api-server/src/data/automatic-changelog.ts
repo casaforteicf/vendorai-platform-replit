@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-451",
+    "titulo": "padronização global de layout e responsividade",
+    "descricao": "cria um padrão global de largura máxima e recuos de página normaliza títulos principais e descrições de cabeçalho define tokens únicos para espaçamentos, raio de cards e altura de controles melhora campos nativos que ainda não usam os componentes compartilhados",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T01:13:36.000Z",
+    "pullRequest": 451
+  },
+  {
     "id": "pr-449",
     "titulo": "configurar perfil internacional do tenant",
     "descricao": "adiciona card **Perfil internacional** na tela real de detalhes do tenant; permite configurar país, idioma padrão, fuso horário, moeda principal, moedas habilitadas e identificação fiscal; presets oficiais para Brasil, Paraguai, Argentina, Uruguai e Chile; ao trocar país, aplica locale/fuso/moeda/tipo fiscal recomendados antes de salvar;",
