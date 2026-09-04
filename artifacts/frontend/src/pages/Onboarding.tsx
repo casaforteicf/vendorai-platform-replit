@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useListSegmentTemplates } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useI18n } from "@/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,7 @@ const PLAN_DISPLAY = [
   { label: "Enterprise", implantacao: 8900, quotaIA: "US$50", popular: false },
 ];
 
+const VENDORAI_BILLING_CURRENCY = "BRL";
 const PLANO_PARAM_INDEX: Record<string, number> = { growth: 0, pme: 1, enterprise: 2 };
 
 const TOM_OPTIONS = [
@@ -103,6 +105,7 @@ export default function Onboarding() {
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { formatCurrency } = useI18n();
 
   const [step, setStep] = useState<WizardStep>(1);
   const [loading, setLoading] = useState(true);
@@ -712,6 +715,9 @@ export default function Onboarding() {
                   <p className="text-sm text-muted-foreground mt-1">
                     Sem taxas surpresa. Cancele quando quiser.
                   </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Valores de assinatura e implantação cobrados em BRL.
+                  </p>
                 </div>
 
                 {/* Ciclo toggle */}
@@ -770,7 +776,6 @@ export default function Onboarding() {
                         s4Ciclo === "anual" && plan.monthlyPriceAnnualCents
                           ? plan.monthlyPriceAnnualCents
                           : (plan.monthlyPriceCents ?? 0);
-                      const priceReal = Math.round(priceCents / 100);
                       const selected = s4PlanoId === plan.id;
 
                       return (
@@ -795,7 +800,7 @@ export default function Onboarding() {
                                 <span className="font-bold text-base">{display.label}</span>
                               </div>
                               <div className="text-2xl font-bold mt-1">
-                                R$ {priceReal.toLocaleString("pt-BR")}
+                                {formatCurrency(priceCents / 100, VENDORAI_BILLING_CURRENCY)}
                                 <span className="text-sm font-normal text-muted-foreground">/mês</span>
                               </div>
                             </div>
@@ -811,7 +816,7 @@ export default function Onboarding() {
                             <span>
                               Implantação{" "}
                               <strong className="text-foreground">
-                                R$ {display.implantacao.toLocaleString("pt-BR")}
+                                {formatCurrency(display.implantacao, VENDORAI_BILLING_CURRENCY)}
                               </strong>
                             </span>
                             <span>
