@@ -9,9 +9,14 @@ import {
   CheckCircle2,
   CircleDashed,
   ExternalLink,
+  Eye,
+  Film,
+  Image as ImageIcon,
   Layers3,
+  Library,
   Loader2,
   Play,
+  Plus,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -20,7 +25,10 @@ const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
 const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
 
 const DIRECT_GENERATOR_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post"]);
+const VIDEO_TYPES = new Set(["reels", "youtube_short", "youtube_video", "tiktok"]);
 const FINAL_STATUSES = new Set(["recusado", "pulado", "publicado"]);
+
+type AssetType = "image" | "video" | string;
 
 interface CampaignChannel {
   canal: string;
@@ -86,10 +94,11 @@ interface ContentHistory {
 
 interface MediaAsset {
   id: string;
-  type: string;
+  type: AssetType;
   role: string;
   storageUrl: string;
   originalFilename?: string | null;
+  mimeType?: string | null;
   source: string;
   metadata?: Record<string, unknown> | null;
 }
@@ -123,6 +132,11 @@ function normalize(value: string) {
     .toLowerCase();
 }
 
+function normalizeMediaUrl(storageUrl: string) {
+  if (storageUrl.startsWith("/objects/")) return `/api/storage${storageUrl}`;
+  return storageUrl;
+}
+
 function campaignNameFromPilar(pilar: string) {
   const [campaign] = pilar.split(" · ");
   return campaign || "Campanha do período";
@@ -142,14 +156,8 @@ function calendarTypeToGenerator(type: string): "feed" | "stories" | "linkedin" 
 
 function mediaProjectKind(type: string) {
   if (type === "stories") return "story";
-  if (type === "reels" || type === "youtube_short" || type === "tiktok") return "reel";
-  if (type === "youtube_video") return "video";
+  if (VIDEO_TYPES.has(type)) return type === "youtube_video" ? "video" : "reel";
   return "feed";
-}
-
-function normalizeMediaUrl(storageUrl: string) {
-  if (storageUrl.startsWith("/objects/")) return `/api/storage${storageUrl}`;
-  return storageUrl;
 }
 
 function campaignForItem(plan: MediaPlan | null, item: CalendarItem | null | undefined) {
@@ -163,7 +171,7 @@ function campaignForItem(plan: MediaPlan | null, item: CalendarItem | null | und
 function textTokens(value: string) {
   const stop = new Set([
     "para", "como", "com", "uma", "das", "dos", "por", "que", "seu", "sua", "seus", "suas",
-    "de", "do", "da", "em", "no", "na", "nos", "nas", "the", "and", "com", "mais", "campanha",
+    "de", "do", "da", "em", "no", "na", "nos", "nas", "the", "and", "mais", "campanha", "periodo",
   ]);
   return Array.from(new Set(
     normalize(value)
@@ -178,24 +186,43 @@ function selectRelevantOwnedMedia(
   campaign: MediaPlanCampaign | null,
   item: CalendarItem,
   limit: number,
+  allowedTypes: AssetType[] = ["image"],
 ) {
   if (!campaign) return [];
-  const keywords = textTokens(`${campaign.nome} ${campaign.produtoServico} ${item.temaSugerido}`);
-  if (keywords.length === 0) return [];
+  const keywords = textTokens([
+    campaign.nome,
+    campaign.produtoServico,
+    campaign.publico,
+    campaign.mensagemCentral,
+    item.temaSugerido,
+    item.canal,
+  ].join(" "));
+  const allowed = new Set(allowedTypes);
 
   return assets
-    .filter((asset) => asset.type === "image" && (asset.source === "upload" || asset.source === "imported"))
+    .filter((asset) => allowed.has(asset.type) && (asset.source === "upload" || asset.source === "imported"))
     .map((asset) => {
       let metadata = "";
       try { metadata = JSON.stringify(asset.metadata ?? {}); } catch { metadata = ""; }
-      const haystack = normalize(`${asset.originalFilename ?? ""} ${metadata}`);
-      const score = keywords.reduce((sum, keyword) => sum + (haystack.includes(keyword) ? 1 : 0), 0);
+      const haystack = normalize(`${asset.originalFilename ?? ""} ${asset.role ?? ""} ${metadata}`);
+      const score = keywords.reduce((sum, keyword) => sum + (haystack.includes(keyword) ? 2 : 0), 0)
+        + (normalize(asset.role ?? "").includes("product") ? 1 : 0);
       return { asset, score };
     })
-    .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score)
+    .filter((entry, index) => entry.score > 0 || index < 2)
     .slice(0, limit)
     .map((entry) => entry.asset);
+}
+
+function referenceMediaForItem(assets: MediaAsset[], campaign: MediaPlanCampaign | null, item: CalendarItem) {
+  if (VIDEO_TYPES.has(item.tipo)) {
+    return selectRelevantOwnedMedia(assets, campaign, item, 6, ["video", "image"]);
+  }
+  if (DIRECT_GENERATOR_TYPES.has(item.tipo)) {
+    return selectRelevantOwnedMedia(assets, campaign, item, item.tipo === "carrossel" ? 6 : 3, ["image"]);
+  }
+  return selectRelevantOwnedMedia(assets, campaign, item, 5, ["image", "video"]);
 }
 
 function runAutomaticReview(
@@ -221,7 +248,7 @@ function runAutomaticReview(
   }
 
   if (["feed", "stories", "carrossel"].includes(item.tipo)) {
-    const hasMedia = serialized.includes("imageurl") || selectedMedia.length > 0;
+    const hasMedia = serialized.includes("imageurl") || selectedMedia.some((asset) => asset.type === "image");
     if (hasMedia) checks.push(selectedMedia.length > 0 ? "Mídia própria priorizada" : "Criativo visual presente");
     else warnings.push("Nenhuma mídia visual foi identificada na peça.");
   }
@@ -262,6 +289,27 @@ function statusClass(tone: ReturnType<typeof derivedStatus>["tone"]) {
   return "";
 }
 
+function previewData(generation: ContentGeneration | undefined, variationIdx = 0) {
+  const variations = Array.isArray(generation?.result?.variations) ? generation!.result!.variations! : [];
+  const raw = variations[variationIdx] ?? variations[0];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const imageUrls = [
+    ...(Array.isArray(value.imageUrls) ? value.imageUrls.filter((url): url is string => typeof url === "string") : []),
+    typeof value.imageUrl === "string" ? value.imageUrl : "",
+  ].filter(Boolean);
+  const text = [
+    typeof value.hook === "string" ? value.hook : "",
+    typeof value.caption === "string" ? value.caption : "",
+    typeof value.text === "string" ? value.text : "",
+    typeof value.cta === "string" ? `CTA: ${value.cta}` : "",
+  ].filter(Boolean).join("\n\n");
+  const hashtags = Array.isArray(value.hashtags)
+    ? value.hashtags.filter((tag): tag is string => typeof tag === "string").join(" ")
+    : "";
+  return { imageUrls, text, hashtags };
+}
+
 export default function ContentProductionQueue({ tenantId }: { tenantId: string }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -274,13 +322,12 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0, failed: 0 });
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
   const assetsRef = useRef<MediaAsset[]>([]);
   const projectsRef = useRef<MediaProject[]>([]);
-  const historyRef = useRef<ContentHistory | null>(null);
-  const refreshRef = useRef<() => Promise<void>>(async () => {});
 
   const query = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const requestedCalendarItemId = query.get("calendarItemId")?.trim() ?? "";
@@ -292,19 +339,22 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     if (!tenantId) return;
     try {
       const headers = authHeaders();
-      const [planResponse, calendarResponse, contentResponse, assetsResponse, projectsResponse] = await Promise.all([
+      const [planResponse, calendarResponse, contentResponse, imageResponse, videoResponse, projectsResponse] = await Promise.all([
         fetch(`/api/tenants/${tenantId}/media-plan`, { headers }),
         fetch(`/api/tenants/${tenantId}/content-calendar`, { headers }),
         fetch(`/api/tenants/${tenantId}/content`, { headers }),
-        fetch(`/api/tenants/${tenantId}/media/assets?type=image&limit=100`, { headers }),
+        fetch(`/api/tenants/${tenantId}/media/assets?type=image&limit=150`, { headers }),
+        fetch(`/api/tenants/${tenantId}/media/assets?type=video&limit=150`, { headers }),
         fetch(`/api/tenants/${tenantId}/media/projects?limit=100`, { headers }),
       ]);
 
       const nextPlan = planResponse.ok ? await planResponse.json() as MediaPlan | null : null;
       const rawCalendar = calendarResponse.ok ? await calendarResponse.json() as CalendarItem[] : [];
       const nextHistory = contentResponse.ok ? await contentResponse.json() as ContentHistory : null;
-      const mediaPayload = assetsResponse.ok ? await assetsResponse.json() as { assets?: MediaAsset[] } : {};
+      const imagePayload = imageResponse.ok ? await imageResponse.json() as { assets?: MediaAsset[] } : {};
+      const videoPayload = videoResponse.ok ? await videoResponse.json() as { assets?: MediaAsset[] } : {};
       const projectPayload = projectsResponse.ok ? await projectsResponse.json() as { projects?: MediaProject[] } : {};
+      const nextAssets = [...(imagePayload.assets ?? []), ...(videoPayload.assets ?? [])];
       const nextCalendar = nextPlan
         ? rawCalendar.filter((item) => item.mediaPlanId === nextPlan.id)
         : [];
@@ -315,12 +365,11 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       setPlan(nextPlan);
       setCalendar(nextCalendar);
       setHistory(nextHistory);
-      setAssets(mediaPayload.assets ?? []);
+      setAssets(nextAssets);
       setProjects(nextProjects);
       planRef.current = nextPlan;
       calendarRef.current = nextCalendar;
-      historyRef.current = nextHistory;
-      assetsRef.current = mediaPayload.assets ?? [];
+      assetsRef.current = nextAssets;
       projectsRef.current = nextProjects;
     } catch (error) {
       toast({
@@ -333,8 +382,6 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }, [tenantId, toast]);
 
-  refreshRef.current = load;
-
   useEffect(() => {
     setLoading(true);
     void load();
@@ -342,16 +389,12 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
 
   useEffect(() => {
     if (!tenantId || !plan) return;
-    const timer = window.setInterval(() => { void load(); }, 8000);
+    const timer = window.setInterval(() => { void load(); }, 12000);
     return () => window.clearInterval(timer);
   }, [tenantId, plan?.id, load]);
 
-  const patchCalendarNative = useCallback(async (
-    nativeFetch: typeof window.fetch,
-    itemId: string,
-    patch: Record<string, unknown>,
-  ) => {
-    const response = await nativeFetch(`/api/content-calendar/${itemId}`, {
+  const patchCalendar = useCallback(async (itemId: string, patch: Record<string, unknown>) => {
+    const response = await fetch(`/api/content-calendar/${itemId}`, {
       method: "PATCH",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -364,15 +407,11 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     return updated;
   }, []);
 
-  const ensureMediaProject = useCallback(async (
-    nativeFetch: typeof window.fetch,
-    item: CalendarItem,
-    campaign: MediaPlanCampaign | null,
-  ) => {
+  const ensureMediaProject = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign | null) => {
     const existing = projectsRef.current.find((project) => project.context?.["calendarItemId"] === item.id);
     if (existing) return existing;
 
-    const response = await nativeFetch(`/api/tenants/${tenantId}/media/projects`, {
+    const response = await fetch(`/api/tenants/${tenantId}/media/projects`, {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -402,7 +441,6 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   }, [tenantId]);
 
   const recordProjectEvent = useCallback(async (
-    nativeFetch: typeof window.fetch,
     item: CalendarItem,
     campaign: MediaPlanCampaign | null,
     event: {
@@ -417,7 +455,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       generatedType?: string;
     },
   ) => {
-    const project = await ensureMediaProject(nativeFetch, item, campaign);
+    const project = await ensureMediaProject(item, campaign);
     const currentContext = { ...(project.context ?? {}) };
     const currentVersions = Number(currentContext["versionCount"] ?? 0);
     const currentAttempts = Number(currentContext["attemptCount"] ?? 0);
@@ -426,7 +464,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     const isFailure = event.operation === "generation_failed";
     const versionNumber = isSuccessfulGeneration ? currentVersions + 1 : currentVersions;
 
-    const versionResponse = await nativeFetch(`/api/tenants/${tenantId}/media/projects/${project.id}/versions`, {
+    const versionResponse = await fetch(`/api/tenants/${tenantId}/media/projects/${project.id}/versions`, {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -451,6 +489,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
           error: event.error,
           mediaProvenance: (event.selectedMedia ?? []).map((asset) => ({
             assetId: asset.id,
+            type: asset.type,
             source: asset.source,
             role: asset.role,
             filename: asset.originalFilename,
@@ -459,7 +498,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
         },
       }),
     });
-    if (!versionResponse.ok) throw new Error("Falha ao registrar a versão do conteúdo.");
+    if (!versionResponse.ok) return;
 
     const nextContext = {
       ...currentContext,
@@ -472,13 +511,10 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       lastReviewWarnings: event.review?.warnings ?? currentContext["lastReviewWarnings"],
       updatedFromPlanAt: new Date().toISOString(),
     };
-    const projectResponse = await nativeFetch(`/api/tenants/${tenantId}/media/projects/${project.id}`, {
+    const projectResponse = await fetch(`/api/tenants/${tenantId}/media/projects/${project.id}`, {
       method: "PATCH",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status: event.status === "failed" ? project.status : "ready",
-        context: nextContext,
-      }),
+      body: JSON.stringify({ status: event.status === "failed" ? project.status : "ready", context: nextContext }),
     });
     if (projectResponse.ok) {
       const payload = await projectResponse.json() as { project: MediaProject };
@@ -486,172 +522,6 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       setProjects(projectsRef.current);
     }
   }, [ensureMediaProject, tenantId]);
-
-  useEffect(() => {
-    if (!tenantId || typeof window === "undefined") return;
-    const nativeFetch = window.fetch.bind(window);
-
-    const wrappedFetch: typeof window.fetch = async (input, init) => {
-      const rawUrl = typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-      const requestHeaders = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-      const currentQuery = new URLSearchParams(window.location.search);
-      const headerItemId = requestHeaders.get("x-vendorai-calendar-item-id")?.trim() ?? "";
-      const calendarItemId = headerItemId || currentQuery.get("calendarItemId")?.trim() || "";
-      const isGenerate = method === "POST" && rawUrl.includes(`/api/tenants/${tenantId}/content/generate`);
-      const publishMatch = rawUrl.match(new RegExp(`/api/tenants/${tenantId}/content/([^/?]+)/publish-instagram`));
-      const deleteMatch = method === "DELETE" ? rawUrl.match(new RegExp(`/api/tenants/${tenantId}/content/([^/?]+)$`)) : null;
-
-      if (isGenerate && calendarItemId) {
-        const item = calendarRef.current.find((entry) => entry.id === calendarItemId);
-        if (!item) throw new Error("Esta ação não pertence mais ao Plano de Mídia atual. Atualize a fila antes de gerar.");
-        if (["planejado", "recusado", "pulado", "publicado"].includes(item.status)) {
-          throw new Error("Esta ação precisa estar aprovada e disponível para produção antes de gerar conteúdo.");
-        }
-        const campaign = campaignForItem(planRef.current, item);
-        if (!campaign) throw new Error("A campanha vinculada a esta ação não foi encontrada.");
-
-        let body: Record<string, unknown> = {};
-        try {
-          if (typeof init?.body === "string") body = JSON.parse(init.body) as Record<string, unknown>;
-        } catch {
-          body = {};
-        }
-        const previousStatus = item.status;
-        const previousGenerationId = item.contentGenerationId ?? null;
-        const siblingThemes = calendarRef.current
-          .filter((entry) => entry.id !== item.id && campaignNameFromPilar(entry.pilar) === campaignNameFromPilar(item.pilar) && entry.contentGenerationId)
-          .slice(-4)
-          .map((entry) => entry.temaSugerido);
-        const baseTheme = typeof body["theme"] === "string" && body["theme"].trim()
-          ? String(body["theme"]).trim()
-          : item.temaSugerido;
-        const direction = [
-          `Ação aprovada do Plano de Mídia: ${item.temaSugerido}`,
-          `Campanha: ${campaign.nome}`,
-          `Objetivo: ${campaign.objetivo}`,
-          `Produto/serviço: ${campaign.produtoServico}`,
-          `Público: ${campaign.publico}`,
-          `Oferta: ${campaign.oferta}`,
-          `Mensagem central: ${campaign.mensagemCentral}`,
-          `Canal: ${item.canal}`,
-          `Pilar: ${contentPillarFromPilar(item.pilar)}`,
-          `Regra de comunicação: ${campaign.regraComunicacaoGeografica}`,
-          siblingThemes.length > 0 ? `Evite repetir ganchos e abordagens já usados nestas ações: ${siblingThemes.join(" / ")}` : "",
-        ].filter(Boolean).join(" | ");
-        body["theme"] = `${baseTheme} | ${direction}`;
-        if (!body["postObjective"]) body["postObjective"] = campaign.objetivo;
-
-        let selectedMedia: MediaAsset[] = [];
-        const userMaterial = Array.isArray(body["postMaterialUrls"]) && (body["postMaterialUrls"] as unknown[]).length > 0;
-        if (!userMaterial && ["feed", "stories", "carrossel"].includes(item.tipo)) {
-          selectedMedia = selectRelevantOwnedMedia(
-            assetsRef.current,
-            campaign,
-            item,
-            item.tipo === "carrossel" ? 4 : 1,
-          );
-          if (selectedMedia.length > 0) {
-            body["postMaterialUrls"] = selectedMedia.map((asset) => normalizeMediaUrl(asset.storageUrl));
-          }
-        }
-
-        await patchCalendarNative(nativeFetch, item.id, { status: "gerado" }).catch(() => undefined);
-        const nextInit: RequestInit = {
-          ...init,
-          headers: requestHeaders,
-          body: JSON.stringify(body),
-        };
-        const response = await nativeFetch(input, nextInit);
-        let payload: (ContentGeneration & { error?: string }) | null = null;
-        try { payload = await response.clone().json() as ContentGeneration & { error?: string }; } catch { payload = null; }
-
-        if (response.ok && payload?.id) {
-          const generated: ContentGeneration = payload;
-          const review = runAutomaticReview(item, campaign, generated, selectedMedia);
-          await patchCalendarNative(nativeFetch, item.id, {
-            status: "gerado",
-            contentGenerationId: generated.id,
-            variationIdx: 0,
-          });
-          await recordProjectEvent(nativeFetch, item, campaign, {
-            operation: "content_generation",
-            label: `Versão de conteúdo · ${item.temaSugerido}`,
-            status: "generated",
-            contentGenerationId: generated.id,
-            variationIndex: 0,
-            review,
-            selectedMedia,
-            generatedType: generated.type,
-          }).catch(() => undefined);
-          window.setTimeout(() => { void refreshRef.current(); }, 150);
-        } else {
-          await patchCalendarNative(nativeFetch, item.id, {
-            status: previousStatus,
-            contentGenerationId: previousGenerationId,
-          }).catch(() => undefined);
-          await recordProjectEvent(nativeFetch, item, campaign, {
-            operation: "generation_failed",
-            label: `Falha de geração · ${item.temaSugerido}`,
-            status: "failed",
-            error: payload?.error ?? `HTTP ${response.status}`,
-            selectedMedia,
-          }).catch(() => undefined);
-        }
-        return response;
-      }
-
-      const response = await nativeFetch(input, init);
-
-      if (method === "POST" && publishMatch && response.ok) {
-        const contentGenerationId = publishMatch[1] ?? "";
-        const item = calendarRef.current.find((entry) => entry.contentGenerationId === contentGenerationId);
-        if (item) {
-          const campaign = campaignForItem(planRef.current, item);
-          await patchCalendarNative(nativeFetch, item.id, { status: "publicado" }).catch(() => undefined);
-          await recordProjectEvent(nativeFetch, item, campaign, {
-            operation: "publication",
-            label: `Publicado · ${item.temaSugerido}`,
-            status: "published",
-            contentGenerationId,
-            variationIndex: item.variationIdx ?? 0,
-          }).catch(() => undefined);
-          window.setTimeout(() => { void refreshRef.current(); }, 150);
-        }
-      }
-
-      if (deleteMatch && response.ok) {
-        const contentGenerationId = deleteMatch[1] ?? "";
-        const item = calendarRef.current.find((entry) => entry.contentGenerationId === contentGenerationId);
-        if (item) {
-          const campaign = campaignForItem(planRef.current, item);
-          await patchCalendarNative(nativeFetch, item.id, {
-            status: "aprovado",
-            contentGenerationId: null,
-            variationIdx: null,
-          }).catch(() => undefined);
-          await recordProjectEvent(nativeFetch, item, campaign, {
-            operation: "content_removed",
-            label: `Versão removida · ${item.temaSugerido}`,
-            status: "ready_for_production",
-            contentGenerationId,
-          }).catch(() => undefined);
-          window.setTimeout(() => { void refreshRef.current(); }, 150);
-        }
-      }
-
-      return response;
-    };
-
-    window.fetch = wrappedFetch;
-    return () => {
-      if (window.fetch === wrappedFetch) window.fetch = nativeFetch;
-    };
-  }, [patchCalendarNative, recordProjectEvent, tenantId]);
 
   const visibleItems = useMemo(() => {
     if (!plan) return [];
@@ -666,6 +536,12 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     [calendar, requestedCalendarItemId],
   );
   const currentCampaign = campaignForItem(plan, currentItem);
+
+  const generationById = useMemo(() => {
+    const map = new Map<string, ContentGeneration>();
+    (history?.items ?? []).forEach((item) => map.set(item.id, item));
+    return map;
+  }, [history]);
 
   const projectByItem = useMemo(() => {
     const map = new Map<string, MediaProject>();
@@ -693,6 +569,9 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     () => visibleItems.filter((item) => item.status === "aprovado" && !item.contentGenerationId && DIRECT_GENERATOR_TYPES.has(item.tipo)),
     [visibleItems],
   );
+
+  const ownImages = assets.filter((asset) => asset.type === "image" && ["upload", "imported"].includes(asset.source));
+  const ownVideos = assets.filter((asset) => asset.type === "video" && ["upload", "imported"].includes(asset.source));
 
   function buildMarketingContext(campaign: MediaPlanCampaign, item: CalendarItem) {
     const channel = campaign.canais.find((entry) => normalize(entry.canal) === normalize(item.canal));
@@ -722,18 +601,9 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     };
   }
 
-  function openExecutor(item: CalendarItem) {
-    if (!plan || plan.conteudo.statusPlanejamento !== "aprovado") {
-      toast({ title: "Aprove o Plano de Mídia antes da produção", variant: "destructive" });
-      return;
-    }
-    if (!["aprovado", "gerado"].includes(item.status)) {
-      toast({ title: "Esta ação não está disponível para produção", variant: "destructive" });
-      return;
-    }
-    const campaign = campaignForItem(plan, item);
-    if (!campaign) return;
+  function prepareExecutionContext(item: CalendarItem, campaign: MediaPlanCampaign) {
     const marketingContext = buildMarketingContext(campaign, item);
+    const references = referenceMediaForItem(assetsRef.current, campaign, item);
     sessionStorage.setItem(ACTIVE_BRIEFING_KEY, JSON.stringify({
       tenantId,
       campaignId: campaign.id,
@@ -743,21 +613,174 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     sessionStorage.setItem(MEDIA_PLAN_EXECUTION_KEY, JSON.stringify({
       source: "media-calendar",
       tenantId,
-      mediaPlanId: plan.id,
-      periodoDias: plan.conteudo.periodoDias,
+      mediaPlanId: planRef.current?.id,
+      periodoDias: planRef.current?.conteudo.periodoDias,
       campaign,
       calendarItem: item,
       marketingContext,
+      referenceMedia: references.map((asset, index) => ({
+        assetId: asset.id,
+        type: asset.type,
+        role: asset.role || "auto",
+        importance: index === 0 ? "preferred" : "reference",
+        order: index,
+        originalFilename: asset.originalFilename,
+        storageUrl: asset.storageUrl,
+        mimeType: asset.mimeType,
+        metadata: asset.metadata,
+      })),
       savedAt: new Date().toISOString(),
     }));
+    return references;
+  }
 
-    const common = new URLSearchParams({
+  async function generateDirectItem(item: CalendarItem, silent = false) {
+    const currentPlan = planRef.current;
+    if (!currentPlan || currentPlan.conteudo.statusPlanejamento !== "aprovado") {
+      if (!silent) toast({ title: "Aprove o Plano de Mídia antes da produção", variant: "destructive" });
+      return false;
+    }
+    const campaign = campaignForItem(currentPlan, item);
+    const generatedType = calendarTypeToGenerator(item.tipo);
+    if (!campaign || !generatedType) return false;
+    if (!["aprovado", "gerado"].includes(item.status)) return false;
+
+    setActionBusy(item.id);
+    const previousStatus = item.status;
+    const previousGenerationId = item.contentGenerationId ?? null;
+    const selectedMedia = selectRelevantOwnedMedia(
+      assetsRef.current,
+      campaign,
+      item,
+      item.tipo === "carrossel" ? 6 : 3,
+      ["image"],
+    );
+    const siblingThemes = calendarRef.current
+      .filter((entry) => entry.id !== item.id && campaignNameFromPilar(entry.pilar) === campaignNameFromPilar(item.pilar) && entry.contentGenerationId)
+      .slice(-4)
+      .map((entry) => entry.temaSugerido);
+    const channel = campaign.canais.find((entry) => normalize(entry.canal) === normalize(item.canal));
+    const direction = [
+      item.temaSugerido,
+      `Campanha: ${campaign.nome}`,
+      `Objetivo: ${campaign.objetivo}`,
+      `Produto/serviço: ${campaign.produtoServico}`,
+      `Público: ${campaign.publico}`,
+      `Oferta: ${campaign.oferta}`,
+      `Mensagem central: ${campaign.mensagemCentral}`,
+      `Canal: ${item.canal}`,
+      channel?.funcao ? `Função desta mídia: ${channel.funcao}` : "",
+      `Pilar: ${contentPillarFromPilar(item.pilar)}`,
+      `KPI: ${channel?.kpiPrincipal || campaign.kpiPrincipal}`,
+      `Regra de comunicação: ${campaign.regraComunicacaoGeografica}`,
+      siblingThemes.length > 0 ? `Evite repetir ganchos e abordagens: ${siblingThemes.join(" / ")}` : "",
+    ].filter(Boolean).join(" | ");
+
+    prepareExecutionContext(item, campaign);
+
+    try {
+      await patchCalendar(item.id, { status: "gerado" });
+      const response = await fetch(`/api/tenants/${tenantId}/content/generate`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+          "x-vendorai-calendar-item-id": item.id,
+          "x-vendorai-media-plan-id": currentPlan.id,
+          "x-vendorai-campaign-id": campaign.id,
+        },
+        body: JSON.stringify({
+          type: generatedType,
+          theme: direction,
+          variations: 1,
+          imageCount: item.tipo === "carrossel" ? 4 : 1,
+          contentFormat: item.tipo === "stories" ? "stories" : "feed_portrait",
+          aspectRatio: item.tipo === "stories" ? "9:16" : "4:5",
+          postObjective: campaign.objetivo,
+          postMaterialUrls: selectedMedia.map((asset) => normalizeMediaUrl(asset.storageUrl)),
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as ContentGeneration & { error?: string };
+      if (!response.ok || !payload.id) {
+        throw new Error(payload.error ?? "Não foi possível gerar esta peça.");
+      }
+
+      const review = runAutomaticReview(item, campaign, payload, selectedMedia);
+      await patchCalendar(item.id, {
+        status: "gerado",
+        contentGenerationId: payload.id,
+        variationIdx: 0,
+      });
+      await recordProjectEvent(item, campaign, {
+        operation: "content_generation",
+        label: `Versão de conteúdo · ${item.temaSugerido}`,
+        status: "generated",
+        contentGenerationId: payload.id,
+        variationIndex: 0,
+        review,
+        selectedMedia,
+        generatedType: payload.type,
+      }).catch(() => undefined);
+      await load();
+      setExpandedItemId(item.id);
+      if (!silent) {
+        toast({
+          title: "Peça gerada automaticamente",
+          description: selectedMedia.length > 0
+            ? `O briefing do plano foi usado com ${selectedMedia.length} referência(s) da Central de Mídias.`
+            : "O briefing completo do Plano de Mídia foi usado. Revise a peça antes de aprovar.",
+        });
+      }
+      return true;
+    } catch (error) {
+      await patchCalendar(item.id, {
+        status: previousStatus,
+        contentGenerationId: previousGenerationId,
+      }).catch(() => undefined);
+      await recordProjectEvent(item, campaign, {
+        operation: "generation_failed",
+        label: `Falha de geração · ${item.temaSugerido}`,
+        status: "failed",
+        error: error instanceof Error ? error.message : "Falha desconhecida",
+        selectedMedia,
+      }).catch(() => undefined);
+      if (!silent) toast({ title: "Não foi possível gerar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      return false;
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  function openExecutor(item: CalendarItem) {
+    const currentPlan = planRef.current;
+    if (!currentPlan || currentPlan.conteudo.statusPlanejamento !== "aprovado") {
+      toast({ title: "Aprove o Plano de Mídia antes da produção", variant: "destructive" });
+      return;
+    }
+    if (!["aprovado", "gerado"].includes(item.status)) {
+      toast({ title: "Esta ação não está disponível para produção", variant: "destructive" });
+      return;
+    }
+    const campaign = campaignForItem(currentPlan, item);
+    if (!campaign) return;
+
+    if (DIRECT_GENERATOR_TYPES.has(item.tipo)) {
+      void generateDirectItem(item);
+      return;
+    }
+
+    const references = prepareExecutionContext(item, campaign);
+    const commonParams = new URLSearchParams({
       from: "media-calendar",
-      mediaPlanId: plan.id,
+      mediaPlanId: currentPlan.id,
       campaignId: campaign.id,
       calendarItemId: item.id,
-    }).toString();
-    if (["reels", "youtube_short", "youtube_video", "tiktok"].includes(item.tipo)) {
+    });
+    const bestVideo = references.find((asset) => asset.type === "video");
+    if (bestVideo) commonParams.set("mediaAssetId", bestVideo.id);
+    const common = commonParams.toString();
+
+    if (VIDEO_TYPES.has(item.tipo)) {
       navigate(`/content-studio/video?${common}`);
       return;
     }
@@ -784,32 +807,23 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       });
       return;
     }
-    navigate(`/content?tab=gerador&${common}`);
+    toast({ title: "Executor não identificado", description: "A peça permanece no Plano de Mídia sem perder o briefing." });
   }
 
   async function approveContent(item: CalendarItem) {
     if (!item.contentGenerationId) return;
-    const campaign = campaignForItem(plan, item);
+    const campaign = campaignForItem(planRef.current, item);
     setActionBusy(item.id);
     try {
-      const response = await fetch(`/api/content-calendar/${item.id}`, {
-        method: "PATCH",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "aprovado" }),
-      });
-      if (!response.ok) throw new Error("Falha ao aprovar o conteúdo.");
-      const updated = await response.json() as CalendarItem;
-      setCalendar((current) => current.map((entry) => entry.id === item.id ? updated : entry));
-      calendarRef.current = calendarRef.current.map((entry) => entry.id === item.id ? updated : entry);
-      const nativeFetch = window.fetch.bind(window);
-      await recordProjectEvent(nativeFetch, updated, campaign, {
+      const updated = await patchCalendar(item.id, { status: "aprovado" });
+      await recordProjectEvent(updated, campaign, {
         operation: "content_approval",
         label: `Conteúdo aprovado · ${item.temaSugerido}`,
         status: "approved",
         contentGenerationId: item.contentGenerationId,
         variationIndex: item.variationIdx ?? 0,
       }).catch(() => undefined);
-      toast({ title: "Conteúdo aprovado", description: "O status voltou para o Plano de Mídia e a aprovação foi registrada no histórico." });
+      toast({ title: "Conteúdo aprovado", description: "O status voltou para o Plano de Mídia e ficou registrado no histórico." });
       await load();
     } catch (error) {
       toast({ title: "Não foi possível aprovar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
@@ -825,53 +839,18 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     let failed = 0;
     for (let index = 0; index < batchEligible.length; index += 1) {
       const item = batchEligible[index]!;
-      const campaign = campaignForItem(plan, item);
-      const generatedType = calendarTypeToGenerator(item.tipo);
-      if (!campaign || !generatedType) continue;
-      try {
-        const response = await fetch(`/api/tenants/${tenantId}/content/generate`, {
-          method: "POST",
-          headers: {
-            ...authHeaders(),
-            "Content-Type": "application/json",
-            "x-vendorai-calendar-item-id": item.id,
-            "x-vendorai-media-plan-id": plan.id,
-            "x-vendorai-campaign-id": campaign.id,
-          },
-          body: JSON.stringify({
-            type: generatedType,
-            theme: item.temaSugerido,
-            variations: 1,
-            imageCount: item.tipo === "carrossel" ? 4 : 1,
-            contentFormat: item.tipo === "stories" ? "stories" : "feed_portrait",
-            aspectRatio: item.tipo === "stories" ? "9:16" : "4:5",
-            postObjective: campaign.objetivo,
-          }),
-        });
-        if (!response.ok) {
-          failed += 1;
-          if (response.status === 402) {
-            const payload = await response.json().catch(() => ({ error: "Limite de gerações atingido." })) as { error?: string };
-            throw new Error(payload.error ?? "Limite de gerações atingido.");
-          }
-        }
-      } catch (error) {
-        failed += 1;
-        if (error instanceof Error && error.message.toLowerCase().includes("limite")) {
-          toast({ title: "Lote interrompido", description: error.message, variant: "destructive" });
-          setBatchProgress({ done: index + 1, total: batchEligible.length, failed });
-          break;
-        }
-      }
+      const ok = await generateDirectItem(item, true);
+      if (!ok) failed += 1;
       setBatchProgress({ done: index + 1, total: batchEligible.length, failed });
+      if ((history?.monthlyLimit ?? 50) > 0 && (history?.monthlyUsed ?? 0) + index + 1 >= (history?.monthlyLimit ?? 50)) break;
     }
     setBatchRunning(false);
     await load();
     toast({
-      title: failed === 0 ? "Lote enviado para revisão" : "Lote concluído com pendências",
+      title: failed === 0 ? "Produção automática concluída" : "Produção concluída com pendências",
       description: failed === 0
-        ? "As peças compatíveis com o Gerador foram criadas e vinculadas ao Plano de Mídia."
-        : `${failed} peça(s) não foram geradas; elas permaneceram aprovadas para nova tentativa.`,
+        ? "As peças compatíveis foram criadas com o briefing do plano e estão prontas para revisão."
+        : `${failed} peça(s) permaneceram prontas para nova tentativa.`,
       variant: failed === 0 ? "default" : "destructive",
     });
   }
@@ -879,7 +858,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   if (loading) {
     return (
       <div className="px-4 pt-4 md:px-6">
-        <Card><CardContent className="py-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando fila do Plano de Mídia…</CardContent></Card>
+        <Card><CardContent className="py-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando produção do Plano de Mídia…</CardContent></Card>
       </div>
     );
   }
@@ -888,11 +867,17 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     return (
       <div className="px-4 pt-4 md:px-6">
         <Card className="border-dashed">
-          <CardContent className="py-4 flex items-start gap-3">
-            <Sparkles className="h-4 w-4 mt-0.5 text-primary" />
-            <div>
-              <p className="text-sm font-medium">Criação avulsa</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Nenhum Plano de Mídia ativo foi encontrado. O Gerador continua disponível normalmente abaixo.</p>
+          <CardContent className="py-5 flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-3">
+              <Sparkles className="h-4 w-4 mt-0.5 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Nenhum Plano de Mídia ativo</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Você pode criar um plano com IA ou usar o Gerador em modo avulso.</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => navigate("/content?tab=planejamento")}>Criar planejamento</Button>
+              <Button size="sm" onClick={() => navigate("/content?tab=gerador&mode=avulso")}><Plus className="h-3.5 w-3.5 mr-1" />Criar avulso</Button>
             </div>
           </CardContent>
         </Card>
@@ -902,9 +887,16 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
 
   const planApproved = plan.conteudo.statusPlanejamento === "aprovado";
   const currentProject = currentItem ? projectByItem.get(currentItem.id) : undefined;
+  const planMismatch = Boolean(requestedMediaPlanId && requestedMediaPlanId !== plan.id);
 
   return (
     <div className="px-4 pt-4 md:px-6 space-y-3">
+      {planMismatch && (
+        <Card className="border-amber-300 bg-amber-50/50">
+          <CardContent className="py-3 text-sm text-amber-800">Este link pertence a uma versão anterior do plano. A fila abaixo mostra o planejamento atual.</CardContent>
+        </Card>
+      )}
+
       <Card className="border-primary/20 bg-primary/[0.02]">
         <CardContent className="py-4 space-y-4">
           <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -914,19 +906,22 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                 <Badge className={planApproved ? "bg-emerald-600" : ""}>{planApproved ? "Plano aprovado" : "Plano em revisão"}</Badge>
                 <span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span>
               </div>
-              <p className="mt-2 text-sm font-semibold">Fila oficial de produção</p>
+              <p className="mt-2 text-sm font-semibold">Produção automática do planejamento</p>
               <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-                Cada ação aprovada mantém campanha, público, oferta, canal, data, KPI e direção criativa. Mídias próprias relevantes são priorizadas; novas versões, aprovações, falhas e publicações ficam registradas na Central de Mídias.
+                O briefing já vem completo do Plano de Mídia. Você não precisa informar novamente oferta, público, objetivo, canal, data ou KPI. Fotos e vídeos próprios relacionados ao tema são buscados automaticamente na Central de Mídias.
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <Button type="button" variant="outline" size="sm" onClick={() => navigate("/content?tab=gerador&mode=avulso")}>
+                <Plus className="h-3.5 w-3.5 mr-1" />Criação avulsa
+              </Button>
               <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
                 <RefreshCw className="h-3.5 w-3.5 mr-1" />Atualizar
               </Button>
               {batchEligible.length > 0 && planApproved && (
                 <Button type="button" size="sm" onClick={() => void runBatch()} disabled={batchRunning}>
                   {batchRunning ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-                  {batchRunning ? `${batchProgress.done}/${batchProgress.total}` : `Gerar lote (${batchEligible.length})`}
+                  {batchRunning ? `${batchProgress.done}/${batchProgress.total}` : `Produzir automaticamente (${batchEligible.length})`}
                 </Button>
               )}
             </div>
@@ -947,49 +942,78 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
             ))}
           </div>
 
+          <div className="grid gap-2 md:grid-cols-[1fr_auto] items-center rounded-lg border bg-background/70 px-3 py-2.5">
+            <div>
+              <p className="text-xs font-medium flex items-center gap-1.5"><Library className="h-3.5 w-3.5 text-primary" />Referências reais do negócio</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {ownImages.length} foto(s) e {ownVideos.length} vídeo(s) disponíveis. A IA prioriza correspondência com produto, campanha e tema antes de criar material genérico.
+              </p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => navigate("/midias")}>
+              Adicionar/organizar mídias <ExternalLink className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          </div>
+
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
             <span>{history?.monthlyUsed ?? 0}/{history?.monthlyLimit ?? 20} gerações usadas no período de consumo atual.</span>
-            {batchEligible.length > 0 && <span>O lote usa até {batchEligible.length} geração(ões); vídeos, anúncios, LPs e mensagens continuam nos executores próprios.</span>}
-            {assets.filter((asset) => asset.type === "image" && ["upload", "imported"].includes(asset.source)).length > 0 && (
-              <span>Central de Mídias conectada: materiais próprios só entram automaticamente quando houver correspondência com produto/tema.</span>
-            )}
+            <span>Feed, Stories, Carrossel e LinkedIn são gerados aqui; vídeos, anúncios, LPs, blog e mensagens abrem seus executores reais já com briefing e referências preenchidos.</span>
           </div>
         </CardContent>
       </Card>
 
       {fromMediaCalendar && currentItem && (
         <Card className="border-primary/30">
-          <CardContent className="py-3 flex items-start justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary">Executando agora</Badge>
-                <Badge variant="outline">{currentItem.canal}</Badge>
-                <Badge variant="outline">{currentItem.tipo.replaceAll("_", " ")}</Badge>
-                <Badge variant="outline" className={statusClass(derivedStatus(currentItem).tone)}>{derivedStatus(currentItem).label}</Badge>
+          <CardContent className="py-3 space-y-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="secondary">Executando agora</Badge>
+                  <Badge variant="outline">{currentItem.canal}</Badge>
+                  <Badge variant="outline">{currentItem.tipo.replaceAll("_", " ")}</Badge>
+                  <Badge variant="outline" className={statusClass(derivedStatus(currentItem).tone)}>{derivedStatus(currentItem).label}</Badge>
+                </div>
+                <p className="mt-2 text-sm font-medium">{currentItem.temaSugerido}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{currentCampaign?.nome} · previsto para {new Date(`${currentItem.dataAgendada}T12:00:00`).toLocaleDateString("pt-BR")}</p>
+                {currentProject && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    {Number(currentProject.context?.["versionCount"] ?? 0)} versão(ões) · {Number(currentProject.context?.["failureCount"] ?? 0)} falha(s) registrada(s)
+                    {currentProject.context?.["lastReviewStatus"] === "warning" ? " · revisão automática com alerta" : currentProject.context?.["lastReviewStatus"] === "ok" ? " · revisão automática OK" : ""}
+                  </p>
+                )}
               </div>
-              <p className="mt-2 text-sm font-medium">{currentItem.temaSugerido}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{currentCampaign?.nome} · previsto para {new Date(`${currentItem.dataAgendada}T12:00:00`).toLocaleDateString("pt-BR")}</p>
-              {currentProject && (
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  {Number(currentProject.context?.["versionCount"] ?? 0)} versão(ões) · {Number(currentProject.context?.["failureCount"] ?? 0)} falha(s) registrada(s)
-                  {currentProject.context?.["lastReviewStatus"] === "warning" ? " · revisão automática com alerta" : currentProject.context?.["lastReviewStatus"] === "ok" ? " · revisão automática OK" : ""}
-                </p>
-              )}
+              <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/content?tab=planejamento")}>
+                Ver no planejamento <ExternalLink className="h-3.5 w-3.5 ml-1" />
+              </Button>
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => navigate("/content?tab=planejamento")}>
-              Ver no planejamento <ExternalLink className="h-3.5 w-3.5 ml-1" />
-            </Button>
+            {currentCampaign && (() => {
+              const refs = referenceMediaForItem(assets, currentCampaign, currentItem);
+              const imageCount = refs.filter((asset) => asset.type === "image").length;
+              const videoCount = refs.filter((asset) => asset.type === "video").length;
+              return (
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap border-t pt-2">
+                  {imageCount > 0 && <span className="inline-flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" />{imageCount} foto(s) relacionada(s)</span>}
+                  {videoCount > 0 && <span className="inline-flex items-center gap-1"><Film className="h-3.5 w-3.5" />{videoCount} vídeo(s) relacionado(s)</span>}
+                  {refs.length === 0 && <span>Nenhuma referência específica encontrada; a IA pode criar o visual e você pode complementar pela Central de Mídias.</span>}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       )}
 
       <div className="space-y-2">
-        {visibleItems.slice(0, requestedCampaignId ? 20 : 12).map((item) => {
+        {visibleItems.map((item) => {
           const status = derivedStatus(item);
           const project = projectByItem.get(item.id);
           const versionCount = Number(project?.context?.["versionCount"] ?? 0);
           const failureCount = Number(project?.context?.["failureCount"] ?? 0);
           const reviewWarning = project?.context?.["lastReviewStatus"] === "warning";
+          const isDirect = DIRECT_GENERATOR_TYPES.has(item.tipo);
+          const generation = item.contentGenerationId ? generationById.get(item.contentGenerationId) : undefined;
+          const preview = previewData(generation, item.variationIdx ?? 0);
+          const expanded = expandedItemId === item.id;
+          const itemCampaign = campaignForItem(plan, item);
+          const refs = itemCampaign ? referenceMediaForItem(assets, itemCampaign, item) : [];
           return (
             <div key={item.id} className={`rounded-lg border bg-background px-3 py-2.5 ${item.id === requestedCalendarItemId ? "ring-1 ring-primary/40" : ""}`}>
               <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -998,28 +1022,59 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                     <Badge variant="outline" className="text-[10px]">{item.canal}</Badge>
                     <Badge variant="outline" className="text-[10px]">{item.tipo.replaceAll("_", " ")}</Badge>
                     <Badge variant="outline" className={`text-[10px] ${statusClass(status.tone)}`}>{status.label}</Badge>
+                    {refs.length > 0 && <span className="text-[10px] text-muted-foreground">{refs.length} ref.</span>}
                     {versionCount > 0 && <span className="text-[10px] text-muted-foreground">v{versionCount}</span>}
-                    {failureCount > 0 && <span className="text-[10px] text-amber-700">{failureCount} tentativa(s) com falha</span>}
+                    {failureCount > 0 && <span className="text-[10px] text-amber-700">{failureCount} falha(s)</span>}
                     {reviewWarning && <span className="inline-flex items-center gap-1 text-[10px] text-amber-700"><AlertTriangle className="h-3 w-3" />revisar alertas</span>}
                   </div>
-                  <p className="mt-1.5 text-sm font-medium line-clamp-2">{item.temaSugerido}</p>
+                  <p className="mt-1.5 text-sm font-medium">{item.temaSugerido}</p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">{campaignNameFromPilar(item.pilar)} · {new Date(`${item.dataAgendada}T12:00:00`).toLocaleDateString("pt-BR")}</p>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  {item.contentGenerationId && isDirect && (
+                    <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setExpandedItemId(expanded ? null : item.id)}>
+                      <Eye className="h-3 w-3 mr-1" />{expanded ? "Fechar" : "Revisar"}
+                    </Button>
+                  )}
                   {item.status === "gerado" && item.contentGenerationId && (
                     <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={actionBusy === item.id} onClick={() => void approveContent(item)}>
                       {actionBusy === item.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}Aprovar
                     </Button>
                   )}
                   {["aprovado", "gerado"].includes(item.status) && (
-                    <Button type="button" size="sm" variant={item.contentGenerationId ? "ghost" : "outline"} className="h-7 text-xs" onClick={() => openExecutor(item)}>
-                      {item.contentGenerationId ? <RefreshCw className="h-3 w-3 mr-1" /> : <Play className="h-3 w-3 mr-1" />}
-                      {item.contentGenerationId ? "Nova versão" : "Produzir"}
+                    <Button type="button" size="sm" variant={item.contentGenerationId ? "ghost" : "outline"} className="h-7 text-xs" disabled={actionBusy === item.id} onClick={() => openExecutor(item)}>
+                      {actionBusy === item.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Play className="h-3 w-3 mr-1" />}
+                      {isDirect ? (item.contentGenerationId ? "Nova versão" : "Gerar automático") : "Abrir executor"}
                     </Button>
                   )}
                   {item.status === "planejado" && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><CircleDashed className="h-3 w-3" />aprovar no plano</span>}
                 </div>
               </div>
+
+              {expanded && item.contentGenerationId && (
+                <div className="mt-3 border-t pt-3">
+                  {preview ? (
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold">Prévia da versão atual</p>
+                        {preview.text && <p className="whitespace-pre-wrap text-sm leading-relaxed">{preview.text}</p>}
+                        {preview.hashtags && <p className="text-xs text-muted-foreground">{preview.hashtags}</p>}
+                        {!preview.text && !preview.hashtags && <p className="text-xs text-muted-foreground">A geração foi concluída, mas esta versão não possui texto estruturado para prévia rápida.</p>}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 md:grid-cols-1">
+                        {preview.imageUrls.slice(0, 2).map((url) => (
+                          <img key={url} src={url} alt="Prévia do conteúdo" className="w-full max-h-48 rounded-md border object-cover" />
+                        ))}
+                        {preview.imageUrls.length === 0 && (
+                          <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">Sem imagem na prévia</div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">O conteúdo foi gerado, mas a prévia não está mais no histórico carregado. O vínculo e a versão continuam preservados na Central de Mídias.</p>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -1028,9 +1083,9 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground px-1">
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground px-1 pb-2">
         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-        O Gerador abaixo fica vinculado à ação selecionada quando você entra por “Produzir”. Sem uma ação selecionada, ele funciona como criação avulsa e não altera o Plano de Mídia.
+        Conteúdos do plano usam o briefing aprovado automaticamente. O formulário de Estratégia da divulgação fica reservado à Criação avulsa.
       </div>
     </div>
   );
