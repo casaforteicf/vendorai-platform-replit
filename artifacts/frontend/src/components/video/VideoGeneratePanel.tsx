@@ -76,6 +76,33 @@ type GeneratedVideoJob = {
   } | null;
 };
 
+type MediaPlanExecutionContext = {
+  source?: string;
+  tenantId?: string;
+  mediaPlanId?: string;
+  campaign?: {
+    id?: string;
+    nome?: string;
+    objetivo?: string;
+    produtoServico?: string;
+    publico?: string;
+    oferta?: string;
+    mensagemCentral?: string;
+    regiao?: string;
+    canais?: Array<{ canal?: string; funcao?: string }>;
+  };
+  calendarItem?: {
+    id?: string;
+    temaSugerido?: string;
+    canal?: string;
+    tipo?: string;
+    pilar?: string;
+    dataAgendada?: string;
+  };
+};
+
+const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
+
 const STYLE_OPTIONS = [
   { value: "cinematic, premium, photorealistic, polished commercial production", label: "Cinematográfico" },
   { value: "premium commercial advertising, clean product photography, sophisticated lighting", label: "Comercial premium" },
@@ -178,6 +205,7 @@ export default function VideoGeneratePanel() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [loadingCapability, setLoadingCapability] = useState(true);
   const [prompt, setPrompt] = useState("");
+  const [plannerDirection, setPlannerDirection] = useState<string | null>(null);
   const [generationMode, setGenerationMode] = useState<VideoGenerationMode>("ai_only");
   const [mediaInputs, setMediaInputs] = useState<VideoGenerationMediaInput[]>([]);
   const [style, setStyle] = useState(STYLE_OPTIONS[0]!.value);
@@ -265,6 +293,54 @@ export default function VideoGeneratePanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
+  useEffect(() => {
+    if (!tenantId) return;
+    try {
+      const raw = sessionStorage.getItem(MEDIA_PLAN_EXECUTION_KEY);
+      if (!raw) return;
+      const execution = JSON.parse(raw) as MediaPlanExecutionContext;
+      if (execution.source !== "media-calendar" || execution.tenantId !== tenantId) return;
+      const item = execution.calendarItem;
+      const campaign = execution.campaign;
+      if (!item || !campaign || !["reels", "youtube_short", "youtube_video", "tiktok"].includes(item.tipo ?? "")) return;
+
+      const channelFunction = campaign.canais?.find((channel) =>
+        (channel.canal ?? "").localeCompare(item.canal ?? "", undefined, { sensitivity: "base" }) === 0,
+      )?.funcao;
+      const direction = [
+        item.temaSugerido,
+        campaign.objetivo ? `Objetivo: ${campaign.objetivo}` : "",
+        campaign.produtoServico ? `Produto/serviço: ${campaign.produtoServico}` : "",
+        campaign.publico ? `Público: ${campaign.publico}` : "",
+        campaign.oferta ? `Oferta: ${campaign.oferta}` : "",
+        campaign.mensagemCentral ? `Mensagem central: ${campaign.mensagemCentral}` : "",
+        item.canal ? `Canal: ${item.canal}` : "",
+        channelFunction ? `Função desta mídia: ${channelFunction}` : "",
+        campaign.regiao ? `Segmentação geográfica: ${campaign.regiao}` : "",
+        "Crie o vídeo respeitando essa direção estratégica, com roteiro visual natural e CTA compatível com a etapa do funil.",
+      ].filter(Boolean).join("\n");
+
+      setPrompt((current) => current.trim() ? current : direction.slice(0, 4000));
+      setPlannerDirection(`${campaign.nome ?? "Campanha"} · ${item.canal ?? "Vídeo"} · ${item.temaSugerido ?? "ação aprovada"}`);
+
+      if (item.tipo === "youtube_video") {
+        setAspectRatio("landscape");
+        setDuration(30);
+        setStyle(STYLE_OPTIONS[0]!.value);
+        applyEffectPreset("cinematic");
+      } else {
+        setAspectRatio("portrait");
+        setDuration(16);
+        setStyle(STYLE_OPTIONS[5]!.value);
+        applyEffectPreset("social");
+      }
+    } catch (error) {
+      console.warn("video-generate: não foi possível carregar direção do calendário", error);
+    }
+    // Carrega uma vez por tenant; mudanças posteriores continuam sob controle do usuário.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
+
   const loadStatus = async () => {
     if (!tenantId || !projectId || !jobId) return;
     setPolling(true);
@@ -339,6 +415,7 @@ export default function VideoGeneratePanel() {
     setJobId("");
     setJob(null);
     setPrompt("");
+    setPlannerDirection(null);
     setGenerationMode("ai_only");
     setMediaInputs([]);
   };
@@ -366,6 +443,13 @@ export default function VideoGeneratePanel() {
           <RefreshCw className={cn("h-3.5 w-3.5", loadingCapability && "animate-spin")} /> Atualizar
         </button>
       </div>
+
+      {plannerDirection && (
+        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3.5 py-2.5 text-xs text-cyan-100">
+          <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0" /><span><strong>Direção do Plano de Mídia carregada.</strong> {plannerDirection}</span></div>
+          <p className="mt-1 pl-6 text-[10px] text-cyan-200/70">Tema, público, oferta, mensagem, canal e função da mídia já foram levados para o briefing. Você pode ajustar antes de gerar.</p>
+        </div>
+      )}
 
       <div className={cn("rounded-xl border px-3.5 py-2.5 text-xs flex items-center gap-2", ready ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200" : "border-amber-500/20 bg-amber-500/5 text-amber-200")}>
         {ready ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <Loader2 className={cn("h-4 w-4 shrink-0", loadingCapability && "animate-spin")} />}

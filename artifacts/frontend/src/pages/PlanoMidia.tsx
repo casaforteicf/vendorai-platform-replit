@@ -31,6 +31,7 @@ import {
   Ban,
   Undo2,
   AlertTriangle,
+  Play,
 } from "lucide-react";
 
 interface MediaPlanCanal {
@@ -131,6 +132,9 @@ const CALENDAR_TYPES = [
   "site",
   "sms",
 ];
+
+const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
+const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
 
 function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
@@ -474,6 +478,105 @@ export default function PlanoMidia() {
     }
   }
 
+  function executeCalendarItem(item: CalendarItem) {
+    if (!plan || plan.conteudo.statusPlanejamento !== "aprovado" || item.status !== "aprovado") {
+      toast({ title: "Aprove esta ação antes da produção", description: "Somente ações aprovadas de um planejamento aprovado podem ser enviadas ao executor.", variant: "destructive" });
+      return;
+    }
+
+    const itemCampaignName = campaignNameFromPilar(item.pilar);
+    const campaign = (plan.conteudo.campanhas ?? []).find(
+      (entry) => normalizeChannel(entry.nome) === normalizeChannel(itemCampaignName),
+    ) ?? (plan.conteudo.campanhas ?? [])[0];
+
+    if (!campaign) {
+      toast({ title: "Campanha não encontrada", description: "Atualize o planejamento antes de produzir esta ação.", variant: "destructive" });
+      return;
+    }
+
+    const channel = campaign.canais.find(
+      (entry) => normalizeChannel(entry.canal) === normalizeChannel(item.canal),
+    );
+    const formatLabel = item.tipo.replaceAll("_", " ");
+    const marketingContext = {
+      nicheId: `media-plan:${campaign.id}`,
+      nicheName: `${item.canal} · ${item.temaSugerido}`,
+      productIds: [`custom:media-plan:${campaign.id}`],
+      productNames: [campaign.produtoServico],
+      audienceSegment: campaign.publico,
+      audienceNiche: campaign.publico,
+      campaignGoal: `${item.temaSugerido}. Objetivo da campanha: ${campaign.objetivo}. Direção: ${campaign.mensagemCentral}`,
+      locationRegion: campaign.regiao,
+      projectName: campaign.nome,
+      specificDetails: [
+        `Ação do calendário: ${item.temaSugerido}`,
+        `Canal: ${item.canal}`,
+        `Formato: ${formatLabel}`,
+        `Pilar: ${contentPillarFromPilar(item.pilar)}`,
+        `Oferta: ${campaign.oferta}`,
+        channel?.funcao ? `Função desta mídia: ${channel.funcao}` : "",
+      ].filter(Boolean).join(" | "),
+      mandatoryDifferentiators: campaign.mensagemCentral,
+      restrictions: campaign.regraComunicacaoGeografica,
+      primaryKpi: channel?.kpiPrincipal || campaign.kpiPrincipal,
+      campaignId: campaign.id,
+      campaignName: campaign.nome,
+    };
+
+    sessionStorage.setItem(ACTIVE_BRIEFING_KEY, JSON.stringify({
+      tenantId,
+      campaignId: campaign.id,
+      campaignName: campaign.nome,
+      marketingContext,
+    }));
+    sessionStorage.setItem(MEDIA_PLAN_EXECUTION_KEY, JSON.stringify({
+      source: "media-calendar",
+      tenantId,
+      mediaPlanId: plan.id,
+      periodoDias: plan.conteudo.periodoDias,
+      campaign,
+      calendarItem: item,
+      marketingContext,
+      savedAt: new Date().toISOString(),
+    }));
+
+    const common = new URLSearchParams({
+      from: "media-calendar",
+      mediaPlanId: plan.id,
+      campaignId: campaign.id,
+      calendarItemId: item.id,
+    }).toString();
+
+    if (["reels", "youtube_short", "youtube_video", "tiktok"].includes(item.tipo)) {
+      navigate(`/content-studio/video?${common}`);
+      return;
+    }
+    if (["meta_ad", "search_ad", "display_ad", "performance_max"].includes(item.tipo)) {
+      navigate(`/ads?${common}`);
+      return;
+    }
+    if (["landing_page", "site"].includes(item.tipo)) {
+      navigate(`/content?tab=campanhas&view=lp&${common}`);
+      return;
+    }
+    if (item.tipo === "blog") {
+      navigate(`/content-autopilot?${common}`);
+      return;
+    }
+    if (["whatsapp", "email"].includes(item.tipo)) {
+      navigate(`/content?tab=campanhas&view=organicas&${common}`);
+      return;
+    }
+    if (item.tipo === "sms") {
+      toast({
+        title: "SMS ainda não tem executor nativo",
+        description: "A direção continua salva no plano. Para não criar um fluxo fictício, o VendorAI não marca esta ação como produzida até existir uma integração real de SMS.",
+      });
+      return;
+    }
+    navigate(`/content?tab=gerador&${common}`);
+  }
+
   const conteudo = plan?.conteudo;
   const campanhas = conteudo?.campanhas ?? [];
   const selectedCampaign = campanhas.find((campaign) => campaign.id === selectedCampaignId) ?? null;
@@ -653,7 +756,7 @@ export default function PlanoMidia() {
         <div>
           <h1 className="vendor-page-title flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Plano de Mídia IA</h1>
           <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
-            O Planejador define a direção estratégica do período. A IA cria campanhas multicanal, frequência, calendário e KPIs; você pode aprovar, editar ou recusar antes da produção. O Gerador de Conteúdo executa depois.
+            O Planejador define a direção estratégica do período. A IA cria campanhas multicanal, frequência, calendário e KPIs; você pode aprovar, editar ou recusar antes da produção. Cada ação aprovada abre diretamente no executor correto.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -698,7 +801,7 @@ export default function PlanoMidia() {
                 </Button>
               ) : (
                 <Button type="button" onClick={() => navigate(`/content?source=media-plan&mediaPlanId=${plan!.id}`)}>
-                  <ExternalLink className="h-4 w-4 mr-1.5" />Abrir no Gerador de Conteúdo
+                  <ExternalLink className="h-4 w-4 mr-1.5" />Abrir produção da campanha
                 </Button>
               )}
             </div>
@@ -779,7 +882,7 @@ export default function PlanoMidia() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <p className="text-sm font-semibold flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />Calendário estratégico</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Cada ação pode ser aprovada, editada ou recusada. Aprovar o plano inteiro aprova automaticamente o que ainda estiver pendente e preserva recusas.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Cada ação pode ser aprovada, editada ou recusada. Depois da aprovação do plano, o botão Produzir leva a ação para o módulo correto mantendo tema, público, oferta, KPI e função da mídia.</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline">{pendingCount} pendentes</Badge>
@@ -839,6 +942,11 @@ export default function PlanoMidia() {
                           {!editing && (
                             <div className="shrink-0 flex flex-col items-end gap-2">
                               <Badge variant="outline" className={item.status === "aprovado" ? "border-emerald-300 text-emerald-700" : item.status === "recusado" ? "border-red-300 text-red-700" : ""}>{ITEM_STATUS_LABEL[item.status]}</Badge>
+                              {approved && item.status === "aprovado" && (
+                                <Button type="button" size="sm" className="h-8" onClick={() => executeCalendarItem(item)}>
+                                  <Play className="h-3.5 w-3.5 mr-1" />Produzir
+                                </Button>
+                              )}
                               {item.status !== "publicado" && item.status !== "gerado" && (
                                 <div className="flex items-center gap-1 flex-wrap justify-end">
                                   {item.status !== "aprovado" && <Button type="button" size="sm" variant="ghost" className="h-8 text-emerald-700" disabled={busy || gerandoCalendario} onClick={() => void setItemStatus(item, "aprovado")}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Aprovar</Button>}
