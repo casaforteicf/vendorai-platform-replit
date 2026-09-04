@@ -47,6 +47,9 @@ const PUBLIC_FIELDS = {
   permissions: usersTable.permissions,
   telefone: usersTable.telefone,
   active: usersTable.active,
+  leadAssignmentEnabled: usersTable.leadAssignmentEnabled,
+  leadAssignmentCities: usersTable.leadAssignmentCities,
+  leadAssignmentRegions: usersTable.leadAssignmentRegions,
   createdAt: usersTable.createdAt,
   updatedAt: usersTable.updatedAt,
 } as const;
