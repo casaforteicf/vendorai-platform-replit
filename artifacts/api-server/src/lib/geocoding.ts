@@ -29,6 +29,23 @@ export async function geocodeAddress(address: string): Promise<LatLng | null> {
   }
 }
 
+/**
+ * Mesma coisa, mas nunca deixa quem chamou refém da latência (ou de um
+ * travamento) do Nominatim — usado em qualquer fluxo que não pode
+ * bloquear a resposta esperando geocoding (ex: criação de lead/vendedor).
+ * Timeout = resultado null, cai pro comportamento sem coordenadas.
+ */
+export async function geocodeAddressWithTimeout(address: string, ms = 2500): Promise<LatLng | null> {
+  try {
+    return await Promise.race([
+      geocodeAddress(address),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 /** Distância em km entre dois pontos (fórmula de Haversine). */
 export function distanceKm(a: LatLng, b: LatLng): number {
   const R = 6371;

@@ -11,6 +11,7 @@ import {
   createTenantUserFunctionSchema,
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
+import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
 
 const router: IRouter = Router();
 
@@ -51,9 +52,29 @@ const PUBLIC_FIELDS = {
   leadAssignmentCities: usersTable.leadAssignmentCities,
   leadAssignmentRegions: usersTable.leadAssignmentRegions,
   leadAssignmentSegments: usersTable.leadAssignmentSegments,
+  leadAssignmentLat: usersTable.leadAssignmentLat,
+  leadAssignmentLng: usersTable.leadAssignmentLng,
+  leadAssignmentRaioKm: usersTable.leadAssignmentRaioKm,
   createdAt: usersTable.createdAt,
   updatedAt: usersTable.updatedAt,
 } as const;
+
+/**
+ * `leadAssignmentBaseAddress` não é coluna de `users` — é o endereço em
+ * texto que o admin digita na tela (ex: escritório/loja do vendedor), só
+ * pra geocodificar uma vez e gravar lat/lng. O schema Drizzle descarta
+ * chaves desconhecidas do body silenciosamente, então lemos ela direto do
+ * req.body antes do parse. String vazia = admin removeu o ponto-base
+ * (zera lat/lng); chave ausente = não mexe no que já estava salvo.
+ */
+async function resolveBaseAddressGeocode(req: any): Promise<{ leadAssignmentLat?: number | null; leadAssignmentLng?: number | null }> {
+  const raw = req.body?.leadAssignmentBaseAddress;
+  if (typeof raw !== "string") return {};
+  const address = raw.trim();
+  if (!address) return { leadAssignmentLat: null, leadAssignmentLng: null };
+  const geocoded = await geocodeAddressWithTimeout(address);
+  return { leadAssignmentLat: geocoded?.lat ?? null, leadAssignmentLng: geocoded?.lng ?? null };
+}
 
 function canManageTenant(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
@@ -200,6 +221,7 @@ router.post("/users", requireRole("super_admin", "tenant_admin"), async (req, re
   const data = {
     ...userData,
     password: await bcrypt.hash(userData.password, 12),
+    ...(await resolveBaseAddressGeocode(req)),
   };
 
   try {
@@ -270,10 +292,12 @@ router.patch("/users/:id", requireRole("super_admin", "tenant_admin"), async (re
     data.password = await bcrypt.hash(data.password, 12);
   }
 
+  const baseAddressGeocode = await resolveBaseAddressGeocode(req);
+
   try {
     const [user] = await db
       .update(usersTable)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data, ...baseAddressGeocode, updatedAt: new Date() })
       .where(eq(usersTable.id, existing.id))
       .returning(PUBLIC_FIELDS);
 

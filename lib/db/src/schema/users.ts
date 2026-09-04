@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, pgEnum, numeric, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, pgEnum, numeric, jsonb, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -55,6 +55,13 @@ export const usersTable = pgTable("users", {
   // "Peças de Motor"). Comparado contra leads.mercadoSegmento. Vazio = sem
   // restrição de segmento — mesmo padrão de compatibilidade das duas acima.
   leadAssignmentSegments: jsonb("lead_assignment_segments").$type<string[]>().notNull().default([]),
+  // Proximidade real (raio de distância), pra quando cidade/bairro em texto
+  // não resolve — ex: mais de um vendedor na mesma cidade grande. Só entra
+  // na distribuição se os 3 campos estiverem preenchidos juntos; nunca
+  // sobrepõe cidade/região configuradas (essas continuam com prioridade).
+  leadAssignmentLat: doublePrecision("lead_assignment_lat"),
+  leadAssignmentLng: doublePrecision("lead_assignment_lng"),
+  leadAssignmentRaioKm: doublePrecision("lead_assignment_raio_km"),
   limiteEntregasPorTurno: numeric("limite_entregas_por_turno", { precision: 6, scale: 0 }),
   // Última vez que o usuário abriu o painel de "Novidades" — usado só pra
   // calcular o contador de não lidas, nada além disso.

@@ -171,6 +171,12 @@ const PT_COPY = {
   segments: "Linhas / segmentos atendidos",
   segmentsPlaceholder: "Ex.: Óleos & Lubrificantes, Peças de Motor",
   segmentsHelp: "Opcional. Se preenchido, o usuário só recebe automaticamente leads dessa(s) linha(s); a região ainda decide entre vendedores da mesma linha. Vazio = atende qualquer linha.",
+  baseAddress: "Endereço-base (opcional)",
+  baseAddressPlaceholder: "Ex.: Rua Marechal Deodoro, 1200, Chapecó",
+  raioKm: "Raio de atendimento (km)",
+  raioKmPlaceholder: "Ex.: 15",
+  raioHelp: "Só use se cidade/bairro não bastar pra separar vendedores da mesma cidade grande. Ao salvar um endereço novo, o sistema calcula as coordenadas automaticamente; o raio decide entre vendedores só quando cidade/região não encontrarem ninguém.",
+  currentPoint: "Ponto atual salvo",
   receivesLeads: "Atende leads",
 } as const;
 
@@ -246,6 +252,12 @@ const ES_COPY = {
   segments: "Líneas / segmentos atendidos",
   segmentsPlaceholder: "Ej.: Aceites y lubricantes, Piezas de motor",
   segmentsHelp: "Opcional. Si se completa, el usuario solo recibe automáticamente leads de esa línea; la región sigue decidiendo entre vendedores de la misma línea. Vacío = atiende cualquier línea.",
+  baseAddress: "Dirección base (opcional)",
+  baseAddressPlaceholder: "Ej.: Av. Mariscal López 1200, Asunción",
+  raioKm: "Radio de atención (km)",
+  raioKmPlaceholder: "Ej.: 15",
+  raioHelp: "Úsalo solo si ciudad/barrio no alcanza para separar vendedores de la misma ciudad grande. Al guardar una dirección nueva, el sistema calcula las coordenadas automáticamente; el radio decide entre vendedores solo cuando ciudad/región no encuentran a nadie.",
+  currentPoint: "Punto actual guardado",
   receivesLeads: "Atiende leads",
 } as const;
 
@@ -297,6 +309,8 @@ export default function Usuarios() {
     leadAssignmentCities: "",
     leadAssignmentRegions: "",
     leadAssignmentSegments: "",
+    leadAssignmentBaseAddress: "",
+    leadAssignmentRaioKm: "",
   });
 
   const { data: users, isLoading } = useListTenantUsers(tenantId);
@@ -353,6 +367,8 @@ export default function Usuarios() {
       leadAssignmentCities: "",
       leadAssignmentRegions: "",
       leadAssignmentSegments: "",
+      leadAssignmentBaseAddress: "",
+      leadAssignmentRaioKm: "",
     });
     setEditingUser(null);
   }
@@ -379,6 +395,9 @@ export default function Usuarios() {
       leadAssignmentSegments: Array.isArray(targetUser.leadAssignmentSegments)
         ? targetUser.leadAssignmentSegments.join(", ")
         : "",
+      leadAssignmentBaseAddress: "",
+      leadAssignmentRaioKm:
+        targetUser.leadAssignmentRaioKm != null ? String(targetUser.leadAssignmentRaioKm) : "",
     });
     setDialogOpen(true);
   }
@@ -503,6 +522,10 @@ export default function Usuarios() {
     const leadAssignmentCities = parseTerritories(formData.leadAssignmentCities);
     const leadAssignmentRegions = parseTerritories(formData.leadAssignmentRegions);
     const leadAssignmentSegments = parseTerritories(formData.leadAssignmentSegments);
+    const leadAssignmentRaioKm = formData.leadAssignmentRaioKm.trim()
+      ? Number(formData.leadAssignmentRaioKm)
+      : null;
+    const baseAddress = formData.leadAssignmentBaseAddress.trim();
 
     try {
       if (editingUser) {
@@ -517,8 +540,12 @@ export default function Usuarios() {
           leadAssignmentCities,
           leadAssignmentRegions,
           leadAssignmentSegments,
+          leadAssignmentRaioKm,
         };
         if (formData.password) payload.password = formData.password;
+        // Só manda o endereço-base quando o admin digitou um novo — string
+        // ausente = backend não mexe nas coordenadas já salvas.
+        if (baseAddress) payload.leadAssignmentBaseAddress = baseAddress;
         await updateUser.mutateAsync({
           id: editingUser.id,
           data: payload,
@@ -542,6 +569,8 @@ export default function Usuarios() {
             leadAssignmentCities,
             leadAssignmentRegions,
             leadAssignmentSegments,
+            leadAssignmentRaioKm,
+            ...(baseAddress ? { leadAssignmentBaseAddress: baseAddress } : {}),
           } as any,
         });
         toast({
@@ -926,6 +955,35 @@ export default function Usuarios() {
                     placeholder={copy.segmentsPlaceholder}
                   />
                   <p className="text-xs text-muted-foreground mt-1">{copy.segmentsHelp}</p>
+                </div>
+              )}
+
+              {formData.leadAssignmentEnabled && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label>{copy.baseAddress}</Label>
+                    <Input
+                      value={formData.leadAssignmentBaseAddress}
+                      onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentBaseAddress: e.target.value }))}
+                      placeholder={copy.baseAddressPlaceholder}
+                    />
+                    {editingUser?.leadAssignmentLat != null && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {copy.currentPoint}: {Number(editingUser.leadAssignmentLat).toFixed(4)}, {Number(editingUser.leadAssignmentLng).toFixed(4)}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label>{copy.raioKm}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={formData.leadAssignmentRaioKm}
+                      onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentRaioKm: e.target.value }))}
+                      placeholder={copy.raioKmPlaceholder}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">{copy.raioHelp}</p>
                 </div>
               )}
             </div>

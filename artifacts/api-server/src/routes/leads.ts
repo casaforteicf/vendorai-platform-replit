@@ -38,6 +38,7 @@ import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
+import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
 import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
@@ -125,20 +126,31 @@ router.post("/leads", async (req, res) => {
   const isAdminCreator = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor");
   let resolvedAssignedTo: string | null;
+  let geocoded: { lat: number; lng: number } | null = null;
   if (isSellerCreator) {
     resolvedAssignedTo = req.user?.sub ?? null;
   } else if (data.assignedTo) {
     resolvedAssignedTo = data.assignedTo;
   } else {
+    // Geocoding só roda quando a atribuição automática vai de fato precisar
+    // (round-robin abaixo) — evita gastar a cota de 1 req/s do Nominatim em
+    // todo lead criado, e nunca bloqueia a criação por mais de ~2.5s: se o
+    // serviço demorar ou falhar, o motor cai pro resto da cascata (cidade/
+    // região/geral) normalmente, sem coordenadas.
+    geocoded = data.endereco ? await geocodeAddressWithTimeout(data.endereco) : null;
     resolvedAssignedTo = await pickNextVendedor(data.tenantId, {
       segmento: data.mercadoSegmento,
       location: data.endereco,
+      lat: geocoded?.lat ?? null,
+      lng: geocoded?.lng ?? null,
     });
   }
 
   const [lead] = await db.insert(leadsTable).values({
     ...data,
     assignedTo: resolvedAssignedTo,
+    latitude: geocoded?.lat ?? null,
+    longitude: geocoded?.lng ?? null,
     telefone: storePhone(data.telefone),
     documento: data.documento ? data.documento.replace(/\D/g, "") : data.documento,
     possivelDuplicata: false,

@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, tenantDistribuicaoConfigTable } from "@workspace/db";
+import { distanceKm } from "./geocoding.js";
 
 type AssignmentCandidate = {
   id: string;
@@ -10,6 +11,9 @@ type AssignmentCandidate = {
   leadAssignmentCities: string[];
   leadAssignmentRegions: string[];
   leadAssignmentSegments: string[];
+  leadAssignmentLat: number | null;
+  leadAssignmentLng: number | null;
+  leadAssignmentRaioKm: number | null;
 };
 
 export type LeadAssignmentContext = {
@@ -19,7 +23,14 @@ export type LeadAssignmentContext = {
   // Linha/segmento de produto do lead (leads.mercadoSegmento) — ex: loja de
   // peças com vendedor especializado em óleo vs outro em peça de motor.
   segmento?: string | null;
+  // Coordenadas geocodificadas do lead (leads.latitude/longitude), pra
+  // desempate por proximidade real quando cidade/região em texto não resolve.
+  lat?: number | null;
+  lng?: number | null;
 };
+
+const CRITERIOS_PADRAO = ["segmento", "territorio"] as const;
+type Criterio = (typeof CRITERIOS_PADRAO)[number];
 
 export function canReceiveLeads(candidate: Pick<AssignmentCandidate, "platformRole" | "userFunction" | "leadAssignmentEnabled">): boolean {
   if (candidate.leadAssignmentEnabled === false) return false;
@@ -57,19 +68,98 @@ function oldestFirst(a: AssignmentCandidate, b: AssignmentCandidate): number {
 }
 
 /**
- * Distribuição de leads em cascata:
- * 1. vendedores elegíveis configurados pra linha/segmento do lead (quando
- *    o lead já tem mercadoSegmento identificado e algum vendedor cobre
- *    exatamente essa linha — ex: loja de peças, vendedor de óleo vs peça);
- * 2. dentro do grupo acima (ou de todo mundo, se segmento não filtrou
- *    ninguém), aplica o mesmo critério de território já existente:
- *    cidade → região/UF → rodízio geral (sem território configurado) →
- *    qualquer vendedor elegível daquele segmento;
- * 3. fallback final: qualquer vendedor elegível do tenant, sem filtro nenhum.
+ * Busca a ordem de critérios configurada pro tenant. Sem linha cadastrada
+ * (a maioria dos tenants hoje) = ordem padrão ["segmento","territorio"],
+ * que é exatamente o comportamento de antes desta config existir — não
+ * quebra ninguém que já estava usando cidade/região sem saber que "segmento"
+ * também existe.
+ */
+async function getCriteriosOrdenados(tenantId: string): Promise<Criterio[]> {
+  const [config] = await db
+    .select({ criterios: tenantDistribuicaoConfigTable.criterios })
+    .from(tenantDistribuicaoConfigTable)
+    .where(eq(tenantDistribuicaoConfigTable.tenantId, tenantId));
+
+  const criterios = config?.criterios;
+  if (!Array.isArray(criterios) || criterios.length === 0) return [...CRITERIOS_PADRAO];
+
+  const validos = criterios.filter((c): c is Criterio => CRITERIOS_PADRAO.includes(c as Criterio));
+  return validos.length ? validos : [...CRITERIOS_PADRAO];
+}
+
+/**
+ * Restringe pelo segmento/linha do lead. Retorna null (sem restringir) se
+ * o lead não tem segmento identificado, ou se nenhum candidato do pool
+ * atual cobre essa linha — nesse caso o critério simplesmente não filtra
+ * nada, e o próximo critério da ordem roda sobre o pool original.
+ */
+function narrowBySegmento(pool: AssignmentCandidate[], context: LeadAssignmentContext): AssignmentCandidate[] | null {
+  const segmentoValue = context.segmento || "";
+  if (!segmentoValue) return null;
+  const matches = pool.filter((candidate) => candidate.leadAssignmentSegments.some((segmento) => matchesTerritory(segmentoValue, segmento)));
+  return matches.length ? matches : null;
+}
+
+/**
+ * Restringe por território, em cascata: cidade → região/UF → raio de
+ * distância → rodízio geral (vendedores sem território configurado dentro
+ * do pool). Cada nível só é tentado se o anterior não achou ninguém.
+ * Retorna null se nada da cascata achou match — o critério não filtra nada.
+ */
+function narrowByTerritorio(pool: AssignmentCandidate[], context: LeadAssignmentContext): AssignmentCandidate[] | null {
+  const cityLocation = context.city || context.location || "";
+  const regionLocation = context.region || context.location || "";
+
+  const cityMatches = cityLocation
+    ? pool.filter((candidate) => candidate.leadAssignmentCities.some((city) => matchesTerritory(cityLocation, city)))
+    : [];
+  if (cityMatches.length) return cityMatches;
+
+  const regionMatches = regionLocation
+    ? pool.filter((candidate) => candidate.leadAssignmentRegions.some((region) => matchesTerritory(regionLocation, region)))
+    : [];
+  if (regionMatches.length) return regionMatches;
+
+  // Raio: só entra se o lead já tem coordenadas (geocodificado) e existe
+  // vendedor com ponto-base + raio configurados. Ordena pelo mais perto —
+  // aqui o critério é proximidade de verdade, não fila (diferente do
+  // desempate final por lastAssignedAt, que só decide entre empatados).
+  if (context.lat != null && context.lng != null) {
+    const raioMatches = pool
+      .filter((c) => c.leadAssignmentLat != null && c.leadAssignmentLng != null && c.leadAssignmentRaioKm != null)
+      .map((c) => ({
+        candidate: c,
+        distancia: distanceKm({ lat: context.lat!, lng: context.lng! }, { lat: c.leadAssignmentLat!, lng: c.leadAssignmentLng! }),
+      }))
+      .filter(({ candidate, distancia }) => distancia <= candidate.leadAssignmentRaioKm!)
+      .sort((a, b) => a.distancia - b.distancia)
+      .map(({ candidate }) => candidate);
+    if (raioMatches.length) return raioMatches;
+  }
+
+  const generalPool = pool.filter(
+    (candidate) => candidate.leadAssignmentCities.length === 0 && candidate.leadAssignmentRegions.length === 0,
+  );
+  if (generalPool.length) return generalPool;
+
+  return null;
+}
+
+/**
+ * Distribuição de leads pra vendedor. A ordem dos critérios (segmento x
+ * território) é configurável por tenant via tenant_distribuicao_config;
+ * sem config, roda "segmento" primeiro e "território" desempata dentro do
+ * grupo — é o caso "loja de peças: separa por linha, dentro da linha
+ * separa por região". Território em si já é uma cascata interna (cidade →
+ * região → raio → geral).
  *
- * Dentro do grupo escolhido, quem nunca recebeu lead tem prioridade e depois
- * vale o lastAssignedAt mais antigo. Usuários com leadAssignmentEnabled=false
- * nunca entram na distribuição. Null mantém compatibilidade com vendedores antigos.
+ * Cada critério só restringe o pool se achar pelo menos um match; senão o
+ * pool passa pro próximo critério sem filtrar nada (nunca zera a lista à
+ * toa). Fallback final: qualquer vendedor elegível do tenant.
+ *
+ * Dentro do grupo final, quem nunca recebeu lead tem prioridade e depois
+ * vale o lastAssignedAt mais antigo (exceto no caso de raio, que já vem
+ * ordenado por distância — o mais próximo é escolhido direto).
  */
 export async function pickNextVendedor(
   tenantId: string,
@@ -85,6 +175,9 @@ export async function pickNextVendedor(
       leadAssignmentCities: usersTable.leadAssignmentCities,
       leadAssignmentRegions: usersTable.leadAssignmentRegions,
       leadAssignmentSegments: usersTable.leadAssignmentSegments,
+      leadAssignmentLat: usersTable.leadAssignmentLat,
+      leadAssignmentLng: usersTable.leadAssignmentLng,
+      leadAssignmentRaioKm: usersTable.leadAssignmentRaioKm,
     })
     .from(usersTable)
     .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)));
@@ -100,42 +193,25 @@ export async function pickNextVendedor(
 
   if (!candidates.length) return null;
 
-  // Nível 1: segmento/linha. Só restringe o pool se o lead tiver segmento
-  // identificado E existir pelo menos um vendedor especializado nele —
-  // senão segue com todo mundo (compatível com tenants que não usam segmento).
-  const segmentoValue = context.segmento || "";
-  const segmentMatches = segmentoValue
-    ? candidates.filter((candidate) => candidate.leadAssignmentSegments.some((segmento) => matchesTerritory(segmentoValue, segmento)))
-    : [];
-  const baseCandidates = segmentMatches.length ? segmentMatches : candidates;
+  const ordem = await getCriteriosOrdenados(tenantId);
 
-  // Nível 2: território, igual antes, mas já dentro do pool de segmento.
-  const cityLocation = context.city || context.location || "";
-  const regionLocation = context.region || context.location || "";
+  let pool = candidates;
+  let raioJaOrdenou = false;
+  for (const criterio of ordem) {
+    if (criterio === "segmento") {
+      pool = narrowBySegmento(pool, context) ?? pool;
+    } else if (criterio === "territorio") {
+      const before = pool;
+      pool = narrowByTerritorio(pool, context) ?? pool;
+      // Detecta se quem decidiu foi o nível de raio (pool já vem ordenado
+      // por distância nesse caso) pra pular o sort por fila mais abaixo.
+      raioJaOrdenou = pool !== before && pool.some((c) => c.leadAssignmentLat != null);
+    }
+  }
 
-  const cityMatches = cityLocation
-    ? baseCandidates.filter((candidate) => candidate.leadAssignmentCities.some((city) => matchesTerritory(cityLocation, city)))
-    : [];
+  if (!pool.length) pool = candidates;
 
-  const regionMatches = regionLocation
-    ? baseCandidates.filter((candidate) => candidate.leadAssignmentRegions.some((region) => matchesTerritory(regionLocation, region)))
-    : [];
-
-  const generalPool = baseCandidates.filter(
-    (candidate) => candidate.leadAssignmentCities.length === 0 && candidate.leadAssignmentRegions.length === 0,
-  );
-
-  const pool = cityMatches.length
-    ? cityMatches
-    : regionMatches.length
-      ? regionMatches
-      : generalPool.length
-        ? generalPool
-        : baseCandidates.length
-          ? baseCandidates
-          : candidates;
-
-  const seller = [...pool].sort(oldestFirst)[0];
+  const seller = raioJaOrdenou ? pool[0] : [...pool].sort(oldestFirst)[0];
   if (!seller) return null;
 
   await db

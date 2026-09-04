@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, boolean, integer, real, index, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, boolean, integer, real, index, numeric, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -58,6 +58,12 @@ export const leadsTable = pgTable("leads", {
   messengerScopedId: text("messenger_scoped_id"),
   instagramHandle: text("instagram_handle"),
   endereco: text("endereco"),
+  // Cache do geocoding de `endereco` (Nominatim/OSM, mesma lib do módulo
+  // Fretes) — usado pro critério de proximidade real (raio) na distribuição
+  // de vendedor. Null até o primeiro geocode bem-sucedido; nunca bloqueia
+  // criação do lead se a geocodificação falhar ou não rodar.
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
   dataNascimento: text("data_nascimento"),
   profissao: text("profissao"),
   estadoCivil: text("estado_civil"),
