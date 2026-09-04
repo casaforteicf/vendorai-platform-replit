@@ -4,7 +4,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Content from "@/pages/Content";
 import Campanhas from "@/pages/Campanhas";
 import CampanhasHub from "@/pages/CampanhasHub";
-import { Images, Megaphone, Sparkles } from "lucide-react";
+import SiteGenerator from "@/pages/SiteGenerator";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, Images, Megaphone, Sparkles } from "lucide-react";
 
 const REDUNDANT_CHILD_TITLES = new Set([
   "Criar conteúdo",
@@ -99,7 +101,28 @@ export default function ContentHub() {
           </TabsList>
           <TabsContent value="gerador" className="-mx-4 md:-mx-6"><Content /></TabsContent>
           <TabsContent value="campanhas" className="-mx-4 md:-mx-6">
-            {campaignView === "organicas" ? <Campanhas /> : <CampanhasHub />}
+            {campaignView === "organicas" ? (
+              <Campanhas />
+            ) : campaignView === "lp" ? (
+              <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    const campaignId = params.get("campaignId");
+                    setLocation(campaignId
+                      ? `/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(campaignId)}&from=revenue-scout`
+                      : "/content?tab=campanhas");
+                  }}
+                >
+                  <ArrowLeft className="h-4 w-4" /> Voltar para Campanha
+                </Button>
+                <SiteGenerator />
+              </div>
+            ) : (
+              <CampanhasHub />
+            )}
           </TabsContent>
         </Tabs>
       </div>

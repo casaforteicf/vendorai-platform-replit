@@ -19,6 +19,9 @@ import {
   leadEventsTable,
   cnaeVerticalMapTable,
   prospectFeedbackTable,
+  campaignsTable,
+  businessProfilesTable,
+  produtosCatalogoTable,
   insertProspectFeedbackSchema,
 } from "@workspace/db";
 import { registerLeadFeedback } from "../lib/prospectorMemory.js";
@@ -1207,6 +1210,380 @@ router.get("/prospector/tenant/api-usage", async (req, res) => {
 });
 
 
+// ── POST /prospector/campaign-package — Revenue Scout → Marketing ─────────────
+const campaignPackageBodySchema = z.object({
+  leadIds: z.array(z.string().min(1)).min(1).max(50),
+  tenantId: z.string().optional(),
+});
+
+type RevenueScoutCampaignStrategy = {
+  campaignName: string;
+  audienceSegment: string;
+  audienceNiche: string;
+  campaignGoal: string;
+  message: string;
+  recommendedChannel: "whatsapp" | "email" | "instagram";
+  recommendedPaidPlatform: "meta" | "google";
+  offer: string;
+  chosenProductIds: string[];
+  opportunity: string;
+  region: string;
+  adsHeadline: string;
+  adsDescription: string;
+  lpHeadline: string;
+  lpSubheadline: string;
+};
+
+function safeStrategyText(value: unknown, fallback: string, max = 500): string {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : fallback;
+}
+
+router.post("/prospector/campaign-package", async (req, res) => {
+  const parsed = campaignPackageBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
+  }
+
+  const tenantId = resolveTenantId(req, parsed.data.tenantId);
+  const leadIds = [...new Set(parsed.data.leadIds)];
+
+  const selectedLeads = await db
+    .select({
+      id: leadsTable.id,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      telefone: leadsTable.telefone,
+      endereco: leadsTable.endereco,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      propensityScore: leadsTable.propensityScore,
+      priorityReason: leadsTable.priorityReason,
+      roiEstimate: leadsTable.roiEstimate,
+      enrichmentData: leadsTable.enrichmentData,
+      metadata: leadsTable.metadata,
+    })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.tenantId, tenantId), inArray(leadsTable.id, leadIds)))
+    .orderBy(desc(leadsTable.propensityScore), desc(leadsTable.createdAt));
+
+  const foundIds = new Set(selectedLeads.map((lead) => lead.id));
+  const missing = leadIds.filter((id) => !foundIds.has(id));
+  if (missing.length > 0) {
+    return res.status(404).json({
+      error: "Um ou mais prospects não pertencem a este tenant",
+      missingLeadIds: missing,
+    });
+  }
+
+  const [tenantRows, profileRows, catalogRows] = await Promise.all([
+    db
+      .select({
+        id: tenantsTable.id,
+        name: tenantsTable.name,
+        nomeEmpresa: tenantsTable.nomeEmpresa,
+        vertical: tenantsTable.vertical,
+        segmento: tenantsTable.segmento,
+        descricao: tenantsTable.descricao,
+      })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1),
+    db
+      .select({
+        razaoSocial: businessProfilesTable.razaoSocial,
+        nomeFantasia: businessProfilesTable.nomeFantasia,
+        vertical: businessProfilesTable.vertical,
+        diferenciais: businessProfilesTable.diferenciais,
+        publicoAlvo: businessProfilesTable.publicoAlvo,
+        produtos: businessProfilesTable.produtos,
+        discoveryData: businessProfilesTable.discoveryData,
+      })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1),
+    db
+      .select({
+        id: produtosCatalogoTable.id,
+        nome: produtosCatalogoTable.nome,
+        descricao: produtosCatalogoTable.descricao,
+        marca: produtosCatalogoTable.marca,
+        ativo: produtosCatalogoTable.ativo,
+      })
+      .from(produtosCatalogoTable)
+      .where(eq(produtosCatalogoTable.tenantId, tenantId)),
+  ]);
+
+  const tenant = tenantRows[0] ?? null;
+  const profile = profileRows[0] ?? null;
+  const tenantName =
+    profile?.nomeFantasia ??
+    tenant?.nomeEmpresa ??
+    tenant?.name ??
+    profile?.razaoSocial ??
+    "Empresa";
+  const businessVertical =
+    profile?.vertical ?? tenant?.segmento ?? tenant?.vertical ?? "";
+
+  const activeCatalog = catalogRows.filter((item) => item.ativo !== false).slice(0, 30);
+  const profileProducts = Array.isArray(profile?.produtos) ? profile.produtos : [];
+  const availableOffers = activeCatalog.length > 0
+    ? activeCatalog.map((item) => ({
+        id: item.id,
+        nome: item.nome,
+        descricao: item.descricao ?? "",
+        marca: item.marca ?? "",
+      }))
+    : profileProducts.slice(0, 20).map((item, index) => ({
+        id: `profile:${index}`,
+        nome: item.nome,
+        descricao: item.descricao ?? "",
+        marca: "",
+      }));
+
+  const scores = selectedLeads
+    .map((lead) => Number(lead.propensityScore))
+    .filter((score) => Number.isFinite(score));
+  const averageScore = scores.length > 0
+    ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+    : 0;
+  const segmentCandidates = selectedLeads
+    .map((lead) => lead.mercadoSegmento?.trim())
+    .filter((value): value is string => Boolean(value));
+  const fallbackNiche = segmentCandidates[0] ?? "empresas qualificadas pelo Revenue Scout";
+  const addressCandidates = selectedLeads
+    .map((lead) => lead.endereco?.trim())
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 3);
+  const fallbackRegion = addressCandidates.length > 0 ? addressCandidates.join(" • ") : "região comercial do tenant";
+  const defaultOffer = availableOffers[0] ?? null;
+  const fallbackOpportunity = selectedLeads.find((lead) => lead.priorityReason)?.priorityReason
+    ?? "oportunidade comercial identificada pelo Revenue Scout";
+
+  let strategy: RevenueScoutCampaignStrategy = {
+    campaignName: `${fallbackNiche} — Revenue Scout`.slice(0, 180),
+    audienceSegment: "Empresas (B2B)",
+    audienceNiche: fallbackNiche,
+    campaignGoal: `Gerar oportunidades comerciais para ${tenantName} junto a ${selectedLeads.length} prospect(s) qualificado(s).`,
+    message: `Olá! Somos da ${tenantName}. Identificamos uma oportunidade de parceria que pode fazer sentido para sua empresa. Posso te apresentar rapidamente?`,
+    recommendedChannel: "whatsapp",
+    recommendedPaidPlatform: "meta",
+    offer: defaultOffer?.nome ?? "solução comercial do tenant",
+    chosenProductIds: defaultOffer ? [defaultOffer.id] : [],
+    opportunity: fallbackOpportunity,
+    region: fallbackRegion,
+    adsHeadline: `${tenantName}: uma solução para ${fallbackNiche}`.slice(0, 120),
+    adsDescription: `Conheça a oferta da ${tenantName} pensada para ${fallbackNiche}.`.slice(0, 220),
+    lpHeadline: `${tenantName} para ${fallbackNiche}`.slice(0, 160),
+    lpSubheadline: `Uma proposta comercial preparada para empresas com o perfil identificado pelo Revenue Scout.`.slice(0, 260),
+  };
+
+  const leadsForAi = selectedLeads.map((lead) => ({
+    nome: lead.nome,
+    empresa: lead.empresa,
+    segmento: lead.mercadoSegmento,
+    endereco: lead.endereco,
+    score: lead.propensityScore,
+    motivo_prioridade: lead.priorityReason,
+    roi: lead.roiEstimate,
+    sinais: JSON.stringify(lead.enrichmentData ?? {}).slice(0, 700),
+  }));
+
+  try {
+    const ai = await gatewayCallOpenAI(
+      tenantId,
+      "content_generator",
+      [
+        {
+          role: "system",
+          content:
+            "Você é o Marketing Manager do CLIENTE/TENANT do VendorAI. A empresa anunciante é o tenant informado, " +
+            "e os leads do Revenue Scout são o público/prospects. Nunca trate o VendorAI como o produto a vender, " +
+            "a menos que isso esteja explicitamente no catálogo do tenant. Use somente produtos/ofertas fornecidos. " +
+            "Crie uma estratégia prática que possa alimentar campanha orgânica, Meta/Google Ads e landing page. " +
+            "Responda APENAS JSON válido.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            tenant: {
+              nome: tenantName,
+              vertical: businessVertical,
+              descricao: tenant?.descricao ?? null,
+              diferenciais: profile?.diferenciais ?? null,
+              publico_alvo_atual: profile?.publicoAlvo ?? null,
+              discovery: profile?.discoveryData ?? null,
+            },
+            ofertas_disponiveis: availableOffers,
+            prospects: leadsForAi,
+            score_medio: averageScore,
+            regras: {
+              selectedProductIdsMustExistInOffers: true,
+              noInventedProducts: true,
+              campaignMustBelongToTenant: true,
+              paidMediaIsDraftOnly: true,
+            },
+            output: {
+              campaignName: "string",
+              audienceSegment: "string",
+              audienceNiche: "string",
+              campaignGoal: "string",
+              message: "string de primeiro contato curto",
+              recommendedChannel: "whatsapp|email|instagram",
+              recommendedPaidPlatform: "meta|google",
+              offer: "string",
+              chosenProductIds: ["ids existentes em ofertas_disponiveis"],
+              opportunity: "string",
+              region: "string",
+              adsHeadline: "string",
+              adsDescription: "string",
+              lpHeadline: "string",
+              lpSubheadline: "string",
+            },
+          }),
+        },
+      ],
+      { responseFormat: { type: "json_object" }, maxTokens: 1200, temperature: 0.5, log: req.log },
+    );
+
+    const parsedAi = JSON.parse(ai.content) as Partial<RevenueScoutCampaignStrategy>;
+    const channel = ["whatsapp", "email", "instagram"].includes(String(parsedAi.recommendedChannel))
+      ? parsedAi.recommendedChannel as RevenueScoutCampaignStrategy["recommendedChannel"]
+      : strategy.recommendedChannel;
+    const paid = ["meta", "google"].includes(String(parsedAi.recommendedPaidPlatform))
+      ? parsedAi.recommendedPaidPlatform as RevenueScoutCampaignStrategy["recommendedPaidPlatform"]
+      : strategy.recommendedPaidPlatform;
+    const allowedIds = new Set(availableOffers.map((item) => item.id));
+    const selectedIds = Array.isArray(parsedAi.chosenProductIds)
+      ? parsedAi.chosenProductIds.filter((id): id is string => typeof id === "string" && allowedIds.has(id))
+      : strategy.chosenProductIds;
+
+    strategy = {
+      campaignName: safeStrategyText(parsedAi.campaignName, strategy.campaignName, 180),
+      audienceSegment: safeStrategyText(parsedAi.audienceSegment, strategy.audienceSegment, 120),
+      audienceNiche: safeStrategyText(parsedAi.audienceNiche, strategy.audienceNiche, 180),
+      campaignGoal: safeStrategyText(parsedAi.campaignGoal, strategy.campaignGoal, 500),
+      message: safeStrategyText(parsedAi.message, strategy.message, 900),
+      recommendedChannel: channel,
+      recommendedPaidPlatform: paid,
+      offer: safeStrategyText(parsedAi.offer, strategy.offer, 300),
+      chosenProductIds: selectedIds,
+      opportunity: safeStrategyText(parsedAi.opportunity, strategy.opportunity, 500),
+      region: safeStrategyText(parsedAi.region, strategy.region, 300),
+      adsHeadline: safeStrategyText(parsedAi.adsHeadline, strategy.adsHeadline, 120),
+      adsDescription: safeStrategyText(parsedAi.adsDescription, strategy.adsDescription, 240),
+      lpHeadline: safeStrategyText(parsedAi.lpHeadline, strategy.lpHeadline, 180),
+      lpSubheadline: safeStrategyText(parsedAi.lpSubheadline, strategy.lpSubheadline, 320),
+    };
+  } catch (err) {
+    req.log.warn({ err }, "prospector/campaign-package: strategy AI unavailable, using safe fallback");
+  }
+
+  const chosenOffers = availableOffers.filter((item) => strategy.chosenProductIds.includes(item.id));
+  const productIds = chosenOffers.map((item) => item.id);
+  const productNames = chosenOffers.map((item) => item.nome);
+  const prospectorBatchId = crypto.randomUUID();
+  const marketingContext = {
+    nicheId: `revenue_scout:${prospectorBatchId}`,
+    nicheName: [
+      businessVertical ? `Negócio: ${businessVertical}` : `Negócio: ${tenantName}`,
+      `Público: ${strategy.audienceSegment}`,
+      `Nicho do público: ${strategy.audienceNiche}`,
+      `Objetivo: ${strategy.campaignGoal}`,
+    ].join(" | "),
+    productIds,
+    productNames,
+    businessVertical: businessVertical || tenantName,
+    audienceSegment: strategy.audienceSegment,
+    audienceNiche: strategy.audienceNiche,
+    campaignGoal: strategy.campaignGoal,
+  };
+
+  const campaignContext = {
+    origin: "revenue_scout",
+    prospectorBatchId,
+    leadIds,
+    tenantName,
+    businessVertical: businessVertical || undefined,
+    region: strategy.region,
+    opportunity: strategy.opportunity,
+    averageScore,
+    offer: strategy.offer,
+    productIds,
+    productNames,
+    audienceSegment: strategy.audienceSegment,
+    audienceNiche: strategy.audienceNiche,
+    campaignGoal: strategy.campaignGoal,
+    recommendedChannel: strategy.recommendedChannel,
+    recommendedPaidPlatform: strategy.recommendedPaidPlatform,
+    adsHeadline: strategy.adsHeadline,
+    adsDescription: strategy.adsDescription,
+    lpHeadline: strategy.lpHeadline,
+    lpSubheadline: strategy.lpSubheadline,
+    marketingContext,
+    createdFromRevenueScoutAt: new Date().toISOString(),
+  };
+
+  const [campaign] = await db
+    .insert(campaignsTable)
+    .values({
+      tenantId,
+      nome: strategy.campaignName,
+      tipo: strategy.recommendedChannel,
+      mensagem: strategy.message,
+      status: "rascunho",
+      totalDestinatarios: selectedLeads.length,
+      segmentoFiltro: { leadIds, marketingContext },
+      contexto: campaignContext,
+    })
+    .returning();
+
+  if (!campaign) {
+    return res.status(500).json({ error: "Falha ao criar campanha" });
+  }
+
+  await db.insert(activitiesTable).values(
+    selectedLeads.map((lead) => ({
+      tenantId,
+      leadId: lead.id,
+      tipo: "tarefa" as const,
+      titulo: "Campanha criada pelo Revenue Scout",
+      descricao: `Prospect vinculado à campanha "${campaign.nome}" (${campaign.id}).`,
+      status: "concluida" as const,
+    })),
+  );
+
+  await Promise.all(
+    selectedLeads.map(async (lead) => {
+      const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+      const current = Array.isArray(metadata["revenue_scout_campaign_ids"])
+        ? metadata["revenue_scout_campaign_ids"].filter((id): id is string => typeof id === "string")
+        : [];
+      const nextIds = [...new Set([...current, campaign.id])];
+      await db
+        .update(leadsTable)
+        .set({
+          metadata: { ...metadata, revenue_scout_campaign_ids: nextIds },
+          updatedAt: new Date(),
+        })
+        .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, tenantId)));
+    }),
+  );
+
+  return res.status(201).json({
+    campaignId: campaign.id,
+    campaign,
+    strategy: {
+      ...strategy,
+      productIds,
+      productNames,
+      marketingContext,
+      averageScore,
+    },
+    marketingUrl: `/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(campaign.id)}&from=revenue-scout`,
+    adsUrl: `/ads?from=revenue-scout&campaignId=${encodeURIComponent(campaign.id)}`,
+    lpUrl: `/content?tab=campanhas&view=lp&campaignId=${encodeURIComponent(campaign.id)}&from=revenue-scout`,
+  });
+});
+
 // ── GET /prospector/fila — fila priorizada por score ─────────────────────────
 router.get("/prospector/fila", async (req, res) => {
   const tenantId = resolveTenantId(req, undefined);
@@ -1226,6 +1603,7 @@ router.get("/prospector/fila", async (req, res) => {
       roiEstimate: leadsTable.roiEstimate,
       enrichmentData: leadsTable.enrichmentData,
       priorityReason: leadsTable.priorityReason,
+      metadata: leadsTable.metadata,
       createdAt: leadsTable.createdAt,
     })
     .from(leadsTable)

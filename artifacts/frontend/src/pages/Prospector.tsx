@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -418,6 +418,7 @@ function ProspectorAutoConfig() {
 export default function Prospector() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const isSuperAdmin = user?.platformRole === "super_admin";
 
   const [tenantId, setTenantId] = useState(user?.tenantId ?? "");
@@ -468,6 +469,7 @@ export default function Prospector() {
   const [adsProspectandoPageId, setAdsProspectandoPageId] = useState<string | null>(null);
   const [adsProspectadosPageIds, setAdsProspectadosPageIds] = useState<Set<string>>(new Set());
   const [adsDuplicadosPageIds, setAdsDuplicadosPageIds] = useState<Set<string>>(new Set());
+  const [selectedFilaLeadIds, setSelectedFilaLeadIds] = useState<Set<string>>(new Set());
 
   // ── Fila Preditiva (Cmd 22) ──────────────────────────────────────────────
   function getAuthHeaders() {
@@ -612,6 +614,7 @@ export default function Prospector() {
           roiEstimate?: { volume_atendimentos_mes?: number; perda_estimada_mes?: number; ganho_potencial_mes?: number; ticket_estimado?: string };
           enrichmentData?: { digital?: Record<string, unknown>; growth?: Record<string, unknown> };
           priorityReason?: string;
+          metadata?: { revenue_scout_campaign_ids?: string[] };
           createdAt: string;
           events: Array<{ tipo: string; descricao: string }>;
         }>;
@@ -620,6 +623,55 @@ export default function Prospector() {
       }>;
     },
     staleTime: 30_000,
+  });
+
+  const createCampaignPackageMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const res = await fetch("/api/prospector/campaign-package", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ leadIds, tenantId: tenantId || undefined }),
+      });
+      const data = await res.json() as any;
+      if (!res.ok) throw new Error(data.error ?? "Falha ao criar pacote comercial");
+      return data;
+    },
+    onSuccess: (data) => {
+      const strategy = data.strategy ?? {};
+      sessionStorage.setItem("vendorai_ads_revenue_scout_draft_v1", JSON.stringify({
+        campaignId: data.campaignId,
+        campaignName: data.campaign?.nome ?? strategy.campaignName,
+        suggestedPlatform: strategy.recommendedPaidPlatform ?? "meta",
+        marketingContext: strategy.marketingContext,
+        region: strategy.region,
+        opportunity: strategy.opportunity,
+        offer: strategy.offer,
+        headline: strategy.adsHeadline,
+        description: strategy.adsDescription,
+      }));
+      sessionStorage.setItem("vendorai_lp_revenue_scout_draft_v1", JSON.stringify({
+        campaignId: data.campaignId,
+        audience: strategy.audienceNiche,
+        offer: strategy.offer,
+        objective: strategy.campaignGoal,
+        notes: [strategy.opportunity, strategy.lpHeadline, strategy.lpSubheadline].filter(Boolean).join("\n"),
+        productIds: strategy.productIds ?? [],
+        headline: strategy.lpHeadline,
+        subheadline: strategy.lpSubheadline,
+      }));
+      setSelectedFilaLeadIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+      toast({
+        title: "Pacote comercial criado",
+        description: "A campanha já pertence a este tenant. LP e anúncios ficaram preparados para revisão.",
+      });
+      setLocation(data.marketingUrl ?? `/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(data.campaignId)}`);
+    },
+    onError: (err) => toast({
+      title: "Falha ao criar pacote comercial",
+      description: err instanceof Error ? err.message : undefined,
+      variant: "destructive",
+    }),
   });
 
   const dispatchSdrMutation = useMutation({
@@ -670,6 +722,16 @@ export default function Prospector() {
     },
     onError: () => toast({ title: "Falha ao descartar", variant: "destructive" }),
   });
+
+  const prospectorParams = new URLSearchParams(window.location.search);
+  const requestedProspectorTab = prospectorParams.get("tab");
+  const defaultProspectorTab = ["busca", "cnpj", "anunciantes", "fila", "aprovacoes"].includes(requestedProspectorTab ?? "")
+    ? requestedProspectorTab!
+    : "busca";
+  const campaignFilterId = prospectorParams.get("campaignId");
+  const filaLeads = (filaQuery.data?.leads ?? []).filter((lead) =>
+    !campaignFilterId || lead.metadata?.revenue_scout_campaign_ids?.includes(campaignFilterId),
+  );
 
   function tenantIdField() {
     return isSuperAdmin ? { tenantId: tenantId || undefined } : {};
@@ -848,7 +910,7 @@ export default function Prospector() {
         </Button>
       </div>
 
-      <Tabs defaultValue="busca">
+      <Tabs defaultValue={defaultProspectorTab}>
         <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="busca" className="flex items-center gap-1.5">
             <MapPin className="h-4 w-4" /> Google Places
@@ -1513,7 +1575,7 @@ export default function Prospector() {
                     Leads ordenados por score de propensão. Score ≥ {filaQuery.data?.autoDispatchThreshold ?? 80} dispara SDR automaticamente.
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
                     variant="outline"
@@ -1523,6 +1585,20 @@ export default function Prospector() {
                     <RefreshCw className={`h-3.5 w-3.5 mr-1 ${filaQuery.isFetching ? "animate-spin" : ""}`} />
                     Atualizar
                   </Button>
+                  {selectedFilaLeadIds.size > 0 && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => createCampaignPackageMutation.mutate([...selectedFilaLeadIds])}
+                      disabled={createCampaignPackageMutation.isPending}
+                    >
+                      {createCampaignPackageMutation.isPending ? (
+                        <><Spinner className="h-3.5 w-3.5 mr-1" /> Preparando...</>
+                      ) : (
+                        <><Megaphone className="h-3.5 w-3.5 mr-1" /> Criar pacote completo ({selectedFilaLeadIds.size})</>
+                      )}
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     onClick={() => dispatchTopMutation.mutate(10)}
@@ -1550,7 +1626,7 @@ export default function Prospector() {
                 Falha ao carregar a fila. Tente atualizar.
               </CardContent>
             </Card>
-          ) : (filaQuery.data?.leads ?? []).length === 0 ? (
+          ) : filaLeads.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="py-10 text-center text-muted-foreground">
                 <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -1560,7 +1636,7 @@ export default function Prospector() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {(filaQuery.data?.leads ?? []).map((lead) => {
+              {filaLeads.map((lead) => {
                 const score = lead.propensityScore ?? 0;
                 const threshold = filaQuery.data?.autoDispatchThreshold ?? 80;
                 const scoreColor = score >= 80 ? "text-emerald-600 bg-emerald-50 border-emerald-200" : score >= 50 ? "text-amber-600 bg-amber-50 border-amber-200" : "text-red-600 bg-red-50 border-red-200";
@@ -1580,6 +1656,18 @@ export default function Prospector() {
                   >
                     <CardContent className="py-4">
                       <div className="flex items-start gap-4">
+                        <input
+                          type="checkbox"
+                          className="mt-3 h-4 w-4 rounded border-input accent-primary"
+                          aria-label={`Selecionar ${lead.nome} para campanha`}
+                          checked={selectedFilaLeadIds.has(lead.id)}
+                          disabled={isPending}
+                          onChange={() => setSelectedFilaLeadIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id);
+                            return next;
+                          })}
+                        />
                         {/* Score badge */}
                         <div className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 min-w-[64px] ${isPending ? "text-muted-foreground bg-muted border-muted-foreground/20" : scoreColor}`}>
                           {isPending ? (
@@ -1675,7 +1763,7 @@ export default function Prospector() {
                           </div>
 
                           {/* Actions */}
-                          <div className="flex gap-2 pt-1">
+                          <div className="flex flex-wrap gap-2 pt-1">
                             <Button
                               size="sm"
                               disabled={dispatchSdrMutation.isPending || isPending}
@@ -1686,6 +1774,21 @@ export default function Prospector() {
                               ) : (
                                 <><PlayCircle className="h-3.5 w-3.5 mr-1" /> Disparar SDR</>
                               )}
+                            </Button>
+                            {lead.metadata?.revenue_scout_campaign_ids?.[0] && (
+                              <Link href={`/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(lead.metadata.revenue_scout_campaign_ids[0])}&from=revenue-scout`}>
+                                <Button size="sm" variant="outline">
+                                  <Megaphone className="h-3.5 w-3.5 mr-1" /> Abrir campanha
+                                </Button>
+                              </Link>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={createCampaignPackageMutation.isPending || isPending}
+                              onClick={() => createCampaignPackageMutation.mutate([lead.id])}
+                            >
+                              <Sparkles className="h-3.5 w-3.5 mr-1" /> Criar pacote
                             </Button>
                             <Button
                               size="sm"

@@ -5,6 +5,7 @@ import {
   campaignsTable,
   campaignSentLogsTable,
   customerIntelligenceTable,
+  leadsTable,
   dealsTable,
   insertCampaignSchema,
   updateCampaignSchema,
@@ -28,6 +29,10 @@ function buildAudienceConditions(
   ];
 
   if (!filtro) return conditions;
+
+  if (filtro.leadIds?.length) {
+    conditions.push(inArray(customerIntelligenceTable.leadId, filtro.leadIds));
+  }
 
   if (filtro.churnRisk !== undefined) {
     const f = filtro.churnRisk as NumericFilter;
@@ -193,6 +198,8 @@ function resumoSegmento(filtro?: SegmentoFiltro): string {
   if (filtro.nextBestAction) partes.push(`próxima ação recomendada: ${filtro.nextBestAction}`);
   if (filtro.intentAnalysis) partes.push(`intenção detectada: ${filtro.intentAnalysis}`);
   if (filtro.dealEtapas?.length) partes.push(`etapa(s) do funil: ${filtro.dealEtapas.join(", ")}`);
+  if (filtro.leadIds?.length) partes.push(`${filtro.leadIds.length} prospect(s) selecionado(s) pelo Revenue Scout`);
+  if (filtro.marketingContext?.audienceNiche) partes.push(`nicho: ${filtro.marketingContext.audienceNiche}`);
 
   return partes.length > 0 ? partes.join("; ") : "público geral, sem filtro de segmento definido";
 }
@@ -360,6 +367,35 @@ router.get(
       campaign.segmentoFiltro
     );
     const filtro = filtroResult.success ? filtroResult.data : undefined;
+
+    // Campanhas originadas no Revenue Scout preservam exatamente os prospects
+    // escolhidos. A prévia não depende de customer_intelligence existir para
+    // cada lead e nunca atravessa o tenant.
+    if (filtro?.leadIds?.length) {
+      const selectedLeads = await db
+        .select({ id: leadsTable.id, nome: leadsTable.nome })
+        .from(leadsTable)
+        .where(
+          and(
+            eq(leadsTable.tenantId, String(tenantId)),
+            inArray(leadsTable.id, filtro.leadIds),
+          ),
+        );
+      res.json({
+        count: selectedLeads.length,
+        filtersApplied: filtro,
+        sample: selectedLeads.slice(0, 10).map((lead) => ({
+          id: lead.id,
+          leadId: lead.id,
+          nome: lead.nome,
+          churnRisk: null,
+          journeyStage: null,
+          nextBestAction: null,
+          dealEtapa: null,
+        })),
+      });
+      return;
+    }
 
     const conditions = buildAudienceConditions(String(tenantId), filtro);
 

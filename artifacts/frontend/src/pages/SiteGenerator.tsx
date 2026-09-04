@@ -25,6 +25,16 @@ type GovernanceSection = { index: number; key: string; title: string; locked: bo
 
 type BriefingSuggestion = { value: string; source: "Perfil" | "Catálogo" | "Mercado" | "IA"; productId?: string };
 type AiBusinessSuggestions = { audiences: Array<{ value: string; reason?: string }>; offers: Array<{ value: string; productId?: string; reason?: string }> };
+type RevenueScoutLpDraft = {
+  campaignId: string;
+  audience?: string;
+  offer?: string;
+  objective?: string;
+  notes?: string;
+  productIds?: string[];
+  headline?: string;
+  subheadline?: string;
+};
 
 function normalizeSuggestion(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(normalizeSuggestion);
@@ -213,6 +223,39 @@ function GeneratorWorkspace() {
   const [market, setMarket] = useState<{ tone?: string; keywords: Keyword[]; competitors: string[] } | null>(null); const [marketBusy, setMarketBusy] = useState(false); const [aiBusiness, setAiBusiness] = useState<AiBusinessSuggestions | null>(null); const [aiBusinessBusy, setAiBusinessBusy] = useState(false); const [bp, setBp] = useState<any>(null); const aiBusinessKey = useRef(""); const aiBusinessFailedUntil = useRef(0);
   const [siteUrl, setSiteUrl] = useState(""); const [remodelLevel, setRemodelLevel] = useState<RemodelLevel>("complete"); const [preserve, setPreserve] = useState("Logo, identidade visual, conteúdos aprovados, URLs importantes e informações comerciais verdadeiras"); const [structure, setStructure] = useState<RemodelStructure | null>(null); const [remodelTone, setRemodelTone] = useState<unknown>(null); const [analyzing, setAnalyzing] = useState(false);
   const init = useRef(false); const defaults = useRef("");
+  const revenueScoutHandoff = useRef<RevenueScoutLpDraft | null>(null);
+  const revenueScoutProductsApplied = useRef(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("from") !== "revenue-scout") return;
+    try {
+      const raw = sessionStorage.getItem("vendorai_lp_revenue_scout_draft_v1");
+      if (!raw) return;
+      const draft = JSON.parse(raw) as RevenueScoutLpDraft;
+      if (!draft.campaignId) return;
+      revenueScoutHandoff.current = draft;
+      setMode("campaign");
+      setChoosing(false);
+      setEditor(false);
+      setAudience(draft.audience ?? "");
+      setOffer(draft.offer ?? "");
+      setNotes([
+        draft.objective ? `Objetivo da campanha: ${draft.objective}` : "",
+        draft.headline ? `Headline sugerida: ${draft.headline}` : "",
+        draft.subheadline ? `Subheadline sugerida: ${draft.subheadline}` : "",
+        draft.notes ?? "",
+        `Campanha de origem: ${draft.campaignId}`,
+      ].filter(Boolean).join("\n"));
+      setObjectiveId("leads");
+      sessionStorage.setItem("vendorai_site_creation_mode", "campaign");
+      sessionStorage.removeItem("vendorai_lp_revenue_scout_draft_v1");
+      toast({ title: "LP preparada pelo Revenue Scout", description: "Público, oferta e objetivo já foram carregados com o contexto deste tenant." });
+    } catch {
+      sessionStorage.removeItem("vendorai_lp_revenue_scout_draft_v1");
+    }
+  }, []);
+
   useEffect(() => {
     if (!tenantId || editor) return;
     let cancelled = false;
@@ -225,8 +268,15 @@ function GeneratorWorkspace() {
     return () => { cancelled = true; };
   }, [tenantId, token, editor]);
   const rawProfile = (bp ?? {}) as any; const profileName = bp?.nomeFantasia ?? bp?.razaoSocial ?? rawProfile.nome ?? tenantOverride?.name ?? ""; const profileSector = bp?.vertical ?? rawProfile.segmento ?? rawProfile.setor ?? tenantOverride?.vertical ?? ""; const profileDesc = rawProfile.descricaoNegocio ?? rawProfile.descricao ?? rawProfile.sobreEmpresa ?? bp?.diferenciais ?? bp?.publicoAlvo ?? ""; const phone = bp?.telefone ?? rawProfile.whatsapp ?? rawProfile.displayPhoneNumber ?? ""; const logo = bp?.logoUrl ?? tenantOverride?.logoUrl ?? ""; const logoForSite = logo ? (logo.startsWith("http://") || logo.startsWith("https://") ? logo : logo.startsWith("/objects/") ? `${window.location.origin}/api/storage${logo}` : logo.startsWith("/") ? `${window.location.origin}${logo}` : logo) : ""; const modeDef = MODES.find((m) => m.id === mode)!; const objective = OBJECTIVES.find((o) => o.id === objectiveId)!;
-  useEffect(() => { if (!bp || init.current) return; init.current = true; setName(profileName); setSector(profileSector); setDesc(profileDesc); setAudience(bp?.publicoAlvo ?? ""); if (bp?.site) setSiteUrl((current) => { if (current.trim()) return current; const raw = String(bp.site).trim(); return raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw; }); }, [bp, profileName, profileSector, profileDesc]);
+  useEffect(() => { if (!bp || init.current) return; init.current = true; setName(profileName); setSector(profileSector); setDesc(profileDesc); setAudience((current) => current.trim() ? current : (bp?.publicoAlvo ?? "")); if (bp?.site) setSiteUrl((current) => { if (current.trim()) return current; const raw = String(bp.site).trim(); return raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw; }); }, [bp, profileName, profileSector, profileDesc]);
   useEffect(() => { if (!tenantId || editor) return; fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: headers(token), cache: "no-store" }).then((r) => r.ok ? r.json() : []).then((rows) => setCatalog(Array.isArray(rows) ? rows.filter((p: CatalogItem) => p.ativo !== false) : [])).catch(() => setCatalog([])); }, [tenantId, token, editor]);
+  useEffect(() => {
+    if (!catalog.length || revenueScoutProductsApplied.current || !revenueScoutHandoff.current) return;
+    const requested = revenueScoutHandoff.current.productIds ?? [];
+    const valid = requested.filter((id) => catalog.some((product) => product.id === id));
+    if (valid.length > 0) setSelected(valid);
+    revenueScoutProductsApplied.current = true;
+  }, [catalog]);
   useEffect(() => { if (!catalog.length) return; const key = `${mode}:${catalog.length}`; if (defaults.current === key) return; defaults.current = key; if (mode === "catalog") { setSelected(catalog.slice(0, 30).map((p) => p.id)); setOffer((v) => v || "Catálogo de produtos e serviços"); } else if (mode === "new-site") setSelected(catalog.slice(0, 6).map((p) => p.id)); else if (mode === "product" || mode === "ecommerce") setSelected([]); }, [catalog, mode]);
   useEffect(() => { setObjectiveId(mode === "ecommerce" ? "sales" : mode === "product" || mode === "catalog" ? "quote" : "leads"); }, [mode]);
   const selectedProducts = useMemo(() => catalog.filter((p) => selected.includes(p.id)), [catalog, selected]);
