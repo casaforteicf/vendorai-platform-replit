@@ -1,2339 +1,1819 @@
-import { Router, type IRouter } from "express";
-import type { Logger } from "pino";
-import { z } from "zod/v4";
-import { and, asc, eq, desc, or, sql, inArray, isNotNull } from "drizzle-orm";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import {
-  db,
-  prospectEnrichmentsTable,
-  prospectApprovalsTable,
-  leadsTable,
-  tenantsTable,
-  notificationsTable,
-  funisTable,
-  dealsTable,
-  activitiesTable,
-  prospectorConfigTable,
-  prospectorQueueTable,
-  sdrVerticalProfilesTable,
-  segmentBenchmarksTable,
-  leadEventsTable,
-  cnaeVerticalMapTable,
-  prospectFeedbackTable,
-  campaignsTable,
-  businessProfilesTable,
-  produtosCatalogoTable,
-  insertProspectFeedbackSchema,
-} from "@workspace/db";
-import { registerLeadFeedback } from "../lib/prospectorMemory.js";
+  useProspectorEnrich,
+  useProspectorSearch,
+  useProspectorGenerateMessage,
+  useProspectorGetConfig,
+  useProspectorUpdateConfig,
+  prospectorExport,
+  type ProspectEnrichment,
+  type ProspectorSearchResult,
+} from "@workspace/api-client-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  callOpenAI as gatewayCallOpenAI,
-  generateEmbedding,
-} from "../lib/ai-gateway.js";
-import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
-import { dispatchAgentBackground } from "../services/agent-dispatch.js";
-import { enrichLead } from "../jobs/leadEnrichment.js";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
-  searchByCnae,
-  getCompanyByCnpj,
-  searchMetaAds,
-  buildLinkedInSearchUrl,
-  normalizeCnpj,
-  normalizeName,
-} from "../services/cnpjService.js";
+  Search,
+  Star,
+  Phone,
+  Globe,
+  MapPin,
+  Sparkles,
+  CheckCircle2,
+  PencilLine,
+  XCircle,
+  ThumbsUp,
+  ThumbsDown,
+  Download,
+  Instagram,
+  MessageCircle,
+  Building2,
+  Target,
+  Gauge,
+  Briefcase,
+  UserPlus,
+  ClipboardCheck,
+  Bot,
+  Save,
+  TrendingUp,
+  Zap,
+  Trash2,
+  PlayCircle,
+  BarChart3,
+  RefreshCw,
+  Settings,
+  Megaphone,
+  CalendarDays,
+  Users,
+  ExternalLink,
+  AlertCircle,
+  FileSearch,
+} from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { ProspectorAprovacoesContent } from "./ProspectorAprovacoes";
 
-// Quantidade de aprovações (approved + edited) para liberar a automação.
-const AUTOMATION_THRESHOLD = 50;
+type ApprovalDecision = "approved" | "approved_edited" | "rejected";
 
-// ── Briefing automático de IA — fire-and-forget após criar deal ───────────────
-async function gerarBriefingDeal(
-  tenantId: string,
-  dealId: string,
-  nome: string,
-  endereco: string | null,
-  telefone: string | null,
-  site: string | null,
-  rating: number | null,
-  reviewCount: number | null,
-  pontosFortes: string[],
-  doresPrincipais: string[],
-  log: Logger,
-): Promise<void> {
-  try {
-    const ai = await gatewayCallOpenAI(
-      tenantId,
-      "intelligence_analysis",
-      [
-        {
-          role: "system",
-          content:
-            "Você é um analista de inteligência comercial da Vendor.ai. Gere um briefing comercial estruturado para orientar o time de vendas.",
-        },
-        {
-          role: "user",
-          content: `Empresa: ${nome}
-Endereço: ${endereco ?? "não disponível"}
-Telefone: ${telefone ?? "não disponível"}
-Site: ${site ?? "não disponível"}
-Avaliação Google: ${rating != null ? `${rating}★ (${reviewCount ?? 0} avaliações)` : "não disponível"}
-Pontos fortes identificados: ${pontosFortes.join(", ") || "nenhum"}
-Possíveis dores: ${doresPrincipais.join(", ") || "nenhum"}
-
-Gere um briefing com exatamente estas seções:
-
-1. PERFIL DO NEGÓCIO (2-3 linhas): O que a empresa faz, porte estimado, posicionamento
-2. PONTOS DE DOR PROVÁVEIS (3 bullets): Principais problemas em vendas, atendimento e gestão
-3. OPORTUNIDADE VENDOR.AI (2-3 linhas): Como a Vendor.ai resolve os problemas identificados
-4. ABORDAGEM RECOMENDADA (1-2 linhas): Tom e ângulo ideal para a primeira abordagem
-5. SCORE DE POTENCIAL: Alta / Média / Baixa — com justificativa em 1 linha
-
-Seja específico para o segmento e localidade. Não seja genérico.`,
-        },
-      ],
-      { maxTokens: 700, log },
-    );
-    await db
-      .update(dealsTable)
-      .set({ aiBriefing: ai.content, aiBriefingGeneratedAt: new Date() })
-      .where(eq(dealsTable.id, dealId));
-  } catch (err) {
-    log.error({ err }, "prospector: gerarBriefingDeal falhou");
-  }
-}
-
-// Formata um vetor JS para o literal aceito pelo pgvector (ex: "[0.1,0.2,...]").
-function toVectorLiteral(embedding: number[]): string {
-  return `[${embedding.join(",")}]`;
-}
-
-const router: IRouter = Router();
-
-// Garante que um leadId opcional pertence ao tenant resolvido (isolamento multi-tenant)
-async function assertLeadInTenant(leadId: string, tenantId: string): Promise<void> {
-  const [lead] = await db
-    .select({ id: leadsTable.id })
-    .from(leadsTable)
-    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
-    .limit(1);
-  if (!lead) {
-    throw Object.assign(new Error("Lead não encontrado para este tenant"), { status: 404 });
-  }
-}
-
-// ── Google Places (New) — Text Search ─────────────────────────────────────────
-type PlacesResult = {
-  nomeEmpresa: string | null;
-  endereco: string | null;
-  rating: number | null;
-  reviewCount: number | null;
-  telefone: string | null;
-  siteOficial: string | null;
-};
-
-type PlacesResultWithId = PlacesResult & { placeId: string };
-
-const PLACES_FIELD_MASK =
-  "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri";
-
-/** Fetches one page of Places results; returns items + nextPageToken */
-async function fetchPlacesPage(
-  query: string,
-  pageToken: string | null,
-  log?: { error: (o: unknown, m?: string) => void },
-): Promise<{ items: PlacesResultWithId[]; nextPageToken: string | null }> {
-  const apiKey = process.env["GOOGLE_PLACES_API_KEY"];
-  if (!apiKey) throw Object.assign(new Error("GOOGLE_PLACES_API_KEY não configurada"), { status: 500 });
-
-  const body: Record<string, unknown> = {
-    textQuery: query,
-    languageCode: "pt-BR",
-    maxResultCount: 20,
-  };
-  if (pageToken) body["pageToken"] = pageToken;
-
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": PLACES_FIELD_MASK,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    log?.error({ status: res.status, text }, "prospector: Google Places page call failed");
-    throw Object.assign(new Error(`Google Places API erro ${res.status}`), { status: 502 });
-  }
-
-  const data = (await res.json()) as {
-    places?: Array<{
-      id?: string;
-      displayName?: { text?: string };
-      formattedAddress?: string;
-      rating?: number;
-      userRatingCount?: number;
-      nationalPhoneNumber?: string;
-      websiteUri?: string;
-    }>;
-    nextPageToken?: string;
-  };
-
-  const items: PlacesResultWithId[] = (data.places ?? [])
-    .filter((p) => !!p.id)
-    .map((p) => ({
-      placeId: p.id!,
-      nomeEmpresa: p.displayName?.text ?? null,
-      endereco: p.formattedAddress ?? null,
-      rating: typeof p.rating === "number" ? p.rating : null,
-      reviewCount: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
-      telefone: p.nationalPhoneNumber ?? null,
-      siteOficial: p.websiteUri ?? null,
-    }));
-
-  return { items, nextPageToken: data.nextPageToken ?? null };
-}
-
-/**
- * Paginates through ALL Google Places results for a given query (max 60 — 3 pages of 20).
- * Used by the automatic cron job that populates prospector_queue.
- */
-export async function searchAllPlaces(
-  query: string,
-  log?: { error: (o: unknown, m?: string) => void },
-): Promise<PlacesResultWithId[]> {
-  const all: PlacesResultWithId[] = [];
-  let pageToken: string | null = null;
-  let pages = 0;
-  const MAX_PAGES = 3; // Google Places (New) returns max 60 results total
-
-  do {
-    const { items, nextPageToken } = await fetchPlacesPage(query, pageToken, log);
-    all.push(...items);
-    pageToken = nextPageToken;
-    pages++;
-    // Brief pause between pages to avoid rate-limit
-    if (pageToken && pages < MAX_PAGES) await new Promise((r) => setTimeout(r, 300));
-  } while (pageToken && pages < MAX_PAGES);
-
-  return all;
-}
-
-async function searchPlace(
-  query: string,
-  log?: { error: (o: unknown, m?: string) => void },
-): Promise<PlacesResult | null> {
-  const apiKey = process.env["GOOGLE_PLACES_API_KEY"];
-  if (!apiKey) {
-    throw Object.assign(new Error("GOOGLE_PLACES_API_KEY não configurada"), { status: 500 });
-  }
-
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask":
-        "places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri",
-    },
-    body: JSON.stringify({ textQuery: query, languageCode: "pt-BR", maxResultCount: 1 }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    log?.error({ status: res.status, text }, "prospector: Google Places call failed");
-    throw Object.assign(new Error(`Google Places API erro ${res.status}`), { status: 502 });
-  }
-
-  const data = (await res.json()) as {
-    places?: Array<{
-      displayName?: { text?: string };
-      formattedAddress?: string;
-      rating?: number;
-      userRatingCount?: number;
-      nationalPhoneNumber?: string;
-      websiteUri?: string;
-    }>;
-  };
-
-  const place = data.places?.[0];
-  if (!place) return null;
-
-  return {
-    nomeEmpresa: place.displayName?.text ?? null,
-    endereco: place.formattedAddress ?? null,
-    rating: typeof place.rating === "number" ? place.rating : null,
-    reviewCount: typeof place.userRatingCount === "number" ? place.userRatingCount : null,
-    telefone: place.nationalPhoneNumber ?? null,
-    siteOficial: place.websiteUri ?? null,
-  };
-}
-
-// Busca múltiplos estabelecimentos por atividade comercial + localidade.
-async function searchPlaces(
-  query: string,
-  maxResults: number,
-  log?: { error: (o: unknown, m?: string) => void },
-): Promise<PlacesResult[]> {
-  const apiKey = process.env["GOOGLE_PLACES_API_KEY"];
-  if (!apiKey) {
-    throw Object.assign(new Error("GOOGLE_PLACES_API_KEY não configurada"), { status: 500 });
-  }
-
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask":
-        "places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri",
-    },
-    body: JSON.stringify({
-      textQuery: query,
-      languageCode: "pt-BR",
-      maxResultCount: Math.min(Math.max(maxResults, 1), 20),
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    log?.error({ status: res.status, text }, "prospector: Google Places list call failed");
-    throw Object.assign(new Error(`Google Places API erro ${res.status}`), { status: 502 });
-  }
-
-  const data = (await res.json()) as {
-    places?: Array<{
-      displayName?: { text?: string };
-      formattedAddress?: string;
-      rating?: number;
-      userRatingCount?: number;
-      nationalPhoneNumber?: string;
-      websiteUri?: string;
-    }>;
-  };
-
-  return (data.places ?? []).map((place) => ({
-    nomeEmpresa: place.displayName?.text ?? null,
-    endereco: place.formattedAddress ?? null,
-    rating: typeof place.rating === "number" ? place.rating : null,
-    reviewCount: typeof place.userRatingCount === "number" ? place.userRatingCount : null,
-    telefone: place.nationalPhoneNumber ?? null,
-    siteOficial: place.websiteUri ?? null,
-  }));
-}
-
-// ── ReceitaWS — consulta pública de CNPJ ──────────────────────────────────────
-type ReceitaResult = {
+interface CnpjEmpresa {
   cnpj: string;
-  razaoSocial: string | null;
+  razaoSocial: string;
   nomeFantasia: string | null;
-  situacaoCadastral: string | null;
-  atividadePrincipal: string | null;
+  cnaeCode: string;
+  cnaeDescricao: string;
+  enderecoCompleto: string;
+  municipio: string;
+  uf: string;
   telefone: string | null;
-};
-
-async function fetchReceita(
-  rawCnpj: string,
-  log?: { error: (o: unknown, m?: string) => void },
-): Promise<ReceitaResult | null> {
-  const cnpj = rawCnpj.replace(/\D/g, "");
-  if (cnpj.length !== 14) return null;
-
-  try {
-    const res = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpj}`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) {
-      log?.error({ status: res.status }, "prospector: ReceitaWS call failed");
-      return null;
-    }
-    const data = (await res.json()) as {
-      status?: string;
-      nome?: string;
-      fantasia?: string;
-      situacao?: string;
-      telefone?: string;
-      atividade_principal?: Array<{ text?: string }>;
-    };
-    if (data.status === "ERROR") return null;
-    return {
-      cnpj,
-      razaoSocial: data.nome ?? null,
-      nomeFantasia: data.fantasia ?? null,
-      situacaoCadastral: data.situacao ?? null,
-      atividadePrincipal: data.atividade_principal?.[0]?.text ?? null,
-      telefone: data.telefone ? data.telefone.split("/")[0]?.trim() ?? null : null,
-    };
-  } catch (err) {
-    log?.error({ err }, "prospector: ReceitaWS request error");
-    return null;
-  }
+  email: string | null;
+  dataAbertura: string;
+  porte: string | null;
+  capitalSocial: number | null;
+  socios: Array<{ nome: string; qualificacao: string }>;
 }
 
-// ── WhatsApp heurístico ───────────────────────────────────────────────────────
-// Telefone celular brasileiro (9 dígitos, iniciando por 9 após o DDD) tem WhatsApp.
-function deriveWhatsapp(telefone: string | null): string | null {
-  if (!telefone) return null;
-  const digits = telefone.replace(/\D/g, "");
-  const local = digits.length > 11 ? digits.slice(-11) : digits; // remove DDI se houver
-  if (local.length === 11 && local[2] === "9") return telefone;
-  return null;
+interface AdResult {
+  pageId: string;
+  pageName: string;
+  snapshotUrl: string | null;
+  startDate: string | null;
 }
 
-// ── Lead Scoring ──────────────────────────────────────────────────────────────
-// ATENÇÃO: esquema PROVISÓRIO. Substituir pelos pesos exatos dos "critérios do
-// Módulo 3" quando fornecidos. Função isolada de propósito para facilitar a troca.
-type ScoreInput = {
-  temContato: boolean;
-  rating: number | null;
-  reviewCount: number | null;
-  siteOficial: string | null;
-  instagram: string | null;
-  situacaoCadastral: string | null;
-  nivelPresencaDigital: string | null;
-};
+function EnrichmentResult({ data }: { data: ProspectEnrichment }) {
+  return (
+    <Card className="border-primary/30">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg">{data.nomeEmpresa ?? "Empresa"}</CardTitle>
+            {data.endereco && (
+              <CardDescription className="flex items-center gap-1.5 mt-1">
+                <MapPin className="h-3.5 w-3.5" /> {data.endereco}
+              </CardDescription>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1.5">
+            {data.scoreProspector != null && (
+              <Badge variant="default" className="text-sm">
+                <Gauge className="h-3.5 w-3.5 mr-1" /> Score {data.scoreProspector}
+              </Badge>
+            )}
+            {data.temContato ? (
+              <Badge variant="secondary">Com contato</Badge>
+            ) : (
+              <Badge variant="outline">Sem contato</Badge>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-4 text-sm">
+          {data.rating != null && (
+            <span className="flex items-center gap-1.5">
+              <Star className="h-4 w-4 text-amber-500" />
+              {data.rating}
+              {data.reviewCount != null && (
+                <span className="text-muted-foreground">({data.reviewCount} avaliações)</span>
+              )}
+            </span>
+          )}
+          {data.telefone && (
+            <span className="flex items-center gap-1.5">
+              <Phone className="h-4 w-4 text-muted-foreground" /> {data.telefone}
+            </span>
+          )}
+          {data.whatsapp && (
+            <span className="flex items-center gap-1.5 text-green-600">
+              <MessageCircle className="h-4 w-4" /> WhatsApp
+            </span>
+          )}
+          {data.instagram && (
+            <span className="flex items-center gap-1.5 text-pink-600">
+              <Instagram className="h-4 w-4" /> {data.instagram}
+            </span>
+          )}
+          {data.siteOficial && (
+            <a
+              href={data.siteOficial}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 text-primary hover:underline"
+            >
+              <Globe className="h-4 w-4" /> Site oficial
+            </a>
+          )}
+        </div>
 
-function computeScore(i: ScoreInput): number {
-  let score = 0;
-  if (i.temContato) score += 25;
+        {(data.cnpj || data.razaoSocial || data.situacaoCadastral || data.atividadePrincipal) && (
+          <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1">
+            <p className="font-medium flex items-center gap-1.5">
+              <Building2 className="h-4 w-4 text-muted-foreground" /> Dados cadastrais (ReceitaWS)
+            </p>
+            {data.razaoSocial && <p>Razão social: {data.razaoSocial}</p>}
+            {data.cnpj && <p>CNPJ: {data.cnpj}</p>}
+            {data.situacaoCadastral && <p>Situação: {data.situacaoCadastral}</p>}
+            {data.atividadePrincipal && <p>Atividade: {data.atividadePrincipal}</p>}
+          </div>
+        )}
 
-  if (i.rating != null) {
-    if (i.rating >= 4.5) score += 20;
-    else if (i.rating >= 4.0) score += 15;
-    else if (i.rating >= 3.0) score += 5;
-  }
+        {data.resumoNegocio && (
+          <p className="text-sm text-muted-foreground italic">{data.resumoNegocio}</p>
+        )}
 
-  if (i.reviewCount != null) {
-    if (i.reviewCount >= 100) score += 15;
-    else if (i.reviewCount >= 30) score += 10;
-    else if (i.reviewCount >= 5) score += 5;
-  }
+        <div className="flex flex-wrap gap-2 text-sm">
+          {data.tipoNegocio && (
+            <Badge variant="outline" className="font-normal">
+              <Building2 className="h-3.5 w-3.5 mr-1" /> {data.tipoNegocio}
+            </Badge>
+          )}
+          {data.publicoAlvo && (
+            <Badge variant="outline" className="font-normal">
+              <Target className="h-3.5 w-3.5 mr-1" /> {data.publicoAlvo}
+            </Badge>
+          )}
+          {data.nivelPresencaDigital && (
+            <Badge variant="outline" className="font-normal">
+              <Gauge className="h-3.5 w-3.5 mr-1" /> Presença digital: {data.nivelPresencaDigital}
+            </Badge>
+          )}
+        </div>
 
-  if (i.siteOficial) score += 10;
-  if (i.instagram) score += 10;
-  if (i.situacaoCadastral && /ativa/i.test(i.situacaoCadastral)) score += 10;
+        {data.pontosFortes && data.pontosFortes.length > 0 && (
+          <div>
+            <p className="text-sm font-medium mb-1.5">Pontos fortes</p>
+            <ul className="flex flex-wrap gap-2">
+              {data.pontosFortes.map((p, i) => (
+                <li key={i}>
+                  <Badge variant="outline" className="font-normal">
+                    {p}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-  const nivel = (i.nivelPresencaDigital ?? "").toLowerCase();
-  if (nivel.includes("alto")) score += 10;
-  else if (nivel.includes("médio") || nivel.includes("medio")) score += 5;
-
-  return Math.min(100, score);
-}
-
-function resolveTenantId(req: Express.Request, bodyTenantId?: string): string {
-  const user = req.user;
-  if (!user) throw Object.assign(new Error("Não autenticado"), { status: 401 });
-  if (user.platformRole === "super_admin") {
-    const tid = bodyTenantId ?? user.tenantId ?? undefined;
-    if (!tid) throw Object.assign(new Error("tenantId é obrigatório para super_admin"), { status: 400 });
-    return tid;
-  }
-  const tid = user.tenantId;
-  if (!tid) throw Object.assign(new Error("Usuário sem tenant associado"), { status: 403 });
-  return tid;
-}
-
-// ── POST /prospector/enrich ───────────────────────────────────────────────────
-const enrichBodySchema = z.object({
-  nomeEmpresa: z.string().min(2, "Informe o nome da empresa"),
-  endereco: z.string().optional(),
-  cnpj: z.string().optional(),
-  instagram: z.string().optional(),
-  leadId: z.string().optional(),
-  tenantId: z.string().optional(),
-});
-
-router.post("/prospector/enrich", async (req, res) => {
-  const parsed = enrichBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
-  }
-  const { nomeEmpresa, endereco, cnpj, instagram, leadId, tenantId: bodyTenantId } = parsed.data;
-  const tenantId = resolveTenantId(req, bodyTenantId);
-  if (leadId) await assertLeadInTenant(leadId, tenantId);
-
-  // 1. Google Places lookup (cota por tenant)
-  await checkApiQuota(tenantId, "google_places", req.log);
-  const query = endereco ? `${nomeEmpresa} ${endereco}` : nomeEmpresa;
-  const place = await searchPlace(query, req.log);
-
-  // 2. ReceitaWS (apenas quando um CNPJ é informado)
-  const receita = cnpj ? await fetchReceita(cnpj, req.log) : null;
-
-  const nome = receita?.nomeFantasia ?? place?.nomeEmpresa ?? nomeEmpresa;
-  const ender = place?.endereco ?? endereco ?? null;
-  const telefone = place?.telefone ?? receita?.telefone ?? null;
-  const whatsapp = deriveWhatsapp(telefone);
-  const igHandle = instagram ?? null;
-  const site = place?.siteOficial ?? null;
-
-  // 3. AI Gateway — análise de negócio (NÃO chama OpenAI diretamente)
-  let pontosFortes: string[] = [];
-  let doresPrincipais: string[] = [];
-  let publicoAlvo: string | null = null;
-  let tipoNegocio: string | null = null;
-  let nivelPresencaDigital: string | null = null;
-  let resumoNegocio: string | null = null;
-  try {
-    const ai = await gatewayCallOpenAI(
-      tenantId,
-      "intelligence_analysis",
-      [
-        {
-          role: "system",
-          content:
-            "Você é um analista de prospecção B2B. Dado os dados públicos de uma empresa, responda APENAS " +
-            "um JSON no formato " +
-            '{"pontos_fortes": string[], "dores_principais": string[], "publico_alvo": string, ' +
-            '"tipo_negocio": string, "nivel_presenca_digital": "alto"|"médio"|"baixo", "resumo_negocio": string}. ' +
-            "Listas com no máximo 4 itens. Tudo em português do Brasil.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            nome,
-            endereco: ender,
-            rating: place?.rating ?? null,
-            reviewCount: place?.reviewCount ?? null,
-            telefone,
-            instagram: igHandle,
-            site,
-            atividadePrincipal: receita?.atividadePrincipal ?? null,
-            situacaoCadastral: receita?.situacaoCadastral ?? null,
-          }),
-        },
-      ],
-      { responseFormat: { type: "json_object" }, maxTokens: 700, log: req.log },
-    );
-    const json = JSON.parse(ai.content) as {
-      pontos_fortes?: string[];
-      dores_principais?: string[];
-      publico_alvo?: string;
-      tipo_negocio?: string;
-      nivel_presenca_digital?: string;
-      resumo_negocio?: string;
-    };
-    pontosFortes = Array.isArray(json.pontos_fortes) ? json.pontos_fortes : [];
-    doresPrincipais = Array.isArray(json.dores_principais) ? json.dores_principais : [];
-    publicoAlvo = typeof json.publico_alvo === "string" ? json.publico_alvo : null;
-    tipoNegocio = typeof json.tipo_negocio === "string" ? json.tipo_negocio : null;
-    nivelPresencaDigital =
-      typeof json.nivel_presenca_digital === "string" ? json.nivel_presenca_digital : null;
-    resumoNegocio = typeof json.resumo_negocio === "string" ? json.resumo_negocio : null;
-  } catch (err) {
-    req.log.error({ err }, "prospector: AI enrichment failed");
-  }
-
-  // 4. Regra de filtragem — sem nenhum canal de contato, não salva.
-  const temContato = Boolean(telefone || whatsapp || igHandle);
-  const collected = {
-    nomeEmpresa: nome,
-    endereco: ender,
-    rating: place?.rating ?? null,
-    reviewCount: place?.reviewCount ?? null,
-    telefone,
-    whatsapp,
-    instagram: igHandle,
-    siteOficial: site,
-    cnpj: receita?.cnpj ?? (cnpj ? cnpj.replace(/\D/g, "") : null),
-    razaoSocial: receita?.razaoSocial ?? null,
-    nomeFantasia: receita?.nomeFantasia ?? null,
-    situacaoCadastral: receita?.situacaoCadastral ?? null,
-    atividadePrincipal: receita?.atividadePrincipal ?? null,
-    pontosFortes,
-    doresPrincipais,
-    publicoAlvo,
-    tipoNegocio,
-    nivelPresencaDigital,
-    resumoNegocio,
-  };
-
-  if (!temContato) {
-    return res.status(200).json({
-      saved: false,
-      reason: "Sem telefone, WhatsApp ou Instagram (tem_contato = false)",
-      enrichment: { ...collected, temContato: false, scoreProspector: computeScore({ ...collected, temContato: false }) },
-    });
-  }
-
-  // 5. Lead Scoring (esquema provisório — ver computeScore)
-  const scoreProspector = computeScore({ ...collected, temContato });
-
-  // 6. Deduplicação de leads — telefone ou CNPJ antes de criar novo registro.
-  let resolvedLeadId = leadId ?? null;
-  let isDuplicate = false;
-  if (!resolvedLeadId) {
-    const cnpjDigits = collected.cnpj;
-    const telDigits = telefone ? telefone.replace(/\D/g, "") : null;
-    const conds = [eq(leadsTable.tenantId, tenantId)];
-    const matchers = [] as ReturnType<typeof eq>[];
-    if (telDigits) {
-      // Compara apenas dígitos para evitar duplicatas por formatação distinta.
-      matchers.push(
-        sql`regexp_replace(${leadsTable.telefone}, '[^0-9]', '', 'g') = ${telDigits}` as ReturnType<
-          typeof eq
-        >,
-      );
-    }
-    if (cnpjDigits) matchers.push(eq(leadsTable.documento, cnpjDigits));
-    if (matchers.length > 0) {
-      const [existing] = await db
-        .select({ id: leadsTable.id })
-        .from(leadsTable)
-        .where(and(conds[0]!, matchers.length === 1 ? matchers[0]! : or(...matchers)!))
-        .limit(1);
-      if (existing) {
-        resolvedLeadId = existing.id;
-        isDuplicate = true;
-      }
-    }
-    if (!resolvedLeadId) {
-      const [created] = await db
-        .insert(leadsTable)
-        .values({
-          tenantId,
-          nome,
-          telefone,
-          documento: cnpjDigits ?? null,
-          empresa: collected.razaoSocial ?? nome,
-          endereco: ender,
-          instagramHandle: igHandle,
-          websiteUrl: site,
-          source: "prospector",
-          tipoPessoa: "juridica",
-          dadosPj: {
-            cnpj: collected.cnpj ?? null,
-            razaoSocial: collected.razaoSocial ?? null,
-            segmento: collected.atividadePrincipal ?? null,
-          },
-          metadata: {
-            rating: place?.rating ?? null,
-            total_ratings: place?.reviewCount ?? null,
-            prospectado_em: new Date().toISOString(),
-          },
-        })
-        .returning({ id: leadsTable.id });
-      resolvedLeadId = created?.id ?? null;
-    }
-  }
-
-  // 6b. Criar deal no primeiro funil do tenant (apenas para leads novos)
-  let dealId: string | null = null;
-  if (resolvedLeadId && !isDuplicate) {
-    try {
-      const [funil] = await db
-        .select({ id: funisTable.id })
-        .from(funisTable)
-        .where(eq(funisTable.tenantId, tenantId))
-        .orderBy(asc(funisTable.createdAt))
-        .limit(1);
-
-      const [newDeal] = await db
-        .insert(dealsTable)
-        .values({
-          tenantId,
-          leadId: resolvedLeadId,
-          titulo: `${nome} — Prospectado`,
-          funilId: funil?.id ?? null,
-          etapa: "novo",
-        })
-        .returning({ id: dealsTable.id });
-      dealId = newDeal?.id ?? null;
-
-      if (dealId) {
-        await db.insert(activitiesTable).values({
-          tenantId,
-          leadId: resolvedLeadId,
-          dealId,
-          tipo: "tarefa",
-          titulo: "Lead importado via Prospector",
-          descricao: `Lead importado via Prospector (Google Places).${place?.rating != null ? ` Avaliação: ${place.rating}★${place?.reviewCount != null ? ` (${place.reviewCount})` : ""}.` : ""}`,
-          status: "concluida",
-        });
-
-        // Briefing de IA — fire-and-forget para não bloquear a resposta
-        gerarBriefingDeal(
-          tenantId,
-          dealId,
-          nome,
-          ender,
-          telefone,
-          site,
-          place?.rating ?? null,
-          place?.reviewCount ?? null,
-          pontosFortes,
-          doresPrincipais,
-          req.log,
-        ).catch(() => undefined);
-      }
-    } catch (err) {
-      req.log.error({ err }, "prospector: criação de deal falhou (não-fatal)");
-    }
-  }
-
-  // Todo lead novo de Google Places entra no mesmo motor preditivo/fila do Prospector.
-  if (resolvedLeadId && !isDuplicate) {
-    enrichLead({ leadId: resolvedLeadId, tenantId, log: req.log }).catch(() => undefined);
-  }
-
-  // 7. Persiste o enriquecimento
-  const [record] = await db
-    .insert(prospectEnrichmentsTable)
-    .values({
-      tenantId,
-      leadId: resolvedLeadId,
-      nomeEmpresa: nome,
-      endereco: ender,
-      rating: place?.rating != null ? String(place.rating) : null,
-      reviewCount: place?.reviewCount ?? null,
-      telefone,
-      whatsapp,
-      instagram: igHandle,
-      siteOficial: site,
-      cnpj: collected.cnpj,
-      razaoSocial: collected.razaoSocial,
-      nomeFantasia: collected.nomeFantasia,
-      situacaoCadastral: collected.situacaoCadastral,
-      atividadePrincipal: collected.atividadePrincipal,
-      pontosFortes,
-      doresPrincipais,
-      publicoAlvo,
-      tipoNegocio,
-      nivelPresencaDigital,
-      resumoNegocio,
-      scoreProspector,
-      temContato,
-    })
-    .returning();
-
-  return res.status(201).json({ saved: true, isDuplicate, leadId: resolvedLeadId, dealId, enrichment: record });
-});
-
-// ── POST /prospector/search — busca empresas por atividade + localidade ───────
-const searchBodySchema = z.object({
-  atividade: z.string().min(2, "Informe a atividade comercial"),
-  localidade: z.string().min(2, "Informe a localidade"),
-  maxResults: z.number().int().min(1).max(20).optional().default(10),
-  tenantId: z.string().optional(),
-});
-
-router.post("/prospector/search", async (req, res) => {
-  const parsed = searchBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
-  }
-  const { atividade, localidade, maxResults, tenantId: bodyTenantId } = parsed.data;
-
-  let tenantIdSearch: string;
-  try {
-    tenantIdSearch = resolveTenantId(req, bodyTenantId);
-  } catch (err: unknown) {
-    const status = (err as { status?: number }).status ?? 401;
-    const message = err instanceof Error ? err.message : "Não autenticado";
-    return res.status(status).json({ error: message });
-  }
-
-  try {
-    await checkApiQuota(tenantIdSearch, "google_places", req.log);
-  } catch (err: unknown) {
-    const status = (err as { status?: number }).status ?? 500;
-    const message = err instanceof Error ? err.message : "Erro ao verificar cota";
-    return res.status(status).json({ error: message });
-  }
-
-  const query = `${atividade.trim()} em ${localidade.trim()}`;
-
-  let places: Awaited<ReturnType<typeof searchPlaces>>;
-  try {
-    places = await searchPlaces(query, maxResults, req.log);
-  } catch (err: unknown) {
-    const status = (err as { status?: number }).status ?? 502;
-    const message = err instanceof Error ? err.message : "Erro ao buscar no Google Places";
-    req.log.error({ err }, "prospector/search: searchPlaces failed");
-    return res.status(status).json({ error: message });
-  }
-
-  const results = places
-    .filter((p) => p.nomeEmpresa)
-    .map((p) => ({
-      nomeEmpresa: p.nomeEmpresa,
-      endereco: p.endereco,
-      telefone: p.telefone,
-      whatsapp: deriveWhatsapp(p.telefone),
-      rating: p.rating,
-      reviewCount: p.reviewCount,
-      siteOficial: p.siteOficial,
-    }));
-
-  return res.status(200).json({ query, total: results.length, results });
-});
-
-// ── GET /prospector/export — exporta enriquecimentos do tenant em CSV ─────────
-router.get("/prospector/export", async (req, res) => {
-  const bodyTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
-  const tenantId = resolveTenantId(req, bodyTenantId);
-
-  const rows = await db
-    .select()
-    .from(prospectEnrichmentsTable)
-    .where(eq(prospectEnrichmentsTable.tenantId, tenantId))
-    .orderBy(desc(prospectEnrichmentsTable.scoreProspector));
-
-  const headers = [
-    "nome_empresa", "razao_social", "endereco", "telefone", "whatsapp", "instagram",
-    "site_oficial", "cnpj", "situacao_cadastral", "atividade_principal", "rating",
-    "review_count", "score_prospector", "tem_contato", "publico_alvo", "tipo_negocio",
-    "nivel_presenca_digital", "resumo_negocio", "created_at",
-  ];
-
-  const escape = (v: unknown): string => {
-    if (v == null) return "";
-    let s = Array.isArray(v) ? v.join("; ") : String(v);
-    // Neutraliza CSV injection (fórmulas em Excel/Sheets) prefixando aspa simples.
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-
-  const lines = [headers.join(",")];
-  for (const r of rows) {
-    lines.push(
-      [
-        r.nomeEmpresa, r.razaoSocial, r.endereco, r.telefone, r.whatsapp, r.instagram,
-        r.siteOficial, r.cnpj, r.situacaoCadastral, r.atividadePrincipal, r.rating,
-        r.reviewCount, r.scoreProspector, r.temContato, r.publicoAlvo, r.tipoNegocio,
-        r.nivelPresencaDigital, r.resumoNegocio, r.createdAt?.toISOString(),
-      ]
-        .map(escape)
-        .join(","),
-    );
-  }
-
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", 'attachment; filename="prospector_leads.csv"');
-  return res.status(200).send("\uFEFF" + lines.join("\n"));
-});
-
-// ── POST /prospector/generate-message ─────────────────────────────────────────
-const generateMessageBodySchema = z.object({
-  messageType: z.string().min(1).default("whatsapp"),
-  nomeEmpresa: z.string().optional(),
-  contexto: z.string().optional(),
-  leadId: z.string().optional(),
-  tenantId: z.string().optional(),
-});
-
-// Busca os N exemplos de aprovações anteriores (approved/edited) mais similares
-// ao contexto do lead via pgvector (cosine distance: operador `<=>`).
-async function findSimilarApprovals(
-  tenantId: string,
-  queryEmbedding: number[],
-  limit: number,
-): Promise<{ messageType: string | null; text: string }[]> {
-  const vec = toVectorLiteral(queryEmbedding);
-  const rows = await db
-    .select({
-      messageType: prospectApprovalsTable.messageType,
-      approvedText: prospectApprovalsTable.approvedText,
-      generatedText: prospectApprovalsTable.generatedText,
-    })
-    .from(prospectApprovalsTable)
-    .where(
-      and(
-        eq(prospectApprovalsTable.tenantId, tenantId),
-        inArray(prospectApprovalsTable.action, ["approved", "edited"]),
-        sql`${prospectApprovalsTable.embedding} IS NOT NULL`,
-      ),
-    )
-    .orderBy(sql`${prospectApprovalsTable.embedding} <=> ${vec}::vector`)
-    .limit(limit);
-
-  return rows.map((r) => ({
-    messageType: r.messageType,
-    text: (r.approvedText ?? r.generatedText ?? "").trim(),
-  }));
-}
-
-router.post("/prospector/generate-message", async (req, res) => {
-  const parsed = generateMessageBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
-  }
-  const { messageType, nomeEmpresa, contexto, leadId, tenantId: bodyTenantId } = parsed.data;
-  const tenantId = resolveTenantId(req, bodyTenantId);
-  if (leadId) await assertLeadInTenant(leadId, tenantId);
-
-  // 1. Reúne o contexto do lead (do enrichment quando houver leadId).
-  let dorPrincipal: string | null = null;
-  let resumoNegocio: string | null = null;
-  if (leadId) {
-    const [enr] = await db
-      .select({
-        doresPrincipais: prospectEnrichmentsTable.doresPrincipais,
-        resumoNegocio: prospectEnrichmentsTable.resumoNegocio,
-      })
-      .from(prospectEnrichmentsTable)
-      .where(
-        and(
-          eq(prospectEnrichmentsTable.tenantId, tenantId),
-          eq(prospectEnrichmentsTable.leadId, leadId),
-        ),
-      )
-      .orderBy(desc(prospectEnrichmentsTable.createdAt))
-      .limit(1);
-    dorPrincipal = enr?.doresPrincipais?.[0] ?? null;
-    resumoNegocio = enr?.resumoNegocio ?? null;
-  }
-
-  const queryText = [nomeEmpresa, resumoNegocio, dorPrincipal, contexto]
-    .filter(Boolean)
-    .join(" — ");
-
-  // 2. Busca semântica dos 3 melhores exemplos aprovados (few-shot).
-  let fewShot: { messageType: string | null; text: string }[] = [];
-  try {
-    if (queryText.trim().length > 0) {
-      const { embedding } = await generateEmbedding(tenantId, queryText, { log: req.log });
-      fewShot = await findSimilarApprovals(tenantId, embedding, 3);
-    }
-  } catch (err) {
-    req.log.error({ err }, "prospector: few-shot retrieval failed (non-fatal)");
-  }
-
-  const fewShotBlock =
-    fewShot.length > 0
-      ? "Exemplos de mensagens aprovadas anteriormente por este time (imite o tom, NÃO copie):\n" +
-        fewShot.map((f, i) => `Exemplo ${i + 1} (${f.messageType ?? "geral"}):\n${f.text}`).join("\n\n")
-      : "Ainda não há exemplos aprovados; use as melhores práticas de prospecção B2B.";
-
-  // 3. Geração via aiGateway — rascunhos de e-mail (<=150 palavras) e WhatsApp (<=60 palavras).
-  const ai = await gatewayCallOpenAI(
-    tenantId,
-    "content_generator",
-    [
-      {
-        role: "system",
-        content:
-          "Você é um SDR especialista em prospecção B2B no Brasil. Gere rascunhos de primeiro contato " +
-          "personalizados e cordiais, em português do Brasil. Responda APENAS um JSON no formato " +
-          '{"email": string, "whatsapp": string}. ' +
-          "O e-mail deve ter NO MÁXIMO 150 palavras; o WhatsApp NO MÁXIMO 60 palavras. " +
-          "Sem aspas extras nem comentários fora do JSON.\n\n" +
-          fewShotBlock,
-      },
-      {
-        role: "user",
-        content: JSON.stringify({
-          nomeEmpresa: nomeEmpresa ?? null,
-          dorPrincipal,
-          resumoNegocio,
-          contexto: contexto ?? null,
-        }),
-      },
-    ],
-    { maxTokens: 700, temperature: 0.8, responseFormat: { type: "json_object" }, log: req.log },
+        {data.doresPrincipais && data.doresPrincipais.length > 0 && (
+          <div>
+            <p className="text-sm font-medium mb-1.5">Dores principais</p>
+            <ul className="flex flex-wrap gap-2">
+              {data.doresPrincipais.map((d, i) => (
+                <li key={i}>
+                  <Badge variant="outline" className="font-normal text-destructive border-destructive/40">
+                    {d}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
+}
 
-  let email = "";
-  let whatsapp = "";
-  try {
-    const json = JSON.parse(ai.content) as { email?: string; whatsapp?: string };
-    email = typeof json.email === "string" ? json.email.trim() : "";
-    whatsapp = typeof json.whatsapp === "string" ? json.whatsapp.trim() : "";
-  } catch (err) {
-    req.log.error({ err }, "prospector: generate-message JSON parse failed");
+function MessageApproval({ generatedText }: { generatedText: string }) {
+  const { toast } = useToast();
+  const [edited, setEdited] = useState(generatedText);
+  const [decision, setDecision] = useState<ApprovalDecision | null>(null);
+
+  function decide(d: ApprovalDecision) {
+    setDecision(d);
+    const labels: Record<ApprovalDecision, string> = {
+      approved: "Mensagem aprovada",
+      approved_edited: "Mensagem aprovada com edição",
+      rejected: "Mensagem rejeitada",
+    };
+    toast({ title: labels[d] });
   }
 
-  // 4. Persiste o rascunho (action='generated') com embedding para futuras buscas.
-  const draftText = messageType === "email" ? email : whatsapp;
-  let embedding: number[] | null = null;
-  try {
-    if (draftText) {
-      const r = await generateEmbedding(tenantId, draftText, { log: req.log });
-      embedding = r.embedding;
-    }
-  } catch (err) {
-    req.log.error({ err }, "prospector: draft embedding failed (non-fatal)");
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" /> Mensagem gerada
+        </CardTitle>
+        <CardDescription>Revise, edite se quiser e decida a aprovação.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Textarea
+          value={edited}
+          onChange={(e) => setEdited(e.target.value)}
+          rows={6}
+          className="resize-none"
+        />
+
+        {decision && (
+          <div className="flex items-center gap-2 text-sm">
+            {decision === "rejected" ? (
+              <Badge variant="destructive">Rejeitada</Badge>
+            ) : (
+              <Badge variant="default">
+                {decision === "approved_edited" ? "Aprovada com edição" : "Aprovada"}
+              </Badge>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => decide("approved")} variant="default">
+            <ThumbsUp className="h-4 w-4 mr-2" /> Aprovar
+          </Button>
+          <Button onClick={() => decide("approved_edited")} variant="secondary">
+            <PencilLine className="h-4 w-4 mr-2" /> Aprovar com Edição
+          </Button>
+          <Button onClick={() => decide("rejected")} variant="outline">
+            <ThumbsDown className="h-4 w-4 mr-2" /> Rejeitar
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Seção de Configuração de Busca Automática ─────────────────────────────────
+function ProspectorAutoConfig() {
+  const { toast } = useToast();
+  const { data, isLoading } = useProspectorGetConfig();
+  const update = useProspectorUpdateConfig();
+
+  const cfg = data?.config;
+
+  const [setor, setSetor] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [ritmoDiario, setRitmoDiario] = useState(10);
+  const [ativo, setAtivo] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  // Populate form once config is loaded
+  if (!isLoading && !initialized && data !== undefined) {
+    setSetor(cfg?.setor ?? "");
+    setCidade(cfg?.cidade ?? "");
+    setRitmoDiario(cfg?.ritmoDiario ?? 10);
+    setAtivo(cfg?.ativo ?? false);
+    setInitialized(true);
   }
 
-  const [approval] = await db
-    .insert(prospectApprovalsTable)
-    .values({
-      tenantId,
-      leadId: leadId ?? null,
-      messageType,
-      generatedText: JSON.stringify({ email, whatsapp }),
-      action: "generated",
-      ...(embedding ? { embedding } : {}),
-    })
-    .returning();
+  function onSave() {
+    update.mutate(
+      { data: { setor: setor || null, cidade: cidade || null, ritmoDiario, ativo } },
+      {
+        onSuccess: () => toast({ title: "Configuração salva" }),
+        onError: () => toast({ title: "Falha ao salvar", variant: "destructive" }),
+      },
+    );
+  }
 
-  return res.status(201).json({ email, whatsapp, approval });
-});
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Bot className="h-4 w-4 text-primary" /> Configuração de Busca Automática
+        </CardTitle>
+        <CardDescription>
+          O agente Prospector buscará novas empresas no Google Places diariamente às 09:00 (BRT) e
+          preencherá a fila automática com os resultados.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner className="h-4 w-4" /> Carregando configuração...
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="cfg-setor">Setor comercial</Label>
+                <Input
+                  id="cfg-setor"
+                  placeholder="Ex: materiais de construção"
+                  value={setor}
+                  onChange={(e) => setSetor(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cfg-cidade">Cidade</Label>
+                <Input
+                  id="cfg-cidade"
+                  placeholder="Ex: Curitiba, PR"
+                  value={cidade}
+                  onChange={(e) => setCidade(e.target.value)}
+                />
+              </div>
+            </div>
 
-// ── GET /prospector/approvals — rascunhos pendentes (action='generated') ───────
-router.get("/prospector/approvals", async (req, res) => {
-  const bodyTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
-  const tenantId = resolveTenantId(req, bodyTenantId);
+            <div className="space-y-1.5">
+              <Label htmlFor="cfg-ritmo">
+                Ritmo de abordagem{" "}
+                <span className="text-muted-foreground font-normal">
+                  ({ritmoDiario} leads/dia)
+                </span>
+              </Label>
+              <input
+                id="cfg-ritmo"
+                type="range"
+                min={1}
+                max={100}
+                step={1}
+                value={ritmoDiario}
+                onChange={(e) => setRitmoDiario(Number(e.target.value))}
+                className="w-full accent-primary h-2 rounded cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>1</span>
+                <span>50</span>
+                <span>100</span>
+              </div>
+            </div>
 
-  const drafts = await db
-    .select({
-      id: prospectApprovalsTable.id,
-      leadId: prospectApprovalsTable.leadId,
-      messageType: prospectApprovalsTable.messageType,
-      generatedText: prospectApprovalsTable.generatedText,
-      createdAt: prospectApprovalsTable.createdAt,
-      leadNome: leadsTable.nome,
-      leadEmpresa: leadsTable.empresa,
-    })
-    .from(prospectApprovalsTable)
-    .leftJoin(leadsTable, eq(leadsTable.id, prospectApprovalsTable.leadId))
-    .where(
-      and(
-        eq(prospectApprovalsTable.tenantId, tenantId),
-        eq(prospectApprovalsTable.action, "generated"),
-      ),
-    )
-    .orderBy(desc(prospectApprovalsTable.createdAt))
-    .limit(100);
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Busca automática diária</p>
+                <p className="text-xs text-muted-foreground">
+                  Quando ativo, o sistema buscará novas empresas todo dia às 09:00 BRT e as
+                  adicionará à fila do Prospector.
+                </p>
+              </div>
+              <Switch
+                checked={ativo}
+                onCheckedChange={setAtivo}
+                aria-label="Ativar busca automática diária"
+              />
+            </div>
 
-  // Enriquecimento (dor principal + score) por lead, em uma única query.
-  const leadIds = [...new Set(drafts.map((d) => d.leadId).filter((x): x is string => !!x))];
-  const enrichByLead = new Map<string, { dorPrincipal: string | null; score: number | null; empresa: string | null }>();
-  if (leadIds.length > 0) {
-    const enrichments = await db
-      .select({
-        leadId: prospectEnrichmentsTable.leadId,
-        nomeEmpresa: prospectEnrichmentsTable.nomeEmpresa,
-        doresPrincipais: prospectEnrichmentsTable.doresPrincipais,
-        scoreProspector: prospectEnrichmentsTable.scoreProspector,
-        createdAt: prospectEnrichmentsTable.createdAt,
-      })
-      .from(prospectEnrichmentsTable)
-      .where(
-        and(
-          eq(prospectEnrichmentsTable.tenantId, tenantId),
-          inArray(prospectEnrichmentsTable.leadId, leadIds),
-        ),
-      )
-      .orderBy(desc(prospectEnrichmentsTable.createdAt));
-    for (const e of enrichments) {
-      if (!e.leadId || enrichByLead.has(e.leadId)) continue; // mantém o mais recente
-      enrichByLead.set(e.leadId, {
-        dorPrincipal: e.doresPrincipais?.[0] ?? null,
-        score: e.scoreProspector ?? null,
-        empresa: e.nomeEmpresa ?? null,
+            <Button onClick={onSave} disabled={update.isPending} className="w-full sm:w-auto">
+              {update.isPending ? (
+                <>
+                  <Spinner className="h-4 w-4 mr-2" /> Salvando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" /> Salvar configuração
+                </>
+              )}
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function Prospector() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const isSuperAdmin = user?.platformRole === "super_admin";
+
+  const [tenantId, setTenantId] = useState(user?.tenantId ?? "");
+
+  // Busca por atividade + localidade
+  const [atividade, setAtividade] = useState("");
+  const [localidade, setLocalidade] = useState("");
+  const [maxResults, setMaxResults] = useState(10);
+  const [results, setResults] = useState<ProspectorSearchResult[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [prospectingIndex, setProspectingIndex] = useState<number | null>(null);
+  const [prospectedIndexes, setProspectedIndexes] = useState<number[]>([]);
+  const [duplicateIndexes, setDuplicateIndexes] = useState<number[]>([]);
+  const [enrichment, setEnrichment] = useState<ProspectEnrichment | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [prospectStep, setProspectStep] = useState<"idle" | "importing" | "briefing" | "done">("idle");
+  const [prospectDealId, setProspectDealId] = useState<string | null>(null);
+
+  // Message form
+  const [messageType, setMessageType] = useState("whatsapp");
+  const [msgNomeEmpresa, setMsgNomeEmpresa] = useState("");
+  const [contexto, setContexto] = useState("");
+  const [generatedText, setGeneratedText] = useState<string | null>(null);
+
+  const search = useProspectorSearch();
+  const enrich = useProspectorEnrich();
+  const generate = useProspectorGenerateMessage();
+  const queryClient = useQueryClient();
+
+  // ── Cmd 23: Busca CNPJ state ─────────────────────────────────────────────
+  const [cnaeSearch, setCnaeSearch] = useState("");
+  const [cnaeSelected, setCnaeSelected] = useState("");
+  const [cnpjUf, setCnpjUf] = useState("");
+  const [cnpjMunicipio, setCnpjMunicipio] = useState("");
+  const [cnpjAberturaDias, setCnpjAberturaDias] = useState<string>("qualquer");
+  const [cnpjPorte, setCnpjPorte] = useState("todos");
+  const [cnpjResultados, setCnpjResultados] = useState<CnpjEmpresa[]>([]);
+  const [cnpjSearched, setCnpjSearched] = useState(false);
+  const [cnpjApiKeyRequired, setCnpjApiKeyRequired] = useState(false);
+  const [cnpjProspectandoIndex, setCnpjProspectandoIndex] = useState<number | null>(null);
+  const [cnpjProspectadoIds, setCnpjProspectadoIds] = useState<Set<string>>(new Set());
+
+  // ── Cmd 23: Anunciantes state ─────────────────────────────────────────────
+  const [adsSearchTerms, setAdsSearchTerms] = useState("");
+  const [adsResultados, setAdsResultados] = useState<AdResult[]>([]);
+  const [adsSearched, setAdsSearched] = useState(false);
+  const [adsSearching, setAdsSearching] = useState(false);
+  const [adsProspectandoPageId, setAdsProspectandoPageId] = useState<string | null>(null);
+  const [adsProspectadosPageIds, setAdsProspectadosPageIds] = useState<Set<string>>(new Set());
+  const [adsDuplicadosPageIds, setAdsDuplicadosPageIds] = useState<Set<string>>(new Set());
+  const [selectedFilaLeadIds, setSelectedFilaLeadIds] = useState<Set<string>>(new Set());
+
+  // ── Fila Preditiva (Cmd 22) ──────────────────────────────────────────────
+  function getAuthHeaders() {
+    const token = localStorage.getItem("vendorai_token");
+    return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  }
+
+  // ── CNPJ/CNAE queries (Cmd 23) ───────────────────────────────────────────
+  const cnaeListQuery = useQuery({
+    queryKey: ["prospector-cnaes"],
+    queryFn: async () => {
+      const res = await fetch("/api/prospector/cnpj/cnaes", { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error("Falha ao carregar CNAEs");
+      return res.json() as Promise<{ cnaes: Array<{ cnae: string; label: string; vertical: string; prioridade: number }> }>;
+    },
+    staleTime: 300_000,
+  });
+
+  const cnpjSearchMutation = useMutation({
+    mutationFn: async (params: { cnae: string; uf?: string; municipio?: string; aberturaDias?: number; porte?: string }) => {
+      const res = await fetch("/api/prospector/cnpj/search", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ ...params, limit: 20, tenantId }),
       });
-    }
-  }
-
-  const items = drafts.map((d) => {
-    let email = "";
-    let whatsapp = "";
-    try {
-      const j = JSON.parse(d.generatedText ?? "{}") as { email?: string; whatsapp?: string };
-      email = j.email ?? "";
-      whatsapp = j.whatsapp ?? "";
-    } catch {
-      whatsapp = d.generatedText ?? "";
-    }
-    const enr = d.leadId ? enrichByLead.get(d.leadId) : undefined;
-    return {
-      id: d.id,
-      leadId: d.leadId,
-      messageType: d.messageType,
-      email,
-      whatsapp,
-      createdAt: d.createdAt.toISOString(),
-      empresa: d.leadEmpresa ?? enr?.empresa ?? d.leadNome ?? null,
-      dorPrincipal: enr?.dorPrincipal ?? null,
-      score: enr?.score ?? null,
-    };
+      if (!res.ok) throw new Error("Falha na busca CNPJ");
+      return res.json() as Promise<{ empresas: CnpjEmpresa[]; total: number; apiKeyRequired: boolean }>;
+    },
+    onSuccess: (data) => {
+      setCnpjResultados(data.empresas);
+      setCnpjSearched(true);
+      setCnpjApiKeyRequired(data.apiKeyRequired);
+    },
+    onError: () => toast({ title: "Falha na busca CNPJ", variant: "destructive" }),
   });
 
-  return res.status(200).json({ items });
-});
-
-// ── PATCH /prospector/approvals/:id — aprovar / aprovar com edição / rejeitar ──
-const patchApprovalSchema = z.object({
-  action: z.enum(["approved", "edited", "rejected"]),
-  approvedText: z.string().optional(),
-  tenantId: z.string().optional(),
-});
-
-router.patch("/prospector/approvals/:id", async (req, res) => {
-  const parsed = patchApprovalSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
-  }
-  const { action, approvedText, tenantId: bodyTenantId } = parsed.data;
-  const tenantId = resolveTenantId(req, bodyTenantId);
-  const approvalId = req.params["id"]!;
-
-  if (action === "edited" && (!approvedText || approvedText.trim().length === 0)) {
-    return res.status(400).json({ error: "approvedText é obrigatório para 'edited'" });
-  }
-
-  // Verifica posse pelo tenant.
-  const [existing] = await db
-    .select({ id: prospectApprovalsTable.id })
-    .from(prospectApprovalsTable)
-    .where(
-      and(eq(prospectApprovalsTable.id, approvalId), eq(prospectApprovalsTable.tenantId, tenantId)),
-    )
-    .limit(1);
-  if (!existing) {
-    return res.status(404).json({ error: "Aprovação não encontrada para este tenant" });
-  }
-
-  // Re-embedding quando o texto é editado (busca semântica usa a versão corrigida).
-  let newEmbedding: number[] | null = null;
-  if (action === "edited" && approvedText) {
-    try {
-      const r = await generateEmbedding(tenantId, approvedText.trim(), { log: req.log });
-      newEmbedding = r.embedding;
-    } catch (err) {
-      req.log.error({ err }, "prospector: re-embedding on edit failed (non-fatal)");
-    }
-  }
-
-  await db
-    .update(prospectApprovalsTable)
-    .set({
-      action,
-      ...(approvedText ? { approvedText: approvedText.trim() } : {}),
-      ...(newEmbedding ? { embedding: newEmbedding } : {}),
-    })
-    .where(eq(prospectApprovalsTable.id, approvalId));
-
-  // Contagem de treinamento: approved + edited.
-  let automationUnlocked = false;
-  let approvedCount = 0;
-  if (action === "approved" || action === "edited") {
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(prospectApprovalsTable)
-      .where(
-        and(
-          eq(prospectApprovalsTable.tenantId, tenantId),
-          inArray(prospectApprovalsTable.action, ["approved", "edited"]),
-        ),
-      );
-    approvedCount = count ?? 0;
-
-    if (approvedCount >= AUTOMATION_THRESHOLD) {
-      const [tenant] = await db
-        .select({ prospectStatus: tenantsTable.prospectStatus })
-        .from(tenantsTable)
-        .where(eq(tenantsTable.id, tenantId))
-        .limit(1);
-      if (tenant && tenant.prospectStatus !== "automated") {
-        await db
-          .update(tenantsTable)
-          .set({ prospectStatus: "automated", updatedAt: new Date() })
-          .where(eq(tenantsTable.id, tenantId));
-        await db.insert(notificationsTable).values({
+  const cnpjProspectarMutation = useMutation({
+    mutationFn: async (empresa: CnpjEmpresa) => {
+      const res = await fetch("/api/prospector/cnpj/prospectar", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          cnpj: empresa.cnpj,
+          razaoSocial: empresa.razaoSocial,
+          nomeFantasia: empresa.nomeFantasia,
+          cnaeCode: empresa.cnaeCode,
+          cnaeDescricao: empresa.cnaeDescricao,
+          endereco: empresa.enderecoCompleto,
+          municipio: empresa.municipio,
+          uf: empresa.uf,
+          telefone: empresa.telefone,
+          email: empresa.email,
+          dataAbertura: empresa.dataAbertura,
+          porte: empresa.porte,
+          socios: empresa.socios,
           tenantId,
-          title: "Automação liberada 🎉",
-          message: "Seu Agente Prospector já aprendeu com você! Automação liberada.",
-          type: "info",
-          category: "prospector",
-        });
-        automationUnlocked = true;
+        }),
+      });
+      if (!res.ok) throw new Error("Falha ao prospectar");
+      return res.json() as Promise<{ leadId: string; merged: boolean; message?: string; isRecemAberta?: boolean; linkedInUrl?: string; decisorNome?: string | null }>;
+    },
+    onSuccess: (data, empresa) => {
+      setCnpjProspectadoIds((prev) => new Set(prev).add(empresa.cnpj));
+      if (data.merged) {
+        toast({ title: data.message ?? "Lead já existe — dados mesclados" });
+      } else {
+        toast({ title: data.isRecemAberta ? "🎉 Lead recém-aberta criado com boost!" : "Lead CNPJ criado com sucesso!" });
       }
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: () => toast({ title: "Falha ao prospectar empresa", variant: "destructive" }),
+  });
+
+  async function handleAdsSearch() {
+    if (!adsSearchTerms.trim()) return;
+    setAdsSearching(true);
+    try {
+      const res = await fetch("/api/prospector/ads/search", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ searchTerms: adsSearchTerms, limit: 20, tenantId }),
+      });
+      const data = await res.json() as { ads?: AdResult[]; error?: string };
+      if (!res.ok) {
+        toast({ title: data.error ?? "Falha na busca de anúncios", variant: "destructive" });
+      } else {
+        setAdsResultados(data.ads ?? []);
+        setAdsSearched(true);
+      }
+    } finally {
+      setAdsSearching(false);
     }
   }
 
-  return res.status(200).json({ ok: true, action, approvedCount, automationUnlocked });
-});
-
-// ── GET /prospector/config ────────────────────────────────────────────────────
-router.get("/prospector/config", async (req, res) => {
-  const tenantId = resolveTenantId(req, undefined);
-  const [config] = await db
-    .select()
-    .from(prospectorConfigTable)
-    .where(eq(prospectorConfigTable.tenantId, tenantId))
-    .limit(1);
-  return res.status(200).json({ config: config ?? null });
-});
-
-// ── PUT /prospector/config ────────────────────────────────────────────────────
-const prospectorConfigBodySchema = z.object({
-  setor:       z.string().nullable().optional(),
-  cidade:      z.string().nullable().optional(),
-  raioKm:      z.number().int().min(1).max(100).nullable().optional(),
-  ritmoDiario: z.number().int().min(1).max(500).optional(),
-  ativo:       z.boolean().optional(),
-  horarioCron: z.string().optional(),
-});
-
-router.put("/prospector/config", async (req, res) => {
-  const tenantId = resolveTenantId(req, undefined);
-  const parsed = prospectorConfigBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
-  }
-  const now = new Date();
-  const data = { ...parsed.data, updatedAt: now };
-
-  const [existing] = await db
-    .select({ id: prospectorConfigTable.id })
-    .from(prospectorConfigTable)
-    .where(eq(prospectorConfigTable.tenantId, tenantId))
-    .limit(1);
-
-  let config;
-  if (existing) {
-    [config] = await db
-      .update(prospectorConfigTable)
-      .set(data)
-      .where(eq(prospectorConfigTable.tenantId, tenantId))
-      .returning();
-  } else {
-    [config] = await db
-      .insert(prospectorConfigTable)
-      .values({ tenantId, ...data })
-      .returning();
-  }
-  return res.status(200).json({ config });
-});
-
-// ── GET /tenant/api-usage — uso mensal da Places API ──────────────────────────
-router.get("/prospector/tenant/api-usage", async (req, res) => {
-  const api = (req.query["api"] as string | undefined) ?? "google_places";
-  if (api !== "google_places") {
-    return res.status(400).json({ error: "api inválida" });
-  }
-  const tenantId = resolveTenantId(req, undefined);
-  const usage = await getApiUsage(tenantId, "google_places");
-  return res.status(200).json(usage);
-});
-
-
-// ── POST /prospector/campaign-package — Revenue Scout → Marketing ─────────────
-const campaignPackageBodySchema = z.object({
-  leadIds: z.array(z.string().min(1)).min(1).max(50),
-  tenantId: z.string().optional(),
-});
-
-type RevenueScoutCampaignStrategy = {
-  campaignName: string;
-  audienceSegment: string;
-  audienceNiche: string;
-  campaignGoal: string;
-  message: string;
-  recommendedChannel: "whatsapp" | "email" | "instagram";
-  recommendedPaidPlatform: "meta" | "google";
-  offer: string;
-  chosenProductIds: string[];
-  opportunity: string;
-  region: string;
-  adsHeadline: string;
-  adsDescription: string;
-  lpHeadline: string;
-  lpSubheadline: string;
-};
-
-function safeStrategyText(value: unknown, fallback: string, max = 500): string {
-  return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : fallback;
-}
-
-router.post("/prospector/campaign-package", async (req, res) => {
-  const parsed = campaignPackageBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
-  }
-
-  const tenantId = resolveTenantId(req, parsed.data.tenantId);
-  const leadIds = [...new Set(parsed.data.leadIds)];
-
-  const selectedLeads = await db
-    .select({
-      id: leadsTable.id,
-      nome: leadsTable.nome,
-      empresa: leadsTable.empresa,
-      telefone: leadsTable.telefone,
-      endereco: leadsTable.endereco,
-      mercadoSegmento: leadsTable.mercadoSegmento,
-      propensityScore: leadsTable.propensityScore,
-      priorityReason: leadsTable.priorityReason,
-      roiEstimate: leadsTable.roiEstimate,
-      enrichmentData: leadsTable.enrichmentData,
-      metadata: leadsTable.metadata,
-    })
-    .from(leadsTable)
-    .where(and(eq(leadsTable.tenantId, tenantId), inArray(leadsTable.id, leadIds)))
-    .orderBy(desc(leadsTable.propensityScore), desc(leadsTable.createdAt));
-
-  const foundIds = new Set(selectedLeads.map((lead) => lead.id));
-  const missing = leadIds.filter((id) => !foundIds.has(id));
-  if (missing.length > 0) {
-    return res.status(404).json({
-      error: "Um ou mais prospects não pertencem a este tenant",
-      missingLeadIds: missing,
-    });
-  }
-
-  const [tenantRows, profileRows, catalogRows] = await Promise.all([
-    db
-      .select({
-        id: tenantsTable.id,
-        name: tenantsTable.name,
-        nomeEmpresa: tenantsTable.nomeEmpresa,
-        vertical: tenantsTable.vertical,
-        segmento: tenantsTable.segmento,
-        descricao: tenantsTable.descricao,
-      })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, tenantId))
-      .limit(1),
-    db
-      .select({
-        razaoSocial: businessProfilesTable.razaoSocial,
-        nomeFantasia: businessProfilesTable.nomeFantasia,
-        vertical: businessProfilesTable.vertical,
-        diferenciais: businessProfilesTable.diferenciais,
-        publicoAlvo: businessProfilesTable.publicoAlvo,
-        produtos: businessProfilesTable.produtos,
-        discoveryData: businessProfilesTable.discoveryData,
-      })
-      .from(businessProfilesTable)
-      .where(eq(businessProfilesTable.tenantId, tenantId))
-      .limit(1),
-    db
-      .select({
-        id: produtosCatalogoTable.id,
-        nome: produtosCatalogoTable.nome,
-        descricao: produtosCatalogoTable.descricao,
-        marca: produtosCatalogoTable.marca,
-        ativo: produtosCatalogoTable.ativo,
-      })
-      .from(produtosCatalogoTable)
-      .where(eq(produtosCatalogoTable.tenantId, tenantId)),
-  ]);
-
-  const tenant = tenantRows[0] ?? null;
-  const profile = profileRows[0] ?? null;
-  const tenantName =
-    profile?.nomeFantasia ??
-    tenant?.nomeEmpresa ??
-    tenant?.name ??
-    profile?.razaoSocial ??
-    "Empresa";
-  const businessVertical =
-    profile?.vertical ?? tenant?.segmento ?? tenant?.vertical ?? "";
-
-  const activeCatalog = catalogRows.filter((item) => item.ativo !== false).slice(0, 30);
-  const profileProducts = Array.isArray(profile?.produtos) ? profile.produtos : [];
-  const availableOffers = activeCatalog.length > 0
-    ? activeCatalog.map((item) => ({
-        id: item.id,
-        nome: item.nome,
-        descricao: item.descricao ?? "",
-        marca: item.marca ?? "",
-      }))
-    : profileProducts.slice(0, 20).map((item, index) => ({
-        id: `profile:${index}`,
-        nome: item.nome,
-        descricao: item.descricao ?? "",
-        marca: "",
-      }));
-
-  const scores = selectedLeads
-    .map((lead) => Number(lead.propensityScore))
-    .filter((score) => Number.isFinite(score));
-  const averageScore = scores.length > 0
-    ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
-    : 0;
-  const segmentCandidates = selectedLeads
-    .map((lead) => lead.mercadoSegmento?.trim())
-    .filter((value): value is string => Boolean(value));
-  const fallbackNiche = segmentCandidates[0] ?? "empresas qualificadas pelo Revenue Scout";
-  const addressCandidates = selectedLeads
-    .map((lead) => lead.endereco?.trim())
-    .filter((value): value is string => Boolean(value))
-    .slice(0, 3);
-  const fallbackRegion = addressCandidates.length > 0 ? addressCandidates.join(" • ") : "região comercial do tenant";
-  const defaultOffer = availableOffers[0] ?? null;
-  const fallbackOpportunity = selectedLeads.find((lead) => lead.priorityReason)?.priorityReason
-    ?? "oportunidade comercial identificada pelo Revenue Scout";
-
-  let strategy: RevenueScoutCampaignStrategy = {
-    campaignName: `${fallbackNiche} — Revenue Scout`.slice(0, 180),
-    audienceSegment: "Empresas (B2B)",
-    audienceNiche: fallbackNiche,
-    campaignGoal: `Gerar oportunidades comerciais para ${tenantName} junto a ${selectedLeads.length} prospect(s) qualificado(s).`,
-    message: `Olá! Somos da ${tenantName}. Identificamos uma oportunidade de parceria que pode fazer sentido para sua empresa. Posso te apresentar rapidamente?`,
-    recommendedChannel: "whatsapp",
-    recommendedPaidPlatform: "meta",
-    offer: defaultOffer?.nome ?? "solução comercial do tenant",
-    chosenProductIds: defaultOffer ? [defaultOffer.id] : [],
-    opportunity: fallbackOpportunity,
-    region: fallbackRegion,
-    adsHeadline: `${tenantName}: uma solução para ${fallbackNiche}`.slice(0, 120),
-    adsDescription: `Conheça a oferta da ${tenantName} pensada para ${fallbackNiche}.`.slice(0, 220),
-    lpHeadline: `${tenantName} para ${fallbackNiche}`.slice(0, 160),
-    lpSubheadline: `Uma proposta comercial preparada para empresas com o perfil identificado pelo Revenue Scout.`.slice(0, 260),
-  };
-
-  const leadsForAi = selectedLeads.map((lead) => ({
-    nome: lead.nome,
-    empresa: lead.empresa,
-    segmento: lead.mercadoSegmento,
-    endereco: lead.endereco,
-    score: lead.propensityScore,
-    motivo_prioridade: lead.priorityReason,
-    roi: lead.roiEstimate,
-    sinais: JSON.stringify(lead.enrichmentData ?? {}).slice(0, 700),
-  }));
-
-  try {
-    const ai = await gatewayCallOpenAI(
-      tenantId,
-      "content_generator",
-      [
-        {
-          role: "system",
-          content:
-            "Você é o Marketing Manager do CLIENTE/TENANT do VendorAI. A empresa anunciante é o tenant informado, " +
-            "e os leads do Revenue Scout são o público/prospects. Nunca trate o VendorAI como o produto a vender, " +
-            "a menos que isso esteja explicitamente no catálogo do tenant. Use somente produtos/ofertas fornecidos. " +
-            "Crie uma estratégia prática que possa alimentar campanha orgânica, Meta/Google Ads e landing page. " +
-            "Responda APENAS JSON válido.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            tenant: {
-              nome: tenantName,
-              vertical: businessVertical,
-              descricao: tenant?.descricao ?? null,
-              diferenciais: profile?.diferenciais ?? null,
-              publico_alvo_atual: profile?.publicoAlvo ?? null,
-              discovery: profile?.discoveryData ?? null,
-            },
-            ofertas_disponiveis: availableOffers,
-            prospects: leadsForAi,
-            score_medio: averageScore,
-            regras: {
-              selectedProductIdsMustExistInOffers: true,
-              noInventedProducts: true,
-              campaignMustBelongToTenant: true,
-              paidMediaIsDraftOnly: true,
-            },
-            output: {
-              campaignName: "string",
-              audienceSegment: "string",
-              audienceNiche: "string",
-              campaignGoal: "string",
-              message: "string de primeiro contato curto",
-              recommendedChannel: "whatsapp|email|instagram",
-              recommendedPaidPlatform: "meta|google",
-              offer: "string",
-              chosenProductIds: ["ids existentes em ofertas_disponiveis"],
-              opportunity: "string",
-              region: "string",
-              adsHeadline: "string",
-              adsDescription: "string",
-              lpHeadline: "string",
-              lpSubheadline: "string",
-            },
-          }),
-        },
-      ],
-      { responseFormat: { type: "json_object" }, maxTokens: 1200, temperature: 0.5, log: req.log },
-    );
-
-    const parsedAi = JSON.parse(ai.content) as Partial<RevenueScoutCampaignStrategy>;
-    const channel = ["whatsapp", "email", "instagram"].includes(String(parsedAi.recommendedChannel))
-      ? parsedAi.recommendedChannel as RevenueScoutCampaignStrategy["recommendedChannel"]
-      : strategy.recommendedChannel;
-    const paid = ["meta", "google"].includes(String(parsedAi.recommendedPaidPlatform))
-      ? parsedAi.recommendedPaidPlatform as RevenueScoutCampaignStrategy["recommendedPaidPlatform"]
-      : strategy.recommendedPaidPlatform;
-    const allowedIds = new Set(availableOffers.map((item) => item.id));
-    const selectedIds = Array.isArray(parsedAi.chosenProductIds)
-      ? parsedAi.chosenProductIds.filter((id): id is string => typeof id === "string" && allowedIds.has(id))
-      : strategy.chosenProductIds;
-
-    strategy = {
-      campaignName: safeStrategyText(parsedAi.campaignName, strategy.campaignName, 180),
-      audienceSegment: safeStrategyText(parsedAi.audienceSegment, strategy.audienceSegment, 120),
-      audienceNiche: safeStrategyText(parsedAi.audienceNiche, strategy.audienceNiche, 180),
-      campaignGoal: safeStrategyText(parsedAi.campaignGoal, strategy.campaignGoal, 500),
-      message: safeStrategyText(parsedAi.message, strategy.message, 900),
-      recommendedChannel: channel,
-      recommendedPaidPlatform: paid,
-      offer: safeStrategyText(parsedAi.offer, strategy.offer, 300),
-      chosenProductIds: selectedIds,
-      opportunity: safeStrategyText(parsedAi.opportunity, strategy.opportunity, 500),
-      region: safeStrategyText(parsedAi.region, strategy.region, 300),
-      adsHeadline: safeStrategyText(parsedAi.adsHeadline, strategy.adsHeadline, 120),
-      adsDescription: safeStrategyText(parsedAi.adsDescription, strategy.adsDescription, 240),
-      lpHeadline: safeStrategyText(parsedAi.lpHeadline, strategy.lpHeadline, 180),
-      lpSubheadline: safeStrategyText(parsedAi.lpSubheadline, strategy.lpSubheadline, 320),
-    };
-  } catch (err) {
-    req.log.warn({ err }, "prospector/campaign-package: strategy AI unavailable, using safe fallback");
-  }
-
-  const chosenOffers = availableOffers.filter((item) => strategy.chosenProductIds.includes(item.id));
-  const productIds = chosenOffers.map((item) => item.id);
-  const productNames = chosenOffers.map((item) => item.nome);
-  const prospectorBatchId = crypto.randomUUID();
-  const marketingContext = {
-    nicheId: `revenue_scout:${prospectorBatchId}`,
-    nicheName: [
-      businessVertical ? `Negócio: ${businessVertical}` : `Negócio: ${tenantName}`,
-      `Público: ${strategy.audienceSegment}`,
-      `Nicho do público: ${strategy.audienceNiche}`,
-      `Objetivo: ${strategy.campaignGoal}`,
-    ].join(" | "),
-    productIds,
-    productNames,
-    businessVertical: businessVertical || tenantName,
-    audienceSegment: strategy.audienceSegment,
-    audienceNiche: strategy.audienceNiche,
-    campaignGoal: strategy.campaignGoal,
-  };
-
-  const campaignContext = {
-    origin: "revenue_scout",
-    prospectorBatchId,
-    leadIds,
-    tenantName,
-    businessVertical: businessVertical || undefined,
-    region: strategy.region,
-    opportunity: strategy.opportunity,
-    averageScore,
-    offer: strategy.offer,
-    productIds,
-    productNames,
-    audienceSegment: strategy.audienceSegment,
-    audienceNiche: strategy.audienceNiche,
-    campaignGoal: strategy.campaignGoal,
-    recommendedChannel: strategy.recommendedChannel,
-    recommendedPaidPlatform: strategy.recommendedPaidPlatform,
-    adsHeadline: strategy.adsHeadline,
-    adsDescription: strategy.adsDescription,
-    lpHeadline: strategy.lpHeadline,
-    lpSubheadline: strategy.lpSubheadline,
-    marketingContext,
-    createdFromRevenueScoutAt: new Date().toISOString(),
-  };
-
-  const [campaign] = await db
-    .insert(campaignsTable)
-    .values({
-      tenantId,
-      nome: strategy.campaignName,
-      tipo: strategy.recommendedChannel,
-      mensagem: strategy.message,
-      status: "rascunho",
-      totalDestinatarios: selectedLeads.length,
-      segmentoFiltro: { leadIds, marketingContext },
-      contexto: campaignContext,
-    })
-    .returning();
-
-  if (!campaign) {
-    return res.status(500).json({ error: "Falha ao criar campanha" });
-  }
-
-  await db.insert(activitiesTable).values(
-    selectedLeads.map((lead) => ({
-      tenantId,
-      leadId: lead.id,
-      tipo: "tarefa" as const,
-      titulo: "Campanha criada pelo Revenue Scout",
-      descricao: `Prospect vinculado à campanha "${campaign.nome}" (${campaign.id}).`,
-      status: "concluida" as const,
-    })),
-  );
-
-  await Promise.all(
-    selectedLeads.map(async (lead) => {
-      const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
-      const current = Array.isArray(metadata["revenue_scout_campaign_ids"])
-        ? metadata["revenue_scout_campaign_ids"].filter((id): id is string => typeof id === "string")
-        : [];
-      const nextIds = [...new Set([...current, campaign.id])];
-      await db
-        .update(leadsTable)
-        .set({
-          metadata: { ...metadata, revenue_scout_campaign_ids: nextIds },
-          updatedAt: new Date(),
-        })
-        .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, tenantId)));
+  const adsProspectMutation = useMutation({
+    mutationFn: async (ad: AdResult) => {
+      const res = await fetch("/api/prospector/ads/prospectar", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          ...ad,
+          searchTerms: adsSearchTerms,
+          tenantId,
+        }),
+      });
+      const data = await res.json() as { leadId?: string; dealId?: string | null; merged?: boolean; message?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Falha ao prospectar anunciante");
+      return data;
+    },
+    onSuccess: (data, ad) => {
+      if (data.merged) {
+        setAdsDuplicadosPageIds((prev) => new Set(prev).add(ad.pageId));
+        toast({ title: "Lead já estava no CRM", description: data.message ?? "Sinal Meta atualizado no lead existente." });
+      } else {
+        setAdsProspectadosPageIds((prev) => new Set(prev).add(ad.pageId));
+        toast({ title: "Lead Meta criado", description: "Enriquecimento, score, briefing e fila foram acionados." });
+      }
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: (err) => toast({
+      title: "Falha ao prospectar anunciante",
+      description: err instanceof Error ? err.message : undefined,
+      variant: "destructive",
     }),
+  });
+
+  const filaQuery = useQuery({
+    queryKey: ["prospector-fila", tenantId],
+    queryFn: async () => {
+      const res = await fetch("/api/prospector/fila?limit=50", { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error("Falha ao carregar a fila");
+      return res.json() as Promise<{
+        leads: Array<{
+          id: string;
+          nome: string;
+          empresa?: string;
+          telefone?: string;
+          endereco?: string;
+          mercadoSegmento?: string;
+          enrichmentStatus: string;
+          propensityScore?: number;
+          roiEstimate?: { volume_atendimentos_mes?: number; perda_estimada_mes?: number; ganho_potencial_mes?: number; ticket_estimado?: string };
+          enrichmentData?: { digital?: Record<string, unknown>; growth?: Record<string, unknown> };
+          priorityReason?: string;
+          metadata?: { revenue_scout_campaign_ids?: string[] };
+          createdAt: string;
+          events: Array<{ tipo: string; descricao: string }>;
+        }>;
+        autoDispatchThreshold: number;
+        total: number;
+      }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const createCampaignPackageMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const res = await fetch("/api/prospector/campaign-package", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ leadIds, tenantId: tenantId || undefined }),
+      });
+      const data = await res.json() as any;
+      if (!res.ok) throw new Error(data.error ?? "Falha ao criar pacote comercial");
+      return data;
+    },
+    onSuccess: (data) => {
+      const strategy = data.strategy ?? {};
+      sessionStorage.setItem("vendorai_ads_revenue_scout_draft_v1", JSON.stringify({
+        campaignId: data.campaignId,
+        campaignName: data.campaign?.nome ?? strategy.campaignName,
+        suggestedPlatform: strategy.recommendedPaidPlatform ?? "meta",
+        marketingContext: strategy.marketingContext,
+        region: strategy.region,
+        opportunity: strategy.opportunity,
+        offer: strategy.offer,
+        headline: strategy.adsHeadline,
+        description: strategy.adsDescription,
+      }));
+      sessionStorage.setItem("vendorai_lp_revenue_scout_draft_v1", JSON.stringify({
+        campaignId: data.campaignId,
+        audience: strategy.audienceNiche,
+        offer: strategy.offer,
+        objective: strategy.campaignGoal,
+        notes: [strategy.opportunity, strategy.lpHeadline, strategy.lpSubheadline].filter(Boolean).join("\n"),
+        productIds: strategy.productIds ?? [],
+        headline: strategy.lpHeadline,
+        subheadline: strategy.lpSubheadline,
+      }));
+      setSelectedFilaLeadIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+      toast({
+        title: "Pacote comercial criado",
+        description: "A campanha já pertence a este tenant. LP e anúncios ficaram preparados para revisão.",
+      });
+      setLocation(data.marketingUrl ?? `/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(data.campaignId)}`);
+    },
+    onError: (err) => toast({
+      title: "Falha ao criar pacote comercial",
+      description: err instanceof Error ? err.message : undefined,
+      variant: "destructive",
+    }),
+  });
+
+  const dispatchSdrMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      const res = await fetch(`/api/prospector/dispatch-sdr/${leadId}`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Falha ao disparar SDR");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "SDR disparado com sucesso!" });
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: () => toast({ title: "Falha ao disparar SDR", variant: "destructive" }),
+  });
+
+  const dispatchTopMutation = useMutation({
+    mutationFn: async (n: number) => {
+      const res = await fetch("/api/prospector/dispatch-top", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ n }),
+      });
+      if (!res.ok) throw new Error("Falha ao disparar em lote");
+      return res.json() as Promise<{ dispatched: number }>;
+    },
+    onSuccess: (data) => {
+      toast({ title: `${data.dispatched} SDR(s) disparado(s)!` });
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: () => toast({ title: "Falha ao disparar em lote", variant: "destructive" }),
+  });
+
+  const discardMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      const res = await fetch(`/api/prospector/fila/discard/${leadId}`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Falha ao descartar lead");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Lead descartado da fila" });
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: () => toast({ title: "Falha ao descartar", variant: "destructive" }),
+  });
+
+  const prospectorParams = new URLSearchParams(window.location.search);
+  const requestedProspectorTab = prospectorParams.get("tab");
+  const defaultProspectorTab = ["busca", "cnpj", "anunciantes", "fila", "aprovacoes"].includes(requestedProspectorTab ?? "")
+    ? requestedProspectorTab!
+    : "busca";
+  const campaignFilterId = prospectorParams.get("campaignId");
+  const filaLeads = (filaQuery.data?.leads ?? []).filter((lead) =>
+    !campaignFilterId || lead.metadata?.revenue_scout_campaign_ids?.includes(campaignFilterId),
   );
 
-  return res.status(201).json({
-    campaignId: campaign.id,
-    campaign,
-    strategy: {
-      ...strategy,
-      productIds,
-      productNames,
-      marketingContext,
-      averageScore,
-    },
-    marketingUrl: `/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(campaign.id)}&from=revenue-scout`,
-    adsUrl: `/ads?from=revenue-scout&campaignId=${encodeURIComponent(campaign.id)}`,
-    lpUrl: `/content?tab=campanhas&view=lp&campaignId=${encodeURIComponent(campaign.id)}&from=revenue-scout`,
-  });
-});
-
-// ── GET /prospector/fila — fila priorizada por score ─────────────────────────
-router.get("/prospector/fila", async (req, res) => {
-  const tenantId = resolveTenantId(req, undefined);
-  const limitParam = Math.min(Number(req.query["limit"] ?? 50), 100);
-
-  const leads = await db
-    .select({
-      id: leadsTable.id,
-      nome: leadsTable.nome,
-      empresa: leadsTable.empresa,
-      telefone: leadsTable.telefone,
-      endereco: leadsTable.endereco,
-      mercadoSegmento: leadsTable.mercadoSegmento,
-      websiteUrl: leadsTable.websiteUrl,
-      enrichmentStatus: leadsTable.enrichmentStatus,
-      propensityScore: leadsTable.propensityScore,
-      roiEstimate: leadsTable.roiEstimate,
-      enrichmentData: leadsTable.enrichmentData,
-      priorityReason: leadsTable.priorityReason,
-      metadata: leadsTable.metadata,
-      createdAt: leadsTable.createdAt,
-    })
-    .from(leadsTable)
-    .where(
-      and(
-        eq(leadsTable.tenantId, tenantId),
-        inArray(leadsTable.source, ["prospector_auto", "prospector", "cnpj", "recem_aberta", "ad_library"]),
-        inArray(leadsTable.enrichmentStatus, ["pending", "enriched", "scored"]),
-      ),
-    )
-    .orderBy(desc(leadsTable.propensityScore), desc(leadsTable.createdAt))
-    .limit(limitParam);
-
-  // Load active events (score boosts)
-  const leadIds = leads.map((l) => l.id);
-  const events = leadIds.length > 0
-    ? await db
-      .select()
-      .from(leadEventsTable)
-      .where(
-        and(
-          inArray(leadEventsTable.leadId, leadIds),
-          sql`${leadEventsTable.expiresAt} IS NULL OR ${leadEventsTable.expiresAt} > now()`,
-        ),
-      )
-    : [];
-
-  const eventsByLead = events.reduce<Record<string, typeof events>>((acc, e) => {
-    if (!acc[e.leadId]) acc[e.leadId] = [];
-    acc[e.leadId]!.push(e);
-    return acc;
-  }, {});
-
-  // Load threshold from config
-  const [config] = await db
-    .select({ autoDispatchThreshold: prospectorConfigTable.autoDispatchThreshold })
-    .from(prospectorConfigTable)
-    .where(eq(prospectorConfigTable.tenantId, tenantId))
-    .limit(1);
-
-  return res.status(200).json({
-    leads: leads.map((l) => ({
-      ...l,
-      events: eventsByLead[l.id] ?? [],
-    })),
-    autoDispatchThreshold: config?.autoDispatchThreshold ?? 80,
-    total: leads.length,
-  });
-});
-
-// ── POST /prospector/dispatch-sdr/:leadId — dispara SDR manualmente ─────────
-router.post("/prospector/dispatch-sdr/:leadId", async (req, res) => {
-  const tenantId = resolveTenantId(req, undefined);
-  const { leadId } = req.params as { leadId: string };
-
-  const [lead] = await db
-    .select()
-    .from(leadsTable)
-    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
-    .limit(1);
-
-  if (!lead) return res.status(404).json({ error: "Lead não encontrado" });
-
-  const segmento = lead.mercadoSegmento?.toLowerCase().replace(/\s+/g, "_") ?? "geral";
-  const enrichData = lead.enrichmentData as Record<string, unknown> | null;
-  const growth = (enrichData?.["growth"] ?? {}) as Record<string, unknown>;
-  const digital = (enrichData?.["digital"] ?? {}) as Record<string, unknown>;
-
-  const sinalPrincipal = growth["multiplas_unidades"]
-    ? "expansão com múltiplas unidades"
-    : Number(growth["reviews_velocity"] ?? 0) > 5
-      ? "alta velocidade de avaliações"
-      : digital["tem_ecommerce"]
-        ? "presença digital em crescimento"
-        : "oportunidade operacional identificada";
-
-  const roiEstimate = lead.roiEstimate as Record<string, unknown> | null;
-
-  const trigger =
-    `[PROSPECÇÃO MANUAL] Lead selecionado da fila preditiva com score ${lead.propensityScore ?? "?"}. ` +
-    `Use o contexto de inteligência para gerar uma primeira mensagem altamente personalizada. ` +
-    (lead.priorityReason ? `Razão de prioridade: ${lead.priorityReason}.` : "");
-
-  dispatchAgentBackground({
-    tenantId,
-    leadId,
-    mensagem: trigger,
-    log: req.log,
-    forcedAgent: "sdr",
-    scenario: {
-      cold_outreach: true,
-      origem: "prospector_predictive",
-      propensity_score: lead.propensityScore,
-      sinal_growth_principal: sinalPrincipal,
-      perda_estimada: roiEstimate?.["perda_estimada_mes"],
-      dor_digital: !digital["indicio_crm"] ? "sem_crm" : !digital["tem_site"] ? "sem_site" : null,
-      segmento,
-    },
-  });
-
-  await db
-    .update(leadsTable)
-    .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
-    .where(eq(leadsTable.id, leadId));
-
-  return res.status(200).json({ ok: true, leadId });
-});
-
-// ── POST /prospector/dispatch-top — dispara SDR nos top N leads ──────────────
-router.post("/prospector/dispatch-top", async (req, res) => {
-  const tenantId = resolveTenantId(req, undefined);
-  const n = Math.min(Number(req.body?.["n"] ?? 10), 50);
-
-  const leads = await db
-    .select({ id: leadsTable.id })
-    .from(leadsTable)
-    .where(
-      and(
-        eq(leadsTable.tenantId, tenantId),
-        inArray(leadsTable.enrichmentStatus, ["enriched", "scored"]),
-        isNotNull(leadsTable.propensityScore),
-      ),
-    )
-    .orderBy(desc(leadsTable.propensityScore))
-    .limit(n);
-
-  for (const lead of leads) {
-    dispatchAgentBackground({
-      tenantId,
-      leadId: lead.id,
-      mensagem: "[PROSPECÇÃO EM LOTE] Lead da fila preditiva. Gere uma primeira mensagem personalizada.",
-      log: req.log,
-      forcedAgent: "sdr",
-      scenario: { cold_outreach: true, origem: "prospector_predictive" },
-    });
+  function tenantIdField() {
+    return isSuperAdmin ? { tenantId: tenantId || undefined } : {};
   }
 
-  await db
-    .update(leadsTable)
-    .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
-    .where(
-      and(
-        eq(leadsTable.tenantId, tenantId),
-        inArray(leadsTable.id, leads.map((l) => l.id)),
-      ),
-    );
-
-  return res.status(200).json({ ok: true, dispatched: leads.length });
-});
-
-// ── POST /prospector/fila/discard/:leadId — descarta lead da fila ─────────────
-router.post("/prospector/fila/discard/:leadId", async (req, res) => {
-  const tenantId = resolveTenantId(req, undefined);
-  const { leadId } = req.params as { leadId: string };
-
-  await db
-    .update(leadsTable)
-    .set({ enrichmentStatus: "discarded", updatedAt: new Date() })
-    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
-
-  return res.status(200).json({ ok: true });
-});
-
-// ── PUT /prospector/config/threshold — salva auto_dispatch_threshold ──────────
-router.put("/prospector/config/threshold", async (req, res) => {
-  const tenantId = resolveTenantId(req, undefined);
-  const threshold = Number(req.body?.["threshold"] ?? 80);
-  if (threshold < 0 || threshold > 100) {
-    return res.status(400).json({ error: "threshold deve ser entre 0 e 100" });
-  }
-
-  const [existing] = await db
-    .select({ id: prospectorConfigTable.id })
-    .from(prospectorConfigTable)
-    .where(eq(prospectorConfigTable.tenantId, tenantId))
-    .limit(1);
-
-  if (existing) {
-    await db
-      .update(prospectorConfigTable)
-      .set({ autoDispatchThreshold: threshold, updatedAt: new Date() })
-      .where(eq(prospectorConfigTable.tenantId, tenantId));
-  } else {
-    await db.insert(prospectorConfigTable).values({
-      tenantId,
-      autoDispatchThreshold: threshold,
-    });
-  }
-
-  return res.status(200).json({ ok: true, threshold });
-});
-
-// ── Cmd 23: CNPJ/CNAE routes ───────────────────────────────────────────────
-
-/** GET /prospector/cnpj/cnaes — list all CNAE entries with labels */
-router.get("/prospector/cnpj/cnaes", async (req, res) => {
-  const cnaes = await db
-    .select()
-    .from(cnaeVerticalMapTable)
-    .orderBy(cnaeVerticalMapTable.prioridade, cnaeVerticalMapTable.label);
-  return res.json({ cnaes });
-});
-
-/** POST /prospector/cnpj/search — bulk search by CNAE + city + opening date */
-router.post("/prospector/cnpj/search", async (req, res) => {
-  const schema = z.object({
-    cnae: z.string().min(4),
-    uf: z.string().length(2).optional(),
-    municipio: z.string().optional(),
-    aberturaDias: z.number().int().min(7).max(365).optional(),
-    porte: z.enum(["MEI", "ME", "EPP", "DEMAIS"]).optional(),
-    limit: z.number().int().min(1).max(50).optional().default(20),
-    tenantId: z.string().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
-
-  const { cnae, uf, municipio, aberturaDias, porte, limit } = parsed.data;
-
-  const result = await searchByCnae({ cnae, uf, municipio, aberturaDias, porte, limit });
-
-  return res.json({
-    empresas: result.empresas,
-    total: result.total,
-    apiKeyRequired: result.apiKeyRequired,
-  });
-});
-
-/** GET /prospector/cnpj/lookup/:cnpj — single CNPJ lookup */
-router.get("/prospector/cnpj/lookup/:cnpj", async (req, res) => {
-  const cnpj = normalizeCnpj(req.params.cnpj ?? "");
-  if (cnpj.length !== 14) return res.status(400).json({ error: "CNPJ inválido" });
-
-  const company = await getCompanyByCnpj(cnpj);
-  if (!company) return res.status(404).json({ error: "CNPJ não encontrado" });
-
-  return res.json({ empresa: company });
-});
-
-/** POST /prospector/cnpj/prospectar — create lead/deal from a CNPJ result */
-router.post("/prospector/cnpj/prospectar", async (req, res) => {
-  const schema = z.object({
-    cnpj: z.string().min(14),
-    razaoSocial: z.string().min(2),
-    nomeFantasia: z.string().nullish(),
-    cnaeCode: z.string().optional(),
-    cnaeDescricao: z.string().optional(),
-    endereco: z.string().optional(),
-    municipio: z.string().optional(),
-    uf: z.string().optional(),
-    telefone: z.string().nullish(),
-    email: z.string().nullish(),
-    dataAbertura: z.string().optional(),
-    porte: z.string().nullish(),
-    socios: z.array(z.object({ nome: z.string(), qualificacao: z.string().optional() })).optional().default([]),
-    source: z.enum(["cnpj", "recem_aberta", "ad_library"]).optional().default("cnpj"),
-    tenantId: z.string().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
-
-  const tenantId = resolveTenantId(req, parsed.data.tenantId);
-  const d = parsed.data;
-
-  const cnpjClean = normalizeCnpj(d.cnpj);
-
-  // Deduplication check
-  const [existing] = await db
-    .select({ id: leadsTable.id, nome: leadsTable.nome })
-    .from(leadsTable)
-    .where(and(
-      eq(leadsTable.tenantId, tenantId),
-      or(
-        eq(leadsTable.documento, cnpjClean),
-        d.telefone ? eq(leadsTable.telefone, d.telefone) : sql`FALSE`,
-      ),
-    ))
-    .limit(1);
-
-  if (existing) {
-    // Merge: update missing fields
-    await db.update(leadsTable)
-      .set({
-        ...(d.telefone ? { telefone: d.telefone } : {}),
-        ...(d.email ? { email: d.email } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(leadsTable.id, existing.id));
-
-    return res.json({
-      leadId: existing.id,
-      merged: true,
-      message: `Lead "${existing.nome}" já existe — dados mesclados`,
-    });
-  }
-
-  // Calculate how many days since opening
-  const abertura = d.dataAbertura ? new Date(d.dataAbertura) : null;
-  const diasAberto = abertura ? Math.floor((Date.now() - abertura.getTime()) / 86_400_000) : null;
-  const isRecemAberta = diasAberto != null && diasAberto <= 90;
-
-  const [firstFunil] = await db
-    .select({ id: funisTable.id })
-    .from(funisTable)
-    .where(eq(funisTable.tenantId, tenantId))
-    .limit(1);
-
-  const priorityReason = isRecemAberta
-    ? `Empresa aberta há ${diasAberto} dias — montando operação`
-    : undefined;
-
-  const [lead] = await db.insert(leadsTable).values({
-    tenantId,
-    nome: d.nomeFantasia || d.razaoSocial,
-    empresa: d.razaoSocial,
-    telefone: d.telefone ?? undefined,
-    email: d.email ?? undefined,
-    documento: cnpjClean,
-    endereco: d.endereco,
-    tipoPessoa: "juridica",
-    source: isRecemAberta ? "recem_aberta" : d.source,
-    enrichmentStatus: "pending",
-    mercadoSegmento: d.cnaeDescricao,
-    priorityReason,
-    dadosPj: {
-      cnpj: cnpjClean,
-      razaoSocial: d.razaoSocial,
-      segmento: d.cnaeDescricao,
-      socios: d.socios.map((s) => ({ nome: s.nome })),
-    },
-    metadata: {
-      origem: d.source,
-      prospectado_em: new Date().toISOString(),
-      cnae: d.cnaeCode,
-      data_abertura: d.dataAbertura,
-      dias_aberto: diasAberto,
-      cidade: d.municipio,
-    },
-  }).returning({ id: leadsTable.id });
-
-  if (!lead) return res.status(500).json({ error: "Falha ao criar lead" });
-
-  // Create deal in the same CRM funnel used by the canonical Prospector.
-  let cnpjDealId: string | null = null;
-  if (firstFunil) {
-    const [createdDeal] = await db.insert(dealsTable).values({
-      tenantId,
-      leadId: lead.id,
-      funilId: firstFunil.id,
-      titulo: `${d.nomeFantasia || d.razaoSocial} — Prospector CNPJ`,
-      etapa: "novo",
-    }).returning({ id: dealsTable.id });
-    cnpjDealId = createdDeal?.id ?? null;
-  }
-
-  // Activity
-  await db.insert(activitiesTable).values({
-    tenantId,
-    leadId: lead.id,
-    dealId: cnpjDealId,
-    tipo: "tarefa",
-    titulo: "Lead importado via Busca CNPJ",
-    descricao: `Lead importado via Busca CNPJ (CNAE ${d.cnaeCode ?? "?"}) — ${d.municipio ?? ""}`,
-    status: "concluida",
-  });
-
-  if (cnpjDealId) {
-    gerarBriefingDeal(
-      tenantId,
-      cnpjDealId,
-      d.nomeFantasia || d.razaoSocial,
-      d.endereco ?? null,
-      d.telefone ?? null,
-      null,
-      null,
-      null,
-      [],
-      [],
-      req.log,
-    ).catch(() => undefined);
-  }
-
-  // Enrich (fire-and-forget) with boost if recently opened
-  enrichLead({
-    leadId: lead.id,
-    tenantId,
-    scoreBoost: isRecemAberta ? 20 : 0,
-    boostReason: isRecemAberta ? "empresa_recem_aberta" : "",
-  }).catch(() => undefined);
-
-  return res.status(201).json({
-    leadId: lead.id,
-    merged: false,
-    isRecemAberta,
-    linkedInUrl: buildLinkedInSearchUrl(d.razaoSocial, d.municipio ?? ""),
-    decisorNome: d.socios[0]?.nome ?? null,
-  });
-});
-
-/** POST /prospector/ads/search — discover companies via Meta Ad Library */
-router.post("/prospector/ads/search", async (req, res) => {
-  const schema = z.object({
-    searchTerms: z.string().min(2),
-    limit: z.number().int().min(1).max(50).optional().default(20),
-    tenantId: z.string().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
-
-  const token = process.env.INSTAGRAM_ACCESS_TOKEN;
-  if (!token) {
-    return res.status(400).json({
-      error: "INSTAGRAM_ACCESS_TOKEN não configurado",
-      hint: "Configure o token do Instagram/Meta para usar esta funcionalidade",
-    });
-  }
-
-  const result = await searchMetaAds(parsed.data.searchTerms, token, parsed.data.limit);
-
-  return res.json({
-    ads: result.ads,
-    hasAds: result.hasAds,
-    searchTerms: parsed.data.searchTerms,
-  });
-});
-
-/** POST /prospector/ads/prospectar — ingest a Meta/Instagram advertiser into the canonical Prospector */
-router.post("/prospector/ads/prospectar", async (req, res) => {
-  const schema = z.object({
-    pageId: z.string().min(1),
-    pageName: z.string().min(2),
-    snapshotUrl: z.string().url().nullish(),
-    startDate: z.string().nullish(),
-    searchTerms: z.string().optional(),
-    tenantId: z.string().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
-
-  const tenantId = resolveTenantId(req, parsed.data.tenantId);
-  const d = parsed.data;
-
-  // Cross-enrich Meta discovery with Google Places when quota/provider are available.
-  let place: PlacesResult | null = null;
-  try {
-    await checkApiQuota(tenantId, "google_places", req.log);
-    place = await searchPlace(d.pageName, req.log);
-  } catch (err) {
-    req.log.warn({ err, pageId: d.pageId }, "prospector/meta: Google cross-enrichment unavailable (non-fatal)");
-  }
-
-  const telefone = place?.telefone ?? null;
-  const whatsapp = deriveWhatsapp(telefone);
-  const now = new Date().toISOString();
-  const metaSignal = {
-    origem: "ad_library",
-    meta_page_id: d.pageId,
-    meta_page_name: d.pageName,
-    meta_ad_snapshot_url: d.snapshotUrl ?? null,
-    meta_ad_start_date: d.startDate ?? null,
-    meta_search_terms: d.searchTerms ?? null,
-    meta_anunciante_ativo: true,
-    rating: place?.rating ?? null,
-    total_ratings: place?.reviewCount ?? null,
-    prospectado_em: now,
-  };
-
-  // Deduplicate inside the tenant by Meta page id, phone or exact business name.
-  const [existing] = await db
-    .select({ id: leadsTable.id, nome: leadsTable.nome, metadata: leadsTable.metadata })
-    .from(leadsTable)
-    .where(and(
-      eq(leadsTable.tenantId, tenantId),
-      or(
-        sql`${leadsTable.metadata}->>'meta_page_id' = ${d.pageId}`,
-        telefone ? eq(leadsTable.telefone, telefone) : sql`FALSE`,
-        sql`lower(${leadsTable.nome}) = lower(${d.pageName})`,
-      ),
-    ))
-    .limit(1);
-
-  if (existing) {
-    await db.update(leadsTable)
-      .set({
-        telefone: telefone ?? undefined,
-        websiteUrl: place?.siteOficial ?? undefined,
-        endereco: place?.endereco ?? undefined,
-        metadata: {
-          ...((existing.metadata ?? {}) as Record<string, unknown>),
-          ...metaSignal,
+  function onSearch() {
+    if (atividade.trim().length < 2) {
+      toast({ title: "Informe a atividade comercial", variant: "destructive" });
+      return;
+    }
+    if (localidade.trim().length < 2) {
+      toast({ title: "Informe a localidade", variant: "destructive" });
+      return;
+    }
+    search.mutate(
+      {
+        data: {
+          atividade: atividade.trim(),
+          localidade: localidade.trim(),
+          maxResults,
+          ...tenantIdField(),
         },
-        priorityReason: "Anunciante Meta/Instagram ativo — sinal comercial atualizado",
-        updatedAt: new Date(),
-      })
-      .where(eq(leadsTable.id, existing.id));
-
-    return res.status(200).json({
-      leadId: existing.id,
-      dealId: null,
-      merged: true,
-      message: `Lead "${existing.nome}" já existe — sinal Meta atualizado`,
-    });
+      },
+      {
+        onSuccess: (res) => {
+          setResults(res.results);
+          setSearched(true);
+          setEnrichment(null);
+          setProspectedIndexes([]);
+          setDuplicateIndexes([]);
+          toast({
+            title: res.total > 0 ? `${res.total} empresa(s) encontrada(s)` : "Nenhuma empresa encontrada",
+            description: res.total === 0 ? "Tente outra atividade ou localidade." : undefined,
+            variant: res.total === 0 ? "destructive" : undefined,
+          });
+        },
+        onError: (err) => {
+          const msg = err instanceof Error ? err.message : "";
+          const isPermission = msg.includes("403") || msg.includes("permission") || msg.includes("PERMISSION");
+          toast({
+            title: "Falha na busca",
+            description: isPermission
+              ? "A chave do Google Places não tem permissão. Ative a 'Places API (New)' no Google Cloud Console e certifique-se de que o faturamento está habilitado no projeto."
+              : msg || "Erro desconhecido. Tente novamente.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   }
 
-  const [lead] = await db.insert(leadsTable).values({
-    tenantId,
-    nome: d.pageName,
-    empresa: d.pageName,
-    telefone: telefone ?? undefined,
-    endereco: place?.endereco ?? undefined,
-    websiteUrl: place?.siteOficial ?? undefined,
-    source: "ad_library",
-    tipoPessoa: "juridica",
-    enrichmentStatus: "pending",
-    mercadoSegmento: d.searchTerms ?? undefined,
-    priorityReason: "Investindo em anúncios Meta/Instagram — sinal de intenção comercial",
-    metadata: metaSignal,
-  }).returning({ id: leadsTable.id });
-
-  if (!lead) return res.status(500).json({ error: "Falha ao criar lead Meta" });
-
-  const [firstFunil] = await db
-    .select({ id: funisTable.id })
-    .from(funisTable)
-    .where(eq(funisTable.tenantId, tenantId))
-    .orderBy(asc(funisTable.createdAt))
-    .limit(1);
-
-  let dealId: string | null = null;
-  if (firstFunil) {
-    const [deal] = await db.insert(dealsTable).values({
-      tenantId,
-      leadId: lead.id,
-      funilId: firstFunil.id,
-      titulo: `${d.pageName} — Prospector Meta`,
-      etapa: "novo",
-    }).returning({ id: dealsTable.id });
-    dealId = deal?.id ?? null;
+  function onProspect(r: ProspectorSearchResult, index: number) {
+    const nome = r.nomeEmpresa ?? "";
+    if (nome.trim().length < 2) return;
+    setProspectingIndex(index);
+    setProspectStep("importing");
+    setProspectDealId(null);
+    enrich.mutate(
+      {
+        data: {
+          nomeEmpresa: nome,
+          endereco: r.endereco ?? undefined,
+          ...tenantIdField(),
+        },
+      },
+      {
+        onSuccess: (res) => {
+          setEnrichment(res.enrichment);
+          if (!msgNomeEmpresa) setMsgNomeEmpresa(res.enrichment.nomeEmpresa ?? nome);
+          const isDup = (res as any).isDuplicate as boolean | undefined;
+          if (!res.saved) {
+            setProspectStep("idle");
+            toast({
+              title: "Não virou lead",
+              description: res.reason ?? "Empresa sem canal de contato.",
+              variant: "destructive",
+            });
+          } else if (isDup) {
+            setDuplicateIndexes((prev) => (prev.includes(index) ? prev : [...prev, index]));
+            setProspectStep("idle");
+            toast({
+              title: "Lead já cadastrado",
+              description: "Este contato já existe na sua base e não foi importado novamente.",
+            });
+          } else {
+            setProspectedIndexes((prev) => (prev.includes(index) ? prev : [...prev, index]));
+            const dealId = (res as any).dealId as string | null | undefined;
+            setProspectDealId(dealId ?? null);
+            setProspectStep("briefing");
+            // Simula o tempo de geração do briefing no backend (~3s) e marca como done
+            setTimeout(() => setProspectStep("done"), 3500);
+          }
+        },
+        onError: (err) => {
+          setProspectStep("idle");
+          toast({
+            title: "Falha ao prospectar",
+            description: err instanceof Error ? err.message : undefined,
+            variant: "destructive",
+          });
+        },
+        onSettled: () => setProspectingIndex(null),
+      },
+    );
   }
 
-  await db.insert(activitiesTable).values({
-    tenantId,
-    leadId: lead.id,
-    dealId,
-    tipo: "tarefa",
-    titulo: "Lead importado via Prospector Meta/Instagram",
-    descricao: `Anunciante ativo identificado na Meta Ad Library${d.searchTerms ? ` para "${d.searchTerms}"` : ""}.`,
-    status: "concluida",
-  });
-
-  if (dealId) {
-    gerarBriefingDeal(
-      tenantId,
-      dealId,
-      d.pageName,
-      place?.endereco ?? null,
-      telefone,
-      place?.siteOficial ?? null,
-      place?.rating ?? null,
-      place?.reviewCount ?? null,
-      ["Investe ativamente em mídia paga"],
-      ["Risco de perda de leads entre anúncio e atendimento"],
-      req.log,
-    ).catch(() => undefined);
-  }
-
-  enrichLead({
-    leadId: lead.id,
-    tenantId,
-    log: req.log,
-    scoreBoost: 5,
-    boostReason: "meta_advertiser",
-  }).catch(() => undefined);
-
-  return res.status(201).json({ leadId: lead.id, dealId, merged: false, whatsapp });
-});
-
-/** POST /prospector/cnpj/recem-abertas — manual trigger of new-company scan */
-router.post("/prospector/cnpj/recem-abertas", async (req, res) => {
-  const schema = z.object({
-    cnae: z.string().min(4),
-    municipio: z.string().optional(),
-    uf: z.string().length(2).optional(),
-    aberturaDias: z.number().int().min(7).max(365).optional().default(30),
-    limit: z.number().int().min(1).max(20).optional().default(10),
-    tenantId: z.string().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
-
-  const tenantId = resolveTenantId(req, parsed.data.tenantId);
-  const { cnae, municipio, uf, aberturaDias, limit } = parsed.data;
-
-  const result = await searchByCnae({ cnae, municipio, uf, aberturaDias, limit });
-
-  if (result.apiKeyRequired) {
-    return res.status(400).json({
-      error: "CNPJ_API_KEY não configurada",
-      hint: "Configure CNPJ_API_KEY (CNPJá ou similar) para buscar empresas recém-abertas",
-      apiKeyRequired: true,
-    });
-  }
-
-  // Filter: only companies opened within aberturaDias
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - (aberturaDias ?? 30));
-
-  const recemAbertas = result.empresas.filter((e) => {
-    if (!e.dataAbertura) return false;
-    return new Date(e.dataAbertura) >= cutoff;
-  });
-
-  return res.json({
-    empresas: recemAbertas,
-    total: recemAbertas.length,
-    apiKeyRequired: false,
-  });
-});
-
-/** POST /prospector/dedup-check — check if company already exists as lead */
-router.post("/prospector/dedup-check", async (req, res) => {
-  const schema = z.object({
-    cnpj: z.string().optional(),
-    nome: z.string().optional(),
-    cidade: z.string().optional(),
-    telefone: z.string().optional(),
-    tenantId: z.string().optional(),
-  });
-
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
-
-  const tenantId = resolveTenantId(req, parsed.data.tenantId);
-  const { cnpj, nome, telefone } = parsed.data;
-
-  if (!cnpj && !nome && !telefone) {
-    return res.status(400).json({ error: "Informe pelo menos cnpj, nome ou telefone" });
-  }
-
-  const cnpjClean = cnpj ? normalizeCnpj(cnpj) : null;
-
-  const conditions = [];
-  if (cnpjClean) conditions.push(eq(leadsTable.documento, cnpjClean));
-  if (telefone) conditions.push(eq(leadsTable.telefone, telefone));
-  if (nome) {
-    const nameNorm = normalizeName(nome);
-    conditions.push(sql`unaccent(lower(${leadsTable.nome})) LIKE '%' || ${nameNorm} || '%'`);
-  }
-
-  const [existing] = await db
-    .select({ id: leadsTable.id, nome: leadsTable.nome, source: leadsTable.source })
-    .from(leadsTable)
-    .where(and(eq(leadsTable.tenantId, tenantId), or(...conditions)))
-    .limit(1);
-
-  return res.json({
-    exists: !!existing,
-    leadId: existing?.id ?? null,
-    leadNome: existing?.nome ?? null,
-    source: existing?.source ?? null,
-  });
-});
-
-// ── POST /tenants/:id/leads/:leadId/feedback — rate a lead ───────────────────
-router.post(
-  "/tenants/:id/leads/:leadId/feedback",
-  async (req, res) => {
-    const tenantId = resolveTenantId(req, req.params["id"]);
-    const leadId = String(req.params["leadId"]);
-
-    const parsed = insertProspectFeedbackSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(422).json({ error: parsed.error.message });
-      return;
+  async function onExport() {
+    setExporting(true);
+    try {
+      const csv = await prospectorExport(isSuperAdmin && tenantId ? { tenantId } : undefined);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "prospector_leads.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({
+        title: "Falha ao exportar CSV",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
     }
-
-    const [lead] = await db
-      .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
-      .from(leadsTable)
-      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
-
-    if (!lead) {
-      res.status(404).json({ error: "Lead não encontrado" });
-      return;
-    }
-
-    const result = await registerLeadFeedback({
-      tenantId,
-      leadId,
-      userId: req.user!.sub,
-      rating: parsed.data.rating,
-      comment: parsed.data.comment,
-    });
-
-    res.status(201).json({ success: true, avgRating: result.avgRating });
   }
-);
 
-// ── GET /tenants/:id/leads/:leadId/feedback — list feedback for a lead ────────
-router.get(
-  "/tenants/:id/leads/:leadId/feedback",
-  async (req, res) => {
-    const tenantId = resolveTenantId(req, req.params["id"]);
-    const leadId = String(req.params["leadId"]);
-
-    const rows = await db
-      .select({
-        id: prospectFeedbackTable.id,
-        rating: prospectFeedbackTable.rating,
-        comment: prospectFeedbackTable.comment,
-        converted: prospectFeedbackTable.converted,
-        createdAt: prospectFeedbackTable.createdAt,
-      })
-      .from(prospectFeedbackTable)
-      .where(
-        and(
-          eq(prospectFeedbackTable.tenantId, tenantId),
-          eq(prospectFeedbackTable.leadId, leadId),
-        )
-      )
-      .orderBy(desc(prospectFeedbackTable.createdAt));
-
-    res.json(rows);
+  function onGenerate() {
+    generate.mutate(
+      {
+        data: {
+          messageType,
+          nomeEmpresa: msgNomeEmpresa.trim() || undefined,
+          contexto: contexto.trim() || undefined,
+          ...tenantIdField(),
+        },
+      },
+      {
+        onSuccess: (res) => {
+          setGeneratedText(messageType === "email" ? res.email : res.whatsapp);
+          toast({ title: "Mensagem gerada" });
+        },
+        onError: (err) => {
+          toast({
+            title: "Falha ao gerar mensagem",
+            description: err instanceof Error ? err.message : undefined,
+            variant: "destructive",
+          });
+        },
+      },
+    );
   }
-);
 
-export default router;
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Search className="h-6 w-6 text-primary" /> Prospector
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Busque e enriqueça empresas e gere mensagens de primeiro contato com IA.
+          </p>
+        </div>
+        <Button onClick={onExport} disabled={exporting} variant="outline">
+          {exporting ? (
+            <>
+              <Spinner className="h-4 w-4 mr-2" /> Exportando...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4 mr-2" /> Exportar CSV
+            </>
+          )}
+        </Button>
+      </div>
 
+      <Tabs defaultValue={defaultProspectorTab}>
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="busca" className="flex items-center gap-1.5">
+            <MapPin className="h-4 w-4" /> Google Places
+          </TabsTrigger>
+          <TabsTrigger value="cnpj" className="flex items-center gap-1.5">
+            <Building2 className="h-4 w-4" /> Busca CNPJ
+          </TabsTrigger>
+          <TabsTrigger value="anunciantes" className="flex items-center gap-1.5">
+            <Megaphone className="h-4 w-4" /> Anunciantes
+          </TabsTrigger>
+          <TabsTrigger value="fila" className="flex items-center gap-1.5">
+            <TrendingUp className="h-4 w-4" /> Fila
+            {(filaQuery.data?.total ?? 0) > 0 && (
+              <span className="ml-1 bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5 leading-none">
+                {filaQuery.data!.total}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="aprovacoes" className="flex items-center gap-1.5">
+            <ClipboardCheck className="h-4 w-4" /> Aprovações
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="busca" className="mt-4 space-y-6">
+
+      <ProspectorAutoConfig />
+
+      {isSuperAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Tenant</CardTitle>
+            <CardDescription>Como super admin, informe o tenantId alvo.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Input
+              placeholder="tenantId"
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* ── Busca por atividade + localidade ────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Search className="h-4 w-4 text-primary" /> Buscar empresas
+            </CardTitle>
+            <CardDescription>
+              Informe a atividade comercial e a localidade para listar empresas (Google Places).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="atividade">Atividade comercial</Label>
+              <Input
+                id="atividade"
+                placeholder="Ex: restaurantes, clínicas odontológicas"
+                value={atividade}
+                onChange={(e) => setAtividade(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSearch();
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="localidade">Localidade</Label>
+              <Input
+                id="localidade"
+                placeholder="Ex: Curitiba, PR"
+                value={localidade}
+                onChange={(e) => setLocalidade(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSearch();
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="maxResults">
+                Quantidade de leads a buscar <span className="text-muted-foreground font-normal">({maxResults})</span>
+              </Label>
+              <input
+                id="maxResults"
+                type="range"
+                min={1}
+                max={20}
+                step={1}
+                value={maxResults}
+                onChange={(e) => setMaxResults(Number(e.target.value))}
+                className="w-full accent-primary h-2 rounded cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>1</span>
+                <span>10</span>
+                <span>20</span>
+              </div>
+            </div>
+            <Button onClick={onSearch} disabled={search.isPending} className="w-full">
+              {search.isPending ? (
+                <>
+                  <Spinner className="h-4 w-4 mr-2" /> Buscando...
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 mr-2" /> Buscar empresas
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* ── Geração de mensagem ─────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" /> Gerar Mensagem
+            </CardTitle>
+            <CardDescription>Crie uma mensagem de primeiro contato com IA.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Canal</Label>
+              <Select value={messageType} onValueChange={setMessageType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="email">E-mail</SelectItem>
+                  <SelectItem value="instagram">Instagram</SelectItem>
+                  <SelectItem value="sms">SMS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="msgNomeEmpresa">Nome da empresa (opcional)</Label>
+              <Input
+                id="msgNomeEmpresa"
+                placeholder="Ex: Padaria Bella Paulista"
+                value={msgNomeEmpresa}
+                onChange={(e) => setMsgNomeEmpresa(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="contexto">Contexto (opcional)</Label>
+              <Textarea
+                id="contexto"
+                placeholder="Ex: queremos oferecer nosso sistema de gestão..."
+                value={contexto}
+                onChange={(e) => setContexto(e.target.value)}
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+            <Button onClick={onGenerate} disabled={generate.isPending} className="w-full">
+              {generate.isPending ? (
+                <>
+                  <Spinner className="h-4 w-4 mr-2" /> Gerando...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" /> Gerar Mensagem
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Lista de empresas encontradas ───────────────────── */}
+      {searched && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-primary" /> Empresas encontradas ({results.length})
+            </CardTitle>
+            <CardDescription>
+              Clique em "Prospectar" para enriquecer com IA e criar o lead na pipeline.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {results.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Nenhuma empresa encontrada. Tente outra atividade ou localidade.
+              </p>
+            ) : (
+              <ul className="divide-y">
+                {results.map((r, i) => {
+                  const nome = r.nomeEmpresa ?? "";
+                  const isProspecting = prospectingIndex === i && enrich.isPending;
+                  const done = prospectedIndexes.includes(i);
+                  const isDup = duplicateIndexes.includes(i);
+                  return (
+                    <li
+                      key={`${nome}-${i}`}
+                      className="py-3 flex items-start justify-between gap-3"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <p className="font-medium truncate">{nome || "Sem nome"}</p>
+                        {r.endereco && (
+                          <p className="text-xs text-muted-foreground truncate">{r.endereco}</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          {r.telefone && (
+                            <span className="flex items-center gap-1">
+                              <MessageCircle className="h-3 w-3" /> {r.telefone}
+                            </span>
+                          )}
+                          {typeof r.rating === "number" && (
+                            <span className="flex items-center gap-1">
+                              <Gauge className="h-3 w-3" /> {r.rating}
+                              {typeof r.reviewCount === "number" ? ` (${r.reviewCount})` : ""}
+                            </span>
+                          )}
+                          {r.siteOficial && (
+                            <a
+                              href={r.siteOficial}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary hover:underline truncate max-w-[160px]"
+                            >
+                              site
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      {isDup ? (
+                        <Badge variant="secondary" className="shrink-0 gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-amber-500" /> Já importado
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant={done ? "outline" : "default"}
+                          disabled={enrich.isPending || done || nome.trim().length < 2}
+                          onClick={() => onProspect(r, i)}
+                          className="shrink-0"
+                        >
+                          {isProspecting ? (
+                            <>
+                              <Spinner className="h-4 w-4 mr-1" /> Prospectando...
+                            </>
+                          ) : done ? (
+                            <>
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Lead criado
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus className="h-4 w-4 mr-1" /> Prospectar
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Progresso da prospecção ──────────────────────────── */}
+      {prospectStep !== "idle" && (
+        <Card className={prospectStep === "done" ? "border-emerald-300 bg-emerald-50" : "border-primary/30"}>
+          <CardContent className="py-4 space-y-2">
+            {(() => {
+              const stepIdx = { idle: -1, importing: 0, briefing: 2, done: 3 }[prospectStep];
+              return [
+                { idx: 0, label: "Importando lead..." },
+                { idx: 1, label: "Adicionando ao funil..." },
+                { idx: 2, label: "Gerando briefing com IA..." },
+              ].map(({ idx, label }) => {
+                const isDone = stepIdx > idx;
+                const isActive = stepIdx === idx;
+                const finalLabel = isDone && idx === 2 ? "✅ Lead adicionado ao CRM com briefing!" : label;
+                return (
+                  <div key={idx} className="flex items-center gap-2 text-sm">
+                    {isDone ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                    ) : isActive ? (
+                      <Spinner className="h-4 w-4 text-primary shrink-0" />
+                    ) : (
+                      <div className="h-4 w-4 rounded-full border-2 border-muted shrink-0" />
+                    )}
+                    <span className={isDone ? "text-emerald-700" : isActive ? "text-foreground font-medium" : "text-muted-foreground"}>
+                      {finalLabel}
+                    </span>
+                  </div>
+                );
+              });
+            })()}
+            {prospectStep === "done" && (
+              <div className="flex gap-2 pt-1">
+                <Link href="/negocios">
+                  <Button size="sm" variant="default" className="gap-1.5">
+                    <Briefcase className="h-3.5 w-3.5" /> Ver no CRM
+                  </Button>
+                </Link>
+                <Button size="sm" variant="outline" onClick={() => setProspectStep("idle")} className="gap-1.5">
+                  <XCircle className="h-3.5 w-3.5" /> Fechar
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Resultados ──────────────────────────────────────── */}
+      {enrichment && <EnrichmentResult data={enrichment} />}
+      {generatedText && <MessageApproval key={generatedText} generatedText={generatedText} />}
+
+      {!searched && !enrichment && !generatedText && (
+        <Card className="border-dashed">
+          <CardContent className="py-10 text-center text-muted-foreground">
+            <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>Os resultados de enriquecimento e mensagens aparecerão aqui.</p>
+            <p className="text-xs mt-1 flex items-center justify-center gap-1">
+              <XCircle className="h-3 w-3" /> Nenhum resultado ainda.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+        </TabsContent>
+
+        {/* ── Aba CNPJ ─────────────────────────────────────────── */}
+        <TabsContent value="cnpj" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-primary" /> Busca por CNPJ/CNAE
+              </CardTitle>
+              <CardDescription>
+                Encontre empresas reais da Receita Federal por atividade, cidade e data de abertura.
+                Requer <code className="text-xs bg-muted px-1 rounded">CNPJ_API_KEY</code>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* CNAE selector */}
+              <div className="space-y-1.5">
+                <Label>Atividade (CNAE)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Buscar atividade... ex: restaurante, clínica"
+                    value={cnaeSearch}
+                    onChange={(e) => setCnaeSearch(e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
+                {cnaeListQuery.data && (
+                  <div className="flex flex-wrap gap-1.5 mt-1 max-h-32 overflow-y-auto">
+                    {cnaeListQuery.data.cnaes
+                      .filter((c) =>
+                        !cnaeSearch ||
+                        c.label.toLowerCase().includes(cnaeSearch.toLowerCase()) ||
+                        c.cnae.includes(cnaeSearch)
+                      )
+                      .map((c) => (
+                        <button
+                          key={c.cnae}
+                          onClick={() => { setCnaeSelected(c.cnae); setCnaeSearch(c.label); }}
+                          className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                            cnaeSelected === c.cnae
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background border-border hover:bg-muted"
+                          }`}
+                        >
+                          {c.label}
+                        </button>
+                      ))
+                    }
+                  </div>
+                )}
+                {cnaeSelected && (
+                  <p className="text-xs text-muted-foreground">CNAE selecionado: <code>{cnaeSelected}</code></p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Município</Label>
+                  <Input placeholder="Ex: Chapecó" value={cnpjMunicipio} onChange={(e) => setCnpjMunicipio(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>UF</Label>
+                  <Input placeholder="Ex: SC" maxLength={2} value={cnpjUf} onChange={(e) => setCnpjUf(e.target.value.toUpperCase())} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Abertura</Label>
+                  <Select value={cnpjAberturaDias} onValueChange={setCnpjAberturaDias}>
+                    <SelectTrigger><SelectValue placeholder="Qualquer data" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="qualquer">Qualquer data</SelectItem>
+                      <SelectItem value="30">Últimos 30 dias ⭐</SelectItem>
+                      <SelectItem value="90">Últimos 90 dias</SelectItem>
+                      <SelectItem value="180">Últimos 6 meses</SelectItem>
+                      <SelectItem value="365">Último ano</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Porte</Label>
+                  <Select value={cnpjPorte} onValueChange={setCnpjPorte}>
+                    <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="MEI">MEI</SelectItem>
+                      <SelectItem value="ME">ME (Microempresa)</SelectItem>
+                      <SelectItem value="EPP">EPP (Pequena)</SelectItem>
+                      <SelectItem value="DEMAIS">Demais</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                disabled={!cnaeSelected || cnpjSearchMutation.isPending}
+                onClick={() =>
+                  cnpjSearchMutation.mutate({
+                    cnae: cnaeSelected,
+                    uf: cnpjUf || undefined,
+                    municipio: cnpjMunicipio || undefined,
+                    aberturaDias: cnpjAberturaDias && cnpjAberturaDias !== "qualquer" ? Number(cnpjAberturaDias) : undefined,
+                    porte: cnpjPorte && cnpjPorte !== "todos" ? cnpjPorte : undefined,
+                  })
+                }
+              >
+                {cnpjSearchMutation.isPending ? (
+                  <><Spinner className="h-4 w-4 mr-2" /> Buscando...</>
+                ) : (
+                  <><FileSearch className="h-4 w-4 mr-2" /> Buscar Empresas</>
+                )}
+              </Button>
+
+              {/* API Key required warning */}
+              {cnpjApiKeyRequired && (
+                <Card className="border-amber-200 bg-amber-50">
+                  <CardContent className="py-4 flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-amber-800">CNPJ_API_KEY necessária</p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        Configure a variável de ambiente <code>CNPJ_API_KEY</code> com sua chave da
+                        <a href="https://cnpja.com" target="_blank" rel="noopener noreferrer" className="underline ml-1">CNPJá API</a>
+                        {" "}para buscar empresas por CNAE em massa (~R$ 30-100/mês).
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Results */}
+          {cnpjSearched && !cnpjApiKeyRequired && (
+            <div className="space-y-3">
+              {cnpjResultados.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p>Nenhuma empresa encontrada. Tente ajustar os filtros.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">{cnpjResultados.length} empresa(s) encontrada(s)</p>
+                  {cnpjResultados.map((empresa, idx) => {
+                    const abertura = empresa.dataAbertura ? new Date(empresa.dataAbertura) : null;
+                    const diasAberto = abertura ? Math.floor((Date.now() - abertura.getTime()) / 86_400_000) : null;
+                    const isRecemAberta = diasAberto != null && diasAberto <= 90;
+                    const jaProspectado = cnpjProspectadoIds.has(empresa.cnpj);
+                    const isProspectando = cnpjProspectandoIndex === idx;
+
+                    return (
+                      <Card key={empresa.cnpj} className={isRecemAberta ? "border-emerald-200 shadow-sm" : ""}>
+                        <CardContent className="py-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0 space-y-1.5">
+                              <div className="flex items-start gap-2 flex-wrap">
+                                <p className="font-semibold">{empresa.nomeFantasia || empresa.razaoSocial}</p>
+                                {isRecemAberta && (
+                                  <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-xs gap-1">
+                                    <CalendarDays className="h-3 w-3" /> Aberta há {diasAberto}d
+                                  </Badge>
+                                )}
+                                {empresa.porte && (
+                                  <Badge variant="outline" className="text-xs">{empresa.porte}</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{empresa.cnaeDescricao}</p>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <MapPin className="h-3 w-3" /> {empresa.municipio}/{empresa.uf}
+                                {empresa.enderecoCompleto && ` — ${empresa.enderecoCompleto}`}
+                              </p>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                {empresa.telefone && (
+                                  <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {empresa.telefone}</span>
+                                )}
+                                {empresa.email && (
+                                  <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> {empresa.email}</span>
+                                )}
+                                {empresa.socios[0] && (
+                                  <span className="flex items-center gap-1 text-primary font-medium">
+                                    <Users className="h-3 w-3" /> {empresa.socios[0].nome}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                CNPJ: {empresa.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")}
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-1.5 shrink-0">
+                              <Button
+                                size="sm"
+                                disabled={jaProspectado || isProspectando || cnpjProspectarMutation.isPending}
+                                variant={jaProspectado ? "outline" : "default"}
+                                onClick={() => {
+                                  setCnpjProspectandoIndex(idx);
+                                  cnpjProspectarMutation.mutate(empresa, {
+                                    onSettled: () => setCnpjProspectandoIndex(null),
+                                  });
+                                }}
+                              >
+                                {jaProspectado ? (
+                                  <><CheckCircle2 className="h-3.5 w-3.5 mr-1 text-emerald-600" /> Prospectado</>
+                                ) : isProspectando ? (
+                                  <><Spinner className="h-3.5 w-3.5 mr-1" /> Salvando...</>
+                                ) : (
+                                  <><Zap className="h-3.5 w-3.5 mr-1" /> Prospectar</>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── Aba Anunciantes ────────────────────────────────────── */}
+        <TabsContent value="anunciantes" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Megaphone className="h-4 w-4 text-primary" /> Anunciantes Meta Ad Library
+              </CardTitle>
+              <CardDescription>
+                Descubra empresas que estão investindo em anúncios no Instagram/Facebook.
+                Empresas que anunciam têm verba — mas muitas perdem leads no atendimento.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Ex: clínica odontológica, restaurante, academia..."
+                  value={adsSearchTerms}
+                  onChange={(e) => setAdsSearchTerms(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAdsSearch()}
+                  className="flex-1"
+                />
+                <Button onClick={handleAdsSearch} disabled={adsSearching || !adsSearchTerms.trim()}>
+                  {adsSearching ? <Spinner className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Usa Meta Ad Library (gratuita). Requer Instagram configurado como integração.
+              </p>
+            </CardContent>
+          </Card>
+
+          {adsSearched && (
+            <div className="space-y-3">
+              {adsResultados.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p>Nenhum anunciante encontrado. Tente termos diferentes.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">{adsResultados.length} anunciante(s) encontrado(s)</p>
+                  {adsResultados.map((ad) => (
+                    <Card key={ad.pageId} className="border-amber-100">
+                      <CardContent className="py-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">{ad.pageName}</p>
+                              <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-xs">
+                                Anunciando
+                              </Badge>
+                            </div>
+                            {ad.startDate && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <CalendarDays className="h-3 w-3" /> Anunciando desde{" "}
+                                {new Date(ad.startDate).toLocaleDateString("pt-BR")}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground italic">
+                              Gancho SDR: "Vi que vocês estão anunciando no Instagram. Quantos leads do anúncio ficam sem resposta no WhatsApp?"
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            {ad.snapshotUrl && (
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={ad.snapshotUrl} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ver anúncio
+                                </a>
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant={adsProspectadosPageIds.has(ad.pageId) || adsDuplicadosPageIds.has(ad.pageId) ? "outline" : "default"}
+                              disabled={adsProspectMutation.isPending || adsProspectadosPageIds.has(ad.pageId) || adsDuplicadosPageIds.has(ad.pageId)}
+                              onClick={() => {
+                                setAdsProspectandoPageId(ad.pageId);
+                                adsProspectMutation.mutate(ad, { onSettled: () => setAdsProspectandoPageId(null) });
+                              }}
+                            >
+                              {adsProspectandoPageId === ad.pageId && adsProspectMutation.isPending ? (
+                                <><Spinner className="h-3.5 w-3.5 mr-1" /> Prospectando...</>
+                              ) : adsDuplicadosPageIds.has(ad.pageId) ? (
+                                <><CheckCircle2 className="h-3.5 w-3.5 mr-1 text-amber-600" /> Já no CRM</>
+                              ) : adsProspectadosPageIds.has(ad.pageId) ? (
+                                <><CheckCircle2 className="h-3.5 w-3.5 mr-1 text-emerald-600" /> Prospectado</>
+                              ) : (
+                                <><UserPlus className="h-3.5 w-3.5 mr-1" /> Prospectar</>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="fila" className="mt-4 space-y-4">
+          {/* ── Ações em lote + config ─────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" /> Fila Preditiva
+                  </CardTitle>
+                  <CardDescription>
+                    Leads ordenados por score de propensão. Score ≥ {filaQuery.data?.autoDispatchThreshold ?? 80} dispara SDR automaticamente.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => filaQuery.refetch()}
+                    disabled={filaQuery.isFetching}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1 ${filaQuery.isFetching ? "animate-spin" : ""}`} />
+                    Atualizar
+                  </Button>
+                  {selectedFilaLeadIds.size > 0 && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => createCampaignPackageMutation.mutate([...selectedFilaLeadIds])}
+                      disabled={createCampaignPackageMutation.isPending}
+                    >
+                      {createCampaignPackageMutation.isPending ? (
+                        <><Spinner className="h-3.5 w-3.5 mr-1" /> Preparando...</>
+                      ) : (
+                        <><Megaphone className="h-3.5 w-3.5 mr-1" /> Criar pacote completo ({selectedFilaLeadIds.size})</>
+                      )}
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={() => dispatchTopMutation.mutate(10)}
+                    disabled={dispatchTopMutation.isPending || (filaQuery.data?.total ?? 0) === 0}
+                  >
+                    {dispatchTopMutation.isPending ? (
+                      <><Spinner className="h-3.5 w-3.5 mr-1" /> Disparando...</>
+                    ) : (
+                      <><Zap className="h-3.5 w-3.5 mr-1" /> Disparar top 10</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          {/* ── Lista de leads na fila ─────────────────────────── */}
+          {filaQuery.isLoading ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Spinner className="h-5 w-5 mr-2" /> Carregando fila...
+            </div>
+          ) : filaQuery.isError ? (
+            <Card className="border-destructive/30">
+              <CardContent className="py-6 text-center text-destructive text-sm">
+                Falha ao carregar a fila. Tente atualizar.
+              </CardContent>
+            </Card>
+          ) : filaLeads.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p className="font-medium">Fila vazia</p>
+                <p className="text-xs mt-1">Prospecte empresas para preencher a fila preditiva.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {filaLeads.map((lead) => {
+                const score = lead.propensityScore ?? 0;
+                const threshold = filaQuery.data?.autoDispatchThreshold ?? 80;
+                const scoreColor = score >= 80 ? "text-emerald-600 bg-emerald-50 border-emerald-200" : score >= 50 ? "text-amber-600 bg-amber-50 border-amber-200" : "text-red-600 bg-red-50 border-red-200";
+                const scoreEmoji = score >= 80 ? "🟢" : score >= 50 ? "🟡" : "🔴";
+                const roi = lead.roiEstimate;
+                const isPending = lead.enrichmentStatus === "pending";
+                const isEnriched = lead.enrichmentStatus === "enriched";
+                const isScored = lead.enrichmentStatus === "scored";
+                const growth = lead.enrichmentData?.growth ?? {};
+                const digital = lead.enrichmentData?.digital ?? {};
+                const hasBoostEvent = lead.events.length > 0;
+
+                return (
+                  <Card
+                    key={lead.id}
+                    className={`transition-all ${hasBoostEvent ? "border-primary/50 shadow-sm" : ""}`}
+                  >
+                    <CardContent className="py-4">
+                      <div className="flex items-start gap-4">
+                        <input
+                          type="checkbox"
+                          className="mt-3 h-4 w-4 rounded border-input accent-primary"
+                          aria-label={`Selecionar ${lead.nome} para campanha`}
+                          checked={selectedFilaLeadIds.has(lead.id)}
+                          disabled={isPending}
+                          onChange={() => setSelectedFilaLeadIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id);
+                            return next;
+                          })}
+                        />
+                        {/* Score badge */}
+                        <div className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 min-w-[64px] ${isPending ? "text-muted-foreground bg-muted border-muted-foreground/20" : scoreColor}`}>
+                          {isPending ? (
+                            <>
+                              <Spinner className="h-4 w-4" />
+                              <span className="text-xs mt-1">calc...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xl font-bold leading-none">{score}</span>
+                              <span className="text-xs">/100</span>
+                              <span className="text-sm mt-1">{scoreEmoji}</span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Lead info */}
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold truncate">{lead.nome}</p>
+                              {lead.mercadoSegmento && (
+                                <p className="text-xs text-muted-foreground">{lead.mercadoSegmento}</p>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1 shrink-0">
+                              {isPending && <Badge variant="secondary">Analisando...</Badge>}
+                              {isEnriched && <Badge variant="outline">Enriquecido</Badge>}
+                              {isScored && (
+                                <Badge
+                                  variant={score >= threshold ? "default" : "secondary"}
+                                  className="text-xs"
+                                >
+                                  {score >= threshold ? "Auto-dispatch" : "Aguardando"}
+                                </Badge>
+                              )}
+                              {hasBoostEvent && (
+                                <Badge className="bg-primary/10 text-primary border-primary/30 text-xs gap-1">
+                                  <TrendingUp className="h-3 w-3" /> Boost ativo
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Priority reason */}
+                          {lead.priorityReason && (
+                            <p className="text-sm text-muted-foreground italic">
+                              {lead.priorityReason}
+                            </p>
+                          )}
+
+                          {/* Micro-events */}
+                          {lead.events.map((ev) => (
+                            <p key={ev.tipo} className="text-xs text-primary font-medium">
+                              {ev.descricao}
+                            </p>
+                          ))}
+
+                          {/* ROI */}
+                          {roi?.perda_estimada_mes != null && (
+                            <div className="flex items-center gap-1.5 text-sm">
+                              <BarChart3 className="h-3.5 w-3.5 text-destructive shrink-0" />
+                              <span className="text-destructive font-medium">
+                                Potencial recuperável: R$ {roi.perda_estimada_mes.toLocaleString("pt-BR")}/mês
+                              </span>
+                              {roi.ticket_estimado && (
+                                <Badge variant="outline" className="text-xs ml-1">{roi.ticket_estimado}</Badge>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Signals */}
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                            {lead.telefone && (
+                              <span className="flex items-center gap-1">
+                                <MessageCircle className="h-3 w-3" /> {lead.telefone}
+                              </span>
+                            )}
+                            {lead.endereco && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" /> {lead.endereco}
+                              </span>
+                            )}
+                            {digital["tem_site"] === false && (
+                              <span className="text-amber-600">Sem site</span>
+                            )}
+                            {digital["indicio_crm"] === false && (
+                              <span className="text-amber-600">Sem CRM</span>
+                            )}
+                            {(growth as Record<string, unknown>)["multiplas_unidades"] === true && (
+                              <span className="text-emerald-600">Múltiplas unidades</span>
+                            )}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <Button
+                              size="sm"
+                              disabled={dispatchSdrMutation.isPending || isPending}
+                              onClick={() => dispatchSdrMutation.mutate(lead.id)}
+                            >
+                              {dispatchSdrMutation.isPending ? (
+                                <><Spinner className="h-3.5 w-3.5 mr-1" /> Disparando...</>
+                              ) : (
+                                <><PlayCircle className="h-3.5 w-3.5 mr-1" /> Disparar SDR</>
+                              )}
+                            </Button>
+                            {lead.metadata?.revenue_scout_campaign_ids?.[0] && (
+                              <Link href={`/content?tab=campanhas&view=organicas&campaignId=${encodeURIComponent(lead.metadata.revenue_scout_campaign_ids[0])}&from=revenue-scout`}>
+                                <Button size="sm" variant="outline">
+                                  <Megaphone className="h-3.5 w-3.5 mr-1" /> Abrir campanha
+                                </Button>
+                              </Link>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={createCampaignPackageMutation.isPending || isPending}
+                              onClick={() => createCampaignPackageMutation.mutate([lead.id])}
+                            >
+                              <Sparkles className="h-3.5 w-3.5 mr-1" /> Criar pacote
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive hover:text-destructive"
+                              disabled={discardMutation.isPending}
+                              onClick={() => discardMutation.mutate(lead.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" /> Descartar
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="aprovacoes" className="mt-4">
+          <ProspectorAprovacoesContent />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
