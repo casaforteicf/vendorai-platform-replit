@@ -31,7 +31,10 @@ function getSupabaseClient(): SupabaseClient {
 }
 
 const ensuredBuckets = new Map<string, Promise<void>>();
-const OBJECT_STORAGE_FILE_SIZE_LIMIT = "100MB";
+// O projeto atual do Supabase aplica limite global de 50 MB. O limite por
+// bucket nunca pode ser maior que o limite global, portanto manter 100 MB aqui
+// fazia o próprio updateBucket falhar antes mesmo de gerar a signed upload URL.
+const OBJECT_STORAGE_FILE_SIZE_LIMIT = "50MB";
 
 async function ensureBucketExists(client: SupabaseClient, bucketName: string): Promise<void> {
   let promise = ensuredBuckets.get(bucketName);
@@ -48,9 +51,9 @@ async function ensureBucketExists(client: SupabaseClient, bucketName: string): P
           throw error;
         }
       } else {
-        // O bucket já pode ter sido criado com o limite antigo de 25 MB.
-        // Sincronizamos o limite para suportar vídeos de referência do Dublê
-        // sem depender de ajuste manual no painel do Supabase.
+        // O bucket já pode ter sido criado com outro limite. Mantemos o limite
+        // por bucket compatível com o limite global para que a preparação do
+        // upload nunca falhe antes de gerar a URL assinada.
         const { error } = await client.storage.updateBucket(bucketName, {
           public: true,
           fileSizeLimit: OBJECT_STORAGE_FILE_SIZE_LIMIT,
