@@ -54,8 +54,9 @@ type JobStatus = "idle" | "rendering" | "processing" | "done" | "error";
 type LayerGestureMode = "move" | "trim-start" | "trim-end";
 type ClipGestureMode = "trim-in" | "trim-out";
 type StageGestureMode = "move" | "resize";
-type TransitionType = "cut" | "fade" | "zoom" | "slide-left" | "slide-right";
+type TransitionType = "cut" | "fade" | "crossfade" | "zoom" | "slide-left" | "slide-right";
 type ClipMotion = "none" | "zoom-in" | "zoom-out" | "pan-left" | "pan-right";
+type EasingType = "linear" | "ease-in" | "ease-out" | "ease-in-out";
 
 type LayerKeyframe = {
   time: number;
@@ -63,6 +64,8 @@ type LayerKeyframe = {
   y: number;
   width: number;
   opacity: number;
+  scale: number;
+  rotation: number;
 };
 
 type ClipVisualState = {
@@ -86,6 +89,9 @@ type EditorLayer = {
   color: string;
   background: string;
   opacity: number;
+  scale: number;
+  rotation: number;
+  easing: EasingType;
   keyframes?: LayerKeyframe[];
   url?: string;
   assetId?: string;
@@ -211,8 +217,22 @@ function clipDuration(clip: VideoClip): number {
   return Math.max(0.1, clip.trimOut - clip.trimIn);
 }
 
+function transitionOverlapAfter(index: number, clips: VideoClip[]): number {
+  const clip = clips[index];
+  const next = clips[index + 1];
+  if (!clip || !next || (clip.transitionOut ?? "cut") !== "crossfade") return 0;
+  return Math.min(
+    Math.max(0.1, clip.transitionDuration ?? 0.45),
+    clipDuration(clip) / 2,
+    clipDuration(next) / 2,
+  );
+}
+
 function projectDurationFor(clips: VideoClip[]): number {
-  return clips.reduce((sum, clip) => sum + clipDuration(clip), 0);
+  if (!clips.length) return 0;
+  let total = clips.reduce((sum, clip) => sum + clipDuration(clip), 0);
+  for (let index = 0; index < clips.length - 1; index += 1) total -= transitionOverlapAfter(index, clips);
+  return Math.max(0.1, total);
 }
 
 function cloneSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
@@ -222,36 +242,43 @@ function cloneSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
   };
 }
 
+function clipStartAt(index: number, clips: VideoClip[]): number {
+  let cursor = 0;
+  for (let clipIndex = 0; clipIndex < index; clipIndex += 1) {
+    const clip = clips[clipIndex];
+    if (!clip) continue;
+    cursor += clipDuration(clip) - transitionOverlapAfter(clipIndex, clips);
+  }
+  return cursor;
+}
+
 function locateClip(time: number, clips: VideoClip[]): LocatedClip | null {
   if (!clips.length) return null;
   const total = projectDurationFor(clips);
   const safeTime = clamp(time, 0, Math.max(0, total - 0.001));
-  let cursor = 0;
+  let located: LocatedClip | null = null;
   for (let index = 0; index < clips.length; index += 1) {
     const clip = clips[index];
     if (!clip) continue;
+    const start = clipStartAt(index, clips);
     const duration = clipDuration(clip);
-    const end = cursor + duration;
-    if (safeTime < end || index === clips.length - 1) {
-      return {
+    const end = start + duration;
+    if (safeTime >= start && (safeTime < end || index === clips.length - 1)) {
+      located = {
         clip,
         index,
-        start: cursor,
+        start,
         end,
-        sourceTime: clip.trimIn + clamp(safeTime - cursor, 0, duration),
+        sourceTime: clip.trimIn + clamp(safeTime - start, 0, duration),
       };
     }
-    cursor = end;
   }
-  return null;
-}
-
-function clipStartAt(index: number, clips: VideoClip[]): number {
-  return clips.slice(0, index).reduce((sum, clip) => sum + clipDuration(clip), 0);
+  return located;
 }
 
 function transitionLabel(type: TransitionType | undefined): string {
   if (type === "fade") return "Fade";
+  if (type === "crossfade") return "Crossfade";
   if (type === "zoom") return "Zoom";
   if (type === "slide-left") return "Deslizar ←";
   if (type === "slide-right") return "Deslizar →";
@@ -276,6 +303,7 @@ function clipVisualState(index: number, time: number, clips: VideoClip[]): ClipV
 
   const applyTransition = (type: TransitionType, amount: number, entering: boolean) => {
     if (type === "fade") state.opacity *= amount;
+    if (type === "crossfade" && entering) state.opacity *= amount;
     if (type === "zoom") state.scale *= entering ? 1.08 - 0.08 * amount : 1 + 0.08 * (1 - amount);
     if (type === "slide-left") state.translateX += entering ? 0.12 * (1 - amount) : -0.12 * (1 - amount);
     if (type === "slide-right") state.translateX += entering ? -0.12 * (1 - amount) : 0.12 * (1 - amount);
@@ -292,6 +320,14 @@ function clipVisualState(index: number, time: number, clips: VideoClip[]): ClipV
   return state;
 }
 
+function applyEasing(progress: number, easing: EasingType): number {
+  const p = clamp(progress, 0, 1);
+  if (easing === "ease-in") return p * p;
+  if (easing === "ease-out") return 1 - (1 - p) * (1 - p);
+  if (easing === "ease-in-out") return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  return p;
+}
+
 function resolveLayerAtTime(layer: EditorLayer, time: number): EditorLayer {
   const frames = [...(layer.keyframes ?? [])].sort((a, b) => a.time - b.time);
   if (!frames.length) return layer;
@@ -301,7 +337,8 @@ function resolveLayerAtTime(layer: EditorLayer, time: number): EditorLayer {
     const left = frames[index];
     const right = frames[index + 1];
     if (!left || !right || time < left.time || time > right.time) continue;
-    const progress = clamp((time - left.time) / Math.max(0.001, right.time - left.time), 0, 1);
+    const linear = clamp((time - left.time) / Math.max(0.001, right.time - left.time), 0, 1);
+    const progress = applyEasing(linear, layer.easing ?? "ease-in-out");
     const lerp = (a: number, b: number) => a + (b - a) * progress;
     return {
       ...layer,
@@ -309,9 +346,49 @@ function resolveLayerAtTime(layer: EditorLayer, time: number): EditorLayer {
       y: lerp(left.y, right.y),
       width: lerp(left.width, right.width),
       opacity: lerp(left.opacity, right.opacity),
+      scale: lerp(left.scale, right.scale),
+      rotation: lerp(left.rotation, right.rotation),
     };
   }
   return layer;
+}
+
+type CrossfadeWindow = {
+  previous: VideoClip;
+  next: VideoClip;
+  previousIndex: number;
+  nextIndex: number;
+  start: number;
+  end: number;
+  progress: number;
+  previousSourceTime: number;
+  nextSourceTime: number;
+};
+
+function crossfadeWindowAt(time: number, clips: VideoClip[]): CrossfadeWindow | null {
+  for (let index = 0; index < clips.length - 1; index += 1) {
+    const overlap = transitionOverlapAfter(index, clips);
+    if (overlap <= 0) continue;
+    const previous = clips[index];
+    const next = clips[index + 1];
+    if (!previous || !next) continue;
+    const start = clipStartAt(index + 1, clips);
+    const end = start + overlap;
+    if (time < start || time > end) continue;
+    const progress = clamp((time - start) / Math.max(0.001, overlap), 0, 1);
+    return {
+      previous,
+      next,
+      previousIndex: index,
+      nextIndex: index + 1,
+      start,
+      end,
+      progress,
+      previousSourceTime: previous.trimOut - overlap + progress * overlap,
+      nextSourceTime: next.trimIn + progress * overlap,
+    };
+  }
+  return null;
 }
 
 function outputDimensions(ratio: Ratio, quality: Quality): { width: number; height: number } {
@@ -323,7 +400,7 @@ function outputDimensions(ratio: Ratio, quality: Quality): { width: number; heig
   return { width: short, height: Math.round(short * 1.25) };
 }
 
-function drawContainedVideo(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, width: number, height: number, visual?: ClipVisualState) {
+function drawContainedVideo(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, width: number, height: number, visual?: ClipVisualState, clear = true) {
   const videoRatio = (video.videoWidth || width) / (video.videoHeight || height);
   const canvasRatio = width / height;
   let dw = width;
@@ -338,8 +415,10 @@ function drawContainedVideo(ctx: CanvasRenderingContext2D, video: HTMLVideoEleme
     dx = (width - dw) / 2;
   }
   const state = visual ?? { opacity: 1, scale: 1, translateX: 0, translateY: 0 };
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, width, height);
+  if (clear) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, width, height);
+  }
   ctx.save();
   ctx.globalAlpha = clamp(state.opacity, 0, 1);
   ctx.translate(width / 2 + width * state.translateX, height / 2 + height * state.translateY);
@@ -440,6 +519,7 @@ export default function VideoTimelineEditor() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLVideoElement>(null);
+  const previewOverlapRef = useRef<HTMLVideoElement>(null);
   const previewStageRef = useRef<HTMLDivElement>(null);
   const autosaveTimer = useRef<number | null>(null);
   const clipsRef = useRef<VideoClip[]>([]);
@@ -678,7 +758,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 5,
+    editorVersion: 6,
     channel,
     ratio,
     quality,
@@ -812,7 +892,7 @@ export default function VideoTimelineEditor() {
               sourceDuration,
               trimIn,
               trimOut,
-              transitionOut: (["cut", "fade", "zoom", "slide-left", "slide-right"] as string[]).includes(String(raw.transitionOut)) ? raw.transitionOut as TransitionType : "cut",
+              transitionOut: (["cut", "fade", "crossfade", "zoom", "slide-left", "slide-right"] as string[]).includes(String(raw.transitionOut)) ? raw.transitionOut as TransitionType : "cut",
               transitionDuration: clamp(Number(raw.transitionDuration) || 0.45, 0.1, 1.5),
               motion: (["none", "zoom-in", "zoom-out", "pan-left", "pan-right"] as string[]).includes(String(raw.motion)) ? raw.motion as ClipMotion : "none",
             };
@@ -840,12 +920,17 @@ export default function VideoTimelineEditor() {
         }
         const nextLayers = Array.isArray(context.layers) ? (context.layers as EditorLayer[]).map((layer) => ({
           ...layer,
+          scale: Number.isFinite(Number(layer.scale)) ? Number(layer.scale) : 1,
+          rotation: Number.isFinite(Number(layer.rotation)) ? Number(layer.rotation) : 0,
+          easing: (["linear", "ease-in", "ease-out", "ease-in-out"] as string[]).includes(String(layer.easing)) ? layer.easing as EasingType : "ease-in-out",
           keyframes: Array.isArray(layer.keyframes) ? layer.keyframes.map((frame) => ({
             time: Number(frame.time) || 0,
             x: Number(frame.x) || 0,
             y: Number(frame.y) || 0,
             width: Number(frame.width) || 10,
             opacity: Number.isFinite(Number(frame.opacity)) ? Number(frame.opacity) : 1,
+            scale: Number.isFinite(Number(frame.scale)) ? Number(frame.scale) : 1,
+            rotation: Number.isFinite(Number(frame.rotation)) ? Number(frame.rotation) : 0,
           })).sort((a, b) => a.time - b.time) : [],
         })) : [];
         resetEditorHistory(nextClips, nextLayers);
@@ -1011,6 +1096,9 @@ export default function VideoTimelineEditor() {
       color: "#ffffff",
       background: "#000000",
       opacity: 1,
+      scale: 1,
+      rotation: 0,
+      easing: "ease-in-out",
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
     selectLayer(layer.id);
@@ -1023,7 +1111,7 @@ export default function VideoTimelineEditor() {
     const layer: EditorLayer = {
       id: uid("card"), type: "card", name: `Card · ${template.name}`, text: template.text,
       start: at, end: Math.min(total, at + 4), x: 8, y: 62, width: 84, fontSize: 36,
-      color: template.color, background: template.background, opacity: 0.94,
+      color: template.color, background: template.background, opacity: 0.94, scale: 1, rotation: 0, easing: "ease-in-out",
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
     selectLayer(layer.id);
@@ -1033,7 +1121,7 @@ export default function VideoTimelineEditor() {
     const total = Math.max(0.1, projectDurationFor(clipsRef.current));
     const layer: EditorLayer = {
       id: uid("image"), type: "image", name: file.name, text: "", start: timelineTime, end: Math.min(total, timelineTime + 6),
-      x: 60, y: 8, width: 32, fontSize: 32, color: "#ffffff", background: "#000000", opacity: 1,
+      x: 60, y: 8, width: 32, fontSize: 32, color: "#ffffff", background: "#000000", opacity: 1, scale: 1, rotation: 0, easing: "ease-in-out",
       url: URL.createObjectURL(file), localFile: file,
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
@@ -1049,7 +1137,7 @@ export default function VideoTimelineEditor() {
     const total = Math.max(0.1, projectDurationFor(clipsRef.current));
     const layer: EditorLayer = {
       id: uid("image"), type: "image", name: assetName(asset), text: "", start: timelineTime, end: Math.min(total, timelineTime + 6),
-      x: 60, y: 8, width: 32, fontSize: 32, color: "#ffffff", background: "#000000", opacity: 1,
+      x: 60, y: 8, width: 32, fontSize: 32, color: "#ffffff", background: "#000000", opacity: 1, scale: 1, rotation: 0, easing: "ease-in-out",
       url: assetUrl(asset), assetId: asset.id,
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
@@ -1071,7 +1159,7 @@ export default function VideoTimelineEditor() {
     const layer = layersRef.current.find((item) => item.id === selectedLayerId);
     if (!layer) return;
     const time = clamp(timelineTime, layer.start, layer.end);
-    const frame: LayerKeyframe = { time, x: layer.x, y: layer.y, width: layer.width, opacity: layer.opacity };
+    const frame: LayerKeyframe = { time, x: layer.x, y: layer.y, width: layer.width, opacity: layer.opacity, scale: layer.scale ?? 1, rotation: layer.rotation ?? 0 };
     const frames = [...(layer.keyframes ?? [])].filter((item) => Math.abs(item.time - time) > 0.05);
     frames.push(frame);
     frames.sort((a, b) => a.time - b.time);
@@ -1273,8 +1361,34 @@ export default function VideoTimelineEditor() {
     const start = clipStartAt(index, currentClips);
     const local = clamp(video.currentTime - clip.trimIn, 0, clipDuration(clip));
     setTimelineTime(start + local);
+    const outgoingOverlap = transitionOverlapAfter(index, currentClips);
+    if (!video.paused && outgoingOverlap > 0 && video.currentTime >= clip.trimOut - outgoingOverlap - 0.025) {
+      const next = currentClips[index + 1];
+      if (next) {
+        const crossfadeStart = clipStartAt(index + 1, currentClips);
+        setTimelineTime(crossfadeStart);
+        desiredPreviewSourceTimeRef.current = next.trimIn;
+        resumeAfterClipChangeRef.current = true;
+        setActiveClipId(next.id);
+        return;
+      }
+    }
     if (!video.paused && video.currentTime >= clip.trimOut - 0.025) advancePreview(index);
   };
+
+  useEffect(() => {
+    const overlapVideo = previewOverlapRef.current;
+    if (!overlapVideo) return;
+    const crossfade = crossfadeWindowAt(timelineTime, clips);
+    if (!crossfade) {
+      overlapVideo.pause();
+      return;
+    }
+    const expectedTime = clamp(crossfade.previousSourceTime, crossfade.previous.trimIn, crossfade.previous.trimOut - 0.001);
+    if (Math.abs(overlapVideo.currentTime - expectedTime) > 0.12) overlapVideo.currentTime = expectedTime;
+    if (playing) void overlapVideo.play().catch(() => undefined);
+    else overlapVideo.pause();
+  }, [clips, playing, timelineTime]);
 
   const togglePlayback = () => {
     const video = previewRef.current;
@@ -1337,9 +1451,12 @@ export default function VideoTimelineEditor() {
       if (!ctx) throw new Error("Seu navegador não liberou o motor gráfico do editor.");
 
       const renderVideo = document.createElement("video");
-      renderVideo.preload = "auto";
-      renderVideo.crossOrigin = "anonymous";
-      renderVideo.playsInline = true;
+      const renderOverlapVideo = document.createElement("video");
+      for (const videoElement of [renderVideo, renderOverlapVideo]) {
+        videoElement.preload = "auto";
+        videoElement.crossOrigin = "anonymous";
+        videoElement.playsInline = true;
+      }
       const renderLayers = layersRef.current.map((layer) => ({ ...layer }));
       const imageEntries = await Promise.all(
         renderLayers.filter((layer) => layer.type === "image" && layer.url).map(async (layer) => [layer.id, await loadImage(layer.url!)] as const),
@@ -1350,13 +1467,19 @@ export default function VideoTimelineEditor() {
       const audioContext = AudioContextCtor ? new AudioContextCtor() : null;
       let destination: MediaStreamAudioDestinationNode | null = null;
       let musicSourceNode: AudioBufferSourceNode | null = null;
+      let originalGain: GainNode | null = null;
+      let overlapGain: GainNode | null = null;
 
       if (audioContext) {
         destination = audioContext.createMediaStreamDestination();
         const source = audioContext.createMediaElementSource(renderVideo);
-        const originalGain = audioContext.createGain();
+        const overlapSource = audioContext.createMediaElementSource(renderOverlapVideo);
+        originalGain = audioContext.createGain();
+        overlapGain = audioContext.createGain();
         originalGain.gain.value = originalVolume;
+        overlapGain.gain.value = 0;
         source.connect(originalGain).connect(destination);
+        overlapSource.connect(overlapGain).connect(destination);
 
         let musicBlob: Blob | null = null;
         if (musicMode === "upload" && musicFile) musicBlob = musicFile;
@@ -1391,9 +1514,11 @@ export default function VideoTimelineEditor() {
         recorder.onerror = () => reject(new Error("Falha durante a renderização local."));
       });
 
-      const drawFrame = (globalTime: number) => {
-        const visualIndex = locateClip(globalTime, renderClips)?.index ?? 0;
-        drawContainedVideo(ctx, renderVideo, width, height, clipVisualState(visualIndex, globalTime, renderClips));
+      const drawFrame = (globalTime: number, primaryIndex: number, secondaryIndex?: number) => {
+        drawContainedVideo(ctx, renderVideo, width, height, clipVisualState(primaryIndex, globalTime, renderClips), true);
+        if (secondaryIndex !== undefined) {
+          drawContainedVideo(ctx, renderOverlapVideo, width, height, clipVisualState(secondaryIndex, globalTime, renderClips), false);
+        }
         for (const layer of renderLayers) {
           if (!layerIsVisible(layer, globalTime)) continue;
           const resolvedLayer = resolveLayerAtTime(layer, globalTime);
@@ -1402,12 +1527,15 @@ export default function VideoTimelineEditor() {
           const x = width * resolvedLayer.x / 100;
           const y = height * resolvedLayer.y / 100;
           const maxWidth = width * resolvedLayer.width / 100;
+          ctx.translate(x, y);
+          ctx.rotate((resolvedLayer.rotation ?? 0) * Math.PI / 180);
+          ctx.scale(resolvedLayer.scale ?? 1, resolvedLayer.scale ?? 1);
           if (layer.type === "image") {
             const image = imageMap.get(layer.id);
             if (image) {
               const drawWidth = Math.min(maxWidth, width - x);
               const drawHeight = drawWidth * image.naturalHeight / Math.max(1, image.naturalWidth);
-              ctx.drawImage(image, x, y, drawWidth, Math.min(drawHeight, height - y));
+              ctx.drawImage(image, 0, 0, drawWidth, Math.min(drawHeight, height - y));
             }
           } else {
             const scale = width / 720;
@@ -1419,17 +1547,39 @@ export default function VideoTimelineEditor() {
             const lineHeight = fontSize * 1.18;
             if (layer.type === "card") {
               ctx.fillStyle = layer.background;
-              ctx.fillRect(x, y, maxWidth, lines.length * lineHeight + padding * 2);
+              ctx.fillRect(0, 0, maxWidth, lines.length * lineHeight + padding * 2);
             } else if (layer.background !== "transparent" && layer.background !== "") {
               ctx.fillStyle = `${layer.background}cc`;
               const textWidth = Math.min(maxWidth, Math.max(...lines.map((line) => ctx.measureText(line).width), 0) + padding * 2);
-              ctx.fillRect(x, y, textWidth, lines.length * lineHeight + padding * 2);
+              ctx.fillRect(0, 0, textWidth, lines.length * lineHeight + padding * 2);
             }
             ctx.fillStyle = layer.color;
-            lines.forEach((line, index) => ctx.fillText(line, x + (layer.type === "card" ? padding : 0), y + (layer.type === "card" ? padding : 0) + index * lineHeight, maxWidth - padding));
+            lines.forEach((line, index) => ctx.fillText(line, layer.type === "card" ? padding : 0, (layer.type === "card" ? padding : 0) + index * lineHeight, maxWidth - padding));
           }
           ctx.restore();
         }
+      };
+
+      const prepareRenderVideo = async (videoElement: HTMLVideoElement, clip: VideoClip, sourceTime: number) => {
+        videoElement.pause();
+        videoElement.src = clip.url;
+        await new Promise<void>((resolve, reject) => {
+          const handleLoaded = () => { cleanup(); resolve(); };
+          const handleError = () => { cleanup(); reject(new Error(`Não foi possível abrir o clipe “${clip.name}”.`)); };
+          const cleanup = () => {
+            videoElement.removeEventListener("loadedmetadata", handleLoaded);
+            videoElement.removeEventListener("error", handleError);
+          };
+          videoElement.addEventListener("loadedmetadata", handleLoaded);
+          videoElement.addEventListener("error", handleError);
+          videoElement.load();
+        });
+        videoElement.currentTime = clamp(sourceTime, clip.trimIn, Math.max(clip.trimIn, clip.trimOut - 0.001));
+        await new Promise<void>((resolve) => {
+          const handler = () => { videoElement.removeEventListener("seeked", handler); resolve(); };
+          videoElement.addEventListener("seeked", handler);
+          window.setTimeout(resolve, 350);
+        });
       };
 
       if (audioContext) await audioContext.resume();
@@ -1442,39 +1592,55 @@ export default function VideoTimelineEditor() {
         musicSourceNode.stop(audioNow + end);
       }
 
-      let accumulated = 0;
       for (let clipIndex = 0; clipIndex < renderClips.length; clipIndex += 1) {
         const clip = renderClips[clipIndex];
         if (!clip) continue;
+        const incomingOverlap = clipIndex > 0 ? transitionOverlapAfter(clipIndex - 1, renderClips) : 0;
+        const outgoingOverlap = transitionOverlapAfter(clipIndex, renderClips);
+        const nextClip = renderClips[clipIndex + 1];
+        const globalStart = clipStartAt(clipIndex, renderClips);
+        const sourceStart = clip.trimIn + incomingOverlap;
+        if (sourceStart >= clip.trimOut - 0.02) continue;
+
         setJobMessage(`Renderizando clipe ${clipIndex + 1} de ${renderClips.length}…`);
-        renderVideo.src = clip.url;
-        await new Promise<void>((resolve, reject) => {
-          const handleLoaded = () => { cleanup(); resolve(); };
-          const handleError = () => { cleanup(); reject(new Error(`Não foi possível abrir o clipe “${clip.name}”.`)); };
-          const cleanup = () => {
-            renderVideo.removeEventListener("loadedmetadata", handleLoaded);
-            renderVideo.removeEventListener("error", handleError);
-          };
-          renderVideo.addEventListener("loadedmetadata", handleLoaded);
-          renderVideo.addEventListener("error", handleError);
-          renderVideo.load();
-        });
-        renderVideo.currentTime = clip.trimIn;
-        await new Promise<void>((resolve) => {
-          const handler = () => { renderVideo.removeEventListener("seeked", handler); resolve(); };
-          renderVideo.addEventListener("seeked", handler);
-          window.setTimeout(resolve, 350);
-        });
-        drawFrame(accumulated);
+        await prepareRenderVideo(renderVideo, clip, sourceStart);
+        if (outgoingOverlap > 0 && nextClip) await prepareRenderVideo(renderOverlapVideo, nextClip, nextClip.trimIn);
+
+        const initialGlobalTime = globalStart + incomingOverlap;
+        drawFrame(initialGlobalTime, clipIndex);
+        if (originalGain) originalGain.gain.value = originalVolume;
+        if (overlapGain) overlapGain.gain.value = 0;
         await renderVideo.play();
+
         await new Promise<void>((resolve) => {
+          let overlapStarted = false;
+          const crossfadeSourceStart = clip.trimOut - outgoingOverlap;
           const loop = () => {
             const local = clamp(renderVideo.currentTime - clip.trimIn, 0, clipDuration(clip));
-            const globalTime = accumulated + local;
-            drawFrame(globalTime);
+            const globalTime = globalStart + local;
+            const inCrossfade = outgoingOverlap > 0 && nextClip && renderVideo.currentTime >= crossfadeSourceStart;
+            if (inCrossfade && nextClip) {
+              const progress = clamp((renderVideo.currentTime - crossfadeSourceStart) / Math.max(0.001, outgoingOverlap), 0, 1);
+              if (!overlapStarted) {
+                overlapStarted = true;
+                void renderOverlapVideo.play();
+              }
+              const expectedNextTime = nextClip.trimIn + progress * outgoingOverlap;
+              if (Math.abs(renderOverlapVideo.currentTime - expectedNextTime) > 0.08) renderOverlapVideo.currentTime = expectedNextTime;
+              if (originalGain) originalGain.gain.value = originalVolume * (1 - progress);
+              if (overlapGain) overlapGain.gain.value = originalVolume * progress;
+              drawFrame(globalTime, clipIndex, clipIndex + 1);
+            } else {
+              if (originalGain) originalGain.gain.value = originalVolume;
+              if (overlapGain) overlapGain.gain.value = 0;
+              drawFrame(globalTime, clipIndex);
+            }
             setJobMessage(`Renderizando sequência… ${Math.min(99, Math.round(globalTime / Math.max(0.1, totalDuration) * 100))}%`);
             if (renderVideo.ended || renderVideo.currentTime >= clip.trimOut - 0.02) {
               renderVideo.pause();
+              renderOverlapVideo.pause();
+              if (originalGain) originalGain.gain.value = originalVolume;
+              if (overlapGain) overlapGain.gain.value = 0;
               resolve();
               return;
             }
@@ -1482,7 +1648,6 @@ export default function VideoTimelineEditor() {
           };
           requestAnimationFrame(loop);
         });
-        accumulated += clipDuration(clip);
       }
 
       if (recorder.state !== "inactive") recorder.stop();
@@ -1537,6 +1702,7 @@ export default function VideoTimelineEditor() {
   const mediaImages = assets.filter((asset) => asset.type === "image");
   const mediaVideos = assets.filter((asset) => asset.type === "video");
   const ratioCss = ratio.replace(":", " / ");
+  const crossfadePreview = crossfadeWindowAt(timelineTime, clips);
 
   const PropertiesPanel = selectedLayer ? (
     <div className="space-y-4">
@@ -1552,8 +1718,11 @@ export default function VideoTimelineEditor() {
       <RangeField label="Largura" value={selectedLayer.width} min={10} max={Math.max(10, 100 - selectedLayer.x)} onChange={(value) => updateLayer({ width: value })} suffix="%" />
       {selectedLayer.type !== "image" && <RangeField label="Tamanho do texto" value={selectedLayer.fontSize} min={18} max={96} onChange={(value) => updateLayer({ fontSize: value })} />}
       <RangeField label="Opacidade" value={selectedLayer.opacity} min={0.1} max={1} step={0.05} onChange={(value) => updateLayer({ opacity: value })} />
+      <RangeField label="Escala" value={selectedLayer.scale ?? 1} min={0.2} max={3} step={0.05} suffix="x" onChange={(value) => updateLayer({ scale: value })} />
+      <RangeField label="Rotação" value={selectedLayer.rotation ?? 0} min={-180} max={180} step={1} suffix="°" onChange={(value) => updateLayer({ rotation: value })} />
+      <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Curva da animação</span><select value={selectedLayer.easing ?? "ease-in-out"} onChange={(event) => updateLayer({ easing: event.target.value as EasingType })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs"><option value="linear">Linear</option><option value="ease-in">Acelera</option><option value="ease-out">Desacelera</option><option value="ease-in-out">Suave · acelera e desacelera</option></select></label>
       <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
-        <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold">Keyframes de movimento</p><p className="text-[10px] text-muted-foreground">Registre posição, tamanho e opacidade no cursor.</p></div><button onClick={addLayerKeyframe} className="rounded-lg border bg-background px-2 py-1.5 text-[10px] font-medium">+ Keyframe</button></div>
+        <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold">Keyframes de movimento</p><p className="text-[10px] text-muted-foreground">Registre posição, tamanho, escala, rotação e opacidade no cursor.</p></div><button onClick={addLayerKeyframe} className="rounded-lg border bg-background px-2 py-1.5 text-[10px] font-medium">+ Keyframe</button></div>
         {(selectedLayer.keyframes ?? []).length ? <div className="flex flex-wrap gap-1.5">{(selectedLayer.keyframes ?? []).map((frame) => <div key={frame.time} className="inline-flex items-center overflow-hidden rounded-lg border bg-background"><button onClick={() => seekTimeline(frame.time)} className="px-2 py-1 text-[10px] font-medium">◆ {timeLabel(frame.time)}</button><button onClick={() => removeLayerKeyframe(frame.time)} className="border-l px-1.5 py-1 text-muted-foreground hover:text-destructive" title="Remover keyframe">×</button></div>)}</div> : <p className="text-[10px] text-muted-foreground">Mova o cursor, ajuste o elemento e clique em + Keyframe. Repita em outro momento para criar a animação.</p>}
       </div>
       {selectedLayer.type !== "image" && <div className="grid grid-cols-2 gap-3"><label className="space-y-1.5"><span className="text-xs text-muted-foreground">Texto</span><input type="color" value={selectedLayer.color} onChange={(event) => updateLayer({ color: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label><label className="space-y-1.5"><span className="text-xs text-muted-foreground">Fundo</span><input type="color" value={selectedLayer.background || "#000000"} onChange={(event) => updateLayer({ background: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label></div>}
@@ -1566,7 +1735,7 @@ export default function VideoTimelineEditor() {
       <RangeField label="Saída" value={selectedClip.trimOut} min={Math.min(selectedClip.sourceDuration, selectedClip.trimIn + 0.1)} max={selectedClip.sourceDuration} step={0.1} suffix="s" onChange={(value) => updateClip({ trimOut: value })} />
       <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
         <div><p className="text-xs font-semibold">Transição para o próximo clipe</p><p className="text-[10px] text-muted-foreground">Aparece no preview e também no MP4 final.</p></div>
-        <select value={selectedClip.transitionOut ?? "cut"} onChange={(event) => updateClip({ transitionOut: event.target.value as TransitionType })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs"><option value="cut">Corte seco</option><option value="fade">Fade</option><option value="zoom">Zoom</option><option value="slide-left">Deslizar para esquerda</option><option value="slide-right">Deslizar para direita</option></select>
+        <select value={selectedClip.transitionOut ?? "cut"} onChange={(event) => updateClip({ transitionOut: event.target.value as TransitionType })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs"><option value="cut">Corte seco</option><option value="fade">Fade</option><option value="crossfade">Crossfade real</option><option value="zoom">Zoom</option><option value="slide-left">Deslizar para esquerda</option><option value="slide-right">Deslizar para direita</option></select>
         {(selectedClip.transitionOut ?? "cut") !== "cut" && <RangeField label="Duração da transição" value={selectedClip.transitionDuration ?? 0.45} min={0.1} max={Math.max(0.1, Math.min(1.5, clipDuration(selectedClip) / 2))} step={0.05} suffix="s" onChange={(value) => updateClip({ transitionDuration: value })} />}
         <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Movimento de câmera</span><select value={selectedClip.motion ?? "none"} onChange={(event) => updateClip({ motion: event.target.value as ClipMotion })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs"><option value="none">Sem movimento</option><option value="zoom-in">Zoom in suave</option><option value="zoom-out">Zoom out suave</option><option value="pan-left">Panorâmica para esquerda</option><option value="pan-right">Panorâmica para direita</option></select></label>
       </div>
@@ -1594,7 +1763,7 @@ export default function VideoTimelineEditor() {
 
   const renderPreviewLayer = (layer: EditorLayer) => {
     const resolvedLayer = resolveLayerAtTime(layer, timelineTime);
-    const style: CSSProperties = { position: "absolute", left: `${resolvedLayer.x}%`, top: `${resolvedLayer.y}%`, width: `${resolvedLayer.width}%`, opacity: resolvedLayer.opacity };
+    const style: CSSProperties = { position: "absolute", left: `${resolvedLayer.x}%`, top: `${resolvedLayer.y}%`, width: `${resolvedLayer.width}%`, opacity: resolvedLayer.opacity, transform: `rotate(${resolvedLayer.rotation ?? 0}deg) scale(${resolvedLayer.scale ?? 1})`, transformOrigin: "top left" };
     const selected = selectedLayerId === layer.id;
     return <div key={layer.id} style={style} className={cn("group touch-none select-none", selected && "z-20")} onPointerDown={(event) => startStageGesture(event, layer, "move")}>{layer.type === "image" ? <img src={layer.url} alt="" draggable={false} className={cn("block h-auto max-h-[85%] w-full object-contain", selected && "outline outline-2 outline-primary")} /> : <div style={{ color: layer.color, background: layer.type === "card" ? layer.background : "transparent", fontSize: `${Math.max(11, layer.fontSize * 0.38)}px`, whiteSpace: "pre-wrap" }} className={cn("rounded-lg p-2 font-bold leading-tight", selected && "outline outline-2 outline-primary")}>{layer.text}</div>}{selected && <button type="button" aria-label="Redimensionar camada" onPointerDown={(event) => startStageGesture(event, layer, "resize")} className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow" />}</div>;
   };
@@ -1626,7 +1795,8 @@ export default function VideoTimelineEditor() {
         <main className="flex min-w-0 flex-col bg-muted/20">
           <div className="flex flex-1 items-center justify-center p-4 lg:p-6">
             <div ref={previewStageRef} className="relative flex max-h-[540px] w-full max-w-3xl items-center justify-center overflow-hidden rounded-2xl bg-black shadow-xl" style={{ aspectRatio: ratioCss }}>
-              {activeClip ? <><video ref={previewRef} src={activeClip.url} className="h-full w-full object-contain will-change-transform" style={(() => { const index = clips.findIndex((clip) => clip.id === activeClip.id); const visual = clipVisualState(Math.max(0, index), timelineTime, clips); return { opacity: visual.opacity, transform: `translate(${visual.translateX * 100}%, ${visual.translateY * 100}%) scale(${visual.scale})` }; })()} playsInline onLoadedMetadata={onPreviewLoadedMetadata} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={onPreviewTimeUpdate} /><div className="absolute inset-0">{layers.filter((layer) => layerIsVisible(layer, timelineTime)).map(renderPreviewLayer)}</div><div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-white backdrop-blur"><button onClick={togglePlayback}>{playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</button><span className="text-[11px] tabular-nums">{timeLabel(timelineTime)} / {timeLabel(realProjectDuration)}</span></div></> : <button onClick={() => videoInputRef.current?.click()} className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70 hover:text-white"><div className="rounded-2xl bg-white/10 p-4"><Upload className="h-7 w-7" /></div><div className="text-center"><p className="font-semibold">Adicione o primeiro clipe</p><p className="mt-1 text-xs text-white/50">Depois você pode adicionar, cortar, dividir e reorganizar outros vídeos.</p></div></button>}
+              {activeClip ? <>{crossfadePreview && <video ref={previewOverlapRef} src={crossfadePreview.previous.url} className="absolute inset-0 h-full w-full object-contain will-change-transform" style={(() => { const visual = clipVisualState(crossfadePreview.previousIndex, timelineTime, clips); return { opacity: visual.opacity, transform: `translate(${visual.translateX * 100}%, ${visual.translateY * 100}%) scale(${visual.scale})` }; })()} muted playsInline />}
+              <video ref={previewRef} src={activeClip.url} className="relative z-10 h-full w-full object-contain will-change-transform" style={(() => { const index = clips.findIndex((clip) => clip.id === activeClip.id); const visual = clipVisualState(Math.max(0, index), timelineTime, clips); return { opacity: visual.opacity, transform: `translate(${visual.translateX * 100}%, ${visual.translateY * 100}%) scale(${visual.scale})` }; })()} playsInline onLoadedMetadata={onPreviewLoadedMetadata} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={onPreviewTimeUpdate} /><div className="absolute inset-0">{layers.filter((layer) => layerIsVisible(layer, timelineTime)).map(renderPreviewLayer)}</div><div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-white backdrop-blur"><button onClick={togglePlayback}>{playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</button><span className="text-[11px] tabular-nums">{timeLabel(timelineTime)} / {timeLabel(realProjectDuration)}</span></div></> : <button onClick={() => videoInputRef.current?.click()} className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70 hover:text-white"><div className="rounded-2xl bg-white/10 p-4"><Upload className="h-7 w-7" /></div><div className="text-center"><p className="font-semibold">Adicione o primeiro clipe</p><p className="mt-1 text-xs text-white/50">Depois você pode adicionar, cortar, dividir e reorganizar outros vídeos.</p></div></button>}
             </div>
           </div>
           {(jobStatus !== "idle" || resultUrl) && <div className="border-t bg-background px-4 py-3"><div className={cn("flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2.5 text-sm", jobStatus === "error" ? "border-destructive/30 bg-destructive/5" : jobStatus === "done" ? "border-emerald-500/30 bg-emerald-500/5" : "bg-muted/30")}>{jobStatus === "rendering" || jobStatus === "processing" ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : jobStatus === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <X className="h-4 w-4 text-destructive" />}<span className="min-w-0 flex-1 text-xs">{jobMessage}</span>{resultUrl && <><a href={resultUrl} target="_blank" rel="noreferrer" className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium">Abrir resultado</a><button onClick={() => void applyAutomaticCaption()} className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium"><Captions className="mr-1 inline h-3.5 w-3.5" />Legendar</button></>}</div></div>}
