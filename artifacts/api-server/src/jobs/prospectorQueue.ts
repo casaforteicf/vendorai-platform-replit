@@ -6,13 +6,18 @@
  *
  * Flow per entry:
  *  1. Duplicate check by phone (digits) or CNPJ in leads table
- *     - Duplicate → update lead with any missing fields, mark queue "duplicado"
+ *     - Duplicate → update lead with any missing fields + Prospector tags,
+ *                   mark queue "duplicado"
  *     - New       → create lead (source="prospector_auto") + deal in first funil,
- *                   mark queue "importado", then dispatch SDR (cold_outreach),
- *                   mark queue "abordado"
+ *                   persist Prospector tags, mark queue "importado", then
+ *                   run predictive enrichment
  *
  * Daily limit tracking: count queue rows updated today per tenant with
  *   status IN ('importado', 'duplicado', 'abordado').
+ *
+ * Multiple active config rows for the same tenant are intentional: each row
+ * represents one niche × locality combination. The processed-today count is
+ * tenant-wide, so ritmo_diario remains a TOTAL daily cap, not a cap per combo.
  *
  * Scheduled: every hour at :35 (via scheduler.ts).
  */
@@ -29,7 +34,6 @@ import {
 } from "@workspace/db";
 import { enrichLead } from "./leadEnrichment.js";
 
-
 /** Returns the start-of-day in UTC for "now" (for counting daily processed leads). */
 function todayStart(): Date {
   const d = new Date();
@@ -42,6 +46,69 @@ function digitsOnly(s: string | null | undefined): string | null {
   if (!s) return null;
   const d = s.replace(/\D/g, "");
   return d.length > 0 ? d : null;
+}
+
+function cleanUnique(values: string[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const raw of values) {
+    const value = raw.trim().replace(/\s+/g, " ");
+    if (!value) continue;
+    const key = value.toLocaleLowerCase("pt-BR");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(value);
+  }
+  return output;
+}
+
+function metadataStrings(metadata: Record<string, unknown>, key: string): string[] {
+  const value = metadata[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function mergeProspectorMetadata(
+  current: Record<string, unknown> | null | undefined,
+  params: { setor?: string | null; cidade?: string | null; fonte: string; placeId?: string | null; prospectadoEm?: string },
+): Record<string, unknown> {
+  const metadata = { ...(current ?? {}) };
+  const nichos = cleanUnique([
+    ...metadataStrings(metadata, "prospector_nichos"),
+    ...(params.setor ? [params.setor] : []),
+  ]);
+  const localidades = cleanUnique([
+    ...metadataStrings(metadata, "prospector_localidades"),
+    ...(params.cidade ? [params.cidade] : []),
+  ]);
+  const fontes = cleanUnique([
+    ...metadataStrings(metadata, "prospector_fontes"),
+    params.fonte,
+  ]);
+  const tags = cleanUnique([
+    ...metadataStrings(metadata, "tags"),
+    ...nichos,
+    ...localidades,
+    ...fontes,
+  ]);
+
+  return {
+    ...metadata,
+    ...(params.prospectadoEm ? { prospectado_em: params.prospectadoEm } : {}),
+    origem: params.fonte,
+    ...(params.placeId ? { place_id: params.placeId } : {}),
+    setor: params.setor ?? metadata["setor"] ?? null,
+    cidade: params.cidade ?? metadata["cidade"] ?? null,
+    tags,
+    prospector_nichos: nichos,
+    prospector_localidades: localidades,
+    prospector_fontes: fontes,
+    prospector_tags: [
+      ...nichos.map((valor) => ({ tipo: "atividade", valor })),
+      ...localidades.map((valor) => ({ tipo: "localidade", valor })),
+      ...fontes.map((valor) => ({ tipo: "fonte", valor })),
+    ],
+    prospector_tags_atualizadas_em: new Date().toISOString(),
+  };
 }
 
 export async function runProspectorQueueWorker(log: Logger): Promise<void> {
@@ -66,7 +133,9 @@ export async function runProspectorQueueWorker(log: Logger): Promise<void> {
     try {
       const { tenantId, ritmoDiario } = config;
 
-      // 2. Count how many leads were already processed today for this tenant
+      // 2. Count how many leads were already processed today for this tenant.
+      // This is intentionally tenant-wide, so multiple niche/city config rows
+      // still share one daily commercial cap.
       const today = todayStart();
       const [countRow] = await db
         .select({ count: sql<number>`count(*)::int` })
@@ -122,7 +191,6 @@ export async function runProspectorQueueWorker(log: Logger): Promise<void> {
           // Anti-ban delay between imports (1.5 s)
           await new Promise<void>((r) => setTimeout(r, 1500));
 
-          // Count totals per run (not per tenant — ok for logging)
           const finalItem = await db
             .select({ status: prospectorQueueTable.status })
             .from(prospectorQueueTable)
@@ -167,10 +235,16 @@ async function processQueueItem(params: {
     );
   }
 
-  let existingLeadId: string | null = null;
   if (matchers.length > 0) {
     const [dup] = await db
-      .select({ id: leadsTable.id, telefone: leadsTable.telefone, endereco: leadsTable.endereco, websiteUrl: leadsTable.websiteUrl })
+      .select({
+        id: leadsTable.id,
+        telefone: leadsTable.telefone,
+        endereco: leadsTable.endereco,
+        websiteUrl: leadsTable.websiteUrl,
+        metadata: leadsTable.metadata,
+        mercadoSegmento: leadsTable.mercadoSegmento,
+      })
       .from(leadsTable)
       .where(
         and(
@@ -181,21 +255,23 @@ async function processQueueItem(params: {
       .limit(1);
 
     if (dup) {
-      existingLeadId = dup.id;
-
-      // Patch missing fields on the existing lead
-      const patch: Partial<typeof leadsTable.$inferInsert> = {};
+      const patch: Partial<typeof leadsTable.$inferInsert> = {
+        metadata: mergeProspectorMetadata((dup.metadata ?? {}) as Record<string, unknown>, {
+          setor: item.setor,
+          cidade: item.cidade,
+          fonte: "prospector_auto",
+          placeId: item.placeId,
+        }),
+        updatedAt: now,
+      };
       if (!dup.telefone && item.telefone) patch.telefone = item.telefone;
       if (!dup.endereco && item.endereco) patch.endereco = item.endereco;
       if (!dup.websiteUrl && item.website) patch.websiteUrl = item.website;
+      if (!dup.mercadoSegmento && item.setor) patch.mercadoSegmento = item.setor;
 
-      if (Object.keys(patch).length > 0) {
-        patch.updatedAt = now;
-        await db.update(leadsTable).set(patch).where(eq(leadsTable.id, dup.id));
-        log.info({ leadId: dup.id, tenantId, patch: Object.keys(patch) }, "prospector-queue: patched duplicate lead");
-      }
+      await db.update(leadsTable).set(patch).where(eq(leadsTable.id, dup.id));
+      log.info({ leadId: dup.id, tenantId, setor: item.setor, cidade: item.cidade }, "prospector-queue: duplicate lead tags merged");
 
-      // Mark queue as duplicado
       await db
         .update(prospectorQueueTable)
         .set({ status: "duplicado", leadId: dup.id, updatedAt: now })
@@ -219,13 +295,14 @@ async function processQueueItem(params: {
       source:     "prospector_auto",
       tipoPessoa: "juridica",
       status:     "novo",
-      metadata: {
-        prospectado_em:   now.toISOString(),
-        origem:           "prospector_auto",
-        place_id:         item.placeId,
-        setor:            item.setor,
-        cidade:           item.cidade,
-      },
+      mercadoSegmento: item.setor,
+      metadata: mergeProspectorMetadata({}, {
+        setor: item.setor,
+        cidade: item.cidade,
+        fonte: "prospector_auto",
+        placeId: item.placeId,
+        prospectadoEm: now.toISOString(),
+      }),
     })
     .returning({ id: leadsTable.id });
 
@@ -255,7 +332,7 @@ async function processQueueItem(params: {
     dealId,
     tipo:      "tarefa",
     titulo:    "Lead importado via Prospector Automático",
-    descricao: `Importado automaticamente da fila do Prospector (setor: ${item.setor ?? "N/A"}, cidade: ${item.cidade ?? "N/A"}).`,
+    descricao: `Importado automaticamente da fila do Prospector (atividade: ${item.setor ?? "N/A"}, localidade: ${item.cidade ?? "N/A"}).`,
     status:    "concluida",
   });
 
@@ -268,13 +345,11 @@ async function processQueueItem(params: {
   log.info({ queueId: item.id, leadId, dealId, tenantId }, "prospector-queue: lead created — starting predictive enrichment");
 
   // ── Motor Preditivo (Cmd 22): enrich → score → auto-dispatch ─────────────
-  // Set enrichment_status = 'pending' on the new lead
   await db
     .update(leadsTable)
     .set({ enrichmentStatus: "pending", updatedAt: new Date() })
     .where(eq(leadsTable.id, leadId));
 
-  // Fire-and-forget enrichment (Digital Scanner + Growth Radar + Score + conditional SDR dispatch)
   enrichLead(leadId, tenantId, log).catch((err) =>
     log.error({ err, leadId, tenantId }, "prospector-queue: enrichLead failed (non-fatal)"),
   );
