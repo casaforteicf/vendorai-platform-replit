@@ -4,7 +4,26 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { mediaPlansTable } from "./media_plans";
 
-export const CONTENT_CALENDAR_TIPOS = ["feed", "stories", "reels"] as const;
+export const CONTENT_CALENDAR_TIPOS = [
+  "feed",
+  "stories",
+  "reels",
+  "carrossel",
+  "meta_ad",
+  "search_ad",
+  "display_ad",
+  "performance_max",
+  "youtube_short",
+  "youtube_video",
+  "tiktok",
+  "linkedin_post",
+  "whatsapp",
+  "email",
+  "blog",
+  "landing_page",
+  "site",
+  "sms",
+] as const;
 export type ContentCalendarTipo = (typeof CONTENT_CALENDAR_TIPOS)[number];
 
 export const CONTENT_CALENDAR_STATUS = ["planejado", "gerado", "publicado", "pulado"] as const;
@@ -22,8 +41,7 @@ export const contentCalendarItemsTable = pgTable("content_calendar_items", {
   tipo: text("tipo").$type<ContentCalendarTipo>().notNull().default("feed"),
   canal: text("canal").notNull().default("instagram"),
   status: text("status").$type<ContentCalendarStatus>().notNull().default("planejado"),
-  // Preenchidos quando o conteúdo (legenda+criativo) já foi gerado a
-  // partir desse item -- liga pra content_generations existente.
+  // Preenchidos quando o conteúdo já foi produzido no Gerador de Conteúdo.
   contentGenerationId: text("content_generation_id"),
   variationIdx: integer("variation_idx"),
   // Preenchido quando publicado -- liga pro registro de post (content.ts)
