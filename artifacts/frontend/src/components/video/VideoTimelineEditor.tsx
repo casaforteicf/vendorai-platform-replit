@@ -57,6 +57,8 @@ type StageGestureMode = "move" | "resize";
 type TransitionType = "cut" | "fade" | "crossfade" | "zoom" | "slide-left" | "slide-right";
 type ClipMotion = "none" | "zoom-in" | "zoom-out" | "pan-left" | "pan-right";
 type EasingType = "linear" | "ease-in" | "ease-out" | "ease-in-out";
+type LayerAnimation = "none" | "fade" | "pop" | "zoom" | "slide-up" | "slide-down" | "slide-left" | "slide-right";
+type TextAlign = "left" | "center" | "right";
 
 type LayerKeyframe = {
   time: number;
@@ -92,6 +94,10 @@ type EditorLayer = {
   scale: number;
   rotation: number;
   easing: EasingType;
+  textAlign: TextAlign;
+  enterAnimation: LayerAnimation;
+  exitAnimation: LayerAnimation;
+  animationDuration: number;
   keyframes?: LayerKeyframe[];
   url?: string;
   assetId?: string;
@@ -176,6 +182,22 @@ const CARD_TEMPLATES = [
   { name: "Benefício", text: "MAIS BENEFÍCIO\nResultado que faz diferença", background: "#0f766e", color: "#ffffff" },
   { name: "CTA", text: "QUERO SABER MAIS\nChame no WhatsApp", background: "#b91c1c", color: "#ffffff" },
   { name: "Destaque", text: "NOVIDADE\nConheça esta solução", background: "#6d28d9", color: "#ffffff" },
+];
+
+const CAPTION_TEMPLATES: Array<{
+  name: string;
+  text: string;
+  fontSize: number;
+  y: number;
+  color: string;
+  background: string;
+  textAlign: TextAlign;
+  enterAnimation: LayerAnimation;
+}> = [
+  { name: "Impacto Reels", text: "SUA LEGENDA AQUI", fontSize: 48, y: 70, color: "#ffffff", background: "#111827", textAlign: "center", enterAnimation: "pop" },
+  { name: "Destaque", text: "PALAVRA-CHAVE", fontSize: 46, y: 72, color: "#111827", background: "#facc15", textAlign: "center", enterAnimation: "slide-up" },
+  { name: "Minimal", text: "Mensagem clara e direta", fontSize: 42, y: 76, color: "#ffffff", background: "#1f2937", textAlign: "center", enterAnimation: "fade" },
+  { name: "CTA Social", text: "FALE COM A GENTE", fontSize: 44, y: 80, color: "#ffffff", background: "#b91c1c", textAlign: "center", enterAnimation: "zoom" },
 ];
 
 function tokenHeaders(json = false): Record<string, string> {
@@ -351,6 +373,31 @@ function resolveLayerAtTime(layer: EditorLayer, time: number): EditorLayer {
     };
   }
   return layer;
+}
+
+function resolveAnimatedLayerAtTime(layer: EditorLayer, time: number): EditorLayer {
+  const resolved = resolveLayerAtTime(layer, time);
+  const layerDuration = Math.max(0.1, layer.end - layer.start);
+  const duration = Math.min(layerDuration / 2, Math.max(0.1, layer.animationDuration ?? 0.35));
+  const enter = applyEasing(clamp((time - layer.start) / duration, 0, 1), layer.easing ?? "ease-in-out");
+  const exit = applyEasing(clamp((layer.end - time) / duration, 0, 1), layer.easing ?? "ease-in-out");
+  const next: EditorLayer = { ...resolved };
+
+  const applyAnimation = (type: LayerAnimation, amount: number, entering: boolean) => {
+    if (type === "none") return;
+    if (type === "fade") next.opacity *= amount;
+    if (type === "pop") next.scale *= entering ? 0.82 + 0.18 * amount : 0.9 + 0.1 * amount;
+    if (type === "zoom") next.scale *= entering ? 0.68 + 0.32 * amount : 0.82 + 0.18 * amount;
+    const offset = (1 - amount) * 8;
+    if (type === "slide-up") next.y += entering ? offset : -offset;
+    if (type === "slide-down") next.y += entering ? -offset : offset;
+    if (type === "slide-left") next.x += entering ? offset : -offset;
+    if (type === "slide-right") next.x += entering ? -offset : offset;
+  };
+
+  applyAnimation(layer.enterAnimation ?? "none", enter, true);
+  applyAnimation(layer.exitAnimation ?? "none", exit, false);
+  return next;
 }
 
 type CrossfadeWindow = {
@@ -759,7 +806,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 6,
+    editorVersion: 7,
     channel,
     ratio,
     quality,
@@ -935,6 +982,10 @@ export default function VideoTimelineEditor() {
           scale: Number.isFinite(Number(layer.scale)) ? Number(layer.scale) : 1,
           rotation: Number.isFinite(Number(layer.rotation)) ? Number(layer.rotation) : 0,
           easing: (["linear", "ease-in", "ease-out", "ease-in-out"] as string[]).includes(String(layer.easing)) ? layer.easing as EasingType : "ease-in-out",
+          textAlign: (["left", "center", "right"] as string[]).includes(String(layer.textAlign)) ? layer.textAlign as TextAlign : "left",
+          enterAnimation: (["none", "fade", "pop", "zoom", "slide-up", "slide-down", "slide-left", "slide-right"] as string[]).includes(String(layer.enterAnimation)) ? layer.enterAnimation as LayerAnimation : "none",
+          exitAnimation: (["none", "fade", "pop", "zoom", "slide-up", "slide-down", "slide-left", "slide-right"] as string[]).includes(String(layer.exitAnimation)) ? layer.exitAnimation as LayerAnimation : "none",
+          animationDuration: clamp(Number(layer.animationDuration) || 0.35, 0.1, 1.5),
           keyframes: Array.isArray(layer.keyframes) ? layer.keyframes.map((frame) => ({
             time: Number(frame.time) || 0,
             x: Number(frame.x) || 0,
@@ -1127,6 +1178,40 @@ export default function VideoTimelineEditor() {
       scale: 1,
       rotation: 0,
       easing: "ease-in-out",
+      textAlign: "center",
+      enterAnimation: kind === "cta" ? "pop" : kind === "title" ? "slide-up" : "fade",
+      exitAnimation: "fade",
+      animationDuration: 0.35,
+    };
+    commitEditor(clipsRef.current, [...layersRef.current, layer]);
+    selectLayer(layer.id);
+  };
+
+  const addCaptionLayer = (template = CAPTION_TEMPLATES[0]) => {
+    if (!template) return;
+    const total = Math.max(0.1, projectDurationFor(clipsRef.current));
+    const at = clamp(timelineTime, 0, Math.max(0, total - 0.1));
+    const layer: EditorLayer = {
+      id: uid("caption"),
+      type: "text",
+      name: `Legenda · ${template.name}`,
+      text: template.text,
+      start: at,
+      end: Math.min(total, at + 3),
+      x: 7,
+      y: template.y,
+      width: 86,
+      fontSize: template.fontSize,
+      color: template.color,
+      background: template.background,
+      opacity: 1,
+      scale: 1,
+      rotation: 0,
+      easing: "ease-out",
+      textAlign: template.textAlign,
+      enterAnimation: template.enterAnimation,
+      exitAnimation: "fade",
+      animationDuration: 0.28,
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
     selectLayer(layer.id);
@@ -1139,7 +1224,7 @@ export default function VideoTimelineEditor() {
     const layer: EditorLayer = {
       id: uid("card"), type: "card", name: `Card · ${template.name}`, text: template.text,
       start: at, end: Math.min(total, at + 4), x: 8, y: 62, width: 84, fontSize: 36,
-      color: template.color, background: template.background, opacity: 0.94, scale: 1, rotation: 0, easing: "ease-in-out",
+      color: template.color, background: template.background, opacity: 0.94, scale: 1, rotation: 0, easing: "ease-in-out", textAlign: "left", enterAnimation: "slide-up", exitAnimation: "fade", animationDuration: 0.35,
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
     selectLayer(layer.id);
@@ -1149,7 +1234,7 @@ export default function VideoTimelineEditor() {
     const total = Math.max(0.1, projectDurationFor(clipsRef.current));
     const layer: EditorLayer = {
       id: uid("image"), type: "image", name: file.name, text: "", start: timelineTime, end: Math.min(total, timelineTime + 6),
-      x: 60, y: 8, width: 32, fontSize: 32, color: "#ffffff", background: "#000000", opacity: 1, scale: 1, rotation: 0, easing: "ease-in-out",
+      x: 60, y: 8, width: 32, fontSize: 32, color: "#ffffff", background: "#000000", opacity: 1, scale: 1, rotation: 0, easing: "ease-in-out", textAlign: "left", enterAnimation: "fade", exitAnimation: "fade", animationDuration: 0.35,
       url: URL.createObjectURL(file), localFile: file,
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
@@ -1165,7 +1250,7 @@ export default function VideoTimelineEditor() {
     const total = Math.max(0.1, projectDurationFor(clipsRef.current));
     const layer: EditorLayer = {
       id: uid("image"), type: "image", name: assetName(asset), text: "", start: timelineTime, end: Math.min(total, timelineTime + 6),
-      x: 60, y: 8, width: 32, fontSize: 32, color: "#ffffff", background: "#000000", opacity: 1, scale: 1, rotation: 0, easing: "ease-in-out",
+      x: 60, y: 8, width: 32, fontSize: 32, color: "#ffffff", background: "#000000", opacity: 1, scale: 1, rotation: 0, easing: "ease-in-out", textAlign: "left", enterAnimation: "fade", exitAnimation: "fade", animationDuration: 0.35,
       url: assetUrl(asset), assetId: asset.id,
     };
     commitEditor(clipsRef.current, [...layersRef.current, layer]);
@@ -1549,7 +1634,7 @@ export default function VideoTimelineEditor() {
         }
         for (const layer of renderLayers) {
           if (!layerIsVisible(layer, globalTime)) continue;
-          const resolvedLayer = resolveLayerAtTime(layer, globalTime);
+          const resolvedLayer = resolveAnimatedLayerAtTime(layer, globalTime);
           ctx.save();
           ctx.globalAlpha = clamp(resolvedLayer.opacity, 0, 1);
           const x = width * resolvedLayer.x / 100;
@@ -1582,7 +1667,12 @@ export default function VideoTimelineEditor() {
               ctx.fillRect(0, 0, textWidth, lines.length * lineHeight + padding * 2);
             }
             ctx.fillStyle = layer.color;
-            lines.forEach((line, index) => ctx.fillText(line, layer.type === "card" ? padding : 0, (layer.type === "card" ? padding : 0) + index * lineHeight, maxWidth - padding));
+            const align = resolvedLayer.textAlign ?? "left";
+            ctx.textAlign = align;
+            const textX = layer.type === "card"
+              ? align === "center" ? maxWidth / 2 : align === "right" ? maxWidth - padding : padding
+              : align === "center" ? maxWidth / 2 : align === "right" ? maxWidth : 0;
+            lines.forEach((line, index) => ctx.fillText(line, textX, (layer.type === "card" ? padding : 0) + index * lineHeight, maxWidth - padding));
           }
           ctx.restore();
         }
@@ -1748,6 +1838,15 @@ export default function VideoTimelineEditor() {
       <RangeField label="Opacidade" value={selectedLayer.opacity} min={0.1} max={1} step={0.05} onChange={(value) => updateLayer({ opacity: value })} />
       <RangeField label="Escala" value={selectedLayer.scale ?? 1} min={0.2} max={3} step={0.05} suffix="x" onChange={(value) => updateLayer({ scale: value })} />
       <RangeField label="Rotação" value={selectedLayer.rotation ?? 0} min={-180} max={180} step={1} suffix="°" onChange={(value) => updateLayer({ rotation: value })} />
+      {selectedLayer.type !== "image" && <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Alinhamento</span><select value={selectedLayer.textAlign ?? "left"} onChange={(event) => updateLayer({ textAlign: event.target.value as TextAlign })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs"><option value="left">Esquerda</option><option value="center">Centralizado</option><option value="right">Direita</option></select></label>}
+      <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+        <div><p className="text-xs font-semibold">Entrada e saída</p><p className="text-[10px] text-muted-foreground">Animações prontas para texto, card ou imagem, aplicadas também no MP4 final.</p></div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="space-y-1"><span className="text-[10px] text-muted-foreground">Entrada</span><select value={selectedLayer.enterAnimation ?? "none"} onChange={(event) => updateLayer({ enterAnimation: event.target.value as LayerAnimation })} className="h-9 w-full rounded-lg border bg-background px-2 text-[11px]"><option value="none">Sem efeito</option><option value="fade">Fade</option><option value="pop">Pop</option><option value="zoom">Zoom</option><option value="slide-up">Subir</option><option value="slide-down">Descer</option><option value="slide-left">Entrar da direita</option><option value="slide-right">Entrar da esquerda</option></select></label>
+          <label className="space-y-1"><span className="text-[10px] text-muted-foreground">Saída</span><select value={selectedLayer.exitAnimation ?? "none"} onChange={(event) => updateLayer({ exitAnimation: event.target.value as LayerAnimation })} className="h-9 w-full rounded-lg border bg-background px-2 text-[11px]"><option value="none">Sem efeito</option><option value="fade">Fade</option><option value="pop">Pop</option><option value="zoom">Zoom</option><option value="slide-up">Subir</option><option value="slide-down">Descer</option><option value="slide-left">Sair à esquerda</option><option value="slide-right">Sair à direita</option></select></label>
+        </div>
+        <RangeField label="Duração do efeito" value={selectedLayer.animationDuration ?? 0.35} min={0.1} max={1.5} step={0.05} suffix="s" onChange={(value) => updateLayer({ animationDuration: value })} />
+      </div>
       <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Curva da animação</span><select value={selectedLayer.easing ?? "ease-in-out"} onChange={(event) => updateLayer({ easing: event.target.value as EasingType })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs"><option value="linear">Linear</option><option value="ease-in">Acelera</option><option value="ease-out">Desacelera</option><option value="ease-in-out">Suave · acelera e desacelera</option></select></label>
       <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
         <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold">Keyframes de movimento</p><p className="text-[10px] text-muted-foreground">Registre posição, tamanho, escala, rotação e opacidade no cursor.</p></div><button onClick={addLayerKeyframe} className="rounded-lg border bg-background px-2 py-1.5 text-[10px] font-medium">+ Keyframe</button></div>
@@ -1778,7 +1877,7 @@ export default function VideoTimelineEditor() {
     if (tool === "text") return <div className="space-y-3"><div><p className="text-sm font-semibold">Adicionar texto</p><p className="text-xs text-muted-foreground">Faixas escritas independentes sobre toda a sequência.</p></div><button onClick={() => addTextLayer("title")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-semibold">Título</p><p className="text-xs text-muted-foreground">Gancho ou headline principal</p></button><button onClick={() => addTextLayer("subtitle")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">Subtítulo</p><p className="text-xs text-muted-foreground">Mensagem de apoio e benefício</p></button><button onClick={() => addTextLayer("cta")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">CTA</p><p className="text-xs text-muted-foreground">WhatsApp, site ou chamada final</p></button></div>;
     if (tool === "cards") return <div className="space-y-3"><div><p className="text-sm font-semibold">Cards</p><p className="text-xs text-muted-foreground">Oferta, benefício e CTA no ponto atual da timeline.</p></div>{CARD_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCardLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40"><div className="h-12 rounded-lg p-2 text-xs font-bold" style={{ background: template.background, color: template.color }}>{template.text.split("\n").map((line) => <div key={line}>{line}</div>)}</div><p className="mt-2 text-xs font-medium">{template.name}</p></button>)}</div>;
     if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}<RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
-    if (tool === "captions") return <div className="space-y-3"><div><p className="text-sm font-semibold">Legendas</p><p className="text-xs text-muted-foreground">Legendas manuais ou automáticas sobre o MP4 final.</p></div><button onClick={() => addTextLayer("subtitle")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40"><p className="font-medium">Faixa manual</p><p className="text-xs text-muted-foreground">Controle conteúdo, posição, início e fim.</p></button><button disabled={!clips.length || jobStatus === "processing"} onClick={() => void applyAutomaticCaption()} className="w-full rounded-xl bg-foreground px-3 py-2.5 text-sm font-semibold text-background disabled:opacity-40"><Captions className="mr-2 inline h-4 w-4" />Legenda automática</button><p className="text-[11px] text-muted-foreground">Em projetos com vários clipes, exporte a sequência antes de gerar a legenda automática.</p></div>;
+    if (tool === "captions") return <div className="space-y-3"><div><p className="text-sm font-semibold">Legendas modernas</p><p className="text-xs text-muted-foreground">Modelos rápidos para Reels, Stories e vídeos comerciais, além da legenda automática.</p></div><div className="space-y-2">{CAPTION_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCaptionLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><div className="rounded-lg px-2.5 py-2 text-xs font-bold" style={{ background: template.background, color: template.color, textAlign: template.textAlign }}>{template.text}</div><p className="mt-2 text-xs font-medium">{template.name}</p><p className="text-[10px] text-muted-foreground">Entrada {template.enterAnimation === "pop" ? "Pop" : template.enterAnimation === "slide-up" ? "Subir" : template.enterAnimation === "zoom" ? "Zoom" : "Fade"} · editável na timeline</p></button>)}</div><button disabled={!clips.length || jobStatus === "processing"} onClick={() => void applyAutomaticCaption()} className="w-full rounded-xl bg-foreground px-3 py-2.5 text-sm font-semibold text-background disabled:opacity-40"><Captions className="mr-2 inline h-4 w-4" />Legenda automática</button><p className="text-[11px] text-muted-foreground">As faixas estilizadas ficam totalmente editáveis. Em projetos com vários clipes, exporte a sequência antes de aplicar a legenda automática.</p></div>;
     if (tool === "settings") return <div className="space-y-4"><div><p className="text-sm font-semibold">Ajustes de saída</p><p className="text-xs text-muted-foreground">Tratamento aplicado depois da composição.</p></div><label className="flex items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-medium">Normalizar volume</p><p className="text-xs text-muted-foreground">Equaliza o resultado final</p></div><input type="checkbox" checked={normalizeAudio} onChange={(event) => setNormalizeAudio(event.target.checked)} className="accent-primary" /></label><label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Velocidade final</span><select value={speed} onChange={(event) => setSpeed(event.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm"><option value="1.0">Normal · 1x</option><option value="1.1">Levemente rápido · 1.1x</option><option value="1.25">Rápido · 1.25x</option></select></label><div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Fluxo não destrutivo</p><p className="mt-1">Cada clipe mantém seu arquivo original; cortes, ordem e sobreposições ficam salvos no projeto.</p></div></div>;
     return <div className="space-y-4"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold">Central de Mídias</p><p className="text-xs text-muted-foreground">Adicione quantos clipes precisar.</p></div><button onClick={() => void loadAssets()} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><RefreshCw className={cn("h-4 w-4", assetsLoading && "animate-spin")} /></button></div><div className="grid grid-cols-3 gap-2"><button onClick={() => videoInputRef.current?.click()} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><Plus className="mx-auto mb-1.5 h-4 w-4" />Clipes</button><button onClick={() => imageInputRef.current?.click()} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><ImageIcon className="mx-auto mb-1.5 h-4 w-4" />Imagem</button><button onClick={() => { setTool("audio"); setMusicMode("upload"); musicInputRef.current?.click(); }} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><Music2 className="mx-auto mb-1.5 h-4 w-4" />Áudio</button></div>{mediaVideos.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Vídeos recentes · clique para adicionar</p>{mediaVideos.slice(0, 8).map((asset) => <button key={asset.id} onClick={() => void addLibraryClip(asset)} className="flex w-full items-center gap-2 rounded-lg border p-2 text-left hover:border-primary/30"><Film className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-xs">{assetName(asset)}</span><Plus className="h-3.5 w-3.5 text-muted-foreground" /></button>)}</div>}{mediaImages.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Imagens recentes</p><div className="grid grid-cols-2 gap-2">{mediaImages.slice(0, 8).map((asset) => <button key={asset.id} onClick={() => addLibraryImage(asset)} className="overflow-hidden rounded-xl border text-left hover:border-primary/40"><div className="aspect-video bg-muted"><img src={assetUrl(asset)} alt="" className="h-full w-full object-cover" /></div><p className="truncate p-1.5 text-[10px]">{assetName(asset)}</p></button>)}</div></div>}</div>;
   })();
@@ -1790,10 +1889,11 @@ export default function VideoTimelineEditor() {
   ];
 
   const renderPreviewLayer = (layer: EditorLayer) => {
-    const resolvedLayer = resolveLayerAtTime(layer, timelineTime);
+    const resolvedLayer = resolveAnimatedLayerAtTime(layer, timelineTime);
     const style: CSSProperties = { position: "absolute", left: `${resolvedLayer.x}%`, top: `${resolvedLayer.y}%`, width: `${resolvedLayer.width}%`, opacity: resolvedLayer.opacity, transform: `rotate(${resolvedLayer.rotation ?? 0}deg) scale(${resolvedLayer.scale ?? 1})`, transformOrigin: "top left" };
     const selected = selectedLayerId === layer.id;
-    return <div key={layer.id} style={style} className={cn("group touch-none select-none", selected && "z-20")} onPointerDown={(event) => startStageGesture(event, layer, "move")}>{layer.type === "image" ? <img src={layer.url} alt="" draggable={false} className={cn("block h-auto max-h-[85%] w-full object-contain", selected && "outline outline-2 outline-primary")} /> : <div style={{ color: layer.color, background: layer.type === "card" ? layer.background : "transparent", fontSize: `${Math.max(11, layer.fontSize * 0.38)}px`, whiteSpace: "pre-wrap" }} className={cn("rounded-lg p-2 font-bold leading-tight", selected && "outline outline-2 outline-primary")}>{layer.text}</div>}{selected && <button type="button" aria-label="Redimensionar camada" onPointerDown={(event) => startStageGesture(event, layer, "resize")} className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow" />}</div>;
+    const previewBackground = layer.type === "card" || (resolvedLayer.background && resolvedLayer.background !== "transparent") ? resolvedLayer.background : "transparent";
+    return <div key={layer.id} style={style} className={cn("group touch-none select-none", selected && "z-20")} onPointerDown={(event) => startStageGesture(event, layer, "move")}>{layer.type === "image" ? <img src={layer.url} alt="" draggable={false} className={cn("block h-auto max-h-[85%] w-full object-contain", selected && "outline outline-2 outline-primary")} /> : <div style={{ color: layer.color, background: previewBackground, fontSize: `${Math.max(11, layer.fontSize * 0.38)}px`, whiteSpace: "pre-wrap", textAlign: resolvedLayer.textAlign ?? "left" }} className={cn("rounded-lg p-2 font-bold leading-tight", selected && "outline outline-2 outline-primary")}>{layer.text}</div>}{selected && <button type="button" aria-label="Redimensionar camada" onPointerDown={(event) => startStageGesture(event, layer, "resize")} className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow" />}</div>;
   };
 
   const renderTimelineLayer = (layer: EditorLayer) => <div key={layer.id} onPointerDown={(event) => startLayerTimelineGesture(event, layer, "move")} className={cn("absolute inset-y-1 touch-none select-none overflow-hidden rounded px-2 text-left text-[10px] leading-6 text-white", layer.type === "text" ? "bg-blue-500/80" : layer.type === "card" ? "bg-violet-500/80" : "bg-emerald-500/80", selectedLayerId === layer.id && "ring-2 ring-primary ring-offset-1")} style={{ left: `${clamp(layer.start / projectDuration * 100, 0, 100)}%`, width: `${Math.max(1, clamp((layer.end - layer.start) / projectDuration * 100, 0, 100))}%` }}><button type="button" aria-label="Ajustar início" onPointerDown={(event) => startLayerTimelineGesture(event, layer, "trim-start")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/35" /><span className="pointer-events-none block truncate px-1">{layer.name}</span><button type="button" aria-label="Ajustar fim" onPointerDown={(event) => startLayerTimelineGesture(event, layer, "trim-end")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/35" /></div>;
