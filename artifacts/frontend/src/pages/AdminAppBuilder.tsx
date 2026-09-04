@@ -6,8 +6,10 @@ import AppUsersDialog from "@/components/app-builder/AppUsersDialog";
 import TemplateRuntimeEditorDialog from "@/components/app-builder/TemplateRuntimeEditorDialog";
 import TemplateRuntimePreviewDialog from "@/components/app-builder/TemplateRuntimePreviewDialog";
 import TemplateDataSourceEditorDialog from "@/components/app-builder/TemplateDataSourceEditorDialog";
+import TemplateActionEditorDialog from "@/components/app-builder/TemplateActionEditorDialog";
+import AppActionPolicyDialog from "@/components/app-builder/AppActionPolicyDialog";
 import AdminAppBuilderLegacy from "./AdminAppBuilderLegacy";
-import { DatabaseZap, ExternalLink, Layers3, Loader2, MonitorSmartphone, UserRoundCog } from "lucide-react";
+import { DatabaseZap, ExternalLink, FormInput, Layers3, Loader2, MonitorSmartphone, UserRoundCog, Workflow } from "lucide-react";
 
 type AppInstance = {
   id: string;
@@ -32,9 +34,11 @@ export default function AdminAppBuilder() {
   const [selectedAppId, setSelectedAppId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [usersOpen, setUsersOpen] = useState(false);
+  const [appActionsOpen, setAppActionsOpen] = useState(false);
   const [runtimeEditorOpen, setRuntimeEditorOpen] = useState(false);
   const [runtimePreviewOpen, setRuntimePreviewOpen] = useState(false);
   const [dataSourceEditorOpen, setDataSourceEditorOpen] = useState(false);
+  const [templateActionsOpen, setTemplateActionsOpen] = useState(false);
   const [loadingControls, setLoadingControls] = useState(false);
 
   const loadControls = useCallback(async () => {
@@ -77,7 +81,7 @@ export default function AdminAppBuilder() {
         <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
           <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
             <UserRoundCog className="h-4 w-4 text-primary" />
-            <span>Usuários externos, papéis, permissões e login por App Instance</span>
+            <span>Usuários externos, papéis, permissões, login e Actions por App Instance</span>
           </div>
           <Select value={selectedAppId} onValueChange={setSelectedAppId} disabled={loadingControls || apps.length === 0}>
             <SelectTrigger className="h-9 w-full sm:w-[280px]"><SelectValue placeholder={loadingControls ? "Carregando apps..." : "Selecione o app"} /></SelectTrigger>
@@ -86,6 +90,10 @@ export default function AdminAppBuilder() {
           <Button size="sm" variant="outline" onClick={openRuntime} disabled={!selectedApp || loadingControls}>
             <ExternalLink className="mr-2 h-4 w-4" />
             Abrir app
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setAppActionsOpen(true)} disabled={!selectedApp || loadingControls}>
+            <Workflow className="mr-2 h-4 w-4" />
+            Actions publicadas
           </Button>
           <Button size="sm" onClick={() => setUsersOpen(true)} disabled={!selectedApp || loadingControls}>
             {loadingControls ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserRoundCog className="mr-2 h-4 w-4" />}
@@ -96,7 +104,7 @@ export default function AdminAppBuilder() {
         <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
           <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
             <Layers3 className="h-4 w-4 text-primary" />
-            <span>Páginas, blocos, dados dinâmicos e regras de visibilidade do runtime publicado</span>
+            <span>Páginas, blocos, dados dinâmicos, formulários e regras de visibilidade do runtime publicado</span>
           </div>
           <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={loadingControls || templates.length === 0}>
             <SelectTrigger className="h-9 w-full sm:w-[280px]"><SelectValue placeholder={loadingControls ? "Carregando templates..." : "Selecione o template"} /></SelectTrigger>
@@ -109,6 +117,10 @@ export default function AdminAppBuilder() {
           <Button size="sm" variant="outline" onClick={() => setDataSourceEditorOpen(true)} disabled={!selectedTemplate || loadingControls}>
             <DatabaseZap className="mr-2 h-4 w-4" />
             Dados dinâmicos
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setTemplateActionsOpen(true)} disabled={!selectedTemplate || loadingControls}>
+            <FormInput className="mr-2 h-4 w-4" />
+            Formulários / Actions
           </Button>
           <Button size="sm" variant="outline" onClick={() => setRuntimeEditorOpen(true)} disabled={!selectedTemplate || loadingControls}>
             <Layers3 className="mr-2 h-4 w-4" />
@@ -127,6 +139,14 @@ export default function AdminAppBuilder() {
         onAppChanged={loadControls}
       />
 
+      <AppActionPolicyDialog
+        app={selectedApp}
+        token={token}
+        open={appActionsOpen}
+        onOpenChange={setAppActionsOpen}
+        onAppChanged={loadControls}
+      />
+
       <TemplateRuntimeEditorDialog
         template={selectedTemplate}
         token={token}
@@ -139,6 +159,13 @@ export default function AdminAppBuilder() {
         token={token}
         open={dataSourceEditorOpen}
         onOpenChange={setDataSourceEditorOpen}
+      />
+
+      <TemplateActionEditorDialog
+        template={selectedTemplate}
+        token={token}
+        open={templateActionsOpen}
+        onOpenChange={setTemplateActionsOpen}
       />
 
       <TemplateRuntimePreviewDialog

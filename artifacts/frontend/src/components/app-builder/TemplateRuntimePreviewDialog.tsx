@@ -25,7 +25,7 @@ type Props = {
   onOpenChange: (open: boolean) => void;
 };
 
-const BLOCK_TYPES = new Set(["hero", "text", "callout", "metrics", "list", "cards", "divider"]);
+const BLOCK_TYPES = new Set(["hero", "text", "callout", "metrics", "list", "cards", "divider", "action_form"]);
 
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
@@ -69,7 +69,7 @@ function previewPayload(template: TemplateLike, version: TemplateVersion, roleKe
       if (!type || !BLOCK_TYPES.has(type) || !visibleTo(block.visibility, roleKey, permissions)) return [];
       return [{
         id: text(block.id) ?? `block-${blockIndex + 1}`,
-        type: type as "hero" | "text" | "callout" | "metrics" | "list" | "cards" | "divider",
+        type: type as "hero" | "text" | "callout" | "metrics" | "list" | "cards" | "divider" | "action_form",
         props: asObject(block.props),
       }];
     });
@@ -182,7 +182,7 @@ export default function TemplateRuntimePreviewDialog({ template, token, open, on
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">Sem salvar</Badge>
           <Badge variant="outline">Sem publicar</Badge>
-          <span>A visibilidade é recalculada localmente para o perfil simulado e a renderização usa o mesmo componente do app final.</span>
+          <span>A visibilidade é recalculada localmente para o perfil simulado e a renderização usa o mesmo componente do app final. Actions aparecem desabilitadas nesta prévia.</span>
         </div>
 
         {loading ? (

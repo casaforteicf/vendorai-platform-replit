@@ -19,6 +19,10 @@ import {
   runtimeDataSourceBindings,
   type RuntimeViewer,
 } from "../lib/app_runtime_data_sources.js";
+import {
+  loadInteractiveRuntimeActions,
+  type RuntimeActionDescriptor,
+} from "../lib/app_runtime_actions.js";
 
 const router: IRouter = Router();
 type JsonObject = Record<string, unknown>;
@@ -29,8 +33,10 @@ type SanitizedRuntime = {
   dataSourceKeys: string[];
 };
 
-const ALLOWED_BLOCK_TYPES = new Set(["hero", "text", "callout", "metrics", "list", "cards", "divider"]);
+const ALLOWED_BLOCK_TYPES = new Set(["hero", "text", "callout", "metrics", "list", "cards", "divider", "action_form"]);
 const ALLOWED_TONES = new Set(["neutral", "info", "success", "warning", "danger"]);
+const ACTION_KEY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+const FIELD_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 const MAX_RUNTIME_DATA_SOURCES = 20;
 
 function asObject(value: unknown): JsonObject {
@@ -70,6 +76,15 @@ function authEnabled(definition: unknown): boolean {
   const runtimeAccess = asObject(settings.runtimeAccess);
   const auth = asObject(runtimeAccess.auth);
   return auth.enabled === true && stringArray(auth.methods).includes("email_code");
+}
+
+function enabledActionKeys(definition: unknown): string[] {
+  const snapshot = asObject(definition);
+  const settings = asObject(snapshot.settings);
+  const runtimeAccess = asObject(settings.runtimeAccess);
+  const actions = asObject(runtimeAccess.actions);
+  if (actions.enabled !== true) return [];
+  return stringArray(actions.keys, 30, 100).filter((key) => ACTION_KEY_PATTERN.test(key));
 }
 
 function visibleTo(value: unknown, roleKey: string, permissions: string[]): boolean {
@@ -130,12 +145,107 @@ function sanitizeCardItem(value: unknown): JsonObject | null {
   };
 }
 
+function schemaTypes(schema: JsonObject): string[] {
+  if (typeof schema.type === "string") return [schema.type];
+  return stringArray(schema.type, 6, 20);
+}
+
+function humanizeFieldName(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function actionFieldType(name: string, schema: JsonObject): string | null {
+  const types = schemaTypes(schema);
+  const enumValues = stringArray(schema.enum, 50, 160);
+  if (enumValues.length > 0) return "select";
+  if (types.includes("boolean")) return "checkbox";
+  if (types.includes("number") || types.includes("integer")) return "number";
+  if (!types.includes("string")) return null;
+  if (schema.format === "email") return "email";
+  if (/phone|telefone|celular/i.test(name)) return "tel";
+  if (/message|description|descricao|notes|observa|body/i.test(name)) return "textarea";
+  return "text";
+}
+
+function sanitizeActionField(
+  value: unknown,
+  schemaProperties: JsonObject,
+  requiredNames: Set<string>,
+): JsonObject | null {
+  const source = asObject(value);
+  const name = text(source.name, 100);
+  if (!name || !FIELD_NAME_PATTERN.test(name) || !Object.prototype.hasOwnProperty.call(schemaProperties, name)) return null;
+  const fieldSchema = asObject(schemaProperties[name]);
+  const type = actionFieldType(name, fieldSchema);
+  if (!type) return null;
+  const options = type === "select" ? stringArray(fieldSchema.enum, 50, 160) : [];
+  return {
+    name,
+    label: text(source.label, 120) ?? humanizeFieldName(name),
+    type,
+    required: requiredNames.has(name) || source.required === true,
+    ...(text(source.placeholder, 200) ? { placeholder: text(source.placeholder, 200) } : {}),
+    ...(options.length > 0 ? { options } : {}),
+  };
+}
+
+function defaultActionFields(descriptor: RuntimeActionDescriptor): JsonObject[] {
+  const schema = asObject(descriptor.inputSchema);
+  const properties = asObject(schema.properties);
+  const requiredNames = new Set(stringArray(schema.required, 50, 100));
+  return Object.keys(properties)
+    .slice(0, 20)
+    .map((name) => sanitizeActionField({ name }, properties, requiredNames))
+    .filter((field): field is JsonObject => Boolean(field));
+}
+
+function sanitizeActionForm(
+  props: JsonObject,
+  descriptors: Map<string, RuntimeActionDescriptor>,
+): JsonObject | null {
+  const actionKey = text(props.actionKey, 100);
+  if (!actionKey || !ACTION_KEY_PATTERN.test(actionKey)) return null;
+  const descriptor = descriptors.get(actionKey);
+  if (!descriptor) return null;
+
+  const schema = asObject(descriptor.inputSchema);
+  const properties = asObject(schema.properties);
+  const requiredNames = new Set(stringArray(schema.required, 50, 100));
+  const configuredFields = Array.isArray(props.fields)
+    ? props.fields
+        .map((field) => sanitizeActionField(field, properties, requiredNames))
+        .filter((field): field is JsonObject => Boolean(field))
+        .slice(0, 20)
+    : [];
+  const fields = configuredFields.length > 0 ? configuredFields : defaultActionFields(descriptor);
+  if (fields.length === 0) return null;
+
+  const rawMinProperties = typeof schema.minProperties === "number" ? schema.minProperties : 0;
+  const minProperties = Number.isFinite(rawMinProperties)
+    ? Math.max(0, Math.min(fields.length, Math.floor(rawMinProperties)))
+    : 0;
+
+  return {
+    actionKey,
+    fields,
+    minProperties,
+    title: text(props.title, 180) ?? "Formulário",
+    ...(text(props.body, 1600) ? { body: text(props.body, 1600) } : {}),
+    submitLabel: text(props.submitLabel, 100) ?? "Enviar",
+    successMessage: text(props.successMessage, 300) ?? "Dados salvos com sucesso.",
+  };
+}
+
 function sanitizeBlock(
   value: unknown,
   index: number,
   roleKey: string,
   permissions: string[],
   dataSourceKeys: Set<string>,
+  actionDescriptors: Map<string, RuntimeActionDescriptor>,
 ): JsonObject | null {
   const source = asObject(value);
   const type = text(source.type, 40);
@@ -195,10 +305,20 @@ function sanitizeBlock(
     return { ...base, props: { ...(text(props.title, 160) ? { title: text(props.title, 160) } : {}), items } };
   }
 
+  if (type === "action_form") {
+    const actionProps = sanitizeActionForm(props, actionDescriptors);
+    return actionProps ? { ...base, props: actionProps } : null;
+  }
+
   return { ...base, props: { ...(text(props.label, 100) ? { label: text(props.label, 100) } : {}) } };
 }
 
-function sanitizeRuntime(value: unknown, roleKey: string, permissions: string[]): SanitizedRuntime {
+function sanitizeRuntime(
+  value: unknown,
+  roleKey: string,
+  permissions: string[],
+  actionDescriptors: Map<string, RuntimeActionDescriptor>,
+): SanitizedRuntime {
   const source = asObject(value);
   const dataSourceKeys = new Set<string>();
   const rawPages = Array.isArray(source.pages) ? source.pages.slice(0, 50) : [];
@@ -216,6 +336,7 @@ function sanitizeRuntime(value: unknown, roleKey: string, permissions: string[])
               roleKey,
               permissions,
               dataSourceKeys,
+              actionDescriptors,
             ),
           )
           .filter(Boolean)
@@ -352,11 +473,16 @@ router.get("/app-runtime/apps/:appId/runtime", authenticateAppUser, async (req, 
     "viewer.role": current.roleKey,
     "app.name": appName,
   };
+  const interactiveActions = await loadInteractiveRuntimeActions(
+    enabledActionKeys(snapshotDefinition),
+    permissions,
+  );
 
   const sanitized = sanitizeRuntime(
     templateDefinition.runtime,
     current.roleKey,
     permissions,
+    interactiveActions,
   );
   const viewer: RuntimeViewer = {
     id: current.id,
