@@ -158,3 +158,108 @@ export const AGENTS: AgentDetail[] = [
     ctaLabel: "Ver o Revenue Scout",
   },
 ];
+
+const AGENTS_ES: Record<string, Omit<AgentDetail, "slug" | "icon">> = {
+  recepcao: {
+    eyebrow: "El primer contacto de cada lead nuevo",
+    title: "Agente de Recepción",
+    subtitle: "Toda persona que llega por WhatsApp, Instagram o el sitio habla primero con el Agente de Recepción. Recibe, entiende qué necesita y la dirige al siguiente paso correcto sin parecer un robot de menú.",
+    howItWorks: [
+      { title: "Responde al instante", desc: "Ningún lead tiene que esperar minutos por una primera respuesta en los canales conectados." },
+      { title: "Entiende la intención real", desc: "Diferencia quién quiere comprar, quién necesita soporte y quién todavía está investigando." },
+      { title: "Deriva con contexto", desc: "Entrega al siguiente agente — SDR, Soporte o Finanzas — el contexto ya recopilado, sin repetir preguntas." },
+    ],
+    learning: { title: "Aprende qué priorizar", desc: "Cada cambio de contexto alimenta el historial del lead para que el siguiente agente nunca empiece desde cero." },
+    ctaLabel: "Ver el Agente de Recepción en acción",
+  },
+  sdr: {
+    eyebrow: "Calificación sin perder el momento",
+    title: "Agente SDR",
+    subtitle: "Hace las preguntas adecuadas para entender perfil, necesidad y momento de compra siguiendo SPIN Selling adaptado a tu mercado, no un guion genérico.",
+    howItWorks: [
+      { title: "Preguntas específicas de tu nicho", desc: "Situación, problema, implicación y necesidad adaptadas a la realidad del sector del lead." },
+      { title: "Califica en tiempo real", desc: "Identifica prioridad y contexto mientras la conversación avanza, sin formularios largos." },
+      { title: "Crea la oportunidad correcta", desc: "El lead calificado se convierte automáticamente en una oportunidad del pipeline con el briefing ya completo." },
+    ],
+    learning: { title: "Aprende de cada conversación registrada", desc: "La base de conocimiento y las reglas comerciales alimentan al agente para mejorar su calificación con el uso." },
+    ctaLabel: "Ver el Agente SDR",
+  },
+  closer: {
+    eyebrow: "Apoyo en el momento de decidir",
+    title: "Agente Closer",
+    subtitle: "Ayuda a preparar la propuesta, responder objeciones con argumentos reales y conducir la negociación hasta una decisión, potenciando al vendedor en lugar de reemplazarlo.",
+    howItWorks: [
+      { title: "Resumen ejecutivo del cliente", desc: "Necesidades principales, puntos de valor y objeciones registradas listos antes de la conversación de cierre." },
+      { title: "Apoyo en la propuesta", desc: "Se conecta con catálogo, tablas de precios y plantillas de cotización." },
+      { title: "Señala riesgo de pérdida", desc: "Alerta cuando el historial indica que la negociación está perdiendo impulso." },
+    ],
+    learning: { title: "Aprende de objeciones reales", desc: "Cada objeción registrada y su respuesta pasan a formar parte del contexto para cierres similares." },
+    ctaLabel: "Ver el Agente Closer",
+  },
+  "follow-up": {
+    eyebrow: "Ninguna oportunidad se enfría sola",
+    title: "Agente de Follow-up y Reactivación",
+    subtitle: "Detecta cuando un lead deja de responder y retoma el contacto en el momento adecuado, sin depender de que un vendedor recuerde hacerlo.",
+    howItWorks: [
+      { title: "Detecta el enfriamiento", desc: "Identifica automáticamente cuándo un lead activo dejó de interactuar." },
+      { title: "Retoma con contexto", desc: "La reactivación recuerda exactamente dónde quedó la conversación, no envía un saludo genérico." },
+      { title: "Respeta horarios comerciales", desc: "Sigue el huso horario y las reglas de cada empresa para evitar mensajes fuera de hora." },
+    ],
+    learning: { title: "Aprende el momento correcto para retomar", desc: "La cadencia se configura por empresa: cantidad de mensajes, intervalos y reglas para considerar realmente frío a un lead." },
+    ctaLabel: "Ver el Agente de Follow-up",
+  },
+  agendamento: {
+    eyebrow: "Reuniones agendadas sin ida y vuelta",
+    title: "Agente de Agenda",
+    subtitle: "Agenda reuniones y compromisos directamente en la conversación verificando disponibilidad real en el calendario conectado.",
+    howItWorks: [
+      { title: "Consulta la agenda real", desc: "Con Google Calendar conectado, nunca ofrece un horario que ya está ocupado." },
+      { title: "Confirma y crea el enlace", desc: "Genera automáticamente el enlace de reunión cuando corresponde." },
+      { title: "Recuerda antes de la reunión", desc: "Reduce ausencias con recordatorios automáticos para el lead." },
+    ],
+    learning: { title: "Guion de reunión listo antes de entrar", desc: "Cuando el Briefing SPIN ya está completo, prepara una guía de reunión con base en lo que ya se conoce del cliente." },
+    ctaLabel: "Ver el Agente de Agenda",
+  },
+  suporte: {
+    eyebrow: "Soporte posventa que resuelve",
+    title: "Agente de Soporte",
+    subtitle: "Responde dudas de clientes activos usando la base de conocimiento de la empresa y abre un caso formal cuando la situación necesita atención humana.",
+    howItWorks: [
+      { title: "Responde con la base de la empresa", desc: "Usa documentos y reglas que la propia empresa registró; no inventa políticas inexistentes." },
+      { title: "Sabe cuándo escalar", desc: "Abre un caso técnico formal cuando la cuestión necesita intervención humana." },
+      { title: "Registra todo", desc: "Cada interacción queda en el historial consultable aunque no genere un caso formal." },
+    ],
+    learning: { title: "Aprende con cada actualización de conocimiento", desc: "Cada agente usa documentos definidos para su función; actualizar la base cambia el contexto disponible en la siguiente respuesta." },
+    ctaLabel: "Ver el Agente de Soporte",
+  },
+  "pos-venda": {
+    eyebrow: "La relación no termina con la venta",
+    title: "Agente de Posventa",
+    subtitle: "Continúa la jornada después del cierre con fechas relevantes y controles de satisfacción, manteniendo la relación activa sin depender de recordatorios manuales.",
+    howItWorks: [
+      { title: "Fechas que importan", desc: "Aniversarios, fecha del negocio cerrado y momentos comerciales relevantes para el sector del cliente." },
+      { title: "Control de inactividad", desc: "Detecta clientes que dejaron de interactuar e inicia contacto antes de que la relación se enfríe." },
+      { title: "Prepara la próxima oportunidad", desc: "Entrega contexto a Revenue Scout para identificar qué oportunidad puede venir después." },
+    ],
+    learning: { title: "Alimenta continuamente a Revenue Scout", desc: "Cada interacción posventa se convierte en una señal de datos para la próxima oportunidad; la venta forma parte de una jornada continua." },
+    ctaLabel: "Ver el Agente de Posventa",
+  },
+  "revenue-scout": {
+    eyebrow: "La venta no termina cuando el cliente compra",
+    title: "Revenue Scout",
+    subtitle: "Analiza la base de clientes activos buscando la próxima oportunidad real: quién compró A pero no B, quién se acerca a una renovación o quién tiene una cotización detenida esperando seguimiento.",
+    howItWorks: [
+      { title: "Motores específicos por mercado", desc: "Distribución, seguros, retail, construcción y otros sectores tienen señales distintas de oportunidad, y Revenue Scout busca las adecuadas para cada uno." },
+      { title: "Aprobación antes de actuar", desc: "Las oportunidades encontradas pasan por aprobación del responsable antes de cualquier mensaje; nada se dispara sin control." },
+      { title: "Se convierte en oportunidad real", desc: "Cada oportunidad aprobada entra al pipeline como un negocio real, con seguimiento de principio a fin." },
+    ],
+    learning: { title: "Aprendizaje basado en resultados reales", desc: "Cada oportunidad encontrada, ganada o perdida, genera un registro que ayuda a evolucionar el motor de recomendación con datos reales." },
+    ctaLabel: "Ver Revenue Scout",
+  },
+};
+
+export function localizeAgentDetail(agent: AgentDetail, isSpanish: boolean): AgentDetail {
+  if (!isSpanish) return agent;
+  const localized = AGENTS_ES[agent.slug];
+  return localized ? { ...agent, ...localized } : agent;
+}

@@ -1,11 +1,14 @@
 import { Link, useParams } from "wouter";
 import { ArrowRight, ArrowLeft, CheckCircle2, Bot, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AGENTS } from "@/data/agents";
+import { AGENTS, localizeAgentDetail } from "@/data/agents";
 import { ChatMockup } from "@/components/FeatureMockups";
 import NotFound from "@/pages/not-found";
+import { usePublicCountry } from "@/lib/publicCountry";
 
-const CHAT_SAMPLES: Record<string, { from: "lead" | "agent"; text: string }[]> = {
+type ChatSample = { from: "lead" | "agent"; text: string };
+
+const CHAT_SAMPLES_PT: Record<string, ChatSample[]> = {
   recepcao: [
     { from: "lead", text: "Oi, vi o anúncio de vocês, queria saber mais" },
     { from: "agent", text: "Oi! Que bom que você chegou até aqui 😊 Me conta rapidinho: o que você está buscando resolver?" },
@@ -51,13 +54,83 @@ const CHAT_SAMPLES: Record<string, { from: "lead" | "agent"; text: string }[]> =
   ],
 };
 
-export default function AgenteDetalhe() {
-  const { slug } = useParams<{ slug: string }>();
-  const agent = AGENTS.find((a) => a.slug === slug);
-  if (!agent) return <NotFound />;
+const CHAT_SAMPLES_ES: Record<string, ChatSample[]> = {
+  recepcao: [
+    { from: "lead", text: "Hola, vi su anuncio y quería saber más" },
+    { from: "agent", text: "¡Hola! Qué bueno que llegaste 😊 Cuéntame brevemente: ¿qué necesitas resolver?" },
+    { from: "lead", text: "Necesito organizar mejor la atención de mi tienda" },
+    { from: "agent", text: "Perfecto. Te voy a derivar al equipo correcto con este contexto para que podamos entender bien tu caso." },
+  ],
+  sdr: [
+    { from: "agent", text: "¿Cómo reciben hoy las solicitudes de cotización: WhatsApp, teléfono o presencial?" },
+    { from: "lead", text: "Casi todo por WhatsApp, pero se desordena" },
+    { from: "agent", text: "Entiendo. ¿Eso ya hizo que perdieran alguna cotización por tardar en responder?" },
+    { from: "lead", text: "Sí, más de una vez" },
+  ],
+  closer: [
+    { from: "agent", text: "Vi que comparaste nuestro plan con otra opción. ¿Quieres que te muestre el costo real considerando el tiempo que ahorra tu equipo?" },
+    { from: "lead", text: "Sí, eso me ayuda a decidir" },
+    { from: "agent", text: "Perfecto. Te envío ahora una comparación directa para que puedas evaluarlo." },
+  ],
+  "follow-up": [
+    { from: "agent", text: "¡Hola! Habías mostrado interés en la cotización del martes. ¿Todavía tiene sentido para ti?" },
+    { from: "lead", text: "La verdad, me había olvidado del tema" },
+    { from: "agent", text: "No hay problema. ¿Quieres que retomemos desde donde quedamos?" },
+  ],
+  agendamento: [
+    { from: "lead", text: "¿Podemos agendar una reunión esta semana?" },
+    { from: "agent", text: "Claro. Tengo jueves a las 14:00 o viernes a las 10:00 disponibles. ¿Cuál te conviene más?" },
+    { from: "lead", text: "Jueves a las 14:00" },
+    { from: "agent", text: "Confirmado. Ya te envío el enlace de la reunión." },
+  ],
+  suporte: [
+    { from: "lead", text: "¿Cómo cambio el valor de mi plan?" },
+    { from: "agent", text: "Ve a Configuración → Suscripción. Allí puedes ver las opciones disponibles. ¿Quieres que te explique paso a paso?" },
+    { from: "lead", text: "Sí, por favor" },
+  ],
+  "pos-venda": [
+    { from: "agent", text: "Hace un mes cerramos el negocio. ¿Cómo está siendo la experiencia hasta ahora?" },
+    { from: "lead", text: "Muy buena, ya ahorramos bastante tiempo" },
+    { from: "agent", text: "¡Qué bueno saberlo! ¿Hay algo que podamos mejorar?" },
+  ],
+  "revenue-scout": [
+    { from: "agent", text: "Vi que compraste X el mes pasado, pero todavía no Y, que suele utilizarse en conjunto. ¿Quieres que prepare una condición especial?" },
+    { from: "lead", text: "Sí, envíamela" },
+    { from: "agent", text: "Ya te la envié. Puedes confirmarla cuando quieras." },
+  ],
+};
 
+const UI_PT = {
+  back: "Todos os agentes",
+  howKicker: "Como este agente age",
+  howTitle: "Dentro da jornada, não num menu à parte",
+  learning: "Aprendizado e melhoria contínua",
+  others: "Outros agentes da equipe",
+  finalTitle: "Veja este agente trabalhando na sua própria operação",
+  finalCta: "Começar meus 5 dias grátis",
+} as const;
+
+const UI_ES = {
+  back: "Todos los agentes",
+  howKicker: "Cómo actúa este agente",
+  howTitle: "Dentro de la jornada, no en un menú separado",
+  learning: "Aprendizaje y mejora continua",
+  others: "Otros agentes del equipo",
+  finalTitle: "Mira este agente trabajando en tu propia operación",
+  finalCta: "Comenzar mis 5 días gratis",
+} as const;
+
+export default function AgenteDetalhe() {
+  const { isSpanish } = usePublicCountry();
+  const copy = isSpanish ? UI_ES : UI_PT;
+  const chatSamples = isSpanish ? CHAT_SAMPLES_ES : CHAT_SAMPLES_PT;
+  const { slug } = useParams<{ slug: string }>();
+  const baseAgent = AGENTS.find((a) => a.slug === slug);
+  if (!baseAgent) return <NotFound />;
+
+  const agent = localizeAgentDetail(baseAgent, isSpanish);
   const Icon = agent.icon;
-  const others = AGENTS.filter((a) => a.slug !== agent.slug);
+  const others = AGENTS.filter((a) => a.slug !== agent.slug).map((item) => localizeAgentDetail(item, isSpanish));
 
   return (
     <div className="min-h-screen bg-white">
@@ -66,7 +139,7 @@ export default function AgenteDetalhe() {
         <div className="container relative mx-auto grid gap-12 px-4 py-20 lg:grid-cols-[1.05fr_.95fr] lg:items-center md:py-24">
           <div>
             <Link href="/funcionalidades#agentes" className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white">
-              <ArrowLeft className="h-3.5 w-3.5" /> Todos os agentes
+              <ArrowLeft className="h-3.5 w-3.5" /> {copy.back}
             </Link>
             <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-400/10 text-blue-300">
               <Icon className="h-7 w-7" />
@@ -82,7 +155,7 @@ export default function AgenteDetalhe() {
           </div>
           <div className="relative">
             <div className="absolute -inset-10 rounded-[48px] bg-blue-500/10 blur-3xl" />
-            <div className="relative"><ChatMockup agentName={agent.title} messages={CHAT_SAMPLES[agent.slug] ?? []} /></div>
+            <div className="relative"><ChatMockup agentName={agent.title} messages={chatSamples[agent.slug] ?? []} /></div>
           </div>
         </div>
       </section>
@@ -90,8 +163,8 @@ export default function AgenteDetalhe() {
       <section className="py-20 md:py-28">
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-3xl text-center">
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">Como este agente age</p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">Dentro da jornada, não num menu à parte</h2>
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">{copy.howKicker}</p>
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.035em] text-slate-950 md:text-4xl">{copy.howTitle}</h2>
           </div>
           <div className="mx-auto mt-14 grid max-w-5xl gap-4 md:grid-cols-3">
             {agent.howItWorks.map((step, i) => (
@@ -109,7 +182,7 @@ export default function AgenteDetalhe() {
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-3xl rounded-[28px] border border-emerald-200 bg-emerald-50 p-8 md:p-10">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700"><Sparkles className="h-5 w-5" /></div>
-            <p className="mt-5 text-sm font-bold uppercase tracking-[0.16em] text-emerald-700">Aprendizado e melhoria contínua</p>
+            <p className="mt-5 text-sm font-bold uppercase tracking-[0.16em] text-emerald-700">{copy.learning}</p>
             <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{agent.learning.title}</h3>
             <p className="mt-4 leading-7 text-slate-700">{agent.learning.desc}</p>
           </div>
@@ -118,7 +191,7 @@ export default function AgenteDetalhe() {
 
       <section className="py-20 md:py-28">
         <div className="container mx-auto px-4">
-          <p className="text-center text-sm font-bold uppercase tracking-[0.18em] text-blue-600 flex items-center justify-center gap-2"><Bot className="h-4 w-4" /> Outros agentes da equipe</p>
+          <p className="flex items-center justify-center gap-2 text-center text-sm font-bold uppercase tracking-[0.18em] text-blue-600"><Bot className="h-4 w-4" /> {copy.others}</p>
           <div className="mx-auto mt-8 grid max-w-6xl gap-4 md:grid-cols-3 lg:grid-cols-4">
             {others.map((a) => (
               <Link key={a.slug} href={`/agentes/${a.slug}`} className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-1 hover:border-blue-300">
@@ -133,9 +206,9 @@ export default function AgenteDetalhe() {
       <section className="px-4 pb-20 md:pb-28">
         <div className="container mx-auto overflow-hidden rounded-[34px] bg-gradient-to-br from-blue-600 via-blue-600 to-indigo-700 px-6 py-14 text-center text-white shadow-[0_35px_100px_rgba(37,99,235,0.28)] md:px-12 md:py-16">
           <CheckCircle2 className="mx-auto h-10 w-10 text-blue-100" />
-          <h2 className="mx-auto mt-4 max-w-2xl text-3xl font-semibold tracking-[-0.035em] md:text-4xl">Veja este agente trabalhando na sua própria operação</h2>
+          <h2 className="mx-auto mt-4 max-w-2xl text-3xl font-semibold tracking-[-0.035em] md:text-4xl">{copy.finalTitle}</h2>
           <Button asChild size="lg" className="mt-8 h-14 rounded-xl bg-white px-8 text-blue-700 hover:bg-blue-50">
-            <Link href="/demo">Começar meus 5 dias grátis <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            <Link href="/demo">{copy.finalCta} <ArrowRight className="ml-2 h-5 w-5" /></Link>
           </Button>
         </div>
       </section>
