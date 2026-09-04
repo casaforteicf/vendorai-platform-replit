@@ -1409,8 +1409,13 @@ export default function VideoTimelineEditor() {
     selectClip(copy.id);
   }, [commitEditor, selectClip, selectedClipId]);
 
+  const addManualBeatMarker = useCallback(() => {
+    const marker = Math.round(clamp(timelineTime, 0, realProjectDuration) * 1000) / 1000;
+    setManualBeatMarkers((current) => [...current.filter((time) => Math.abs(time - marker) > 0.04), marker].sort((a, b) => a - b));
+  }, [realProjectDuration, timelineTime]);
+
   const syncCutsToBeats = useCallback(() => {
-    if (!activeBeatAnalysis || beatTimes.length === 0) {
+    if (!activeBeatAnalysis || effectiveBeatCandidates.length === 0) {
       toast({ title: "Analise a trilha primeiro", description: "Detecte as batidas antes de sincronizar os cortes." });
       return;
     }
@@ -1418,41 +1423,68 @@ export default function VideoTimelineEditor() {
       toast({ title: "Adicione mais clipes", description: "O Beat Sync precisa de pelo menos dois clipes para alinhar cortes." });
       return;
     }
-
-    const next = clipsRef.current.map((clip) => ({ ...clip }));
-    const tolerance = Math.min(0.42, (60 / activeBeatAnalysis.bpm) * beatStep * 0.45);
-    let adjusted = 0;
-    for (let index = 0; index < next.length - 1; index += 1) {
-      const previous = next[index];
-      if (!previous) continue;
-      const boundary = clipStartAt(index + 1, next);
-      let nearest = beatTimes[0] ?? boundary;
-      let nearestDistance = Math.abs(nearest - boundary);
-      for (const beat of beatTimes) {
-        const distance = Math.abs(beat - boundary);
-        if (distance < nearestDistance) {
-          nearest = beat;
-          nearestDistance = distance;
-        }
-      }
-      if (nearestDistance > tolerance) continue;
-      const delta = nearest - boundary;
-      const nextTrimOut = clamp(previous.trimOut + delta, previous.trimIn + 0.25, previous.sourceDuration);
-      if (Math.abs(nextTrimOut - previous.trimOut) < 0.015) continue;
-      next[index] = { ...previous, trimOut: nextTrimOut };
-      adjusted += 1;
-    }
-
-    if (!adjusted) {
-      toast({ title: "Cortes já estão no ritmo", description: "Nenhum corte precisava de ajuste dentro da tolerância segura." });
+    if (!beatCutPreview.length) {
+      toast({ title: "Nenhum ajuste necessário", description: "Os cortes já estão no ritmo, estão bloqueados ou ficaram fora da tolerância escolhida." });
       return;
     }
-    commitEditor(next, layersRef.current);
-    const nextDuration = projectDurationFor(next);
+
+    const nextClips = clipsRef.current.map((clip) => ({ ...clip }));
+    for (const item of beatCutPreview) {
+      const clip = nextClips[item.index];
+      if (!clip || clip.id !== item.clipId || clip.beatLocked) continue;
+      const boundary = clipStartAt(item.index + 1, nextClips);
+      const nextTrimOut = clamp(clip.trimOut + (item.target - boundary), clip.trimIn + 0.25, clip.sourceDuration);
+      const accent: Partial<VideoClip> = {};
+      if (syncVisualAccents && item.downbeat) {
+        if (beatSyncStrength === "light") { accent.transitionOut = "fade"; accent.transitionDuration = 0.2; }
+        else if (beatSyncStrength === "aggressive") { accent.transitionOut = "zoom"; accent.transitionDuration = 0.34; }
+        else { accent.transitionOut = "crossfade"; accent.transitionDuration = 0.28; }
+      }
+      nextClips[item.index] = { ...clip, trimOut: nextTrimOut, ...accent };
+      if (syncVisualAccents && item.downbeat && beatSyncStrength === "aggressive") {
+        const following = nextClips[item.index + 1];
+        if (following && !following.beatLocked && (following.motion ?? "none") === "none") {
+          nextClips[item.index + 1] = { ...following, motion: item.index % 2 === 0 ? "zoom-in" : "zoom-out" };
+        }
+      }
+    }
+
+    const visualTolerance = beatSyncStrength === "light" ? 0.12 : beatSyncStrength === "aggressive" ? 0.34 : 0.22;
+    let visualAccents = 0;
+    const nextLayers = layersRef.current.map((layer) => {
+      if (!syncVisualAccents) return layer;
+      let nearest = effectiveBeatCandidates[0] ?? layer.start;
+      let distance = Math.abs(nearest - layer.start);
+      for (const candidate of effectiveBeatCandidates) {
+        const d = Math.abs(candidate - layer.start);
+        if (d < distance) { nearest = candidate; distance = d; }
+      }
+      if (distance > visualTolerance) return layer;
+      const strong = downbeatTimes.some((time) => Math.abs(time - nearest) < 0.03);
+      if (layer.contentKind === "caption") {
+        if (!strong) return layer;
+        visualAccents += 1;
+        return { ...layer, enterAnimation: "pop" as LayerAnimation, animationDuration: Math.min(layer.animationDuration ?? 0.35, 0.22) };
+      }
+      const duration = Math.max(0.1, layer.end - layer.start);
+      const shiftedStart = clamp(nearest, 0, Math.max(0, projectDurationFor(nextClips) - duration));
+      if (Math.abs(shiftedStart - layer.start) < 0.01 && !strong) return layer;
+      visualAccents += 1;
+      return {
+        ...layer,
+        start: shiftedStart,
+        end: shiftedStart + duration,
+        enterAnimation: strong ? (beatSyncStrength === "aggressive" ? "zoom" : "pop") as LayerAnimation : layer.enterAnimation,
+        animationDuration: strong ? Math.min(layer.animationDuration ?? 0.35, 0.24) : layer.animationDuration,
+      };
+    });
+
+    commitEditor(nextClips, nextLayers);
+    const nextDuration = projectDurationFor(nextClips);
     setTimelineTime((time) => clamp(time, 0, Math.max(0, nextDuration)));
     setMusicEnd((current) => Math.min(current, Math.max(0.1, nextDuration)));
-    toast({ title: "Beat Sync aplicado", description: `${adjusted} corte${adjusted === 1 ? "" : "s"} alinhado${adjusted === 1 ? "" : "s"} às batidas sem alterar os arquivos originais.` });
-  }, [activeBeatAnalysis, beatStep, beatTimes, commitEditor, toast]);
+    toast({ title: "Beat Sync avançado aplicado", description: `${beatCutPreview.length} corte${beatCutPreview.length === 1 ? "" : "s"} alinhado${beatCutPreview.length === 1 ? "" : "s"}${visualAccents ? ` · ${visualAccents} acento${visualAccents === 1 ? "" : "s"} visual${visualAccents === 1 ? "" : "is"}` : ""}.` });
+  }, [activeBeatAnalysis, beatCutPreview, beatSyncStrength, commitEditor, downbeatTimes, effectiveBeatCandidates, syncVisualAccents, toast]);
 
   const removeClip = useCallback((id: string) => {
     const current = clipsRef.current;
@@ -1521,7 +1553,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 12,
+    editorVersion: 13,
     channel,
     ratio,
     quality,
@@ -1552,9 +1584,13 @@ export default function VideoTimelineEditor() {
         step: beatStep,
         showMarkers: showBeatMarkers,
         waveform: activeBeatAnalysis.waveform,
+        downbeatIndex: activeBeatAnalysis.downbeatIndex,
+        strength: beatSyncStrength,
+        manualMarkers: manualBeatMarkers,
+        syncVisualAccents,
       } : null,
     },
-  }), [channel, ratio, quality, clips, layers, aiPlan, musicMode, musicAssetId, musicVolume, originalVolume, musicStart, musicEnd, duckingEnabled, duckingReduction, duckingThresholdPct, duckingAttackMs, duckingReleaseMs, musicFadeIn, musicFadeOut, smartMusicLoop, musicVolumePoints, loudnessTarget, activeBeatAnalysis, beatStep, showBeatMarkers]);
+  }), [channel, ratio, quality, clips, layers, aiPlan, musicMode, musicAssetId, musicVolume, originalVolume, musicStart, musicEnd, duckingEnabled, duckingReduction, duckingThresholdPct, duckingAttackMs, duckingReleaseMs, musicFadeIn, musicFadeOut, smartMusicLoop, musicVolumePoints, loudnessTarget, activeBeatAnalysis, beatStep, showBeatMarkers, beatSyncStrength, manualBeatMarkers, syncVisualAccents]);
 
   const ensureProject = useCallback(async (): Promise<string> => {
     if (projectId) return projectId;
@@ -1666,7 +1702,7 @@ export default function VideoTimelineEditor() {
       }
     } catch (error) {
       if (bpmHint && bpmHint > 0) {
-        setBeatAnalysis({ trackKey: currentMusicKey, bpm: bpmHint, offset: 0, confidence: 0.35, source: "metadata", waveform: [] });
+        setBeatAnalysis({ trackKey: currentMusicKey, bpm: bpmHint, offset: 0, confidence: 0.35, source: "metadata", waveform: [], downbeatIndex: 0 });
         setShowBeatMarkers(true);
         toast({ title: "Grade criada pelo BPM", description: "Não foi possível ler a forma de onda; usei o BPM cadastrado no Music Hub." });
       } else {
@@ -1733,6 +1769,7 @@ export default function VideoTimelineEditor() {
               transitionOut: (["cut", "fade", "crossfade", "zoom", "slide-left", "slide-right"] as string[]).includes(String(raw.transitionOut)) ? raw.transitionOut as TransitionType : "cut",
               transitionDuration: clamp(Number(raw.transitionDuration) || 0.45, 0.1, 1.5),
               motion: (["none", "zoom-in", "zoom-out", "pan-left", "pan-right"] as string[]).includes(String(raw.motion)) ? raw.motion as ClipMotion : "none",
+              beatLocked: raw.beatLocked === true,
             };
           }).filter((clip: VideoClip) => Boolean(clip.url));
         }
@@ -1819,9 +1856,13 @@ export default function VideoTimelineEditor() {
             confidence: clamp(Number(savedBeatSync.confidence) || 0.35, 0, 1),
             source: savedBeatSync.source === "audio" ? "audio" : "metadata",
             waveform: Array.isArray(savedBeatSync.waveform) ? savedBeatSync.waveform.map((value: unknown) => clamp(Number(value) || 0, 0, 1)).slice(0, 160) : [],
+            downbeatIndex: [0, 1, 2, 3].includes(Number(savedBeatSync.downbeatIndex)) ? Number(savedBeatSync.downbeatIndex) : 0,
           });
           if ([1, 2, 4].includes(Number(savedBeatSync.step))) setBeatStep(Number(savedBeatSync.step) as BeatStep);
           if (typeof savedBeatSync.showMarkers === "boolean") setShowBeatMarkers(savedBeatSync.showMarkers);
+          if (["light", "balanced", "aggressive"].includes(String(savedBeatSync.strength))) setBeatSyncStrength(savedBeatSync.strength as BeatSyncStrength);
+          if (Array.isArray(savedBeatSync.manualMarkers)) setManualBeatMarkers(savedBeatSync.manualMarkers.map((time: unknown) => Math.max(0, Number(time) || 0)).slice(0, 80).sort((a: number, b: number) => a - b));
+          if (typeof savedBeatSync.syncVisualAccents === "boolean") setSyncVisualAccents(savedBeatSync.syncVisualAccents);
         }
       } catch (error) {
         toast({ title: "Não foi possível abrir o projeto", description: error instanceof Error ? error.message : "Projeto inválido", variant: "destructive" });
