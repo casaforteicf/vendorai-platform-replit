@@ -123,12 +123,63 @@
   * {
     @apply border-border;
   }
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  html,
+  body {
+    overflow-x: clip;
+  }
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    min-width: 320px;
+  }
+  main,
+  section {
+    min-width: 0;
+  }
+  img,
+  video,
+  canvas {
+    max-width: 100%;
+    height: auto;
   }
   h1, h2, h3, h4, h5, h6,
   .text-3xl.font-bold, .text-2xl.font-bold, .text-xl.font-bold,
   .text-3xl.font-semibold, .text-2xl.font-semibold, .text-xl.font-semibold {
     font-family: 'Sora', sans-serif;
+  }
+}
+
+@media (max-width: 639px) {
+  .container {
+    width: 100%;
+    max-width: 100%;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 10vw, 2.75rem) !important;
+    line-height: 1.08 !important;
+    letter-spacing: -0.035em !important;
+    overflow-wrap: anywhere;
+  }
+
+  h2 {
+    font-size: clamp(1.65rem, 7.5vw, 2.15rem) !important;
+    line-height: 1.15 !important;
+    letter-spacing: -0.025em !important;
+  }
+
+  p,
+  li,
+  a,
+  button {
+    overflow-wrap: break-word;
   }
 }
