@@ -1,7 +1,12 @@
 import { Router, type IRouter } from "express";
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, contentCalendarItemsTable, CONTENT_CALENDAR_STATUS } from "@workspace/db";
+import {
+  db,
+  contentCalendarItemsTable,
+  CONTENT_CALENDAR_STATUS,
+  CONTENT_CALENDAR_TIPOS,
+} from "@workspace/db";
 import { generateContentCalendar, ContentCalendarError } from "../services/content-calendar.js";
 
 const router: IRouter = Router();
@@ -12,7 +17,7 @@ function canAccess(req: import("express").Request, tenantId: string): boolean {
 
 const gerarBodySchema = z.object({
   mediaPlanId: z.string().min(1),
-  semanas: z.number().int().min(1).max(8).default(2),
+  semanas: z.number().int().min(1).max(13).default(4),
 });
 
 router.post("/tenants/:tenantId/content-calendar/gerar", async (req, res) => {
@@ -64,8 +69,11 @@ const patchBodySchema = z.object({
   contentGenerationId: z.string().nullable().optional(),
   variationIdx: z.number().int().nullable().optional(),
   contentIdPublicado: z.string().nullable().optional(),
-  temaSugerido: z.string().optional(),
+  temaSugerido: z.string().min(1).optional(),
   dataAgendada: z.string().optional(),
+  pilar: z.string().min(1).optional(),
+  canal: z.string().min(1).optional(),
+  tipo: z.enum(CONTENT_CALENDAR_TIPOS).optional(),
 });
 
 router.patch("/content-calendar/:id", async (req, res) => {

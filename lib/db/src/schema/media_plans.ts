@@ -11,6 +11,38 @@ export interface MediaPlanCanal {
   percentualOrcamento: number; // 0-100, soma dos canais ~100
 }
 
+export interface MediaPlanCampaignChannel {
+  canal: string;
+  funcao: string;
+  etapaFunil: string;
+  formatos: string[];
+  frequencia: string;
+  quantidadeMateriais: number;
+  kpiPrincipal: string;
+  percentualOrcamento?: number;
+}
+
+export interface MediaPlanCampaign {
+  id: string;
+  nome: string;
+  objetivo: string;
+  produtoServico: string;
+  publico: string;
+  regiao?: string;
+  oferta: string;
+  mensagemCentral: string;
+  fase: string;
+  inicioOffsetDias: number;
+  duracaoDias: number;
+  intensidadeGeografica: "baixa" | "media" | "alta";
+  regraComunicacaoGeografica: string;
+  canais: MediaPlanCampaignChannel[];
+  kpiPrincipal: string;
+  metaPrincipal: string;
+  materiaisPlanejados: number;
+  status: "planejada" | "em_revisao" | "aprovada" | "em_producao" | "ativa" | "encerrada";
+}
+
 export interface MediaPlanConteudo {
   diagnostico: string;
   pontosFortesAtuais: string[];
@@ -20,6 +52,12 @@ export interface MediaPlanConteudo {
   acoesImediatas: string[];
   concorrentesEncontrados?: Array<{ dominio: string; titulo: string; url: string }>;
   keywordsRelevantes?: Array<{ termo: string; volumeBusca: number | null }>;
+  periodoDias?: 30 | 60 | 90;
+  campanhas?: MediaPlanCampaign[];
+  totalAcoesPlanejadas?: number;
+  statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
+  aprovadoEm?: string | null;
+  versaoPlanejamento?: number;
 }
 
 export const mediaPlansTable = pgTable("media_plans", {
