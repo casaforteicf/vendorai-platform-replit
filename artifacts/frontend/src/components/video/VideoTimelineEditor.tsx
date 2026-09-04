@@ -50,6 +50,7 @@ type Quality = "720p" | "1080p";
 type ToolPanel = "media" | "text" | "cards" | "audio" | "captions" | "settings";
 type LayerType = "text" | "card" | "image";
 type MusicMode = "none" | "brand" | "library" | "upload" | "ai";
+type MusicBrandUse = "institutional" | "reels" | "ads" | "product" | "stories" | "presentation";
 type JobStatus = "idle" | "rendering" | "processing" | "done" | "error";
 type LayerGestureMode = "move" | "trim-start" | "trim-end";
 type ClipGestureMode = "trim-in" | "trim-out";
@@ -160,6 +161,7 @@ type MediaAsset = {
   original_filename?: string | null;
   mimeType?: string | null;
   mime_type?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type LibraryTrack = MediaAsset & {
@@ -175,6 +177,21 @@ type BrandKitPayload = {
   brandKit?: {
     default_music_asset_id?: string | null;
   } | null;
+};
+
+type MusicRecommendationProfile = {
+  targetUses: MusicBrandUse[];
+  paidCampaign: boolean;
+  moodTerms: string[];
+  bpmMin: number;
+  bpmMax: number;
+  label: string;
+};
+
+type MusicRecommendation = {
+  track: LibraryTrack;
+  score: number;
+  reasons: string[];
 };
 
 type LocatedClip = {
@@ -194,6 +211,25 @@ const CHANNELS: Array<{ id: string; label: string; hint: string; ratio: Ratio }>
   { id: "site", label: "Site / LP", hint: "Hero e seções · 16:9", ratio: "16:9" },
   { id: "whatsapp", label: "WhatsApp", hint: "Status e envio · 9:16", ratio: "9:16" },
 ];
+
+const MUSIC_BRAND_USE_LABELS: Record<MusicBrandUse, string> = {
+  institutional: "Institucional",
+  reels: "Reels / Shorts",
+  ads: "Anúncios",
+  product: "Produto",
+  stories: "Stories",
+  presentation: "Apresentações",
+};
+
+const MUSIC_BPM_BY_CHANNEL: Record<string, [number, number]> = {
+  reels: [100, 135],
+  shorts: [100, 135],
+  stories: [95, 130],
+  feed: [90, 125],
+  whatsapp: [90, 125],
+  youtube: [80, 120],
+  site: [80, 115],
+};
 
 const TOOL_ITEMS: Array<{ id: ToolPanel; label: string; icon: typeof Film }> = [
   { id: "media", label: "Mídia", icon: Library },
@@ -261,6 +297,56 @@ function assetUrl(asset: Pick<MediaAsset, "storageUrl" | "storage_url">): string
 
 function assetName(asset: MediaAsset): string {
   return asset.originalFilename ?? asset.original_filename ?? "Mídia sem nome";
+}
+
+function metadataRecord(asset: MediaAsset): Record<string, unknown> {
+  return asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata) ? asset.metadata : {};
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizedText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function trackBrandUses(track: LibraryTrack): MusicBrandUse[] {
+  const valid = new Set<MusicBrandUse>(Object.keys(MUSIC_BRAND_USE_LABELS) as MusicBrandUse[]);
+  return stringList(metadataRecord(track).brandUse).filter((value): value is MusicBrandUse => valid.has(value as MusicBrandUse));
+}
+
+function numberMetadata(track: LibraryTrack, key: string): number | null {
+  const value = Number(metadataRecord(track)[key]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function buildMusicRecommendationProfile(channel: string, projectTitle: string, layers: EditorLayer[]): MusicRecommendationProfile {
+  const content = normalizedText(`${projectTitle} ${layers.map((layer) => layer.text).join(" ")}`);
+  const targetUses = new Set<MusicBrandUse>();
+  if (channel === "reels" || channel === "shorts") targetUses.add("reels");
+  if (channel === "stories") targetUses.add("stories");
+  if (channel === "site" || channel === "youtube") targetUses.add("institutional");
+
+  const paidCampaign = /(anuncio|ads|patrocin|campanha paga|trafego pago|performance max|google ads|meta ads)/.test(content);
+  if (paidCampaign) targetUses.add("ads");
+  if (/(produto|servico|oferta|promoc|lancamento|catalogo|colecao)/.test(content)) targetUses.add("product");
+  if (/(institucional|empresa|marca|quem somos|corporativ|apresentacao)/.test(content)) targetUses.add("institutional");
+
+  const moodTerms: string[] = [];
+  if (/(premium|luxo|sofistic|arquitet|design|elegan)/.test(content)) moodTerms.push("elegante", "premium", "sofisticado", "cinematic", "cinematografico");
+  if (/(oferta|promoc|lancamento|impacto|energia|novidade|rapido)/.test(content)) moodTerms.push("energetico", "energetic", "upbeat", "dynamic", "dinamico");
+  if (/(institucional|corporativ|profissional|empresa)/.test(content)) moodTerms.push("institucional", "corporativo", "professional", "corporate");
+  if (/(calmo|suave|bem-estar|relax|tranquil)/.test(content)) moodTerms.push("calmo", "suave", "relax", "calm");
+  if (/(alegre|celebr|feliz|divert)/.test(content)) moodTerms.push("alegre", "feliz", "upbeat", "happy");
+
+  const [bpmMin, bpmMax] = MUSIC_BPM_BY_CHANNEL[channel] ?? [85, 125];
+  const channelLabel = CHANNELS.find((item) => item.id === channel)?.label ?? "Vídeo";
+  return { targetUses: Array.from(targetUses), paidCampaign, moodTerms, bpmMin, bpmMax, label: channelLabel };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -748,6 +834,59 @@ export default function VideoTimelineEditor() {
   const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? null;
   const selectedLayer = layers.find((layer) => layer.id === selectedLayerId) ?? null;
   const selectedTrack = musicTracks.find((track) => track.id === musicAssetId) ?? null;
+  const musicRecommendationProfile = useMemo(
+    () => buildMusicRecommendationProfile(channel, projectTitle, layers),
+    [channel, layers, projectTitle],
+  );
+  const recommendedMusicTracks = useMemo<MusicRecommendation[]>(() => {
+    const projectLength = Math.max(0, realProjectDuration);
+    return musicTracks
+      .flatMap((track) => {
+        const usage = track.usage;
+        const allowed = musicRecommendationProfile.paidCampaign
+          ? usage?.paidAdsAllowed === true
+          : usage?.organicAllowed === true;
+        if (!allowed || usage?.expired === true) return [];
+
+        const metadata = metadataRecord(track);
+        const reasons: string[] = [];
+        let score = 0;
+        if (metadata.brandOfficial === true) { score += 100; reasons.push("Oficial da marca"); }
+        if (track.id === brandDefaultTrackId) { score += 70; reasons.push("Padrão do Brand Kit"); }
+
+        const uses = trackBrandUses(track);
+        const matchedUses = musicRecommendationProfile.targetUses.filter((use) => uses.includes(use));
+        if (matchedUses.length) {
+          score += 45 + Math.min(25, (matchedUses.length - 1) * 10);
+          reasons.push(matchedUses.map((use) => MUSIC_BRAND_USE_LABELS[use]).join(" + "));
+        }
+
+        const mood = normalizedText(metadata.mood);
+        if (mood && musicRecommendationProfile.moodTerms.some((term) => mood.includes(normalizedText(term)))) {
+          score += 28;
+          reasons.push(`Mood · ${String(metadata.mood)}`);
+        }
+
+        const bpm = numberMetadata(track, "bpm");
+        if (bpm !== null) {
+          if (bpm >= musicRecommendationProfile.bpmMin && bpm <= musicRecommendationProfile.bpmMax) {
+            score += 22;
+            reasons.push(`${Math.round(bpm)} BPM`);
+          } else {
+            const distance = bpm < musicRecommendationProfile.bpmMin ? musicRecommendationProfile.bpmMin - bpm : bpm - musicRecommendationProfile.bpmMax;
+            score += Math.max(0, 12 - distance / 3);
+          }
+        }
+
+        if (metadata.favorite === true) score += 8;
+        const duration = numberMetadata(track, "durationSeconds");
+        if (duration !== null && projectLength > 0 && duration >= projectLength) score += 8;
+        if (!reasons.length) reasons.push(musicRecommendationProfile.paidCampaign ? "Direitos para mídia paga" : "Direitos para uso orgânico");
+        return [{ track, score, reasons: reasons.slice(0, 4) }];
+      })
+      .sort((left, right) => right.score - left.score || assetName(left.track).localeCompare(assetName(right.track), "pt-BR"))
+      .slice(0, 3);
+  }, [brandDefaultTrackId, musicRecommendationProfile, musicTracks, realProjectDuration]);
   const canUndo = historyIndexRef.current > 0;
   const canRedo = historyIndexRef.current < historyRef.current.length - 1;
   const canSplit = Boolean(locatedPreview && timelineTime - locatedPreview.start > 0.1 && locatedPreview.end - timelineTime > 0.1);
@@ -2125,7 +2264,7 @@ export default function VideoTimelineEditor() {
   const ToolContent = (() => {
     if (tool === "text") return <div className="space-y-3"><div><p className="text-sm font-semibold">Adicionar texto</p><p className="text-xs text-muted-foreground">Faixas escritas independentes sobre toda a sequência.</p></div><button onClick={() => addTextLayer("title")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-semibold">Título</p><p className="text-xs text-muted-foreground">Gancho ou headline principal</p></button><button onClick={() => addTextLayer("subtitle")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">Subtítulo</p><p className="text-xs text-muted-foreground">Mensagem de apoio e benefício</p></button><button onClick={() => addTextLayer("cta")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">CTA</p><p className="text-xs text-muted-foreground">WhatsApp, site ou chamada final</p></button></div>;
     if (tool === "cards") return <div className="space-y-3"><div><p className="text-sm font-semibold">Cards</p><p className="text-xs text-muted-foreground">Oferta, benefício e CTA no ponto atual da timeline.</p></div>{CARD_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCardLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40"><div className="h-12 rounded-lg p-2 text-xs font-bold" style={{ background: template.background, color: template.color }}>{template.text.split("\n").map((line) => <div key={line}>{line}</div>)}</div><p className="mt-2 text-xs font-medium">{template.name}</p></button>)}</div>;
-    if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}<RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
+    if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicTracks.length > 0 && <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.03] p-3"><div className="flex items-start gap-2"><WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-xs font-semibold">Recomendadas para este vídeo</p><p className="mt-0.5 text-[10px] text-muted-foreground">{musicRecommendationProfile.label} · {musicRecommendationProfile.bpmMin}–{musicRecommendationProfile.bpmMax} BPM · {musicRecommendationProfile.paidCampaign ? "mídia paga" : "uso orgânico"}</p></div></div>{recommendedMusicTracks.length > 0 ? <div className="space-y-2">{recommendedMusicTracks.map(({ track, reasons }, index) => { const metadata = metadataRecord(track); return <div key={track.id} className={cn("rounded-lg border bg-background p-2.5", musicAssetId === track.id && "border-primary bg-primary/5")}><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">#{index + 1}</span><p className="truncate text-xs font-medium">{assetName(track)}</p>{metadata.brandOfficial === true && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}</div><div className="mt-1.5 flex flex-wrap gap-1">{reasons.map((reason) => <span key={reason} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{reason}</span>)}</div><p className="mt-1.5 text-[9px] text-emerald-700 dark:text-emerald-300">{musicRecommendationProfile.paidCampaign ? "Direitos para mídia paga liberados" : "Direitos para uso orgânico liberados"}</p></div><button type="button" onClick={() => { setMusicMode("library"); setMusicAssetId(track.id); setMusicStart(0); setMusicEnd(Math.max(0.1, realProjectDuration)); toast({ title: "Trilha aplicada", description: `${assetName(track)} foi adicionada à timeline.` }); }} className="shrink-0 rounded-lg bg-primary px-2 py-1.5 text-[10px] font-semibold text-primary-foreground">Aplicar</button></div></div>; })}</div> : <div className="rounded-lg border border-dashed p-2.5 text-[10px] text-muted-foreground">Nenhuma trilha da biblioteca tem direitos compatíveis com este contexto. Ajuste o Passaporte de Direitos no Music Hub ou gere uma nova trilha.</div>}</div>}{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}<RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
     if (tool === "captions") return <div className="space-y-4"><div><p className="text-sm font-semibold">Legendas inteligentes</p><p className="text-xs text-muted-foreground">Transcreva a fala para a timeline e destaque cada palavra no momento exato.</p></div><div className="space-y-2"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Estilo automático</p><div className="grid grid-cols-2 gap-2">{Object.entries(AUTO_CAPTION_STYLES).map(([id, style]) => <button key={id} onClick={() => setAutoCaptionStyle(id as CaptionStylePreset)} className={cn("rounded-xl border p-2 text-left", autoCaptionStyle === id ? "border-primary bg-primary/5" : "hover:border-primary/30")}><div className="truncate text-xs font-semibold">{style.label}</div><div className="mt-1 flex gap-1"><span className="h-2 w-5 rounded-sm" style={{ background: style.color }} /><span className="h-2 w-5 rounded-sm" style={{ background: style.activeWordBackground === "transparent" ? style.activeWordColor : style.activeWordBackground }} /></div></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void createEditableAutomaticCaptions()} className="w-full rounded-xl bg-foreground px-3 py-3 text-sm font-semibold text-background disabled:opacity-40"><Captions className="mr-2 inline h-4 w-4" />Transcrever para a timeline</button><div className="rounded-xl border bg-muted/20 p-3"><p className="text-xs font-semibold">Adicionar manualmente</p><div className="mt-2 space-y-2">{CAPTION_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCaptionLayer(template)} className="w-full rounded-lg border bg-background p-2 text-left hover:border-primary/40"><div className="rounded-md px-2 py-1.5 text-[10px] font-bold" style={{ background: template.background, color: template.color, textAlign: template.textAlign }}>{template.text}</div><p className="mt-1.5 text-[10px] font-medium">{template.name}</p></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void applyBurnedAutomaticCaption()} className="w-full rounded-xl border px-3 py-2.5 text-xs font-medium disabled:opacity-40">Gerar versão com legenda fixa</button><p className="text-[11px] text-muted-foreground">A opção principal cria faixas editáveis e mantém o original intacto. A versão fixa continua disponível para compatibilidade.</p></div>;
     if (tool === "settings") return <div className="space-y-4"><div><p className="text-sm font-semibold">Ajustes de saída</p><p className="text-xs text-muted-foreground">Tratamento aplicado depois da composição.</p></div><label className="flex items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-medium">Normalizar volume</p><p className="text-xs text-muted-foreground">Equaliza o resultado final</p></div><input type="checkbox" checked={normalizeAudio} onChange={(event) => setNormalizeAudio(event.target.checked)} className="accent-primary" /></label><label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Velocidade final</span><select value={speed} onChange={(event) => setSpeed(event.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm"><option value="1.0">Normal · 1x</option><option value="1.1">Levemente rápido · 1.1x</option><option value="1.25">Rápido · 1.25x</option></select></label><div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Fluxo não destrutivo</p><p className="mt-1">Cada clipe mantém seu arquivo original; cortes, ordem e sobreposições ficam salvos no projeto.</p></div></div>;
     return <div className="space-y-4"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold">Central de Mídias</p><p className="text-xs text-muted-foreground">Adicione quantos clipes precisar.</p></div><button onClick={() => void loadAssets()} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><RefreshCw className={cn("h-4 w-4", assetsLoading && "animate-spin")} /></button></div><div className="grid grid-cols-3 gap-2"><button onClick={() => videoInputRef.current?.click()} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><Plus className="mx-auto mb-1.5 h-4 w-4" />Clipes</button><button onClick={() => imageInputRef.current?.click()} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><ImageIcon className="mx-auto mb-1.5 h-4 w-4" />Imagem</button><button onClick={() => { setTool("audio"); setMusicMode("upload"); musicInputRef.current?.click(); }} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><Music2 className="mx-auto mb-1.5 h-4 w-4" />Áudio</button></div>{mediaVideos.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Vídeos recentes · clique para adicionar</p>{mediaVideos.slice(0, 8).map((asset) => <button key={asset.id} onClick={() => void addLibraryClip(asset)} className="flex w-full items-center gap-2 rounded-lg border p-2 text-left hover:border-primary/30"><Film className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-xs">{assetName(asset)}</span><Plus className="h-3.5 w-3.5 text-muted-foreground" /></button>)}</div>}{mediaImages.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Imagens recentes</p><div className="grid grid-cols-2 gap-2">{mediaImages.slice(0, 8).map((asset) => <button key={asset.id} onClick={() => addLibraryImage(asset)} className="overflow-hidden rounded-xl border text-left hover:border-primary/40"><div className="aspect-video bg-muted"><img src={assetUrl(asset)} alt="" className="h-full w-full object-cover" /></div><p className="truncate p-1.5 text-[10px]">{assetName(asset)}</p></button>)}</div></div>}</div>;
