@@ -911,6 +911,36 @@ export default function MediaCenter() {
                 ))}
               </div>
 
+              {filter === "audio" && (
+                <div className="mt-5 rounded-2xl border bg-background p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Music2 className="h-5 w-5 text-primary" />
+                        <h2 className="font-semibold">Music Hub</h2>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Organize músicas, locuções, efeitos, jingles e identidade sonora. Trilhas musicais carregam o passaporte de direitos para vídeos e anúncios.
+                      </p>
+                    </div>
+                    <button onClick={() => navigate("/content-studio/video/edicao")} className="top-btn shrink-0">
+                      <Sparkles className="h-4 w-4" /> Criar / gerar música
+                    </button>
+                  </div>
+                  <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                    {(Object.keys(AUDIO_KIND_SHORT_LABELS) as AudioKindFilter[]).map((kind) => (
+                      <button
+                        key={kind}
+                        onClick={() => setAudioKindFilter(kind)}
+                        className={`folder-chip ${audioKindFilter === kind ? "folder-chip-active" : ""}`}
+                      >
+                        {AUDIO_KIND_SHORT_LABELS[kind]} · {audioKindCounts[kind]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-5 rounded-2xl border bg-background p-3 shadow-sm">
                 <div className="flex flex-col gap-3 lg:flex-row">
                   <div className="relative flex-1">
@@ -945,6 +975,18 @@ export default function MediaCenter() {
               <div className="mt-4 rounded-2xl border bg-background p-4 shadow-sm">
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                   <div className="flex flex-wrap items-end gap-2">
+                    {filter === "audio" && (
+                      <div>
+                        <label className="tiny-label">Tipo dos arquivos de áudio</label>
+                        <select
+                          value={uploadAudioKind}
+                          onChange={(e) => setUploadAudioKind(e.target.value as AudioKind)}
+                          className="h-9 rounded-lg border bg-background px-3 text-sm"
+                        >
+                          {Object.entries(AUDIO_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <label className="tiny-label">Pasta do novo upload</label>
                       <input
@@ -1030,6 +1072,7 @@ export default function MediaCenter() {
                       const Icon = typeIcon(asset.type);
                       const context = assetContext(asset);
                       const folder = assetFolder(asset);
+                      const audioKind = assetAudioKind(asset);
                       const isSelected = selected.includes(asset.id);
                       return (
                         <article
@@ -1048,7 +1091,9 @@ export default function MediaCenter() {
                             <button onClick={(e) => { e.stopPropagation(); toggle(asset.id); }} className="absolute right-2 top-2 rounded-md bg-background/90 p-1.5 shadow-sm">
                               {isSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-muted-foreground" />}
                             </button>
-                            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase text-white">{TYPE_LABELS[asset.type]}</span>
+                            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase text-white">
+                              {audioKind ? AUDIO_KIND_LABELS[audioKind] : TYPE_LABELS[asset.type]}
+                            </span>
                           </div>
                           <div className="p-3">
                             <p className="truncate text-sm font-medium">{asset.originalFilename || "Mídia sem nome"}</p>
@@ -1144,7 +1189,7 @@ export default function MediaCenter() {
                 )}
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                <Info label="Tipo" value={TYPE_LABELS[inspected.type]} />
+                <Info label="Tipo" value={assetAudioKind(inspected) ? AUDIO_KIND_LABELS[assetAudioKind(inspected)!] : TYPE_LABELS[inspected.type]} />
                 <Info label="Tamanho" value={bytes(inspected.fileSize)} />
                 <Info label="Origem" value={sourceLabel(inspected)} />
                 <Info label="Criado" value={dateLabel(inspected.createdAt)} />
@@ -1160,6 +1205,25 @@ export default function MediaCenter() {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground"><Link2 className="h-3.5 w-3.5" /> Vínculo</div>
                   <p className="mt-1 text-sm font-medium">{CONTEXT_LABELS[assetContext(inspected)!.type]} · {assetContext(inspected)!.label}</p>
                 </div>
+              )}
+              {inspected.type === "audio" && (
+                <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+                  <label className="tiny-label">Classificação do áudio</label>
+                  <select
+                    value={assetAudioKind(inspected) ?? "other"}
+                    disabled={organizing}
+                    onChange={(event) => void classifyAudio(inspected, event.target.value as AudioKind)}
+                    className="h-9 w-full rounded-lg border bg-background px-2 text-xs"
+                  >
+                    {Object.entries(AUDIO_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Apenas músicas/trilhas entram na faixa musical do editor. Locuções, efeitos e jingles permanecem separados.
+                  </p>
+                </div>
+              )}
+              {inspected.type === "audio" && assetAudioKind(inspected) === "music" && (
+                <AudioRightsPanel tenantId={tenantId} asset={inspected} onUpdated={loadAll} />
               )}
               {inspected.type === "image" && (
                 <ImageAdvisorPanel tenantId={tenantId} assetId={inspected.id} filename={inspected.originalFilename} canGenerateAi={ready("image_variations")} onUpdated={loadAll} />
@@ -1182,10 +1246,10 @@ export default function MediaCenter() {
                 {inspected.type === "video" && (
                   <button onClick={() => navigate(`/content-studio/video/edicao?mediaAssetId=${encodeURIComponent(inspected.id)}`)} className="wide-action"><Film className="h-4 w-4" /> Usar no Studio de Vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>
                 )}
-                {inspected.type === "audio" && inspected.role === "music" && (
+                {inspected.type === "audio" && assetAudioKind(inspected) === "music" && (
                   <button onClick={() => navigate(`/content-studio/video/edicao?musicAssetId=${encodeURIComponent(inspected.id)}`)} className="wide-action"><Music2 className="h-4 w-4" /> Usar como trilha no vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>
                 )}
-                {inspected.type === "audio" && inspected.role !== "music" && (
+                {inspected.type === "audio" && assetAudioKind(inspected) !== "music" && (
                   <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">Este áudio não está classificado como trilha musical. Vozes e outros áudios permanecem separados para preservar consentimentos e direitos.</div>
                 )}
                 <a href={mediaUrl(inspected.storageUrl)} target="_blank" rel="noreferrer" className="mt-2 wide-action"><Download className="h-4 w-4" /> Abrir arquivo</a>

@@ -601,7 +601,23 @@ export default function VideoTimelineEditor() {
           originalFilename: file.name,
           mimeType: file.type,
           fileSize: file.size,
-          metadata: type === "audio" ? { rights: { status: "pending", origin: "user_upload" } } : {},
+          metadata: type === "audio"
+            ? {
+                audioKind: "music",
+                rights: {
+                  status: "pending",
+                  origin: "unknown",
+                  commercialUse: false,
+                  paidAds: false,
+                  territories: ["*"],
+                  expiresAt: null,
+                  attributionRequired: false,
+                  attributionText: null,
+                  licenseReference: null,
+                  evidenceAssetId: null,
+                },
+              }
+            : {},
         }),
       });
       const registered = await register.json();
