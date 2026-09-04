@@ -34,7 +34,7 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
-          <Link href="/demo" className="group ml-2 inline-flex h-11 items-center rounded-xl bg-white px-5 text-sm font-semibold text-slate-950 transition hover:bg-blue-50" data-testid="btn-demo">
+          <Link href="/demo" className="group ml-2 inline-flex h-11 items-center rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.28)] transition hover:bg-orange-400" data-testid="btn-demo">
             Testar 5 dias grátis
             <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
           </Link>
@@ -44,7 +44,7 @@ export default function Navbar() {
         </nav>
 
         <button
-          className="rounded-lg border border-white/10 bg-white/[0.04] p-2 text-white md:hidden"
+          className="rounded-lg border border-orange-400/20 bg-orange-400/[0.06] p-2 text-white md:hidden"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           data-testid="btn-mobile-menu"
           aria-label="Abrir menu"
@@ -61,7 +61,7 @@ export default function Navbar() {
                 key={link.href}
                 href={link.href}
                 className={`rounded-xl px-4 py-3 text-base font-medium ${
-                  location === link.href ? "bg-white/[0.08] text-white" : "text-slate-300"
+                  location === link.href ? "bg-orange-400/[0.10] text-white" : "text-slate-300"
                 }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
@@ -70,7 +70,7 @@ export default function Navbar() {
             ))}
             <Link
               href="/demo"
-              className="mt-2 inline-flex h-12 items-center justify-center rounded-xl bg-blue-500 px-5 font-semibold text-white"
+              className="mt-2 inline-flex h-12 items-center justify-center rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-[0_12px_34px_rgba(249,115,22,0.24)] hover:bg-orange-400"
               onClick={() => setMobileMenuOpen(false)}
             >
               Testar 5 dias grátis
