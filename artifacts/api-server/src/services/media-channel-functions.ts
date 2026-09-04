@@ -41,13 +41,13 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     frequencia: "4–6 ações orgânicas por semana, combinando alcance, educação, prova e relacionamento",
     kpiPrincipal: "alcance qualificado, retenção, salvamentos, DMs e visitas ao perfil",
     formatos: [
-      { formato: "Reels", funcao: "Alcance e descoberta: ganhar atenção de novos públicos com vídeo curto e linguagem nativa" },
-      { formato: "Carrossel", funcao: "Educação e consideração: explicar problema, método, comparação, passo a passo e benefício" },
+      { formato: "Reels", funcao: "Alcance e descoberta: ganhar atenção de novos públicos" },
+      { formato: "Carrossel", funcao: "Educação e consideração: explicar problema, método, comparação e benefício" },
       { formato: "Stories", funcao: "Relacionamento e ação: bastidores, interação, prova rápida, urgência e CTA" },
       { formato: "Feed", funcao: "Posicionamento e prova: reforçar marca, produto, caso real e credibilidade" },
     ],
     variants: {
-      aquisicao: "Descoberta e geração de interesse com conteúdo nativo, visual e compartilhável",
+      aquisicao: "Descoberta e geração de interesse com conteúdo nativo e compartilhável",
       consideracao: "Educação, prova social e aprofundamento para transformar atenção em consideração",
       conversao: "Prova, oferta e CTA para levar o público a WhatsApp, site ou landing page",
       remarketing: "Reforço de prova, diferenciação e lembrança para públicos que já interagiram",
@@ -59,10 +59,10 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     aliases: ["facebook"],
     funcao: "Distribuição, comunidade, prova e reforço de alcance",
     etapaFunil: "descoberta/consideração",
-    frequencia: "2–4 publicações por semana; reforçar conteúdos de prova, comunidade e ofertas relevantes",
+    frequencia: "2–4 publicações por semana, priorizando prova, comunidade, utilidade e ofertas relevantes",
     kpiPrincipal: "alcance qualificado, engajamento, cliques e conversas iniciadas",
     formatos: [
-      { formato: "Feed", funcao: "Distribuição e prova: publicar casos, ofertas, novidades e conteúdo útil" },
+      { formato: "Feed", funcao: "Distribuição e prova: casos, ofertas, novidades e conteúdo útil" },
       { formato: "Vídeo", funcao: "Atenção e explicação: demonstrar produto, transformação ou caso real" },
       { formato: "Carrossel", funcao: "Consideração: organizar benefícios, comparações e catálogo visual" },
       { formato: "Stories", funcao: "Lembrete e CTA: reforçar campanha, prazo, evento ou contato" },
@@ -73,17 +73,17 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     aliases: ["meta ads", "facebook ads", "instagram ads"],
     funcao: "Gerar demanda paga, prospectar públicos e fazer remarketing",
     etapaFunil: "aquisição/remarketing/conversão",
-    frequencia: "Sempre ativo quando houver verba; revisar desempenho semanalmente e renovar criativos por fadiga/performance",
+    frequencia: "Sempre ativo quando houver verba; revisar semanalmente e renovar criativos por fadiga/performance",
     kpiPrincipal: "CPL, CPA, taxa de conversão e ROAS",
     formatos: [
-      { formato: "Vídeo vertical", funcao: "Prospecção: interromper atenção e apresentar dor, benefício ou transformação" },
-      { formato: "Imagem", funcao: "Oferta e prova: comunicar benefício central, condição e CTA com leitura rápida" },
+      { formato: "Vídeo vertical", funcao: "Prospecção e descoberta: interromper atenção e apresentar dor, benefício ou transformação" },
+      { formato: "Imagem", funcao: "Oferta e prova: comunicar benefício central, condição e CTA rapidamente" },
       { formato: "Carrossel", funcao: "Consideração: mostrar variedade, etapas, comparações, provas ou benefícios" },
-      { formato: "Lead Ads", funcao: "Captura: reduzir fricção e transformar interesse em lead dentro da plataforma" },
-      { formato: "Stories Ads", funcao: "Ação rápida: reforçar oferta, urgência e CTA em tela cheia" },
+      { formato: "Lead Ads", funcao: "Captura e conversão: transformar interesse em lead dentro da plataforma" },
+      { formato: "Stories Ads", funcao: "Conversão rápida: reforçar oferta, urgência e CTA em tela cheia" },
     ],
     variants: {
-      aquisicao: "Prospecção paga para gerar nova demanda e novos leads em públicos frios ou semelhantes",
+      aquisicao: "Prospecção paga para gerar nova demanda e novos leads",
       consideracao: "Reforço de benefício, prova e diferenciação para públicos engajados",
       conversao: "Campanhas orientadas a lead, venda, agendamento ou conversa com CTA direto",
       remarketing: "Recuperação de visitantes e engajados com prova, objeções, oferta e CTA",
@@ -94,12 +94,12 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     aliases: ["google search", "pesquisa google", "search ads", "google pesquisa"],
     funcao: "Capturar demanda existente de alta intenção",
     etapaFunil: "intenção/conversão",
-    frequencia: "Sempre ativo quando houver demanda; otimizar termos de busca, negativas, anúncios e lances semanalmente",
+    frequencia: "Sempre ativo quando houver demanda; otimizar termos, negativas, anúncios e lances semanalmente",
     kpiPrincipal: "conversões, CPL/CPA, taxa de conversão e participação de impressão",
     formatos: [
-      { formato: "Anúncio de pesquisa", funcao: "Captura de intenção: responder diretamente ao que o usuário já está procurando" },
-      { formato: "Extensões/ativos", funcao: "Redução de fricção: destacar telefone, localização, benefícios, preços e links úteis" },
-      { formato: "Variações de headline", funcao: "Otimização: testar intenção, dor, benefício, prova e oferta para melhorar CTR e conversão" },
+      { formato: "Anúncio de pesquisa", funcao: "Intenção: responder diretamente ao que o usuário já está procurando" },
+      { formato: "Extensões/ativos", funcao: "Conversão: reduzir fricção com telefone, localização, benefícios e links úteis" },
+      { formato: "Variações de headline", funcao: "Otimização: testar intenção, dor, benefício, prova e oferta" },
     ],
     variants: {
       aquisicao: "Captura de pessoas que já demonstram intenção explícita de compra ou contratação",
@@ -116,7 +116,7 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     kpiPrincipal: "conversões assistidas, CPA, CTR e alcance/frequência",
     formatos: [
       { formato: "Display responsivo", funcao: "Remarketing: lembrar oferta e marca para visitantes e públicos engajados" },
-      { formato: "Banner", funcao: "Reforço visual: consolidar benefício, prova ou oferta com leitura imediata" },
+      { formato: "Banner", funcao: "Prova e lembrança: consolidar benefício, credibilidade ou oferta" },
     ],
   },
   {
@@ -124,13 +124,13 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     aliases: ["performance max", "pmax"],
     funcao: "Escalar conversões usando sinais, inventário e ativos multiformato do Google",
     etapaFunil: "aquisição/conversão/remarketing",
-    frequencia: "Sempre ativo após configuração; revisar ativos, sinais, conversões e qualidade de feed semanalmente",
+    frequencia: "Sempre ativo após configuração; revisar ativos, sinais, conversões e feed semanalmente",
     kpiPrincipal: "valor de conversão, ROAS, CPA e volume de conversões",
     formatos: [
-      { formato: "Grupo de ativos", funcao: "Cobertura multicanal: combinar mensagem, imagens, vídeos e ofertas por tema de intenção" },
-      { formato: "Vídeo", funcao: "Atenção e consideração dentro do inventário Google/YouTube" },
-      { formato: "Imagem", funcao: "Reconhecimento, produto e prova em inventários visuais" },
-      { formato: "Headlines", funcao: "Intenção e conversão: adaptar argumento ao contexto e à consulta" },
+      { formato: "Grupo de ativos", funcao: "Consideração multicanal: combinar mensagem, imagens, vídeos e ofertas por intenção" },
+      { formato: "Vídeo", funcao: "Descoberta: gerar atenção dentro do inventário Google/YouTube" },
+      { formato: "Imagem", funcao: "Prova e reconhecimento: apresentar produto, benefício e credibilidade" },
+      { formato: "Headlines", funcao: "Intenção: adaptar argumento ao contexto e à consulta" },
     ],
   },
   {
@@ -143,7 +143,7 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     formatos: [
       { formato: "YouTube Short", funcao: "Descoberta: ganhar alcance com promessa, dor, curiosidade ou demonstração curta" },
       { formato: "YouTube Vídeo", funcao: "Educação e prova: explicar, demonstrar, comparar e aprofundar confiança" },
-      { formato: "In-stream", funcao: "Aquisição paga: gerar atenção e encaminhar o público ao próximo passo" },
+      { formato: "In-stream", funcao: "Aquisição: gerar atenção e encaminhar o público ao próximo passo" },
     ],
   },
   {
@@ -155,8 +155,8 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     kpiPrincipal: "retenção, conclusão, compartilhamentos, visitas ao perfil, cliques e leads",
     formatos: [
       { formato: "Vídeo curto", funcao: "Descoberta: usar gancho forte, contexto rápido e linguagem nativa" },
-      { formato: "UGC", funcao: "Prova e identificação: demonstrar uso, experiência, problema e transformação de forma humana" },
-      { formato: "Spark Ads", funcao: "Amplificação: transformar conteúdo orgânico validado em distribuição paga" },
+      { formato: "UGC", funcao: "Prova e identificação: demonstrar uso, experiência, problema e transformação" },
+      { formato: "Spark Ads", funcao: "Aquisição: amplificar conteúdo orgânico validado com distribuição paga" },
     ],
   },
   {
@@ -167,9 +167,9 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     frequencia: "2–3 publicações por semana para negócios B2B ou decisões de maior ticket",
     kpiPrincipal: "engajamento qualificado, visitas de decisores, leads B2B e oportunidades",
     formatos: [
-      { formato: "Post", funcao: "Autoridade: opinião, aprendizado, bastidor de negócio, tese e prova" },
+      { formato: "Post", funcao: "Autoridade e prova: opinião, aprendizado, tese, bastidor e caso" },
       { formato: "Documento/Carrossel", funcao: "Educação: aprofundar processo, comparação, estudo e framework" },
-      { formato: "Vídeo", funcao: "Confiança: humanizar especialista, demonstrar solução e apresentar caso" },
+      { formato: "Vídeo", funcao: "Prova e confiança: humanizar especialista e demonstrar solução" },
     ],
   },
   {
@@ -180,14 +180,14 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     frequencia: "Acionamento por comportamento e estágio do lead; evitar disparos genéricos repetitivos",
     kpiPrincipal: "taxa de resposta, qualificação, agendamentos, conversão e tempo até resposta",
     formatos: [
-      { formato: "Abordagem", funcao: "Iniciar conversa contextualizada a partir da origem e intenção do lead" },
-      { formato: "Qualificação", funcao: "Entender necessidade, momento, perfil e próximo passo comercial" },
-      { formato: "Follow-up", funcao: "Dar continuidade sem perder timing, contexto ou objeções já tratadas" },
-      { formato: "Recuperação", funcao: "Reativar oportunidade parada com novo contexto, prova, oferta ou pergunta útil" },
+      { formato: "Abordagem", funcao: "Relacionamento: iniciar conversa contextualizada à origem e intenção do lead" },
+      { formato: "Qualificação", funcao: "Qualificação: entender necessidade, momento, perfil e próximo passo comercial" },
+      { formato: "Follow-up", funcao: "Relacionamento: dar continuidade sem perder timing, contexto ou objeções" },
+      { formato: "Recuperação", funcao: "Remarketing: reativar oportunidade parada com novo contexto, prova ou oferta" },
     ],
     variants: {
       conversao: "Conduzir a conversa até agendamento, proposta, compra ou próximo compromisso objetivo",
-      remarketing: "Reativar leads e oportunidades que esfriaram usando o histórico e o motivo da pausa",
+      remarketing: "Reativar leads e oportunidades que esfriaram usando histórico e motivo da pausa",
       retencao: "Pós-venda, relacionamento, suporte proativo e novas oportunidades na base existente",
     },
   },
@@ -199,10 +199,10 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     frequencia: "1–2 envios por semana em fluxos editoriais; automações devem responder a comportamento e estágio",
     kpiPrincipal: "cliques, respostas, conversões, receita atribuída e descadastros",
     formatos: [
-      { formato: "Nutrição", funcao: "Educação e confiança: entregar contexto útil até o lead estar pronto para avançar" },
+      { formato: "Nutrição", funcao: "Educação: entregar contexto útil até o lead estar pronto para avançar" },
       { formato: "Oferta", funcao: "Conversão: apresentar proposta, benefício, prova e CTA objetivo" },
-      { formato: "Reativação", funcao: "Recuperação: retomar interesse com novo motivo, prova ou condição relevante" },
-      { formato: "Automação", funcao: "Timing: responder a cadastro, visita, abandono, compra ou mudança de estágio" },
+      { formato: "Reativação", funcao: "Remarketing: retomar interesse com novo motivo, prova ou condição relevante" },
+      { formato: "Automação", funcao: "Relacionamento: responder a cadastro, visita, abandono, compra ou mudança de estágio" },
     ],
   },
   {
@@ -211,10 +211,10 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     funcao: "Capturar busca orgânica e construir autoridade acumulativa",
     etapaFunil: "descoberta/intenção/consideração",
     frequencia: "1–2 conteúdos estratégicos por semana ou conforme oportunidade de busca e capacidade de qualidade",
-    kpiPrincipal: "cliques orgânicos, posições, leads orgânicos, conversões e crescimento de páginas ranqueadas",
+    kpiPrincipal: "cliques orgânicos, posições, leads orgânicos, conversões e páginas ranqueadas",
     formatos: [
-      { formato: "Artigo", funcao: "Educação e intenção: responder dúvidas reais e preparar o leitor para a solução" },
-      { formato: "Página local", funcao: "Intenção geográfica: capturar buscas por serviço/produto + local quando houver demanda" },
+      { formato: "Artigo", funcao: "Educação: responder dúvidas reais e preparar o leitor para a solução" },
+      { formato: "Página local", funcao: "Intenção: capturar buscas por serviço/produto + local quando houver demanda" },
       { formato: "Comparativo", funcao: "Consideração: tratar alternativas, critérios, objeções e diferenciação" },
     ],
   },
@@ -223,25 +223,25 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     aliases: ["site", "website"],
     funcao: "Centralizar confiança, produto, prova e caminhos de conversão",
     etapaFunil: "consideração/conversão",
-    frequencia: "Base permanente; atualizar oferta, prova, páginas e CTAs sempre que a campanha ou aprendizado mudar",
+    frequencia: "Base permanente; atualizar oferta, prova, páginas e CTAs quando a campanha ou aprendizado mudar",
     kpiPrincipal: "taxa de conversão, cliques em CTA, geração de leads e jornada até conversão",
     formatos: [
-      { formato: "Página institucional/produto", funcao: "Confiança e consideração: explicar solução, benefícios, prova e diferenciais" },
-      { formato: "Bloco de prova", funcao: "Redução de risco: evidenciar casos, números, garantias, avaliações e credenciais" },
+      { formato: "Página institucional/produto", funcao: "Consideração: explicar solução, benefícios, prova e diferenciais" },
+      { formato: "Bloco de prova", funcao: "Prova: reduzir risco com casos, números, garantias, avaliações e credenciais" },
       { formato: "CTA/Formulário", funcao: "Conversão: transformar visita em conversa, lead, orçamento, cadastro ou compra" },
     ],
   },
   {
     canal: "Landing Page",
     aliases: ["landing page", "landing", "lp"],
-    funcao: "Converter tráfego de uma campanha com mensagem única, prova e CTA sem dispersão",
+    funcao: "Converter tráfego de campanha com mensagem única, prova e CTA sem dispersão",
     etapaFunil: "conversão",
     frequencia: "Uma LP principal por oferta/campanha relevante, com testes A/B quando houver volume suficiente",
     kpiPrincipal: "taxa de conversão, CPL/CPA, abandono de formulário e qualidade do lead",
     formatos: [
       { formato: "Landing Page", funcao: "Conversão: alinhar promessa do anúncio, prova, oferta e CTA em uma única jornada" },
-      { formato: "Headline A/B", funcao: "Otimização: testar promessa, dor, benefício e especificidade para aumentar conversão" },
-      { formato: "Formulário/CTA", funcao: "Redução de fricção: pedir apenas o necessário para o próximo passo comercial" },
+      { formato: "Headline A/B", funcao: "Otimização: testar promessa, dor, benefício e especificidade" },
+      { formato: "Formulário/CTA", funcao: "Conversão: reduzir fricção e pedir apenas o necessário para o próximo passo" },
     ],
   },
   {
@@ -249,22 +249,23 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     aliases: ["sms"],
     funcao: "Lembretes e CTAs curtos de alta urgência para uma base com consentimento",
     etapaFunil: "conversão/relacionamento",
-    frequencia: "Somente em gatilhos importantes; evitar uso recorrente como mídia de descoberta",
+    frequencia: "Somente em gatilhos importantes; não usar como mídia recorrente de descoberta",
     kpiPrincipal: "entrega, cliques, respostas e conversões por disparo",
     formatos: [
-      { formato: "Lembrete", funcao: "Reduzir ausência ou esquecimento de compromisso, prazo, pagamento ou evento" },
-      { formato: "CTA urgente", funcao: "Ação imediata: comunicar prazo curto, confirmação ou oportunidade objetiva" },
+      { formato: "Lembrete", funcao: "Relacionamento: reduzir ausência ou esquecimento de compromisso, prazo ou evento" },
+      { formato: "CTA urgente", funcao: "Conversão: comunicar prazo curto, confirmação ou oportunidade objetiva" },
     ],
   },
 ];
 
 export function resolveMediaChannelFunction(canal: string): MediaChannelFunctionDefinition | null {
   const key = normalize(canal);
-  // Mais específicos primeiro para evitar que Google Display/PMax caiam em regras genéricas.
-  return DEFINITIONS.find((definition) => definition.aliases.some((alias) => {
-    const normalizedAlias = normalize(alias);
-    return key === normalizedAlias || key.includes(normalizedAlias);
-  })) ?? null;
+  const matches = DEFINITIONS.flatMap((definition) =>
+    definition.aliases.map((alias) => ({ definition, alias: normalize(alias) })),
+  )
+    .filter(({ alias }) => key === alias || key.includes(alias))
+    .sort((a, b) => b.alias.length - a.alias.length);
+  return matches[0]?.definition ?? null;
 }
 
 function phaseVariant(phase: string, objective = ""): keyof NonNullable<MediaChannelFunctionDefinition["variants"]> | null {
@@ -285,14 +286,11 @@ export function alignMediaChannelFunction(
   if (!definition) return channel;
   const variantKey = phaseVariant(context.phase ?? "", context.objective ?? "");
   const variant = variantKey ? definition.variants?.[variantKey] : undefined;
-  const formatFunctions = definition.formatos.map((item) => `${item.formato}: ${item.funcao}`).join(" | ");
 
   return {
     ...channel,
     canal: definition.canal,
-    // A função inclui o papel do canal e o papel de cada mídia/formato para que
-    // Planejador e Gerador não tratem Reels, Stories, Search, LP etc. como equivalentes.
-    funcao: `${variant ?? definition.funcao}. Função por mídia: ${formatFunctions}`,
+    funcao: variant ?? definition.funcao,
     etapaFunil: definition.etapaFunil,
     formatos: definition.formatos.map((item) => item.formato),
     frequencia: definition.frequencia,
@@ -310,16 +308,17 @@ export function mediaActionFunction(canal: string, formato: string, index = 0): 
   }) ?? definition.formatos[index % definition.formatos.length];
 
   const functionText = format?.funcao ?? definition.funcao;
-  const normalizedFunction = normalize(functionText);
+  const value = normalize(functionText);
   let pilar = "consideração";
-  if (normalizedFunction.includes("descob") || normalizedFunction.includes("alcance") || normalizedFunction.includes("atenc")) pilar = "descoberta";
-  else if (normalizedFunction.includes("educ") || normalizedFunction.includes("explic") || normalizedFunction.includes("autoridade")) pilar = "educação";
-  else if (normalizedFunction.includes("prova") || normalizedFunction.includes("confian") || normalizedFunction.includes("risco")) pilar = "prova";
-  else if (normalizedFunction.includes("remarketing") || normalizedFunction.includes("recuper") || normalizedFunction.includes("reativ")) pilar = "remarketing";
-  else if (normalizedFunction.includes("convers") || normalizedFunction.includes("captura") || normalizedFunction.includes("acao") || normalizedFunction.includes("cta")) pilar = "conversão";
-  else if (normalizedFunction.includes("relacion") || normalizedFunction.includes("comunidade")) pilar = "relacionamento";
-  else if (normalizedFunction.includes("otimiz") || normalizedFunction.includes("teste")) pilar = "otimização";
-  else if (normalizedFunction.includes("intenc")) pilar = "intenção";
+  if (value.includes("descob") || value.includes("alcance") || value.includes("atenc") || value.includes("prospecc")) pilar = "descoberta";
+  else if (value.includes("educ") || value.includes("explic") || value.includes("autoridade")) pilar = "educação";
+  else if (value.includes("prova") || value.includes("confian") || value.includes("risco")) pilar = "prova";
+  else if (value.includes("remarketing") || value.includes("recuper") || value.includes("reativ")) pilar = "remarketing";
+  else if (value.includes("relacion") || value.includes("comunidade") || value.includes("follow-up")) pilar = "relacionamento";
+  else if (value.includes("qualific")) pilar = "qualificação";
+  else if (value.includes("otimiz") || value.includes("teste")) pilar = "otimização";
+  else if (value.includes("intenc")) pilar = "intenção";
+  else if (value.includes("convers") || value.includes("captura") || value.includes("cta")) pilar = "conversão";
 
   return { pilar, funcao: functionText };
 }
