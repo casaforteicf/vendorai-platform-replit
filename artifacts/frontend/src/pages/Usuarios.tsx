@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/i18n";
@@ -12,11 +12,7 @@ import {
   useDeleteUser,
   UserFunction,
 } from "@workspace/api-client-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -25,11 +21,30 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { USER_MODULES, modulesForFunction, type UserModuleKey } from "@/lib/moduleAccess";
 import {
   Select,
@@ -59,6 +74,11 @@ import {
   Plus,
   Loader2,
   MapPin,
+  MoreHorizontal,
+  UserCheck,
+  UserX,
+  KeyRound,
+  BriefcaseBusiness,
 } from "lucide-react";
 
 const ROLE_LABELS_PT: Record<string, string> = {
@@ -98,6 +118,10 @@ const STANDARD_FUNCTIONS: UserFunction[] = [
 ];
 
 const CUSTOM_FUNCTION_PREFIX = "custom:";
+const STANDARD_FUNCTION_PREFIX = "standard:";
+
+type StatusFilter = "all" | "active" | "inactive";
+type LeadFilter = "all" | "yes" | "no";
 
 const PT_COPY = {
   functionNameRequired: "Nome da função obrigatório",
@@ -117,27 +141,26 @@ const PT_COPY = {
   userCreatedDescription: "Novo membro da equipe adicionado com sucesso.",
   saveError: "Erro ao salvar",
   tryAgain: "Tente novamente.",
-  deleteConfirm: "Tem certeza que deseja excluir este usuário?",
   userDeleted: "Usuário excluído",
   userDeletedDescription: "O usuário foi removido da equipe.",
   deleteError: "Erro ao excluir",
   title: "Equipe",
-  subtitle: "Gerencie os usuários da sua empresa e suas funções",
+  subtitle: "Gerencie usuários, acessos, funções e distribuição de atendimento.",
   newUser: "Novo usuário",
-  searchPlaceholder: "Buscar por nome ou e-mail...",
+  searchPlaceholder: "Buscar nome, e-mail, telefone ou função...",
   usersCount: (count: number) => `${count} usuário(s)`,
   loading: "Carregando...",
-  empty: "Nenhum usuário encontrado",
+  empty: "Nenhum usuário encontrado com estes filtros.",
   active: "Ativo",
   inactive: "Inativo",
   name: "Nome",
-  email: "E-mail",
   role: "Função",
   status: "Status",
-  phone: "Telefone",
   actions: "Ações",
   editUser: "Editar usuário",
   fullName: "Nome completo",
+  email: "E-mail",
+  phone: "Telefone",
   userNamePlaceholder: "Nome do usuário",
   phonePlaceholder: "(11) 98765-4321",
   newFunction: "Nova função",
@@ -149,6 +172,8 @@ const PT_COPY = {
   clear: "Limpar",
   accessRecommendation: "A função aplica um conjunto recomendado. Você pode personalizar os acessos deste usuário depois.",
   password: "Senha",
+  newPassword: "Nova senha (opcional)",
+  newPasswordHelp: "Preencha somente quando quiser redefinir a senha deste usuário.",
   passwordPlaceholder: "Mínimo 8 caracteres",
   cancel: "Cancelar",
   saveChanges: "Salvar alterações",
@@ -159,8 +184,8 @@ const PT_COPY = {
   defaultAccess: "Acessos padrão",
   defaultAccessHelp: "Defina quais módulos serão aplicados quando esta função for selecionada.",
   createFunction: "Criar função",
-  leadAssignmentTitle: "Atendimento de leads",
-  leadAssignmentHelp: "Controle quem pode aparecer como responsável e participar da distribuição automática.",
+  leadAssignmentTitle: "Distribuição de atendimento",
+  leadAssignmentHelp: "Controle quem pode aparecer como responsável e participar da distribuição automática de leads.",
   leadAssignmentEnabled: "Pode receber leads e aparecer como responsável",
   leadAssignmentEnabledHelp: "Desative para financeiro, suporte, entrega ou qualquer usuário que não faça atendimento comercial.",
   cities: "Cidades atendidas",
@@ -170,14 +195,42 @@ const PT_COPY = {
   territoryHelp: "Separe por vírgula. Cidade tem prioridade sobre região. Se ambos ficarem vazios, o usuário participa do rodízio geral.",
   segments: "Linhas / segmentos atendidos",
   segmentsPlaceholder: "Ex.: Óleos & Lubrificantes, Peças de Motor",
-  segmentsHelp: "Opcional. Se preenchido, o usuário só recebe automaticamente leads dessa(s) linha(s); a região ainda decide entre vendedores da mesma linha. Vazio = atende qualquer linha.",
+  segmentsHelp: "Opcional. Se preenchido, o usuário só recebe automaticamente leads dessas linhas.",
   baseAddress: "Endereço-base (opcional)",
   baseAddressPlaceholder: "Ex.: Rua Marechal Deodoro, 1200, Chapecó",
   raioKm: "Raio de atendimento (km)",
   raioKmPlaceholder: "Ex.: 15",
-  raioHelp: "Só use se cidade/bairro não bastar pra separar vendedores da mesma cidade grande. Ao salvar um endereço novo, o sistema calcula as coordenadas automaticamente; o raio decide entre vendedores só quando cidade/região não encontrarem ninguém.",
+  raioHelp: "Use o raio quando cidade ou região não forem suficientes para separar responsáveis na mesma área.",
   currentPoint: "Ponto atual salvo",
   receivesLeads: "Atende leads",
+  distribution: "Distribuição",
+  generalRotation: "Rodízio geral",
+  noDistribution: "Não participa",
+  accountStatus: "Status da conta",
+  accountStatusHelp: "Usuários inativos preservam histórico e atribuições, mas não devem operar o sistema.",
+  tabData: "Dados",
+  tabAccess: "Acessos",
+  tabDistribution: "Distribuição",
+  tabSecurity: "Segurança",
+  metricUsers: "Usuários",
+  metricActive: "Ativos",
+  metricAdmins: "Administradores",
+  metricLeads: "Recebem leads",
+  allFunctions: "Todas as funções",
+  allStatuses: "Todos os status",
+  allLeadModes: "Todos os atendimentos",
+  onlyLead: "Recebem leads",
+  withoutLead: "Não recebem leads",
+  editAction: "Editar usuário",
+  passwordAction: "Alterar senha",
+  activateAction: "Ativar usuário",
+  deactivateAction: "Desativar usuário",
+  deleteAction: "Excluir usuário",
+  deleteTitle: "Excluir usuário?",
+  deleteDescription: (name: string) => `Você está prestes a excluir ${name}. O histórico existente deve ser preservado nas entidades relacionadas, mas o acesso será removido.`,
+  statusUpdated: "Status atualizado",
+  statusUpdatedDescription: (active: boolean) => active ? "O usuário foi ativado." : "O usuário foi desativado.",
+  selfDeactivateBlocked: "Você não pode desativar o próprio usuário por esta tela.",
 } as const;
 
 const ES_COPY = {
@@ -198,27 +251,26 @@ const ES_COPY = {
   userCreatedDescription: "El nuevo miembro del equipo fue agregado correctamente.",
   saveError: "Error al guardar",
   tryAgain: "Inténtalo de nuevo.",
-  deleteConfirm: "¿Seguro que deseas eliminar este usuario?",
   userDeleted: "Usuario eliminado",
   userDeletedDescription: "El usuario fue eliminado del equipo.",
   deleteError: "Error al eliminar",
   title: "Equipo",
-  subtitle: "Gestiona los usuarios de tu empresa y sus funciones",
+  subtitle: "Gestiona usuarios, accesos, funciones y distribución de atención.",
   newUser: "Nuevo usuario",
-  searchPlaceholder: "Buscar por nombre o correo electrónico...",
+  searchPlaceholder: "Buscar nombre, correo, teléfono o función...",
   usersCount: (count: number) => `${count} usuario(s)`,
   loading: "Cargando...",
-  empty: "No se encontraron usuarios",
+  empty: "No se encontraron usuarios con estos filtros.",
   active: "Activo",
   inactive: "Inactivo",
   name: "Nombre",
-  email: "Correo electrónico",
   role: "Función",
   status: "Estado",
-  phone: "Teléfono",
   actions: "Acciones",
   editUser: "Editar usuario",
   fullName: "Nombre completo",
+  email: "Correo electrónico",
+  phone: "Teléfono",
   userNamePlaceholder: "Nombre del usuario",
   phonePlaceholder: "+00 000 000 000",
   newFunction: "Nueva función",
@@ -230,6 +282,8 @@ const ES_COPY = {
   clear: "Limpiar",
   accessRecommendation: "La función aplica un conjunto recomendado. Puedes personalizar los accesos de este usuario después.",
   password: "Contraseña",
+  newPassword: "Nueva contraseña (opcional)",
+  newPasswordHelp: "Completa solo cuando quieras restablecer la contraseña de este usuario.",
   passwordPlaceholder: "Mínimo 8 caracteres",
   cancel: "Cancelar",
   saveChanges: "Guardar cambios",
@@ -240,8 +294,8 @@ const ES_COPY = {
   defaultAccess: "Accesos predeterminados",
   defaultAccessHelp: "Define qué módulos se aplicarán cuando se seleccione esta función.",
   createFunction: "Crear función",
-  leadAssignmentTitle: "Atención de leads",
-  leadAssignmentHelp: "Controla quién puede aparecer como responsable y participar en la distribución automática.",
+  leadAssignmentTitle: "Distribución de atención",
+  leadAssignmentHelp: "Controla quién puede aparecer como responsable y participar de la distribución automática de leads.",
   leadAssignmentEnabled: "Puede recibir leads y aparecer como responsable",
   leadAssignmentEnabledHelp: "Desactiva esta opción para usuarios que no realizan atención comercial.",
   cities: "Ciudades atendidas",
@@ -251,14 +305,42 @@ const ES_COPY = {
   territoryHelp: "Separa con comas. La ciudad tiene prioridad sobre la región. Si ambos quedan vacíos, el usuario participa en la rotación general.",
   segments: "Líneas / segmentos atendidos",
   segmentsPlaceholder: "Ej.: Aceites y lubricantes, Piezas de motor",
-  segmentsHelp: "Opcional. Si se completa, el usuario solo recibe automáticamente leads de esa línea; la región sigue decidiendo entre vendedores de la misma línea. Vacío = atiende cualquier línea.",
+  segmentsHelp: "Opcional. Si se completa, el usuario solo recibe automáticamente leads de esas líneas.",
   baseAddress: "Dirección base (opcional)",
   baseAddressPlaceholder: "Ej.: Av. Mariscal López 1200, Asunción",
   raioKm: "Radio de atención (km)",
   raioKmPlaceholder: "Ej.: 15",
-  raioHelp: "Úsalo solo si ciudad/barrio no alcanza para separar vendedores de la misma ciudad grande. Al guardar una dirección nueva, el sistema calcula las coordenadas automáticamente; el radio decide entre vendedores solo cuando ciudad/región no encuentran a nadie.",
+  raioHelp: "Usa el radio cuando ciudad o región no sean suficientes para separar responsables en la misma zona.",
   currentPoint: "Punto actual guardado",
   receivesLeads: "Atiende leads",
+  distribution: "Distribución",
+  generalRotation: "Rotación general",
+  noDistribution: "No participa",
+  accountStatus: "Estado de la cuenta",
+  accountStatusHelp: "Los usuarios inactivos conservan historial y asignaciones, pero no deben operar el sistema.",
+  tabData: "Datos",
+  tabAccess: "Accesos",
+  tabDistribution: "Distribución",
+  tabSecurity: "Seguridad",
+  metricUsers: "Usuarios",
+  metricActive: "Activos",
+  metricAdmins: "Administradores",
+  metricLeads: "Reciben leads",
+  allFunctions: "Todas las funciones",
+  allStatuses: "Todos los estados",
+  allLeadModes: "Todas las atenciones",
+  onlyLead: "Reciben leads",
+  withoutLead: "No reciben leads",
+  editAction: "Editar usuario",
+  passwordAction: "Cambiar contraseña",
+  activateAction: "Activar usuario",
+  deactivateAction: "Desactivar usuario",
+  deleteAction: "Eliminar usuario",
+  deleteTitle: "¿Eliminar usuario?",
+  deleteDescription: (name: string) => `Estás por eliminar a ${name}. El historial existente debe conservarse en las entidades relacionadas, pero el acceso será removido.`,
+  statusUpdated: "Estado actualizado",
+  statusUpdatedDescription: (active: boolean) => active ? "El usuario fue activado." : "El usuario fue desactivado.",
+  selfDeactivateBlocked: "No puedes desactivar tu propio usuario desde esta pantalla.",
 } as const;
 
 interface TenantUserFunction {
@@ -280,6 +362,10 @@ function legacyCanReceiveLeads(targetUser: any): boolean {
   return targetUser?.platformRole === "tenant_seller" || targetUser?.userFunction === "vendedor";
 }
 
+function isAdministrator(targetUser: any): boolean {
+  return targetUser?.platformRole === "tenant_admin" || targetUser?.userFunction === "administrador";
+}
+
 export default function Usuarios() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -291,8 +377,13 @@ export default function Usuarios() {
   const roleLabels = locale === "pt-BR" ? ROLE_LABELS_PT : ROLE_LABELS_ES;
 
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [functionFilter, setFunctionFilter] = useState("all");
+  const [leadFilter, setLeadFilter] = useState<LeadFilter>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogTab, setDialogTab] = useState("dados");
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [functionDialogOpen, setFunctionDialogOpen] = useState(false);
   const [newFunctionName, setNewFunctionName] = useState("");
   const [newFunctionPermissions, setNewFunctionPermissions] = useState<UserModuleKey[]>([]);
@@ -305,6 +396,7 @@ export default function Usuarios() {
     customFunctionId: null as string | null,
     permissions: modulesForFunction("outro") as UserModuleKey[],
     password: "",
+    active: true,
     leadAssignmentEnabled: false,
     leadAssignmentCities: "",
     leadAssignmentRegions: "",
@@ -326,12 +418,6 @@ export default function Usuarios() {
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
 
-  const filteredUsers = users?.filter(
-    (u) =>
-      u.name?.toLowerCase().includes(search.toLowerCase()) ||
-      u.email?.toLowerCase().includes(search.toLowerCase()),
-  );
-
   function getCustomFunction(customFunctionId?: string | null) {
     if (!customFunctionId) return undefined;
     return tenantFunctions.find((item) => item.id === customFunctionId);
@@ -343,16 +429,61 @@ export default function Usuarios() {
     return roleLabels[targetUser.userFunction ?? "outro"] ?? roleLabels.outro;
   }
 
+  function getFunctionFilterValue(targetUser: any) {
+    return targetUser.customFunctionId
+      ? `${CUSTOM_FUNCTION_PREFIX}${targetUser.customFunctionId}`
+      : `${STANDARD_FUNCTION_PREFIX}${targetUser.userFunction ?? "outro"}`;
+  }
+
   function getFunctionBadge(targetUser: any) {
-    if (targetUser.customFunctionId) {
-      return "bg-slate-100 text-slate-800 border-slate-200";
-    }
+    if (targetUser.customFunctionId) return "bg-slate-100 text-slate-800 border-slate-200";
     return FUNCAO_BADGES[targetUser.userFunction ?? "outro"] ?? FUNCAO_BADGES.outro;
   }
 
   function moduleLabel(module: (typeof USER_MODULES)[number]) {
     return locale === "pt-BR" ? module.label : module.labelEs;
   }
+
+  function getTerritorySummary(targetUser: any) {
+    if (!legacyCanReceiveLeads(targetUser)) return copy.noDistribution;
+    const cities = Array.isArray(targetUser.leadAssignmentCities) ? targetUser.leadAssignmentCities : [];
+    const regions = Array.isArray(targetUser.leadAssignmentRegions) ? targetUser.leadAssignmentRegions : [];
+    const segments = Array.isArray(targetUser.leadAssignmentSegments) ? targetUser.leadAssignmentSegments : [];
+    const places = [...cities.slice(0, 2), ...regions.slice(0, Math.max(0, 2 - cities.length))];
+    const placeText = places.length ? places.join(", ") : copy.generalRotation;
+    return segments.length ? `${placeText} · ${segments.slice(0, 2).join(", ")}` : placeText;
+  }
+
+  const list = users ?? [];
+  const metrics = useMemo(() => ({
+    total: list.length,
+    active: list.filter((item) => item.active).length,
+    admins: list.filter((item) => item.active && isAdministrator(item)).length,
+    leads: list.filter((item) => item.active && legacyCanReceiveLeads(item)).length,
+  }), [list]);
+
+  const filteredUsers = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return list.filter((item) => {
+      const searchable = [
+        item.name,
+        item.email,
+        item.telefone,
+        getFunctionLabel(item),
+        ...(Array.isArray(item.leadAssignmentCities) ? item.leadAssignmentCities : []),
+        ...(Array.isArray(item.leadAssignmentRegions) ? item.leadAssignmentRegions : []),
+        ...(Array.isArray(item.leadAssignmentSegments) ? item.leadAssignmentSegments : []),
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (term && !searchable.includes(term)) return false;
+      if (statusFilter === "active" && !item.active) return false;
+      if (statusFilter === "inactive" && item.active) return false;
+      if (functionFilter !== "all" && getFunctionFilterValue(item) !== functionFilter) return false;
+      const receives = legacyCanReceiveLeads(item);
+      if (leadFilter === "yes" && !receives) return false;
+      if (leadFilter === "no" && receives) return false;
+      return true;
+    });
+  }, [list, search, statusFilter, functionFilter, leadFilter, tenantFunctions, locale]);
 
   function resetForm() {
     setFormData({
@@ -363,6 +494,7 @@ export default function Usuarios() {
       customFunctionId: null,
       permissions: modulesForFunction("outro"),
       password: "",
+      active: true,
       leadAssignmentEnabled: false,
       leadAssignmentCities: "",
       leadAssignmentRegions: "",
@@ -371,10 +503,12 @@ export default function Usuarios() {
       leadAssignmentRaioKm: "",
     });
     setEditingUser(null);
+    setDialogTab("dados");
   }
 
-  function openEdit(targetUser: any) {
+  function openEdit(targetUser: any, tab = "dados") {
     setEditingUser(targetUser);
+    setDialogTab(tab);
     setFormData({
       name: targetUser.name ?? "",
       email: targetUser.email ?? "",
@@ -385,6 +519,7 @@ export default function Usuarios() {
         ? targetUser.permissions
         : modulesForFunction(targetUser.userFunction ?? "outro"),
       password: "",
+      active: targetUser.active !== false,
       leadAssignmentEnabled: legacyCanReceiveLeads(targetUser),
       leadAssignmentCities: Array.isArray(targetUser.leadAssignmentCities)
         ? targetUser.leadAssignmentCities.join(", ")
@@ -437,43 +572,24 @@ export default function Usuarios() {
   async function handleCreateFunction() {
     const name = newFunctionName.trim();
     if (name.length < 2) {
-      toast({
-        title: copy.functionNameRequired,
-        description: copy.functionNameRequiredDescription,
-        variant: "destructive",
-      });
+      toast({ title: copy.functionNameRequired, description: copy.functionNameRequiredDescription, variant: "destructive" });
       return;
     }
-
     if (newFunctionPermissions.length === 0) {
-      toast({
-        title: copy.selectAccess,
-        description: copy.selectAccessDescription,
-        variant: "destructive",
-      });
+      toast({ title: copy.selectAccess, description: copy.selectAccessDescription, variant: "destructive" });
       return;
     }
 
     setCreatingFunction(true);
     try {
-      const created = await customFetch<TenantUserFunction>(
-        `/api/tenants/${tenantId}/user-functions`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name,
-            permissions: newFunctionPermissions,
-          }),
-          responseType: "json",
-        },
-      );
-
+      const created = await customFetch<TenantUserFunction>(`/api/tenants/${tenantId}/user-functions`, {
+        method: "POST",
+        body: JSON.stringify({ name, permissions: newFunctionPermissions }),
+        responseType: "json",
+      });
       queryClient.setQueryData<TenantUserFunction[]>(userFunctionsQueryKey, (current = []) =>
-        [...current.filter((item) => item.id !== created.id), created].sort((a, b) =>
-          a.name.localeCompare(b.name, locale),
-        ),
+        [...current.filter((item) => item.id !== created.id), created].sort((a, b) => a.name.localeCompare(b.name, locale)),
       );
-
       setFormData((current) => ({
         ...current,
         userFunction: "outro",
@@ -485,16 +601,9 @@ export default function Usuarios() {
       setFunctionDialogOpen(false);
       setNewFunctionName("");
       setNewFunctionPermissions([]);
-      toast({
-        title: copy.functionCreated,
-        description: copy.functionSelected(created.name),
-      });
+      toast({ title: copy.functionCreated, description: copy.functionSelected(created.name) });
     } catch (err: any) {
-      toast({
-        title: copy.functionCreateError,
-        description: err?.message || copy.tryAgain,
-        variant: "destructive",
-      });
+      toast({ title: copy.functionCreateError, description: err?.message || copy.tryAgain, variant: "destructive" });
     } finally {
       setCreatingFunction(false);
     }
@@ -502,20 +611,11 @@ export default function Usuarios() {
 
   async function handleSubmit() {
     if (!formData.name || !formData.email) {
-      toast({
-        title: copy.requiredFields,
-        description: copy.requiredFieldsDescription,
-        variant: "destructive",
-      });
+      toast({ title: copy.requiredFields, description: copy.requiredFieldsDescription, variant: "destructive" });
       return;
     }
-
     if (!editingUser && !formData.password) {
-      toast({
-        title: copy.passwordRequired,
-        description: copy.passwordRequiredDescription,
-        variant: "destructive",
-      });
+      toast({ title: copy.passwordRequired, description: copy.passwordRequiredDescription, variant: "destructive" });
       return;
     }
 
@@ -533,6 +633,7 @@ export default function Usuarios() {
           name: formData.name,
           email: formData.email,
           telefone: formData.telefone || undefined,
+          active: formData.active,
           userFunction: formData.userFunction,
           customFunctionId: formData.customFunctionId,
           permissions: formData.permissions,
@@ -543,17 +644,9 @@ export default function Usuarios() {
           leadAssignmentRaioKm,
         };
         if (formData.password) payload.password = formData.password;
-        // Só manda o endereço-base quando o admin digitou um novo — string
-        // ausente = backend não mexe nas coordenadas já salvas.
         if (baseAddress) payload.leadAssignmentBaseAddress = baseAddress;
-        await updateUser.mutateAsync({
-          id: editingUser.id,
-          data: payload,
-        });
-        toast({
-          title: copy.userUpdated,
-          description: copy.userUpdatedDescription,
-        });
+        await updateUser.mutateAsync({ id: editingUser.id, data: payload });
+        toast({ title: copy.userUpdated, description: copy.userUpdatedDescription });
       } else {
         await createUser.mutateAsync({
           data: {
@@ -562,6 +655,7 @@ export default function Usuarios() {
             email: formData.email,
             password: formData.password,
             telefone: formData.telefone || undefined,
+            active: formData.active,
             userFunction: formData.userFunction,
             customFunctionId: formData.customFunctionId,
             permissions: formData.permissions,
@@ -573,42 +667,40 @@ export default function Usuarios() {
             ...(baseAddress ? { leadAssignmentBaseAddress: baseAddress } : {}),
           } as any,
         });
-        toast({
-          title: copy.userCreated,
-          description: copy.userCreatedDescription,
-        });
+        toast({ title: copy.userCreated, description: copy.userCreatedDescription });
       }
-      queryClient.invalidateQueries({
-        queryKey: getListTenantUsersQueryKey(tenantId),
-      });
+      await queryClient.invalidateQueries({ queryKey: getListTenantUsersQueryKey(tenantId) });
       setDialogOpen(false);
       resetForm();
     } catch (err: any) {
-      toast({
-        title: copy.saveError,
-        description: err?.message || copy.tryAgain,
-        variant: "destructive",
-      });
+      toast({ title: copy.saveError, description: err?.message || copy.tryAgain, variant: "destructive" });
     }
   }
 
-  async function handleDelete(userId: string) {
-    if (!confirm(copy.deleteConfirm)) return;
+  async function toggleUserStatus(targetUser: any) {
+    const nextActive = !targetUser.active;
+    if (!nextActive && targetUser.id === user?.id) {
+      toast({ title: copy.saveError, description: copy.selfDeactivateBlocked, variant: "destructive" });
+      return;
+    }
     try {
-      await deleteUser.mutateAsync({ id: userId });
-      toast({
-        title: copy.userDeleted,
-        description: copy.userDeletedDescription,
-      });
-      queryClient.invalidateQueries({
-        queryKey: getListTenantUsersQueryKey(tenantId),
-      });
+      await updateUser.mutateAsync({ id: targetUser.id, data: { active: nextActive } as any });
+      await queryClient.invalidateQueries({ queryKey: getListTenantUsersQueryKey(tenantId) });
+      toast({ title: copy.statusUpdated, description: copy.statusUpdatedDescription(nextActive) });
     } catch (err: any) {
-      toast({
-        title: copy.deleteError,
-        description: err?.message || copy.tryAgain,
-        variant: "destructive",
-      });
+      toast({ title: copy.saveError, description: err?.message || copy.tryAgain, variant: "destructive" });
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    try {
+      await deleteUser.mutateAsync({ id: deleteTarget.id });
+      await queryClient.invalidateQueries({ queryKey: getListTenantUsersQueryKey(tenantId) });
+      toast({ title: copy.userDeleted, description: copy.userDeletedDescription });
+      setDeleteTarget(null);
+    } catch (err: any) {
+      toast({ title: copy.deleteError, description: err?.message || copy.tryAgain, variant: "destructive" });
     }
   }
 
@@ -616,9 +708,50 @@ export default function Usuarios() {
     ? `${CUSTOM_FUNCTION_PREFIX}${formData.customFunctionId}`
     : formData.userFunction;
 
+  const metricCards = [
+    { label: copy.metricUsers, value: metrics.total, icon: Users },
+    { label: copy.metricActive, value: metrics.active, icon: UserCheck },
+    { label: copy.metricAdmins, value: metrics.admins, icon: Shield },
+    { label: copy.metricLeads, value: metrics.leads, icon: MapPin },
+  ];
+
+  function UserActions({ targetUser }: { targetUser: any }) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild onClick={(event) => event.stopPropagation()}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={copy.actions}>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+          <DropdownMenuItem onClick={() => openEdit(targetUser, "dados")}>
+            <Pencil className="h-4 w-4 mr-2" />
+            {copy.editAction}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openEdit(targetUser, "seguranca")}>
+            <KeyRound className="h-4 w-4 mr-2" />
+            {copy.passwordAction}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => toggleUserStatus(targetUser)}>
+            {targetUser.active ? <UserX className="h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
+            {targetUser.active ? copy.deactivateAction : copy.activateAction}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => setDeleteTarget(targetUser)}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            {copy.deleteAction}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Users className="h-6 w-6" />
@@ -627,6 +760,7 @@ export default function Usuarios() {
           <p className="text-muted-foreground mt-1">{copy.subtitle}</p>
         </div>
         <Button
+          className="sm:self-start"
           onClick={() => {
             resetForm();
             setDialogOpen(true);
@@ -637,193 +771,191 @@ export default function Usuarios() {
         </Button>
       </div>
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {metricCards.map(({ label, value, icon: Icon }) => (
+          <Card key={label} className="shadow-sm">
+            <CardContent className="p-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="text-2xl font-semibold mt-1">{value}</p>
+              </div>
+              <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center">
+                <Icon className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-4">
-            <div className="relative flex-1 max-w-sm">
+        <CardHeader className="pb-3 space-y-3">
+          <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+            <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={copy.searchPlaceholder}
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(event) => setSearch(event.target.value)}
                 className="pl-9"
               />
             </div>
-            <div className="text-sm text-muted-foreground">
-              {copy.usersCount(filteredUsers?.length ?? 0)}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 xl:w-auto">
+              <Select value={functionFilter} onValueChange={setFunctionFilter}>
+                <SelectTrigger className="sm:w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{copy.allFunctions}</SelectItem>
+                  {STANDARD_FUNCTIONS.map((standardFunction) => (
+                    <SelectItem key={standardFunction} value={`${STANDARD_FUNCTION_PREFIX}${standardFunction}`}>
+                      {roleLabels[standardFunction]}
+                    </SelectItem>
+                  ))}
+                  {tenantFunctions.map((customFunction) => (
+                    <SelectItem key={customFunction.id} value={`${CUSTOM_FUNCTION_PREFIX}${customFunction.id}`}>
+                      {customFunction.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                <SelectTrigger className="sm:w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{copy.allStatuses}</SelectItem>
+                  <SelectItem value="active">{copy.active}</SelectItem>
+                  <SelectItem value="inactive">{copy.inactive}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={leadFilter} onValueChange={(value) => setLeadFilter(value as LeadFilter)}>
+                <SelectTrigger className="sm:w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{copy.allLeadModes}</SelectItem>
+                  <SelectItem value="yes">{copy.onlyLead}</SelectItem>
+                  <SelectItem value="no">{copy.withoutLead}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
+          <div className="text-xs text-muted-foreground">{copy.usersCount(filteredUsers.length)}</div>
         </CardHeader>
+
         <CardContent>
           {isLoading ? (
             <div className="text-center py-12 text-muted-foreground">{copy.loading}</div>
-          ) : filteredUsers?.length === 0 ? (
+          ) : filteredUsers.length === 0 ? (
             <p className="text-center text-muted-foreground py-12 text-sm">{copy.empty}</p>
           ) : (
             <>
               <div className="divide-y -mx-6 sm:hidden">
-                {filteredUsers?.map((u) => (
+                {filteredUsers.map((targetUser) => (
                   <div
-                    key={u.id}
-                    className="px-6 py-4 space-y-2 cursor-pointer hover:bg-muted/40 transition-colors"
-                    onClick={() => openEdit(u)}
+                    key={targetUser.id}
+                    className="px-6 py-4 space-y-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                    onClick={() => openEdit(targetUser)}
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-medium text-sm truncate">{u.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                        <p className="font-medium text-sm truncate">{targetUser.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{targetUser.email}</p>
+                        {targetUser.telefone && (
+                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {targetUser.telefone}
+                          </p>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(u);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(u.id);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <UserActions targetUser={targetUser} />
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className={getFunctionBadge(u)}>
+                      <Badge variant="outline" className={getFunctionBadge(targetUser)}>
                         <Shield className="h-3 w-3 mr-1" />
-                        {getFunctionLabel(u)}
+                        {getFunctionLabel(targetUser)}
                       </Badge>
-                      {legacyCanReceiveLeads(u) && (
-                        <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200">
-                          <MapPin className="h-3 w-3 mr-1" />
-                          {copy.receivesLeads}
-                        </Badge>
-                      )}
-                      {u.active ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-green-100 text-green-800 border-green-200"
-                        >
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                          {copy.active}
+                      {targetUser.active ? (
+                        <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                          <CheckCircle2 className="h-3 w-3 mr-1" /> {copy.active}
                         </Badge>
                       ) : (
-                        <Badge
-                          variant="outline"
-                          className="bg-gray-100 text-gray-800 border-gray-200"
-                        >
-                          <XCircle className="h-3 w-3 mr-1" />
-                          {copy.inactive}
+                        <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
+                          <XCircle className="h-3 w-3 mr-1" /> {copy.inactive}
                         </Badge>
                       )}
-                      {u.telefone && (
-                        <span className="flex items-center gap-1 text-muted-foreground text-xs">
-                          <Phone className="h-3 w-3" />
-                          {u.telefone}
-                        </span>
-                      )}
+                    </div>
+                    <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+                      <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>{getTerritorySummary(targetUser)}</span>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="hidden sm:block">
+              <div className="hidden sm:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>{copy.name}</TableHead>
-                      <TableHead>{copy.email}</TableHead>
                       <TableHead>{copy.role}</TableHead>
+                      <TableHead>{copy.distribution}</TableHead>
                       <TableHead>{copy.status}</TableHead>
-                      <TableHead>{copy.phone}</TableHead>
-                      <TableHead className="text-right">{copy.actions}</TableHead>
+                      <TableHead className="w-[72px] text-right">{copy.actions}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredUsers?.map((u) => (
+                    {filteredUsers.map((targetUser) => (
                       <TableRow
-                        key={u.id}
+                        key={targetUser.id}
                         className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => openEdit(u)}
+                        onClick={() => openEdit(targetUser)}
                       >
-                        <TableCell className="font-medium">{u.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{u.email}</TableCell>
                         <TableCell>
-                          <div className="flex flex-wrap gap-1.5">
-                            <Badge variant="outline" className={getFunctionBadge(u)}>
-                              <Shield className="h-3 w-3 mr-1" />
-                              {getFunctionLabel(u)}
-                            </Badge>
-                            {legacyCanReceiveLeads(u) && (
-                              <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200">
-                                <MapPin className="h-3 w-3 mr-1" />
-                                {copy.receivesLeads}
-                              </Badge>
+                          <div className="min-w-[190px]">
+                            <p className="font-medium">{targetUser.name}</p>
+                            <p className="text-xs text-muted-foreground">{targetUser.email}</p>
+                            {targetUser.telefone && (
+                              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                                <Phone className="h-3 w-3" /> {targetUser.telefone}
+                              </p>
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          {u.active ? (
-                            <Badge
-                              variant="outline"
-                              className="bg-green-100 text-green-800 border-green-200"
-                            >
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              {copy.active}
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="bg-gray-100 text-gray-800 border-gray-200"
-                            >
-                              <XCircle className="h-3 w-3 mr-1" />
-                              {copy.inactive}
-                            </Badge>
-                          )}
+                          <Badge variant="outline" className={getFunctionBadge(targetUser)}>
+                            <Shield className="h-3 w-3 mr-1" />
+                            {getFunctionLabel(targetUser)}
+                          </Badge>
                         </TableCell>
                         <TableCell>
-                          {u.telefone ? (
-                            <span className="flex items-center gap-1 text-muted-foreground text-sm">
-                              <Phone className="h-3 w-3" />
-                              {u.telefone}
-                            </span>
+                          <div className="max-w-[300px]">
+                            {legacyCanReceiveLeads(targetUser) ? (
+                              <div>
+                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 mb-1.5">
+                                  <MapPin className="h-3 w-3 mr-1" /> {copy.receivesLeads}
+                                </Badge>
+                                <p className="text-xs text-muted-foreground truncate" title={getTerritorySummary(targetUser)}>
+                                  {getTerritorySummary(targetUser)}
+                                </p>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">{copy.noDistribution}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {targetUser.active ? (
+                            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                              <CheckCircle2 className="h-3 w-3 mr-1" /> {copy.active}
+                            </Badge>
                           ) : (
-                            <span className="text-muted-foreground text-sm">—</span>
+                            <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
+                              <XCircle className="h-3 w-3 mr-1" /> {copy.inactive}
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openEdit(u);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(u.id);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          <UserActions targetUser={targetUser} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -835,247 +967,236 @@ export default function Usuarios() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open);
+        if (!open) resetForm();
+      }}>
+        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingUser ? copy.editUser : copy.newUser}</DialogTitle>
+            <DialogDescription>{copy.subtitle}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <div>
-              <Label>{copy.fullName}</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData((current) => ({ ...current, name: e.target.value }))}
-                placeholder={copy.userNamePlaceholder}
-              />
-            </div>
-            <div>
-              <Label>{copy.email}</Label>
-              <Input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData((current) => ({ ...current, email: e.target.value }))}
-                placeholder="email@empresa.com"
-              />
-            </div>
-            <div>
-              <Label>{copy.phone}</Label>
-              <Input
-                value={formData.telefone}
-                onChange={(e) =>
-                  setFormData((current) => ({ ...current, telefone: e.target.value }))
-                }
-                placeholder={copy.phonePlaceholder}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <Label>{copy.role}</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 text-xs"
-                  onClick={openNewFunctionDialog}
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  {copy.newFunction}
-                </Button>
-              </div>
-              <Select value={functionSelectValue} onValueChange={handleFunctionChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder={copy.selectFunction} />
-                </SelectTrigger>
-                <SelectContent>
-                  {STANDARD_FUNCTIONS.map((standardFunction) => (
-                    <SelectItem key={standardFunction} value={standardFunction}>
-                      {roleLabels[standardFunction]}
-                    </SelectItem>
-                  ))}
-                  {tenantFunctions.map((customFunction) => (
-                    <SelectItem
-                      key={customFunction.id}
-                      value={`${CUSTOM_FUNCTION_PREFIX}${customFunction.id}`}
-                    >
-                      {customFunction.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">{copy.functionHelp}</p>
-            </div>
+          <Tabs value={dialogTab} onValueChange={setDialogTab} className="mt-2">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="dados">{copy.tabData}</TabsTrigger>
+              <TabsTrigger value="acessos">{copy.tabAccess}</TabsTrigger>
+              <TabsTrigger value="distribuicao">{copy.tabDistribution}</TabsTrigger>
+              <TabsTrigger value="seguranca">{copy.tabSecurity}</TabsTrigger>
+            </TabsList>
 
-            <div className="space-y-3 rounded-lg border p-4">
-              <div>
-                <Label className="text-base">{copy.leadAssignmentTitle}</Label>
-                <p className="text-sm text-muted-foreground mt-1">{copy.leadAssignmentHelp}</p>
-              </div>
-              <label className="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3">
-                <Checkbox
-                  checked={formData.leadAssignmentEnabled}
-                  onCheckedChange={(value) =>
-                    setFormData((current) => ({ ...current, leadAssignmentEnabled: value === true }))
-                  }
-                />
-                <span>
-                  <span className="block text-sm font-medium">{copy.leadAssignmentEnabled}</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">{copy.leadAssignmentEnabledHelp}</span>
-                </span>
-              </label>
-
-              {formData.leadAssignmentEnabled && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <Label>{copy.cities}</Label>
-                    <Input
-                      value={formData.leadAssignmentCities}
-                      onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentCities: e.target.value }))}
-                      placeholder={copy.citiesPlaceholder}
-                    />
-                  </div>
-                  <div>
-                    <Label>{copy.regions}</Label>
-                    <Input
-                      value={formData.leadAssignmentRegions}
-                      onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentRegions: e.target.value }))}
-                      placeholder={copy.regionsPlaceholder}
-                    />
-                  </div>
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground">{copy.territoryHelp}</p>
-
-              {formData.leadAssignmentEnabled && (
+            <TabsContent value="dados" className="space-y-4 pt-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <Label>{copy.segments}</Label>
+                  <Label>{copy.fullName}</Label>
                   <Input
-                    value={formData.leadAssignmentSegments}
-                    onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentSegments: e.target.value }))}
-                    placeholder={copy.segmentsPlaceholder}
+                    value={formData.name}
+                    onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))}
+                    placeholder={copy.userNamePlaceholder}
                   />
-                  <p className="text-xs text-muted-foreground mt-1">{copy.segmentsHelp}</p>
                 </div>
-              )}
-
-              {formData.leadAssignmentEnabled && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <Label>{copy.baseAddress}</Label>
-                    <Input
-                      value={formData.leadAssignmentBaseAddress}
-                      onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentBaseAddress: e.target.value }))}
-                      placeholder={copy.baseAddressPlaceholder}
-                    />
-                    {editingUser?.leadAssignmentLat != null && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {copy.currentPoint}: {Number(editingUser.leadAssignmentLat).toFixed(4)}, {Number(editingUser.leadAssignmentLng).toFixed(4)}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <Label>{copy.raioKm}</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={formData.leadAssignmentRaioKm}
-                      onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentRaioKm: e.target.value }))}
-                      placeholder={copy.raioKmPlaceholder}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground sm:col-span-2">{copy.raioHelp}</p>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <Label className="text-base">{copy.userAccess}</Label>
-                  <p className="text-sm text-muted-foreground mt-1">{copy.userAccessHelp}</p>
+                  <Label>{copy.email}</Label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(event) => setFormData((current) => ({ ...current, email: event.target.value }))}
+                    placeholder="email@empresa.com"
+                  />
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setFormData((current) => ({
-                        ...current,
-                        permissions: USER_MODULES.map((module) => module.key),
-                      }))
-                    }
-                  >
-                    {copy.selectAll}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      setFormData((current) => ({ ...current, permissions: [] }))
-                    }
-                  >
-                    {copy.clear}
-                  </Button>
+                <div>
+                  <Label>{copy.phone}</Label>
+                  <Input
+                    value={formData.telefone}
+                    onChange={(event) => setFormData((current) => ({ ...current, telefone: event.target.value }))}
+                    placeholder={copy.phonePlaceholder}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label>{copy.role}</Label>
+                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={openNewFunctionDialog}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> {copy.newFunction}
+                    </Button>
+                  </div>
+                  <Select value={functionSelectValue} onValueChange={handleFunctionChange}>
+                    <SelectTrigger><SelectValue placeholder={copy.selectFunction} /></SelectTrigger>
+                    <SelectContent>
+                      {STANDARD_FUNCTIONS.map((standardFunction) => (
+                        <SelectItem key={standardFunction} value={standardFunction}>{roleLabels[standardFunction]}</SelectItem>
+                      ))}
+                      {tenantFunctions.map((customFunction) => (
+                        <SelectItem key={customFunction.id} value={`${CUSTOM_FUNCTION_PREFIX}${customFunction.id}`}>
+                          {customFunction.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{copy.functionHelp}</p>
                 </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {USER_MODULES.map((module) => {
-                  const checked = formData.permissions.includes(module.key);
-                  return (
-                    <label
-                      key={module.key}
-                      className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 hover:bg-muted/50"
-                    >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(value) =>
-                          setFormData((current) => ({
+
+              <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                <div>
+                  <Label className="text-base">{copy.accountStatus}</Label>
+                  <p className="text-xs text-muted-foreground mt-1">{copy.accountStatusHelp}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-sm font-medium">{formData.active ? copy.active : copy.inactive}</span>
+                  <Switch
+                    checked={formData.active}
+                    onCheckedChange={(active) => setFormData((current) => ({ ...current, active }))}
+                    disabled={editingUser?.id === user?.id}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="acessos" className="pt-4">
+              <div className="space-y-3 rounded-lg border p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <Label className="text-base">{copy.userAccess}</Label>
+                    <p className="text-sm text-muted-foreground mt-1">{copy.userAccessHelp}</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button type="button" variant="outline" size="sm" onClick={() =>
+                      setFormData((current) => ({ ...current, permissions: USER_MODULES.map((module) => module.key) }))
+                    }>{copy.selectAll}</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() =>
+                      setFormData((current) => ({ ...current, permissions: [] }))
+                    }>{copy.clear}</Button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {USER_MODULES.map((module) => {
+                    const checked = formData.permissions.includes(module.key);
+                    return (
+                      <label key={module.key} className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 hover:bg-muted/50">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) => setFormData((current) => ({
                             ...current,
                             permissions: value
                               ? [...current.permissions, module.key]
                               : current.permissions.filter((key) => key !== module.key),
-                          }))
-                        }
-                      />
-                      <span className="text-sm font-medium">{moduleLabel(module)}</span>
-                    </label>
-                  );
-                })}
+                          }))}
+                        />
+                        <span className="text-sm font-medium">{moduleLabel(module)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">{copy.accessRecommendation}</p>
               </div>
-              <p className="text-xs text-muted-foreground">{copy.accessRecommendation}</p>
-            </div>
+            </TabsContent>
 
-            {!editingUser && (
-              <div>
-                <Label>{copy.password}</Label>
+            <TabsContent value="distribuicao" className="pt-4">
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <Label className="text-base">{copy.leadAssignmentTitle}</Label>
+                  <p className="text-sm text-muted-foreground mt-1">{copy.leadAssignmentHelp}</p>
+                </div>
+                <label className="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3">
+                  <Checkbox
+                    checked={formData.leadAssignmentEnabled}
+                    onCheckedChange={(value) => setFormData((current) => ({ ...current, leadAssignmentEnabled: value === true }))}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">{copy.leadAssignmentEnabled}</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">{copy.leadAssignmentEnabledHelp}</span>
+                  </span>
+                </label>
+
+                {formData.leadAssignmentEnabled && (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>{copy.cities}</Label>
+                        <Input
+                          value={formData.leadAssignmentCities}
+                          onChange={(event) => setFormData((current) => ({ ...current, leadAssignmentCities: event.target.value }))}
+                          placeholder={copy.citiesPlaceholder}
+                        />
+                      </div>
+                      <div>
+                        <Label>{copy.regions}</Label>
+                        <Input
+                          value={formData.leadAssignmentRegions}
+                          onChange={(event) => setFormData((current) => ({ ...current, leadAssignmentRegions: event.target.value }))}
+                          placeholder={copy.regionsPlaceholder}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{copy.territoryHelp}</p>
+                    <div>
+                      <Label>{copy.segments}</Label>
+                      <Input
+                        value={formData.leadAssignmentSegments}
+                        onChange={(event) => setFormData((current) => ({ ...current, leadAssignmentSegments: event.target.value }))}
+                        placeholder={copy.segmentsPlaceholder}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">{copy.segmentsHelp}</p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>{copy.baseAddress}</Label>
+                        <Input
+                          value={formData.leadAssignmentBaseAddress}
+                          onChange={(event) => setFormData((current) => ({ ...current, leadAssignmentBaseAddress: event.target.value }))}
+                          placeholder={copy.baseAddressPlaceholder}
+                        />
+                        {editingUser?.leadAssignmentLat != null && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {copy.currentPoint}: {Number(editingUser.leadAssignmentLat).toFixed(4)}, {Number(editingUser.leadAssignmentLng).toFixed(4)}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <Label>{copy.raioKm}</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={formData.leadAssignmentRaioKm}
+                          onChange={(event) => setFormData((current) => ({ ...current, leadAssignmentRaioKm: event.target.value }))}
+                          placeholder={copy.raioKmPlaceholder}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{copy.raioHelp}</p>
+                  </>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="seguranca" className="pt-4">
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="flex items-start gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                    <KeyRound className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <Label className="text-base">{editingUser ? copy.newPassword : copy.password}</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {editingUser ? copy.newPasswordHelp : copy.passwordRequiredDescription}
+                    </p>
+                  </div>
+                </div>
                 <Input
                   type="password"
                   value={formData.password}
-                  onChange={(e) =>
-                    setFormData((current) => ({ ...current, password: e.target.value }))
-                  }
+                  onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))}
                   placeholder={copy.passwordPlaceholder}
+                  autoFocus={dialogTab === "seguranca"}
                 />
               </div>
-            )}
-          </div>
+            </TabsContent>
+          </Tabs>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDialogOpen(false);
-                resetForm();
-              }}
-            >
-              {copy.cancel}
-            </Button>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{copy.cancel}</Button>
             <Button onClick={handleSubmit} disabled={createUser.isPending || updateUser.isPending}>
-              {(createUser.isPending || updateUser.isPending) && (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
+              {(createUser.isPending || updateUser.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingUser ? copy.saveChanges : copy.createUser}
             </Button>
           </DialogFooter>
@@ -1088,18 +1209,16 @@ export default function Usuarios() {
             <DialogTitle>{copy.newFunction}</DialogTitle>
             <DialogDescription>{copy.newFunctionDescription}</DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>{copy.functionName}</Label>
               <Input
                 value={newFunctionName}
-                onChange={(e) => setNewFunctionName(e.target.value)}
+                onChange={(event) => setNewFunctionName(event.target.value)}
                 placeholder={copy.functionNamePlaceholder}
                 autoFocus
               />
             </div>
-
             <div className="space-y-3 rounded-lg border p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1107,42 +1226,24 @@ export default function Usuarios() {
                   <p className="text-sm text-muted-foreground mt-1">{copy.defaultAccessHelp}</p>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setNewFunctionPermissions(USER_MODULES.map((module) => module.key))}
-                  >
+                  <Button type="button" variant="outline" size="sm" onClick={() => setNewFunctionPermissions(USER_MODULES.map((module) => module.key))}>
                     {copy.selectAll}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setNewFunctionPermissions([])}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setNewFunctionPermissions([])}>
                     {copy.clear}
                   </Button>
                 </div>
               </div>
-
               <div className="grid gap-2 sm:grid-cols-2">
                 {USER_MODULES.map((module) => {
                   const checked = newFunctionPermissions.includes(module.key);
                   return (
-                    <label
-                      key={module.key}
-                      className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 hover:bg-muted/50"
-                    >
+                    <label key={module.key} className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 hover:bg-muted/50">
                       <Checkbox
                         checked={checked}
-                        onCheckedChange={(value) =>
-                          setNewFunctionPermissions((current) =>
-                            value
-                              ? [...current, module.key]
-                              : current.filter((key) => key !== module.key),
-                          )
-                        }
+                        onCheckedChange={(value) => setNewFunctionPermissions((current) =>
+                          value ? [...current, module.key] : current.filter((key) => key !== module.key),
+                        )}
                       />
                       <span className="text-sm font-medium">{moduleLabel(module)}</span>
                     </label>
@@ -1151,14 +1252,8 @@ export default function Usuarios() {
               </div>
             </div>
           </div>
-
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setFunctionDialogOpen(false)}
-              disabled={creatingFunction}
-            >
+            <Button type="button" variant="outline" onClick={() => setFunctionDialogOpen(false)} disabled={creatingFunction}>
               {copy.cancel}
             </Button>
             <Button type="button" onClick={handleCreateFunction} disabled={creatingFunction}>
@@ -1168,6 +1263,28 @@ export default function Usuarios() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{copy.deleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {copy.deleteDescription(deleteTarget?.name ?? "")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{copy.cancel}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDelete}
+              disabled={deleteUser.isPending}
+            >
+              {deleteUser.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {copy.deleteAction}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
