@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-543",
+    "titulo": "Conectar oferta manual à estratégia do Gerador de Conteúdo",
+    "descricao": "a oferta digitada manualmente passa a alimentar o estado estratégico imediatamente, sem depender do clique em `+`; o Resumo da peça passa a refletir a oferta enquanto ela é digitada, usando o fluxo existente de `productNames`; a mesma oferta já segue no contexto enviado ao gerador de IA pelo fluxo atual do Content Studio; o botão `+` passa a servir para fixar a oferta atual e permitir cadastrar outra;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T12:54:51.000Z",
+    "pullRequest": 543
+  },
+  {
     "id": "pr-539",
     "titulo": "prévia antes de salvar e upload direto no Brand Kit",
     "descricao": "adiciona **Pré-visualizar** antes de liberar o salvamento do Brand Video Kit; mostra abertura, vídeo principal com logo/legenda/B-roll, encerramento e player da trilha usando os arquivos reais da Biblioteca; qualquer alteração após a prévia marca a visualização como desatualizada e exige atualização antes de salvar; adiciona **Upload** ao lado dos seletores de Logo, Intro, Outro e Trilha;",
