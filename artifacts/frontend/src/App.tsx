@@ -1,5 +1,6 @@
 import AppLegacy from "./AppLegacy";
 import AppRuntimeShell from "@/pages/app-runtime/AppRuntimeShell";
+import DevAgentOverlay from "@/components/admin/DevAgentOverlay";
 
 function runtimeAppId(pathname: string): string | null {
   const match = pathname.match(/^\/apps\/([^/?#]+)\/?$/);
@@ -14,5 +15,10 @@ function runtimeAppId(pathname: string): string | null {
 export default function App() {
   const appId = typeof window !== "undefined" ? runtimeAppId(window.location.pathname) : null;
   if (appId) return <AppRuntimeShell appId={appId} />;
-  return <AppLegacy />;
+  return (
+    <>
+      <AppLegacy />
+      <DevAgentOverlay />
+    </>
+  );
 }
