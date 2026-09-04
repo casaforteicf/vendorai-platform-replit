@@ -47,7 +47,7 @@ import { useMediaVideoHandoff } from "@/hooks/useMediaVideoHandoff";
 
 type Ratio = "9:16" | "16:9" | "1:1" | "4:5";
 type Quality = "720p" | "1080p";
-type ToolPanel = "media" | "text" | "cards" | "stickers" | "audio" | "captions" | "settings";
+type ToolPanel = "media" | "text" | "cards" | "stickers" | "audio" | "captions" | "ai" | "settings";
 type LayerType = "text" | "card" | "image";
 type MusicMode = "none" | "brand" | "library" | "upload" | "ai";
 type MusicBrandUse = "institutional" | "reels" | "ads" | "product" | "stories" | "presentation";
@@ -181,6 +181,26 @@ type BrandKitPayload = {
   } | null;
 };
 
+type AiEditSuggestion = {
+  id: string;
+  type: "sticker" | "cta" | "caption_motion" | "clip_motion";
+  start: number;
+  end: number;
+  reason: string;
+  layerId?: string;
+  clipId?: string;
+  text?: string;
+  emoji?: string;
+  motion?: CaptionMotion | ClipMotion;
+};
+
+type AiEditPlan = {
+  goal: string;
+  summary: string;
+  suggestions: AiEditSuggestion[];
+  source?: "ai" | "fallback";
+};
+
 type MusicRecommendationProfile = {
   targetUses: MusicBrandUse[];
   paidCampaign: boolean;
@@ -250,7 +270,16 @@ const TOOL_ITEMS: Array<{ id: ToolPanel; label: string; icon: typeof Film }> = [
   { id: "stickers", label: "Stickers", icon: WandSparkles },
   { id: "audio", label: "Áudio", icon: Music2 },
   { id: "captions", label: "Legendas", icon: Captions },
+  { id: "ai", label: "Assistente IA", icon: WandSparkles },
   { id: "settings", label: "Ajustes", icon: Settings2 },
+];
+
+const AI_EDIT_GOALS = [
+  { id: "commercial", label: "Mais comercial", hint: "Oferta, benefício e CTA com ritmo de venda" },
+  { id: "dynamic", label: "Mais dinâmico", hint: "Movimento, destaques e variação visual" },
+  { id: "reel", label: "Reel rápido", hint: "Gancho forte e retenção para vídeo curto" },
+  { id: "offer", label: "Destacar oferta", hint: "Preço, condição, urgência e chamada final" },
+  { id: "clean", label: "Profissional e clean", hint: "Ênfases discretas e acabamento institucional" },
 ];
 
 const CARD_TEMPLATES = [
@@ -993,6 +1022,11 @@ export default function VideoTimelineEditor() {
   const [jobMessage, setJobMessage] = useState("");
   const [resultUrl, setResultUrl] = useState("");
   const [autoCaptionStyle, setAutoCaptionStyle] = useState<CaptionStylePreset>("impact");
+  const [aiGoal, setAiGoal] = useState("commercial");
+  const [aiInstructions, setAiInstructions] = useState("");
+  const [aiPlan, setAiPlan] = useState<AiEditPlan | null>(null);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [aiSelectedIds, setAiSelectedIds] = useState<Set<string>>(new Set());
 
   const [handoffFile, setHandoffFile] = useState<File | null>(null);
   const [handoffPreview, setHandoffPreview] = useState<string | null>(null);
@@ -1294,7 +1328,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 10,
+    editorVersion: 11,
     channel,
     ratio,
     quality,
@@ -1303,6 +1337,7 @@ export default function VideoTimelineEditor() {
     trimEnd: clips[0]?.trimOut ?? 0,
     clips: clips.map(({ localFile: _localFile, ...clip }) => clip),
     layers: layers.map(({ localFile: _localFile, ...layer }) => layer),
+    aiEditPlan: aiPlan,
     audio: {
       mode: musicMode,
       assetId: musicAssetId || null,
@@ -1319,7 +1354,7 @@ export default function VideoTimelineEditor() {
         showMarkers: showBeatMarkers,
       } : null,
     },
-  }), [channel, ratio, quality, clips, layers, musicMode, musicAssetId, musicVolume, originalVolume, musicStart, musicEnd, activeBeatAnalysis, beatStep, showBeatMarkers]);
+  }), [channel, ratio, quality, clips, layers, aiPlan, musicMode, musicAssetId, musicVolume, originalVolume, musicStart, musicEnd, activeBeatAnalysis, beatStep, showBeatMarkers]);
 
   const ensureProject = useCallback(async (): Promise<string> => {
     if (projectId) return projectId;
@@ -1474,6 +1509,11 @@ export default function VideoTimelineEditor() {
         if (context.channel) setChannel(context.channel);
         if (["9:16", "16:9", "1:1", "4:5"].includes(context.ratio)) setRatio(context.ratio);
         if (["720p", "1080p"].includes(context.quality)) setQuality(context.quality);
+        if (context.aiEditPlan && Array.isArray(context.aiEditPlan.suggestions)) {
+          const restoredPlan = context.aiEditPlan as AiEditPlan;
+          setAiPlan(restoredPlan);
+          setAiSelectedIds(new Set(restoredPlan.suggestions.map((item) => item.id)));
+        }
 
         let nextClips: VideoClip[] = [];
         if (Array.isArray(context.clips)) {
@@ -2624,6 +2664,154 @@ export default function VideoTimelineEditor() {
     }
   };
 
+
+
+  const analyzeVideoWithAi = async () => {
+    if (!tenantId || !clipsRef.current.length || aiAnalyzing) return;
+    const captions = layersRef.current
+      .filter((layer) => layer.contentKind === "caption" && layer.text.trim())
+      .sort((a, b) => a.start - b.start);
+    if (!captions.length) {
+      toast({ title: "A IA precisa entender a fala", description: "Gere as legendas inteligentes primeiro. Elas fornecem o texto e os tempos exatos para a análise." });
+      setTool("captions");
+      return;
+    }
+
+    setAiAnalyzing(true);
+    try {
+      const currentClips = clipsRef.current;
+      const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/ai-edit-plan`, {
+        method: "POST",
+        headers: tokenHeaders(true),
+        body: JSON.stringify({
+          goal: aiGoal,
+          instructions: aiInstructions.trim(),
+          channel,
+          ratio,
+          duration: projectDurationFor(currentClips),
+          clips: currentClips.map((clip, index) => ({
+            id: clip.id,
+            name: clip.name,
+            start: clipStartAt(index, currentClips),
+            end: clipStartAt(index, currentClips) + clipDuration(clip),
+          })),
+          captions: captions.map((layer) => ({ id: layer.id, start: layer.start, end: layer.end, text: layer.text })),
+        }),
+      });
+      const data = await response.json() as { plan?: AiEditPlan; error?: string };
+      if (!response.ok || !data.plan) throw new Error(data.error ?? "A IA não retornou um plano de edição");
+      setAiPlan(data.plan);
+      setAiSelectedIds(new Set(data.plan.suggestions.map((item) => item.id)));
+      toast({ title: "Plano de edição pronto", description: `${data.plan.suggestions.length} melhoria${data.plan.suggestions.length === 1 ? "" : "s"} encontrada${data.plan.suggestions.length === 1 ? "" : "s"}. Revise e aplique na timeline.` });
+    } catch (error) {
+      toast({ title: "Não foi possível analisar o vídeo", description: error instanceof Error ? error.message : "Tente novamente", variant: "destructive" });
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
+  const toggleAiSuggestion = (id: string) => {
+    setAiSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const applyAiEditPlan = () => {
+    if (!aiPlan) return;
+    const suggestions = aiPlan.suggestions.filter((item) => aiSelectedIds.has(item.id)).sort((a, b) => a.start - b.start);
+    if (!suggestions.length) {
+      toast({ title: "Selecione ao menos uma melhoria" });
+      return;
+    }
+
+    let nextClips = clipsRef.current.map((clip) => ({ ...clip }));
+    let nextLayers = layersRef.current.map((layer) => ({ ...layer, captionWords: layer.captionWords?.map((word) => ({ ...word })) }));
+
+    for (const suggestion of suggestions) {
+      if (suggestion.type === "caption_motion" && suggestion.layerId) {
+        nextLayers = nextLayers.map((layer) => layer.id === suggestion.layerId && layer.contentKind === "caption"
+          ? { ...layer, captionMotion: (suggestion.motion as CaptionMotion) || "word-pop" }
+          : layer);
+        continue;
+      }
+
+      if (suggestion.type === "sticker") {
+        const start = clamp(suggestion.start, 0, projectDurationFor(nextClips));
+        const end = clamp(Math.max(start + 0.4, suggestion.end), start + 0.4, projectDurationFor(nextClips));
+        nextLayers.push({
+          id: uid("ai-sticker"), type: "text", name: "Sticker · IA", text: suggestion.emoji || "✨",
+          start, end, x: 72, y: 12, width: 16, fontSize: 72, color: "#ffffff", background: "transparent",
+          opacity: 1, scale: 1, rotation: 0, easing: "ease-out", textAlign: "center", enterAnimation: "pop", exitAnimation: "fade", animationDuration: 0.2,
+          contentKind: "sticker",
+        });
+        continue;
+      }
+
+      if (suggestion.type === "cta") {
+        const start = clamp(suggestion.start, 0, projectDurationFor(nextClips));
+        const end = clamp(Math.max(start + 0.8, suggestion.end), start + 0.8, projectDurationFor(nextClips));
+        nextLayers.push({
+          id: uid("ai-cta"), type: "card", name: "CTA · IA", text: suggestion.text || "Fale com nossa equipe",
+          start, end, x: 8, y: 68, width: 84, fontSize: 36, color: "#ffffff", background: "#111827",
+          opacity: 0.94, scale: 1, rotation: 0, easing: "ease-in-out", textAlign: "center", enterAnimation: "slide-up", exitAnimation: "fade", animationDuration: 0.3,
+        });
+        continue;
+      }
+
+      if (suggestion.type === "clip_motion") {
+        const total = projectDurationFor(nextClips);
+        const start = clamp(suggestion.start, 0, Math.max(0, total - 0.1));
+        const end = clamp(Math.max(start + 0.5, suggestion.end), start + 0.5, total);
+        const located = locateClip(start, nextClips);
+        if (!located) continue;
+        const centerEndGlobal = Math.min(end, located.end);
+        const sourceStart = located.clip.trimIn + (start - located.start);
+        const sourceEnd = located.clip.trimIn + (centerEndGlobal - located.start);
+        if (sourceEnd - sourceStart < 0.25) continue;
+
+        const pieces: VideoClip[] = [];
+        if (sourceStart - located.clip.trimIn > 0.08) {
+          pieces.push({ ...located.clip, id: uid("clip-ai"), name: `${located.clip.name} · antes`, trimOut: sourceStart, transitionOut: "cut", motion: located.clip.motion ?? "none" });
+        }
+        pieces.push({
+          ...located.clip,
+          id: uid("clip-ai-focus"),
+          name: `${located.clip.name} · destaque IA`,
+          trimIn: sourceStart,
+          trimOut: sourceEnd,
+          transitionOut: "cut",
+          motion: (suggestion.motion as ClipMotion) || "zoom-in",
+        });
+        if (located.clip.trimOut - sourceEnd > 0.08) {
+          pieces.push({ ...located.clip, id: uid("clip-ai"), name: `${located.clip.name} · depois`, trimIn: sourceEnd });
+        } else if (pieces.length) {
+          const last = pieces[pieces.length - 1]!;
+          last.transitionOut = located.clip.transitionOut;
+          last.transitionDuration = located.clip.transitionDuration;
+        }
+        if (pieces.length > 1) {
+          const last = pieces[pieces.length - 1]!;
+          last.transitionOut = located.clip.transitionOut;
+          last.transitionDuration = located.clip.transitionDuration;
+        }
+        const replacement = [...nextClips];
+        replacement.splice(located.index, 1, ...pieces);
+        nextClips = replacement;
+      }
+    }
+
+    commitEditor(nextClips, nextLayers);
+    const active = locateClip(clamp(timelineTime, 0, Math.max(0, projectDurationFor(nextClips) - 0.001)), nextClips);
+    if (active) {
+      setActiveClipId(active.clip.id);
+      setSelectedClipId("");
+    }
+    setSelectedLayerId("");
+    toast({ title: "Melhorias aplicadas", description: `${suggestions.length} ajuste${suggestions.length === 1 ? "" : "s"} entrou${suggestions.length === 1 ? "" : "aram"} na timeline. Tudo continua editável e pode ser desfeito.` });
+  };
+
   const mediaImages = assets.filter((asset) => asset.type === "image");
   const mediaVideos = assets.filter((asset) => asset.type === "video");
   const ratioCss = ratio.replace(":", " / ");
@@ -2691,6 +2879,14 @@ export default function VideoTimelineEditor() {
   );
 
   const ToolContent = (() => {
+    if (tool === "ai") return <div className="space-y-4">
+      <div><p className="text-sm font-semibold">Assistente de edição IA</p><p className="text-xs text-muted-foreground">Analisa a fala e cria ajustes reais na timeline. Você revisa antes de aplicar.</p></div>
+      <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Objetivo</span><select value={aiGoal} onChange={(event) => setAiGoal(event.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm">{AI_EDIT_GOALS.map((goal) => <option key={goal.id} value={goal.id}>{goal.label}</option>)}</select><p className="text-[10px] text-muted-foreground">{AI_EDIT_GOALS.find((goal) => goal.id === aiGoal)?.hint}</p></label>
+      <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Orientação adicional · opcional</span><textarea value={aiInstructions} onChange={(event) => setAiInstructions(event.target.value)} rows={3} placeholder="Ex.: destaque a condição comercial e termine chamando para o WhatsApp" className="w-full resize-none rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:border-primary" /></label>
+      {!layers.some((layer) => layer.contentKind === "caption" && layer.text.trim()) && <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3"><p className="text-xs font-semibold">Transcrição necessária</p><p className="mt-1 text-[11px] text-muted-foreground">A IA usa as legendas sincronizadas para saber o que é dito e em qual segundo acontece.</p><button onClick={() => setTool("captions")} className="mt-2 rounded-lg border bg-background px-2.5 py-1.5 text-[10px] font-medium">Ir para Legendas</button></div>}
+      <button disabled={aiAnalyzing || !clips.length || !layers.some((layer) => layer.contentKind === "caption" && layer.text.trim())} onClick={() => void analyzeVideoWithAi()} className="w-full rounded-xl bg-foreground px-3 py-3 text-sm font-semibold text-background disabled:opacity-40">{aiAnalyzing ? <><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Analisando roteiro e timeline…</> : <><WandSparkles className="mr-2 inline h-4 w-4" />Analisar e sugerir</>}</button>
+      {aiPlan && <div className="space-y-3"><div className="rounded-xl border bg-primary/5 p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">Plano de edição</p><span className="rounded-full border bg-background px-2 py-0.5 text-[9px] text-muted-foreground">{aiPlan.source === "fallback" ? "Automação segura" : "IA"}</span></div><p className="mt-1 text-[11px] text-muted-foreground">{aiPlan.summary}</p></div><div className="max-h-72 space-y-2 overflow-y-auto pr-1">{aiPlan.suggestions.map((suggestion) => { const selected = aiSelectedIds.has(suggestion.id); const label = suggestion.type === "sticker" ? `Sticker ${suggestion.emoji || "✨"}` : suggestion.type === "cta" ? "CTA" : suggestion.type === "caption_motion" ? "Movimento da legenda" : "Zoom / câmera"; return <label key={suggestion.id} className={cn("flex cursor-pointer gap-2 rounded-xl border p-2.5", selected && "border-primary/40 bg-primary/5")}><input type="checkbox" checked={selected} onChange={() => toggleAiSuggestion(suggestion.id)} className="mt-0.5 accent-primary" /><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="text-[11px] font-semibold">{label}</span><span className="text-[9px] tabular-nums text-muted-foreground">{timeLabel(suggestion.start)}–{timeLabel(suggestion.end)}</span></span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{suggestion.reason}</span>{suggestion.type === "cta" && suggestion.text && <span className="mt-1 block rounded bg-background px-1.5 py-1 text-[10px] font-medium">{suggestion.text}</span>}</span></label>; })}</div><button disabled={aiSelectedIds.size === 0} onClick={applyAiEditPlan} className="w-full rounded-xl border border-primary bg-primary px-3 py-2.5 text-xs font-semibold text-primary-foreground disabled:opacity-40">Aplicar {aiSelectedIds.size} melhoria{aiSelectedIds.size === 1 ? "" : "s"} na timeline</button><p className="text-[10px] text-muted-foreground">Os ajustes viram clipes/camadas comuns. Você pode mover, editar, excluir ou usar Desfazer.</p></div>}
+    </div>;
     if (tool === "text") return <div className="space-y-3"><div><p className="text-sm font-semibold">Adicionar texto</p><p className="text-xs text-muted-foreground">Faixas escritas independentes sobre toda a sequência.</p></div><button onClick={() => addTextLayer("title")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-semibold">Título</p><p className="text-xs text-muted-foreground">Gancho ou headline principal</p></button><button onClick={() => addTextLayer("subtitle")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">Subtítulo</p><p className="text-xs text-muted-foreground">Mensagem de apoio e benefício</p></button><button onClick={() => addTextLayer("cta")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">CTA</p><p className="text-xs text-muted-foreground">WhatsApp, site ou chamada final</p></button></div>;
     if (tool === "cards") return <div className="space-y-3"><div><p className="text-sm font-semibold">Cards</p><p className="text-xs text-muted-foreground">Oferta, benefício e CTA no ponto atual da timeline.</p></div>{CARD_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCardLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40"><div className="h-12 rounded-lg p-2 text-xs font-bold" style={{ background: template.background, color: template.color }}>{template.text.split("\n").map((line) => <div key={line}>{line}</div>)}</div><p className="mt-2 text-xs font-medium">{template.name}</p></button>)}</div>;
     if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicTracks.length > 0 && <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.03] p-3"><div className="flex items-start gap-2"><WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-xs font-semibold">Recomendadas para este vídeo</p><p className="mt-0.5 text-[10px] text-muted-foreground">{musicRecommendationProfile.label} · {musicRecommendationProfile.bpmMin}–{musicRecommendationProfile.bpmMax} BPM · {musicRecommendationProfile.paidCampaign ? "mídia paga" : "uso orgânico"}</p></div></div>{recommendedMusicTracks.length > 0 ? <div className="space-y-2">{recommendedMusicTracks.map(({ track, reasons }, index) => { const metadata = metadataRecord(track); return <div key={track.id} className={cn("rounded-lg border bg-background p-2.5", musicAssetId === track.id && "border-primary bg-primary/5")}><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">#{index + 1}</span><p className="truncate text-xs font-medium">{assetName(track)}</p>{metadata.brandOfficial === true && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}</div><div className="mt-1.5 flex flex-wrap gap-1">{reasons.map((reason) => <span key={reason} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{reason}</span>)}</div><p className="mt-1.5 text-[9px] text-emerald-700 dark:text-emerald-300">{musicRecommendationProfile.paidCampaign ? "Direitos para mídia paga liberados" : "Direitos para uso orgânico liberados"}</p></div><button type="button" onClick={() => { setMusicMode("library"); setMusicAssetId(track.id); setMusicStart(0); setMusicEnd(Math.max(0.1, realProjectDuration)); toast({ title: "Trilha aplicada", description: `${assetName(track)} foi adicionada à timeline.` }); }} className="shrink-0 rounded-lg bg-primary px-2 py-1.5 text-[10px] font-semibold text-primary-foreground">Aplicar</button></div></div>; })}</div> : <div className="rounded-lg border border-dashed p-2.5 text-[10px] text-muted-foreground">Nenhuma trilha da biblioteca tem direitos compatíveis com este contexto. Ajuste o Passaporte de Direitos no Music Hub ou gere uma nova trilha.</div>}</div>}{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}{musicMode !== "none" && (selectedTrack || musicFile) && <div className="space-y-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-3"><div className="flex items-start gap-2"><Music2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><div className="min-w-0"><p className="text-xs font-semibold">Beat Sync</p><p className="mt-0.5 text-[10px] text-muted-foreground">Detecta o pulso da trilha e encaixa cortes/transições no ritmo sem alterar os originais.</p></div></div>{activeBeatAnalysis ? <div className="rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold tabular-nums">{activeBeatAnalysis.bpm.toFixed(1)} BPM</p><p className="text-[9px] text-muted-foreground">{activeBeatAnalysis.source === "audio" ? "Forma de onda analisada" : "BPM do Music Hub"} · fase {activeBeatAnalysis.offset.toFixed(2)}s</p></div><button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="rounded-lg border px-2 py-1 text-[9px] font-medium disabled:opacity-50">Reanalisar</button></div></div> : <button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="w-full rounded-lg bg-foreground px-3 py-2.5 text-xs font-semibold text-background disabled:opacity-50">{beatAnalyzing ? <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />Analisando batidas…</> : <><WandSparkles className="mr-1.5 inline h-3.5 w-3.5" />Detectar batidas</>}</button>}{activeBeatAnalysis && <><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Ritmo dos cortes</span><select value={beatStep} onChange={(event) => setBeatStep(Number(event.target.value) as BeatStep)} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value={1}>Cada batida</option><option value={2}>A cada 2 batidas</option><option value={4}>A cada 4 batidas</option></select></label><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Mostrar batidas na timeline</span><input type="checkbox" checked={showBeatMarkers} onChange={(event) => setShowBeatMarkers(event.target.checked)} className="accent-primary" /></label><button type="button" onClick={syncCutsToBeats} disabled={clips.length < 2} className="w-full rounded-lg bg-amber-600 px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-40"><Scissors className="mr-1.5 inline h-3.5 w-3.5" />Sincronizar cortes com batidas</button><p className="text-[9px] leading-relaxed text-muted-foreground">Ajuste seguro: cada corte move no máximo 0,42s e continua editável com Desfazer/Refazer.</p></>}</div>}<RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;

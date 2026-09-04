@@ -305,4 +305,154 @@ Não inclua instruções de edição nem próximos passos operacionais. O Vendor
   }
 );
 
+
+// ─── Assistente IA para edição não destrutiva de vídeo ───────────────────────
+
+type VideoAiSuggestionType = "sticker" | "cta" | "caption_motion" | "clip_motion";
+type VideoAiSuggestion = {
+  id: string;
+  type: VideoAiSuggestionType;
+  start: number;
+  end: number;
+  reason: string;
+  layerId?: string;
+  clipId?: string;
+  text?: string;
+  emoji?: string;
+  motion?: string;
+};
+
+type VideoAiInput = {
+  goal?: string;
+  instructions?: string;
+  channel?: string;
+  ratio?: string;
+  duration?: number;
+  clips?: Array<{ id: string; name?: string; start: number; end: number }>;
+  captions?: Array<{ id: string; start: number; end: number; text: string }>;
+};
+
+const CAPTION_AI_MOTIONS = new Set(["none", "word-pop", "word-bounce", "pulse", "karaoke"]);
+const CLIP_AI_MOTIONS = new Set(["zoom-in", "zoom-out", "pan-left", "pan-right"]);
+const AI_EDIT_GOAL_LABELS: Record<string, string> = {
+  commercial: "mais comercial, com benefício, oferta e CTA",
+  dynamic: "mais dinâmico, com retenção e variação visual",
+  reel: "Reel rápido, direto e com gancho forte",
+  offer: "destacar oferta, condição e chamada para ação",
+  clean: "profissional, clean e institucional",
+};
+
+function bounded(value: unknown, min: number, max: number): number {
+  const parsed = Number(value);
+  return Math.min(max, Math.max(min, Number.isFinite(parsed) ? parsed : min));
+}
+
+function extractJsonObject(raw: string): unknown {
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("Resposta da IA sem JSON válido");
+  return JSON.parse(cleaned.slice(start, end + 1));
+}
+
+function fallbackVideoEditPlan(input: Required<Pick<VideoAiInput, "goal" | "duration" | "clips" | "captions">>) {
+  const suggestions: VideoAiSuggestion[] = [];
+  const captions = input.captions;
+  const duration = input.duration;
+  const impact = captions.find((item) => /oferta|desconto|preço|valor|agora|hoje|benef[ií]cio|resultado|novo|novidade|garantia|econom/i.test(item.text)) ?? captions[0];
+  if (impact) {
+    suggestions.push({ id: `fallback-caption-${impact.id}`, type: "caption_motion", start: impact.start, end: impact.end, layerId: impact.id, motion: input.goal === "clean" ? "pulse" : "word-pop", reason: "Dá ênfase à frase mais relevante sem alterar o texto falado." });
+    if (input.goal !== "clean") suggestions.push({ id: `fallback-sticker-${impact.id}`, type: "sticker", start: impact.start, end: Math.min(duration, Math.max(impact.end, impact.start + 1.4)), emoji: input.goal === "offer" ? "💰" : "✨", reason: "Cria um ponto visual de atenção no trecho de maior intenção comercial." });
+  }
+  const firstClip = input.clips[0];
+  if (firstClip && firstClip.end - firstClip.start > 1.2) {
+    suggestions.push({ id: `fallback-motion-${firstClip.id}`, type: "clip_motion", start: firstClip.start, end: Math.min(firstClip.end, firstClip.start + 1.8), clipId: firstClip.id, motion: "zoom-in", reason: "Adiciona movimento curto no início para aumentar a retenção visual." });
+  }
+  if (duration > 1) {
+    suggestions.push({ id: "fallback-cta-final", type: "cta", start: Math.max(0, duration - 4), end: duration, text: "Fale com nossa equipe", reason: "Fecha o vídeo com uma chamada clara sem inventar condição comercial." });
+  }
+  return { goal: input.goal, summary: "Plano seguro criado a partir da timeline e da transcrição.", suggestions, source: "fallback" as const };
+}
+
+router.post("/tenants/:tenantId/content-studio/video/ai-edit-plan", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+
+  const input = (req.body ?? {}) as VideoAiInput;
+  const duration = bounded(input.duration, 0.1, 7_200);
+  const clips = Array.isArray(input.clips) ? input.clips.filter((item) => item && typeof item.id === "string").slice(0, 80) : [];
+  const captions = Array.isArray(input.captions)
+    ? input.captions.filter((item) => item && typeof item.id === "string" && typeof item.text === "string" && item.text.trim()).slice(0, 300)
+    : [];
+  if (!clips.length) { res.status(422).json({ error: "Adicione ao menos um clipe antes da análise." }); return; }
+  if (!captions.length) { res.status(422).json({ error: "Gere as legendas inteligentes antes da análise por IA." }); return; }
+
+  const goal = typeof input.goal === "string" && input.goal in AI_EDIT_GOAL_LABELS ? input.goal : "commercial";
+  const safeInstructions = typeof input.instructions === "string" ? input.instructions.trim().slice(0, 800) : "";
+  const captionIds = new Set(captions.map((item) => item.id));
+  const clipIds = new Set(clips.map((item) => item.id));
+  const transcript = captions.map((item) => `[${item.start.toFixed(2)}-${item.end.toFixed(2)}] (${item.id}) ${item.text}`).join("\n");
+  const clipMap = clips.map((item) => `[${item.start.toFixed(2)}-${item.end.toFixed(2)}] (${item.id}) ${item.name ?? "Clipe"}`).join("\n");
+
+  const fallback = fallbackVideoEditPlan({ goal, duration, clips, captions });
+  try {
+    const prompt = `Crie um plano de edição de vídeo NÃO DESTRUTIVO para o editor VendorAI.\n\nOBJETIVO: ${AI_EDIT_GOAL_LABELS[goal]}\nCANAL: ${String(input.channel ?? "reels")}\nFORMATO: ${String(input.ratio ?? "9:16")}\nDURAÇÃO: ${duration.toFixed(2)}s\nORIENTAÇÃO ADICIONAL: ${safeInstructions || "nenhuma"}\n\nCLIPES:\n${clipMap}\n\nTRANSCRIÇÃO SINCRONIZADA:\n${transcript}\n\nRetorne APENAS JSON válido, sem markdown, no formato:\n{\n  "summary": "resumo curto",\n  "suggestions": [\n    { "id":"s1", "type":"sticker", "start":1.2, "end":2.8, "emoji":"✨", "reason":"..." },\n    { "id":"s2", "type":"cta", "start":20, "end":24, "text":"texto curto", "reason":"..." },\n    { "id":"s3", "type":"caption_motion", "start":3, "end":5, "layerId":"id de legenda existente", "motion":"word-pop", "reason":"..." },\n    { "id":"s4", "type":"clip_motion", "start":5, "end":7, "clipId":"id de clipe existente", "motion":"zoom-in", "reason":"..." }\n  ]\n}\n\nREGRAS:\n- no máximo 8 sugestões; menos é melhor que exagerar;\n- use somente ids de clipes/legendas fornecidos;\n- caption_motion permitido: none, word-pop, word-bounce, pulse, karaoke;\n- clip_motion permitido: zoom-in, zoom-out, pan-left, pan-right;\n- stickers devem ser emojis simples e contextuais;\n- CTA deve usar apenas informação presente na fala/orientação. Se não houver CTA explícito, use uma chamada neutra como \"Fale com nossa equipe\";\n- nunca invente preço, desconto, prazo, garantia, prova social, telefone ou link;\n- não altere o conteúdo falado;\n- não aplique efeitos em todos os trechos: preserve respiro visual;\n- cada sugestão precisa explicar por que melhora retenção, clareza ou conversão.`;
+
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1800,
+      system: "Você é um editor profissional de vídeo curto dentro do VendorAI. Responda estritamente com JSON válido e nunca invente fatos comerciais.",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = message.content.filter((block) => block.type === "text").map((block) => (block as { type: "text"; text: string }).text).join("\n");
+    const parsed = extractJsonObject(raw) as { summary?: unknown; suggestions?: unknown };
+    const rawSuggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 8) : [];
+    const suggestions: VideoAiSuggestion[] = [];
+
+    for (let index = 0; index < rawSuggestions.length; index += 1) {
+      const candidate = rawSuggestions[index] as Record<string, unknown>;
+      const type = String(candidate.type ?? "") as VideoAiSuggestionType;
+      if (!["sticker", "cta", "caption_motion", "clip_motion"].includes(type)) continue;
+      const start = bounded(candidate.start, 0, duration);
+      const end = bounded(candidate.end, Math.min(duration, start + 0.1), duration);
+      if (end <= start) continue;
+      const suggestion: VideoAiSuggestion = {
+        id: typeof candidate.id === "string" && candidate.id.trim() ? candidate.id.trim().slice(0, 80) : `ai-${type}-${index + 1}`,
+        type,
+        start,
+        end,
+        reason: typeof candidate.reason === "string" ? candidate.reason.trim().slice(0, 240) : "Melhoria sugerida pela IA.",
+      };
+      if (type === "sticker") suggestion.emoji = typeof candidate.emoji === "string" ? candidate.emoji.trim().slice(0, 12) : "✨";
+      if (type === "cta") suggestion.text = typeof candidate.text === "string" && candidate.text.trim() ? candidate.text.trim().slice(0, 100) : "Fale com nossa equipe";
+      if (type === "caption_motion") {
+        const layerId = String(candidate.layerId ?? "");
+        const motion = String(candidate.motion ?? "word-pop");
+        if (!captionIds.has(layerId) || !CAPTION_AI_MOTIONS.has(motion)) continue;
+        suggestion.layerId = layerId;
+        suggestion.motion = motion;
+      }
+      if (type === "clip_motion") {
+        const clipId = String(candidate.clipId ?? "");
+        const motion = String(candidate.motion ?? "zoom-in");
+        if (!clipIds.has(clipId) || !CLIP_AI_MOTIONS.has(motion)) continue;
+        suggestion.clipId = clipId;
+        suggestion.motion = motion;
+      }
+      suggestions.push(suggestion);
+    }
+
+    if (!suggestions.length) {
+      res.json({ plan: fallback });
+      return;
+    }
+    res.json({ plan: { goal, summary: typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 320) : "Plano de edição criado a partir da fala e da timeline.", suggestions, source: "ai" } });
+  } catch (err) {
+    req.log.warn({ err, tenantId }, "content-studio: AI edit plan fell back to deterministic plan");
+    res.json({ plan: fallback });
+  }
+});
+
 export default router;
