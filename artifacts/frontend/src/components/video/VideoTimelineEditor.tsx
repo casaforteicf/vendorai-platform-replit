@@ -54,6 +54,23 @@ type JobStatus = "idle" | "rendering" | "processing" | "done" | "error";
 type LayerGestureMode = "move" | "trim-start" | "trim-end";
 type ClipGestureMode = "trim-in" | "trim-out";
 type StageGestureMode = "move" | "resize";
+type TransitionType = "cut" | "fade" | "zoom" | "slide-left" | "slide-right";
+type ClipMotion = "none" | "zoom-in" | "zoom-out" | "pan-left" | "pan-right";
+
+type LayerKeyframe = {
+  time: number;
+  x: number;
+  y: number;
+  width: number;
+  opacity: number;
+};
+
+type ClipVisualState = {
+  opacity: number;
+  scale: number;
+  translateX: number;
+  translateY: number;
+};
 
 type EditorLayer = {
   id: string;
@@ -69,6 +86,7 @@ type EditorLayer = {
   color: string;
   background: string;
   opacity: number;
+  keyframes?: LayerKeyframe[];
   url?: string;
   assetId?: string;
   localFile?: File;
@@ -83,6 +101,9 @@ type VideoClip = {
   sourceDuration: number;
   trimIn: number;
   trimOut: number;
+  transitionOut?: TransitionType;
+  transitionDuration?: number;
+  motion?: ClipMotion;
 };
 
 type EditorSnapshot = {
@@ -197,7 +218,7 @@ function projectDurationFor(clips: VideoClip[]): number {
 function cloneSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
   return {
     clips: snapshot.clips.map((clip) => ({ ...clip })),
-    layers: snapshot.layers.map((layer) => ({ ...layer })),
+    layers: snapshot.layers.map((layer) => ({ ...layer, keyframes: layer.keyframes?.map((frame) => ({ ...frame })) })),
   };
 }
 
@@ -229,6 +250,70 @@ function clipStartAt(index: number, clips: VideoClip[]): number {
   return clips.slice(0, index).reduce((sum, clip) => sum + clipDuration(clip), 0);
 }
 
+function transitionLabel(type: TransitionType | undefined): string {
+  if (type === "fade") return "Fade";
+  if (type === "zoom") return "Zoom";
+  if (type === "slide-left") return "Deslizar ←";
+  if (type === "slide-right") return "Deslizar →";
+  return "Corte seco";
+}
+
+function clipVisualState(index: number, time: number, clips: VideoClip[]): ClipVisualState {
+  const clip = clips[index];
+  if (!clip) return { opacity: 1, scale: 1, translateX: 0, translateY: 0 };
+  const start = clipStartAt(index, clips);
+  const duration = clipDuration(clip);
+  const local = clamp(time - start, 0, duration);
+  const progress = clamp(local / Math.max(0.1, duration), 0, 1);
+  const previous = clips[index - 1];
+  const entryType = previous?.transitionOut ?? "cut";
+  const exitType = clip.transitionOut ?? "cut";
+  const entryDuration = Math.min(duration / 2, Math.max(0.1, previous?.transitionDuration ?? 0.45));
+  const exitDuration = Math.min(duration / 2, Math.max(0.1, clip.transitionDuration ?? 0.45));
+  const entry = entryType === "cut" ? 1 : clamp(local / entryDuration, 0, 1);
+  const exit = exitType === "cut" ? 1 : clamp((duration - local) / exitDuration, 0, 1);
+  const state: ClipVisualState = { opacity: 1, scale: 1, translateX: 0, translateY: 0 };
+
+  const applyTransition = (type: TransitionType, amount: number, entering: boolean) => {
+    if (type === "fade") state.opacity *= amount;
+    if (type === "zoom") state.scale *= entering ? 1.08 - 0.08 * amount : 1 + 0.08 * (1 - amount);
+    if (type === "slide-left") state.translateX += entering ? 0.12 * (1 - amount) : -0.12 * (1 - amount);
+    if (type === "slide-right") state.translateX += entering ? -0.12 * (1 - amount) : 0.12 * (1 - amount);
+  };
+
+  if (entryType !== "cut") applyTransition(entryType, entry, true);
+  if (exitType !== "cut") applyTransition(exitType, exit, false);
+
+  const motion = clip.motion ?? "none";
+  if (motion === "zoom-in") state.scale *= 1 + progress * 0.08;
+  if (motion === "zoom-out") state.scale *= 1.08 - progress * 0.08;
+  if (motion === "pan-left") state.translateX += 0.04 - progress * 0.08;
+  if (motion === "pan-right") state.translateX += -0.04 + progress * 0.08;
+  return state;
+}
+
+function resolveLayerAtTime(layer: EditorLayer, time: number): EditorLayer {
+  const frames = [...(layer.keyframes ?? [])].sort((a, b) => a.time - b.time);
+  if (!frames.length) return layer;
+  if (time <= frames[0]!.time) return { ...layer, ...frames[0] };
+  if (time >= frames[frames.length - 1]!.time) return { ...layer, ...frames[frames.length - 1] };
+  for (let index = 0; index < frames.length - 1; index += 1) {
+    const left = frames[index];
+    const right = frames[index + 1];
+    if (!left || !right || time < left.time || time > right.time) continue;
+    const progress = clamp((time - left.time) / Math.max(0.001, right.time - left.time), 0, 1);
+    const lerp = (a: number, b: number) => a + (b - a) * progress;
+    return {
+      ...layer,
+      x: lerp(left.x, right.x),
+      y: lerp(left.y, right.y),
+      width: lerp(left.width, right.width),
+      opacity: lerp(left.opacity, right.opacity),
+    };
+  }
+  return layer;
+}
+
 function outputDimensions(ratio: Ratio, quality: Quality): { width: number; height: number } {
   const long = quality === "1080p" ? 1920 : 1280;
   const short = quality === "1080p" ? 1080 : 720;
@@ -238,7 +323,7 @@ function outputDimensions(ratio: Ratio, quality: Quality): { width: number; heig
   return { width: short, height: Math.round(short * 1.25) };
 }
 
-function drawContainedVideo(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, width: number, height: number) {
+function drawContainedVideo(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, width: number, height: number, visual?: ClipVisualState) {
   const videoRatio = (video.videoWidth || width) / (video.videoHeight || height);
   const canvasRatio = width / height;
   let dw = width;
@@ -252,9 +337,15 @@ function drawContainedVideo(ctx: CanvasRenderingContext2D, video: HTMLVideoEleme
     dw = height * videoRatio;
     dx = (width - dw) / 2;
   }
+  const state = visual ?? { opacity: 1, scale: 1, translateX: 0, translateY: 0 };
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(video, dx, dy, dw, dh);
+  ctx.save();
+  ctx.globalAlpha = clamp(state.opacity, 0, 1);
+  ctx.translate(width / 2 + width * state.translateX, height / 2 + height * state.translateY);
+  ctx.scale(state.scale, state.scale);
+  ctx.drawImage(video, dx - width / 2, dy - height / 2, dw, dh);
+  ctx.restore();
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -587,7 +678,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 4,
+    editorVersion: 5,
     channel,
     ratio,
     quality,
@@ -721,6 +812,9 @@ export default function VideoTimelineEditor() {
               sourceDuration,
               trimIn,
               trimOut,
+              transitionOut: (["cut", "fade", "zoom", "slide-left", "slide-right"] as string[]).includes(String(raw.transitionOut)) ? raw.transitionOut as TransitionType : "cut",
+              transitionDuration: clamp(Number(raw.transitionDuration) || 0.45, 0.1, 1.5),
+              motion: (["none", "zoom-in", "zoom-out", "pan-left", "pan-right"] as string[]).includes(String(raw.motion)) ? raw.motion as ClipMotion : "none",
             };
           }).filter((clip: VideoClip) => Boolean(clip.url));
         }
@@ -738,10 +832,22 @@ export default function VideoTimelineEditor() {
               sourceDuration: legacyEnd,
               trimIn: legacyStart,
               trimOut: legacyEnd,
+              transitionOut: "cut",
+              transitionDuration: 0.45,
+              motion: "none",
             }];
           }
         }
-        const nextLayers = Array.isArray(context.layers) ? context.layers as EditorLayer[] : [];
+        const nextLayers = Array.isArray(context.layers) ? (context.layers as EditorLayer[]).map((layer) => ({
+          ...layer,
+          keyframes: Array.isArray(layer.keyframes) ? layer.keyframes.map((frame) => ({
+            time: Number(frame.time) || 0,
+            x: Number(frame.x) || 0,
+            y: Number(frame.y) || 0,
+            width: Number(frame.width) || 10,
+            opacity: Number.isFinite(Number(frame.opacity)) ? Number(frame.opacity) : 1,
+          })).sort((a, b) => a.time - b.time) : [],
+        })) : [];
         resetEditorHistory(nextClips, nextLayers);
         setActiveClipId(nextClips[0]?.id ?? "");
         setSelectedClipId(nextClips[0]?.id ?? "");
@@ -821,6 +927,9 @@ export default function VideoTimelineEditor() {
       sourceDuration: duration,
       trimIn: 0,
       trimOut: duration,
+      transitionOut: "cut",
+      transitionDuration: 0.45,
+      motion: "none",
     };
     commitEditor([...clipsRef.current, clip], layersRef.current);
     setActiveClipId((current) => current || clip.id);
@@ -957,6 +1066,25 @@ export default function VideoTimelineEditor() {
     const next = clipsRef.current.map((clip) => clip.id === selectedClipId ? { ...clip, ...patch } : clip);
     commitEditor(next, layersRef.current);
   };
+
+  const addLayerKeyframe = useCallback(() => {
+    const layer = layersRef.current.find((item) => item.id === selectedLayerId);
+    if (!layer) return;
+    const time = clamp(timelineTime, layer.start, layer.end);
+    const frame: LayerKeyframe = { time, x: layer.x, y: layer.y, width: layer.width, opacity: layer.opacity };
+    const frames = [...(layer.keyframes ?? [])].filter((item) => Math.abs(item.time - time) > 0.05);
+    frames.push(frame);
+    frames.sort((a, b) => a.time - b.time);
+    const nextLayers = layersRef.current.map((item) => item.id === layer.id ? { ...item, keyframes: frames } : item);
+    commitEditor(clipsRef.current, nextLayers);
+    toast({ title: "Keyframe adicionado", description: `Posição e aparência registradas em ${timeLabel(time)}.` });
+  }, [commitEditor, selectedLayerId, timelineTime, toast]);
+
+  const removeLayerKeyframe = useCallback((time: number) => {
+    if (!selectedLayerId) return;
+    const nextLayers = layersRef.current.map((item) => item.id === selectedLayerId ? { ...item, keyframes: (item.keyframes ?? []).filter((frame) => Math.abs(frame.time - time) > 0.01) } : item);
+    commitEditor(clipsRef.current, nextLayers);
+  }, [commitEditor, selectedLayerId]);
 
   const splitAtPlayhead = useCallback(() => {
     const located = locateClip(timelineTime, clipsRef.current);
@@ -1264,14 +1392,16 @@ export default function VideoTimelineEditor() {
       });
 
       const drawFrame = (globalTime: number) => {
-        drawContainedVideo(ctx, renderVideo, width, height);
+        const visualIndex = locateClip(globalTime, renderClips)?.index ?? 0;
+        drawContainedVideo(ctx, renderVideo, width, height, clipVisualState(visualIndex, globalTime, renderClips));
         for (const layer of renderLayers) {
           if (!layerIsVisible(layer, globalTime)) continue;
+          const resolvedLayer = resolveLayerAtTime(layer, globalTime);
           ctx.save();
-          ctx.globalAlpha = clamp(layer.opacity, 0, 1);
-          const x = width * layer.x / 100;
-          const y = height * layer.y / 100;
-          const maxWidth = width * layer.width / 100;
+          ctx.globalAlpha = clamp(resolvedLayer.opacity, 0, 1);
+          const x = width * resolvedLayer.x / 100;
+          const y = height * resolvedLayer.y / 100;
+          const maxWidth = width * resolvedLayer.width / 100;
           if (layer.type === "image") {
             const image = imageMap.get(layer.id);
             if (image) {
@@ -1422,6 +1552,10 @@ export default function VideoTimelineEditor() {
       <RangeField label="Largura" value={selectedLayer.width} min={10} max={Math.max(10, 100 - selectedLayer.x)} onChange={(value) => updateLayer({ width: value })} suffix="%" />
       {selectedLayer.type !== "image" && <RangeField label="Tamanho do texto" value={selectedLayer.fontSize} min={18} max={96} onChange={(value) => updateLayer({ fontSize: value })} />}
       <RangeField label="Opacidade" value={selectedLayer.opacity} min={0.1} max={1} step={0.05} onChange={(value) => updateLayer({ opacity: value })} />
+      <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
+        <div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold">Keyframes de movimento</p><p className="text-[10px] text-muted-foreground">Registre posição, tamanho e opacidade no cursor.</p></div><button onClick={addLayerKeyframe} className="rounded-lg border bg-background px-2 py-1.5 text-[10px] font-medium">+ Keyframe</button></div>
+        {(selectedLayer.keyframes ?? []).length ? <div className="flex flex-wrap gap-1.5">{(selectedLayer.keyframes ?? []).map((frame) => <div key={frame.time} className="inline-flex items-center overflow-hidden rounded-lg border bg-background"><button onClick={() => seekTimeline(frame.time)} className="px-2 py-1 text-[10px] font-medium">◆ {timeLabel(frame.time)}</button><button onClick={() => removeLayerKeyframe(frame.time)} className="border-l px-1.5 py-1 text-muted-foreground hover:text-destructive" title="Remover keyframe">×</button></div>)}</div> : <p className="text-[10px] text-muted-foreground">Mova o cursor, ajuste o elemento e clique em + Keyframe. Repita em outro momento para criar a animação.</p>}
+      </div>
       {selectedLayer.type !== "image" && <div className="grid grid-cols-2 gap-3"><label className="space-y-1.5"><span className="text-xs text-muted-foreground">Texto</span><input type="color" value={selectedLayer.color} onChange={(event) => updateLayer({ color: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label><label className="space-y-1.5"><span className="text-xs text-muted-foreground">Fundo</span><input type="color" value={selectedLayer.background || "#000000"} onChange={(event) => updateLayer({ background: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label></div>}
     </div>
   ) : selectedClip ? (
@@ -1430,11 +1564,17 @@ export default function VideoTimelineEditor() {
       <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Corte individual</p><p className="mt-1">O arquivo original não é alterado. O editor usa apenas o trecho definido abaixo.</p></div>
       <RangeField label="Entrada" value={selectedClip.trimIn} min={0} max={Math.max(0, selectedClip.trimOut - 0.1)} step={0.1} suffix="s" onChange={(value) => updateClip({ trimIn: value })} />
       <RangeField label="Saída" value={selectedClip.trimOut} min={Math.min(selectedClip.sourceDuration, selectedClip.trimIn + 0.1)} max={selectedClip.sourceDuration} step={0.1} suffix="s" onChange={(value) => updateClip({ trimOut: value })} />
+      <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+        <div><p className="text-xs font-semibold">Transição para o próximo clipe</p><p className="text-[10px] text-muted-foreground">Aparece no preview e também no MP4 final.</p></div>
+        <select value={selectedClip.transitionOut ?? "cut"} onChange={(event) => updateClip({ transitionOut: event.target.value as TransitionType })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs"><option value="cut">Corte seco</option><option value="fade">Fade</option><option value="zoom">Zoom</option><option value="slide-left">Deslizar para esquerda</option><option value="slide-right">Deslizar para direita</option></select>
+        {(selectedClip.transitionOut ?? "cut") !== "cut" && <RangeField label="Duração da transição" value={selectedClip.transitionDuration ?? 0.45} min={0.1} max={Math.max(0.1, Math.min(1.5, clipDuration(selectedClip) / 2))} step={0.05} suffix="s" onChange={(value) => updateClip({ transitionDuration: value })} />}
+        <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Movimento de câmera</span><select value={selectedClip.motion ?? "none"} onChange={(event) => updateClip({ motion: event.target.value as ClipMotion })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs"><option value="none">Sem movimento</option><option value="zoom-in">Zoom in suave</option><option value="zoom-out">Zoom out suave</option><option value="pan-left">Panorâmica para esquerda</option><option value="pan-right">Panorâmica para direita</option></select></label>
+      </div>
       <div className="grid grid-cols-2 gap-2"><button onClick={() => moveClip(selectedClip.id, -1)} disabled={clips.findIndex((clip) => clip.id === selectedClip.id) === 0} className="inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-2 text-xs disabled:opacity-30"><ChevronLeft className="h-3.5 w-3.5" />Mover antes</button><button onClick={() => moveClip(selectedClip.id, 1)} disabled={clips.findIndex((clip) => clip.id === selectedClip.id) === clips.length - 1} className="inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-2 text-xs disabled:opacity-30">Mover depois<ChevronRight className="h-3.5 w-3.5" /></button></div>
       <button onClick={() => { const index = clips.findIndex((clip) => clip.id === selectedClip.id); seekTimeline(clipStartAt(index, clips)); }} className="w-full rounded-lg border px-3 py-2 text-xs font-medium">Ir para o início deste clipe</button>
     </div>
   ) : (
-    <div className="space-y-4"><div><p className="text-sm font-semibold">Projeto</p><p className="text-xs text-muted-foreground">Selecione um clipe ou camada para editar.</p></div><div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground space-y-1.5"><p>• Adicione vários vídeos e organize a sequência.</p><p>• Corte ou divida cada clipe sem alterar o original.</p><p>• Textos, cards, imagens e áudio usam a timeline global.</p></div></div>
+    <div className="space-y-4"><div><p className="text-sm font-semibold">Projeto</p><p className="text-xs text-muted-foreground">Selecione um clipe ou camada para editar.</p></div><div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground space-y-1.5"><p>• Adicione vários vídeos e organize a sequência.</p><p>• Corte ou divida cada clipe sem alterar o original.</p><p>• Textos, cards, imagens e áudio usam a timeline global.</p><p>• Transições, movimentos de câmera e keyframes ficam no mesmo projeto.</p></div></div>
   );
 
   const ToolContent = (() => {
@@ -1453,7 +1593,8 @@ export default function VideoTimelineEditor() {
   ];
 
   const renderPreviewLayer = (layer: EditorLayer) => {
-    const style: CSSProperties = { position: "absolute", left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, opacity: layer.opacity };
+    const resolvedLayer = resolveLayerAtTime(layer, timelineTime);
+    const style: CSSProperties = { position: "absolute", left: `${resolvedLayer.x}%`, top: `${resolvedLayer.y}%`, width: `${resolvedLayer.width}%`, opacity: resolvedLayer.opacity };
     const selected = selectedLayerId === layer.id;
     return <div key={layer.id} style={style} className={cn("group touch-none select-none", selected && "z-20")} onPointerDown={(event) => startStageGesture(event, layer, "move")}>{layer.type === "image" ? <img src={layer.url} alt="" draggable={false} className={cn("block h-auto max-h-[85%] w-full object-contain", selected && "outline outline-2 outline-primary")} /> : <div style={{ color: layer.color, background: layer.type === "card" ? layer.background : "transparent", fontSize: `${Math.max(11, layer.fontSize * 0.38)}px`, whiteSpace: "pre-wrap" }} className={cn("rounded-lg p-2 font-bold leading-tight", selected && "outline outline-2 outline-primary")}>{layer.text}</div>}{selected && <button type="button" aria-label="Redimensionar camada" onPointerDown={(event) => startStageGesture(event, layer, "resize")} className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow" />}</div>;
   };
@@ -1485,7 +1626,7 @@ export default function VideoTimelineEditor() {
         <main className="flex min-w-0 flex-col bg-muted/20">
           <div className="flex flex-1 items-center justify-center p-4 lg:p-6">
             <div ref={previewStageRef} className="relative flex max-h-[540px] w-full max-w-3xl items-center justify-center overflow-hidden rounded-2xl bg-black shadow-xl" style={{ aspectRatio: ratioCss }}>
-              {activeClip ? <><video ref={previewRef} src={activeClip.url} className="h-full w-full object-contain" playsInline onLoadedMetadata={onPreviewLoadedMetadata} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={onPreviewTimeUpdate} /><div className="absolute inset-0">{layers.filter((layer) => layerIsVisible(layer, timelineTime)).map(renderPreviewLayer)}</div><div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-white backdrop-blur"><button onClick={togglePlayback}>{playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</button><span className="text-[11px] tabular-nums">{timeLabel(timelineTime)} / {timeLabel(realProjectDuration)}</span></div></> : <button onClick={() => videoInputRef.current?.click()} className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70 hover:text-white"><div className="rounded-2xl bg-white/10 p-4"><Upload className="h-7 w-7" /></div><div className="text-center"><p className="font-semibold">Adicione o primeiro clipe</p><p className="mt-1 text-xs text-white/50">Depois você pode adicionar, cortar, dividir e reorganizar outros vídeos.</p></div></button>}
+              {activeClip ? <><video ref={previewRef} src={activeClip.url} className="h-full w-full object-contain will-change-transform" style={(() => { const index = clips.findIndex((clip) => clip.id === activeClip.id); const visual = clipVisualState(Math.max(0, index), timelineTime, clips); return { opacity: visual.opacity, transform: `translate(${visual.translateX * 100}%, ${visual.translateY * 100}%) scale(${visual.scale})` }; })()} playsInline onLoadedMetadata={onPreviewLoadedMetadata} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={onPreviewTimeUpdate} /><div className="absolute inset-0">{layers.filter((layer) => layerIsVisible(layer, timelineTime)).map(renderPreviewLayer)}</div><div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-white backdrop-blur"><button onClick={togglePlayback}>{playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</button><span className="text-[11px] tabular-nums">{timeLabel(timelineTime)} / {timeLabel(realProjectDuration)}</span></div></> : <button onClick={() => videoInputRef.current?.click()} className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70 hover:text-white"><div className="rounded-2xl bg-white/10 p-4"><Upload className="h-7 w-7" /></div><div className="text-center"><p className="font-semibold">Adicione o primeiro clipe</p><p className="mt-1 text-xs text-white/50">Depois você pode adicionar, cortar, dividir e reorganizar outros vídeos.</p></div></button>}
             </div>
           </div>
           {(jobStatus !== "idle" || resultUrl) && <div className="border-t bg-background px-4 py-3"><div className={cn("flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2.5 text-sm", jobStatus === "error" ? "border-destructive/30 bg-destructive/5" : jobStatus === "done" ? "border-emerald-500/30 bg-emerald-500/5" : "bg-muted/30")}>{jobStatus === "rendering" || jobStatus === "processing" ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : jobStatus === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <X className="h-4 w-4 text-destructive" />}<span className="min-w-0 flex-1 text-xs">{jobMessage}</span>{resultUrl && <><a href={resultUrl} target="_blank" rel="noreferrer" className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium">Abrir resultado</a><button onClick={() => void applyAutomaticCaption()} className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium"><Captions className="mr-1 inline h-3.5 w-3.5" />Legendar</button></>}</div></div>}
@@ -1496,7 +1637,7 @@ export default function VideoTimelineEditor() {
       <section className="border-t bg-card">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2"><div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-muted-foreground" /><span className="text-xs font-semibold">Timeline</span><span className="text-[10px] text-muted-foreground">{clips.length} clipe{clips.length === 1 ? "" : "s"} · {layers.length} camada{layers.length === 1 ? "" : "s"}</span></div><div className="flex items-center gap-2"><button onClick={splitAtPlayhead} disabled={!canSplit} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium disabled:opacity-30"><Scissors className="h-3.5 w-3.5" />Dividir no cursor</button><button onClick={() => videoInputRef.current?.click()} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium"><Plus className="h-3.5 w-3.5" />Adicionar clipe</button></div></div>
         <div className="overflow-x-auto p-3"><div className="min-w-[900px]"><div className="mb-1 ml-28 grid grid-cols-5 text-[9px] text-muted-foreground">{[0, .25, .5, .75, 1].map((point) => <span key={point}>{timeLabel(realProjectDuration * point)}</span>)}</div><div className="space-y-1.5">
-          <div className="flex h-12 items-center"><div className="flex w-28 shrink-0 items-center gap-2 px-2 text-[11px] font-medium"><Film className="h-3.5 w-3.5" />Vídeo</div><div className="relative h-10 flex-1 rounded-md bg-muted" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seekTimeline((event.clientX - rect.left) / rect.width * realProjectDuration); }}>{clips.map((clip, index) => { const start = clipStartAt(index, clips); const width = clipDuration(clip) / projectDuration * 100; return <div key={clip.id} draggable onDragStart={() => { draggedClipIdRef.current = clip.id; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderClip(draggedClipIdRef.current, clip.id); draggedClipIdRef.current = ""; }} onClick={(event) => { event.stopPropagation(); selectClip(clip.id); seekTimeline(start); }} className={cn("absolute inset-y-1 cursor-grab select-none overflow-hidden rounded bg-slate-700/85 px-2 text-[10px] leading-8 text-white active:cursor-grabbing", selectedClipId === clip.id && "ring-2 ring-primary ring-offset-1")} style={{ left: `${start / projectDuration * 100}%`, width: `${Math.max(1.2, width)}%` }}><button type="button" aria-label="Cortar início do clipe" onPointerDown={(event) => startClipTrimGesture(event, clip, "trim-in")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/40" /><span className="pointer-events-none flex items-center gap-1 truncate px-1"><GripVertical className="h-3 w-3 shrink-0" />{index + 1}. {clip.name}</span><button type="button" aria-label="Cortar fim do clipe" onPointerDown={(event) => startClipTrimGesture(event, clip, "trim-out")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/40" /></div>; })}<div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-primary" style={{ left: `${realProjectDuration > 0 ? timelineTime / projectDuration * 100 : 0}%` }} /></div></div>
+          <div className="flex h-12 items-center"><div className="flex w-28 shrink-0 items-center gap-2 px-2 text-[11px] font-medium"><Film className="h-3.5 w-3.5" />Vídeo</div><div className="relative h-10 flex-1 rounded-md bg-muted" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seekTimeline((event.clientX - rect.left) / rect.width * realProjectDuration); }}>{clips.map((clip, index) => { const start = clipStartAt(index, clips); const width = clipDuration(clip) / projectDuration * 100; return <div key={clip.id} draggable onDragStart={() => { draggedClipIdRef.current = clip.id; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderClip(draggedClipIdRef.current, clip.id); draggedClipIdRef.current = ""; }} onClick={(event) => { event.stopPropagation(); selectClip(clip.id); seekTimeline(start); }} className={cn("absolute inset-y-1 cursor-grab select-none overflow-hidden rounded bg-slate-700/85 px-2 text-[10px] leading-8 text-white active:cursor-grabbing", selectedClipId === clip.id && "ring-2 ring-primary ring-offset-1")} style={{ left: `${start / projectDuration * 100}%`, width: `${Math.max(1.2, width)}%` }}><button type="button" aria-label="Cortar início do clipe" onPointerDown={(event) => startClipTrimGesture(event, clip, "trim-in")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/40" /><span className="pointer-events-none flex items-center gap-1 truncate px-1"><GripVertical className="h-3 w-3 shrink-0" />{index + 1}. {clip.name}{(clip.transitionOut ?? "cut") !== "cut" ? ` · ${transitionLabel(clip.transitionOut)}` : ""}</span>{(clip.transitionOut ?? "cut") !== "cut" && <span className="pointer-events-none absolute right-1 top-1 rounded bg-white/15 px-1 text-[8px] leading-4">↗</span>}<button type="button" aria-label="Cortar fim do clipe" onPointerDown={(event) => startClipTrimGesture(event, clip, "trim-out")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/40" /></div>; })}<div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-primary" style={{ left: `${realProjectDuration > 0 ? timelineTime / projectDuration * 100 : 0}%` }} /></div></div>
           {trackRows.map((row) => { const Icon = row.icon; return <div key={row.id} className="flex min-h-10 items-center"><div className="flex w-28 shrink-0 items-center gap-2 px-2 text-[11px] text-muted-foreground"><Icon className="h-3.5 w-3.5" />{row.label}</div><div className="relative h-8 flex-1 rounded-md bg-muted/70" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seekTimeline((event.clientX - rect.left) / rect.width * realProjectDuration); }}>{row.items.map(renderTimelineLayer)}<div className="pointer-events-none absolute inset-y-0 w-px bg-primary" style={{ left: `${realProjectDuration > 0 ? timelineTime / projectDuration * 100 : 0}%` }} /></div></div>; })}
           <div className="flex h-10 items-center"><div className="flex w-28 shrink-0 items-center gap-2 px-2 text-[11px] text-muted-foreground"><Volume2 className="h-3.5 w-3.5" />Áudio</div><div className="relative h-8 flex-1 rounded-md bg-muted/70">{musicMode !== "none" && <div className="absolute inset-y-1 rounded bg-amber-500/80 px-2 text-[10px] leading-6 text-white" style={{ left: `${clamp(musicStart / projectDuration * 100, 0, 100)}%`, width: `${Math.max(1, clamp((musicEnd - musicStart) / projectDuration * 100, 0, 100))}%` }}>{musicMode === "upload" ? (musicFile?.name ?? (selectedTrack ? assetName(selectedTrack) : "Áudio")) : selectedTrack ? assetName(selectedTrack) : musicMode === "brand" ? "Brand Kit" : "Trilha"}</div>}<div className="pointer-events-none absolute inset-y-0 w-px bg-primary" style={{ left: `${realProjectDuration > 0 ? timelineTime / projectDuration * 100 : 0}%` }} /></div></div>
         </div><div className="mt-3 flex items-center justify-between border-t pt-3 text-[10px] text-muted-foreground"><span>Arraste os clipes para reordenar · puxe as bordas para cortar · selecione e use “Dividir no cursor”.</span><span className="tabular-nums">Cursor {timeLabel(timelineTime)} / {timeLabel(realProjectDuration)}</span></div></div></div>
