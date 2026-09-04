@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-434",
+    "titulo": "criar Music Hub e integrar trilhas ao editor",
+    "descricao": "classifica áudios em música/trilha, locução, efeito sonoro, jingle, identidade sonora e outros; adiciona filtros e contadores específicos do Music Hub; permite definir o tipo já no upload sem duplicar ou mover fisicamente o arquivo; adiciona passaporte de direitos com origem, status, uso comercial, mídia paga, territórios, validade, atribuição e referência da licença;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T00:41:45.000Z",
+    "pullRequest": 434
+  },
+  {
     "id": "pr-387",
     "titulo": "adicionar seletor universal da Biblioteca",
     "descricao": "novo componente compartilhado `MediaAssetPicker`; busca assets do tenant atual na Biblioteca; permite filtrar tipos, pesquisar e limitar quantidade; retorna `media_asset` oficial, sem upload nem cópia;",
