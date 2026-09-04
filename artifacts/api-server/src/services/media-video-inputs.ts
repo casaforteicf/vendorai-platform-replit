@@ -17,7 +17,6 @@ export type MediaInputRole =
   | "environment"
   | "opening"
   | "closing"
-  | "logo"
   | "music"
   | "voiceover"
   | "sfx"
@@ -88,7 +87,7 @@ function normalizeRole(value: unknown, type: MediaInputType): MediaInputRole {
   if (type === "document") return "briefing";
   if (type === "audio") return raw === "music" || raw === "voiceover" || raw === "sfx" ? raw : "auto";
   const visual = new Set<MediaInputRole>([
-    "auto", "main_scene", "broll", "visual_reference", "product", "person", "environment", "opening", "closing", "logo",
+    "auto", "main_scene", "broll", "visual_reference", "product", "person", "environment", "opening", "closing",
   ]);
   return visual.has(raw) ? raw : "auto";
 }
@@ -156,7 +155,7 @@ export async function resolveVideoGenerationMediaInputs(input: {
   const result = await pool.query(
     `SELECT id, type, role, storage_url, original_filename, mime_type, metadata
        FROM media_assets
-      WHERE tenant_id = $1 AND id = ANY($2::text[])`,
+      WHERE tenant_id = $1 AND id::text = ANY($2::text[])`,
     [input.tenantId, uniqueIds],
   );
   const byId = new Map(result.rows.map((row) => [String(row.id), row]));
@@ -208,8 +207,7 @@ export async function resolveVideoGenerationMediaInputs(input: {
 export function visualGenerationInputs(inputs: ResolvedVideoGenerationMediaInput[]): ResolvedVideoGenerationMediaInput[] {
   return inputs.filter((item) =>
     (item.type === "image" || item.type === "video")
-    && item.role !== "visual_reference"
-    && item.role !== "logo",
+    && item.role !== "visual_reference",
   );
 }
 
