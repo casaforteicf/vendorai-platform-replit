@@ -4,8 +4,8 @@
  * O Planejador define o que deve acontecer no período; ele NÃO gera a peça final.
  * Cada linha vira uma tarefa de produção que o Gerador de Conteúdo executará depois.
  *
- * Regra importante: a cobertura de canais é determinística. A IA melhora títulos e
- * ângulos, mas nunca pode reduzir um plano multicanal a uma sequência só de Instagram.
+ * Regra importante: a cobertura de canais e a função de cada mídia são determinísticas.
+ * A IA melhora títulos e ângulos, mas não pode trocar o papel de Reels, Search, LP etc.
  */
 import {
   db,
@@ -18,14 +18,15 @@ import {
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { alignMediaChannelFunction, mediaActionFunction } from "./media-channel-functions.js";
 
 const VALID_TYPES = CONTENT_CALENDAR_TIPOS.join(" | ");
 const MAX_CALENDAR_ACTIONS = 90;
 
 const SYSTEM_PROMPT = `Você é o calendário estratégico do Planejador de Mídia do VendorAI.
-O plano já definiu campanhas, públicos, canais, frequência e objetivos. Sua função é melhorar títulos e ângulos de AÇÕES planejadas, sem produzir o material final.
+O plano já definiu campanhas, públicos, canais, frequência, formatos e a função oficial de cada mídia. Sua função é melhorar títulos e ângulos de AÇÕES planejadas, sem produzir o material final.
 
-Cada ação precisa ter um tema/título específico, canal, formato, campanha e pilar. Distribua os canais de acordo com a função de cada um no funil; não copie a mesma frase em todas as plataformas.
+Cada slot já chega com campanha, canal, formato/tipo e pilar funcional. RESPEITE esses campos. Não transforme Reels em peça de conversão direta quando o slot for descoberta; não trate Stories como Carrossel; não trate Google Search como mídia de awareness; não trate Landing Page como postagem; não transforme WhatsApp, E-mail ou SMS em cópia de social.
 
 REGRA DE SUTILEZA GEOGRÁFICA: quando uma campanha tiver região/bairro, isso orienta a segmentação, mas NÃO deve aparecer em todo título. Em geral, mencione a localização explicitamente em apenas 20–30% das ações. Aumente o uso em Google Search, SEO local e Landing Page; reduza em Reels, Feed, YouTube e conteúdo educativo. Nos demais materiais, trabalhe dor, benefício, comparação, prova, aplicação, produto e transformação sem repetir o nome do local.
 
@@ -33,17 +34,7 @@ Mídia paga pode permanecer ativa continuamente; represente marcos de lançament
 
 Tipos válidos: ${VALID_TYPES}.
 
-Retorne APENAS JSON válido (array), sem markdown:
-[
-  {
-    "diaOffset": 0,
-    "campanha": "nome exato da campanha",
-    "pilar": "dor | educação | produto | prova | autoridade | oferta | conversão | otimização",
-    "temaSugerido": "título/ação específica e natural",
-    "canal": "nome exato do canal",
-    "tipo": "um dos tipos válidos"
-  }
-]`;
+Retorne APENAS JSON válido (array), sem markdown. Mantenha campanha, canal, pilar e tipo do slot original; refine principalmente temaSugerido e, quando fizer sentido, diaOffset.`;
 
 export class ContentCalendarError extends Error {}
 
@@ -54,6 +45,8 @@ type PlannedAction = {
   temaSugerido: string;
   canal: string;
   tipo: ContentCalendarTipo;
+  formato: string;
+  funcao: string;
 };
 
 type PlannerCampaign = Pick<
@@ -83,20 +76,20 @@ function normalizeKey(value: string): string {
 
 function inferType(canal: string, formatos: string[] = [], index = 0): ContentCalendarTipo {
   const haystack = normalizeKey(`${canal} ${formatos.join(" ")}`);
-  if (haystack.includes("performance max") || haystack.includes("pmax")) return "performance_max";
-  if (haystack.includes("google search") || haystack.includes("pesquisa") || haystack.includes("search ad")) return "search_ad";
+  if (haystack.includes("performance max") || haystack.includes("pmax") || haystack.includes("grupo de ativos")) return "performance_max";
+  if (haystack.includes("google search") || haystack.includes("pesquisa") || haystack.includes("search ad") || haystack.includes("anuncio de pesquisa")) return "search_ad";
   if (haystack.includes("display")) return "display_ad";
-  if (haystack.includes("meta ads") || haystack.includes("facebook ads")) return "meta_ad";
+  if (haystack.includes("meta ads") || haystack.includes("facebook ads") || haystack.includes("lead ads") || haystack.includes("stories ads")) return "meta_ad";
   if (haystack.includes("youtube short")) return "youtube_short";
-  if (haystack.includes("youtube")) return "youtube_video";
-  if (haystack.includes("tiktok")) return "tiktok";
-  if (haystack.includes("linkedin")) return "linkedin_post";
-  if (haystack.includes("whatsapp")) return "whatsapp";
-  if (haystack.includes("e-mail") || haystack.includes("email")) return "email";
-  if (haystack.includes("blog") || haystack.includes("seo")) return "blog";
-  if (haystack.includes("landing")) return "landing_page";
-  if (haystack.includes("site")) return "site";
-  if (haystack.includes("sms")) return "sms";
+  if (haystack.includes("youtube") || haystack.includes("in-stream")) return "youtube_video";
+  if (haystack.includes("tiktok") || haystack.includes("ugc") || haystack.includes("spark ads")) return "tiktok";
+  if (haystack.includes("linkedin") || haystack.includes("documento")) return "linkedin_post";
+  if (haystack.includes("whatsapp") || haystack.includes("qualificacao") || haystack.includes("follow-up") || haystack.includes("recuperacao")) return "whatsapp";
+  if (haystack.includes("e-mail") || haystack.includes("email") || haystack.includes("nutricao") || haystack.includes("reativacao")) return "email";
+  if (haystack.includes("blog") || haystack.includes("seo") || haystack.includes("artigo") || haystack.includes("pagina local") || haystack.includes("comparativo")) return "blog";
+  if (haystack.includes("landing") || haystack.includes("headline a/b")) return "landing_page";
+  if (haystack.includes("site") || haystack.includes("pagina institucional") || haystack.includes("bloco de prova")) return "site";
+  if (haystack.includes("sms") || haystack.includes("lembrete") || haystack.includes("cta urgente")) return "sms";
   if (haystack.includes("stories")) return "stories";
   if (haystack.includes("reels")) return "reels";
   if (haystack.includes("carrossel")) return "carrossel";
@@ -104,92 +97,82 @@ function inferType(canal: string, formatos: string[] = [], index = 0): ContentCa
   return "feed";
 }
 
-function normalizeType(value: unknown, canal = "", formatos: string[] = [], index = 0): ContentCalendarTipo {
-  if (typeof value === "string" && (CONTENT_CALENDAR_TIPOS as readonly string[]).includes(value)) {
-    return value as ContentCalendarTipo;
-  }
-  return inferType(canal, formatos, index);
-}
-
-function pilarForChannel(canal: string, index: number): string {
-  const normalized = normalizeKey(canal);
-  if (normalized.includes("google") || normalized.includes("ads") || normalized.includes("performance") || normalized.includes("display")) {
-    return index % 3 === 0 ? "oferta" : index % 3 === 1 ? "conversão" : "otimização";
-  }
-  if (normalized.includes("whatsapp") || normalized.includes("email") || normalized.includes("sms")) {
-    return index % 2 === 0 ? "conversão" : "relacionamento";
-  }
-  if (normalized.includes("landing") || normalized.includes("site")) return index % 2 === 0 ? "conversão" : "prova";
-  if (normalized.includes("blog") || normalized.includes("seo")) return index % 2 === 0 ? "educação" : "autoridade";
-  return ["dor", "educação", "produto", "prova", "autoridade", "oferta"][index % 6]!;
-}
-
-function fallbackTitle(campaign: PlannerCampaign, channel: MediaPlanCampaignChannel, index: number): string {
+function fallbackTitle(
+  campaign: PlannerCampaign,
+  channel: MediaPlanCampaignChannel,
+  index: number,
+  formato: string,
+  funcao: string,
+): string {
   const n = index + 1;
   const normalized = normalizeKey(channel.canal);
   const message = campaign.mensagemCentral || campaign.objetivo;
   const offer = campaign.oferta || campaign.produtoServico;
-  if (normalized.includes("instagram")) return `${message} — peça ${n} para ${channel.formatos[index % Math.max(1, channel.formatos.length)] ?? "conteúdo social"}`;
-  if (normalized.includes("meta ads")) return `Criativo Meta ${n}: ${offer} com argumento de ${message}`;
-  if (normalized.includes("google search") || normalized === "google") return `Anúncio de busca ${n}: ${campaign.produtoServico} para intenção de alta conversão`;
-  if (normalized.includes("display")) return `Variação Display ${n}: ${message}`;
-  if (normalized.includes("performance")) return `Ativo Performance Max ${n}: ${campaign.produtoServico} + ${offer}`;
-  if (normalized.includes("youtube")) return `Vídeo ${n}: ${message}`;
-  if (normalized.includes("tiktok")) return `Vídeo curto ${n}: ${message}`;
-  if (normalized.includes("linkedin")) return `Conteúdo LinkedIn ${n}: ${message}`;
-  if (normalized.includes("whatsapp")) return `Mensagem WhatsApp ${n}: ${offer}`;
-  if (normalized.includes("e-mail") || normalized.includes("email")) return `E-mail ${n}: ${message} — CTA para ${offer}`;
-  if (normalized.includes("blog") || normalized.includes("seo")) return `Conteúdo SEO ${n}: ${campaign.produtoServico} — ${message}`;
-  if (normalized.includes("landing")) return `Variação de Landing Page ${n}: ${offer}`;
-  if (normalized.includes("site")) return `Ajuste de site ${n}: ${message}`;
-  if (normalized.includes("sms")) return `SMS ${n}: ${offer}`;
-  return `${channel.canal} · ação ${n}: ${message}`;
+  const action = funcao.split(":")[0]?.trim();
+  if (normalized.includes("instagram")) return `${formato} ${n}: ${message}${action ? ` — foco em ${action.toLowerCase()}` : ""}`;
+  if (normalized.includes("facebook") && !normalized.includes("ads")) return `${formato} ${n}: ${message}`;
+  if (normalized.includes("meta ads")) return `${formato} Meta ${n}: ${offer} com argumento de ${message}`;
+  if (normalized.includes("google search") || normalized === "google") return `${formato} ${n}: ${campaign.produtoServico} para intenção de alta conversão`;
+  if (normalized.includes("display")) return `${formato} ${n}: reforçar ${message}`;
+  if (normalized.includes("performance")) return `${formato} ${n}: ${campaign.produtoServico} + ${offer}`;
+  if (normalized.includes("youtube")) return `${formato} ${n}: ${message}`;
+  if (normalized.includes("tiktok")) return `${formato} ${n}: ${message}`;
+  if (normalized.includes("linkedin")) return `${formato} LinkedIn ${n}: ${message}`;
+  if (normalized.includes("whatsapp")) return `${formato} WhatsApp ${n}: ${offer}`;
+  if (normalized.includes("e-mail") || normalized.includes("email")) return `${formato} ${n}: ${message} — CTA para ${offer}`;
+  if (normalized.includes("blog") || normalized.includes("seo")) return `${formato} SEO ${n}: ${campaign.produtoServico} — ${message}`;
+  if (normalized.includes("landing")) return `${formato} ${n}: ${offer}`;
+  if (normalized.includes("site")) return `${formato} ${n}: ${message}`;
+  if (normalized.includes("sms")) return `${formato} ${n}: ${offer}`;
+  return `${channel.canal} · ${formato} ${n}: ${message}`;
 }
 
 function buildLegacyCampaign(plan: typeof mediaPlansTable.$inferSelect, semanas: number): PlannerCampaign {
-  const baseChannels = (plan.conteudo.canais ?? []).map<MediaPlanCampaignChannel>((channel, index) => ({
-    canal: channel.canal,
-    funcao: channel.motivo || "Apoiar o objetivo do período",
-    etapaFunil: index === 0 ? "aquisição" : index === 1 ? "consideração" : "conversão",
-    formatos: channel.tiposCampanhaSugeridos ?? [],
-    frequencia: normalizeKey(channel.canal).includes("ads") || normalizeKey(channel.canal).includes("google")
-      ? "contínuo com otimização por desempenho"
-      : "2 a 3 ações por semana",
-    quantidadeMateriais: Math.max(2, Math.min(12, semanas * 2)),
-    kpiPrincipal: "conversões / oportunidades",
-    percentualOrcamento: channel.percentualOrcamento,
-  }));
+  const baseChannels = (plan.conteudo.canais ?? []).map<MediaPlanCampaignChannel>((channel, index) =>
+    alignMediaChannelFunction({
+      canal: channel.canal,
+      funcao: channel.motivo || "Apoiar o objetivo do período",
+      etapaFunil: index === 0 ? "aquisição" : index === 1 ? "consideração" : "conversão",
+      formatos: channel.tiposCampanhaSugeridos ?? [],
+      frequencia: normalizeKey(channel.canal).includes("ads") || normalizeKey(channel.canal).includes("google")
+        ? "contínuo com otimização por desempenho"
+        : "2 a 3 ações por semana",
+      quantidadeMateriais: Math.max(2, Math.min(12, semanas * 2)),
+      kpiPrincipal: "conversões / oportunidades",
+      percentualOrcamento: channel.percentualOrcamento,
+    }, { phase: "aquisição e conversão", objective: "Executar a direção estratégica do plano" }),
+  );
 
   const channels = baseChannels.length > 0
     ? baseChannels
     : [
-        {
+        alignMediaChannelFunction({
           canal: "Instagram",
           funcao: "Descoberta e prova",
           etapaFunil: "consideração",
-          formatos: ["Reels", "Carrossel", "Stories"],
+          formatos: [],
           frequencia: "3 ações por semana",
           quantidadeMateriais: Math.max(4, semanas * 3),
           kpiPrincipal: "engajamento qualificado",
-        },
-        {
+        }, { phase: "aquisição e conversão" }),
+        alignMediaChannelFunction({
           canal: "Google Search",
           funcao: "Captura de intenção",
           etapaFunil: "aquisição",
-          formatos: ["Anúncio de pesquisa"],
+          formatos: [],
           frequencia: "contínuo com otimização semanal",
           quantidadeMateriais: Math.max(3, semanas),
           kpiPrincipal: "CPL / conversões",
-        },
-        {
+        }, { phase: "aquisição e conversão" }),
+        alignMediaChannelFunction({
           canal: "WhatsApp",
           funcao: "Conversão e continuidade comercial",
           etapaFunil: "conversão",
-          formatos: ["Mensagem", "Follow-up"],
+          formatos: [],
           frequencia: "por comportamento e estágio do lead",
           quantidadeMateriais: Math.max(3, semanas),
           kpiPrincipal: "taxa de resposta / conversão",
-        },
+        }, { phase: "aquisição e conversão" }),
       ];
 
   return {
@@ -248,13 +231,17 @@ function buildDeterministicActions(campaigns: PlannerCampaign[], periodoDias: nu
     const duration = Math.max(1, Math.min(periodoDias - start, campaign.duracaoDias ?? periodoDias));
     for (let index = 0; index < count; index += 1) {
       const withinCampaign = count <= 1 ? 0 : Math.round((index * Math.max(0, duration - 1)) / (count - 1));
+      const formato = channel.formatos[index % Math.max(1, channel.formatos.length)] ?? channel.canal;
+      const role = mediaActionFunction(channel.canal, formato, index);
       actions.push({
         diaOffset: Math.min(periodoDias - 1, start + withinCampaign),
         campanha: campaign.nome,
-        pilar: pilarForChannel(channel.canal, index),
-        temaSugerido: fallbackTitle(campaign, channel, index),
+        pilar: role.pilar,
+        temaSugerido: fallbackTitle(campaign, channel, index, formato, role.funcao),
         canal: channel.canal,
-        tipo: inferType(channel.canal, channel.formatos, index),
+        tipo: inferType(channel.canal, [formato], index),
+        formato,
+        funcao: role.funcao,
       });
     }
   }
@@ -289,9 +276,10 @@ function overlayAiActions(base: PlannedAction[], rawAi: unknown): PlannedAction[
     result[index] = {
       ...current,
       diaOffset: Number.isFinite(Number(item.diaOffset)) ? Math.max(0, Math.round(Number(item.diaOffset))) : current.diaOffset,
-      pilar: typeof item.pilar === "string" && item.pilar.trim() ? item.pilar.trim() : current.pilar,
       temaSugerido: item.temaSugerido.trim(),
-      tipo: normalizeType(item.tipo, current.canal, [], index),
+      // A IA não troca pilar/tipo: eles vêm da função oficial da mídia.
+      pilar: current.pilar,
+      tipo: current.tipo,
     };
   }
 
@@ -310,8 +298,6 @@ export async function generateContentCalendar(
   }
 
   if (options.substituirPlanejado) {
-    // Preserva tudo que o usuário já aprovou, recusou, gerou ou publicou.
-    // Só reestrutura as sugestões ainda pendentes do Planejador.
     await db
       .delete(contentCalendarItemsTable)
       .where(
@@ -377,7 +363,7 @@ export async function generateContentCalendar(
               canais: campaign.canais,
             })),
             amostraDeSlotsParaRefinar: baseActions.slice(0, representativeLimit),
-            instrucao: `Refine até ${representativeLimit} slots mantendo exatamente campanha e canal. Não remova canais.`,
+            instrucao: `Refine até ${representativeLimit} slots mantendo exatamente campanha, canal, formato, função, pilar e tipo. Não remova canais nem mude a função da mídia.`,
           }),
         },
       ],
@@ -389,8 +375,6 @@ export async function generateContentCalendar(
       actions = overlayAiActions(baseActions, parsed);
     }
   } catch {
-    // O calendário determinístico já é completo. Falha da IA não pode
-    // devolver o sistema para Instagram-only nem bloquear o planejamento.
     actions = baseActions;
   }
 

@@ -3,7 +3,8 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, contentCalendarItemsTable, mediaPlansTable, type MediaPlanConteudo } from "@workspace/db";
 import { generateMediaPlan, MediaPlanError } from "../services/media-plan.js";
-import { enrichMediaPlanForPeriod } from "../services/media-plan-period.js";
+import { alignMediaFunctionsInContent, enrichMediaPlanForPeriod } from "../services/media-plan-period.js";
+import { MEDIA_FUNCTION_VERSION } from "../services/media-channel-functions.js";
 
 const router: IRouter = Router();
 
@@ -74,13 +75,31 @@ router.get("/tenants/:tenantId/media-plan", async (req, res) => {
     .where(eq(mediaPlansTable.tenantId, tenantId))
     .orderBy(desc(mediaPlansTable.createdAt))
     .limit(1);
-  res.json(latest ?? null);
+
+  if (!latest) {
+    res.json(null);
+    return;
+  }
+
+  // Adequa planos já salvos sem replanejar campanhas, trocar mensagens ou
+  // mexer no status de aprovação. Só corrige a função operacional de cada mídia.
+  if ((latest.conteudo.campanhas?.length ?? 0) > 0 && latest.conteudo.versaoFuncoesMidia !== MEDIA_FUNCTION_VERSION) {
+    const conteudo = alignMediaFunctionsInContent(latest.conteudo);
+    const [updated] = await db
+      .update(mediaPlansTable)
+      .set({ conteudo })
+      .where(eq(mediaPlansTable.id, latest.id))
+      .returning();
+    res.json(updated ?? { ...latest, conteudo });
+    return;
+  }
+
+  res.json(latest);
 });
 
 // Atualiza, no próprio registro, planos criados antes da estrutura 30/60/90
-// ou planos que a IA tenha deixado incompletos em termos de canais. Isso evita
-// descartar o planejamento salvo e corrige o caso visto em produção: "0 campanhas"
-// ou calendário reduzido a Instagram.
+// ou planos que a IA tenha deixado incompletos em termos de canais. Se o plano
+// já for multicanal, apenas adequa as funções oficiais sem replanejar a estratégia.
 const completeBodySchema = z.object({
   periodoDias: periodSchema.optional(),
 });
@@ -107,12 +126,22 @@ router.post("/tenants/:tenantId/media-plan/:planId/completar", async (req, res) 
     return;
   }
 
-  if (hasRequiredMultichannelCoverage(existing.conteudo)) {
-    res.json(existing);
-    return;
-  }
-
   try {
+    if (hasRequiredMultichannelCoverage(existing.conteudo)) {
+      if (existing.conteudo.versaoFuncoesMidia === MEDIA_FUNCTION_VERSION) {
+        res.json(existing);
+        return;
+      }
+      const conteudo = alignMediaFunctionsInContent(existing.conteudo);
+      const [updated] = await db
+        .update(mediaPlansTable)
+        .set({ conteudo })
+        .where(eq(mediaPlansTable.id, existing.id))
+        .returning();
+      res.json(updated ?? { ...existing, conteudo });
+      return;
+    }
+
     const periodoDias = parsed.data.periodoDias ?? existing.conteudo.periodoDias ?? 30;
     const conteudo = await enrichMediaPlanForPeriod(tenantId, existing.conteudo, periodoDias);
     const [updated] = await db
@@ -153,10 +182,11 @@ router.patch("/tenants/:tenantId/media-plan/:planId", async (req, res) => {
     return;
   }
 
-  const nextConteudo = {
+  let nextConteudo = {
     ...existing.conteudo,
     ...(parsed.data.patch ?? {}),
   } as MediaPlanConteudo;
+  nextConteudo = alignMediaFunctionsInContent(nextConteudo);
 
   if (parsed.data.aprovar === true) {
     if (!hasRequiredMultichannelCoverage(nextConteudo)) {
@@ -179,8 +209,6 @@ router.patch("/tenants/:tenantId/media-plan/:planId", async (req, res) => {
     .returning();
 
   if (parsed.data.aprovar === true) {
-    // Aprovar o plano inteiro aprova automaticamente todas as ações que ainda
-    // estavam pendentes. Itens recusados continuam recusados e são preservados.
     await db
       .update(contentCalendarItemsTable)
       .set({ status: "aprovado", updatedAt: new Date() })
