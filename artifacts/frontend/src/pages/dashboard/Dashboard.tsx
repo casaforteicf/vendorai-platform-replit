@@ -8,6 +8,12 @@ type OfficialMetrics = CommandCenterProps["data"];
 type ExecutiveSnapshot = CommandCenterProps["executive"];
 type AgentConfigItem = { ativo?: boolean };
 
+function calendarDateForDisplay(value?: string) {
+  if (!value) return value;
+  const datePart = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  return datePart ? `${datePart}T12:00:00` : value;
+}
+
 export default function Dashboard() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -55,7 +61,19 @@ export default function Dashboard() {
     ]).then(([officialResult, executiveResult, agentsResult]) => {
       if (cancelled) return;
 
-      setOfficial(officialResult.status === "fulfilled" ? officialResult.value as OfficialMetrics : null);
+      if (officialResult.status === "fulfilled") {
+        const metrics = officialResult.value as NonNullable<OfficialMetrics>;
+        setOfficial({
+          ...metrics,
+          period: metrics.period ? {
+            ...metrics.period,
+            start: calendarDateForDisplay(metrics.period.start),
+            end: calendarDateForDisplay(metrics.period.end),
+          } : metrics.period,
+        });
+      } else {
+        setOfficial(null);
+      }
 
       if (executiveResult.status === "fulfilled") {
         const snapshot = executiveResult.value as NonNullable<ExecutiveSnapshot>;
@@ -83,17 +101,13 @@ export default function Dashboard() {
   }, [tenantId, token, refreshKey]);
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <BusinessGoalsDialog onChanged={refresh} />
-      </div>
-      <OfficialCommandCenter
-        data={official}
-        executive={executive}
-        loading={loading}
-        userName={user?.name ?? ""}
-        onRefresh={refresh}
-      />
-    </div>
+    <OfficialCommandCenter
+      data={official}
+      executive={executive}
+      loading={loading}
+      userName={user?.name ?? ""}
+      onRefresh={refresh}
+      goalsAction={<BusinessGoalsDialog onChanged={refresh} />}
+    />
   );
 }
