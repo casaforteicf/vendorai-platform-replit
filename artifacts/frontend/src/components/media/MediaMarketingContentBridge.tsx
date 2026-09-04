@@ -177,9 +177,9 @@ export function MediaMarketingContentBridge() {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold">Mídias do conteúdo</p>
+          <p className="text-xs font-semibold">Usar da Central de Mídias</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {assets.length > 0 ? `${assets.length} imagem(ns) escolhida(s) da Central de Mídias` : "Reutilize imagens já aprovadas antes de gerar o conteúdo"}
+            {assets.length > 0 ? `${assets.length} imagem(ns) selecionada(s)` : "Reutilize imagens já aprovadas"}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -189,7 +189,7 @@ export function MediaMarketingContentBridge() {
             </button>
           )}
           {mobile && (
-            <button type="button" onClick={() => setMobilePanelOpen(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Fechar mídias do conteúdo">
+            <button type="button" onClick={() => setMobilePanelOpen(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Fechar seleção de mídias">
               <X className="h-4 w-4" />
             </button>
           )}
@@ -219,10 +219,10 @@ export function MediaMarketingContentBridge() {
         className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-xl border bg-background text-xs font-medium hover:bg-muted"
       >
         <Library className="h-4 w-4" />
-        {assets.length > 0 ? "Trocar seleção da Biblioteca" : "Escolher da Biblioteca"}
+        {assets.length > 0 ? "Trocar seleção" : "Escolher na Central de Mídias"}
       </button>
       <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-        “Material do post” entra na peça final. “Referência visual” orienta a geração. Upload e geração por IA existentes continuam disponíveis normalmente.
+        Material do post entra na peça final; Referência visual orienta a geração. Upload e IA continuam disponíveis normalmente.
       </p>
     </>
   );
@@ -242,7 +242,7 @@ export function MediaMarketingContentBridge() {
         type="button"
         onClick={() => setMobilePanelOpen(true)}
         className="fixed bottom-4 left-4 z-[70] inline-flex h-11 items-center gap-2 rounded-full border bg-background/95 px-4 text-xs font-semibold shadow-lg backdrop-blur md:hidden"
-        aria-label="Abrir mídias do conteúdo"
+        aria-label="Abrir seleção de mídias"
       >
         <Library className="h-4 w-4" />
         Mídias
@@ -254,12 +254,12 @@ export function MediaMarketingContentBridge() {
       </button>
 
       {mobilePanelOpen && (
-        <div className="fixed inset-0 z-[90] md:hidden" role="dialog" aria-modal="true" aria-label="Mídias do conteúdo">
+        <div className="fixed inset-0 z-[90] md:hidden" role="dialog" aria-modal="true" aria-label="Selecionar mídias">
           <button
             type="button"
             className="absolute inset-0 bg-black/35"
             onClick={() => setMobilePanelOpen(false)}
-            aria-label="Fechar mídias do conteúdo"
+            aria-label="Fechar seleção de mídias"
           />
           <div className="absolute inset-x-3 bottom-3 max-h-[min(78dvh,560px)] overflow-y-auto rounded-2xl border bg-background p-4 shadow-2xl">
             {renderPanelContent(true)}
@@ -273,7 +273,7 @@ export function MediaMarketingContentBridge() {
         onOpenChange={setPickerOpen}
         allowedTypes={["image"]}
         maxSelection={10}
-        title="Escolher imagens para o conteúdo"
+        title="Escolher imagens"
         confirmLabel="Usar no Marketing"
         onConfirm={setAssets}
       />
