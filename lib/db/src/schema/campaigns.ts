@@ -28,6 +28,11 @@ export const numericFilterSchema = z.union([
   }),
 ]);
 
+/**
+ * Briefing mestre compartilhado entre campanhas, conteúdo, Ads e demais
+ * superfícies de marketing. Os campos continuam opcionais para preservar
+ * campanhas legadas e permitir evolução sem migration (segmento_filtro é JSONB).
+ */
 export const campaignMarketingContextSchema = z.object({
   nicheId: z.string().optional(),
   nicheName: z.string().optional(),
@@ -38,6 +43,16 @@ export const campaignMarketingContextSchema = z.object({
   audienceSegment: z.string().optional(),
   audienceNiche: z.string().optional(),
   campaignGoal: z.string().optional(),
+  locationCity: z.string().optional(),
+  locationState: z.string().optional(),
+  locationRegion: z.string().optional(),
+  projectName: z.string().optional(),
+  specificDetails: z.string().optional(),
+  mandatoryDifferentiators: z.string().optional(),
+  restrictions: z.string().optional(),
+  primaryKpi: z.string().optional(),
+  researchEnabled: z.boolean().optional(),
+  seoTrackingEnabled: z.boolean().optional(),
 });
 
 export type CampaignMarketingContext = z.infer<typeof campaignMarketingContextSchema>;
@@ -72,6 +87,16 @@ export type CampaignContext = {
   audienceSegment?: string;
   audienceNiche?: string;
   campaignGoal?: string;
+  locationCity?: string;
+  locationState?: string;
+  locationRegion?: string;
+  projectName?: string;
+  specificDetails?: string;
+  mandatoryDifferentiators?: string;
+  restrictions?: string;
+  primaryKpi?: string;
+  researchEnabled?: boolean;
+  seoTrackingEnabled?: boolean;
   recommendedChannel?: "whatsapp" | "email" | "instagram";
   recommendedPaidPlatform?: "meta" | "google";
   adsHeadline?: string;
