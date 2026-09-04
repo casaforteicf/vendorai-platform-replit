@@ -267,19 +267,35 @@ function CampaignModal({
       mensagensEtapa: (editingCampaign.mensagensEtapa as Record<string, string>) ?? {},
       agendadaPara: editingCampaign.agendadaPara ? editingCampaign.agendadaPara.slice(0, 16) : "",
     });
-    const context = revenueScoutContext?.marketingContext ?? filtro.marketingContext;
+    const context = revenueScoutContext?.marketingContext
+      ?? filtro.marketingContext
+      ?? (editingCampaign as any)?.contexto?.marketingContext;
     if (context) {
       setMarketingContext({
         nicheId: context.nicheId ?? "",
         nicheName: context.nicheName ?? "",
-        productIds: context.productIds ?? [],
-        productNames: context.productNames ?? [],
+        productIds: Array.isArray(context.productIds) ? context.productIds : [],
+        productNames: Array.isArray(context.productNames) ? context.productNames : [],
         businessVertical: context.businessVertical,
         businessVerticalSlug: context.businessVerticalSlug,
         audienceSegment: context.audienceSegment,
         audienceNiche: context.audienceNiche,
         campaignGoal: context.campaignGoal,
+        locationCity: context.locationCity,
+        locationState: context.locationState,
+        locationRegion: context.locationRegion,
+        projectName: context.projectName,
+        specificDetails: context.specificDetails,
+        mandatoryDifferentiators: context.mandatoryDifferentiators,
+        restrictions: context.restrictions,
+        primaryKpi: context.primaryKpi,
+        researchEnabled: context.researchEnabled,
+        seoTrackingEnabled: context.seoTrackingEnabled,
+        campaignId: context.campaignId ?? editingCampaign.id,
+        campaignName: context.campaignName ?? editingCampaign.nome,
       });
+    } else {
+      setMarketingContext({ nicheId: "", nicheName: "", productIds: [], productNames: [] });
     }
   }, [open, editingCampaign?.id]);
 
