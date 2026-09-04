@@ -11,6 +11,7 @@ import appUserAuthRouter from "./app_user_auth";
 import appUserRuntimeRouter from "./app_user_runtime";
 import appUserDataSourcesRouter from "./app_user_data_sources";
 import appUserActionsRouter from "./app_user_actions";
+import appUserActionUiRouter from "./app_user_action_ui";
 
 const router: IRouter = Router();
 
@@ -21,6 +22,7 @@ router.use(appUserAuthRouter);
 router.use(appUserRuntimeRouter);
 router.use(appUserDataSourcesRouter);
 router.use(appUserActionsRouter);
+router.use(appUserActionUiRouter);
 
 const GENERIC_ICONS = [
   { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

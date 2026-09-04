@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle2, Info, LayoutGrid, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { AlertCircle, CheckCircle2, Info, LayoutGrid, Loader2, TriangleAlert, Zap } from "lucide-react";
 
 type JsonObject = Record<string, unknown>;
 
@@ -39,14 +42,45 @@ type RuntimeBlock = {
   props: JsonObject;
 };
 
+type ActionField = {
+  key: string;
+  label: string;
+  inputType: "text" | "email" | "tel" | "number" | "textarea";
+  placeholder?: string;
+  required?: boolean;
+};
+
+type RuntimeActionItem = {
+  id: string;
+  pageId: string;
+  kind: "cta" | "form";
+  actionKey: string;
+  title: string;
+  body?: string;
+  buttonLabel: string;
+  successMessage: string;
+  input?: JsonObject;
+  fields?: ActionField[];
+};
+
 type Props = {
   payload: RuntimePayload;
   lang: "pt" | "es";
 };
 
 const COPY = {
-  pt: { empty: "Nenhum conteúdo foi publicado para este perfil.", navigation: "Navegação" },
-  es: { empty: "No hay contenido publicado para este perfil.", navigation: "Navegación" },
+  pt: {
+    empty: "Nenhum conteúdo foi publicado para este perfil.",
+    navigation: "Navegação",
+    actionError: "Não foi possível concluir esta ação.",
+    saving: "Enviando...",
+  },
+  es: {
+    empty: "No hay contenido publicado para este perfil.",
+    navigation: "Navegación",
+    actionError: "No fue posible completar esta acción.",
+    saving: "Enviando...",
+  },
 } as const;
 
 function stringValue(value: unknown): string | undefined {
@@ -182,6 +216,48 @@ function RuntimeBlockView({ block }: { block: RuntimeBlock }) {
   );
 }
 
+function ActionCard({
+  item,
+  busy,
+  message,
+  values,
+  onValue,
+  onExecute,
+  copy,
+}: {
+  item: RuntimeActionItem;
+  busy: boolean;
+  message?: { ok: boolean; text: string };
+  values: Record<string, string>;
+  onValue: (key: string, value: string) => void;
+  onExecute: (input: JsonObject) => void;
+  copy: typeof COPY.pt | typeof COPY.es;
+}) {
+  if (item.kind === "cta") {
+    return (
+      <section className="rounded-2xl border bg-white p-5 shadow-sm sm:p-7">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0"><h3 className="text-lg font-semibold text-slate-950">{item.title}</h3>{item.body && <p className="mt-2 text-sm leading-6 text-slate-500">{item.body}</p>}</div>
+          <Button type="button" className="shrink-0" onClick={() => onExecute(item.input ?? {})} disabled={busy}>{busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{copy.saving}</> : <><Zap className="mr-2 h-4 w-4" />{item.buttonLabel}</>}</Button>
+        </div>
+        {message && <p className={`mt-4 rounded-lg px-3 py-2 text-xs ${message.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{message.text}</p>}
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border bg-white p-5 shadow-sm sm:p-7">
+      <h3 className="text-lg font-semibold text-slate-950">{item.title}</h3>
+      {item.body && <p className="mt-2 text-sm leading-6 text-slate-500">{item.body}</p>}
+      <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); const input = Object.fromEntries((item.fields ?? []).flatMap((field) => { const value = values[field.key]?.trim() ?? ""; return value ? [[field.key, field.inputType === "number" ? Number(value) : value]] : []; })); onExecute(input); }}>
+        {(item.fields ?? []).map((field) => <label key={field.key} className={field.inputType === "textarea" ? "sm:col-span-2" : ""}><span className="mb-1.5 block text-sm font-medium text-slate-700">{field.label}{field.required ? " *" : ""}</span>{field.inputType === "textarea" ? <Textarea value={values[field.key] ?? ""} onChange={(event) => onValue(field.key, event.target.value)} placeholder={field.placeholder} required={field.required} rows={4} /> : <Input type={field.inputType} value={values[field.key] ?? ""} onChange={(event) => onValue(field.key, event.target.value)} placeholder={field.placeholder} required={field.required} />}</label>)}
+        <div className="sm:col-span-2"><Button type="submit" disabled={busy}>{busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{copy.saving}</> : item.buttonLabel}</Button></div>
+      </form>
+      {message && <p className={`mt-4 rounded-lg px-3 py-2 text-xs ${message.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{message.text}</p>}
+    </section>
+  );
+}
+
 export default function SchemaRuntimeRenderer({ payload, lang }: Props) {
   const copy = COPY[lang];
   const pages = payload.runtime.pages ?? [];
@@ -195,12 +271,54 @@ export default function SchemaRuntimeRenderer({ payload, lang }: Props) {
     ? payload.runtime.defaultPageId
     : pages[0]?.id ?? "";
   const [selectedPageId, setSelectedPageId] = useState(initial);
+  const [actionItems, setActionItems] = useState<RuntimeActionItem[]>([]);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionMessages, setActionMessages] = useState<Record<string, { ok: boolean; text: string }>>({});
+  const [formValues, setFormValues] = useState<Record<string, Record<string, string>>>({});
 
   useEffect(() => {
     if (!selectedPageId || !availableIds.has(selectedPageId)) setSelectedPageId(initial);
   }, [availableIds, initial, selectedPageId]);
 
+  useEffect(() => {
+    let alive = true;
+    const token = typeof window !== "undefined" ? localStorage.getItem(`vendorai:app-user-session:${payload.app.id}`) : null;
+    if (!token) {
+      setActionItems([]);
+      return;
+    }
+    void fetch(`/api/app-runtime/apps/${encodeURIComponent(payload.app.id)}/action-ui`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) return { items: [] as RuntimeActionItem[] };
+        return response.json() as Promise<{ items?: RuntimeActionItem[] }>;
+      })
+      .then((result) => { if (alive) setActionItems(Array.isArray(result.items) ? result.items : []); })
+      .catch(() => { if (alive) setActionItems([]); });
+    return () => { alive = false; };
+  }, [payload.app.id, payload.publishedVersionId]);
+
   const page = pages.find((item) => item.id === selectedPageId) ?? pages[0];
+  const pageActions = useMemo(() => actionItems.filter((item) => item.pageId === page?.id), [actionItems, page?.id]);
+
+  async function executeAction(item: RuntimeActionItem, input: JsonObject) {
+    const token = localStorage.getItem(`vendorai:app-user-session:${payload.app.id}`);
+    if (!token) return;
+    setActionBusy(item.id);
+    setActionMessages((current) => ({ ...current, [item.id]: undefined as never }));
+    try {
+      const response = await fetch(`/api/app-runtime/apps/${encodeURIComponent(payload.app.id)}/actions/${encodeURIComponent(item.actionKey)}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ input }),
+      });
+      if (!response.ok) throw new Error("action_failed");
+      setActionMessages((current) => ({ ...current, [item.id]: { ok: true, text: item.successMessage } }));
+    } catch {
+      setActionMessages((current) => ({ ...current, [item.id]: { ok: false, text: copy.actionError } }));
+    } finally {
+      setActionBusy(null);
+    }
+  }
 
   if (!page) {
     return <div className="rounded-2xl border border-dashed bg-white p-10 text-center text-sm text-slate-500"><LayoutGrid className="mx-auto mb-3 h-6 w-6 text-slate-400" />{copy.empty}</div>;
@@ -212,28 +330,17 @@ export default function SchemaRuntimeRenderer({ payload, lang }: Props) {
         <nav aria-label={copy.navigation} className="overflow-x-auto rounded-2xl border bg-white p-2 shadow-sm">
           <div className="flex min-w-max gap-1">
             {navigation.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setSelectedPageId(item.pageId)}
-                className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${item.pageId === page.id ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}
-              >
-                {item.label}
-              </button>
+              <button key={item.id} type="button" onClick={() => setSelectedPageId(item.pageId)} className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${item.pageId === page.id ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{item.label}</button>
             ))}
           </div>
         </nav>
       )}
 
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{page.title}</h1>
-        {page.subtitle && <p className="mt-1 text-sm leading-6 text-slate-500">{page.subtitle}</p>}
-      </div>
+      <div><h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{page.title}</h1>{page.subtitle && <p className="mt-1 text-sm leading-6 text-slate-500">{page.subtitle}</p>}</div>
 
       <div className="space-y-5">
-        {page.blocks.length > 0
-          ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} />)
-          : <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">{copy.empty}</div>}
+        {page.blocks.length > 0 ? page.blocks.map((block) => <RuntimeBlockView key={block.id} block={block} />) : pageActions.length === 0 ? <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm text-slate-500">{copy.empty}</div> : null}
+        {pageActions.map((item) => <ActionCard key={item.id} item={item} busy={actionBusy === item.id} message={actionMessages[item.id]} values={formValues[item.id] ?? {}} onValue={(key, value) => setFormValues((current) => ({ ...current, [item.id]: { ...(current[item.id] ?? {}), [key]: value } }))} onExecute={(input) => void executeAction(item, input)} copy={copy} />)}
       </div>
     </div>
   );
