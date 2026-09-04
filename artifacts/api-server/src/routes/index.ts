@@ -66,6 +66,7 @@ import contentCalendarRouter from "./content_calendar";
 import adminProdutosInternosRouter from "./admin_produtos_internos";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
 import adminAppBuilderRouter from "./admin_app_builder";
+import appRuntimeRouter from "./app_runtime";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
 import accessLicenseRouter, { accessLicensePublicRouter } from "./access_license";
@@ -236,6 +237,9 @@ router.use(enforceAccessLicense);
 // Explicit module allowlist configured in Equipe. This protects the API too,
 // so typing a hidden URL directly does not bypass the permission.
 router.use(enforceModulePermission);
+
+// Universal App Builder runtime — tenant scoped, published snapshots only.
+router.use(appRuntimeRouter);
 
 // Tenants — super_admin only for write, tenant scope for reads
 router.use(tenantsRouter);
