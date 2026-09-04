@@ -7,6 +7,7 @@ import MediaCenter from "@/pages/MediaCenter";
 import Conversations from "@/pages/Conversations";
 import Analytics from "@/pages/Analytics";
 import VideoAvatarCapturePage from "@/pages/video/VideoAvatarCapturePage";
+import VideoAvatarCaptureViewportGuard from "@/pages/video/VideoAvatarCaptureViewportGuard";
 
 const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
 
@@ -33,7 +34,12 @@ export default function NotFound() {
     if (isLoading || !token) return null;
 
     if (isDubleCapture) {
-      return <VideoAvatarCapturePage />;
+      return (
+        <>
+          <VideoAvatarCapturePage />
+          <VideoAvatarCaptureViewportGuard />
+        </>
+      );
     }
 
     return (
