@@ -149,9 +149,38 @@ type VideoClip = {
   beatLocked?: boolean;
 };
 
+type SfxCue = {
+  id: string;
+  assetId: string;
+  name: string;
+  url: string;
+  start: number;
+  duration: number;
+  trimIn: number;
+  volume: number;
+  category: string;
+};
+
+type IntensityPoint = {
+  time: number;
+  score: number;
+  reasons: string[];
+};
+
+type SfxSuggestion = {
+  id: string;
+  asset: MediaAsset;
+  start: number;
+  duration: number;
+  volume: number;
+  reason: string;
+  category: string;
+};
+
 type EditorSnapshot = {
   clips: VideoClip[];
   layers: EditorLayer[];
+  sfxCues?: SfxCue[];
 };
 
 type MediaAsset = {
@@ -428,6 +457,32 @@ function metadataRecord(asset: MediaAsset): Record<string, unknown> {
   return asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata) ? asset.metadata : {};
 }
 
+function audioAssetKind(asset: MediaAsset): string {
+  return normalizedText(metadataRecord(asset).audioKind || asset.role || "");
+}
+
+function sfxCategoryFor(asset: MediaAsset): string {
+  const metadata = metadataRecord(asset);
+  const haystack = normalizedText(`${assetName(asset)} ${metadata.category ?? ""} ${metadata.tags ?? ""} ${metadata.mood ?? ""}`);
+  if (/(riser|rise|build|crescendo|sweep up)/.test(haystack)) return "riser";
+  if (/(whoosh|woosh|swish|swoosh|sweep|transition)/.test(haystack)) return "whoosh";
+  if (/(impact|hit|punch|boom|slam|kick)/.test(haystack)) return "impact";
+  if (/(click|tap|pop|button|ui)/.test(haystack)) return "click";
+  if (/(success|win|sparkle|chime|bell|ding)/.test(haystack)) return "success";
+  return "other";
+}
+
+function sfxAutomationAllowed(asset: MediaAsset): boolean {
+  const metadata = metadataRecord(asset);
+  const raw = metadata.rights;
+  const rights = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  const status = normalizedText(rights.status);
+  const origin = normalizedText(rights.origin);
+  if (status === "restricted") return false;
+  if (status === "cleared") return true;
+  return (origin === "tenant_owned" || origin === "generated") && rights.commercialUse === true;
+}
+
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
@@ -538,6 +593,7 @@ function cloneSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
   return {
     clips: snapshot.clips.map((clip) => ({ ...clip })),
     layers: snapshot.layers.map((layer) => ({ ...layer, captionWords: layer.captionWords?.map((word) => ({ ...word })), keyframes: layer.keyframes?.map((frame) => ({ ...frame })) })),
+    sfxCues: (snapshot.sfxCues ?? []).map((cue) => ({ ...cue })),
   };
 }
 
@@ -1135,7 +1191,8 @@ export default function VideoTimelineEditor() {
   const autosaveTimer = useRef<number | null>(null);
   const clipsRef = useRef<VideoClip[]>([]);
   const layersRef = useRef<EditorLayer[]>([]);
-  const historyRef = useRef<EditorSnapshot[]>([{ clips: [], layers: [] }]);
+  const sfxCuesRef = useRef<SfxCue[]>([]);
+  const historyRef = useRef<EditorSnapshot[]>([{ clips: [], layers: [], sfxCues: [] }]);
   const historyIndexRef = useRef(0);
   const desiredPreviewSourceTimeRef = useRef<number | null>(null);
   const resumeAfterClipChangeRef = useRef(false);
@@ -1160,6 +1217,7 @@ export default function VideoTimelineEditor() {
 
   const [layers, setLayers] = useState<EditorLayer[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState("");
+  const [sfxCues, setSfxCues] = useState<SfxCue[]>([]);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
 
@@ -1386,6 +1444,59 @@ export default function VideoTimelineEditor() {
       .sort((left, right) => right.compatibility - left.compatibility || assetName(left.track).localeCompare(assetName(right.track), "pt-BR"))
       .slice(0, 3);
   }, [brandDefaultTrackId, musicRecommendationProfile, musicTracks, realProjectDuration]);
+  const soundEffectAssets = useMemo(() => assets.filter((asset) => asset.type === "audio" && audioAssetKind(asset) === "sound_effect"), [assets]);
+  const autoEligibleSfx = useMemo(() => soundEffectAssets.filter(sfxAutomationAllowed), [soundEffectAssets]);
+  const intensityMap = useMemo<IntensityPoint[]>(() => {
+    const duration = realProjectDuration;
+    if (!duration || duration <= 0) return [];
+    const bins = Math.min(48, Math.max(14, Math.round(duration * 1.4)));
+    const boundaries = clips.slice(1).map((_, index) => clipStartAt(index + 1, clips));
+    const points: IntensityPoint[] = [];
+    for (let index = 0; index < bins; index += 1) {
+      const time = bins === 1 ? 0 : duration * index / (bins - 1);
+      let score = 16;
+      const reasons: string[] = [];
+      if (activeBeatAnalysis?.waveform.length) {
+        const waveIndex = Math.min(activeBeatAnalysis.waveform.length - 1, Math.round(index / Math.max(1, bins - 1) * (activeBeatAnalysis.waveform.length - 1)));
+        const energy = activeBeatAnalysis.waveform[waveIndex] ?? 0;
+        score += energy * 34;
+        if (energy > 0.72) reasons.push("energia da trilha");
+      }
+      if (downbeatTimes.some((beat) => Math.abs(beat - time) < 0.14)) { score += 12; reasons.push("downbeat"); }
+      if (boundaries.some((boundary) => Math.abs(boundary - time) < 0.3)) { score += 10; reasons.push("corte/transição"); }
+      const activeLayers = layers.filter((layer) => time >= layer.start && time <= layer.end);
+      const nearbyVisual = layers.some((layer) => Math.abs(layer.start - time) < 0.25 || Math.abs(layer.end - time) < 0.2);
+      if (nearbyVisual) { score += 7; reasons.push("entrada visual"); }
+      const speech = activeLayers.filter((layer) => layer.contentKind === "caption").map((layer) => normalizedText(layer.text)).join(" ");
+      if (speech) {
+        score += 5;
+        if (/(oferta|desconto|agora|hoje|novo|novidade|resultado|beneficio|garantia|econom|importante|melhor|exclusiv|chamada|whatsapp)/.test(speech)) {
+          score += 19;
+          reasons.push("fala de impacto");
+        }
+      }
+      const narrativePeak = duration * 0.72;
+      const narrativeDistance = Math.abs(time - narrativePeak) / Math.max(0.1, duration);
+      score += Math.max(0, 7 * (1 - narrativeDistance * 7));
+      points.push({ time, score: clamp(Math.round(score), 0, 100), reasons: Array.from(new Set(reasons)).slice(0, 3) });
+    }
+    return points;
+  }, [activeBeatAnalysis, clips, downbeatTimes, layers, realProjectDuration]);
+  const climaxPoint = useMemo(() => intensityMap.reduce<IntensityPoint | null>((best, point) => !best || point.score > best.score ? point : best, null), [intensityMap]);
+  const sfxSuggestions = useMemo<SfxSuggestion[]>(() => {
+    if (!autoEligibleSfx.length || !climaxPoint || realProjectDuration <= 0) return [];
+    const pick = (categories: string[]) => autoEligibleSfx.find((asset) => categories.includes(sfxCategoryFor(asset))) ?? null;
+    const result: SfxSuggestion[] = [];
+    const impact = pick(["impact", "success", "click"]);
+    if (impact) result.push({ id: `impact-${impact.id}-${climaxPoint.time.toFixed(2)}`, asset: impact, start: clamp(climaxPoint.time, 0, realProjectDuration), duration: Math.min(2.2, numberMetadata(impact as LibraryTrack, "durationSeconds") ?? 1.4), volume: 0.68, reason: `Clímax ${climaxPoint.score}/100`, category: sfxCategoryFor(impact) });
+    const transitionTime = clips.length > 1 ? clipStartAt(1, clips) : layers.find((layer) => layer.type === "card")?.start;
+    const whoosh = pick(["whoosh"]);
+    if (whoosh && Number.isFinite(Number(transitionTime))) result.push({ id: `whoosh-${whoosh.id}-${Number(transitionTime).toFixed(2)}`, asset: whoosh, start: clamp(Number(transitionTime), 0, realProjectDuration), duration: Math.min(1.8, numberMetadata(whoosh as LibraryTrack, "durationSeconds") ?? 1), volume: 0.5, reason: "Entrada de corte/elemento visual", category: "whoosh" });
+    const riser = pick(["riser"]);
+    if (riser && climaxPoint.time > 0.7) result.push({ id: `riser-${riser.id}-${climaxPoint.time.toFixed(2)}`, asset: riser, start: clamp(climaxPoint.time - 0.8, 0, realProjectDuration), duration: Math.min(1.4, numberMetadata(riser as LibraryTrack, "durationSeconds") ?? 1.2), volume: 0.42, reason: "Construção antes do clímax", category: "riser" });
+    return result.slice(0, 3);
+  }, [autoEligibleSfx, climaxPoint, clips, layers, realProjectDuration]);
+
   const canUndo = historyIndexRef.current > 0;
   const canRedo = historyIndexRef.current < historyRef.current.length - 1;
   const canSplit = Boolean(locatedPreview && timelineTime - locatedPreview.start > 0.1 && locatedPreview.end - timelineTime > 0.1);
@@ -1393,13 +1504,15 @@ export default function VideoTimelineEditor() {
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => { layersRef.current = layers; }, [layers]);
+  useEffect(() => { sfxCuesRef.current = sfxCues; }, [sfxCues]);
 
   const recordHistory = useCallback((snapshot: EditorSnapshot) => {
     const clean = cloneSnapshot(snapshot);
-    const previous = historyRef.current[historyIndexRef.current] ?? { clips: [], layers: [] };
+    const previous = historyRef.current[historyIndexRef.current] ?? { clips: [], layers: [], sfxCues: [] };
     const serialize = (value: EditorSnapshot) => JSON.stringify({
       clips: value.clips.map(({ localFile: _localFile, ...clip }) => clip),
       layers: value.layers.map(({ localFile: _localFile, ...layer }) => layer),
+      sfxCues: value.sfxCues ?? [],
     });
     if (serialize(previous) === serialize(clean)) return;
     const nextHistory = [...historyRef.current.slice(0, historyIndexRef.current + 1), clean].slice(-60);
@@ -1408,20 +1521,24 @@ export default function VideoTimelineEditor() {
     setHistoryTick((value) => value + 1);
   }, []);
 
-  const commitEditor = useCallback((nextClips: VideoClip[], nextLayers: EditorLayer[]) => {
+  const commitEditor = useCallback((nextClips: VideoClip[], nextLayers: EditorLayer[], nextSfxCues: SfxCue[] = sfxCuesRef.current) => {
     clipsRef.current = nextClips;
     layersRef.current = nextLayers;
+    sfxCuesRef.current = nextSfxCues;
     setClips(nextClips);
     setLayers(nextLayers);
-    recordHistory({ clips: nextClips, layers: nextLayers });
+    setSfxCues(nextSfxCues);
+    recordHistory({ clips: nextClips, layers: nextLayers, sfxCues: nextSfxCues });
   }, [recordHistory]);
 
-  const resetEditorHistory = useCallback((nextClips: VideoClip[], nextLayers: EditorLayer[]) => {
-    const snapshot = cloneSnapshot({ clips: nextClips, layers: nextLayers });
+  const resetEditorHistory = useCallback((nextClips: VideoClip[], nextLayers: EditorLayer[], nextSfxCues: SfxCue[] = []) => {
+    const snapshot = cloneSnapshot({ clips: nextClips, layers: nextLayers, sfxCues: nextSfxCues });
     clipsRef.current = snapshot.clips;
     layersRef.current = snapshot.layers;
+    sfxCuesRef.current = snapshot.sfxCues ?? [];
     setClips(snapshot.clips);
     setLayers(snapshot.layers);
+    setSfxCues(snapshot.sfxCues ?? []);
     historyRef.current = [snapshot];
     historyIndexRef.current = 0;
     setHistoryTick((value) => value + 1);
@@ -1431,8 +1548,10 @@ export default function VideoTimelineEditor() {
     const next = cloneSnapshot(snapshot);
     clipsRef.current = next.clips;
     layersRef.current = next.layers;
+    sfxCuesRef.current = next.sfxCues ?? [];
     setClips(next.clips);
     setLayers(next.layers);
+    setSfxCues(next.sfxCues ?? []);
     setTimelineTime((time) => clamp(time, 0, Math.max(0, projectDurationFor(next.clips))));
     if (selectedLayerId && !next.layers.some((layer) => layer.id === selectedLayerId)) setSelectedLayerId("");
     if (selectedClipId && !next.clips.some((clip) => clip.id === selectedClipId)) setSelectedClipId("");
@@ -1442,14 +1561,14 @@ export default function VideoTimelineEditor() {
   const undo = useCallback(() => {
     if (historyIndexRef.current <= 0) return;
     historyIndexRef.current -= 1;
-    restoreSnapshot(historyRef.current[historyIndexRef.current] ?? { clips: [], layers: [] });
+    restoreSnapshot(historyRef.current[historyIndexRef.current] ?? { clips: [], layers: [], sfxCues: [] });
     setHistoryTick((value) => value + 1);
   }, [restoreSnapshot]);
 
   const redo = useCallback(() => {
     if (historyIndexRef.current >= historyRef.current.length - 1) return;
     historyIndexRef.current += 1;
-    restoreSnapshot(historyRef.current[historyIndexRef.current] ?? { clips: [], layers: [] });
+    restoreSnapshot(historyRef.current[historyIndexRef.current] ?? { clips: [], layers: [], sfxCues: [] });
     setHistoryTick((value) => value + 1);
   }, [restoreSnapshot]);
 
@@ -1497,6 +1616,59 @@ export default function VideoTimelineEditor() {
     commitEditor(next, layersRef.current);
     selectClip(copy.id);
   }, [commitEditor, selectClip, selectedClipId]);
+
+  const commitSfxCues = useCallback((next: SfxCue[]) => {
+    commitEditor(clipsRef.current, layersRef.current, next.sort((a, b) => a.start - b.start));
+  }, [commitEditor]);
+
+  const addSfxCue = useCallback((asset: MediaAsset, at = timelineTime, options?: Partial<Pick<SfxCue, "duration" | "volume" | "category">>) => {
+    const url = assetUrl(asset);
+    if (!url) return;
+    const duration = clamp(options?.duration ?? numberMetadata(asset as LibraryTrack, "durationSeconds") ?? 1.4, 0.12, Math.max(0.12, realProjectDuration - at));
+    const cue: SfxCue = {
+      id: uid("sfx"), assetId: asset.id, name: assetName(asset), url,
+      start: clamp(at, 0, Math.max(0, realProjectDuration - 0.05)), duration, trimIn: 0,
+      volume: clamp(options?.volume ?? 0.58, 0, 1.2), category: options?.category ?? sfxCategoryFor(asset),
+    };
+    commitSfxCues([...sfxCuesRef.current, cue]);
+  }, [commitSfxCues, realProjectDuration, timelineTime]);
+
+  const updateSfxCue = useCallback((id: string, patch: Partial<SfxCue>) => {
+    commitSfxCues(sfxCuesRef.current.map((cue) => cue.id === id ? { ...cue, ...patch, start: clamp(patch.start ?? cue.start, 0, Math.max(0, realProjectDuration)), duration: clamp(patch.duration ?? cue.duration, 0.12, Math.max(0.12, realProjectDuration)) } : cue));
+  }, [commitSfxCues, realProjectDuration]);
+
+  const removeSfxCue = useCallback((id: string) => {
+    commitSfxCues(sfxCuesRef.current.filter((cue) => cue.id !== id));
+  }, [commitSfxCues]);
+
+  const applySuggestedSfx = useCallback(() => {
+    if (!sfxSuggestions.length) return;
+    const existingKeys = new Set(sfxCuesRef.current.map((cue) => `${cue.assetId}:${cue.start.toFixed(2)}`));
+    const additions = sfxSuggestions.filter((item) => !existingKeys.has(`${item.asset.id}:${item.start.toFixed(2)}`)).map((item) => ({
+      id: uid("sfx-auto"), assetId: item.asset.id, name: assetName(item.asset), url: assetUrl(item.asset), start: item.start,
+      duration: item.duration, trimIn: 0, volume: item.volume, category: item.category,
+    })).filter((cue) => cue.url);
+    if (!additions.length) { toast({ title: "SFX já aplicados", description: "As sugestões atuais já estão na timeline." }); return; }
+    commitSfxCues([...sfxCuesRef.current, ...additions]);
+    toast({ title: "SFX inteligentes aplicados", description: `${additions.length} efeito${additions.length === 1 ? "" : "s"} entrou${additions.length === 1 ? "" : "aram"} nos momentos de maior impacto.` });
+  }, [commitSfxCues, sfxSuggestions, toast]);
+
+  const previewSfxAsset = useCallback(async (asset: MediaAsset) => {
+    const url = assetUrl(asset);
+    if (!url) return;
+    try {
+      const response = await fetch(url, { headers: url.startsWith("/api/") ? tokenHeaders() : undefined });
+      if (!response.ok) throw new Error("Não foi possível carregar o efeito.");
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const audio = new Audio(blobUrl);
+      audio.volume = 0.65;
+      audio.onended = () => URL.revokeObjectURL(blobUrl);
+      audio.onerror = () => URL.revokeObjectURL(blobUrl);
+      await audio.play();
+    } catch (error) {
+      toast({ title: "Prévia indisponível", description: error instanceof Error ? error.message : "Falha ao reproduzir SFX", variant: "destructive" });
+    }
+  }, [toast]);
 
   const addManualBeatMarker = useCallback(() => {
     const marker = Math.round(clamp(timelineTime, 0, realProjectDuration) * 1000) / 1000;
@@ -1642,7 +1814,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 14,
+    editorVersion: 15,
     channel,
     ratio,
     quality,
@@ -1655,6 +1827,7 @@ export default function VideoTimelineEditor() {
     aiGoal,
     aiInstructions,
     autoEditPresetId: selectedAutoPresetId || null,
+    sfx: sfxCues,
     audio: {
       mode: musicMode,
       assetId: musicAssetId || null,
@@ -1682,7 +1855,7 @@ export default function VideoTimelineEditor() {
         syncVisualAccents,
       } : null,
     },
-  }), [channel, ratio, quality, clips, layers, aiPlan, aiGoal, aiInstructions, selectedAutoPresetId, musicMode, musicAssetId, musicVolume, originalVolume, musicStart, musicEnd, duckingEnabled, duckingReduction, duckingThresholdPct, duckingAttackMs, duckingReleaseMs, musicFadeIn, musicFadeOut, smartMusicLoop, musicVolumePoints, loudnessTarget, activeBeatAnalysis, beatStep, showBeatMarkers, beatSyncStrength, manualBeatMarkers, syncVisualAccents]);
+  }), [channel, ratio, quality, clips, layers, aiPlan, aiGoal, aiInstructions, selectedAutoPresetId, sfxCues, musicMode, musicAssetId, musicVolume, originalVolume, musicStart, musicEnd, duckingEnabled, duckingReduction, duckingThresholdPct, duckingAttackMs, duckingReleaseMs, musicFadeIn, musicFadeOut, smartMusicLoop, musicVolumePoints, loudnessTarget, activeBeatAnalysis, beatStep, showBeatMarkers, beatSyncStrength, manualBeatMarkers, syncVisualAccents]);
 
   const ensureProject = useCallback(async (): Promise<string> => {
     if (projectId) return projectId;
@@ -1917,7 +2090,12 @@ export default function VideoTimelineEditor() {
             rotation: Number.isFinite(Number(frame.rotation)) ? Number(frame.rotation) : 0,
           })).sort((a, b) => a.time - b.time) : [],
         })) : [];
-        resetEditorHistory(nextClips, nextLayers);
+        const restoredSfx: SfxCue[] = Array.isArray(context.sfx) ? context.sfx.map((raw: Partial<SfxCue>) => ({
+          id: String(raw.id || uid("sfx-restored")), assetId: String(raw.assetId || ""), name: String(raw.name || "SFX"), url: String(raw.url || ""),
+          start: clamp(Number(raw.start) || 0, 0, Math.max(0, projectDurationFor(nextClips))), duration: clamp(Number(raw.duration) || 1, 0.12, Math.max(0.12, projectDurationFor(nextClips))),
+          trimIn: Math.max(0, Number(raw.trimIn) || 0), volume: clamp(Number(raw.volume) || 0.55, 0, 1.2), category: String(raw.category || "other"),
+        })).filter((cue: SfxCue) => cue.assetId && cue.url) : [];
+        resetEditorHistory(nextClips, nextLayers, restoredSfx);
         setActiveClipId(nextClips[0]?.id ?? "");
         setSelectedClipId(nextClips[0]?.id ?? "");
         setTimelineTime(0);
@@ -2683,6 +2861,7 @@ export default function VideoTimelineEditor() {
         videoElement.playsInline = true;
       }
       const renderLayers = layersRef.current.map((layer) => ({ ...layer }));
+      const renderSfxCues = sfxCuesRef.current.map((cue) => ({ ...cue })).filter((cue) => cue.start < totalDuration && cue.duration > 0);
       const imageEntries = await Promise.all(
         renderLayers.filter((layer) => layer.type === "image" && layer.url).map(async (layer) => [layer.id, await loadImage(layer.url!)] as const),
       );
@@ -2698,6 +2877,7 @@ export default function VideoTimelineEditor() {
       let originalAnalyser: AnalyserNode | null = null;
       let analyserSamples: Float32Array<ArrayBuffer> | null = null;
       let duckingLevel = 0;
+      const sfxRuntime: Array<{ source: AudioBufferSourceNode; gain: GainNode; cue: SfxCue; buffer: AudioBuffer }> = [];
 
       if (audioContext) {
         destination = audioContext.createMediaStreamDestination();
@@ -2739,6 +2919,19 @@ export default function VideoTimelineEditor() {
           musicGainNode = audioContext.createGain();
           musicGainNode.gain.value = 0;
           musicSourceNode.connect(musicGainNode).connect(destination);
+        }
+        for (const cue of renderSfxCues) {
+          try {
+            const response = await fetch(cue.url, { headers: cue.url.startsWith("/api/") ? tokenHeaders() : undefined });
+            if (!response.ok) continue;
+            const buffer = await audioContext.decodeAudioData(await response.arrayBuffer());
+            const sourceNode = audioContext.createBufferSource();
+            const gainNode = audioContext.createGain();
+            sourceNode.buffer = buffer;
+            gainNode.gain.value = clamp(cue.volume, 0, 1.2);
+            sourceNode.connect(gainNode).connect(destination);
+            sfxRuntime.push({ source: sourceNode, gain: gainNode, cue, buffer });
+          } catch { /* efeito inválido é ignorado sem interromper o render */ }
         }
       }
 
@@ -2860,6 +3053,12 @@ export default function VideoTimelineEditor() {
         musicSourceNode.start(audioNow + start);
         musicSourceNode.stop(audioNow + end);
       }
+      for (const runtime of sfxRuntime) {
+        const start = clamp(runtime.cue.start, 0, totalDuration);
+        const offset = clamp(runtime.cue.trimIn, 0, Math.max(0, runtime.buffer.duration - 0.02));
+        const duration = Math.min(runtime.cue.duration, runtime.buffer.duration - offset, totalDuration - start);
+        if (duration > 0.02) runtime.source.start(audioNow + start, offset, duration);
+      }
 
       for (let clipIndex = 0; clipIndex < renderClips.length; clipIndex += 1) {
         const clip = renderClips[clipIndex];
@@ -2924,6 +3123,7 @@ export default function VideoTimelineEditor() {
       if (recorder.state !== "inactive") recorder.stop();
       await stopped;
       musicSourceNode?.disconnect();
+      for (const runtime of sfxRuntime) { try { runtime.source.disconnect(); runtime.gain.disconnect(); } catch { /* noop */ } }
       await audioContext?.close();
       canvasStream.getTracks().forEach((track) => track.stop());
       const webm = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
@@ -3279,7 +3479,7 @@ export default function VideoTimelineEditor() {
     </div>;
     if (tool === "text") return <div className="space-y-3"><div><p className="text-sm font-semibold">Adicionar texto</p><p className="text-xs text-muted-foreground">Faixas escritas independentes sobre toda a sequência.</p></div><button onClick={() => addTextLayer("title")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-semibold">Título</p><p className="text-xs text-muted-foreground">Gancho ou headline principal</p></button><button onClick={() => addTextLayer("subtitle")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">Subtítulo</p><p className="text-xs text-muted-foreground">Mensagem de apoio e benefício</p></button><button onClick={() => addTextLayer("cta")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">CTA</p><p className="text-xs text-muted-foreground">WhatsApp, site ou chamada final</p></button></div>;
     if (tool === "cards") return <div className="space-y-3"><div><p className="text-sm font-semibold">Cards</p><p className="text-xs text-muted-foreground">Oferta, benefício e CTA no ponto atual da timeline.</p></div>{CARD_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCardLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40"><div className="h-12 rounded-lg p-2 text-xs font-bold" style={{ background: template.background, color: template.color }}>{template.text.split("\n").map((line) => <div key={line}>{line}</div>)}</div><p className="mt-2 text-xs font-medium">{template.name}</p></button>)}</div>;
-    if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicTracks.length > 0 && <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.03] p-3"><div className="flex items-start gap-2"><WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-xs font-semibold">Recomendadas para este vídeo</p><p className="mt-0.5 text-[10px] text-muted-foreground">{musicRecommendationProfile.label} · {musicRecommendationProfile.bpmMin}–{musicRecommendationProfile.bpmMax} BPM · {musicRecommendationProfile.paidCampaign ? "mídia paga" : "uso orgânico"}</p></div></div>{recommendedMusicTracks.length > 0 ? <div className="space-y-2">{recommendedMusicTracks.map(({ track, reasons, compatibility }, index) => { const metadata = metadataRecord(track); return <div key={track.id} className={cn("rounded-lg border bg-background p-2.5", musicAssetId === track.id && "border-primary bg-primary/5")}><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">#{index + 1}</span><span className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums">{compatibility}%</span><p className="truncate text-xs font-medium">{assetName(track)}</p>{metadata.brandOfficial === true && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}</div><div className="mt-1.5 flex flex-wrap gap-1">{reasons.map((reason) => <span key={reason} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{reason}</span>)}</div><p className="mt-1.5 text-[9px] text-emerald-700 dark:text-emerald-300">{musicRecommendationProfile.paidCampaign ? "Direitos para mídia paga liberados" : "Direitos para uso orgânico liberados"} · score criativo {compatibility}/100</p></div><button type="button" onClick={() => { setMusicMode("library"); setMusicAssetId(track.id); setMusicStart(0); setMusicEnd(Math.max(0.1, realProjectDuration)); toast({ title: "Trilha aplicada", description: `${assetName(track)} foi adicionada à timeline.` }); }} className="shrink-0 rounded-lg bg-primary px-2 py-1.5 text-[10px] font-semibold text-primary-foreground">Aplicar</button></div></div>; })}</div> : <div className="rounded-lg border border-dashed p-2.5 text-[10px] text-muted-foreground">Nenhuma trilha da biblioteca tem direitos compatíveis com este contexto. Ajuste o Passaporte de Direitos no Music Hub ou gere uma nova trilha.</div>}</div>}{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}{musicMode !== "none" && (selectedTrack || musicFile) && <div className="space-y-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-3"><div className="flex items-start gap-2"><Music2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><div className="min-w-0"><p className="text-xs font-semibold">Beat Sync</p><p className="mt-0.5 text-[10px] text-muted-foreground">Detecta o pulso da trilha e encaixa cortes/transições no ritmo sem alterar os originais.</p></div></div>{activeBeatAnalysis ? <div className="rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold tabular-nums">{activeBeatAnalysis.bpm.toFixed(1)} BPM</p><p className="text-[9px] text-muted-foreground">{activeBeatAnalysis.source === "audio" ? "Forma de onda analisada" : "BPM do Music Hub"} · fase {activeBeatAnalysis.offset.toFixed(2)}s</p></div><button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="rounded-lg border px-2 py-1 text-[9px] font-medium disabled:opacity-50">Reanalisar</button></div>{activeBeatAnalysis.waveform.length > 0 && <div className="mt-2 flex h-10 items-center gap-px overflow-hidden rounded-md bg-muted/40 px-1">{activeBeatAnalysis.waveform.map((level, index) => <span key={index} className="min-w-[1px] flex-1 rounded-full bg-amber-500/70" style={{ height: `${Math.max(8, Math.round(level * 100))}%` }} />)}</div>}</div> : <button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="w-full rounded-lg bg-foreground px-3 py-2.5 text-xs font-semibold text-background disabled:opacity-50">{beatAnalyzing ? <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />Analisando batidas…</> : <><WandSparkles className="mr-1.5 inline h-3.5 w-3.5" />Detectar batidas</>}</button>}{activeBeatAnalysis && <><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Ritmo dos cortes</span><select value={beatStep} onChange={(event) => setBeatStep(Number(event.target.value) as BeatStep)} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value={1}>Cada batida</option><option value={2}>A cada 2 batidas</option><option value={4}>A cada 4 batidas</option></select></label><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Mostrar batidas na timeline</span><input type="checkbox" checked={showBeatMarkers} onChange={(event) => setShowBeatMarkers(event.target.checked)} className="accent-primary" /></label><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Intensidade do Beat Sync</span><select value={beatSyncStrength} onChange={(event) => setBeatSyncStrength(event.target.value as BeatSyncStrength)} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value="light">Leve · ajustes discretos</option><option value="balanced">Equilibrado · recomendado</option><option value="aggressive">Agressivo · ritmo forte</option></select></label><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Acentuar transições e elementos nos downbeats</span><input type="checkbox" checked={syncVisualAccents} onChange={(event) => setSyncVisualAccents(event.target.checked)} className="accent-primary" /></label><div className="space-y-2 rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><div><p className="text-[10px] font-semibold">Marcadores manuais</p><p className="text-[9px] text-muted-foreground">Fixe momentos importantes que o Beat Sync deve considerar.</p></div><button type="button" onClick={addManualBeatMarker} className="rounded-md border px-2 py-1 text-[9px] font-medium">+ No cursor</button></div>{manualBeatMarkers.length > 0 && <div className="flex flex-wrap gap-1">{manualBeatMarkers.map((marker) => <button key={marker} type="button" onClick={() => setManualBeatMarkers((current) => current.filter((time) => time !== marker))} className="rounded-full border px-1.5 py-0.5 text-[9px] tabular-nums" title="Remover marcador">{timeLabel(marker)} ×</button>)}<button type="button" onClick={() => setManualBeatMarkers([])} className="rounded-full px-1.5 py-0.5 text-[9px] text-muted-foreground underline">limpar</button></div>}</div><div className="rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold">Prévia antes de aplicar</span><span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">{beatCutPreview.length} corte{beatCutPreview.length === 1 ? "" : "s"}</span></div>{beatCutPreview.length > 0 ? <div className="mt-2 space-y-1">{beatCutPreview.slice(0, 5).map((item) => <div key={`${item.clipId}-${item.target}`} className="flex items-center justify-between gap-2 text-[9px]"><span className="truncate">Corte {item.index + 1} → {item.index + 2}{item.manual ? " · manual" : item.downbeat ? " · downbeat" : ""}</span><span className="shrink-0 tabular-nums text-muted-foreground">{item.delta >= 0 ? "+" : ""}{Math.round(item.delta * 1000)} ms</span></div>)}{beatCutPreview.length > 5 && <p className="text-[9px] text-muted-foreground">+ {beatCutPreview.length - 5} ajustes adicionais</p>}</div> : <p className="mt-1 text-[9px] text-muted-foreground">Nenhum corte será movido com a configuração atual. Clipes bloqueados são ignorados.</p>}</div><button type="button" onClick={syncCutsToBeats} disabled={clips.length < 2 || beatCutPreview.length === 0} className="w-full rounded-lg bg-amber-600 px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-40"><Scissors className="mr-1.5 inline h-3.5 w-3.5" />Aplicar Beat Sync{beatCutPreview.length ? ` · ${beatCutPreview.length}` : ""}</button><p className="text-[9px] leading-relaxed text-muted-foreground">Ajuste seguro: cada corte move no máximo 0,42s e continua editável com Desfazer/Refazer.</p></>}</div>}<div className="space-y-3 rounded-xl border bg-muted/15 p-3"><div><p className="text-xs font-semibold">Mixer inteligente</p><p className="text-[10px] text-muted-foreground">Presets ajustam voz, trilha, ducking, fades e loudness juntos.</p></div><div className="grid grid-cols-2 gap-1.5">{AUDIO_MIX_PRESETS.map((preset) => <button key={preset.id} type="button" onClick={() => applyAudioMixPreset(preset.id)} title={preset.hint} className="rounded-lg border bg-background px-2 py-1.5 text-[10px] font-medium hover:border-primary/40">{preset.label}</button>)}</div><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span><strong className="block text-foreground">Ducking automático</strong><span className="text-muted-foreground">Baixa a música quando o áudio original entra.</span></span><input type="checkbox" checked={duckingEnabled} onChange={(event) => setDuckingEnabled(event.target.checked)} className="accent-primary" /></label>{duckingEnabled && <div className="space-y-2"><RangeField label="Redução da música" value={duckingReduction} min={0} max={90} step={1} suffix="%" onChange={setDuckingReduction} /><RangeField label="Sensibilidade à voz/áudio" value={duckingThresholdPct} min={1} max={20} step={1} suffix="%" onChange={setDuckingThresholdPct} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-[10px] text-muted-foreground">Ataque (ms)</span><input type="number" min={20} max={600} step={10} value={duckingAttackMs} onChange={(event) => setDuckingAttackMs(clamp(Number(event.target.value), 20, 600))} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]" /></label><label className="space-y-1"><span className="text-[10px] text-muted-foreground">Retorno (ms)</span><input type="number" min={80} max={1800} step={20} value={duckingReleaseMs} onChange={(event) => setDuckingReleaseMs(clamp(Number(event.target.value), 80, 1800))} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]" /></label></div></div>}<div className="grid grid-cols-2 gap-2"><RangeField label="Fade-in" value={musicFadeIn} min={0} max={5} step={0.1} suffix="s" onChange={setMusicFadeIn} /><RangeField label="Fade-out" value={musicFadeOut} min={0} max={8} step={0.1} suffix="s" onChange={setMusicFadeOut} /></div><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Loop inteligente sem emenda</span><input type="checkbox" checked={smartMusicLoop} onChange={(event) => setSmartMusicLoop(event.target.checked)} className="accent-primary" /></label><div className="space-y-2"><div className="flex items-center justify-between gap-2"><span className="text-[10px] font-medium">Automação de volume</span><button type="button" onClick={addMusicVolumePoint} className="rounded-lg border bg-background px-2 py-1 text-[9px]">+ Ponto no playhead</button></div>{musicVolumePoints.length > 0 ? <div className="flex flex-wrap gap-1">{musicVolumePoints.map((point) => <button key={point.id} type="button" onClick={() => setMusicVolumePoints((current) => current.filter((item) => item.id !== point.id))} title="Remover ponto" className="rounded-full border bg-background px-2 py-1 text-[9px] tabular-nums">{timeLabel(point.time)} · {Math.round(point.value * 100)}% ×</button>)}</div> : <p className="text-[9px] text-muted-foreground">Adicione pontos para aumentar ou reduzir a trilha ao longo do vídeo.</p>}</div><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Loudness final (LUFS)</span><select value={loudnessTarget} onChange={(event) => { setLoudnessTarget(Number(event.target.value)); setNormalizeAudio(true); }} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value={-12}>-12 LUFS · anúncio forte</option><option value={-14}>-14 LUFS · social / YouTube</option><option value={-16}>-16 LUFS · voz / institucional</option><option value={-18}>-18 LUFS · conteúdo suave</option></select></label></div><RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
+    if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Trilha, mixagem, efeitos sonoros e mapa de intensidade do vídeo.</p></div><div className="space-y-3 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.03] p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-xs font-semibold">SFX inteligente + clímax</p><p className="mt-0.5 text-[10px] text-muted-foreground">Combina fala, cortes, elementos visuais, downbeats e energia da trilha.</p></div>{climaxPoint && <span className="shrink-0 rounded-full border bg-background px-2 py-0.5 text-[9px] font-semibold tabular-nums">Clímax {timeLabel(climaxPoint.time)} · {climaxPoint.score}</span>}</div>{intensityMap.length > 0 && <div><div className="flex h-11 items-end gap-px rounded-lg bg-background px-1.5 py-1">{intensityMap.map((point, index) => <button key={`${point.time}-${index}`} type="button" onClick={() => seekTimeline(point.time)} className={cn("min-w-[2px] flex-1 rounded-sm bg-cyan-500/65 transition-opacity hover:opacity-100", climaxPoint && Math.abs(point.time - climaxPoint.time) < 0.01 ? "opacity-100 ring-1 ring-cyan-400" : "opacity-70")} style={{ height: `${Math.max(8, point.score)}%` }} title={`${timeLabel(point.time)} · intensidade ${point.score}/100${point.reasons.length ? ` · ${point.reasons.join(", ")}` : ""}`} />)}</div><p className="mt-1 text-[9px] text-muted-foreground">Clique no mapa para levar o cursor ao ponto analisado.</p></div>}{sfxSuggestions.length > 0 ? <div className="space-y-1.5"><div className="flex items-center justify-between"><span className="text-[10px] font-semibold">Sugestões seguras</span><button type="button" onClick={applySuggestedSfx} className="rounded-lg bg-cyan-600 px-2 py-1 text-[9px] font-semibold text-white">Aplicar {sfxSuggestions.length}</button></div>{sfxSuggestions.map((suggestion) => <div key={suggestion.id} className="flex items-center justify-between gap-2 rounded-lg border bg-background px-2 py-1.5 text-[9px]"><span className="min-w-0 truncate"><strong>{suggestion.category}</strong> · {assetName(suggestion.asset)} · {suggestion.reason}</span><span className="shrink-0 tabular-nums text-muted-foreground">{timeLabel(suggestion.start)}</span></div>)}</div> : <div className="rounded-lg border border-dashed bg-background p-2 text-[9px] text-muted-foreground">A automação usa somente SFX com direitos liberados. Valide efeitos na Central de Mídias para receber sugestões automáticas.</div>}{soundEffectAssets.length > 0 ? <div className="space-y-1.5"><p className="text-[10px] font-semibold">Biblioteca de efeitos</p><div className="max-h-40 space-y-1.5 overflow-y-auto pr-1">{soundEffectAssets.map((asset) => <div key={asset.id} className="flex items-center gap-2 rounded-lg border bg-background p-2"><div className="min-w-0 flex-1"><p className="truncate text-[10px] font-medium">{assetName(asset)}</p><p className={cn("text-[9px]", sfxAutomationAllowed(asset) ? "text-emerald-600" : "text-amber-600")}>{sfxCategoryFor(asset)} · {sfxAutomationAllowed(asset) ? "direitos liberados" : "uso manual · revisar direitos"}</p></div><button type="button" onClick={() => void previewSfxAsset(asset)} className="rounded-md border p-1.5" title="Ouvir"><Play className="h-3 w-3" /></button><button type="button" onClick={() => addSfxCue(asset)} className="rounded-md bg-foreground px-2 py-1 text-[9px] font-semibold text-background">+ cursor</button></div>)}</div></div> : <button type="button" onClick={() => navigate("/media")} className="w-full rounded-lg border border-dashed bg-background p-2.5 text-[10px] text-muted-foreground">Nenhum efeito sonoro cadastrado · abrir Central de Mídias</button>}{sfxCues.length > 0 && <div className="space-y-1.5"><p className="text-[10px] font-semibold">SFX na timeline · {sfxCues.length}</p>{sfxCues.map((cue) => <div key={cue.id} className="space-y-1 rounded-lg border bg-background p-2"><div className="flex items-center gap-2"><button type="button" onClick={() => seekTimeline(cue.start)} className="min-w-0 flex-1 truncate text-left text-[9px] font-medium">{timeLabel(cue.start)} · {cue.name}</button><button type="button" onClick={() => removeSfxCue(cue.id)} className="rounded p-1 text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button></div><div className="flex items-center gap-2"><span className="text-[8px] text-muted-foreground">volume</span><input type="range" min={0} max={1.2} step={0.05} value={cue.volume} onChange={(event) => updateSfxCue(cue.id, { volume: Number(event.target.value) })} className="flex-1 accent-cyan-500" /><span className="w-7 text-right text-[8px] tabular-nums">{Math.round(cue.volume * 100)}%</span></div></div>)}</div>}</div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicTracks.length > 0 && <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.03] p-3"><div className="flex items-start gap-2"><WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><p className="text-xs font-semibold">Recomendadas para este vídeo</p><p className="mt-0.5 text-[10px] text-muted-foreground">{musicRecommendationProfile.label} · {musicRecommendationProfile.bpmMin}–{musicRecommendationProfile.bpmMax} BPM · {musicRecommendationProfile.paidCampaign ? "mídia paga" : "uso orgânico"}</p></div></div>{recommendedMusicTracks.length > 0 ? <div className="space-y-2">{recommendedMusicTracks.map(({ track, reasons, compatibility }, index) => { const metadata = metadataRecord(track); return <div key={track.id} className={cn("rounded-lg border bg-background p-2.5", musicAssetId === track.id && "border-primary bg-primary/5")}><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">#{index + 1}</span><span className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold tabular-nums">{compatibility}%</span><p className="truncate text-xs font-medium">{assetName(track)}</p>{metadata.brandOfficial === true && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}</div><div className="mt-1.5 flex flex-wrap gap-1">{reasons.map((reason) => <span key={reason} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{reason}</span>)}</div><p className="mt-1.5 text-[9px] text-emerald-700 dark:text-emerald-300">{musicRecommendationProfile.paidCampaign ? "Direitos para mídia paga liberados" : "Direitos para uso orgânico liberados"} · score criativo {compatibility}/100</p></div><button type="button" onClick={() => { setMusicMode("library"); setMusicAssetId(track.id); setMusicStart(0); setMusicEnd(Math.max(0.1, realProjectDuration)); toast({ title: "Trilha aplicada", description: `${assetName(track)} foi adicionada à timeline.` }); }} className="shrink-0 rounded-lg bg-primary px-2 py-1.5 text-[10px] font-semibold text-primary-foreground">Aplicar</button></div></div>; })}</div> : <div className="rounded-lg border border-dashed p-2.5 text-[10px] text-muted-foreground">Nenhuma trilha da biblioteca tem direitos compatíveis com este contexto. Ajuste o Passaporte de Direitos no Music Hub ou gere uma nova trilha.</div>}</div>}{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}{musicMode !== "none" && (selectedTrack || musicFile) && <div className="space-y-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-3"><div className="flex items-start gap-2"><Music2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><div className="min-w-0"><p className="text-xs font-semibold">Beat Sync</p><p className="mt-0.5 text-[10px] text-muted-foreground">Detecta o pulso da trilha e encaixa cortes/transições no ritmo sem alterar os originais.</p></div></div>{activeBeatAnalysis ? <div className="rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-semibold tabular-nums">{activeBeatAnalysis.bpm.toFixed(1)} BPM</p><p className="text-[9px] text-muted-foreground">{activeBeatAnalysis.source === "audio" ? "Forma de onda analisada" : "BPM do Music Hub"} · fase {activeBeatAnalysis.offset.toFixed(2)}s</p></div><button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="rounded-lg border px-2 py-1 text-[9px] font-medium disabled:opacity-50">Reanalisar</button></div>{activeBeatAnalysis.waveform.length > 0 && <div className="mt-2 flex h-10 items-center gap-px overflow-hidden rounded-md bg-muted/40 px-1">{activeBeatAnalysis.waveform.map((level, index) => <span key={index} className="min-w-[1px] flex-1 rounded-full bg-amber-500/70" style={{ height: `${Math.max(8, Math.round(level * 100))}%` }} />)}</div>}</div> : <button type="button" onClick={() => void analyzeMusicBeats()} disabled={beatAnalyzing} className="w-full rounded-lg bg-foreground px-3 py-2.5 text-xs font-semibold text-background disabled:opacity-50">{beatAnalyzing ? <><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />Analisando batidas…</> : <><WandSparkles className="mr-1.5 inline h-3.5 w-3.5" />Detectar batidas</>}</button>}{activeBeatAnalysis && <><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Ritmo dos cortes</span><select value={beatStep} onChange={(event) => setBeatStep(Number(event.target.value) as BeatStep)} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value={1}>Cada batida</option><option value={2}>A cada 2 batidas</option><option value={4}>A cada 4 batidas</option></select></label><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Mostrar batidas na timeline</span><input type="checkbox" checked={showBeatMarkers} onChange={(event) => setShowBeatMarkers(event.target.checked)} className="accent-primary" /></label><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Intensidade do Beat Sync</span><select value={beatSyncStrength} onChange={(event) => setBeatSyncStrength(event.target.value as BeatSyncStrength)} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value="light">Leve · ajustes discretos</option><option value="balanced">Equilibrado · recomendado</option><option value="aggressive">Agressivo · ritmo forte</option></select></label><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Acentuar transições e elementos nos downbeats</span><input type="checkbox" checked={syncVisualAccents} onChange={(event) => setSyncVisualAccents(event.target.checked)} className="accent-primary" /></label><div className="space-y-2 rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><div><p className="text-[10px] font-semibold">Marcadores manuais</p><p className="text-[9px] text-muted-foreground">Fixe momentos importantes que o Beat Sync deve considerar.</p></div><button type="button" onClick={addManualBeatMarker} className="rounded-md border px-2 py-1 text-[9px] font-medium">+ No cursor</button></div>{manualBeatMarkers.length > 0 && <div className="flex flex-wrap gap-1">{manualBeatMarkers.map((marker) => <button key={marker} type="button" onClick={() => setManualBeatMarkers((current) => current.filter((time) => time !== marker))} className="rounded-full border px-1.5 py-0.5 text-[9px] tabular-nums" title="Remover marcador">{timeLabel(marker)} ×</button>)}<button type="button" onClick={() => setManualBeatMarkers([])} className="rounded-full px-1.5 py-0.5 text-[9px] text-muted-foreground underline">limpar</button></div>}</div><div className="rounded-lg border bg-background p-2.5"><div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold">Prévia antes de aplicar</span><span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">{beatCutPreview.length} corte{beatCutPreview.length === 1 ? "" : "s"}</span></div>{beatCutPreview.length > 0 ? <div className="mt-2 space-y-1">{beatCutPreview.slice(0, 5).map((item) => <div key={`${item.clipId}-${item.target}`} className="flex items-center justify-between gap-2 text-[9px]"><span className="truncate">Corte {item.index + 1} → {item.index + 2}{item.manual ? " · manual" : item.downbeat ? " · downbeat" : ""}</span><span className="shrink-0 tabular-nums text-muted-foreground">{item.delta >= 0 ? "+" : ""}{Math.round(item.delta * 1000)} ms</span></div>)}{beatCutPreview.length > 5 && <p className="text-[9px] text-muted-foreground">+ {beatCutPreview.length - 5} ajustes adicionais</p>}</div> : <p className="mt-1 text-[9px] text-muted-foreground">Nenhum corte será movido com a configuração atual. Clipes bloqueados são ignorados.</p>}</div><button type="button" onClick={syncCutsToBeats} disabled={clips.length < 2 || beatCutPreview.length === 0} className="w-full rounded-lg bg-amber-600 px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-40"><Scissors className="mr-1.5 inline h-3.5 w-3.5" />Aplicar Beat Sync{beatCutPreview.length ? ` · ${beatCutPreview.length}` : ""}</button><p className="text-[9px] leading-relaxed text-muted-foreground">Ajuste seguro: cada corte move no máximo 0,42s e continua editável com Desfazer/Refazer.</p></>}</div>}<div className="space-y-3 rounded-xl border bg-muted/15 p-3"><div><p className="text-xs font-semibold">Mixer inteligente</p><p className="text-[10px] text-muted-foreground">Presets ajustam voz, trilha, ducking, fades e loudness juntos.</p></div><div className="grid grid-cols-2 gap-1.5">{AUDIO_MIX_PRESETS.map((preset) => <button key={preset.id} type="button" onClick={() => applyAudioMixPreset(preset.id)} title={preset.hint} className="rounded-lg border bg-background px-2 py-1.5 text-[10px] font-medium hover:border-primary/40">{preset.label}</button>)}</div><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span><strong className="block text-foreground">Ducking automático</strong><span className="text-muted-foreground">Baixa a música quando o áudio original entra.</span></span><input type="checkbox" checked={duckingEnabled} onChange={(event) => setDuckingEnabled(event.target.checked)} className="accent-primary" /></label>{duckingEnabled && <div className="space-y-2"><RangeField label="Redução da música" value={duckingReduction} min={0} max={90} step={1} suffix="%" onChange={setDuckingReduction} /><RangeField label="Sensibilidade à voz/áudio" value={duckingThresholdPct} min={1} max={20} step={1} suffix="%" onChange={setDuckingThresholdPct} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-[10px] text-muted-foreground">Ataque (ms)</span><input type="number" min={20} max={600} step={10} value={duckingAttackMs} onChange={(event) => setDuckingAttackMs(clamp(Number(event.target.value), 20, 600))} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]" /></label><label className="space-y-1"><span className="text-[10px] text-muted-foreground">Retorno (ms)</span><input type="number" min={80} max={1800} step={20} value={duckingReleaseMs} onChange={(event) => setDuckingReleaseMs(clamp(Number(event.target.value), 80, 1800))} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]" /></label></div></div>}<div className="grid grid-cols-2 gap-2"><RangeField label="Fade-in" value={musicFadeIn} min={0} max={5} step={0.1} suffix="s" onChange={setMusicFadeIn} /><RangeField label="Fade-out" value={musicFadeOut} min={0} max={8} step={0.1} suffix="s" onChange={setMusicFadeOut} /></div><label className="flex items-center justify-between gap-3 rounded-lg border bg-background px-2.5 py-2 text-[10px]"><span>Loop inteligente sem emenda</span><input type="checkbox" checked={smartMusicLoop} onChange={(event) => setSmartMusicLoop(event.target.checked)} className="accent-primary" /></label><div className="space-y-2"><div className="flex items-center justify-between gap-2"><span className="text-[10px] font-medium">Automação de volume</span><button type="button" onClick={addMusicVolumePoint} className="rounded-lg border bg-background px-2 py-1 text-[9px]">+ Ponto no playhead</button></div>{musicVolumePoints.length > 0 ? <div className="flex flex-wrap gap-1">{musicVolumePoints.map((point) => <button key={point.id} type="button" onClick={() => setMusicVolumePoints((current) => current.filter((item) => item.id !== point.id))} title="Remover ponto" className="rounded-full border bg-background px-2 py-1 text-[9px] tabular-nums">{timeLabel(point.time)} · {Math.round(point.value * 100)}% ×</button>)}</div> : <p className="text-[9px] text-muted-foreground">Adicione pontos para aumentar ou reduzir a trilha ao longo do vídeo.</p>}</div><label className="block space-y-1"><span className="text-[10px] text-muted-foreground">Loudness final (LUFS)</span><select value={loudnessTarget} onChange={(event) => { setLoudnessTarget(Number(event.target.value)); setNormalizeAudio(true); }} className="h-8 w-full rounded-lg border bg-background px-2 text-[11px]"><option value={-12}>-12 LUFS · anúncio forte</option><option value={-14}>-14 LUFS · social / YouTube</option><option value={-16}>-16 LUFS · voz / institucional</option><option value={-18}>-18 LUFS · conteúdo suave</option></select></label></div><RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
     if (tool === "stickers") return <div className="space-y-4"><div><p className="text-sm font-semibold">Stickers e emojis</p><p className="text-xs text-muted-foreground">Adicione elementos rápidos na timeline e posicione livremente no vídeo.</p></div><div className="grid grid-cols-4 gap-2">{STICKER_PRESETS.map((sticker) => <button key={sticker.label} title={sticker.label} onClick={() => addStickerLayer(sticker)} className="rounded-xl border bg-background p-2 text-center hover:border-primary/40 hover:bg-primary/5"><span className="block text-2xl leading-8">{sticker.glyph}</span><span className="mt-1 block truncate text-[9px] text-muted-foreground">{sticker.label}</span></button>)}</div><div className="rounded-xl border bg-muted/20 p-3 text-[11px] text-muted-foreground">Cada sticker vira uma camada independente: pode ser movido, redimensionado, rotacionado, animado, duplicado e temporizado como qualquer outro elemento.</div></div>;
     if (tool === "captions") return <div className="space-y-4"><div><p className="text-sm font-semibold">Legendas inteligentes</p><p className="text-xs text-muted-foreground">Transcreva a fala para a timeline e destaque cada palavra no momento exato.</p></div><div className="space-y-2"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Estilo automático</p><div className="grid grid-cols-2 gap-2">{Object.entries(AUTO_CAPTION_STYLES).map(([id, style]) => <button key={id} onClick={() => setAutoCaptionStyle(id as CaptionStylePreset)} className={cn("rounded-xl border p-2 text-left", autoCaptionStyle === id ? "border-primary bg-primary/5" : "hover:border-primary/30")}><div className="truncate text-xs font-semibold">{style.label}</div><div className="mt-1 flex gap-1"><span className="h-2 w-5 rounded-sm" style={{ background: style.color }} /><span className="h-2 w-5 rounded-sm" style={{ background: style.activeWordBackground === "transparent" ? style.activeWordColor : style.activeWordBackground }} /></div></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void createEditableAutomaticCaptions()} className="w-full rounded-xl bg-foreground px-3 py-3 text-sm font-semibold text-background disabled:opacity-40"><Captions className="mr-2 inline h-4 w-4" />Transcrever para a timeline</button><div className="rounded-xl border bg-muted/20 p-3"><p className="text-xs font-semibold">Adicionar manualmente</p><div className="mt-2 space-y-2">{CAPTION_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCaptionLayer(template)} className="w-full rounded-lg border bg-background p-2 text-left hover:border-primary/40"><div className="rounded-md px-2 py-1.5 text-[10px] font-bold" style={{ background: template.background, color: template.color, textAlign: template.textAlign }}>{template.text}</div><p className="mt-1.5 text-[10px] font-medium">{template.name}</p></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void applyBurnedAutomaticCaption()} className="w-full rounded-xl border px-3 py-2.5 text-xs font-medium disabled:opacity-40">Gerar versão com legenda fixa</button><p className="text-[11px] text-muted-foreground">A opção principal cria faixas editáveis e mantém o original intacto. A versão fixa continua disponível para compatibilidade.</p></div>;
     if (tool === "settings") return <div className="space-y-4"><div><p className="text-sm font-semibold">Ajustes de saída</p><p className="text-xs text-muted-foreground">Tratamento aplicado depois da composição.</p></div><label className="flex items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-medium">Normalizar volume</p><p className="text-xs text-muted-foreground">Equaliza o resultado final</p></div><input type="checkbox" checked={normalizeAudio} onChange={(event) => setNormalizeAudio(event.target.checked)} className="accent-primary" /></label><label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Velocidade final</span><select value={speed} onChange={(event) => setSpeed(event.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm"><option value="1.0">Normal · 1x</option><option value="1.1">Levemente rápido · 1.1x</option><option value="1.25">Rápido · 1.25x</option></select></label><div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Fluxo não destrutivo</p><p className="mt-1">Cada clipe mantém seu arquivo original; cortes, ordem e sobreposições ficam salvos no projeto.</p></div></div>;
@@ -3339,10 +3539,11 @@ export default function VideoTimelineEditor() {
       </div>
 
       <section className="border-t bg-card">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2"><div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-muted-foreground" /><span className="text-xs font-semibold">Timeline</span><span className="text-[10px] text-muted-foreground">{clips.length} clipe{clips.length === 1 ? "" : "s"} · {layers.length} camada{layers.length === 1 ? "" : "s"}</span></div><div className="flex items-center gap-2"><button onClick={splitAtPlayhead} disabled={!canSplit} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium disabled:opacity-30"><Scissors className="h-3.5 w-3.5" />Dividir no cursor</button><button onClick={() => videoInputRef.current?.click()} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium"><Plus className="h-3.5 w-3.5" />Adicionar clipe</button></div></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2"><div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-muted-foreground" /><span className="text-xs font-semibold">Timeline</span><span className="text-[10px] text-muted-foreground">{clips.length} clipe{clips.length === 1 ? "" : "s"} · {layers.length} camada{layers.length === 1 ? "" : "s"} · {sfxCues.length} SFX</span></div><div className="flex items-center gap-2"><button onClick={splitAtPlayhead} disabled={!canSplit} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium disabled:opacity-30"><Scissors className="h-3.5 w-3.5" />Dividir no cursor</button><button onClick={() => videoInputRef.current?.click()} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium"><Plus className="h-3.5 w-3.5" />Adicionar clipe</button></div></div>
         <div className="overflow-x-auto p-3"><div className="min-w-[900px]"><div className="mb-1 ml-28 grid grid-cols-5 text-[9px] text-muted-foreground">{[0, .25, .5, .75, 1].map((point) => <span key={point}>{timeLabel(realProjectDuration * point)}</span>)}</div><div className="space-y-1.5">
           <div className="flex h-12 items-center"><div className="flex w-28 shrink-0 items-center gap-2 px-2 text-[11px] font-medium"><Film className="h-3.5 w-3.5" />Vídeo</div><div className="relative h-10 flex-1 rounded-md bg-muted" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seekTimeline((event.clientX - rect.left) / rect.width * realProjectDuration); }}>{showBeatMarkers && manualBeatMarkers.map((marker) => <span key={`video-manual-${marker}`} className="pointer-events-none absolute inset-y-0 z-10 w-[2px] border-l border-dashed border-cyan-400" style={{ left: `${clamp(marker / projectDuration * 100, 0, 100)}%` }} />)}{showBeatMarkers && activeBeatAnalysis && beatTimes.map((beat, index) => <span key={`video-beat-${beat.toFixed(3)}-${index}`} className={cn("pointer-events-none absolute inset-y-0 z-10 bg-amber-400/55", downbeatTimes.some((time) => Math.abs(time - beat) < 0.025) ? "w-[2px] opacity-100" : "w-px opacity-70")} style={{ left: `${clamp(beat / projectDuration * 100, 0, 100)}%` }} />)}{clips.map((clip, index) => { const start = clipStartAt(index, clips); const width = clipDuration(clip) / projectDuration * 100; return <div key={clip.id} draggable onDragStart={() => { draggedClipIdRef.current = clip.id; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderClip(draggedClipIdRef.current, clip.id); draggedClipIdRef.current = ""; }} onClick={(event) => { event.stopPropagation(); selectClip(clip.id); seekTimeline(start); }} className={cn("absolute inset-y-1 cursor-grab select-none overflow-hidden rounded bg-slate-700/85 px-2 text-[10px] leading-8 text-white active:cursor-grabbing", selectedClipId === clip.id && "ring-2 ring-primary ring-offset-1")} style={{ left: `${start / projectDuration * 100}%`, width: `${Math.max(1.2, width)}%` }}><button type="button" aria-label="Cortar início do clipe" onPointerDown={(event) => startClipTrimGesture(event, clip, "trim-in")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/40" /><span className="pointer-events-none flex items-center gap-1 truncate px-1"><GripVertical className="h-3 w-3 shrink-0" />{index + 1}. {clip.name}{clip.beatLocked ? " · 🔒" : ""}{(clip.transitionOut ?? "cut") !== "cut" ? ` · ${transitionLabel(clip.transitionOut)}` : ""}</span>{(clip.transitionOut ?? "cut") !== "cut" && <span className="pointer-events-none absolute right-1 top-1 rounded bg-white/15 px-1 text-[8px] leading-4">↗</span>}<button type="button" aria-label="Cortar fim do clipe" onPointerDown={(event) => startClipTrimGesture(event, clip, "trim-out")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/40" /></div>; })}<div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-primary" style={{ left: `${realProjectDuration > 0 ? timelineTime / projectDuration * 100 : 0}%` }} /></div></div>
           {trackRows.map((row) => { const Icon = row.icon; return <div key={row.id} className="flex min-h-10 items-center"><div className="flex w-28 shrink-0 items-center gap-2 px-2 text-[11px] text-muted-foreground"><Icon className="h-3.5 w-3.5" />{row.label}</div><div className="relative h-8 flex-1 rounded-md bg-muted/70" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seekTimeline((event.clientX - rect.left) / rect.width * realProjectDuration); }}>{row.items.map(renderTimelineLayer)}<div className="pointer-events-none absolute inset-y-0 w-px bg-primary" style={{ left: `${realProjectDuration > 0 ? timelineTime / projectDuration * 100 : 0}%` }} /></div></div>; })}
+          <div className="flex h-10 items-center"><div className="flex w-28 shrink-0 items-center gap-2 px-2 text-[11px] text-muted-foreground"><WandSparkles className="h-3.5 w-3.5" />SFX</div><div className="relative h-8 flex-1 rounded-md bg-cyan-500/10" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); seekTimeline((event.clientX - rect.left) / rect.width * realProjectDuration); }}>{sfxCues.map((cue) => <button key={cue.id} type="button" onClick={(event) => { event.stopPropagation(); seekTimeline(cue.start); setTool("audio"); }} className="absolute inset-y-1 overflow-hidden rounded bg-cyan-600/80 px-1 text-[9px] leading-6 text-white" style={{ left: `${clamp(cue.start / projectDuration * 100, 0, 100)}%`, width: `${Math.max(0.8, clamp(cue.duration / projectDuration * 100, 0, 100))}%` }} title={`${cue.name} · ${Math.round(cue.volume * 100)}%`}>{cue.category}</button>)}<div className="pointer-events-none absolute inset-y-0 w-px bg-primary" style={{ left: `${realProjectDuration > 0 ? timelineTime / projectDuration * 100 : 0}%` }} /></div></div>
           <div className="flex h-10 items-center"><div className="flex w-28 shrink-0 items-center gap-2 px-2 text-[11px] text-muted-foreground"><Volume2 className="h-3.5 w-3.5" />Áudio</div><div className="relative h-8 flex-1 rounded-md bg-muted/70">{showBeatMarkers && manualBeatMarkers.map((marker) => <span key={`audio-manual-${marker}`} className="pointer-events-none absolute inset-y-0 z-10 w-[2px] border-l border-dashed border-cyan-300" style={{ left: `${clamp(marker / projectDuration * 100, 0, 100)}%` }} />)}{showBeatMarkers && activeBeatAnalysis && beatTimes.map((beat, index) => <span key={`audio-beat-${beat.toFixed(3)}-${index}`} className={cn("pointer-events-none absolute inset-y-0 z-10 bg-amber-200/80", downbeatTimes.some((time) => Math.abs(time - beat) < 0.025) ? "w-[2px] opacity-100" : "w-px opacity-70")} style={{ left: `${clamp(beat / projectDuration * 100, 0, 100)}%` }} />)}{musicMode !== "none" && <div className="absolute inset-y-1 rounded bg-amber-500/80 px-2 text-[10px] leading-6 text-white" style={{ left: `${clamp(musicStart / projectDuration * 100, 0, 100)}%`, width: `${Math.max(1, clamp((musicEnd - musicStart) / projectDuration * 100, 0, 100))}%` }}>{musicMode === "upload" ? (musicFile?.name ?? (selectedTrack ? assetName(selectedTrack) : "Áudio")) : selectedTrack ? assetName(selectedTrack) : musicMode === "brand" ? "Brand Kit" : "Trilha"}</div>}<div className="pointer-events-none absolute inset-y-0 w-px bg-primary" style={{ left: `${realProjectDuration > 0 ? timelineTime / projectDuration * 100 : 0}%` }} /></div></div>
         </div><div className="mt-3 flex items-center justify-between border-t pt-3 text-[10px] text-muted-foreground"><span>Arraste os clipes para reordenar · puxe as bordas para cortar · selecione e use “Dividir no cursor”.{activeBeatAnalysis ? ` · Beat Sync ${activeBeatAnalysis.bpm.toFixed(1)} BPM` : ""}</span><span className="tabular-nums">Cursor {timeLabel(timelineTime)} / {timeLabel(realProjectDuration)}</span></div></div></div>
       </section>
