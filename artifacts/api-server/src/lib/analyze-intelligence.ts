@@ -228,8 +228,9 @@ export async function analyzeLeadIntelligence(params: {
     .orderBy(desc(dealsTable.updatedAt))
     .limit(5);
 
-  // 3c. Load accepted proposals for the lead — strong engagement signal
-  const acceptedPropostas = await db
+  // 3c. Load recent proposals for the lead so the AI can distinguish
+  // "not created" from draft, sent, pending, accepted, rejected and expired.
+  const recentPropostas = await db
     .select({
       titulo:        propostasTable.titulo,
       numero:        propostasTable.numero,
@@ -241,15 +242,14 @@ export async function analyzeLeadIntelligence(params: {
       updatedAt:     propostasTable.updatedAt,
     })
     .from(propostasTable)
-    .where(
-      and(
-        eq(propostasTable.leadId, leadId),
-        eq(propostasTable.tenantId, tenantId),
-        eq(propostasTable.status, "aceita" as typeof propostasTable.$inferSelect.status)
-      )
-    )
-    .orderBy(desc(propostasTable.createdAt))
-    .limit(5);
+    .where(and(eq(propostasTable.leadId, leadId), eq(propostasTable.tenantId, tenantId)))
+    .orderBy(desc(propostasTable.updatedAt))
+    .limit(8);
+
+  const acceptedPropostas = recentPropostas.filter((p) => p.status === "aceita");
+  const presentedPropostas = recentPropostas.filter((p) =>
+    ["enviada", "pendente", "aceita", "rejeitada", "expirada"].includes(String(p.status))
+  );
 
   // 4. Build prompt
   const leadSection = [
@@ -299,20 +299,30 @@ export async function analyzeLeadIntelligence(params: {
       }).join("\n")
     : "Nenhum negócio registrado.";
 
-  const propostasSection = acceptedPropostas.length > 0
-    ? acceptedPropostas.map((p) => {
+  const PROPOSTA_STATUS_LABELS: Record<string, string> = {
+    rascunho: "rascunho — ainda não apresentada",
+    enviada: "enviada ao cliente",
+    pendente: "pendente / em análise pelo cliente",
+    aceita: "aceita",
+    rejeitada: "rejeitada",
+    expirada: "expirada",
+  };
+
+  const propostasSection = recentPropostas.length > 0
+    ? recentPropostas.map((p) => {
         const total = p.valorTotal ? `R$ ${Number(p.valorTotal).toLocaleString("pt-BR")}` : "";
         const mensal = p.recorrente && p.valorMensal ? ` (recorrente: R$ ${Number(p.valorMensal).toLocaleString("pt-BR")}/mês)` : "";
-        return `- ${p.numero ? `${p.numero} ` : ""}"${p.titulo}": ${total}${mensal} (aceita em ${new Date(p.createdAt).toLocaleDateString("pt-BR")})`;
+        const statusLabel = PROPOSTA_STATUS_LABELS[String(p.status)] ?? String(p.status);
+        return `- ${p.numero ? `${p.numero} ` : ""}"${p.titulo}": ${total}${mensal} (${statusLabel}; atualizada em ${new Date(p.updatedAt ?? p.createdAt).toLocaleDateString("pt-BR")})`;
       }).join("\n")
-    : "Nenhuma proposta aceita.";
+    : "Nenhuma proposta ou orçamento criada para este lead.";
 
   const diasSemContato = conversation?.ultimaMensagemEm
     ? Math.floor((Date.now() - new Date(conversation.ultimaMensagemEm).getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
   const systemPrompt = `Você é um especialista em Customer Success e análise de risco de churn B2B SaaS.
-Analise os dados do lead abaixo — perfil, pipeline de negócios, histórico de conversas e atividades — e retorne um objeto JSON com os seguintes campos:
+Analise os dados do lead abaixo — perfil, pipeline de negócios, estado das propostas/orçamentos, histórico de conversas e atividades — e retorne um objeto JSON com os seguintes campos:
 
 {
   "churnRisk": <0-100, inteiro — probabilidade de churn/cancelamento>,
@@ -328,21 +338,27 @@ Analise os dados do lead abaixo — perfil, pipeline de negócios, histórico de
 
 Regras:
 - Responda SOMENTE com o JSON, sem texto adicional
-- churnRisk deve refletir a SITUAÇÃO REAL COMBINADA: considere o pipeline de negócios E propostas aceitas como sinal prioritário de engajamento
-- Um lead com negócio ativo em estágios avançados (Proposta, Negociação, Ganho) tem engajamento confirmado — penalize o churnRisk com base nisso
+- churnRisk deve refletir a SITUAÇÃO REAL COMBINADA: considere o pipeline de negócios E o estado real das propostas como sinais prioritários de engajamento
+- DISTINGA obrigatoriamente proposta inexistente, rascunho, enviada/pendente, aceita, rejeitada e expirada
+- AUSÊNCIA DE PROPOSTA não é, por si só, razão de churn: nunca use "nenhuma proposta aceita" ou equivalente quando nenhuma proposta foi criada/apresentada
+- RASCUNHO também não equivale a rejeição: significa apenas que a oferta ainda está sendo preparada
+- Só considere "proposta não aceita" como sinal negativo se houver ao menos uma proposta realmente apresentada ao cliente e nenhuma aceita
+- Proposta ENVIADA ou PENDENTE indica processo comercial ativo; combine com tempo sem resposta e estágio do negócio antes de elevar risco
+- Proposta REJEITADA ou EXPIRADA é sinal negativo real e pode aumentar risco conforme o contexto
 - PROPOSTAS ACEITAS são sinal MUITO FORTE de engajamento comercial confirmado: orçamentos aceitos (especialmente com valor recorrente) REDUZEM drasticamente o churnRisk
 - Um lead com 1+ propostas aceitas não pode ter churnRisk > 50 salvo se houver sinais extremos de risco (ex: reclamações, chargebacks, inatividade total pós-contratação)
 - Um negócio recentemente avançado no pipeline é sinal forte de intenção positiva e REDUZ o churnRisk, mesmo com baixa atividade de mensagens
 - Negócios em estágio "Ganho" = cliente ativo → churnRisk deve refletir risco de cancelamento pós-venda, não de conversão
 - Negócios em "Proposta" ou "Negociação" = lead em fase ativa → churnRisk deve ser moderado mesmo com inatividade no chat
-- churnReasons deve listar APENAS fatores reais negativos observados; não mencione falta de atividade no chat se houver negócio ativo ou proposta aceita
+- churnReasons deve listar APENAS fatores reais negativos observados; não transforme uma etapa ainda não executada em problema
+- nextBestAction deve respeitar o estado comercial: sem proposta criada → preparar/confirmar requisitos; rascunho → finalizar; enviada/pendente → follow-up; rejeitada/expirada → entender objeção e revisar; aceita → executar próximo passo pós-aceite
 - journeyStage deve ser um valor curto descritivo
-- opportunities são upsell, expansão, ou resolução de problemas identificados
+- opportunities são upsell, expansão, avanço comercial ou resolução de problemas identificados
 - nextBestAction deve ser específica e executável pela equipe de vendas/CS
 - O canal de comunicação preferido é SEMPRE WhatsApp — nunca sugira e-mail como canal de follow-up; use "Enviar mensagem de WhatsApp" ou "Ligar via WhatsApp"
-- Se o lead precisa ser reativado ou está em risco, a ação deve ser um contato proativo por WhatsApp${diasSemContato !== null ? `\n- O lead está sem contato via mensagens há ${diasSemContato} dia${diasSemContato !== 1 ? "s" : ""} — mas verifique o pipeline e propostas aceitas antes de considerar como inatividade real` : ""}`;
+- Se o lead precisa ser reativado ou está em risco, a ação deve ser um contato proativo por WhatsApp${diasSemContato !== null ? `\n- O lead está sem contato via mensagens há ${diasSemContato} dia${diasSemContato !== 1 ? "s" : ""} — mas verifique o pipeline e o estado das propostas antes de considerar como inatividade real` : ""}`;
 
-  const userContent = `## PERFIL DO LEAD\n${leadSection}\n\n## NEGÓCIOS NO PIPELINE (${activeDeals.length} negócio${activeDeals.length !== 1 ? "s" : ""})\n${dealsSection}\n\n## PROPOSTAS/ORÇAMENTOS ACEITOS (${acceptedPropostas.length})\n${propostasSection}\n\n## HISTÓRICO DE MENSAGENS (últimas ${recentMessages.length})\n${messagesSection}\n\n## ATIVIDADES RECENTES\n${activitiesSection}`;
+  const userContent = `## PERFIL DO LEAD\n${leadSection}\n\n## NEGÓCIOS NO PIPELINE (${activeDeals.length} negócio${activeDeals.length !== 1 ? "s" : ""})\n${dealsSection}\n\n## PROPOSTAS/ORÇAMENTOS (${recentPropostas.length} total; ${presentedPropostas.length} apresentada${presentedPropostas.length !== 1 ? "s" : ""}; ${acceptedPropostas.length} aceita${acceptedPropostas.length !== 1 ? "s" : ""})\n${propostasSection}\n\n## HISTÓRICO DE MENSAGENS (últimas ${recentMessages.length})\n${messagesSection}\n\n## ATIVIDADES RECENTES\n${activitiesSection}`;
 
   // 5. Call GPT-4o-mini via gateway (BYOK + quota + logging)
   let rawJson: string;
