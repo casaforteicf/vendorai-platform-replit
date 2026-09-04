@@ -155,7 +155,7 @@ export default function DevAgentOverlay() {
         role: "user",
         content: `${DEV_BOOTSTRAP}\n\nCONTEXTO ATUAL:\n- rota: ${route}\n- usuário: Super Admin\n- requestId: ${requestId}\n\nPEDIDO:\n${text}`,
       };
-      const response = await fetch("/api/support/chat", {
+      const response = await fetch("/api/support/dev/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
