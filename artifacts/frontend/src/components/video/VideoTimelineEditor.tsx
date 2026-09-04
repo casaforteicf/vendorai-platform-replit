@@ -47,7 +47,7 @@ import { useMediaVideoHandoff } from "@/hooks/useMediaVideoHandoff";
 
 type Ratio = "9:16" | "16:9" | "1:1" | "4:5";
 type Quality = "720p" | "1080p";
-type ToolPanel = "media" | "text" | "cards" | "audio" | "captions" | "settings";
+type ToolPanel = "media" | "text" | "cards" | "stickers" | "audio" | "captions" | "settings";
 type LayerType = "text" | "card" | "image";
 type MusicMode = "none" | "brand" | "library" | "upload" | "ai";
 type JobStatus = "idle" | "rendering" | "processing" | "done" | "error";
@@ -60,6 +60,7 @@ type EasingType = "linear" | "ease-in" | "ease-out" | "ease-in-out";
 type LayerAnimation = "none" | "fade" | "pop" | "zoom" | "slide-up" | "slide-down" | "slide-left" | "slide-right";
 type TextAlign = "left" | "center" | "right";
 type CaptionStylePreset = "impact" | "highlight" | "clean" | "minimal";
+type CaptionMotion = "none" | "word-pop" | "word-bounce" | "pulse" | "karaoke";
 
 type CaptionWord = {
   word: string;
@@ -120,8 +121,9 @@ type EditorLayer = {
   enterAnimation: LayerAnimation;
   exitAnimation: LayerAnimation;
   animationDuration: number;
-  contentKind?: "text" | "caption";
+  contentKind?: "text" | "caption" | "sticker";
   captionStyle?: CaptionStylePreset;
+  captionMotion?: CaptionMotion;
   captionWords?: CaptionWord[];
   activeWordColor?: string;
   activeWordBackground?: string;
@@ -199,6 +201,7 @@ const TOOL_ITEMS: Array<{ id: ToolPanel; label: string; icon: typeof Film }> = [
   { id: "media", label: "Mídia", icon: Library },
   { id: "text", label: "Texto", icon: Type },
   { id: "cards", label: "Cards", icon: Square },
+  { id: "stickers", label: "Stickers", icon: WandSparkles },
   { id: "audio", label: "Áudio", icon: Music2 },
   { id: "captions", label: "Legendas", icon: Captions },
   { id: "settings", label: "Ajustes", icon: Settings2 },
@@ -210,6 +213,33 @@ const CARD_TEMPLATES = [
   { name: "CTA", text: "QUERO SABER MAIS\nChame no WhatsApp", background: "#b91c1c", color: "#ffffff" },
   { name: "Destaque", text: "NOVIDADE\nConheça esta solução", background: "#6d28d9", color: "#ffffff" },
 ];
+
+const STICKER_PRESETS = [
+  { label: "Destaque", glyph: "✨" },
+  { label: "Fogo", glyph: "🔥" },
+  { label: "Aprovado", glyph: "✅" },
+  { label: "Atenção", glyph: "⚡" },
+  { label: "Alvo", glyph: "🎯" },
+  { label: "Lançamento", glyph: "🚀" },
+  { label: "Ideia", glyph: "💡" },
+  { label: "Favorito", glyph: "⭐" },
+  { label: "Clique abaixo", glyph: "👇" },
+  { label: "Local", glyph: "📍" },
+  { label: "Oferta", glyph: "🛒" },
+  { label: "Preço", glyph: "💰" },
+  { label: "Contato", glyph: "📞" },
+  { label: "Resultado", glyph: "🏆" },
+  { label: "Coração", glyph: "❤️" },
+  { label: "Anúncio", glyph: "📣" },
+];
+
+const CAPTION_MOTIONS: Record<CaptionMotion, string> = {
+  none: "Sem movimento",
+  "word-pop": "Pop por palavra",
+  "word-bounce": "Bounce por palavra",
+  pulse: "Pulso por palavra",
+  karaoke: "Karaokê / sublinhado",
+};
 
 const CAPTION_TEMPLATES: Array<{
   name: string;
@@ -236,11 +266,12 @@ const AUTO_CAPTION_STYLES: Record<CaptionStylePreset, {
   activeWordColor: string;
   activeWordBackground: string;
   enterAnimation: LayerAnimation;
+  motion: CaptionMotion;
 }> = {
-  impact: { label: "Impacto Reels", fontSize: 48, y: 70, color: "#ffffff", background: "#111827", activeWordColor: "#111827", activeWordBackground: "#facc15", enterAnimation: "pop" },
-  highlight: { label: "Destaque palavra", fontSize: 46, y: 72, color: "#ffffff", background: "#111827", activeWordColor: "#111827", activeWordBackground: "#22d3ee", enterAnimation: "slide-up" },
-  clean: { label: "Clean", fontSize: 40, y: 76, color: "#ffffff", background: "#000000", activeWordColor: "#facc15", activeWordBackground: "transparent", enterAnimation: "fade" },
-  minimal: { label: "Minimal", fontSize: 36, y: 80, color: "#ffffff", background: "transparent", activeWordColor: "#facc15", activeWordBackground: "transparent", enterAnimation: "fade" },
+  impact: { label: "Impacto Reels", fontSize: 48, y: 70, color: "#ffffff", background: "#111827", activeWordColor: "#111827", activeWordBackground: "#facc15", enterAnimation: "pop", motion: "word-pop" },
+  highlight: { label: "Destaque palavra", fontSize: 46, y: 72, color: "#ffffff", background: "#111827", activeWordColor: "#111827", activeWordBackground: "#22d3ee", enterAnimation: "slide-up", motion: "word-bounce" },
+  clean: { label: "Clean", fontSize: 40, y: 76, color: "#ffffff", background: "#000000", activeWordColor: "#facc15", activeWordBackground: "transparent", enterAnimation: "fade", motion: "karaoke" },
+  minimal: { label: "Minimal", fontSize: 36, y: 80, color: "#ffffff", background: "transparent", activeWordColor: "#facc15", activeWordBackground: "transparent", enterAnimation: "fade", motion: "none" },
 };
 
 function tokenHeaders(json = false): Record<string, string> {
@@ -614,6 +645,18 @@ function splitCaptionWordLines(ctx: CanvasRenderingContext2D, words: CaptionWord
   return lines.slice(0, 4);
 }
 
+function captionWordMotionState(word: CaptionWord, time: number, motion: CaptionMotion = "word-pop") {
+  const active = time >= word.start && time <= word.end;
+  if (!active || motion === "none") return { active, scale: 1, translateY: 0 };
+  const duration = Math.max(0.04, word.end - word.start);
+  const progress = clamp((time - word.start) / duration, 0, 1);
+  const wave = Math.sin(Math.PI * progress);
+  if (motion === "word-pop") return { active, scale: 1 + 0.22 * wave, translateY: 0 };
+  if (motion === "word-bounce") return { active, scale: 1 + 0.08 * wave, translateY: -0.18 * wave };
+  if (motion === "pulse") return { active, scale: 1 + 0.12 * (0.5 + 0.5 * Math.sin(progress * Math.PI * 4)), translateY: 0 };
+  return { active, scale: 1.04, translateY: 0 };
+}
+
 function drawCaptionWordsOnCanvas(
   ctx: CanvasRenderingContext2D,
   layer: EditorLayer,
@@ -643,14 +686,27 @@ function drawCaptionWordsOnCanvas(
     for (let index = 0; index < line.length; index += 1) {
       const word = line[index]!;
       const wordWidth = widths[index] ?? 0;
-      const active = time >= word.start && time <= word.end;
-      if (active && layer.activeWordBackground && layer.activeWordBackground !== "transparent") {
-        ctx.fillStyle = layer.activeWordBackground;
-        ctx.fillRect(cursorX - padding * 0.22, y - padding * 0.12, wordWidth + padding * 0.44, lineHeight * 0.95);
+      const motion = captionWordMotionState(word, time, layer.captionMotion ?? "word-pop");
+      if (motion.active) {
+        ctx.save();
+        ctx.translate(cursorX + wordWidth / 2, y + lineHeight / 2 + motion.translateY * fontSize);
+        ctx.scale(motion.scale, motion.scale);
+        if (layer.activeWordBackground && layer.activeWordBackground !== "transparent") {
+          ctx.fillStyle = layer.activeWordBackground;
+          ctx.fillRect(-wordWidth / 2 - padding * 0.22, -lineHeight / 2 - padding * 0.12, wordWidth + padding * 0.44, lineHeight * 0.95);
+        }
+        ctx.fillStyle = layer.activeWordColor || layer.color;
+        ctx.textAlign = "left";
+        ctx.fillText(word.word, -wordWidth / 2, -lineHeight / 2);
+        if (layer.captionMotion === "karaoke") {
+          ctx.fillRect(-wordWidth / 2, lineHeight * 0.34, wordWidth, Math.max(2, fontSize * 0.06));
+        }
+        ctx.restore();
+      } else {
+        ctx.fillStyle = layer.color;
+        ctx.textAlign = "left";
+        ctx.fillText(word.word, cursorX, y);
       }
-      ctx.fillStyle = active ? (layer.activeWordColor || layer.color) : layer.color;
-      ctx.textAlign = "left";
-      ctx.fillText(word.word, cursorX, y);
       cursorX += wordWidth + gap;
     }
   }
@@ -927,7 +983,7 @@ export default function VideoTimelineEditor() {
   }, [duplicateClip, duplicateLayer, redo, removeClip, removeLayer, selectedClipId, selectedLayerId, undo]);
 
   const serializedContext = useMemo(() => ({
-    editorVersion: 8,
+    editorVersion: 9,
     channel,
     ratio,
     quality,
@@ -1107,8 +1163,9 @@ export default function VideoTimelineEditor() {
           enterAnimation: (["none", "fade", "pop", "zoom", "slide-up", "slide-down", "slide-left", "slide-right"] as string[]).includes(String(layer.enterAnimation)) ? layer.enterAnimation as LayerAnimation : "none",
           exitAnimation: (["none", "fade", "pop", "zoom", "slide-up", "slide-down", "slide-left", "slide-right"] as string[]).includes(String(layer.exitAnimation)) ? layer.exitAnimation as LayerAnimation : "none",
           animationDuration: clamp(Number(layer.animationDuration) || 0.35, 0.1, 1.5),
-          contentKind: layer.contentKind === "caption" ? "caption" : "text",
+          contentKind: layer.contentKind === "caption" ? "caption" : layer.contentKind === "sticker" ? "sticker" : "text",
           captionStyle: (["impact", "highlight", "clean", "minimal"] as string[]).includes(String(layer.captionStyle)) ? layer.captionStyle as CaptionStylePreset : undefined,
+          captionMotion: layer.contentKind === "caption" && (["none", "word-pop", "word-bounce", "pulse", "karaoke"] as string[]).includes(String(layer.captionMotion)) ? layer.captionMotion as CaptionMotion : layer.contentKind === "caption" ? "word-pop" : undefined,
           captionWords: Array.isArray(layer.captionWords) ? layer.captionWords.map((word) => ({
             word: String(word.word ?? "").trim(),
             start: Math.max(0, Number(word.start) || 0),
@@ -1317,6 +1374,36 @@ export default function VideoTimelineEditor() {
     selectLayer(layer.id);
   };
 
+  const addStickerLayer = (sticker: { label: string; glyph: string }) => {
+    const total = Math.max(0.1, projectDurationFor(clipsRef.current));
+    const at = clamp(timelineTime, 0, Math.max(0, total - 0.1));
+    const layer: EditorLayer = {
+      id: uid("sticker"),
+      type: "text",
+      name: `Sticker · ${sticker.label}`,
+      text: sticker.glyph,
+      start: at,
+      end: Math.min(total, at + 3),
+      x: 70,
+      y: 12,
+      width: 18,
+      fontSize: 72,
+      color: "#ffffff",
+      background: "transparent",
+      opacity: 1,
+      scale: 1,
+      rotation: 0,
+      easing: "ease-out",
+      textAlign: "center",
+      enterAnimation: "pop",
+      exitAnimation: "fade",
+      animationDuration: 0.2,
+      contentKind: "sticker",
+    };
+    commitEditor(clipsRef.current, [...layersRef.current, layer]);
+    selectLayer(layer.id);
+  };
+
   const addCaptionLayer = (template = CAPTION_TEMPLATES[0]) => {
     if (!template) return;
     const total = Math.max(0.1, projectDurationFor(clipsRef.current));
@@ -1344,6 +1431,7 @@ export default function VideoTimelineEditor() {
       animationDuration: 0.28,
       contentKind: "caption",
       captionStyle: template.name === "Destaque" ? "highlight" : template.name === "Minimal" ? "minimal" : "impact",
+      captionMotion: template.name === "Destaque" ? "word-bounce" : template.name === "Minimal" ? "none" : "word-pop",
       activeWordColor: "#111827",
       activeWordBackground: "#facc15",
     };
@@ -1405,6 +1493,102 @@ export default function VideoTimelineEditor() {
         : selectedLayer.captionWords,
     });
   };
+
+  const updateCaptionWordTiming = useCallback((index: number, field: "start" | "end", value: number) => {
+    const layer = layersRef.current.find((item) => item.id === selectedLayerId);
+    if (!layer || layer.contentKind !== "caption" || !layer.captionWords?.length) return;
+    const words = layer.captionWords.map((word) => ({ ...word }));
+    const word = words[index];
+    if (!word) return;
+    const previous = words[index - 1];
+    const next = words[index + 1];
+    if (field === "start") {
+      const min = previous ? previous.end + 0.01 : 0;
+      word.start = clamp(value, min, word.end - 0.01);
+    } else {
+      const max = next ? next.start - 0.01 : Math.max(word.start + 0.01, projectDurationFor(clipsRef.current));
+      word.end = clamp(value, word.start + 0.01, max);
+    }
+    const nextLayer = {
+      ...layer,
+      captionWords: words,
+      text: words.map((item) => item.word).join(" "),
+      start: words[0]?.start ?? layer.start,
+      end: words[words.length - 1]?.end ?? layer.end,
+    };
+    commitEditor(clipsRef.current, layersRef.current.map((item) => item.id === layer.id ? nextLayer : item));
+  }, [commitEditor, selectedLayerId]);
+
+  const splitSelectedCaptionAtPlayhead = useCallback(() => {
+    const layer = layersRef.current.find((item) => item.id === selectedLayerId);
+    if (!layer || layer.contentKind !== "caption") return;
+    const words = (layer.captionWords?.length ? layer.captionWords.map((word) => ({ ...word })) : retimeCaptionWords(layer.text, layer.start, layer.end))
+      .sort((a, b) => a.start - b.start);
+    if (words.length < 2 || timelineTime <= layer.start + 0.01 || timelineTime >= layer.end - 0.01) {
+      toast({ title: "Posicione o cursor dentro da legenda", description: "O cursor precisa ficar entre o começo e o fim da frase." });
+      return;
+    }
+    let splitIndex = words.findIndex((word) => timelineTime < (word.start + word.end) / 2);
+    if (splitIndex <= 0) splitIndex = words.findIndex((word) => word.start >= timelineTime);
+    if (splitIndex <= 0 || splitIndex >= words.length) {
+      toast({ title: "Não há duas partes válidas", description: "Mova o cursor para outra palavra e tente novamente." });
+      return;
+    }
+    const leftWords = words.slice(0, splitIndex);
+    const rightWords = words.slice(splitIndex);
+    const left: EditorLayer = {
+      ...layer,
+      text: leftWords.map((word) => word.word).join(" "),
+      start: leftWords[0]!.start,
+      end: leftWords[leftWords.length - 1]!.end,
+      captionWords: leftWords,
+      name: layer.name.replace(/ · parte \d+$/, "") + " · parte 1",
+    };
+    const right: EditorLayer = {
+      ...layer,
+      id: uid("caption-split"),
+      text: rightWords.map((word) => word.word).join(" "),
+      start: rightWords[0]!.start,
+      end: rightWords[rightWords.length - 1]!.end,
+      captionWords: rightWords,
+      name: layer.name.replace(/ · parte \d+$/, "") + " · parte 2",
+    };
+    const nextLayers = layersRef.current.flatMap((item) => item.id === layer.id ? [left, right] : [item]);
+    commitEditor(clipsRef.current, nextLayers);
+    selectLayer(right.id);
+    setTimelineTime(right.start);
+    toast({ title: "Legenda dividida", description: "As duas frases continuam com os tempos de palavra preservados." });
+  }, [commitEditor, selectLayer, selectedLayerId, timelineTime, toast]);
+
+  const joinSelectedCaptionWithNext = useCallback(() => {
+    const layer = layersRef.current.find((item) => item.id === selectedLayerId);
+    if (!layer || layer.contentKind !== "caption") return;
+    const nextCaption = layersRef.current
+      .filter((item) => item.contentKind === "caption" && item.id !== layer.id && item.start >= layer.start)
+      .sort((a, b) => a.start - b.start)[0];
+    if (!nextCaption) {
+      toast({ title: "Não há próxima legenda", description: "Selecione outra frase ou mantenha este bloco separado." });
+      return;
+    }
+    const leftWords = layer.captionWords?.length ? layer.captionWords.map((word) => ({ ...word })) : retimeCaptionWords(layer.text, layer.start, layer.end);
+    const rightWords = nextCaption.captionWords?.length ? nextCaption.captionWords.map((word) => ({ ...word })) : retimeCaptionWords(nextCaption.text, nextCaption.start, nextCaption.end);
+    const words = [...leftWords, ...rightWords].sort((a, b) => a.start - b.start);
+    const merged: EditorLayer = {
+      ...layer,
+      name: "Legenda combinada",
+      start: Math.min(layer.start, nextCaption.start),
+      end: Math.max(layer.end, nextCaption.end),
+      text: words.map((word) => word.word).join(" "),
+      captionWords: words,
+    };
+    const nextLayers = layersRef.current
+      .filter((item) => item.id !== nextCaption.id)
+      .map((item) => item.id === layer.id ? merged : item);
+    commitEditor(clipsRef.current, nextLayers);
+    selectLayer(layer.id);
+    setTimelineTime(merged.start);
+    toast({ title: "Legendas unidas", description: "O bloco combinado preserva os tempos individuais de cada palavra." });
+  }, [commitEditor, selectLayer, selectedLayerId, toast]);
 
   const updateClip = (patch: Partial<VideoClip>) => {
     if (!selectedClipId) return;
@@ -2015,6 +2199,7 @@ export default function VideoTimelineEditor() {
           animationDuration: 0.18,
           contentKind: "caption",
           captionStyle: autoCaptionStyle,
+          captionMotion: style.motion,
           captionWords: words,
           activeWordColor: style.activeWordColor,
           activeWordBackground: style.activeWordBackground,
@@ -2073,7 +2258,7 @@ export default function VideoTimelineEditor() {
   const PropertiesPanel = selectedLayer ? (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-2">
-        <div><p className="text-sm font-semibold">{selectedLayer.name}</p><p className="text-xs text-muted-foreground">{selectedLayer.type === "image" ? "Imagem" : selectedLayer.type === "card" ? "Card" : selectedLayer.contentKind === "caption" ? "Legenda sincronizada" : "Texto"}</p></div>
+        <div><p className="text-sm font-semibold">{selectedLayer.name}</p><p className="text-xs text-muted-foreground">{selectedLayer.type === "image" ? "Imagem" : selectedLayer.type === "card" ? "Card" : selectedLayer.contentKind === "caption" ? "Legenda sincronizada" : selectedLayer.contentKind === "sticker" ? "Sticker / emoji" : "Texto"}</p></div>
         <div className="flex gap-1"><button onClick={() => duplicateLayer(selectedLayer.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" title="Duplicar"><Copy className="h-4 w-4" /></button><button onClick={() => removeLayer(selectedLayer.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="Excluir"><Trash2 className="h-4 w-4" /></button></div>
       </div>
       <div className="rounded-lg border bg-muted/30 px-2.5 py-2 text-[10px] text-muted-foreground">Arraste no preview para reposicionar. Puxe a alça inferior para redimensionar.</div>
@@ -2101,7 +2286,16 @@ export default function VideoTimelineEditor() {
         {(selectedLayer.keyframes ?? []).length ? <div className="flex flex-wrap gap-1.5">{(selectedLayer.keyframes ?? []).map((frame) => <div key={frame.time} className="inline-flex items-center overflow-hidden rounded-lg border bg-background"><button onClick={() => seekTimeline(frame.time)} className="px-2 py-1 text-[10px] font-medium">◆ {timeLabel(frame.time)}</button><button onClick={() => removeLayerKeyframe(frame.time)} className="border-l px-1.5 py-1 text-muted-foreground hover:text-destructive" title="Remover keyframe">×</button></div>)}</div> : <p className="text-[10px] text-muted-foreground">Mova o cursor, ajuste o elemento e clique em + Keyframe. Repita em outro momento para criar a animação.</p>}
       </div>
       {selectedLayer.type !== "image" && <div className="grid grid-cols-2 gap-3"><label className="space-y-1.5"><span className="text-xs text-muted-foreground">Texto</span><input type="color" value={selectedLayer.color} onChange={(event) => updateLayer({ color: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label><label className="space-y-1.5"><span className="text-xs text-muted-foreground">Fundo</span><input type="color" value={selectedLayer.background || "#000000"} onChange={(event) => updateLayer({ background: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label></div>}
-      {selectedLayer.contentKind === "caption" && <div className="space-y-3 rounded-xl border bg-muted/20 p-3"><div><p className="text-xs font-semibold">Destaque palavra a palavra</p><p className="text-[10px] text-muted-foreground">{selectedLayer.captionWords?.length ?? 0} palavras sincronizadas com a fala.</p></div><label className="block space-y-1.5"><span className="text-[10px] text-muted-foreground">Estilo</span><select value={selectedLayer.captionStyle ?? "impact"} onChange={(event) => { const preset = event.target.value as CaptionStylePreset; const style = AUTO_CAPTION_STYLES[preset]; updateLayer({ captionStyle: preset, fontSize: style.fontSize, y: style.y, color: style.color, background: style.background, activeWordColor: style.activeWordColor, activeWordBackground: style.activeWordBackground, enterAnimation: style.enterAnimation }); }} className="h-9 w-full rounded-lg border bg-background px-2 text-xs">{Object.entries(AUTO_CAPTION_STYLES).map(([id, style]) => <option key={id} value={id}>{style.label}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5"><span className="text-[10px] text-muted-foreground">Palavra ativa</span><input type="color" value={selectedLayer.activeWordColor || "#111827"} onChange={(event) => updateLayer({ activeWordColor: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label><label className="space-y-1.5"><span className="text-[10px] text-muted-foreground">Fundo ativo</span><input type="color" value={selectedLayer.activeWordBackground && selectedLayer.activeWordBackground !== "transparent" ? selectedLayer.activeWordBackground : "#facc15"} onChange={(event) => updateLayer({ activeWordBackground: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label></div></div>}
+      {selectedLayer.contentKind === "caption" && <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+        <div><p className="text-xs font-semibold">Montagem da frase</p><p className="text-[10px] text-muted-foreground">Divida, una e refine o sincronismo sem retranscrever o vídeo.</p></div>
+        <div className="grid grid-cols-2 gap-2">
+          <button disabled={timelineTime <= selectedLayer.start + 0.01 || timelineTime >= selectedLayer.end - 0.01} onClick={splitSelectedCaptionAtPlayhead} className="rounded-lg border bg-background px-2 py-2 text-[10px] font-medium disabled:opacity-30"><Scissors className="mr-1 inline h-3.5 w-3.5" />Dividir no cursor</button>
+          <button onClick={joinSelectedCaptionWithNext} className="rounded-lg border bg-background px-2 py-2 text-[10px] font-medium">Juntar próxima</button>
+        </div>
+        <label className="block space-y-1.5"><span className="text-[10px] text-muted-foreground">Movimento seguindo a fala</span><select value={selectedLayer.captionMotion ?? "word-pop"} onChange={(event) => updateLayer({ captionMotion: event.target.value as CaptionMotion })} className="h-9 w-full rounded-lg border bg-background px-2 text-xs">{Object.entries(CAPTION_MOTIONS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+        {(selectedLayer.captionWords ?? []).length > 0 && <div className="space-y-2"><div className="flex items-center justify-between"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Tempo por palavra</p><span className="text-[9px] text-muted-foreground">segundos</span></div><div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">{selectedLayer.captionWords!.map((word, index) => <div key={`${word.start}-${index}`} className="grid grid-cols-[minmax(70px,1fr)_64px_64px] items-center gap-1.5 rounded-lg border bg-background p-1.5"><button onClick={() => seekTimeline(word.start)} className="truncate text-left text-[10px] font-medium" title="Ir para esta palavra">{word.word}</button><input aria-label={`Início de ${word.word}`} type="number" min={0} max={projectDuration} step={0.01} value={word.start.toFixed(2)} onChange={(event) => updateCaptionWordTiming(index, "start", Number(event.target.value))} className="h-7 rounded border bg-background px-1 text-[9px] tabular-nums" /><input aria-label={`Fim de ${word.word}`} type="number" min={0} max={projectDuration} step={0.01} value={word.end.toFixed(2)} onChange={(event) => updateCaptionWordTiming(index, "end", Number(event.target.value))} className="h-7 rounded border bg-background px-1 text-[9px] tabular-nums" /></div>)}</div></div>}
+      </div>}
+      {selectedLayer.contentKind === "caption" && <div className="space-y-3 rounded-xl border bg-muted/20 p-3"><div><p className="text-xs font-semibold">Destaque palavra a palavra</p><p className="text-[10px] text-muted-foreground">{selectedLayer.captionWords?.length ?? 0} palavras sincronizadas com a fala.</p></div><label className="block space-y-1.5"><span className="text-[10px] text-muted-foreground">Estilo</span><select value={selectedLayer.captionStyle ?? "impact"} onChange={(event) => { const preset = event.target.value as CaptionStylePreset; const style = AUTO_CAPTION_STYLES[preset]; updateLayer({ captionStyle: preset, fontSize: style.fontSize, y: style.y, color: style.color, background: style.background, activeWordColor: style.activeWordColor, activeWordBackground: style.activeWordBackground, enterAnimation: style.enterAnimation, captionMotion: style.motion }); }} className="h-9 w-full rounded-lg border bg-background px-2 text-xs">{Object.entries(AUTO_CAPTION_STYLES).map(([id, style]) => <option key={id} value={id}>{style.label}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="space-y-1.5"><span className="text-[10px] text-muted-foreground">Palavra ativa</span><input type="color" value={selectedLayer.activeWordColor || "#111827"} onChange={(event) => updateLayer({ activeWordColor: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label><label className="space-y-1.5"><span className="text-[10px] text-muted-foreground">Fundo ativo</span><input type="color" value={selectedLayer.activeWordBackground && selectedLayer.activeWordBackground !== "transparent" ? selectedLayer.activeWordBackground : "#facc15"} onChange={(event) => updateLayer({ activeWordBackground: event.target.value })} className="h-9 w-full rounded-lg border bg-background p-1" /></label></div></div>}
     </div>
   ) : selectedClip ? (
     <div className="space-y-4">
@@ -2126,14 +2320,16 @@ export default function VideoTimelineEditor() {
     if (tool === "text") return <div className="space-y-3"><div><p className="text-sm font-semibold">Adicionar texto</p><p className="text-xs text-muted-foreground">Faixas escritas independentes sobre toda a sequência.</p></div><button onClick={() => addTextLayer("title")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-semibold">Título</p><p className="text-xs text-muted-foreground">Gancho ou headline principal</p></button><button onClick={() => addTextLayer("subtitle")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">Subtítulo</p><p className="text-xs text-muted-foreground">Mensagem de apoio e benefício</p></button><button onClick={() => addTextLayer("cta")} className="w-full rounded-xl border p-3 text-left hover:border-primary/40 hover:bg-primary/5"><p className="font-medium">CTA</p><p className="text-xs text-muted-foreground">WhatsApp, site ou chamada final</p></button></div>;
     if (tool === "cards") return <div className="space-y-3"><div><p className="text-sm font-semibold">Cards</p><p className="text-xs text-muted-foreground">Oferta, benefício e CTA no ponto atual da timeline.</p></div>{CARD_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCardLayer(template)} className="w-full rounded-xl border p-3 text-left hover:border-primary/40"><div className="h-12 rounded-lg p-2 text-xs font-bold" style={{ background: template.background, color: template.color }}>{template.text.split("\n").map((line) => <div key={line}>{line}</div>)}</div><p className="mt-2 text-xs font-medium">{template.name}</p></button>)}</div>;
     if (tool === "audio") return <div className="space-y-4"><div><p className="text-sm font-semibold">Áudio e trilha</p><p className="text-xs text-muted-foreground">Uma trilha contínua pode atravessar todos os clipes.</p></div><div className="grid grid-cols-2 gap-2">{(["none", "brand", "library", "upload", "ai"] as MusicMode[]).map((mode) => <button key={mode} onClick={() => { setMusicMode(mode); if (mode === "brand") setMusicAssetId(brandDefaultTrackId); }} className={cn("rounded-lg border px-2 py-2 text-xs", musicMode === mode ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground")}>{mode === "none" ? "Sem trilha" : mode === "brand" ? "Brand Kit" : mode === "library" ? "Biblioteca" : mode === "upload" ? "Enviar áudio" : "Gerar IA"}</button>)}</div>{musicMode === "upload" && <button onClick={() => musicInputRef.current?.click()} className="w-full rounded-xl border border-dashed p-4 text-sm hover:border-primary/40"><Upload className="mx-auto mb-2 h-5 w-5" />{musicFile?.name ?? "Selecionar arquivo de áudio"}</button>}{(musicMode === "library" || musicMode === "brand") && <div className="max-h-52 space-y-2 overflow-y-auto pr-1">{musicTracks.map((track) => { const allowed = track.usage?.organicAllowed !== false; const active = musicAssetId === track.id; return <button key={track.id} disabled={!allowed} onClick={() => setMusicAssetId(track.id)} className={cn("w-full rounded-xl border p-2.5 text-left text-xs", active ? "border-primary bg-primary/5" : "", !allowed && "opacity-50")}><p className="truncate font-medium">{assetName(track)}</p><p className="mt-1 text-[10px] text-muted-foreground">{allowed ? track.usage?.paidAdsAllowed ? "Comercial + mídia paga liberados" : "Uso orgânico liberado" : "Direitos pendentes/restritos"}</p></button>; })}</div>}{musicMode === "ai" && <div className="vendor-light-module overflow-hidden rounded-xl"><AiMusicGenerator tenantId={tenantId} onGenerated={async (assetId) => { await loadMusic(); setMusicMode("library"); setMusicAssetId(assetId); }} /></div>}<RangeField label="Áudio original" value={originalVolume} min={0} max={1.5} step={0.05} onChange={setOriginalVolume} />{musicMode !== "none" && <><RangeField label="Volume da trilha" value={musicVolume} min={0} max={1} step={0.05} onChange={setMusicVolume} /><div className="grid grid-cols-2 gap-2"><label className="space-y-1"><span className="text-xs text-muted-foreground">Início</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0} max={projectDuration} step={0.1} value={musicStart} onChange={(event) => setMusicStart(clamp(Number(event.target.value), 0, projectDuration))} /></label><label className="space-y-1"><span className="text-xs text-muted-foreground">Fim</span><input className="h-9 w-full rounded-lg border bg-background px-2 text-sm" type="number" min={0.1} max={projectDuration} step={0.1} value={musicEnd} onChange={(event) => setMusicEnd(clamp(Number(event.target.value), 0.1, projectDuration))} /></label></div></>}</div>;
+    if (tool === "stickers") return <div className="space-y-4"><div><p className="text-sm font-semibold">Stickers e emojis</p><p className="text-xs text-muted-foreground">Adicione elementos rápidos na timeline e posicione livremente no vídeo.</p></div><div className="grid grid-cols-4 gap-2">{STICKER_PRESETS.map((sticker) => <button key={sticker.label} title={sticker.label} onClick={() => addStickerLayer(sticker)} className="rounded-xl border bg-background p-2 text-center hover:border-primary/40 hover:bg-primary/5"><span className="block text-2xl leading-8">{sticker.glyph}</span><span className="mt-1 block truncate text-[9px] text-muted-foreground">{sticker.label}</span></button>)}</div><div className="rounded-xl border bg-muted/20 p-3 text-[11px] text-muted-foreground">Cada sticker vira uma camada independente: pode ser movido, redimensionado, rotacionado, animado, duplicado e temporizado como qualquer outro elemento.</div></div>;
     if (tool === "captions") return <div className="space-y-4"><div><p className="text-sm font-semibold">Legendas inteligentes</p><p className="text-xs text-muted-foreground">Transcreva a fala para a timeline e destaque cada palavra no momento exato.</p></div><div className="space-y-2"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Estilo automático</p><div className="grid grid-cols-2 gap-2">{Object.entries(AUTO_CAPTION_STYLES).map(([id, style]) => <button key={id} onClick={() => setAutoCaptionStyle(id as CaptionStylePreset)} className={cn("rounded-xl border p-2 text-left", autoCaptionStyle === id ? "border-primary bg-primary/5" : "hover:border-primary/30")}><div className="truncate text-xs font-semibold">{style.label}</div><div className="mt-1 flex gap-1"><span className="h-2 w-5 rounded-sm" style={{ background: style.color }} /><span className="h-2 w-5 rounded-sm" style={{ background: style.activeWordBackground === "transparent" ? style.activeWordColor : style.activeWordBackground }} /></div></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void createEditableAutomaticCaptions()} className="w-full rounded-xl bg-foreground px-3 py-3 text-sm font-semibold text-background disabled:opacity-40"><Captions className="mr-2 inline h-4 w-4" />Transcrever para a timeline</button><div className="rounded-xl border bg-muted/20 p-3"><p className="text-xs font-semibold">Adicionar manualmente</p><div className="mt-2 space-y-2">{CAPTION_TEMPLATES.map((template) => <button key={template.name} onClick={() => addCaptionLayer(template)} className="w-full rounded-lg border bg-background p-2 text-left hover:border-primary/40"><div className="rounded-md px-2 py-1.5 text-[10px] font-bold" style={{ background: template.background, color: template.color, textAlign: template.textAlign }}>{template.text}</div><p className="mt-1.5 text-[10px] font-medium">{template.name}</p></button>)}</div></div><button disabled={!clips.length || jobStatus === "processing" || jobStatus === "rendering"} onClick={() => void applyBurnedAutomaticCaption()} className="w-full rounded-xl border px-3 py-2.5 text-xs font-medium disabled:opacity-40">Gerar versão com legenda fixa</button><p className="text-[11px] text-muted-foreground">A opção principal cria faixas editáveis e mantém o original intacto. A versão fixa continua disponível para compatibilidade.</p></div>;
     if (tool === "settings") return <div className="space-y-4"><div><p className="text-sm font-semibold">Ajustes de saída</p><p className="text-xs text-muted-foreground">Tratamento aplicado depois da composição.</p></div><label className="flex items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-medium">Normalizar volume</p><p className="text-xs text-muted-foreground">Equaliza o resultado final</p></div><input type="checkbox" checked={normalizeAudio} onChange={(event) => setNormalizeAudio(event.target.checked)} className="accent-primary" /></label><label className="block space-y-1.5"><span className="text-xs text-muted-foreground">Velocidade final</span><select value={speed} onChange={(event) => setSpeed(event.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm"><option value="1.0">Normal · 1x</option><option value="1.1">Levemente rápido · 1.1x</option><option value="1.25">Rápido · 1.25x</option></select></label><div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Fluxo não destrutivo</p><p className="mt-1">Cada clipe mantém seu arquivo original; cortes, ordem e sobreposições ficam salvos no projeto.</p></div></div>;
     return <div className="space-y-4"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold">Central de Mídias</p><p className="text-xs text-muted-foreground">Adicione quantos clipes precisar.</p></div><button onClick={() => void loadAssets()} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><RefreshCw className={cn("h-4 w-4", assetsLoading && "animate-spin")} /></button></div><div className="grid grid-cols-3 gap-2"><button onClick={() => videoInputRef.current?.click()} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><Plus className="mx-auto mb-1.5 h-4 w-4" />Clipes</button><button onClick={() => imageInputRef.current?.click()} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><ImageIcon className="mx-auto mb-1.5 h-4 w-4" />Imagem</button><button onClick={() => { setTool("audio"); setMusicMode("upload"); musicInputRef.current?.click(); }} className="rounded-xl border border-dashed p-3 text-xs hover:border-primary/40"><Music2 className="mx-auto mb-1.5 h-4 w-4" />Áudio</button></div>{mediaVideos.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Vídeos recentes · clique para adicionar</p>{mediaVideos.slice(0, 8).map((asset) => <button key={asset.id} onClick={() => void addLibraryClip(asset)} className="flex w-full items-center gap-2 rounded-lg border p-2 text-left hover:border-primary/30"><Film className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-xs">{assetName(asset)}</span><Plus className="h-3.5 w-3.5 text-muted-foreground" /></button>)}</div>}{mediaImages.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Imagens recentes</p><div className="grid grid-cols-2 gap-2">{mediaImages.slice(0, 8).map((asset) => <button key={asset.id} onClick={() => addLibraryImage(asset)} className="overflow-hidden rounded-xl border text-left hover:border-primary/40"><div className="aspect-video bg-muted"><img src={assetUrl(asset)} alt="" className="h-full w-full object-cover" /></div><p className="truncate p-1.5 text-[10px]">{assetName(asset)}</p></button>)}</div></div>}</div>;
   })();
 
   const trackRows: Array<{ id: string; label: string; icon: typeof Film; items: EditorLayer[] }> = [
-    { id: "text", label: "Texto", icon: Type, items: layers.filter((layer) => layer.type === "text" && layer.contentKind !== "caption") },
+    { id: "text", label: "Texto", icon: Type, items: layers.filter((layer) => layer.type === "text" && layer.contentKind !== "caption" && layer.contentKind !== "sticker") },
     { id: "caption", label: "Legendas", icon: Captions, items: layers.filter((layer) => layer.contentKind === "caption") },
+    { id: "sticker", label: "Stickers", icon: WandSparkles, items: layers.filter((layer) => layer.contentKind === "sticker") },
     { id: "card", label: "Cards", icon: Square, items: layers.filter((layer) => layer.type === "card") },
     { id: "image", label: "Imagens", icon: ImageIcon, items: layers.filter((layer) => layer.type === "image") },
   ];
@@ -2143,7 +2339,7 @@ export default function VideoTimelineEditor() {
     const style: CSSProperties = { position: "absolute", left: `${resolvedLayer.x}%`, top: `${resolvedLayer.y}%`, width: `${resolvedLayer.width}%`, opacity: resolvedLayer.opacity, transform: `rotate(${resolvedLayer.rotation ?? 0}deg) scale(${resolvedLayer.scale ?? 1})`, transformOrigin: "top left" };
     const selected = selectedLayerId === layer.id;
     const synchronized = layer.contentKind === "caption" && Boolean(layer.captionWords?.length);
-    return <div key={layer.id} style={style} className={cn("group touch-none select-none", selected && "z-20")} onPointerDown={(event) => startStageGesture(event, layer, "move")}>{layer.type === "image" ? <img src={layer.url} alt="" draggable={false} className={cn("block h-auto max-h-[85%] w-full object-contain", selected && "outline outline-2 outline-primary")} /> : <div style={{ color: layer.color, background: layer.type === "card" || layer.contentKind === "caption" ? layer.background : "transparent", fontSize: `${Math.max(11, layer.fontSize * 0.38)}px`, whiteSpace: "normal", textAlign: layer.textAlign ?? "left" }} className={cn("rounded-lg p-2 font-bold leading-tight", selected && "outline outline-2 outline-primary")}>{synchronized ? layer.captionWords!.map((word, index) => { const active = timelineTime >= word.start && timelineTime <= word.end; return <span key={`${word.start}-${index}`} className="inline-block rounded px-0.5" style={{ color: active ? (layer.activeWordColor || layer.color) : layer.color, background: active && layer.activeWordBackground !== "transparent" ? (layer.activeWordBackground || "transparent") : "transparent" }}>{word.word}{index < layer.captionWords!.length - 1 ? " " : ""}</span>; }) : layer.text}</div>}{selected && <button type="button" aria-label="Redimensionar camada" onPointerDown={(event) => startStageGesture(event, layer, "resize")} className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow" />}</div>;
+    return <div key={layer.id} style={style} className={cn("group touch-none select-none", selected && "z-20")} onPointerDown={(event) => startStageGesture(event, layer, "move")}>{layer.type === "image" ? <img src={layer.url} alt="" draggable={false} className={cn("block h-auto max-h-[85%] w-full object-contain", selected && "outline outline-2 outline-primary")} /> : <div style={{ color: layer.color, background: layer.type === "card" || layer.contentKind === "caption" ? layer.background : "transparent", fontSize: `${Math.max(11, layer.fontSize * 0.38)}px`, whiteSpace: "normal", textAlign: layer.textAlign ?? "left" }} className={cn("rounded-lg p-2 font-bold leading-tight", selected && "outline outline-2 outline-primary")}>{synchronized ? layer.captionWords!.map((word, index) => { const motion = captionWordMotionState(word, timelineTime, layer.captionMotion ?? "word-pop"); const active = motion.active; return <span key={`${word.start}-${index}`} className="inline-block rounded px-0.5" style={{ color: active ? (layer.activeWordColor || layer.color) : layer.color, background: active && layer.activeWordBackground !== "transparent" ? (layer.activeWordBackground || "transparent") : "transparent", transform: `translateY(${motion.translateY * 10}px) scale(${motion.scale})`, transformOrigin: "center", transition: "transform 70ms linear", textDecoration: active && layer.captionMotion === "karaoke" ? "underline" : "none", textDecorationThickness: active && layer.captionMotion === "karaoke" ? "3px" : undefined }}>{word.word}{index < layer.captionWords!.length - 1 ? " " : ""}</span>; }) : layer.text}</div>}{selected && <button type="button" aria-label="Redimensionar camada" onPointerDown={(event) => startStageGesture(event, layer, "resize")} className="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-background bg-primary shadow" />}</div>;
   };
 
   const renderTimelineLayer = (layer: EditorLayer) => <div key={layer.id} onPointerDown={(event) => startLayerTimelineGesture(event, layer, "move")} className={cn("absolute inset-y-1 touch-none select-none overflow-hidden rounded px-2 text-left text-[10px] leading-6 text-white", layer.type === "text" ? "bg-blue-500/80" : layer.type === "card" ? "bg-violet-500/80" : "bg-emerald-500/80", selectedLayerId === layer.id && "ring-2 ring-primary ring-offset-1")} style={{ left: `${clamp(layer.start / projectDuration * 100, 0, 100)}%`, width: `${Math.max(1, clamp((layer.end - layer.start) / projectDuration * 100, 0, 100))}%` }}><button type="button" aria-label="Ajustar início" onPointerDown={(event) => startLayerTimelineGesture(event, layer, "trim-start")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/35" /><span className="pointer-events-none block truncate px-1">{layer.name}</span><button type="button" aria-label="Ajustar fim" onPointerDown={(event) => startLayerTimelineGesture(event, layer, "trim-end")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/20 hover:bg-black/35" /></div>;
