@@ -1,8 +1,8 @@
 import { Router, type IRouter, type NextFunction, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { generateVendorAiLipSyncWithQualityGate as generateVendorAiLipSync } from "../services/vendorai-lipsync-quality.js";
 import {
-  generateVendorAiLipSync,
   LipSyncConsentError,
   LipSyncEngineNotReadyError,
   LipSyncInputError,
