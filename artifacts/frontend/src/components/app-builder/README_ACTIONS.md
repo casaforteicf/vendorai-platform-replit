@@ -1,6 +1,6 @@
 # App Builder Actions
 
-A interface visual de Actions usa o mesmo modelo versionado do App Builder.
+A interface visual de Actions usa o mesmo modelo versionado e o mesmo runtime oficial do App Builder.
 
 - `TemplateActionEditorDialog` grava `definition.actionUi` em uma nova Template Version draft.
 - `AppActionPolicyDialog` autoriza Action keys no working draft do App Instance em `settings.runtimeAccess.actions`.
