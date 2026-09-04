@@ -614,17 +614,47 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
   async function previewProposal(version: number) {
     if (!leadId || !token) return;
+
+    const previewWindow = window.open("", "_blank");
+    if (previewWindow) {
+      previewWindow.document.title = "Carregando proposta...";
+      previewWindow.document.body.innerHTML = '<div style="font-family:system-ui,sans-serif;padding:24px;color:#475569">Carregando proposta...</div>';
+    }
+
     try {
       const res = await fetch(`/api/leads/${leadId}/proposals/${version}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`Falha ao carregar proposta (${res.status})`);
       const data = await res.json();
+      if (!data?.htmlContent || typeof data.htmlContent !== "string") {
+        throw new Error("Conteúdo da proposta não disponível");
+      }
+
       setPreviewHtml(data.htmlContent);
       setActiveVersion(version);
-      setPreviewOpen(true);
-    } catch {
-      /* ignore */
+
+      if (previewWindow && !previewWindow.closed) {
+        const blobUrl = window.URL.createObjectURL(
+          new Blob([data.htmlContent], { type: "text/html;charset=utf-8" }),
+        );
+        previewWindow.location.replace(blobUrl);
+        previewWindow.focus();
+        window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60_000);
+      } else {
+        setPreviewOpen(true);
+        toast({
+          title: "Pré-visualização aberta no sistema",
+          description: "O navegador bloqueou a nova aba. Libere pop-ups para abrir a proposta em uma aba separada.",
+        });
+      }
+    } catch (e: any) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close();
+      toast({
+        title: "Erro ao visualizar proposta",
+        description: e?.message || "Não foi possível carregar a proposta.",
+        variant: "destructive",
+      });
     }
   }
 
@@ -646,10 +676,16 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   function downloadProposal(version: number, format: "html" | "pdf" = "html") {
     if (!leadId || !token) return;
     const url = `/api/leads/${leadId}/proposals/${version}/${format === "pdf" ? "pdf" : "download"}`;
-    const clientName = (lead?.empresa || lead?.nome || "cliente")
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9\s-]/g, "").trim().replace(/\s+/g, "_").toLowerCase();
-    const filename = `proposta_${clientName}_v${version}.${format === "pdf" ? "pdf" : "html"}`;
+    const clientName = (lead?.empresa || lead?.nome || "Cliente")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80) || "Cliente";
+    const proposalNumber = "P001";
+    const revisionNumber = `R${String(version).padStart(2, "0")}`;
+    const extension = format === "pdf" ? "pdf" : "html";
+    const filename = `Proposta_${clientName}_${proposalNumber}_${revisionNumber}.${extension}`;
     const a = document.createElement("a");
     a.href = url;
     a.setAttribute("download", filename);
@@ -1381,7 +1417,8 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                   onClick={() =>
                     setRefineNotes((prev) =>
                       prev.trim()
-                        ? `${prev.trim()}\n${chip}`
+                        ? `${prev.trim()}\
+${chip}`
                         : chip
                     )
                   }
