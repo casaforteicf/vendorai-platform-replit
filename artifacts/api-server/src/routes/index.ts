@@ -144,6 +144,7 @@ import organizacoesRouter from "./organizacoes";
 import tenantSwitchRouter from "./tenant_switch.js";
 import adminFinancialRouter from "./admin_financial";
 import sellerCommissionsRouter from "./sellerCommissions";
+import ebooksRouter from "./ebooks";
 import contentTrackingRouter from "./content_tracking";
 import tenantNavModulesRouter from "./tenantNavModules";
 import vendasPracaRouter from "./vendas_praca";
@@ -343,6 +344,7 @@ router.use(videoProcessingRouter);
 router.use(mediaLibraryRouter);
 router.use(mediaEngineRouter);
 router.use(mediaLipSyncRouter);
+router.use(ebooksRouter);
 
 // Partner Hub (revendedor dashboard — legacy)
 router.use(partnerRouter);
