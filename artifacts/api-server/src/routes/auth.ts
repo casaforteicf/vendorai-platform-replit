@@ -1,12 +1,13 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { z } from "zod/v4";
-import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable, leadsTable, dealsTable, funisTable, plansTable } from "@workspace/db";
+import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable, leadsTable, dealsTable, funisTable, plansTable, leadEventsTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { sendPasswordResetEmail } from "../lib/email.js";
+import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -77,12 +78,37 @@ const registerSchema = z.object({
   password: z.string().min(8),
 });
 
+const optionalTrialText = z.string().trim().max(2000).optional();
+const optionalTrackingText = z.string().trim().max(2000).optional();
+
 const demoSignupSchema = z.object({
   nomeEmpresa: z.string().min(1, "Nome da empresa é obrigatório"),
   nomePessoa: z.string().min(1, "Seu nome é obrigatório"),
   email: z.email(),
   senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
   telefone: z.string().optional(),
+  segmento: optionalTrialText,
+  nicho: optionalTrialText,
+  produtosServicos: optionalTrialText,
+  clienteIdeal: optionalTrialText,
+  objetivoPrincipal: optionalTrialText,
+  dorPrincipal: optionalTrialText,
+  canalPrincipal: optionalTrialText,
+  regiaoAtuacao: optionalTrialText,
+  volumeLeads: optionalTrialText,
+  tamanhoEquipe: optionalTrialText,
+  utmSource: optionalTrackingText,
+  utmMedium: optionalTrackingText,
+  utmCampaign: optionalTrackingText,
+  utmContent: optionalTrackingText,
+  utmTerm: optionalTrackingText,
+  gclid: optionalTrackingText,
+  fbclid: optionalTrackingText,
+  pageUrl: optionalTrackingText,
+  referrer: optionalTrackingText,
+  landingPageSlug: optionalTrackingText,
+  behaviorSessionId: z.string().trim().max(120).optional(),
+  adDataConsent: z.boolean().optional(),
   // Código de embaixador do Praça.ai (?ref=CODIGO) — se vier, dispara
   // registro de indicação de lojista pro Praça.ai depois do cadastro.
   codigoIndicacaoPraca: z.string().optional(),
@@ -97,6 +123,14 @@ const pracaSignupSchema = z.object({
   codigoIndicacaoPraca: z.string().optional(),
 });
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function compactRecord(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined && value !== ""));
+}
+
 router.post("/auth/demo-signup", async (req, res) => {
   const parsed = demoSignupSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -104,7 +138,36 @@ router.post("/auth/demo-signup", async (req, res) => {
     return;
   }
 
-  const { nomeEmpresa, nomePessoa, email, senha, telefone, codigoIndicacaoPraca } = parsed.data;
+  const {
+    nomeEmpresa,
+    nomePessoa,
+    email,
+    senha,
+    telefone,
+    codigoIndicacaoPraca,
+    segmento,
+    nicho,
+    produtosServicos,
+    clienteIdeal,
+    objetivoPrincipal,
+    dorPrincipal,
+    canalPrincipal,
+    regiaoAtuacao,
+    volumeLeads,
+    tamanhoEquipe,
+    utmSource,
+    utmMedium,
+    utmCampaign,
+    utmContent,
+    utmTerm,
+    gclid,
+    fbclid,
+    pageUrl,
+    referrer,
+    landingPageSlug,
+    behaviorSessionId,
+    adDataConsent,
+  } = parsed.data;
 
   const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
   const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
@@ -122,6 +185,7 @@ router.post("/auth/demo-signup", async (req, res) => {
         isDemo: true,
         demoExpiresAt,
         planId: null,
+        provisioningMethod: "trial",
         codigoIndicacaoPraca: codigoIndicacaoPraca ?? null,
       })
       .returning();
@@ -153,47 +217,154 @@ router.post("/auth/demo-signup", async (req, res) => {
         password: hashed,
         role: "admin",
         platformRole: "tenant_admin",
+        telefone: telefone ?? null,
       })
       .returning(PUBLIC_FIELDS);
 
-    // ── Pipeline: criar lead e deal no tenant de vendas da VendorAI ──
+    // ── Pipeline: promover o MESMO lead aquecido ao iniciar o trial ──
     try {
       const [vendorai] = await db
         .select()
         .from(tenantsTable)
         .where(eq(tenantsTable.slug, "vendorai"));
       if (vendorai) {
+        const now = new Date();
+        const normalizedPhone = storePhone(telefone);
+        const qualification = compactRecord({
+          segmento,
+          nicho,
+          produtosServicos,
+          clienteIdeal,
+          objetivoPrincipal,
+          dorPrincipal,
+          canalPrincipal,
+          regiaoAtuacao,
+          volumeLeads,
+          tamanhoEquipe,
+        });
+        const attribution = compactRecord({
+          utmSource,
+          utmMedium,
+          utmCampaign,
+          utmContent,
+          utmTerm,
+          gclid,
+          fbclid,
+          pageUrl,
+          referrer,
+          landingPageSlug,
+          behaviorSessionId,
+          adDataConsent,
+        });
+
+        const dedup = await findLeadByDedup(vendorai.id, telefone, null, nomePessoa);
+        let lead: typeof leadsTable.$inferSelect;
+
+        if (dedup.found) {
+          const currentDiscovery = asRecord(dedup.lead.discoveryData);
+          const currentQualification = asRecord(currentDiscovery["qualification"]);
+          const currentAttribution = asRecord(currentDiscovery["attribution"]);
+          const originalSource = typeof currentDiscovery["originalSource"] === "string"
+            ? currentDiscovery["originalSource"]
+            : dedup.lead.source;
+          const trialNote = `Trial de 5 dias iniciado em ${now.toISOString()}. Tenant: ${tenant.id}.`;
+
+          [lead] = await db
+            .update(leadsTable)
+            .set({
+              nome: nomePessoa,
+              empresa: nomeEmpresa,
+              email,
+              telefone: normalizedPhone ?? dedup.lead.telefone,
+              source: "trial_signup",
+              notasNutricao: [dedup.lead.notasNutricao, trialNote].filter(Boolean).join("\n"),
+              proximaAcao: "Acompanhar ativação do trial e ajudar o cliente a chegar ao primeiro valor.",
+              discoveryData: {
+                ...currentDiscovery,
+                originalSource,
+                trialTenantId: tenant.id,
+                lifecycleStage: "trial",
+                trialStartedAt: now.toISOString(),
+                qualification: { ...currentQualification, ...qualification },
+                attribution: { ...currentAttribution, ...attribution },
+              },
+              updatedAt: now,
+            })
+            .where(and(eq(leadsTable.id, dedup.lead.id), eq(leadsTable.tenantId, vendorai.id)))
+            .returning();
+        } else {
+          [lead] = await db
+            .insert(leadsTable)
+            .values({
+              tenantId: vendorai.id,
+              nome: nomePessoa,
+              empresa: nomeEmpresa,
+              email,
+              telefone: normalizedPhone,
+              source: "trial_signup",
+              status: "novo",
+              proximaAcao: "Acompanhar ativação do trial e ajudar o cliente a chegar ao primeiro valor.",
+              notasNutricao: `Trial de 5 dias iniciado em ${now.toISOString()}. Tenant: ${tenant.id}.`,
+              discoveryData: {
+                originalSource: "demo_signup",
+                trialTenantId: tenant.id,
+                lifecycleStage: "trial",
+                trialStartedAt: now.toISOString(),
+                qualification,
+                attribution,
+              },
+            })
+            .returning();
+        }
+
         const [funil] = await db
           .select()
           .from(funisTable)
           .where(
             and(
               eq(funisTable.tenantId, vendorai.id),
-              eq(funisTable.nome, "Funil de Vendas \u2014 VendorAI")
+              eq(funisTable.nome, "Funil de Vendas — VendorAI")
             )
           );
-        const [lead] = await db
-          .insert(leadsTable)
-          .values({
+
+        const [existingDeal] = await db
+          .select()
+          .from(dealsTable)
+          .where(and(eq(dealsTable.tenantId, vendorai.id), eq(dealsTable.leadId, lead.id)))
+          .orderBy(desc(dealsTable.createdAt))
+          .limit(1);
+
+        if (existingDeal) {
+          await db
+            .update(dealsTable)
+            .set({
+              titulo: `Trial — ${nomeEmpresa}`,
+              funilId: existingDeal.funilId ?? funil?.id ?? null,
+              probabilidade: Math.max(Number(existingDeal.probabilidade ?? 0), 55),
+              updatedAt: now,
+            })
+            .where(eq(dealsTable.id, existingDeal.id));
+        } else {
+          await db.insert(dealsTable).values({
             tenantId: vendorai.id,
-            nome: nomePessoa,
-            empresa: nomeEmpresa,
-            email,
-            telefone: telefone ?? null,
-            source: "demo_signup",
-          })
-          .returning();
-        await db.insert(dealsTable).values({
-          tenantId: vendorai.id,
+            leadId: lead.id,
+            titulo: `Trial — ${nomeEmpresa}`,
+            etapa: "em_aquecimento",
+            funilId: funil?.id ?? null,
+            probabilidade: 55,
+          });
+        }
+
+        await db.insert(leadEventsTable).values({
           leadId: lead.id,
-          titulo: `Trial \u2014 ${nomeEmpresa}`,
-          etapa: "novo",
-          funilId: funil?.id ?? null,
-          probabilidade: 30,
+          tipo: "trial_started",
+          descricao: `Trial de 5 dias iniciado. Tenant ${tenant.id} preservará os dados se o cliente continuar.`,
+          scoreBoost: 20,
         });
       }
-    } catch {
-      // Falha no pipeline não bloqueia o cadastro de demo
+    } catch (pipelineError) {
+      // Falha no pipeline não bloqueia o cadastro de demo, mas fica observável.
+      req.log?.error({ err: pipelineError, tenantId: tenant.id }, "auth: falha ao promover lead do trial");
     }
 
     const token = signToken({
@@ -293,7 +464,7 @@ router.post("/auth/praca-signup", async (req, res) => {
         const [funil] = await db
           .select()
           .from(funisTable)
-          .where(and(eq(funisTable.tenantId, vendorai.id), eq(funisTable.nome, "Funil de Vendas \u2014 VendorAI")));
+          .where(and(eq(funisTable.tenantId, vendorai.id), eq(funisTable.nome, "Funil de Vendas — VendorAI")));
         const [lead] = await db
           .insert(leadsTable)
           .values({ tenantId: vendorai.id, nome: nomePessoa, empresa: nomeEmpresa, email, telefone: telefone ?? null, source: "praca_ai_signup" })
@@ -301,7 +472,7 @@ router.post("/auth/praca-signup", async (req, res) => {
         await db.insert(dealsTable).values({
           tenantId: vendorai.id,
           leadId: lead.id,
-          titulo: `Plano Start (Pra\u00e7a.ai) \u2014 ${nomeEmpresa}`,
+          titulo: `Plano Start (Praça.ai) — ${nomeEmpresa}`,
           etapa: "novo",
           funilId: funil?.id ?? null,
           probabilidade: 15,

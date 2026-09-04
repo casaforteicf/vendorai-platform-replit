@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import {
   db,
   dealsTable,
@@ -16,13 +16,26 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }
 
-async function getVendorTrialLead(trialTenantId: string) {
+function isTrialTenant(tenant: { isDemo: boolean; provisioningMethod: string | null }) {
+  // Compatibilidade com trials criados antes de provisioningMethod="trial".
+  // O cadastro público atual já cria isDemo=true + expiração de 5 dias.
+  return tenant.isDemo && (tenant.provisioningMethod === "trial" || tenant.provisioningMethod == null);
+}
+
+async function getVendorTrialLead(trialTenantId: string, email?: string) {
   const [vendorai] = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
     .where(eq(tenantsTable.slug, "vendorai"))
     .limit(1);
   if (!vendorai) return { vendoraiId: null, lead: null };
+
+  // O vínculo oficial é trialTenantId. Não dependemos mais de source porque
+  // source pode representar a origem real de aquisição antes do trial.
+  const linkedTrial = sql`${leadsTable.discoveryData}->>'trialTenantId' = ${trialTenantId}`;
+  const legacyDemo = email
+    ? and(eq(leadsTable.source, "demo_signup"), eq(leadsTable.email, email))
+    : undefined;
 
   const [lead] = await db
     .select({
@@ -35,8 +48,7 @@ async function getVendorTrialLead(trialTenantId: string) {
     .from(leadsTable)
     .where(and(
       eq(leadsTable.tenantId, vendorai.id),
-      eq(leadsTable.source, "trial_signup"),
-      sql`${leadsTable.discoveryData}->>'trialTenantId' = ${trialTenantId}`,
+      legacyDemo ? or(linkedTrial, legacyDemo) : linkedTrial,
     ))
     .orderBy(desc(leadsTable.createdAt))
     .limit(1);
@@ -63,14 +75,13 @@ router.get("/trial/status", async (req, res) => {
     .limit(1);
 
   if (!tenant) return res.status(404).json({ error: "Tenant não encontrado." });
-  const isTrial = tenant.isDemo && tenant.provisioningMethod === "trial";
-  if (!isTrial) return res.json({ isTrial: false });
+  if (!isTrialTenant(tenant)) return res.json({ isTrial: false });
 
   const now = new Date();
   const expiresAt = tenant.demoExpiresAt;
   const daysRemaining = expiresAt ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / DAY_MS)) : 0;
   const day = Math.min(5, Math.max(1, Math.floor((now.getTime() - tenant.createdAt.getTime()) / DAY_MS) + 1));
-  const { lead } = await getVendorTrialLead(tenantId);
+  const { lead } = await getVendorTrialLead(tenantId, req.user?.email);
   const discovery = asRecord(lead?.discoveryData);
   const journey = asRecord(discovery["trialJourney"]);
 
@@ -115,11 +126,11 @@ router.post("/trial/request-upgrade", async (req, res) => {
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId))
     .limit(1);
-  if (!tenant || !tenant.isDemo || tenant.provisioningMethod !== "trial") {
+  if (!tenant || !isTrialTenant(tenant)) {
     return res.status(400).json({ error: "Esta conta não é um trial elegível." });
   }
 
-  const { vendoraiId, lead } = await getVendorTrialLead(tenantId);
+  const { vendoraiId, lead } = await getVendorTrialLead(tenantId, req.user?.email);
   if (!vendoraiId || !lead) return res.status(404).json({ error: "Lead comercial do trial não encontrado." });
 
   const [existing] = await db
