@@ -8,66 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-
-const COUNTRY_PROFILES = {
-  BR: {
-    label: "Brasil",
-    locale: "pt-BR",
-    timezone: "America/Sao_Paulo",
-    currency: "BRL",
-    taxType: "CNPJ",
-  },
-  PY: {
-    label: "Paraguai",
-    locale: "es-PY",
-    timezone: "America/Asuncion",
-    currency: "PYG",
-    taxType: "RUC",
-  },
-  AR: {
-    label: "Argentina",
-    locale: "es-AR",
-    timezone: "America/Argentina/Buenos_Aires",
-    currency: "ARS",
-    taxType: "CUIT",
-  },
-  UY: {
-    label: "Uruguai",
-    locale: "es-UY",
-    timezone: "America/Montevideo",
-    currency: "UYU",
-    taxType: "RUT",
-  },
-  CL: {
-    label: "Chile",
-    locale: "es-CL",
-    timezone: "America/Santiago",
-    currency: "CLP",
-    taxType: "RUT",
-  },
-} as const;
-
-type CountryCode = keyof typeof COUNTRY_PROFILES;
-type SupportedLocale = "pt-BR" | "es-PY" | "es-AR" | "es-UY" | "es-CL";
-type SupportedCurrency = "BRL" | "USD" | "PYG" | "ARS" | "UYU" | "CLP";
-
-const LOCALES: Array<{ value: SupportedLocale; label: string }> = [
-  { value: "pt-BR", label: "Português (Brasil)" },
-  { value: "es-PY", label: "Español (Paraguay)" },
-  { value: "es-AR", label: "Español (Argentina)" },
-  { value: "es-UY", label: "Español (Uruguay)" },
-  { value: "es-CL", label: "Español (Chile)" },
-];
-
-const CURRENCIES: SupportedCurrency[] = ["BRL", "USD", "PYG", "ARS", "UYU", "CLP"];
-
-const TIMEZONES = [
-  "America/Sao_Paulo",
-  "America/Asuncion",
-  "America/Argentina/Buenos_Aires",
-  "America/Montevideo",
-  "America/Santiago",
-] as const;
+import {
+  TENANT_COUNTRY_PROFILES,
+  TENANT_CURRENCIES,
+  TENANT_LOCALES,
+  TENANT_TIMEZONES,
+  type TenantCountryCode,
+  type TenantSupportedCurrency,
+  type TenantSupportedLocale,
+} from "@/lib/tenantInternational";
 
 export type TenantInternationalProfile = {
   countryCode?: string | null;
@@ -80,28 +29,28 @@ export type TenantInternationalProfile = {
 };
 
 type FormState = {
-  countryCode: CountryCode;
-  defaultLocale: SupportedLocale;
+  countryCode: TenantCountryCode;
+  defaultLocale: TenantSupportedLocale;
   timezone: string;
-  defaultCurrency: SupportedCurrency;
-  supportedCurrencies: SupportedCurrency[];
+  defaultCurrency: TenantSupportedCurrency;
+  supportedCurrencies: TenantSupportedCurrency[];
   taxIdentifierType: string;
   taxIdentifier: string;
 };
 
 function profileToForm(tenant: TenantInternationalProfile): FormState {
-  const countryCode = (tenant.countryCode && tenant.countryCode in COUNTRY_PROFILES
+  const countryCode = (tenant.countryCode && tenant.countryCode in TENANT_COUNTRY_PROFILES
     ? tenant.countryCode
-    : "BR") as CountryCode;
-  const preset = COUNTRY_PROFILES[countryCode];
-  const defaultLocale = LOCALES.some((item) => item.value === tenant.defaultLocale)
-    ? (tenant.defaultLocale as SupportedLocale)
+    : "BR") as TenantCountryCode;
+  const preset = TENANT_COUNTRY_PROFILES[countryCode];
+  const defaultLocale = TENANT_LOCALES.some((item) => item.value === tenant.defaultLocale)
+    ? (tenant.defaultLocale as TenantSupportedLocale)
     : preset.locale;
-  const defaultCurrency = CURRENCIES.includes(tenant.defaultCurrency as SupportedCurrency)
-    ? (tenant.defaultCurrency as SupportedCurrency)
+  const defaultCurrency = TENANT_CURRENCIES.includes(tenant.defaultCurrency as TenantSupportedCurrency)
+    ? (tenant.defaultCurrency as TenantSupportedCurrency)
     : preset.currency;
   const supportedCurrencies = (tenant.supportedCurrencies ?? [])
-    .filter((value): value is SupportedCurrency => CURRENCIES.includes(value as SupportedCurrency));
+    .filter((value): value is TenantSupportedCurrency => TENANT_CURRENCIES.includes(value as TenantSupportedCurrency));
 
   return {
     countryCode,
@@ -141,14 +90,14 @@ export function TenantInternationalProfileCard({
     tenant.taxIdentifier,
   ]);
 
-  const selectedCountry = COUNTRY_PROFILES[form.countryCode];
+  const selectedCountry = TENANT_COUNTRY_PROFILES[form.countryCode];
   const isDirty = useMemo(() => {
     const original = profileToForm(tenant);
     return JSON.stringify(form) !== JSON.stringify(original);
   }, [form, tenant]);
 
-  function applyCountry(countryCode: CountryCode) {
-    const preset = COUNTRY_PROFILES[countryCode];
+  function applyCountry(countryCode: TenantCountryCode) {
+    const preset = TENANT_COUNTRY_PROFILES[countryCode];
     setForm((current) => ({
       ...current,
       countryCode,
@@ -161,7 +110,7 @@ export function TenantInternationalProfileCard({
     }));
   }
 
-  function setDefaultCurrency(currency: SupportedCurrency) {
+  function setDefaultCurrency(currency: TenantSupportedCurrency) {
     setForm((current) => ({
       ...current,
       defaultCurrency: currency,
@@ -169,7 +118,7 @@ export function TenantInternationalProfileCard({
     }));
   }
 
-  function toggleSupportedCurrency(currency: SupportedCurrency) {
+  function toggleSupportedCurrency(currency: TenantSupportedCurrency) {
     setForm((current) => {
       if (currency === current.defaultCurrency) return current;
       const enabled = current.supportedCurrencies.includes(currency);
@@ -242,10 +191,10 @@ export function TenantInternationalProfileCard({
             <select
               id="tenant-country"
               value={form.countryCode}
-              onChange={(event) => applyCountry(event.target.value as CountryCode)}
+              onChange={(event) => applyCountry(event.target.value as TenantCountryCode)}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              {Object.entries(COUNTRY_PROFILES).map(([code, profile]) => (
+              {Object.entries(TENANT_COUNTRY_PROFILES).map(([code, profile]) => (
                 <option key={code} value={code}>{profile.label}</option>
               ))}
             </select>
@@ -256,10 +205,10 @@ export function TenantInternationalProfileCard({
             <select
               id="tenant-locale"
               value={form.defaultLocale}
-              onChange={(event) => setForm((current) => ({ ...current, defaultLocale: event.target.value as SupportedLocale }))}
+              onChange={(event) => setForm((current) => ({ ...current, defaultLocale: event.target.value as TenantSupportedLocale }))}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              {LOCALES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              {TENANT_LOCALES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </div>
 
@@ -271,7 +220,7 @@ export function TenantInternationalProfileCard({
               onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              {TIMEZONES.map((timezone) => <option key={timezone} value={timezone}>{timezone}</option>)}
+              {TENANT_TIMEZONES.map((timezone) => <option key={timezone} value={timezone}>{timezone}</option>)}
             </select>
           </div>
 
@@ -280,10 +229,10 @@ export function TenantInternationalProfileCard({
             <select
               id="tenant-currency"
               value={form.defaultCurrency}
-              onChange={(event) => setDefaultCurrency(event.target.value as SupportedCurrency)}
+              onChange={(event) => setDefaultCurrency(event.target.value as TenantSupportedCurrency)}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              {CURRENCIES.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+              {TENANT_CURRENCIES.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
             </select>
           </div>
         </div>
@@ -291,7 +240,7 @@ export function TenantInternationalProfileCard({
         <div className="space-y-2">
           <p className="text-xs font-medium">Moedas habilitadas</p>
           <div className="flex flex-wrap gap-2">
-            {CURRENCIES.map((currency) => {
+            {TENANT_CURRENCIES.map((currency) => {
               const checked = form.supportedCurrencies.includes(currency);
               const locked = currency === form.defaultCurrency;
               return (
@@ -328,7 +277,7 @@ export function TenantInternationalProfileCard({
               id="tenant-tax-id"
               value={form.taxIdentifier}
               onChange={(event) => setForm((current) => ({ ...current, taxIdentifier: event.target.value }))}
-              placeholder={`${selectedCountry.taxType} da empresa`}
+              placeholder={selectedCountry.taxPlaceholder}
             />
           </div>
         </div>
