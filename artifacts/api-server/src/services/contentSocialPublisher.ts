@@ -71,7 +71,7 @@ async function resolveInstagramMediaUrl(rawUrl: string): Promise<string> {
   return new URL(rawUrl, `${publicBase}/`).toString();
 }
 
-async function getPublishingCredentials(tenantId: string) {
+export async function getPublishingCredentials(tenantId: string) {
   const [[directConnection], [legacyConfig]] = await Promise.all([
     db
       .select({

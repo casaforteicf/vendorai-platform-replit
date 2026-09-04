@@ -26,9 +26,9 @@ import {
   describeImage,
   improveVariationText,
 } from "../lib/content-generation.js";
-import { InstagramApiError } from "../lib/instagram-publish.js";
+import { InstagramApiError, listRecentMedia } from "../lib/instagram-publish.js";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
-import { publishContentGenerationToInstagram, SocialPublicationError } from "../services/contentSocialPublisher.js";
+import { publishContentGenerationToInstagram, getPublishingCredentials, SocialPublicationError } from "../services/contentSocialPublisher.js";
 import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
 
 const router: IRouter = Router();
@@ -554,6 +554,30 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     }
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
     res.status(502).json({ code: "INSTAGRAM_PUBLISH_FAILED", error: `Falha ao publicar no Instagram: ${msg}` });
+  }
+});
+
+router.get("/tenants/:tenantId/content/instagram-grid", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  try {
+    const { accessToken, accountId } = await getPublishingCredentials(tenantId);
+    const items = await listRecentMedia(accountId, accessToken, 11);
+    res.json({ connected: true, items });
+  } catch (err) {
+    if (err instanceof SocialPublicationError) {
+      // Não conectado/token expirado — não é erro de servidor, o frontend
+      // trata como "conecte o Instagram" em vez de mostrar falha.
+      res.json({ connected: false, items: [] });
+      return;
+    }
+    req.log.error({ err }, "instagram-grid: falha ao listar mídia publicada");
+    res.status(502).json({ connected: false, items: [], error: "Não foi possível carregar a grade do Instagram agora." });
   }
 });
 

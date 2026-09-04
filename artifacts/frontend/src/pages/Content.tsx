@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SocialIntegrationsPanel } from "@/components/SocialIntegrationsPanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { InstagramGridPreview } from "@/components/InstagramGridPreview";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1610,6 +1611,22 @@ export default function Content() {
   }, {});
   const filteredLibraryItems = libraryFilter === "all" ? libraryItems : libraryItems.filter((item) => item.type === libraryFilter);
 
+  // Só Feed aparece de verdade na grade 3 colunas com uma miniatura confiável
+  // (Stories some em 24h e nunca aparece lá; Reels aparece na grade mas só
+  // temos a URL do vídeo salva, sem frame de capa gerado — prévia ficaria
+  // quebrada, então fica de fora até existir uma capa de verdade pra Reels).
+  const gridDraftOptions = libraryItems
+    .filter((item) => item.type === "feed")
+    .map((item) => {
+      const thumb = getLibraryThumbnail(item);
+      return {
+        id: item.id,
+        label: `Feed — ${item.theme || new Date(item.savedAt).toLocaleDateString("pt-BR")}`,
+        thumbnailUrl: thumb.url,
+      };
+    })
+    .filter((d) => d.thumbnailUrl);
+
   const { data: history, isLoading: historyLoading } = useQuery<ListContentResponse>({
     queryKey: ["content", tenantId],
     queryFn: async () => {
@@ -2415,6 +2432,10 @@ export default function Content() {
 
       {((library?.items?.length ?? 0) > 0 || libraryLoading) && (
         <div>
+          <div className="mb-4">
+            <InstagramGridPreview tenantId={tenantId} draftOptions={gridDraftOptions} />
+          </div>
+
           <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
             <Archive className="h-4 w-4 text-muted-foreground" />
             Biblioteca de Conteúdo

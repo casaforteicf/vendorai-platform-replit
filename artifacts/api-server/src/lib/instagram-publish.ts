@@ -188,3 +188,54 @@ export async function publishReelPost(
   log.info({ postId: published.id }, "instagram-publish: reel published");
   return published.id;
 }
+
+export type InstagramGridItem = {
+  id: string;
+  mediaType: "IMAGE" | "VIDEO" | "CAROUSEL_ALBUM";
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  permalink: string | null;
+  timestamp: string | null;
+  caption: string | null;
+};
+
+/**
+ * Lista os posts mais recentes já publicados na grade (Feed) da conta
+ * conectada — usado só pro preview visual (ver como um rascunho novo vai
+ * ficar ao lado do que já está publicado), não pra republicar nada.
+ * Stories não têm endpoint de listagem retroativa na Graph API (somem em
+ * 24h), então a grade aqui é só Feed/Reels mesmo — que é o que Instagram
+ * mostra na grade 3 colunas de qualquer forma.
+ */
+export async function listRecentMedia(
+  instagramAccountId: string,
+  token: string,
+  limit = 12,
+): Promise<InstagramGridItem[]> {
+  const url = new URL(`${GRAPH}/${encodeURIComponent(instagramAccountId)}/media`);
+  url.searchParams.set("fields", "id,media_type,media_url,thumbnail_url,permalink,timestamp,caption");
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("access_token", token);
+
+  const result = (await gFetch(url.toString())) as {
+    data?: Array<{
+      id: string;
+      media_type: "IMAGE" | "VIDEO" | "CAROUSEL_ALBUM";
+      media_url?: string;
+      thumbnail_url?: string;
+      permalink?: string;
+      timestamp?: string;
+      caption?: string;
+    }>;
+  };
+
+  return (result.data ?? []).map((item) => ({
+    id: item.id,
+    mediaType: item.media_type,
+    mediaUrl: item.media_url ?? null,
+    thumbnailUrl: item.thumbnail_url ?? null,
+    permalink: item.permalink ?? null,
+    timestamp: item.timestamp ?? null,
+    caption: item.caption ?? null,
+  }));
+}
