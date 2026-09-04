@@ -1,11 +1,16 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
-import { readFile, unlink, writeFile } from "fs/promises";
+import { unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { extname, join } from "path";
 import { pool } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import {
+  analyzeVendorAiDeepFidelity,
+  buildVendorAiFidelitySummary,
+  type DeepFidelityResult,
+} from "./vendorai-deep-fidelity.js";
 
 const execFileAsync = promisify(execFile);
 const objectStorage = new ObjectStorageService();
@@ -212,6 +217,14 @@ async function analyzeVideoPath(path: string) {
   };
 }
 
+function latestEvaluation(metadata: JsonRecord): { average?: number | null } | null {
+  const evaluations = Array.isArray(metadata["dubleEvaluations"]) ? metadata["dubleEvaluations"] : [];
+  const latest = evaluations[0];
+  return latest && typeof latest === "object" && !Array.isArray(latest)
+    ? latest as { average?: number | null }
+    : null;
+}
+
 export async function analyzeVendorAiIdentityReferences(params: {
   tenantId: string;
   identityId: string;
@@ -242,9 +255,12 @@ export async function analyzeVendorAiIdentityReferences(params: {
   const videoCapture = asRecord(captureProfile["video"]);
   const videoAssetId = typeof videoCapture["referenceAssetId"] === "string" ? videoCapture["referenceAssetId"] : null;
   const voiceAssetId = voice?.reference_asset_id ? String(voice.reference_asset_id) : null;
+  const faceAssetId = identity.face_reference_asset_id ? String(identity.face_reference_asset_id) : null;
 
   let audioAnalysis: Awaited<ReturnType<typeof analyzeAudioPath>> | null = null;
   let videoAnalysis: Awaited<ReturnType<typeof analyzeVideoPath>> | null = null;
+  let deepFidelity: DeepFidelityResult | null = null;
+  let deepFidelityError: string | null = null;
   const cleanupPaths: string[] = [];
 
   try {
@@ -257,6 +273,18 @@ export async function analyzeVendorAiIdentityReferences(params: {
       const video = await materializeAsset(tenantId, videoAssetId, "video");
       cleanupPaths.push(video.path);
       videoAnalysis = await analyzeVideoPath(video.path);
+      if (faceAssetId && videoAnalysis.durationSeconds > 0) {
+        try {
+          deepFidelity = await analyzeVendorAiDeepFidelity({
+            tenantId,
+            faceReferenceAssetId: faceAssetId,
+            videoPath: video.path,
+            videoDurationSeconds: videoAnalysis.durationSeconds,
+          });
+        } catch (error) {
+          deepFidelityError = error instanceof Error ? error.message : "Não foi possível executar a fidelidade profunda";
+        }
+      }
     }
   } finally {
     await Promise.all(cleanupPaths.map((path) => unlink(path).catch(() => undefined)));
@@ -264,10 +292,15 @@ export async function analyzeVendorAiIdentityReferences(params: {
 
   const scores = [audioAnalysis?.technicalScore, videoAnalysis?.technicalScore].filter((value): value is number => typeof value === "number");
   const technicalScore = scores.length ? clampScore(scores.reduce((sum, value) => sum + value, 0) / scores.length) : null;
-  const faceReady = Boolean(identity.face_reference_asset_id);
+  const faceReady = Boolean(faceAssetId);
   const fullReferenceSet = faceReady && Boolean(audioAnalysis) && Boolean(videoAnalysis);
   const readiness = fullReferenceSet && technicalScore !== null && technicalScore >= 60 ? "ready_for_duble_test" : "needs_reference_review";
   const analyzedAt = new Date().toISOString();
+  const fidelity = buildVendorAiFidelitySummary({
+    technicalScore,
+    deepFidelity,
+    latestHumanEvaluation: latestEvaluation(metadata),
+  });
 
   const nextCaptureProfile = {
     ...captureProfile,
@@ -278,25 +311,33 @@ export async function analyzeVendorAiIdentityReferences(params: {
     },
     video: {
       ...videoCapture,
-      analysisStatus: videoAnalysis ? "technical_complete" : "missing",
+      analysisStatus: deepFidelity ? "deep_complete" : videoAnalysis ? "technical_complete" : "missing",
       technicalScore: videoAnalysis?.technicalScore ?? null,
+      deepVisualScore: deepFidelity?.scores.visualScore ?? null,
     },
   };
   const qualityAnalysis = {
-    version: 1,
+    version: 2,
     analyzedAt,
     technicalScore,
     readiness,
     faceReferenceReady: faceReady,
     voice: audioAnalysis,
     video: videoAnalysis,
-    deepFidelityStatus: "pending",
-    deepChecksPending: ["face_similarity", "expression_coverage", "gaze_coverage", "lip_motion_coverage", "prosody_similarity"],
+    deepFidelityStatus: deepFidelity ? "complete" : deepFidelityError ? "unavailable" : "pending",
+    deepFidelityError,
+    deepFidelity,
+    deepChecksPending: fidelity.pendingChecks,
+    fidelityScore: fidelity.score,
+    fidelityCompleteness: fidelity.completeness,
+    fidelityConfidence: fidelity.confidence,
+    fidelity,
   };
   const nextMetadata = {
     ...metadata,
     captureProfile: nextCaptureProfile,
     qualityAnalysis,
+    ...(deepFidelity ? { behaviorDNA: { version: 1, analyzedAt: deepFidelity.analyzedAt, ...deepFidelity.behaviorDNA } } : {}),
   };
 
   await pool.query(
@@ -309,7 +350,7 @@ export async function analyzeVendorAiIdentityReferences(params: {
     const nextVoiceMetadata = {
       ...asRecord(voice.metadata),
       qualityAnalysis: {
-        version: 1,
+        version: 2,
         analyzedAt,
         ...audioAnalysis,
       },
@@ -365,13 +406,34 @@ export async function saveVendorAiDubleEvaluation(params: {
 
   const metadata = asRecord(identityResult.rows[0]?.metadata);
   const existing = Array.isArray(metadata["dubleEvaluations"]) ? metadata["dubleEvaluations"] : [];
+  const qualityAnalysis = asRecord(metadata["qualityAnalysis"]);
+  const deepRaw = asRecord(qualityAnalysis["deepFidelity"]);
+  const deepFidelity = deepRaw["status"] === "complete" ? deepRaw as unknown as DeepFidelityResult : null;
+  const technicalScore = numberOrNull(qualityAnalysis["technicalScore"]);
+  const fidelity = buildVendorAiFidelitySummary({
+    technicalScore,
+    deepFidelity,
+    latestHumanEvaluation: evaluation,
+  });
+  const nextQualityAnalysis = {
+    ...qualityAnalysis,
+    fidelityScore: fidelity.score,
+    fidelityCompleteness: fidelity.completeness,
+    fidelityConfidence: fidelity.confidence,
+    fidelity,
+    deepChecksPending: fidelity.pendingChecks,
+  };
   const nextMetadata = {
     ...metadata,
+    qualityAnalysis: nextQualityAnalysis,
     dubleEvaluations: [evaluation, ...existing].slice(0, 50),
     dubleValidation: {
       status: average >= 4 ? "approved" : average >= 3 ? "review" : "needs_improvement",
       lastEvaluationAt: evaluation.createdAt,
       lastAverage: average,
+      fidelityScore: fidelity.score,
+      fidelityCompleteness: fidelity.completeness,
+      fidelityConfidence: fidelity.confidence,
     },
   };
   await pool.query(
@@ -379,5 +441,5 @@ export async function saveVendorAiDubleEvaluation(params: {
       WHERE tenant_id = $1 AND id = $2`,
     [tenantId, identityId, JSON.stringify(nextMetadata)],
   );
-  return evaluation;
+  return { ...evaluation, fidelity };
 }
