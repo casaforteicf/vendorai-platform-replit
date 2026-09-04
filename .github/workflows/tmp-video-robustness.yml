@@ -1,0 +1,44 @@
+name: tmp-video-robustness
+on:
+  push:
+    branches: [feat/video-editor-robustness]
+    paths: [.tmp-video-robustness-run]
+permissions:
+  contents: write
+jobs:
+  patch-and-validate:
+    if: github.actor != 'vendorai-automation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/video-editor-robustness
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.tmp-video-robustness.py')
+          s = p.read_text().replace('musicFile?.name ?? selectedTrack ? assetName(selectedTrack!) : "trilha-audio"', 'musicFile?.name ?? (selectedTrack ? assetName(selectedTrack) : "trilha-audio")')
+          p.write_text(s)
+          PY
+          python .tmp-video-robustness.py
+      - run: pnpm install --frozen-lockfile
+      - name: Unit tests
+        run: pnpm --filter @workspace/api-server exec vitest run src/lib/audio-beat-analysis.test.ts
+      - name: Build backend
+        run: pnpm --filter @workspace/api-server run build
+      - name: Build frontend
+        run: pnpm --filter @workspace/frontend run build
+      - name: Commit product changes
+        run: |
+          git config user.name vendorai-automation
+          git config user.email vendorai-automation@users.noreply.github.com
+          git add artifacts/api-server/src/routes/video_processing.ts artifacts/frontend/src/components/video/VideoTimelineEditor.tsx
+          git diff --cached --quiet || (git commit -m "feat(video): harden editor fallback telemetry and mobile" && git push origin HEAD:feat/video-editor-robustness)
