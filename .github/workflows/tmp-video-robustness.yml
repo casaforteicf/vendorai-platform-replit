@@ -25,8 +25,11 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p = Path('.tmp-video-robustness.py')
-          s = p.read_text().replace('musicFile?.name ?? selectedTrack ? assetName(selectedTrack!) : "trilha-audio"', 'musicFile?.name ?? (selectedTrack ? assetName(selectedTrack) : "trilha-audio")')
-          p.write_text(s)
+          lines = p.read_text().replace('musicFile?.name ?? selectedTrack ? assetName(selectedTrack!) : "trilha-audio"', 'musicFile?.name ?? (selectedTrack ? assetName(selectedTrack) : "trilha-audio")').splitlines()
+          for i, line in enumerate(lines):
+              if '"save mobile label"' in line:
+                  lines[i] = 's = replace_once(s, \'}Salvar</button>\', \'}<span className="hidden sm:inline">Salvar</span></button>\', "save mobile label")'
+          p.write_text('\n'.join(lines) + '\n')
           PY
           python .tmp-video-robustness.py
       - run: pnpm install --frozen-lockfile
