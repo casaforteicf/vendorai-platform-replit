@@ -50,6 +50,24 @@ function normalizeChannelName(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
 
+function dedupeChannels(channels: MediaPlanCampaignChannel[]): MediaPlanCampaignChannel[] {
+  const byChannel = new Map<string, MediaPlanCampaignChannel>();
+  for (const channel of channels) {
+    const key = normalizeChannelName(channel.canal);
+    const existing = byChannel.get(key);
+    if (!existing) {
+      byChannel.set(key, channel);
+      continue;
+    }
+    byChannel.set(key, {
+      ...existing,
+      quantidadeMateriais: Math.max(existing.quantidadeMateriais, channel.quantidadeMateriais),
+      percentualOrcamento: existing.percentualOrcamento ?? channel.percentualOrcamento,
+    });
+  }
+  return Array.from(byChannel.values());
+}
+
 function normalizeChannel(
   raw: unknown,
   context: { phase?: string; objective?: string },
@@ -81,9 +99,11 @@ function normalizeCampaign(raw: unknown, index: number, periodoDias: 30 | 60 | 9
   const objective = normalizeText(item.objetivo, "Gerar oportunidades");
   const phase = normalizeText(item.fase, "aquisição");
   const canais = Array.isArray(item.canais)
-    ? item.canais
-        .map((channel) => normalizeChannel(channel, { phase, objective }))
-        .filter((v): v is MediaPlanCampaignChannel => Boolean(v))
+    ? dedupeChannels(
+        item.canais
+          .map((channel) => normalizeChannel(channel, { phase, objective }))
+          .filter((v): v is MediaPlanCampaignChannel => Boolean(v)),
+      )
     : [];
   const duracaoDefault = Math.max(14, Math.round(periodoDias / Math.max(2, campaignCount(periodoDias) / 2)));
   return {
@@ -131,7 +151,7 @@ function fallbackChannels(
     "Landing Page",
   ])).slice(0, 10);
 
-  return base.map((canal) => {
+  const aligned = base.map((canal) => {
     const lower = normalizeChannelName(canal);
     const paid = lower.includes("ads") || lower.includes("google") || lower.includes("performance") || lower.includes("display");
     const direct = lower.includes("whatsapp") || lower.includes("landing") || lower.includes("email");
@@ -146,6 +166,7 @@ function fallbackChannels(
       percentualOrcamento: paid ? undefined : 0,
     }, context);
   });
+  return dedupeChannels(aligned);
 }
 
 function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: 30 | 60 | 90): MediaPlanCampaign[] {
@@ -200,10 +221,10 @@ export function alignMediaFunctionsInContent(conteudo: MediaPlanConteudo): Media
     return { ...conteudo, versaoFuncoesMidia: MEDIA_FUNCTION_VERSION };
   }
   const campanhas = conteudo.campanhas.map((campaign) => {
-    const canais = campaign.canais.map((channel) => alignMediaChannelFunction(channel, {
+    const canais = dedupeChannels(campaign.canais.map((channel) => alignMediaChannelFunction(channel, {
       phase: campaign.fase,
       objective: campaign.objetivo,
-    }));
+    })));
     return {
       ...campaign,
       canais,
@@ -219,10 +240,10 @@ export function alignMediaFunctionsInContent(conteudo: MediaPlanConteudo): Media
 }
 
 function mergeChannelCoverage(aiCampaign: MediaPlanCampaign, fallbackCampaign: MediaPlanCampaign): MediaPlanCampaign {
-  const merged = aiCampaign.canais.map((channel) => alignMediaChannelFunction(channel, {
+  const merged = dedupeChannels(aiCampaign.canais.map((channel) => alignMediaChannelFunction(channel, {
     phase: aiCampaign.fase,
     objective: aiCampaign.objetivo,
-  }));
+  })));
   const existing = new Set(merged.map((channel) => normalizeChannelName(channel.canal)));
 
   for (const fallbackChannel of fallbackCampaign.canais) {
