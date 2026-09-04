@@ -57,8 +57,6 @@ const DashboardExecutivoPraca = lazy(() => import("@/pages/DashboardExecutivoPra
 const ConciliacaoFinanceiraPraca = lazy(() => import("@/pages/ConciliacaoFinanceiraPraca"));
 const AppEntregadorPraca = lazy(() => import("@/pages/AppEntregadorPraca"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
-const Campanhas          = lazy(() => import("@/pages/Campanhas"));
-const CampanhasHub       = lazy(() => import("@/pages/CampanhasHub"));
 const Propostas          = lazy(() => import("@/pages/Propostas"));
 const CatalogoProdutos   = lazy(() => import("@/pages/CatalogoProdutos"));
 const CategoriasProduto  = lazy(() => import("@/pages/CategoriasProduto"));
@@ -89,7 +87,6 @@ const ErpCapture         = lazy(() => import("@/pages/erp"));
 const Onboarding         = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
-const ContentStudio      = lazy(() => import("@/pages/ContentStudio"));
 const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
 const VideoAvatarPage    = lazy(() => import("@/pages/video/VideoAvatarPage"));
 const VideoProdutoPage   = lazy(() => import("@/pages/video/VideoProdutoPage"));
@@ -262,6 +259,15 @@ function RedirectPage({ to }: { to: string }) {
   useEffect(() => {
     setLocation(to);
   }, [to, setLocation]);
+  return null;
+}
+
+function LegacyCampaignHubRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    const view = new URLSearchParams(window.location.search).get("view");
+    setLocation(view === "mercados" ? "/content?tab=campanhas&view=mercados" : "/content?tab=campanhas");
+  }, [setLocation]);
   return null;
 }
 
@@ -608,8 +614,8 @@ function AppRoutes() {
         <Route path="/marketing/plano-de-midia">{() => <ProtectedRoute component={PlanoMidia} />}</Route>
         <Route path="/propostas/:id/print">{() => <ProtectedRoute component={PropostaPrint} />}</Route>
         <Route path="/propostas/:id">{() => <ProtectedRoute component={PropostaPrint} />}</Route>
-        <Route path="/campanhas-nova"><ProtectedRoute component={CampanhasHub} /></Route>
-        <Route path="/campanhas"><ProtectedRoute component={Campanhas} /></Route>
+        <Route path="/campanhas-nova"><LegacyCampaignHubRedirect /></Route>
+        <Route path="/campanhas"><RedirectPage to="/content?tab=campanhas&view=organicas" /></Route>
         <Route path="/estoque">{() => <ProtectedRoute component={Estoque} />}</Route>
         <Route path="/erp/captura">{() => <ProtectedRoute component={ErpCapture} />}</Route>
         <Route path="/erp">{() => <ProtectedRoute component={GestaoErp} />}</Route>
@@ -635,7 +641,7 @@ function AppRoutes() {
         <Route path="/partner">{() => <PartnerRoute component={PartnerDashboard} />}</Route>
         <Route path="/marketplace">{() => <ProtectedRoute component={Marketplace} />}</Route>
         <Route path="/content">{() => <ProtectedRoute component={Content} />}</Route>
-        <Route path="/content-studio">{() => <ProtectedRoute component={ContentStudio} />}</Route>
+        <Route path="/content-studio"><RedirectPage to="/content" /></Route>
         <Route path="/content-studio/video">{() => <ProtectedRoute component={VideoHome} />}</Route>
         <Route path="/content-studio/video/avatar">{() => <ProtectedRoute component={VideoAvatarPage} />}</Route>
         <Route path="/content-studio/video/produto">{() => <ProtectedRoute component={VideoProdutoPage} />}</Route>
