@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-467",
+    "titulo": "sincronizar cortes com batidas da música",
+    "descricao": "analisa a forma de onda da trilha no navegador via Web Audio; usa BPM cadastrado no Music Hub como referência/fallback; detecta BPM e fase/offset das batidas; permite grade por cada 1, 2 ou 4 batidas;",
+    "tipo": "correcao",
+    "publicadoEm": "2026-09-04T01:46:36.000Z",
+    "pullRequest": 467
+  },
+  {
     "id": "pr-461",
     "titulo": "recomendar trilhas da marca no editor",
     "descricao": "mostra até 3 trilhas recomendadas no painel `Áudio e trilha`; prioriza `Oficial da marca` e a trilha padrão do Brand Kit; cruza canal do vídeo com usos do Music Hub: Reels/Shorts, Stories, Institucional, Produto e Anúncios; usa título do projeto + textos das camadas para inferir contexto e mood;",
