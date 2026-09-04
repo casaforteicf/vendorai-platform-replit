@@ -66,7 +66,7 @@
   --popover-foreground: 240 6% 10%;
   --popover-border: 240 6% 91%;
 
-  --primary: 16 65% 52%;
+  --primary: 16 76% 52%;
   --primary-foreground: 30 40% 98%;
 
   --secondary: 240 5% 95%;
@@ -75,8 +75,8 @@
   --muted: 240 5% 95%;
   --muted-foreground: 240 2% 54%;
 
-  --accent: 16 45% 94%;
-  --accent-foreground: 16 65% 32%;
+  --accent: 20 82% 94%;
+  --accent-foreground: 16 72% 34%;
 
   --destructive: 5 75% 55%;
   --destructive-foreground: 30 40% 98%;
@@ -103,7 +103,7 @@
   --popover-foreground: 240 6% 95%;
   --popover-border: 240 6% 20%;
 
-  --primary: 16 70% 58%;
+  --primary: 16 78% 56%;
   --primary-foreground: 20 20% 10%;
 
   --secondary: 240 6% 18%;
@@ -155,6 +155,104 @@
   }
 }
 
+/* Public website visual refresh: orange is the conversion color, blue remains support. */
+main .bg-blue-500 {
+  background-color: #f97316 !important;
+}
+
+main .hover\:bg-blue-400:hover {
+  background-color: #fb923c !important;
+}
+
+main .text-blue-600,
+main .text-blue-700 {
+  color: #ea580c !important;
+}
+
+main .bg-blue-50 {
+  background-color: #fff7ed !important;
+}
+
+main .border-blue-200 {
+  border-color: #fed7aa !important;
+}
+
+main .text-blue-300 {
+  color: #fdba74 !important;
+}
+
+main .bg-blue-400\/10 {
+  background-color: rgb(251 146 60 / 0.12) !important;
+}
+
+/* Homepage: richer orange hero glow without removing the existing blue depth. */
+main > div[class*="bg-white"][class*="text-slate-950"] > section:first-of-type::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 76% 36%, rgb(249 115 22 / 0.18), transparent 28%),
+    radial-gradient(circle at 48% 92%, rgb(251 146 60 / 0.10), transparent 24%);
+  z-index: 0;
+}
+
+main > div[class*="bg-white"][class*="text-slate-950"] > section:first-of-type > .container {
+  z-index: 1;
+}
+
+/* Marketing section: use real campaign creatives already produced by VendorAI as visual proof. */
+main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5)::before {
+  content: "";
+  position: absolute;
+  top: 2rem;
+  right: -4rem;
+  width: min(46vw, 660px);
+  height: 82%;
+  border-radius: 2rem 0 0 2rem;
+  opacity: 0.16;
+  filter: saturate(0.92) contrast(1.04);
+  background-image:
+    linear-gradient(90deg, #020617 0%, rgb(2 6 23 / 0.40) 24%, transparent 64%),
+    url('/ad-creatives/construcao-feed.png'),
+    url('/ad-creatives/auto-pecas-feed.png'),
+    url('/ad-creatives/salao-feed.png');
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 46% auto, 46% auto, 46% auto;
+  background-position: center, 2% 8%, 98% 45%, 4% 91%;
+  transform: rotate(-2deg);
+  pointer-events: none;
+  z-index: -1;
+}
+
+main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5) > .container {
+  position: relative;
+  z-index: 1;
+}
+
+/* Add warmer depth to selected cards and conversion surfaces. */
+main [class*="shadow-"][class*="rounded-"] {
+  transition: box-shadow 180ms ease, transform 180ms ease, border-color 180ms ease;
+}
+
+main [class*="rounded-"][class*="border"]:hover {
+  border-color: rgb(251 146 60 / 0.35);
+}
+
+@media (max-width: 900px) {
+  main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5)::before {
+    right: -7rem;
+    width: 72vw;
+    opacity: 0.09;
+  }
+}
+
 @media (max-width: 639px) {
   .container {
     width: 100%;
@@ -181,5 +279,15 @@
   a,
   button {
     overflow-wrap: break-word;
+  }
+
+  main > div[class*="bg-white"][class*="text-slate-950"] > section:nth-of-type(5)::before {
+    top: auto;
+    right: -8rem;
+    bottom: 1rem;
+    width: 100vw;
+    height: 42%;
+    opacity: 0.07;
+    background-size: 100% 100%, 48% auto, 48% auto, 48% auto;
   }
 }
