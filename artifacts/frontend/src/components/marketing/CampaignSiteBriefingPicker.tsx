@@ -184,6 +184,7 @@ export function CampaignSiteBriefingPicker({
 
   function selectCampaign(campaignId: string) {
     if (campaignId === "none") {
+      sessionStorage.removeItem(ACTIVE_BRIEFING_KEY);
       onApply(null);
       return;
     }
