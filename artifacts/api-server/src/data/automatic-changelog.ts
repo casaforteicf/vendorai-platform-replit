@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-490",
+    "titulo": "internacionalizar guia de implantação",
+    "descricao": "usa o locale ativo do tenant para exibir o Guia de Implantação em português ou espanhol cobre todos os textos, instruções, botões, progresso e rótulos de acessibilidade da tela remove referências antigas visíveis a `TAD` e usa linguagem neutra da plataforma preserva rotas, progresso local por tenant e comportamento atual",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T02:58:41.000Z",
+    "pullRequest": 490
+  },
+  {
     "id": "pr-486",
     "titulo": "respeitar locale do tenant na transcrição de áudio",
     "descricao": "remove o `language: pt` fixo do fluxo ativo de transcrição de áudio resolve o idioma pelo `tenant.defaultLocale` `es-PY`, `es-AR`, `es-UY` e `es-CL` usam `es` demais tenants mantêm `pt`",
