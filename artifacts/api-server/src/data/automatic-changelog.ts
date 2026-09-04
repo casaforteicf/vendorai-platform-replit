@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-497",
+    "titulo": "internacionalizar equipe e usuários",
+    "descricao": "internacionaliza a tela Equipe/Usuários para português e espanhol conforme o locale ativo do tenant traduz funções padrão, estados, tabela/mobile, formulários, confirmações e toasts traduz somente os rótulos visuais dos módulos de acesso via `labelEs` mantém intactas as chaves reais de permissão, funções padrão, rotas, defaults de acesso e payloads da API",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T03:15:01.000Z",
+    "pullRequest": 497
+  },
+  {
     "id": "pr-493",
     "titulo": "internacionalizar recuperação de senha",
     "descricao": "traduz `Esqueci minha senha` e `Redefinir senha` para o locale global ativo cobre estados de envio, sucesso, erro, validações, placeholders e redirecionamento visual mantém a lógica atual de token, JWT, expiração, `/dashboard` e `/login`",
