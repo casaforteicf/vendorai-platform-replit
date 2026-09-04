@@ -120,7 +120,7 @@ export const messages = {
     "onboarding.whatsapp.phoneIdHelp": "Disponible en Meta Business Manager → WhatsApp → Configuración",
     "onboarding.whatsapp.tokenPlaceholder": "Token de acceso permanente",
     "onboarding.whatsapp.number": "Número de WhatsApp",
-    "onboarding.whatsapp.numberPlaceholder": "595981000000 (solo números, con código de país)",
+    "onboarding.whatsapp.numberPlaceholder": "Código de país + número (solo dígitos)",
     "onboarding.whatsapp.saveContinue": "Guardar y continuar",
     "onboarding.whatsapp.skipNow": "Omitir por ahora",
     "onboarding.agent.title": "Activa tu primer agente de IA",
