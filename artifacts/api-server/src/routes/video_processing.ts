@@ -9,6 +9,7 @@ import { join } from "path";
 import { pool } from "@workspace/db";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { transcribeAudioWithWordTimestamps, type TranscriptionWord } from "../lib/ai-gateway.js";
+import { analyzePcm16Beats } from "../lib/audio-beat-analysis.js";
 import {
   createMediaJob,
   getMediaJob,
@@ -25,6 +26,15 @@ const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
 const PRIVATE_DIR    = process.env["PRIVATE_OBJECT_DIR"] ?? "";
+const VIDEO_EDITOR_EVENTS = new Set([
+  "beat_analyzed",
+  "beat_fallback_server",
+  "render_started",
+  "render_completed",
+  "render_failed",
+  "auto_edit_applied",
+  "sfx_applied",
+]);
 
 function authCheck(req: Parameters<Parameters<typeof router.post>[1]>[0], res: Parameters<Parameters<typeof router.post>[1]>[1]): boolean {
   const tenantId = String(req.params["tenantId"]);
@@ -628,6 +638,66 @@ router.post(
     })();
   }
 );
+
+
+// ── Robustez do editor: análise musical + telemetria ─────────────────────────
+
+router.post(
+  "/tenants/:tenantId/content-studio/video/analyze-audio",
+  upload.single("audio"),
+  async (req, res) => {
+    if (!authCheck(req, res)) return;
+    if (!req.file) { res.status(422).json({ error: "Arquivo de áudio obrigatório" }); return; }
+
+    const tenantId = String(req.params["tenantId"]);
+    const requestId = randomUUID();
+    const inputPath = join(tmpdir(), `beat-input-${requestId}`);
+    const pcmPath = join(tmpdir(), `beat-pcm-${requestId}.s16le`);
+    const parsedHint = Number((req.body as Record<string, string | undefined>)["bpmHint"] ?? "");
+    const bpmHint = Number.isFinite(parsedHint) && parsedHint > 0 ? Math.max(60, Math.min(200, parsedHint)) : null;
+
+    try {
+      await writeFile(inputPath, req.file.buffer);
+      await execFileAsync("ffmpeg", [
+        "-y", "-v", "error", "-i", inputPath,
+        "-t", "120", "-vn", "-ac", "1", "-ar", "16000",
+        "-f", "s16le", pcmPath,
+      ]);
+      const pcm = await readFile(pcmPath);
+      if (pcm.byteLength < 4) throw new Error("O áudio não possui amostras suficientes para análise");
+      const samples = new Int16Array(Math.floor(pcm.byteLength / 2));
+      for (let index = 0; index < samples.length; index += 1) samples[index] = pcm.readInt16LE(index * 2);
+      const analysis = analyzePcm16Beats(samples, 16000, bpmHint);
+      req.log.info({ tenantId, userId: req.user?.sub ?? null, bpm: analysis.bpm, confidence: analysis.confidence, source: "server" }, "video-editor: beat analysis fallback");
+      res.json({ analysis: { ...analysis, source: "server" } });
+    } catch (error) {
+      req.log.warn({ err: error, tenantId, userId: req.user?.sub ?? null }, "video-editor: beat analysis fallback failed");
+      res.status(422).json({ error: error instanceof Error ? error.message : "Falha na análise musical no servidor" });
+    } finally {
+      await unlink(inputPath).catch(() => undefined);
+      await unlink(pcmPath).catch(() => undefined);
+    }
+  },
+);
+
+router.post("/tenants/:tenantId/content-studio/video/editor-events", async (req, res) => {
+  if (!authCheck(req, res)) return;
+  const tenantId = String(req.params["tenantId"]);
+  const body = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
+  const event = String(body["event"] ?? "");
+  if (!VIDEO_EDITOR_EVENTS.has(event)) { res.status(422).json({ error: "Evento do editor inválido" }); return; }
+  const metadata = body["metadata"] && typeof body["metadata"] === "object" && !Array.isArray(body["metadata"])
+    ? body["metadata"] as Record<string, unknown>
+    : {};
+  req.log.info({
+    event,
+    tenantId,
+    userId: req.user?.sub ?? null,
+    projectId: typeof body["projectId"] === "string" ? body["projectId"] : null,
+    metadata,
+  }, "video-editor:event");
+  res.status(202).json({ accepted: true });
+});
 
 // ── Job status (shared) ───────────────────────────────────────────────────────
 
