@@ -28,6 +28,20 @@ export const numericFilterSchema = z.union([
   }),
 ]);
 
+export const campaignMarketingContextSchema = z.object({
+  nicheId: z.string().optional(),
+  nicheName: z.string().optional(),
+  productIds: z.array(z.string()).optional(),
+  productNames: z.array(z.string()).optional(),
+  businessVertical: z.string().optional(),
+  businessVerticalSlug: z.string().optional(),
+  audienceSegment: z.string().optional(),
+  audienceNiche: z.string().optional(),
+  campaignGoal: z.string().optional(),
+});
+
+export type CampaignMarketingContext = z.infer<typeof campaignMarketingContextSchema>;
+
 export const segmentoFiltroSchema = z
   .object({
     churnRisk: numericFilterSchema.optional(),
@@ -35,11 +49,38 @@ export const segmentoFiltroSchema = z
     nextBestAction: z.string().optional(),
     intentAnalysis: z.string().optional(),
     dealEtapas: z.array(z.string()).optional(),
+    leadIds: z.array(z.string()).optional(),
+    marketingContext: campaignMarketingContextSchema.optional(),
   })
   .optional();
 
 export type SegmentoFiltro = z.infer<typeof segmentoFiltroSchema>;
 export type NumericFilter = z.infer<typeof numericFilterSchema>;
+
+export type CampaignContext = {
+  origin?: string;
+  prospectorBatchId?: string;
+  leadIds?: string[];
+  tenantName?: string;
+  businessVertical?: string;
+  region?: string;
+  opportunity?: string;
+  averageScore?: number;
+  offer?: string;
+  productIds?: string[];
+  productNames?: string[];
+  audienceSegment?: string;
+  audienceNiche?: string;
+  campaignGoal?: string;
+  recommendedChannel?: "whatsapp" | "email" | "instagram";
+  recommendedPaidPlatform?: "meta" | "google";
+  adsHeadline?: string;
+  adsDescription?: string;
+  lpHeadline?: string;
+  lpSubheadline?: string;
+  marketingContext?: CampaignMarketingContext;
+  createdFromRevenueScoutAt?: string;
+};
 
 export const campaignsTable = pgTable("campaigns", {
   id: text("id")
@@ -51,6 +92,7 @@ export const campaignsTable = pgTable("campaigns", {
   nome: text("nome").notNull(),
   tipo: campaignTipoEnum("tipo").notNull(),
   segmentoFiltro: jsonb("segmento_filtro").$type<SegmentoFiltro>(),
+  contexto: jsonb("contexto").$type<CampaignContext>(),
   mensagem: text("mensagem").notNull(),
   imageUrl: text("image_url"),
   mensagensEtapa: jsonb("mensagens_etapa").$type<Record<string, string>>(),
