@@ -11,6 +11,7 @@ describe("funções oficiais das mídias", () => {
     expect(resolveMediaChannelFunction("Instagram Ads")?.canal).toBe("Meta Ads");
     expect(resolveMediaChannelFunction("Facebook")?.canal).toBe("Facebook");
     expect(resolveMediaChannelFunction("Facebook Ads")?.canal).toBe("Meta Ads");
+    expect(resolveMediaChannelFunction("Google Ads — Pesquisa")?.canal).toBe("Google Search");
   });
 
   it.each([
