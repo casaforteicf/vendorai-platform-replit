@@ -58,6 +58,7 @@ import {
   XCircle,
   Plus,
   Loader2,
+  MapPin,
 } from "lucide-react";
 
 const ROLE_LABELS_PT: Record<string, string> = {
@@ -158,6 +159,16 @@ const PT_COPY = {
   defaultAccess: "Acessos padrão",
   defaultAccessHelp: "Defina quais módulos serão aplicados quando esta função for selecionada.",
   createFunction: "Criar função",
+  leadAssignmentTitle: "Atendimento de leads",
+  leadAssignmentHelp: "Controle quem pode aparecer como responsável e participar da distribuição automática.",
+  leadAssignmentEnabled: "Pode receber leads e aparecer como responsável",
+  leadAssignmentEnabledHelp: "Desative para financeiro, suporte, entrega ou qualquer usuário que não faça atendimento comercial.",
+  cities: "Cidades atendidas",
+  citiesPlaceholder: "Ex.: Chapecó, Xanxerê, Concórdia",
+  regions: "Regiões / UFs atendidas",
+  regionsPlaceholder: "Ex.: Oeste de SC, SC, PR",
+  territoryHelp: "Separe por vírgula. Cidade tem prioridade sobre região. Se ambos ficarem vazios, o usuário participa do rodízio geral.",
+  receivesLeads: "Atende leads",
 } as const;
 
 const ES_COPY = {
@@ -220,6 +231,16 @@ const ES_COPY = {
   defaultAccess: "Accesos predeterminados",
   defaultAccessHelp: "Define qué módulos se aplicarán cuando se seleccione esta función.",
   createFunction: "Crear función",
+  leadAssignmentTitle: "Atención de leads",
+  leadAssignmentHelp: "Controla quién puede aparecer como responsable y participar en la distribución automática.",
+  leadAssignmentEnabled: "Puede recibir leads y aparecer como responsable",
+  leadAssignmentEnabledHelp: "Desactiva esta opción para usuarios que no realizan atención comercial.",
+  cities: "Ciudades atendidas",
+  citiesPlaceholder: "Ej.: Asunción, Luque, San Lorenzo",
+  regions: "Regiones / departamentos",
+  regionsPlaceholder: "Ej.: Central, Alto Paraná",
+  territoryHelp: "Separa con comas. La ciudad tiene prioridad sobre la región. Si ambos quedan vacíos, el usuario participa en la rotación general.",
+  receivesLeads: "Atiende leads",
 } as const;
 
 interface TenantUserFunction {
@@ -229,6 +250,16 @@ interface TenantUserFunction {
   permissions: string[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+function parseTerritories(value: string): string[] {
+  return [...new Set(value.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean))];
+}
+
+function legacyCanReceiveLeads(targetUser: any): boolean {
+  if (targetUser?.leadAssignmentEnabled === false) return false;
+  if (targetUser?.leadAssignmentEnabled === true) return true;
+  return targetUser?.platformRole === "tenant_seller" || targetUser?.userFunction === "vendedor";
 }
 
 export default function Usuarios() {
@@ -256,6 +287,9 @@ export default function Usuarios() {
     customFunctionId: null as string | null,
     permissions: modulesForFunction("outro") as UserModuleKey[],
     password: "",
+    leadAssignmentEnabled: false,
+    leadAssignmentCities: "",
+    leadAssignmentRegions: "",
   });
 
   const { data: users, isLoading } = useListTenantUsers(tenantId);
@@ -308,6 +342,9 @@ export default function Usuarios() {
       customFunctionId: null,
       permissions: modulesForFunction("outro"),
       password: "",
+      leadAssignmentEnabled: false,
+      leadAssignmentCities: "",
+      leadAssignmentRegions: "",
     });
     setEditingUser(null);
   }
@@ -324,6 +361,13 @@ export default function Usuarios() {
         ? targetUser.permissions
         : modulesForFunction(targetUser.userFunction ?? "outro"),
       password: "",
+      leadAssignmentEnabled: legacyCanReceiveLeads(targetUser),
+      leadAssignmentCities: Array.isArray(targetUser.leadAssignmentCities)
+        ? targetUser.leadAssignmentCities.join(", ")
+        : "",
+      leadAssignmentRegions: Array.isArray(targetUser.leadAssignmentRegions)
+        ? targetUser.leadAssignmentRegions.join(", ")
+        : "",
     });
     setDialogOpen(true);
   }
@@ -356,6 +400,7 @@ export default function Usuarios() {
       userFunction,
       customFunctionId: null,
       permissions: modulesForFunction(userFunction),
+      leadAssignmentEnabled: editingUser ? current.leadAssignmentEnabled : userFunction === "vendedor",
     }));
   }
 
@@ -444,6 +489,9 @@ export default function Usuarios() {
       return;
     }
 
+    const leadAssignmentCities = parseTerritories(formData.leadAssignmentCities);
+    const leadAssignmentRegions = parseTerritories(formData.leadAssignmentRegions);
+
     try {
       if (editingUser) {
         const payload: any = {
@@ -453,6 +501,9 @@ export default function Usuarios() {
           userFunction: formData.userFunction,
           customFunctionId: formData.customFunctionId,
           permissions: formData.permissions,
+          leadAssignmentEnabled: formData.leadAssignmentEnabled,
+          leadAssignmentCities,
+          leadAssignmentRegions,
         };
         if (formData.password) payload.password = formData.password;
         await updateUser.mutateAsync({
@@ -474,6 +525,9 @@ export default function Usuarios() {
             userFunction: formData.userFunction,
             customFunctionId: formData.customFunctionId,
             permissions: formData.permissions,
+            leadAssignmentEnabled: formData.leadAssignmentEnabled,
+            leadAssignmentCities,
+            leadAssignmentRegions,
           } as any,
         });
         toast({
@@ -605,6 +659,12 @@ export default function Usuarios() {
                         <Shield className="h-3 w-3 mr-1" />
                         {getFunctionLabel(u)}
                       </Badge>
+                      {legacyCanReceiveLeads(u) && (
+                        <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200">
+                          <MapPin className="h-3 w-3 mr-1" />
+                          {copy.receivesLeads}
+                        </Badge>
+                      )}
                       {u.active ? (
                         <Badge
                           variant="outline"
@@ -655,10 +715,18 @@ export default function Usuarios() {
                         <TableCell className="font-medium">{u.name}</TableCell>
                         <TableCell className="text-muted-foreground">{u.email}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={getFunctionBadge(u)}>
-                            <Shield className="h-3 w-3 mr-1" />
-                            {getFunctionLabel(u)}
-                          </Badge>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge variant="outline" className={getFunctionBadge(u)}>
+                              <Shield className="h-3 w-3 mr-1" />
+                              {getFunctionLabel(u)}
+                            </Badge>
+                            {legacyCanReceiveLeads(u) && (
+                              <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200">
+                                <MapPin className="h-3 w-3 mr-1" />
+                                {copy.receivesLeads}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {u.active ? (
@@ -793,6 +861,47 @@ export default function Usuarios() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">{copy.functionHelp}</p>
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+              <div>
+                <Label className="text-base">{copy.leadAssignmentTitle}</Label>
+                <p className="text-sm text-muted-foreground mt-1">{copy.leadAssignmentHelp}</p>
+              </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3">
+                <Checkbox
+                  checked={formData.leadAssignmentEnabled}
+                  onCheckedChange={(value) =>
+                    setFormData((current) => ({ ...current, leadAssignmentEnabled: value === true }))
+                  }
+                />
+                <span>
+                  <span className="block text-sm font-medium">{copy.leadAssignmentEnabled}</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">{copy.leadAssignmentEnabledHelp}</span>
+                </span>
+              </label>
+
+              {formData.leadAssignmentEnabled && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label>{copy.cities}</Label>
+                    <Input
+                      value={formData.leadAssignmentCities}
+                      onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentCities: e.target.value }))}
+                      placeholder={copy.citiesPlaceholder}
+                    />
+                  </div>
+                  <div>
+                    <Label>{copy.regions}</Label>
+                    <Input
+                      value={formData.leadAssignmentRegions}
+                      onChange={(e) => setFormData((current) => ({ ...current, leadAssignmentRegions: e.target.value }))}
+                      placeholder={copy.regionsPlaceholder}
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">{copy.territoryHelp}</p>
             </div>
 
             <div className="space-y-3 rounded-lg border p-4">

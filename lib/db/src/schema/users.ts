@@ -46,6 +46,11 @@ export const usersTable = pgTable("users", {
   active: boolean("active").notNull().default(true),
   forcePasswordReset: boolean("force_password_reset").notNull().default(false),
   lastAssignedAt: timestamp("last_assigned_at"),
+  // Regras de distribuição de leads. Null preserva a compatibilidade com usuários
+  // antigos: vendedor/tenant_seller continua elegível até ser configurado explicitamente.
+  leadAssignmentEnabled: boolean("lead_assignment_enabled"),
+  leadAssignmentCities: jsonb("lead_assignment_cities").$type<string[]>().notNull().default([]),
+  leadAssignmentRegions: jsonb("lead_assignment_regions").$type<string[]>().notNull().default([]),
   limiteEntregasPorTurno: numeric("limite_entregas_por_turno", { precision: 6, scale: 0 }),
   // Última vez que o usuário abriu o painel de "Novidades" — usado só pra
   // calcular o contador de não lidas, nada além disso.
@@ -56,6 +61,8 @@ export const usersTable = pgTable("users", {
 
 export const insertUserSchema = createInsertSchema(usersTable, {
   permissions: z.array(z.string()).nullable(),
+  leadAssignmentCities: z.array(z.string()),
+  leadAssignmentRegions: z.array(z.string()),
 }).omit({
   id: true,
   createdAt: true,
@@ -64,6 +71,8 @@ export const insertUserSchema = createInsertSchema(usersTable, {
 
 export const updateUserSchema = createSelectSchema(usersTable, {
   permissions: z.array(z.string()).nullable(),
+  leadAssignmentCities: z.array(z.string()),
+  leadAssignmentRegions: z.array(z.string()),
 })
   .omit({
     id: true,

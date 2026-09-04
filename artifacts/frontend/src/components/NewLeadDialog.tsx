@@ -72,6 +72,18 @@ type Props = {
   onNavigate: (path: string) => void;
 };
 
+type AssignmentUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  active?: boolean | null;
+  platformRole?: string | null;
+  userFunction?: string | null;
+  leadAssignmentEnabled?: boolean | null;
+  leadAssignmentCities?: string[] | null;
+  leadAssignmentRegions?: string[] | null;
+};
+
 const DEFAULT_VALUES: NewLeadValues = {
   nome: "",
   telefone: "",
@@ -98,6 +110,41 @@ function digits(value?: string | null) {
 
 function normalizedText(value?: string | null) {
   return (value ?? "").trim().toLocaleLowerCase("pt-BR");
+}
+
+function normalizeTerritory(value?: string | null) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function territoryMatches(location: string, territory: string) {
+  const normalizedLocation = normalizeTerritory(location);
+  const normalizedTerritory = normalizeTerritory(territory);
+  if (!normalizedLocation || !normalizedTerritory) return false;
+  if (normalizedTerritory.length <= 3) {
+    return normalizedLocation.split(/[^a-z0-9]+/).filter(Boolean).includes(normalizedTerritory);
+  }
+  return normalizedLocation.includes(normalizedTerritory);
+}
+
+function canReceiveLeads(user: AssignmentUser) {
+  if (user.active === false) return false;
+  if (user.leadAssignmentEnabled === false) return false;
+  if (user.leadAssignmentEnabled === true) return true;
+  return user.platformRole === "tenant_seller" || user.userFunction === "vendedor";
+}
+
+function stableIndex(seed: string, length: number) {
+  if (length <= 1) return 0;
+  let hash = 0;
+  for (let index = 0; index < seed.length; index++) {
+    hash = ((hash << 5) - hash + seed.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash) % length;
 }
 
 function normalizeDealValue(value?: string | null): string | undefined {
@@ -177,6 +224,28 @@ export function NewLeadDialog({
     },
   });
 
+  const assignableUsers = useMemo(
+    () => (tenantUsers as unknown as AssignmentUser[]).filter(canReceiveLeads),
+    [tenantUsers],
+  );
+
+  function resolveAutomaticAssignee(values: NewLeadValues): string | undefined {
+    if (values.assignedTo !== "__auto__") return values.assignedTo;
+    if (!assignableUsers.length || !values.endereco.trim()) return undefined;
+
+    const cityMatches = assignableUsers.filter((user) =>
+      (user.leadAssignmentCities ?? []).some((city) => territoryMatches(values.endereco, city)),
+    );
+    const regionMatches = assignableUsers.filter((user) =>
+      (user.leadAssignmentRegions ?? []).some((region) => territoryMatches(values.endereco, region)),
+    );
+    const pool = cityMatches.length ? cityMatches : regionMatches;
+    if (!pool.length) return undefined;
+
+    const seed = `${values.nome}|${values.telefone}|${values.email}|${values.empresa}|${values.endereco}`;
+    return pool[stableIndex(seed, pool.length)]?.id;
+  }
+
   function closeAndReset() {
     setOpen(false);
     setShowMore(false);
@@ -242,6 +311,7 @@ export function NewLeadDialog({
     }
 
     try {
+      const resolvedAssignee = resolveAutomaticAssignee(values) ?? (lead as any).assignedTo ?? undefined;
       const deal = await createDeal.mutateAsync({
         data: {
           tenantId,
@@ -249,7 +319,7 @@ export function NewLeadDialog({
           titulo: defaultDealTitle(values, lead),
           etapa: values.dealStage,
           valor: normalizeDealValue(values.dealValue),
-          assignedTo: values.assignedTo === "__auto__" ? undefined : values.assignedTo,
+          assignedTo: resolvedAssignee,
         },
       });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
@@ -278,36 +348,42 @@ export function NewLeadDialog({
 
     setServerDuplicate(null);
     try {
+      const resolvedAssignee = resolveAutomaticAssignee(values);
+      const submissionValues: NewLeadValues = {
+        ...values,
+        assignedTo: resolvedAssignee ?? values.assignedTo,
+      };
+
       const newLead = await createLead.mutateAsync({
         data: {
           tenantId,
-          nome: values.nome.trim(),
-          telefone: values.telefone || null,
-          email: values.email || null,
-          empresa: values.empresa || null,
-          objetivo: values.objetivo || null,
-          source: values.source,
-          assignedTo: values.assignedTo === "__auto__" ? undefined : values.assignedTo,
-          instagramHandle: values.instagramHandle || null,
-          profissao: values.profissao || null,
-          endereco: values.endereco || null,
-          documento: values.documento || null,
-          tipoPessoa: values.tipoPessoa,
-          mercadoSegmento: values.mercadoSegmento || null,
+          nome: submissionValues.nome.trim(),
+          telefone: submissionValues.telefone || null,
+          email: submissionValues.email || null,
+          empresa: submissionValues.empresa || null,
+          objetivo: submissionValues.objetivo || null,
+          source: submissionValues.source,
+          assignedTo: submissionValues.assignedTo === "__auto__" ? undefined : submissionValues.assignedTo,
+          instagramHandle: submissionValues.instagramHandle || null,
+          profissao: submissionValues.profissao || null,
+          endereco: submissionValues.endereco || null,
+          documento: submissionValues.documento || null,
+          tipoPessoa: submissionValues.tipoPessoa,
+          mercadoSegmento: submissionValues.mercadoSegmento || null,
         },
       });
 
       const leadId = (newLead as { id?: string }).id;
       if (!leadId) throw new Error("O contato foi criado sem identificador válido.");
 
-      const deal = await syncInitialDeal(leadId, values);
+      const deal = await syncInitialDeal(leadId, submissionValues);
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: ["leads-overview-context", tenantId] });
 
       toast({
-        title: values.createInitialDeal ? "Lead e negócio criados" : "Contato salvo",
-        description: values.createInitialDeal
+        title: submissionValues.createInitialDeal ? "Lead e negócio criados" : "Contato salvo",
+        description: submissionValues.createInitialDeal
           ? "O contato foi cadastrado uma única vez e o negócio inicial ficou vinculado a ele."
           : "O contato foi salvo sem abrir um negócio agora.",
       });
@@ -450,11 +526,17 @@ export function NewLeadDialog({
                         <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                         <SelectContent>
                           <SelectItem value="__auto__">Distribuir automaticamente</SelectItem>
-                          {tenantUsers.map((user) => (
+                          {assignableUsers.map((user) => (
                             <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>
                           ))}
+                          {assignableUsers.length === 0 && (
+                            <SelectItem value="__none_available__" disabled>Nenhum responsável habilitado</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Automático: prioriza cidade e região configuradas para cada responsável; sem regra territorial, usa o rodízio geral. Usuários não habilitados para atendimento não aparecem aqui.
+                      </p>
                     </FormItem>
                   )}
                 />
@@ -522,6 +604,7 @@ export function NewLeadDialog({
                     <FormItem>
                       <FormLabel>Cidade / UF</FormLabel>
                       <FormControl><Input placeholder="Ex.: Chapecó / SC" {...field} /></FormControl>
+                      <p className="text-[11px] text-muted-foreground">Quando a distribuição estiver automática, este dado também ajuda a escolher o responsável territorial.</p>
                     </FormItem>
                   )}
                 />
