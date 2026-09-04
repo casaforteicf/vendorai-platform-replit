@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
+import "./pipeline-layout.css";
 
 export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
 
@@ -35,9 +36,9 @@ const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
   { key: "scout", label: "Scout", href: "/scout/pipeline" },
 ];
 
-export const PIPELINE_COLUMN_CLASS = "flex w-80 shrink-0 flex-col rounded-xl border bg-muted/20 min-h-0";
-export const PIPELINE_COLUMN_HEADER_CLASS = "flex min-h-11 items-center justify-between border-b px-3 py-2.5";
-export const PIPELINE_CARD_CLASS = "cursor-pointer rounded-lg border bg-card p-3 shadow-sm transition hover:shadow-md";
+export const PIPELINE_COLUMN_CLASS = "pipeline-column flex w-80 shrink-0 flex-col rounded-xl border bg-muted/20 min-h-0";
+export const PIPELINE_COLUMN_HEADER_CLASS = "pipeline-column-header flex min-h-11 items-center justify-between border-b px-3 py-2.5";
+export const PIPELINE_CARD_CLASS = "pipeline-card cursor-pointer rounded-lg border bg-card p-3 shadow-sm transition hover:shadow-md";
 
 export function PipelineNav({ active }: { active: PipelineTab }) {
   const [, navigate] = useLocation();
@@ -63,24 +64,27 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
   );
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border bg-card p-2" data-testid="pipeline-selector">
-      {TABS.map((tab) => (
-        <Button
-          key={tab.key}
-          type="button"
-          size="sm"
-          variant={active === tab.key ? "default" : "ghost"}
-          onClick={() => navigate(tab.href)}
-          data-testid={`pipeline-tab-${tab.key}`}
-        >
-          {tab.label}
-        </Button>
-      ))}
+    <div className="pipeline-nav" data-testid="pipeline-selector">
+      <div className="pipeline-nav-tabs" role="navigation" aria-label="Áreas da pipeline">
+        {TABS.map((tab) => (
+          <Button
+            key={tab.key}
+            type="button"
+            size="sm"
+            variant={active === tab.key ? "default" : "ghost"}
+            className="pipeline-nav-tab"
+            onClick={() => navigate(tab.href)}
+            data-testid={`pipeline-tab-${tab.key}`}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
 
       {isAdmin && tenantId && (
         <Dialog open={responsibilityOpen} onOpenChange={setResponsibilityOpen}>
           <DialogTrigger asChild>
-            <Button type="button" size="sm" variant="outline" className="ml-auto gap-1.5">
+            <Button type="button" size="sm" variant="outline" className="pipeline-nav-admin gap-1.5">
               <ShieldCheck className="h-4 w-4" />
               Responsáveis por etapa
             </Button>
