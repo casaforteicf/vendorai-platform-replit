@@ -43,7 +43,7 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
     formatos: [
       { formato: "Reels", funcao: "Alcance e descoberta: ganhar atenção de novos públicos" },
       { formato: "Carrossel", funcao: "Educação e consideração: explicar problema, método, comparação e benefício" },
-      { formato: "Stories", funcao: "Relacionamento e ação: bastidores, interação, prova rápida, urgência e CTA" },
+      { formato: "Stories", funcao: "Relacionamento e ação: bastidores, interação, urgência e CTA" },
       { formato: "Feed", funcao: "Posicionamento e prova: reforçar marca, produto, caso real e credibilidade" },
     ],
     variants: {
@@ -91,7 +91,7 @@ const DEFINITIONS: MediaChannelFunctionDefinition[] = [
   },
   {
     canal: "Google Search",
-    aliases: ["google search", "pesquisa google", "search ads", "google pesquisa"],
+    aliases: ["google search", "pesquisa google", "search ads", "google pesquisa", "google ads"],
     funcao: "Capturar demanda existente de alta intenção",
     etapaFunil: "intenção/conversão",
     frequencia: "Sempre ativo quando houver demanda; otimizar termos, negativas, anúncios e lances semanalmente",
@@ -312,10 +312,10 @@ export function mediaActionFunction(canal: string, formato: string, index = 0): 
   let pilar = "consideração";
   if (value.includes("descob") || value.includes("alcance") || value.includes("atenc") || value.includes("prospecc")) pilar = "descoberta";
   else if (value.includes("educ") || value.includes("explic") || value.includes("autoridade")) pilar = "educação";
-  else if (value.includes("prova") || value.includes("confian") || value.includes("risco")) pilar = "prova";
   else if (value.includes("remarketing") || value.includes("recuper") || value.includes("reativ")) pilar = "remarketing";
   else if (value.includes("relacion") || value.includes("comunidade") || value.includes("follow-up")) pilar = "relacionamento";
   else if (value.includes("qualific")) pilar = "qualificação";
+  else if (value.includes("prova") || value.includes("confian") || value.includes("risco")) pilar = "prova";
   else if (value.includes("otimiz") || value.includes("teste")) pilar = "otimização";
   else if (value.includes("intenc")) pilar = "intenção";
   else if (value.includes("convers") || value.includes("captura") || value.includes("cta")) pilar = "conversão";
