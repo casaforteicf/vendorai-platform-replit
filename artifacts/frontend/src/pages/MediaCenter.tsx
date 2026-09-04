@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import ImageAdvisorPanel from "@/components/media/ImageAdvisorPanel";
 import MediaPostGenerationPanel from "@/components/media/MediaPostGenerationPanel";
+import AudioRightsPanel from "@/components/media/AudioRightsPanel";
 import {
   Archive,
   AudioLines,
@@ -37,6 +38,8 @@ import {
 type MediaType = "image" | "video" | "audio" | "document";
 type FilterType = "all" | MediaType;
 type MediaContextType = "none" | "client" | "event" | "campaign" | "product" | "project" | "other";
+type AudioKind = "music" | "voiceover" | "sound_effect" | "jingle" | "sonic_identity" | "other";
+type AudioKindFilter = "all" | AudioKind;
 type WorkspaceSection = "library" | "projects" | "ai" | "production";
 
 type MediaAsset = {
@@ -95,6 +98,25 @@ const TYPE_LABELS: Record<MediaType, string> = {
   video: "Vídeo",
   audio: "Áudio",
   document: "Arquivo",
+};
+
+const AUDIO_KIND_LABELS: Record<AudioKind, string> = {
+  music: "Música / Trilha",
+  voiceover: "Locução / Voz",
+  sound_effect: "Efeito sonoro",
+  jingle: "Jingle",
+  sonic_identity: "Identidade sonora",
+  other: "Outro áudio",
+};
+
+const AUDIO_KIND_SHORT_LABELS: Record<AudioKindFilter, string> = {
+  all: "Todos",
+  music: "Músicas",
+  voiceover: "Locuções",
+  sound_effect: "Efeitos",
+  jingle: "Jingles",
+  sonic_identity: "Identidade",
+  other: "Outros",
 };
 
 function authHeaders(json = false): Record<string, string> {
@@ -167,6 +189,36 @@ function sourceLabel(asset: MediaAsset): string {
   return "Upload";
 }
 
+function assetAudioKind(asset: MediaAsset): AudioKind | null {
+  if (asset.type !== "audio") return null;
+  const value = asset.metadata?.audioKind;
+  if (typeof value === "string" && value in AUDIO_KIND_LABELS) return value as AudioKind;
+  if (asset.role === "music") return "music";
+  if (asset.role === "voice") return "voiceover";
+  return "other";
+}
+
+function audioRole(kind: AudioKind): "source" | "voice" | "music" {
+  if (kind === "music") return "music";
+  if (kind === "voiceover") return "voice";
+  return "source";
+}
+
+function defaultMusicRights() {
+  return {
+    status: "pending",
+    origin: "unknown",
+    commercialUse: false,
+    paidAds: false,
+    territories: ["*"],
+    expiresAt: null,
+    attributionRequired: false,
+    attributionText: null,
+    licenseReference: null,
+    evidenceAssetId: null,
+  };
+}
+
 function typeIcon(type: MediaType) {
   return type === "image" ? ImageIcon : type === "video" ? Film : type === "audio" ? AudioLines : FileText;
 }
@@ -196,6 +248,8 @@ export default function MediaCenter() {
   const [uploadContextType, setUploadContextType] = useState<MediaContextType>("none");
   const [uploadContextLabel, setUploadContextLabel] = useState("");
   const [uploadFolderPath, setUploadFolderPath] = useState("");
+  const [audioKindFilter, setAudioKindFilter] = useState<AudioKindFilter>("all");
+  const [uploadAudioKind, setUploadAudioKind] = useState<AudioKind>("other");
 
   const selectedAssets = useMemo(
     () => assets.filter((asset) => selected.includes(asset.id)),
@@ -321,7 +375,7 @@ export default function MediaCenter() {
           headers: authHeaders(true),
           body: JSON.stringify({
             type,
-            role: "source",
+            role: type === "audio" ? audioRole(uploadAudioKind) : "source",
             source: "upload",
             storageUrl: requestBody.objectPath,
             originalFilename: file.name,
@@ -330,6 +384,12 @@ export default function MediaCenter() {
             metadata: {
               uploadedFrom: "media_hub",
               uploadedAt: new Date().toISOString(),
+              ...(type === "audio"
+                ? {
+                    audioKind: uploadAudioKind,
+                    ...(uploadAudioKind === "music" ? { rights: defaultMusicRights() } : {}),
+                  }
+                : {}),
               ...(folderPath ? { folderPath } : {}),
               ...(uploadContextType !== "none"
                 ? { context: { type: uploadContextType, label: contextLabel } }
@@ -567,6 +627,32 @@ export default function MediaCenter() {
     }
   }
 
+  async function classifyAudio(asset: MediaAsset, kind: AudioKind) {
+    if (!tenantId || asset.type !== "audio") return;
+    setOrganizing(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media/assets/${asset.id}`, {
+        method: "PATCH",
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          role: audioRole(kind),
+          metadata: {
+            audioKind: kind,
+            ...(kind === "music" && !asset.metadata?.rights ? { rights: defaultMusicRights() } : {}),
+          },
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Falha ao classificar áudio");
+      toast({ title: "Áudio classificado", description: `${asset.originalFilename || "Arquivo"} agora está em ${AUDIO_KIND_LABELS[kind]}.` });
+      await loadAll();
+    } catch (error) {
+      toast({ title: "Não foi possível classificar o áudio", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setOrganizing(false);
+    }
+  }
+
   const counts = useMemo(
     () => ({
       all: assets.length,
@@ -578,10 +664,22 @@ export default function MediaCenter() {
     [assets],
   );
 
+  const audioKindCounts = useMemo(() => {
+    const result: Record<AudioKindFilter, number> = { all: 0, music: 0, voiceover: 0, sound_effect: 0, jingle: 0, sonic_identity: 0, other: 0 };
+    for (const asset of assets) {
+      const kind = assetAudioKind(asset);
+      if (!kind) continue;
+      result.all += 1;
+      result[kind] += 1;
+    }
+    return result;
+  }, [assets]);
+
   const visible = useMemo(
     () =>
       assets.filter((asset) => {
         if (filter !== "all" && asset.type !== filter) return false;
+        if (filter === "audio" && audioKindFilter !== "all" && assetAudioKind(asset) !== audioKindFilter) return false;
         if (sourceFilter !== "all" && asset.source !== sourceFilter) return false;
         const context = assetContext(asset);
         const folder = assetFolder(asset);
@@ -599,13 +697,16 @@ export default function MediaCenter() {
           context?.label,
           folder,
           asset.role,
+          assetAudioKind(asset) ? AUDIO_KIND_LABELS[assetAudioKind(asset)!] : null,
+          typeof asset.metadata?.genre === "string" ? asset.metadata.genre : null,
+          typeof asset.metadata?.mood === "string" ? asset.metadata.mood : null,
           sourceLabel(asset),
           TYPE_LABELS[asset.type],
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(term));
       }),
-    [assets, filter, sourceFilter, contextFilter, folderFilter, search],
+    [assets, filter, audioKindFilter, sourceFilter, contextFilter, folderFilter, search],
   );
 
   const unfiledCount = assets.filter((asset) => !assetFolder(asset)).length;
@@ -810,6 +911,36 @@ export default function MediaCenter() {
                 ))}
               </div>
 
+              {filter === "audio" && (
+                <div className="mt-5 rounded-2xl border bg-background p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Music2 className="h-5 w-5 text-primary" />
+                        <h2 className="font-semibold">Music Hub</h2>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Organize músicas, locuções, efeitos, jingles e identidade sonora. Trilhas musicais carregam o passaporte de direitos para vídeos e anúncios.
+                      </p>
+                    </div>
+                    <button onClick={() => navigate("/content-studio/video/edicao")} className="top-btn shrink-0">
+                      <Sparkles className="h-4 w-4" /> Criar / gerar música
+                    </button>
+                  </div>
+                  <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                    {(Object.keys(AUDIO_KIND_SHORT_LABELS) as AudioKindFilter[]).map((kind) => (
+                      <button
+                        key={kind}
+                        onClick={() => setAudioKindFilter(kind)}
+                        className={`folder-chip ${audioKindFilter === kind ? "folder-chip-active" : ""}`}
+                      >
+                        {AUDIO_KIND_SHORT_LABELS[kind]} · {audioKindCounts[kind]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-5 rounded-2xl border bg-background p-3 shadow-sm">
                 <div className="flex flex-col gap-3 lg:flex-row">
                   <div className="relative flex-1">
@@ -844,6 +975,18 @@ export default function MediaCenter() {
               <div className="mt-4 rounded-2xl border bg-background p-4 shadow-sm">
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                   <div className="flex flex-wrap items-end gap-2">
+                    {filter === "audio" && (
+                      <div>
+                        <label className="tiny-label">Tipo dos arquivos de áudio</label>
+                        <select
+                          value={uploadAudioKind}
+                          onChange={(e) => setUploadAudioKind(e.target.value as AudioKind)}
+                          className="h-9 rounded-lg border bg-background px-3 text-sm"
+                        >
+                          {Object.entries(AUDIO_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <label className="tiny-label">Pasta do novo upload</label>
                       <input
@@ -929,6 +1072,7 @@ export default function MediaCenter() {
                       const Icon = typeIcon(asset.type);
                       const context = assetContext(asset);
                       const folder = assetFolder(asset);
+                      const audioKind = assetAudioKind(asset);
                       const isSelected = selected.includes(asset.id);
                       return (
                         <article
@@ -947,7 +1091,9 @@ export default function MediaCenter() {
                             <button onClick={(e) => { e.stopPropagation(); toggle(asset.id); }} className="absolute right-2 top-2 rounded-md bg-background/90 p-1.5 shadow-sm">
                               {isSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-muted-foreground" />}
                             </button>
-                            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase text-white">{TYPE_LABELS[asset.type]}</span>
+                            <span className="absolute bottom-2 left-2 rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase text-white">
+                              {audioKind ? AUDIO_KIND_LABELS[audioKind] : TYPE_LABELS[asset.type]}
+                            </span>
                           </div>
                           <div className="p-3">
                             <p className="truncate text-sm font-medium">{asset.originalFilename || "Mídia sem nome"}</p>
@@ -1043,7 +1189,7 @@ export default function MediaCenter() {
                 )}
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                <Info label="Tipo" value={TYPE_LABELS[inspected.type]} />
+                <Info label="Tipo" value={assetAudioKind(inspected) ? AUDIO_KIND_LABELS[assetAudioKind(inspected)!] : TYPE_LABELS[inspected.type]} />
                 <Info label="Tamanho" value={bytes(inspected.fileSize)} />
                 <Info label="Origem" value={sourceLabel(inspected)} />
                 <Info label="Criado" value={dateLabel(inspected.createdAt)} />
@@ -1059,6 +1205,25 @@ export default function MediaCenter() {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground"><Link2 className="h-3.5 w-3.5" /> Vínculo</div>
                   <p className="mt-1 text-sm font-medium">{CONTEXT_LABELS[assetContext(inspected)!.type]} · {assetContext(inspected)!.label}</p>
                 </div>
+              )}
+              {inspected.type === "audio" && (
+                <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+                  <label className="tiny-label">Classificação do áudio</label>
+                  <select
+                    value={assetAudioKind(inspected) ?? "other"}
+                    disabled={organizing}
+                    onChange={(event) => void classifyAudio(inspected, event.target.value as AudioKind)}
+                    className="h-9 w-full rounded-lg border bg-background px-2 text-xs"
+                  >
+                    {Object.entries(AUDIO_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Apenas músicas/trilhas entram na faixa musical do editor. Locuções, efeitos e jingles permanecem separados.
+                  </p>
+                </div>
+              )}
+              {inspected.type === "audio" && assetAudioKind(inspected) === "music" && (
+                <AudioRightsPanel tenantId={tenantId} asset={inspected} onUpdated={loadAll} />
               )}
               {inspected.type === "image" && (
                 <ImageAdvisorPanel tenantId={tenantId} assetId={inspected.id} filename={inspected.originalFilename} canGenerateAi={ready("image_variations")} onUpdated={loadAll} />
@@ -1081,10 +1246,10 @@ export default function MediaCenter() {
                 {inspected.type === "video" && (
                   <button onClick={() => navigate(`/content-studio/video/edicao?mediaAssetId=${encodeURIComponent(inspected.id)}`)} className="wide-action"><Film className="h-4 w-4" /> Usar no Studio de Vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>
                 )}
-                {inspected.type === "audio" && inspected.role === "music" && (
+                {inspected.type === "audio" && assetAudioKind(inspected) === "music" && (
                   <button onClick={() => navigate(`/content-studio/video/edicao?musicAssetId=${encodeURIComponent(inspected.id)}`)} className="wide-action"><Music2 className="h-4 w-4" /> Usar como trilha no vídeo <ChevronRight className="ml-auto h-4 w-4" /></button>
                 )}
-                {inspected.type === "audio" && inspected.role !== "music" && (
+                {inspected.type === "audio" && assetAudioKind(inspected) !== "music" && (
                   <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">Este áudio não está classificado como trilha musical. Vozes e outros áudios permanecem separados para preservar consentimentos e direitos.</div>
                 )}
                 <a href={mediaUrl(inspected.storageUrl)} target="_blank" rel="noreferrer" className="mt-2 wide-action"><Download className="h-4 w-4" /> Abrir arquivo</a>
