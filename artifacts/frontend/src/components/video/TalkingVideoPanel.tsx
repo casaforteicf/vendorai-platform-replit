@@ -5,11 +5,13 @@ import TalkingVideoPanelCore from "./TalkingVideoPanelCore";
 import MultilingualVoicePanel, { type MultilingualVoiceProfile } from "./MultilingualVoicePanel";
 
 type ConsentScope = "face_use" | "voice_use" | "ai_generation" | "organic_publish" | "paid_ads";
+type MarketCode = "BR" | "PY" | "AR" | "UY" | "BO";
 
 type Props = {
   tenantId: string;
   identityId: string;
   identityName: string;
+  baseMarket: MarketCode;
   faceReferenceAssetId?: string | null;
   voices: MultilingualVoiceProfile[];
   activeConsentScopes: Set<ConsentScope>;
@@ -34,6 +36,7 @@ export default function TalkingVideoPanel(props: Props) {
         tenantId={props.tenantId}
         identityId={props.identityId}
         identityName={props.identityName}
+        baseMarket={props.baseMarket}
         voices={voices}
         voiceUseAuthorized={props.activeConsentScopes.has("voice_use")}
         onVoiceAdded={handleVoiceAdded}
