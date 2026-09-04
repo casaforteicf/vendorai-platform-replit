@@ -20,6 +20,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActiveLeadProcesses, type ActiveWorkCard } from "@/components/ActiveLeadProcesses";
 import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle, Flame, Cloud, Snowflake, Trash2, UserRound } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -89,31 +90,6 @@ type LeadsOverviewContext = {
   proposalTotalsByLeadId: Record<string, string>;
   userLabelsById: Record<string, string>;
 };
-
-const PROCESS_LABELS: Record<string, string> = {
-  comercial: "COMERCIAL",
-  execucao: "EXECUÇÃO",
-  suporte: "SUPORTE",
-  aquecimento: "AQUECIMENTO",
-  parceiros: "PARCEIROS",
-};
-
-function ActiveProcessBadges({ processes }: { processes: ActiveProcess[] | undefined }) {
-  if (!processes?.length) return <span className="text-xs text-muted-foreground">—</span>;
-  const visible = processes.slice(0, 2);
-  return (
-    <div className="flex flex-wrap gap-1">
-      {visible.map((process) => (
-        <Badge key={`${process.pipeline}-${process.id}`} variant="outline" className="max-w-[220px] text-[10px] font-medium">
-          <span className="font-semibold">{PROCESS_LABELS[process.pipeline] || process.pipeline.toUpperCase()}</span>
-          <span className="mx-1 text-muted-foreground">·</span>
-          <span className="truncate">{process.label}</span>
-        </Badge>
-      ))}
-      {processes.length > visible.length && <Badge variant="secondary" className="text-[10px]">+{processes.length - visible.length}</Badge>}
-    </div>
-  );
-}
 
 function getFirstChurnReason(reasons: unknown[] | null | undefined): string | null {
   if (!reasons || reasons.length === 0) return null;
@@ -453,6 +429,18 @@ export default function Leads() {
     refetchOnWindowFocus: false,
     queryFn: async () => {
       const response = await fetch(`/api/tenants/${tenantId}/leads-overview-context`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) throw new Error(`Erro ${response.status}`);
+      return response.json();
+    },
+  });
+
+  const { data: activeWorkCards = [] } = useQuery<ActiveWorkCard[]>({
+    queryKey: ["leads-active-work-cards", tenantId],
+    enabled: !!tenantId && viewMode === "ativos",
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/work-cards`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) throw new Error(`Erro ${response.status}`);
       return response.json();
     },
@@ -987,7 +975,11 @@ export default function Leads() {
                         </Badge>
                         <BriefingBadge briefing={briefingMap.get(lead.id)} />
                         {churnBadge(ci?.churnRisk, ci?.churnReasons)}
-                        <ActiveProcessBadges processes={overview?.activeProcessesByLeadId?.[lead.id]} />
+                        <ActiveLeadProcesses
+                          processes={overview?.activeProcessesByLeadId?.[lead.id]}
+                          workCards={activeWorkCards}
+                          onOpenDeal={(dealId) => setLocation(`/trabalho/${lead.id}?dealId=${encodeURIComponent(dealId)}`)}
+                        />
                         {leadValorMap.get(lead.id) && (
                           <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs font-mono">
                             {formatCurrency(leadValorMap.get(lead.id))}
@@ -1019,10 +1011,10 @@ export default function Leads() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Empresa</TableHead>
                   <TableHead>Telefone</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Pipelines ativas</TableHead>
+                  <TableHead>Status do contato</TableHead>
+                  <TableHead title="Um contato pode ter vários negócios simultâneos, e cada negócio pode ter vários processos operacionais.">Negócios / processos ativos</TableHead>
                   <TableHead>Responsável</TableHead>
-                  <TableHead className="text-right">Orçamento</TableHead>
+                  <TableHead className="text-right" title="Maior valor de orçamento registrado para este contato.">Maior orçamento</TableHead>
                   <TableHead>
                     <button
                       data-testid="sort-churn-risk"
@@ -1094,12 +1086,15 @@ export default function Leads() {
                             variant="outline"
                             className={STATUS_STYLES[lead.status] ?? ""}
                           >
-                            {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ??
-                              lead.status}
+                            {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="min-w-[180px]">
-                          <ActiveProcessBadges processes={overview?.activeProcessesByLeadId?.[lead.id]} />
+                        <TableCell className="min-w-[240px]">
+                          <ActiveLeadProcesses
+                            processes={overview?.activeProcessesByLeadId?.[lead.id]}
+                            workCards={activeWorkCards}
+                            onOpenDeal={(dealId) => setLocation(`/trabalho/${lead.id}?dealId=${encodeURIComponent(dealId)}`)}
+                          />
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           <span className="flex items-center gap-2">
