@@ -18,6 +18,7 @@ function canAccess(req: import("express").Request, tenantId: string): boolean {
 const gerarBodySchema = z.object({
   mediaPlanId: z.string().min(1),
   semanas: z.number().int().min(1).max(13).default(4),
+  substituirPlanejado: z.boolean().optional().default(false),
 });
 
 router.post("/tenants/:tenantId/content-calendar/gerar", async (req, res) => {
@@ -32,7 +33,12 @@ router.post("/tenants/:tenantId/content-calendar/gerar", async (req, res) => {
     return;
   }
   try {
-    const { items } = await generateContentCalendar(tenantId, parsed.data.mediaPlanId, parsed.data.semanas);
+    const { items } = await generateContentCalendar(
+      tenantId,
+      parsed.data.mediaPlanId,
+      parsed.data.semanas,
+      { substituirPlanejado: parsed.data.substituirPlanejado },
+    );
     res.status(201).json(items);
   } catch (err) {
     if (err instanceof ContentCalendarError) {
