@@ -340,6 +340,18 @@ const AI_EDIT_GOAL_LABELS: Record<string, string> = {
   reel: "Reel rápido, direto e com gancho forte",
   offer: "destacar oferta, condição e chamada para ação",
   clean: "profissional, clean e institucional",
+  product: "valorizar produto, demonstração e benefícios comprovados no conteúdo",
+  testimonial: "priorizar depoimento, credibilidade, voz e leitura confortável",
+};
+
+const AI_EDIT_GOAL_GUIDANCE: Record<string, string> = {
+  commercial: "Equilibre ritmo e clareza. Destaque benefício e CTA, sem transformar todos os segundos em efeito.",
+  dynamic: "Use variação visual e movimentos curtos em pontos relevantes, preservando respiro entre destaques.",
+  reel: "Fortaleça os primeiros segundos e a retenção. Prefira intervenções curtas e rápidas.",
+  offer: "Destaque apenas condição, preço, urgência e CTA que estejam realmente presentes na transcrição ou orientação.",
+  clean: "Mantenha edição discreta, elegante e institucional. Evite excesso de stickers e movimentos agressivos.",
+  product: "Priorize demonstração, atributos e benefícios explicitamente mencionados. Não invente especificações ou resultados.",
+  testimonial: "Preserve pausas e naturalidade da fala. Use legendas e movimentos sutis; evite elementos que disputem atenção com a pessoa.",
 };
 
 function bounded(value: unknown, min: number, max: number): number {
@@ -362,7 +374,7 @@ function fallbackVideoEditPlan(input: Required<Pick<VideoAiInput, "goal" | "dura
   const impact = captions.find((item) => /oferta|desconto|preço|valor|agora|hoje|benef[ií]cio|resultado|novo|novidade|garantia|econom/i.test(item.text)) ?? captions[0];
   if (impact) {
     suggestions.push({ id: `fallback-caption-${impact.id}`, type: "caption_motion", start: impact.start, end: impact.end, layerId: impact.id, motion: input.goal === "clean" ? "pulse" : "word-pop", reason: "Dá ênfase à frase mais relevante sem alterar o texto falado." });
-    if (input.goal !== "clean") suggestions.push({ id: `fallback-sticker-${impact.id}`, type: "sticker", start: impact.start, end: Math.min(duration, Math.max(impact.end, impact.start + 1.4)), emoji: input.goal === "offer" ? "💰" : "✨", reason: "Cria um ponto visual de atenção no trecho de maior intenção comercial." });
+    if (input.goal !== "clean") suggestions.push({ id: `fallback-sticker-${impact.id}`, type: "sticker", start: impact.start, end: Math.min(duration, Math.max(impact.end, impact.start + 1.4)), emoji: input.goal === "offer" ? "💰" : input.goal === "product" ? "🛍️" : input.goal === "testimonial" ? "⭐" : "✨", reason: "Cria um ponto visual de atenção no trecho de maior intenção comercial." });
   }
   const firstClip = input.clips[0];
   if (firstClip && firstClip.end - firstClip.start > 1.2) {
@@ -398,7 +410,7 @@ router.post("/tenants/:tenantId/content-studio/video/ai-edit-plan", async (req, 
 
   const fallback = fallbackVideoEditPlan({ goal, duration, clips, captions });
   try {
-    const prompt = `Crie um plano de edição de vídeo NÃO DESTRUTIVO para o editor VendorAI.\n\nOBJETIVO: ${AI_EDIT_GOAL_LABELS[goal]}\nCANAL: ${String(input.channel ?? "reels")}\nFORMATO: ${String(input.ratio ?? "9:16")}\nDURAÇÃO: ${duration.toFixed(2)}s\nORIENTAÇÃO ADICIONAL: ${safeInstructions || "nenhuma"}\n\nCLIPES:\n${clipMap}\n\nTRANSCRIÇÃO SINCRONIZADA:\n${transcript}\n\nRetorne APENAS JSON válido, sem markdown, no formato:\n{\n  "summary": "resumo curto",\n  "suggestions": [\n    { "id":"s1", "type":"sticker", "start":1.2, "end":2.8, "emoji":"✨", "reason":"..." },\n    { "id":"s2", "type":"cta", "start":20, "end":24, "text":"texto curto", "reason":"..." },\n    { "id":"s3", "type":"caption_motion", "start":3, "end":5, "layerId":"id de legenda existente", "motion":"word-pop", "reason":"..." },\n    { "id":"s4", "type":"clip_motion", "start":5, "end":7, "clipId":"id de clipe existente", "motion":"zoom-in", "reason":"..." }\n  ]\n}\n\nREGRAS:\n- no máximo 8 sugestões; menos é melhor que exagerar;\n- use somente ids de clipes/legendas fornecidos;\n- caption_motion permitido: none, word-pop, word-bounce, pulse, karaoke;\n- clip_motion permitido: zoom-in, zoom-out, pan-left, pan-right;\n- stickers devem ser emojis simples e contextuais;\n- CTA deve usar apenas informação presente na fala/orientação. Se não houver CTA explícito, use uma chamada neutra como \"Fale com nossa equipe\";\n- nunca invente preço, desconto, prazo, garantia, prova social, telefone ou link;\n- não altere o conteúdo falado;\n- não aplique efeitos em todos os trechos: preserve respiro visual;\n- cada sugestão precisa explicar por que melhora retenção, clareza ou conversão.`;
+    const prompt = `Crie um plano de edição de vídeo NÃO DESTRUTIVO para o editor VendorAI.\n\nOBJETIVO: ${AI_EDIT_GOAL_LABELS[goal]}\nDIREÇÃO: ${AI_EDIT_GOAL_GUIDANCE[goal]}\nCANAL: ${String(input.channel ?? "reels")}\nFORMATO: ${String(input.ratio ?? "9:16")}\nDURAÇÃO: ${duration.toFixed(2)}s\nORIENTAÇÃO ADICIONAL: ${safeInstructions || "nenhuma"}\n\nCLIPES:\n${clipMap}\n\nTRANSCRIÇÃO SINCRONIZADA:\n${transcript}\n\nRetorne APENAS JSON válido, sem markdown, no formato:\n{\n  "summary": "resumo curto",\n  "suggestions": [\n    { "id":"s1", "type":"sticker", "start":1.2, "end":2.8, "emoji":"✨", "reason":"..." },\n    { "id":"s2", "type":"cta", "start":20, "end":24, "text":"texto curto", "reason":"..." },\n    { "id":"s3", "type":"caption_motion", "start":3, "end":5, "layerId":"id de legenda existente", "motion":"word-pop", "reason":"..." },\n    { "id":"s4", "type":"clip_motion", "start":5, "end":7, "clipId":"id de clipe existente", "motion":"zoom-in", "reason":"..." }\n  ]\n}\n\nREGRAS:\n- no máximo 8 sugestões; menos é melhor que exagerar;\n- use somente ids de clipes/legendas fornecidos;\n- caption_motion permitido: none, word-pop, word-bounce, pulse, karaoke;\n- clip_motion permitido: zoom-in, zoom-out, pan-left, pan-right;\n- stickers devem ser emojis simples e contextuais;\n- CTA deve usar apenas informação presente na fala/orientação. Se não houver CTA explícito, use uma chamada neutra como \"Fale com nossa equipe\";\n- nunca invente preço, desconto, prazo, garantia, prova social, telefone ou link;\n- não altere o conteúdo falado;\n- não aplique efeitos em todos os trechos: preserve respiro visual;\n- cada sugestão precisa explicar por que melhora retenção, clareza ou conversão.`;
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
