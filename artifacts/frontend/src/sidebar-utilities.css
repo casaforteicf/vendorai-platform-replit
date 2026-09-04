@@ -5,25 +5,39 @@
  * matching the canonical navigation layout. Do not float these controls over
  * page content. When the sidebar is collapsed, reuse the mobile brand header
  * as a compact desktop brand strip so the logo never disappears.
+ *
+ * IMPORTANT: the footer reset below deliberately uses !important on placement
+ * properties. An older stylesheet used to float this block over the top of the
+ * sidebar, which hid both the brand and Ajuda/FAQ on some production bundles.
+ * These rules make the canonical sidebar layout win deterministically.
  */
 
 @media (min-width: 768px) {
   /* Explicitly keep footer utilities inside the sidebar. */
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t {
-    position: static;
-    display: block;
-    padding: 1rem;
-    border-left: 0;
-    border-right: 0;
-    border-bottom: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    padding: 1rem !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .flex.items-center.gap-3.mb-3.px-2 {
+    display: flex !important;
     margin-bottom: 0.75rem !important;
     padding-left: 0.5rem !important;
     padding-right: 0.5rem !important;
@@ -31,21 +45,38 @@
   }
 
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 {
-    display: block;
+    display: block !important;
     margin-bottom: 0.25rem !important;
   }
 
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > * {
-    margin-top: 0.25rem;
+    margin-top: 0.25rem !important;
   }
 
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > a,
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > .mb-1.space-y-1 > button,
   .hidden.md\:flex.sticky.top-0.h-screen > div > .p-4.border-t > button {
+    display: flex !important;
     width: 100% !important;
     min-height: 44px !important;
-    height: auto;
-    border-radius: 0.75rem;
+    height: auto !important;
+    border-radius: 0.75rem !important;
+  }
+
+  /* The brand row is a fixed part of the desktop sidebar. Never allow utility
+     positioning rules to cover it or collapse its height. */
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-3.border-b {
+    position: relative !important;
+    z-index: 2 !important;
+    display: flex !important;
+    flex: 0 0 auto !important;
+    min-height: 64px !important;
+    background: hsl(var(--sidebar) / 0.96);
+  }
+
+  .hidden.md\:flex.sticky.top-0.h-screen > div > .p-3.border-b [data-tenant-brand-fallback] {
+    display: block !important;
+    max-width: 170px !important;
   }
 
   /* Collapsed desktop sidebar: show the already-rendered brand header from the
@@ -55,8 +86,8 @@
     > .flex-1.flex.flex-col.min-w-0.overflow-hidden
     > header.md\:hidden {
     display: flex !important;
-    min-height: 52px;
-    height: 52px;
+    min-height: 52px !important;
+    height: 52px !important;
     padding: 8px 18px !important;
     border-bottom: 1px solid hsl(var(--border));
     background: hsl(var(--background) / 0.96);
@@ -89,5 +120,20 @@
     display: block !important;
     max-width: 220px;
     font-size: 0.875rem;
+  }
+}
+
+/* Dashboard greeting must follow the compact VendorAI title scale. The
+   component has md:text-3xl, which previously escaped the shared typography
+   standard and rendered “Boa noite, Marcos” at 30–32px. */
+main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl {
+  font-size: 1.375rem !important; /* 22px */
+  line-height: 1.2 !important;
+  letter-spacing: -0.025em !important;
+}
+
+@media (min-width: 768px) {
+  main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl {
+    font-size: 1.5rem !important; /* 24px */
   }
 }
