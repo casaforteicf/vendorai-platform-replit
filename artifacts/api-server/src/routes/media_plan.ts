@@ -16,6 +16,22 @@ const generateBodySchema = z.object({
   periodoDias: periodSchema.default(30),
 });
 
+function normalizedChannel(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+function hasRequiredMultichannelCoverage(conteudo: MediaPlanConteudo): boolean {
+  const campaigns = conteudo.campanhas ?? [];
+  if (campaigns.length === 0) return false;
+  const channels = new Set(campaigns.flatMap((campaign) => campaign.canais.map((channel) => normalizedChannel(channel.canal))));
+  const values = Array.from(channels);
+  const hasIntent = values.some((channel) => channel.includes("google") || channel.includes("search") || channel.includes("pesquisa"));
+  const hasPaidSocial = values.some((channel) => channel.includes("meta ads") || channel.includes("facebook ads"));
+  const hasDirect = values.some((channel) => channel.includes("whatsapp") || channel.includes("email") || channel.includes("e-mail"));
+  const hasOwnedOrOrganic = values.some((channel) => channel.includes("instagram") || channel.includes("landing") || channel.includes("site") || channel.includes("blog") || channel.includes("seo"));
+  return channels.size >= 4 && hasIntent && hasPaidSocial && hasDirect && hasOwnedOrOrganic;
+}
+
 router.post("/tenants/:tenantId/media-plan/gerar", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) {
@@ -61,9 +77,10 @@ router.get("/tenants/:tenantId/media-plan", async (req, res) => {
   res.json(latest ?? null);
 });
 
-// Atualiza, no próprio registro, planos criados antes da estrutura 30/60/90.
-// Isso evita obrigar o cliente a descartar o planejamento que já estava salvo
-// e corrige o caso visto em produção: "0 campanhas" + calendário só Instagram.
+// Atualiza, no próprio registro, planos criados antes da estrutura 30/60/90
+// ou planos que a IA tenha deixado incompletos em termos de canais. Isso evita
+// descartar o planejamento salvo e corrige o caso visto em produção: "0 campanhas"
+// ou calendário reduzido a Instagram.
 const completeBodySchema = z.object({
   periodoDias: periodSchema.optional(),
 });
@@ -90,7 +107,7 @@ router.post("/tenants/:tenantId/media-plan/:planId/completar", async (req, res) 
     return;
   }
 
-  if ((existing.conteudo.campanhas?.length ?? 0) > 0) {
+  if (hasRequiredMultichannelCoverage(existing.conteudo)) {
     res.json(existing);
     return;
   }
@@ -105,7 +122,7 @@ router.post("/tenants/:tenantId/media-plan/:planId/completar", async (req, res) 
       .returning();
     res.json(updated ?? { ...existing, conteudo });
   } catch (err) {
-    req.log.error({ err, tenantId, planId: existing.id }, "media-plan: falha ao completar plano legado");
+    req.log.error({ err, tenantId, planId: existing.id }, "media-plan: falha ao completar plano legado/incompleto");
     res.status(500).json({ error: "Não foi possível completar este planejamento. Tente novamente." });
   }
 });
@@ -142,8 +159,8 @@ router.patch("/tenants/:tenantId/media-plan/:planId", async (req, res) => {
   } as MediaPlanConteudo;
 
   if (parsed.data.aprovar === true) {
-    if ((nextConteudo.campanhas?.length ?? 0) === 0) {
-      res.status(422).json({ error: "O planejamento precisa ter campanhas antes da aprovação." });
+    if (!hasRequiredMultichannelCoverage(nextConteudo)) {
+      res.status(422).json({ error: "O planejamento precisa estar completo em campanhas e canais antes da aprovação." });
       return;
     }
     nextConteudo.statusPlanejamento = "aprovado";
