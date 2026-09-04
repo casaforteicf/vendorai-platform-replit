@@ -21,6 +21,8 @@ import { useMemo, useState } from "react";
 import logoDark from "/logo-full-dark.svg";
 import logoLight from "/logo-full-light.svg";
 
+const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
+
 const PT_COPY = {
   invalidEmail: "Email inválido",
   requiredPassword: "Senha é obrigatória",
@@ -74,6 +76,13 @@ type LoginFormValues = {
   password: string;
 };
 
+function consumeSafePostLoginPath(): string | null {
+  const path = sessionStorage.getItem(POST_LOGIN_PATH_KEY);
+  if (!path || !path.startsWith("/") || path.startsWith("//")) return null;
+  sessionStorage.removeItem(POST_LOGIN_PATH_KEY);
+  return path;
+}
+
 function GoogleIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
@@ -112,7 +121,9 @@ export default function Login() {
   function onSubmit(values: LoginFormValues) {
     loginMutation.mutate({ data: values }, {
       onSuccess: (response) => {
+        const returnPath = consumeSafePostLoginPath();
         login(response.token, response.user);
+        if (returnPath) window.location.assign(returnPath);
       },
       onError: (error) => {
         toast({
@@ -133,7 +144,9 @@ export default function Login() {
       { data: { email: "demo", password: "demo" } },
       {
         onSuccess: (response) => {
+          const returnPath = consumeSafePostLoginPath();
           login(response.token, response.user, { isDemo: true });
+          if (returnPath) window.location.assign(returnPath);
         },
         onError: (error) => {
           toast({
