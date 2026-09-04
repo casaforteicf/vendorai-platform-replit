@@ -41,6 +41,7 @@ export const db = drizzle(pool, { schema });
 export * from "./schema";
 export * from "./schema/tenant_user_functions";
 export * from "./schema/app_builder";
+export * from "./schema/app_users";
 
 /**
  * Checks whether a versioned SQL migration (see lib/db/migrations and
