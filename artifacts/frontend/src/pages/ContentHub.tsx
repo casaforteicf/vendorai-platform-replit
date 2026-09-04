@@ -64,7 +64,7 @@ export default function ContentHub() {
     apply();
 
     const observer = new MutationObserver(() => apply());
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, { childList: true, characterData: true, subtree: true });
     return () => observer.disconnect();
   }, []);
 
