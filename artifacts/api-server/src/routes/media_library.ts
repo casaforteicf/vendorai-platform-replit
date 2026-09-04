@@ -423,6 +423,44 @@ router.patch("/tenants/:tenantId/media/assets/:assetId", async (req, res) => {
   res.json({ asset });
 });
 
+router.delete("/tenants/:tenantId/media/assets/:assetId", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const assetId = String(req.params["assetId"]);
+
+  const [existing] = await db
+    .select()
+    .from(mediaAssetsTable)
+    .where(and(eq(mediaAssetsTable.id, assetId), eq(mediaAssetsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Ativo de mídia não encontrado" });
+    return;
+  }
+
+  if (existing.storageUrl.startsWith("/objects/")) {
+    try {
+      const file = await objectStorage.getObjectEntityFile(existing.storageUrl);
+      await file.delete();
+    } catch (error) {
+      if (!(error instanceof ObjectNotFoundError)) {
+        req.log.error(
+          { err: error, tenantId, assetId, storageUrl: existing.storageUrl },
+          "media-library: failed to delete stored asset",
+        );
+        res.status(500).json({ error: "Não foi possível excluir o arquivo físico da mídia" });
+        return;
+      }
+    }
+  }
+
+  await db
+    .delete(mediaAssetsTable)
+    .where(and(eq(mediaAssetsTable.id, assetId), eq(mediaAssetsTable.tenantId, tenantId)));
+
+  res.json({ deleted: true, assetId });
+});
+
 router.get("/tenants/:tenantId/media/projects/:projectId/versions", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const projectId = String(req.params["projectId"]);
