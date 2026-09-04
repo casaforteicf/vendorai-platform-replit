@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import appUserAuthRouter from "./app_user_auth";
 import appUserRuntimeRouter from "./app_user_runtime";
+import appUserDataSourcesRouter from "./app_user_data_sources";
 
 const router: IRouter = Router();
 
@@ -17,6 +18,7 @@ const router: IRouter = Router();
 // internal VendorAI JWT shape.
 router.use(appUserAuthRouter);
 router.use(appUserRuntimeRouter);
+router.use(appUserDataSourcesRouter);
 
 const GENERIC_ICONS = [
   { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
