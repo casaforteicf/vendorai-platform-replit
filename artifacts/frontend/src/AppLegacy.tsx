@@ -88,6 +88,7 @@ const ErpCapture         = lazy(() => import("@/pages/erp"));
 const Onboarding         = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
+const MarketingInstagram = lazy(() => import("@/pages/MarketingInstagram"));
 const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
 const VideoAvatarPage    = lazy(() => import("@/pages/video/VideoAvatarPage"));
 const VideoProdutoPage   = lazy(() => import("@/pages/video/VideoProdutoPage"));
@@ -643,6 +644,7 @@ function AppRoutes() {
         <Route path="/partner">{() => <PartnerRoute component={PartnerDashboard} />}</Route>
         <Route path="/marketplace">{() => <ProtectedRoute component={Marketplace} />}</Route>
         <Route path="/content">{() => <ProtectedRoute component={Content} />}</Route>
+        <Route path="/marketing/instagram">{() => <ProtectedRoute component={MarketingInstagram} />}</Route>
         <Route path="/content-studio"><RedirectPage to="/content" /></Route>
         <Route path="/content-studio/video">{() => <ProtectedRoute component={VideoHome} />}</Route>
         <Route path="/content-studio/video/avatar">{() => <ProtectedRoute component={VideoAvatarPage} />}</Route>

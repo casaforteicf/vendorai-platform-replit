@@ -13,7 +13,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon, Navigation,
   BarChart3, ChevronRight, ChevronLeft, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog,
+  Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -572,6 +572,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       location.startsWith("/content") ||
       location === "/ads" ||
       location === "/marketing/plano-de-midia" ||
+      location === "/marketing/instagram" ||
       location === "/variedades-dia" ||
       location === "/stories";
     const [conteudoOpen, setConteudoOpen] = useState(isConteudo);
@@ -611,6 +612,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Sparkles className="h-3.5 w-3.5" /> Gerador de Conteúdo
+              </Link>
+              <Link
+                href="/marketing/instagram"
+                onClick={onNavigate}
+                aria-label="Instagram — grade e publicação"
+                title="Instagram — grade e publicação"
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/marketing/instagram"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Instagram className="h-3.5 w-3.5" /> Instagram
               </Link>
               <Link
                 href="/content-studio/video"
