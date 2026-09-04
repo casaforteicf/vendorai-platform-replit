@@ -43,7 +43,6 @@ export type MediaInputRole =
   | "environment"
   | "opening"
   | "closing"
-  | "logo"
   | "music"
   | "voiceover"
   | "sfx"
@@ -94,7 +93,6 @@ const ROLE_LABELS: Record<MediaInputRole, string> = {
   environment: "Cenário / ambiente",
   opening: "Abertura",
   closing: "Encerramento",
-  logo: "Logo / identidade",
   music: "Trilha",
   voiceover: "Locução",
   sfx: "Efeito sonoro",
@@ -104,12 +102,10 @@ const ROLE_LABELS: Record<MediaInputRole, string> = {
 function rolesFor(type: MediaPickerType): MediaInputRole[] {
   if (type === "audio") return ["auto", "music", "voiceover", "sfx"];
   if (type === "document") return ["briefing"];
-  if (type === "video") return ["auto", "main_scene", "broll", "visual_reference", "product", "person", "environment", "opening", "closing"];
-  return ["auto", "main_scene", "broll", "visual_reference", "product", "person", "environment", "opening", "closing", "logo"];
+  return ["auto", "main_scene", "broll", "visual_reference", "product", "person", "environment", "opening", "closing"];
 }
 
 function defaultRole(type: MediaPickerType): MediaInputRole {
-  if (type === "audio") return "auto";
   if (type === "document") return "briefing";
   return "auto";
 }
@@ -135,7 +131,6 @@ function inferType(file: File): MediaPickerType | null {
     || file.type.startsWith("text/")
     || file.type.includes("wordprocessingml")
     || name.endsWith(".pdf")
-    || name.endsWith(".doc")
     || name.endsWith(".docx")
     || name.endsWith(".txt")
     || name.endsWith(".md")
@@ -203,7 +198,7 @@ export default function VideoGenerationMediaInputs({ tenantId, mode, onModeChang
       for (const file of Array.from(files)) {
         const type = inferType(file);
         if (!type) {
-          toast({ title: `Arquivo ignorado: ${file.name}`, description: "Formato não suportado neste fluxo." });
+          toast({ title: `Arquivo ignorado: ${file.name}`, description: "Use imagem, vídeo, áudio, PDF, DOCX, TXT ou MD." });
           continue;
         }
         const requestRes = await fetch(`/api/tenants/${tenantId}/media/assets/request-upload`, {
@@ -226,13 +221,12 @@ export default function VideoGenerationMediaInputs({ tenantId, mode, onModeChang
         });
         if (!putRes.ok) throw new Error(`Falha ao enviar ${file.name}`);
 
-        const audioKind = type === "audio" ? "other" : undefined;
         const registerRes = await fetch(`/api/tenants/${tenantId}/media/assets`, {
           method: "POST",
           headers: authHeaders(true),
           body: JSON.stringify({
             type,
-            role: type === "audio" ? "source" : "source",
+            role: "source",
             source: "upload",
             storageUrl: requestBody.objectPath,
             originalFilename: file.name,
@@ -241,7 +235,7 @@ export default function VideoGenerationMediaInputs({ tenantId, mode, onModeChang
             metadata: {
               uploadedFrom: "video_generation_workspace",
               uploadedAt: new Date().toISOString(),
-              ...(audioKind ? { audioKind } : {}),
+              ...(type === "audio" ? { audioKind: "other" } : {}),
             },
           }),
         });
@@ -274,10 +268,12 @@ export default function VideoGenerationMediaInputs({ tenantId, mode, onModeChang
 
   function updateInput(assetId: string, patch: Partial<VideoGenerationMediaInput>) {
     onInputsChange(inputs.map((item) => item.assetId === assetId ? { ...item, ...patch } : item));
+    setEditTarget((current) => current?.assetId === assetId ? { ...current, ...patch } : current);
   }
 
   function removeInput(assetId: string) {
     onInputsChange(normalizedInputs(inputs.filter((item) => item.assetId !== assetId)));
+    setEditTarget((current) => current?.assetId === assetId ? null : current);
   }
 
   function move(assetId: string, direction: -1 | 1) {
@@ -351,7 +347,7 @@ export default function VideoGenerationMediaInputs({ tenantId, mode, onModeChang
             ref={uploadRef}
             type="file"
             multiple
-            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept="image/*,video/*,audio/*,.pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             className="hidden"
             onChange={(event) => { if (event.target.files?.length) void uploadFiles(event.target.files); }}
           />
@@ -364,6 +360,7 @@ export default function VideoGenerationMediaInputs({ tenantId, mode, onModeChang
               {uploading ? "Enviando arquivos..." : "Fazer upload"}
             </button>
           </div>
+          <p className="text-[9px] leading-relaxed text-gray-600">Logo, intro e outro oficiais continuam centralizados no Brand Video Kit. Aqui você adiciona cenas, referências, B-roll, áudio e briefing do projeto.</p>
 
           {inputs.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/10 px-4 py-7 text-center">
@@ -466,7 +463,7 @@ export default function VideoGenerationMediaInputs({ tenantId, mode, onModeChang
                   <div key={input.assetId} className="overflow-hidden rounded-xl border bg-background">
                     <div className="relative aspect-video bg-muted">
                       {input.type === "image" && input.storageUrl ? <img src={mediaAssetUrl(input.storageUrl)} alt="" className="h-full w-full object-cover" /> : input.type === "video" && input.storageUrl ? <video src={mediaAssetUrl(input.storageUrl)} muted controls preload="metadata" className="h-full w-full object-cover" /> : input.type === "audio" && input.storageUrl ? <div className="flex h-full flex-col items-center justify-center gap-2 p-3"><AudioLines className="h-8 w-8 text-primary" /><audio src={mediaAssetUrl(input.storageUrl)} controls className="w-full" /></div> : <div className="flex h-full items-center justify-center"><Icon className="h-9 w-9 text-muted-foreground" /></div>}
-                      <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold text-white">Cena/entrada {index + 1}</span>
+                      <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold text-white">Entrada {index + 1}</span>
                     </div>
                     <div className="space-y-1 p-3">
                       <p className="truncate text-xs font-semibold">{input.originalFilename || `Mídia ${index + 1}`}</p>
@@ -505,12 +502,12 @@ export default function VideoGenerationMediaInputs({ tenantId, mode, onModeChang
                   <button key={role} type="button" onClick={() => updateInput(editTarget.assetId, { role: role as MediaInputRole })} className={cn("rounded-lg border p-2 text-xs", editTarget.role === role ? "border-primary bg-primary/5" : "hover:bg-muted/50")}>{ROLE_LABELS[role as MediaInputRole]}</button>
                 ))}
               </div>
-              {isMusic(editTarget) ? <AudioRightsPanel tenantId={tenantId} asset={{ id: editTarget.assetId, metadata: editTarget.metadata }} /> : <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">Para trilhas, selecione “Trilha” acima para revisar o passaporte de direitos. Locuções e efeitos entram como áudio de apoio no projeto.</p>}
+              {isMusic(editTarget) ? <AudioRightsPanel tenantId={tenantId} asset={{ id: editTarget.assetId, metadata: editTarget.metadata }} /> : <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">Escolha “Trilha” para revisar direitos. Locuções e efeitos entram como áudio de apoio no projeto.</p>}
             </div>
           )}
           {editTarget?.type === "document" && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 rounded-xl border bg-muted/20 p-4"><FileText className="h-8 w-8 text-primary" /><div><p className="text-sm font-semibold">{editTarget.originalFilename || "Documento"}</p><p className="text-xs text-muted-foreground">Será lido como briefing/contexto pelo Media Engine quando o formato for suportado.</p></div></div>
+              <div className="flex items-center gap-3 rounded-xl border bg-muted/20 p-4"><FileText className="h-8 w-8 text-primary" /><div><p className="text-sm font-semibold">{editTarget.originalFilename || "Documento"}</p><p className="text-xs text-muted-foreground">PDF, DOCX, TXT e MD podem orientar roteiro e cenas sem entrar visualmente no MP4.</p></div></div>
               <textarea value={editTarget.note ?? ""} onChange={(event) => updateInput(editTarget.assetId, { note: event.target.value.slice(0, 500) })} rows={4} placeholder="Diga à IA o que é mais importante neste documento..." className="w-full rounded-xl border bg-background p-3 text-sm" />
             </div>
           )}
