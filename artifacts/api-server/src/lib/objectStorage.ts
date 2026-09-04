@@ -31,6 +31,7 @@ function getSupabaseClient(): SupabaseClient {
 }
 
 const ensuredBuckets = new Map<string, Promise<void>>();
+const OBJECT_STORAGE_FILE_SIZE_LIMIT = "100MB";
 
 async function ensureBucketExists(client: SupabaseClient, bucketName: string): Promise<void> {
   let promise = ensuredBuckets.get(bucketName);
@@ -41,11 +42,20 @@ async function ensureBucketExists(client: SupabaseClient, bucketName: string): P
       if (!exists) {
         const { error } = await client.storage.createBucket(bucketName, {
           public: true,
-          fileSizeLimit: "25MB",
+          fileSizeLimit: OBJECT_STORAGE_FILE_SIZE_LIMIT,
         });
         if (error && !/already exists/i.test(error.message)) {
           throw error;
         }
+      } else {
+        // O bucket já pode ter sido criado com o limite antigo de 25 MB.
+        // Sincronizamos o limite para suportar vídeos de referência do Dublê
+        // sem depender de ajuste manual no painel do Supabase.
+        const { error } = await client.storage.updateBucket(bucketName, {
+          public: true,
+          fileSizeLimit: OBJECT_STORAGE_FILE_SIZE_LIMIT,
+        });
+        if (error) throw error;
       }
     })();
     ensuredBuckets.set(bucketName, promise);
