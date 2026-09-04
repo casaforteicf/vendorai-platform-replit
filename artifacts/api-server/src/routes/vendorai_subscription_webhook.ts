@@ -9,6 +9,7 @@ import {
   subscriptionsTable,
   tenantsTable,
 } from "@workspace/db";
+import { authenticate } from "../middlewares/auth.js";
 import { deleteCharge } from "../lib/asaas.js";
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
 
@@ -43,7 +44,7 @@ function canManageTenant(req: Parameters<IRouter["use"]>[0] extends never ? neve
  * The annual price snapshot is taken only when the first annual charge is
  * actually generated, preserving the catalog price governing that transition.
  */
-router.post("/subscriptions/:id/annual-upgrade", async (req, res) => {
+router.post("/subscriptions/:id/annual-upgrade", authenticate, async (req, res) => {
   const subscriptionId = String(req.params.id);
   const [subscription] = await db
     .select({
@@ -112,7 +113,7 @@ router.post("/subscriptions/:id/annual-upgrade", async (req, res) => {
  * subscription cancelled. Paid events remain immutable financial history and
  * the commercial lifecycle emits churn from this logical cancellation.
  */
-router.delete("/subscriptions/:id", async (req, res, next) => {
+router.delete("/subscriptions/:id", authenticate, async (req, res, next) => {
   const subscriptionId = String(req.params.id);
   const [subscription] = await db
     .select({
