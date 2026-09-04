@@ -3,8 +3,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AppUsersDialog from "@/components/app-builder/AppUsersDialog";
+import TemplateRuntimeEditorDialog from "@/components/app-builder/TemplateRuntimeEditorDialog";
 import AdminAppBuilderLegacy from "./AdminAppBuilderLegacy";
-import { ExternalLink, Loader2, UserRoundCog } from "lucide-react";
+import { ExternalLink, Layers3, Loader2, UserRoundCog } from "lucide-react";
 
 type AppInstance = {
   id: string;
@@ -15,35 +16,51 @@ type AppInstance = {
   settings: Record<string, unknown>;
 };
 
+type AppTemplate = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+};
+
 export default function AdminAppBuilder() {
   const { token } = useAuth();
   const [apps, setApps] = useState<AppInstance[]>([]);
+  const [templates, setTemplates] = useState<AppTemplate[]>([]);
   const [selectedAppId, setSelectedAppId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [usersOpen, setUsersOpen] = useState(false);
-  const [loadingApps, setLoadingApps] = useState(false);
+  const [runtimeEditorOpen, setRuntimeEditorOpen] = useState(false);
+  const [loadingControls, setLoadingControls] = useState(false);
 
-  const loadApps = useCallback(async () => {
+  const loadControls = useCallback(async () => {
     if (!token) return;
-    setLoadingApps(true);
+    setLoadingControls(true);
     try {
-      const response = await fetch("/api/admin/app-builder/apps", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) return;
-      const rows = await response.json() as AppInstance[];
-      setApps(rows);
-      setSelectedAppId((current) => current && rows.some((app) => app.id === current) ? current : rows[0]?.id ?? "");
+      const headers = { Authorization: `Bearer ${token}` };
+      const [appsResponse, templatesResponse] = await Promise.all([
+        fetch("/api/admin/app-builder/apps", { headers }),
+        fetch("/api/admin/app-builder/templates", { headers }),
+      ]);
+      if (appsResponse.ok) {
+        const rows = await appsResponse.json() as AppInstance[];
+        setApps(rows);
+        setSelectedAppId((current) => current && rows.some((app) => app.id === current) ? current : rows[0]?.id ?? "");
+      }
+      if (templatesResponse.ok) {
+        const rows = await templatesResponse.json() as AppTemplate[];
+        setTemplates(rows);
+        setSelectedTemplateId((current) => current && rows.some((template) => template.id === current) ? current : rows[0]?.id ?? "");
+      }
     } finally {
-      setLoadingApps(false);
+      setLoadingControls(false);
     }
   }, [token]);
 
-  useEffect(() => { void loadApps(); }, [loadApps]);
+  useEffect(() => { void loadControls(); }, [loadControls]);
 
-  const selectedApp = useMemo(
-    () => apps.find((app) => app.id === selectedAppId) ?? null,
-    [apps, selectedAppId],
-  );
+  const selectedApp = useMemo(() => apps.find((app) => app.id === selectedAppId) ?? null, [apps, selectedAppId]);
+  const selectedTemplate = useMemo(() => templates.find((template) => template.id === selectedTemplateId) ?? null, [selectedTemplateId, templates]);
 
   function openRuntime() {
     if (!selectedApp) return;
@@ -52,23 +69,40 @@ export default function AdminAppBuilder() {
 
   return (
     <>
-      <div className="mx-auto mb-3 flex max-w-7xl flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
-        <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-          <UserRoundCog className="h-4 w-4 text-primary" />
-          <span>Usuários externos, papéis, permissões e login por App Instance</span>
+      <div className="mx-auto mb-3 max-w-7xl space-y-2">
+        <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
+          <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+            <UserRoundCog className="h-4 w-4 text-primary" />
+            <span>Usuários externos, papéis, permissões e login por App Instance</span>
+          </div>
+          <Select value={selectedAppId} onValueChange={setSelectedAppId} disabled={loadingControls || apps.length === 0}>
+            <SelectTrigger className="h-9 w-full sm:w-[280px]"><SelectValue placeholder={loadingControls ? "Carregando apps..." : "Selecione o app"} /></SelectTrigger>
+            <SelectContent>{apps.map((app) => <SelectItem key={app.id} value={app.id}>{app.name} · {app.status}</SelectItem>)}</SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" onClick={openRuntime} disabled={!selectedApp || loadingControls}>
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Abrir app
+          </Button>
+          <Button size="sm" onClick={() => setUsersOpen(true)} disabled={!selectedApp || loadingControls}>
+            {loadingControls ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserRoundCog className="mr-2 h-4 w-4" />}
+            Gerenciar usuários
+          </Button>
         </div>
-        <Select value={selectedAppId} onValueChange={setSelectedAppId} disabled={loadingApps || apps.length === 0}>
-          <SelectTrigger className="h-9 w-full sm:w-[280px]"><SelectValue placeholder={loadingApps ? "Carregando apps..." : "Selecione o app"} /></SelectTrigger>
-          <SelectContent>{apps.map((app) => <SelectItem key={app.id} value={app.id}>{app.name} · {app.status}</SelectItem>)}</SelectContent>
-        </Select>
-        <Button size="sm" variant="outline" onClick={openRuntime} disabled={!selectedApp || loadingApps}>
-          <ExternalLink className="mr-2 h-4 w-4" />
-          Abrir app
-        </Button>
-        <Button size="sm" onClick={() => setUsersOpen(true)} disabled={!selectedApp || loadingApps}>
-          {loadingApps ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserRoundCog className="mr-2 h-4 w-4" />}
-          Gerenciar usuários
-        </Button>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border bg-card px-3 py-2">
+          <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+            <Layers3 className="h-4 w-4 text-primary" />
+            <span>Páginas, blocos e regras de visibilidade do runtime publicado</span>
+          </div>
+          <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={loadingControls || templates.length === 0}>
+            <SelectTrigger className="h-9 w-full sm:w-[280px]"><SelectValue placeholder={loadingControls ? "Carregando templates..." : "Selecione o template"} /></SelectTrigger>
+            <SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · {template.status}</SelectItem>)}</SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" onClick={() => setRuntimeEditorOpen(true)} disabled={!selectedTemplate || loadingControls}>
+            <Layers3 className="mr-2 h-4 w-4" />
+            Editor visual
+          </Button>
+        </div>
       </div>
 
       <AdminAppBuilderLegacy />
@@ -78,7 +112,14 @@ export default function AdminAppBuilder() {
         open={usersOpen}
         token={token}
         onOpenChange={setUsersOpen}
-        onAppChanged={loadApps}
+        onAppChanged={loadControls}
+      />
+
+      <TemplateRuntimeEditorDialog
+        template={selectedTemplate}
+        token={token}
+        open={runtimeEditorOpen}
+        onOpenChange={setRuntimeEditorOpen}
       />
     </>
   );
