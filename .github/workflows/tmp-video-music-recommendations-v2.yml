@@ -1,0 +1,42 @@
+name: tmp-video-music-recommendations-v2
+on:
+  push:
+    branches:
+      - feat/video-brand-music-recommendations-v2
+permissions:
+  contents: write
+jobs:
+  patch-and-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/video-brand-music-recommendations-v2
+          fetch-depth: 0
+      - name: Apply patch
+        run: python .github/tmp_video_music_recommendations_v2.py
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build frontend
+        run: pnpm --filter @workspace/frontend run build
+      - name: Commit product change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/frontend/src/components/video/VideoTimelineEditor.tsx
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "feat(video): recommend brand-safe music on current editor"
+            git push origin feat/video-brand-music-recommendations-v2
+          fi
