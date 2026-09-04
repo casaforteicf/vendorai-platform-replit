@@ -13,12 +13,97 @@ function canAccess(req: import("express").Request, tenantId: string): boolean {
 }
 
 const periodSchema = z.union([z.literal(30), z.literal(60), z.literal(90)]);
+const planningConfigSchema = z.object({
+  objetivoPrincipal: z.string().trim().max(300).optional().default(""),
+  produtoServicoPrioritario: z.string().trim().max(300).optional().default(""),
+  publicoPrioritario: z.string().trim().max(500).optional().default(""),
+  regiao: z.string().trim().max(250).optional().default(""),
+  ofertaPrincipal: z.string().trim().max(500).optional().default(""),
+  canaisPreferidos: z.array(z.string().trim().min(1).max(80)).max(15).optional().default([]),
+  observacoes: z.string().trim().max(1500).optional().default(""),
+});
+type PlanningConfig = z.infer<typeof planningConfigSchema>;
+
+const EMPTY_PLANNING_CONFIG: PlanningConfig = {
+  objetivoPrincipal: "",
+  produtoServicoPrioritario: "",
+  publicoPrioritario: "",
+  regiao: "",
+  ofertaPrincipal: "",
+  canaisPreferidos: [],
+  observacoes: "",
+};
+
 const generateBodySchema = z.object({
   periodoDias: periodSchema.default(30),
+  configuracao: planningConfigSchema.optional().default(EMPTY_PLANNING_CONFIG),
 });
 
 function normalizedChannel(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+function planningConfigLines(config: PlanningConfig): string[] {
+  return [
+    config.objetivoPrincipal && `Objetivo principal do período: ${config.objetivoPrincipal}`,
+    config.produtoServicoPrioritario && `Produto/serviço prioritário: ${config.produtoServicoPrioritario}`,
+    config.publicoPrioritario && `Público prioritário: ${config.publicoPrioritario}`,
+    config.regiao && `Região/área de atuação: ${config.regiao}`,
+    config.ofertaPrincipal && `Oferta/CTA principal: ${config.ofertaPrincipal}`,
+    config.canaisPreferidos.length > 0 && `Canais que o usuário pediu para priorizar: ${config.canaisPreferidos.join(", ")}`,
+    config.observacoes && `Orientações e restrições adicionais: ${config.observacoes}`,
+  ].filter((value): value is string => Boolean(value));
+}
+
+function applyPlanningConfigurationToBase(
+  conteudo: MediaPlanConteudo,
+  config: PlanningConfig,
+): MediaPlanConteudo {
+  const directions = planningConfigLines(config);
+  if (directions.length === 0) return conteudo;
+
+  const existingByChannel = new Map(
+    (conteudo.canais ?? []).map((channel) => [normalizedChannel(channel.canal), channel] as const),
+  );
+  const preferred = config.canaisPreferidos.map((canal) => {
+    const existing = existingByChannel.get(normalizedChannel(canal));
+    if (existing) return { ...existing, prioridade: "alta" as const };
+    return {
+      canal,
+      prioridade: "alta" as const,
+      motivo: "Canal priorizado manualmente na configuração deste planejamento.",
+      tiposCampanhaSugeridos: [],
+      percentualOrcamento: 0,
+    };
+  });
+  const preferredKeys = new Set(preferred.map((channel) => normalizedChannel(channel.canal)));
+  const remaining = (conteudo.canais ?? []).filter((channel) => !preferredKeys.has(normalizedChannel(channel.canal)));
+
+  return {
+    ...conteudo,
+    diagnostico: `${conteudo.diagnostico}\n\nDiretrizes definidas pelo usuário para este ciclo: ${directions.join(" | ")}`,
+    canais: [...preferred, ...remaining],
+  };
+}
+
+function applyPlanningConfigurationToCampaigns(
+  conteudo: MediaPlanConteudo,
+  config: PlanningConfig,
+): MediaPlanConteudo {
+  if (!conteudo.campanhas?.length) return conteudo;
+
+  const campanhas = conteudo.campanhas.map((campaign) => ({
+    ...campaign,
+    produtoServico: config.produtoServicoPrioritario || campaign.produtoServico,
+    publico: config.publicoPrioritario || campaign.publico,
+    regiao: config.regiao || campaign.regiao,
+    oferta: config.ofertaPrincipal || campaign.oferta,
+    metaPrincipal: config.objetivoPrincipal
+      ? `${config.objetivoPrincipal} · ${campaign.metaPrincipal}`
+      : campaign.metaPrincipal,
+  }));
+
+  return alignMediaFunctionsInContent({ ...conteudo, campanhas });
 }
 
 function hasRequiredMultichannelCoverage(conteudo: MediaPlanConteudo): boolean {
@@ -46,13 +131,20 @@ router.post("/tenants/:tenantId/media-plan/gerar", async (req, res) => {
   }
   try {
     const { plan } = await generateMediaPlan(tenantId, req.user?.sub ?? null);
-    const conteudo = await enrichMediaPlanForPeriod(tenantId, plan.conteudo, parsed.data.periodoDias);
+    const conteudoBase = applyPlanningConfigurationToBase(plan.conteudo, parsed.data.configuracao);
+    const enriched = await enrichMediaPlanForPeriod(tenantId, conteudoBase, parsed.data.periodoDias);
+    const conteudo = applyPlanningConfigurationToCampaigns(enriched, parsed.data.configuracao);
+    const contextoUsado = {
+      ...(plan.contextoUsado ?? {}),
+      configuracaoPlanejamento: parsed.data.configuracao,
+      configuracaoResumo: planningConfigLines(parsed.data.configuracao),
+    };
     const [updated] = await db
       .update(mediaPlansTable)
-      .set({ conteudo })
+      .set({ conteudo, contextoUsado })
       .where(eq(mediaPlansTable.id, plan.id))
       .returning();
-    res.status(201).json(updated ?? { ...plan, conteudo });
+    res.status(201).json(updated ?? { ...plan, conteudo, contextoUsado });
   } catch (err) {
     if (err instanceof MediaPlanError) {
       res.status(422).json({ error: err.message });
