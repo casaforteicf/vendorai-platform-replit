@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-482",
+    "titulo": "adicionar mixer de áudio profissional",
+    "descricao": "ducking automático baseado no nível real do áudio original durante a renderização; ataque, retorno, sensibilidade e intensidade do ducking configuráveis; fade-in e fade-out da trilha; loop inteligente por zero-crossing para reduzir emendas perceptíveis;",
+    "tipo": "novidade",
+    "publicadoEm": "2026-09-04T02:34:48.000Z",
+    "pullRequest": 482
+  },
+  {
     "id": "pr-467",
     "titulo": "sincronizar cortes com batidas da música",
     "descricao": "analisa a forma de onda da trilha no navegador via Web Audio; usa BPM cadastrado no Music Hub como referência/fallback; detecta BPM e fase/offset das batidas; permite grade por cada 1, 2 ou 4 batidas;",
