@@ -5,12 +5,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Content from "@/pages/Content";
 import Campanhas from "@/pages/Campanhas";
 import CampanhasHub from "@/pages/CampanhasHub";
+import PlanoMidia from "@/pages/PlanoMidia";
 import SiteGenerator from "@/pages/SiteGenerator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ArrowLeft,
+  CalendarDays,
   CheckCircle2,
   ExternalLink,
   Globe2,
@@ -121,8 +123,8 @@ export default function ContentHub() {
   const [location, setLocation] = useLocation();
   const queryString = location.includes("?") ? location.split("?")[1] ?? "" : "";
   const params = new URLSearchParams(queryString);
-  const requestedTab = params.get("tab") ?? "gerador";
   const mediaPlanSource = params.get("source") === "media-plan" || params.get("from") === "media-plan";
+  const requestedTab = params.get("tab") ?? (mediaPlanSource ? "gerador" : "planejamento");
   const requestedMediaPlanId = params.get("mediaPlanId")?.trim() ?? "";
   const requestedPlannerCampaignId = params.get("campaignId")?.trim() ?? "";
 
@@ -133,7 +135,11 @@ export default function ContentHub() {
   // Compatibilidade: o antigo ?tab=variedades agora abre a modalidade Praça.ai
   // dentro de Campanhas, sem manter uma terceira área paralela no Marketing.
   const legacyPracaView = requestedTab === "variedades";
-  const activeTab = requestedTab === "campanhas" || legacyPracaView ? "campanhas" : "gerador";
+  const activeTab = requestedTab === "campanhas" || legacyPracaView
+    ? "campanhas"
+    : requestedTab === "gerador"
+      ? "gerador"
+      : "planejamento";
   const campaignView = legacyPracaView ? "praca" : params.get("view") ?? "overview";
 
   const plannerCampaigns = plannerPlan?.conteudo.campanhas ?? [];
@@ -155,7 +161,7 @@ export default function ContentHub() {
       content: has(["instagram", "facebook", "linkedin", "tiktok", "youtube"]),
       ads: has(["meta ads", "facebook ads", "google search", "google display", "performance max", "pmax"]),
       owned: has(["landing", "site", "blog", "seo"]),
-      conversations: has(["whatsapp", "email", "e-mail", "sms"]),
+      messaging: has(["whatsapp", "email", "e-mail", "sms"]),
       video: has(["instagram", "youtube", "tiktok"]),
     };
   }, [selectedPlannerCampaign]);
@@ -163,7 +169,8 @@ export default function ContentHub() {
   function plannerUrl(extra: Record<string, string | undefined> = {}) {
     const next = new URLSearchParams();
     next.set("source", "media-plan");
-    if (plannerPlan?.id ?? requestedMediaPlanId) next.set("mediaPlanId", plannerPlan?.id ?? requestedMediaPlanId);
+    const mediaPlanId = plannerPlan?.id ?? requestedMediaPlanId;
+    if (mediaPlanId) next.set("mediaPlanId", mediaPlanId);
     if (selectedPlannerCampaign?.id) next.set("campaignId", selectedPlannerCampaign.id);
     Object.entries(extra).forEach(([key, value]) => {
       if (value) next.set(key, value);
@@ -172,6 +179,10 @@ export default function ContentHub() {
   }
 
   function handleTabChange(nextTab: string) {
+    if (nextTab === "planejamento") {
+      setLocation("/content?tab=planejamento");
+      return;
+    }
     if (mediaPlanSource) {
       if (nextTab === "gerador") {
         setLocation(plannerUrl());
@@ -181,7 +192,7 @@ export default function ContentHub() {
       return;
     }
     if (nextTab === "gerador") {
-      setLocation("/content");
+      setLocation("/content?tab=gerador");
       return;
     }
     setLocation(`/content?tab=${nextTab}`);
@@ -287,7 +298,7 @@ export default function ContentHub() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-primary" /> Marketing
           </h1>
-          <p className="text-sm text-muted-foreground">Planeje, crie e ative ações em um único fluxo.</p>
+          <p className="text-sm text-muted-foreground">Planeje primeiro, aprove a direção e depois produza cada mídia no executor correto.</p>
         </div>
 
         {mediaPlanSource && (
@@ -298,7 +309,7 @@ export default function ContentHub() {
               <Card className="border-amber-300 bg-amber-50/50">
                 <CardContent className="py-4 flex items-center justify-between gap-3 flex-wrap">
                   <p className="text-sm text-amber-800">{plannerError}</p>
-                  <Button size="sm" variant="outline" onClick={() => setLocation("/marketing/plano-de-midia")}>Abrir Plano de Mídia</Button>
+                  <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=planejamento")}>Abrir Planejamento</Button>
                 </CardContent>
               </Card>
             ) : selectedPlannerCampaign ? (
@@ -313,7 +324,7 @@ export default function ContentHub() {
                       <p className="mt-2 font-semibold flex items-center gap-2"><Target className="h-4 w-4 text-primary" />{selectedPlannerCampaign.nome}</p>
                       <p className="mt-1 text-sm text-muted-foreground">{selectedPlannerCampaign.objetivo}</p>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => setLocation("/marketing/plano-de-midia")}><ArrowLeft className="h-3.5 w-3.5 mr-1" />Voltar ao plano</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setLocation("/content?tab=planejamento")}><ArrowLeft className="h-3.5 w-3.5 mr-1" />Voltar ao planejamento</Button>
                   </div>
 
                   {plannerCampaigns.length > 1 && (
@@ -362,10 +373,10 @@ export default function ContentHub() {
                   <div className="flex items-center gap-2 flex-wrap border-t pt-3">
                     <span className="text-xs font-medium mr-1">Executar esta direção em:</span>
                     <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.content} onClick={() => handleTabChange("gerador")}><Images className="h-3.5 w-3.5 mr-1" />Conteúdo orgânico</Button>
-                    <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.ads} onClick={() => setLocation(`/ads?from=media-plan&mediaPlanId=${encodeURIComponent(plannerPlan!.id)}`)}><Megaphone className="h-3.5 w-3.5 mr-1" />Mídia paga</Button>
+                    <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.ads} onClick={() => setLocation(`/ads?from=media-plan&mediaPlanId=${encodeURIComponent(plannerPlan!.id)}&campaignId=${encodeURIComponent(selectedPlannerCampaign.id)}`)}><Megaphone className="h-3.5 w-3.5 mr-1" />Mídia paga</Button>
                     <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.owned} onClick={() => setLocation(plannerUrl({ tab: "campanhas", view: "lp" }))}><Globe2 className="h-3.5 w-3.5 mr-1" />Site / LP / SEO</Button>
-                    <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.video} onClick={() => setLocation(`/content-studio/video?from=media-plan&mediaPlanId=${encodeURIComponent(plannerPlan!.id)}`)}><Video className="h-3.5 w-3.5 mr-1" />Vídeo com IA</Button>
-                    <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.conversations} onClick={() => setLocation(`/conversations?from=media-plan&mediaPlanId=${encodeURIComponent(plannerPlan!.id)}`)}><MessageCircle className="h-3.5 w-3.5 mr-1" />Conversas</Button>
+                    <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.video} onClick={() => setLocation(`/content-studio/video?from=media-plan&mediaPlanId=${encodeURIComponent(plannerPlan!.id)}&campaignId=${encodeURIComponent(selectedPlannerCampaign.id)}`)}><Video className="h-3.5 w-3.5 mr-1" />Vídeo com IA</Button>
+                    <Button size="sm" variant="outline" disabled={!plannerApproved || !executorAvailability.messaging} onClick={() => setLocation(plannerUrl({ tab: "campanhas", view: "organicas" }))}><MessageCircle className="h-3.5 w-3.5 mr-1" />WhatsApp / E-mail</Button>
                   </div>
 
                   {plannerApproved && (
@@ -382,9 +393,11 @@ export default function ContentHub() {
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="h-auto flex flex-wrap">
+            <TabsTrigger value="planejamento" className="gap-2"><CalendarDays className="h-4 w-4"/>Planejamento</TabsTrigger>
             <TabsTrigger value="gerador" className="gap-2"><Images className="h-4 w-4"/>Gerador de conteúdo</TabsTrigger>
             <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>Campanhas</TabsTrigger>
           </TabsList>
+          <TabsContent value="planejamento" className="-mx-4 md:-mx-6"><div className="p-4 md:p-6"><PlanoMidia /></div></TabsContent>
           <TabsContent value="gerador" className="-mx-4 md:-mx-6"><Content /></TabsContent>
           <TabsContent value="campanhas" className="-mx-4 md:-mx-6">
             {campaignView === "organicas" ? (
@@ -418,7 +431,7 @@ export default function ContentHub() {
 
         {mediaPlanSource && plannerApproved && selectedPlannerCampaign && (
           <div className="mt-4 pb-3 flex items-center justify-end">
-            <Button variant="ghost" size="sm" className="text-xs" onClick={() => setLocation("/marketing/plano-de-midia")}>
+            <Button variant="ghost" size="sm" className="text-xs" onClick={() => setLocation("/content?tab=planejamento")}>
               Ver calendário e aprovações <ExternalLink className="h-3.5 w-3.5 ml-1" />
             </Button>
           </div>
