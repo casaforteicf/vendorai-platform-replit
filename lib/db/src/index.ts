@@ -42,6 +42,7 @@ export * from "./schema";
 export * from "./schema/tenant_user_functions";
 export * from "./schema/app_builder";
 export * from "./schema/app_users";
+export * from "./schema/app_user_auth";
 
 /**
  * Checks whether a versioned SQL migration (see lib/db/migrations and
