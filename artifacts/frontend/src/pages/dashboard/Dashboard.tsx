@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import OfficialCommandCenter from "@/components/dashboard/OfficialCommandCenter";
 import BusinessGoalsDialog from "@/components/dashboard/BusinessGoalsDialog";
+import StrategicObserver from "@/components/dashboard/StrategicObserver";
 
 type CommandCenterProps = Parameters<typeof OfficialCommandCenter>[0];
 type OfficialMetrics = CommandCenterProps["data"];
@@ -101,13 +102,21 @@ export default function Dashboard() {
   }, [tenantId, token, refreshKey]);
 
   return (
-    <OfficialCommandCenter
-      data={official}
-      executive={executive}
-      loading={loading}
-      userName={user?.name ?? ""}
-      onRefresh={refresh}
-      goalsAction={<BusinessGoalsDialog onChanged={refresh} />}
-    />
+    <>
+      <OfficialCommandCenter
+        data={official}
+        executive={executive}
+        loading={loading}
+        userName={user?.name ?? ""}
+        onRefresh={refresh}
+        goalsAction={<BusinessGoalsDialog onChanged={refresh} />}
+      />
+      <StrategicObserver
+        tenantId={tenantId}
+        token={token}
+        official={official}
+        refreshKey={refreshKey}
+      />
+    </>
   );
 }
