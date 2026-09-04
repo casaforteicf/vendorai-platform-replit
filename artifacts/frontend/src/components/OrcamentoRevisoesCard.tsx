@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { History, Paperclip, Plus, FileText, Loader2, Trash2, X } from "lucide-react";
+import { useListPropostas } from "@workspace/api-client-react";
+import { History, Paperclip, Plus, FileText, Loader2, Trash2, X, Receipt, ArrowRight } from "lucide-react";
 
 type Anexo = { nome: string; url: string; mimeType?: string; tamanho?: number };
 type Revisao = {
@@ -40,6 +42,7 @@ function todayISO() {
 export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: string; tenantId: string; dealId?: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const token = localStorage.getItem("vendorai_token") ?? "";
   const queryKey = ["orcamento-revisoes", leadId];
 
   const { data: revisoes = [], isLoading } = useQuery<Revisao[]>({
@@ -47,6 +50,13 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
     queryFn: () => fetch(`/api/tenants/${tenantId}/leads/${leadId}/orcamento-revisoes`, { headers: authHeaders() }).then(readJson),
     enabled: !!leadId && !!tenantId,
   });
+
+  const { data: orcamentos = [], isLoading: loadingOrcamentos } = useListPropostas(
+    tenantId,
+    { leadId },
+    { request: { headers: { Authorization: `Bearer ${token}` } } },
+  );
+  const hasOrcamento = orcamentos.length > 0;
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -61,9 +71,26 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
 
   const [viewerAnexos, setViewerAnexos] = useState<{ titulo: string; anexos: Anexo[] } | null>(null);
 
+  function openBudgetCreation() {
+    const budgetButton = document.querySelector<HTMLElement>('[data-testid="btn-new-budget"]');
+    if (budgetButton) {
+      budgetButton.click();
+      return;
+    }
+    toast({
+      title: "Crie primeiro o orçamento deste cliente",
+      description: "Use a ação “Gerar orçamento” no topo do atendimento para manter o contexto do lead.",
+    });
+  }
+
   function openNew() {
+    if (!hasOrcamento) {
+      openBudgetCreation();
+      return;
+    }
+    const latestBudget = orcamentos[0] as any;
     setEditingId(null);
-    setNumero("");
+    setNumero(latestBudget?.titulo ?? "");
     setData(todayISO());
     setApresentacao("");
     setObservacao("");
@@ -105,6 +132,11 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
   }
 
   async function save() {
+    if (!editingId && !hasOrcamento) {
+      setFormOpen(false);
+      openBudgetCreation();
+      return;
+    }
     if (!numero.trim() || !data) {
       toast({ title: "Preencha ao menos o número e a data do orçamento.", variant: "destructive" });
       return;
@@ -146,35 +178,62 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
   return (
     <Card data-testid="card-orcamento-revisoes">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <History className="h-4 w-4" />
-            Histórico de Revisões de Orçamento
+        <CardTitle className="text-sm font-semibold flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 min-w-0">
+            <History className="h-4 w-4 shrink-0" />
+            Negociação e revisões
+            {revisoes.length > 0 && <Badge variant="outline" className="text-xs">{revisoes.length}</Badge>}
           </span>
-          <Button size="sm" className="h-7 text-xs gap-1" onClick={openNew}>
-            <Plus className="h-3 w-3" />
-            Nova revisão
-          </Button>
+          {hasOrcamento ? (
+            <Button size="sm" className="h-7 text-xs gap-1" onClick={openNew}>
+              <Plus className="h-3 w-3" />
+              Nova revisão
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openBudgetCreation} disabled={loadingOrcamentos}>
+              <Receipt className="h-3 w-3" />
+              Criar orçamento
+            </Button>
+          )}
         </CardTitle>
         <p className="text-xs text-muted-foreground pt-1">
-          Cada linha registra uma rodada de negociação do orçamento — o número da revisão, quando e como foi apresentada, e os documentos trocados com o cliente.
+          Registre aqui cada nova rodada depois que um orçamento real for criado e apresentado ao cliente.
         </p>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isLoading || loadingOrcamentos ? (
           <div className="space-y-2">
             {[1, 2].map((i) => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}
           </div>
+        ) : !hasOrcamento ? (
+          <div className="rounded-lg border border-dashed p-4 text-center">
+            <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+              <Receipt className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium">Crie o primeiro orçamento antes de iniciar as revisões.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Assim o histórico representa uma negociação real e não cria revisões soltas sem orçamento de origem.
+            </p>
+            <Button size="sm" variant="outline" className="mt-3 gap-1.5" onClick={openBudgetCreation}>
+              Gerar orçamento para este cliente
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         ) : revisoes.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4 text-center">Nenhuma revisão registrada ainda.</p>
+          <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm">
+            <p className="font-medium">Orçamento criado. Nenhuma revisão necessária até agora.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Use “Nova revisão” somente quando houver uma nova rodada de negociação, alteração solicitada ou novo documento apresentado ao cliente.
+            </p>
+          </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nº Orçamento</TableHead>
+                <TableHead>Orçamento</TableHead>
                 <TableHead>Data</TableHead>
                 <TableHead>Apresentação</TableHead>
-                <TableHead>Observação</TableHead>
+                <TableHead>O que mudou</TableHead>
                 <TableHead>Anexos</TableHead>
                 <TableHead className="w-0" />
               </TableRow>
@@ -213,16 +272,18 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
         )}
       </CardContent>
 
-      {/* Form: nova revisão / editar (adicionar observação e anexos quando o cliente pede mudanças) */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Editar revisão" : "Nova revisão de orçamento"}</DialogTitle>
+            <DialogTitle>{editingId ? "Editar revisão" : "Registrar nova rodada de negociação"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-2">
+            <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              Esta revisão deve corresponder a um orçamento já criado para este cliente. Registre apenas o que mudou nesta rodada.
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
-                <Label>Nº do orçamento</Label>
+                <Label>Orçamento de referência</Label>
                 <Input value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: ORC-0123" />
               </div>
               <div className="grid gap-1.5">
@@ -231,15 +292,15 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
               </div>
             </div>
             <div className="grid gap-1.5">
-              <Label>Apresentação</Label>
-              <Input value={apresentacao} onChange={(e) => setApresentacao(e.target.value)} placeholder="Ex: enviado por WhatsApp, reunião presencial…" />
+              <Label>Como foi apresentado</Label>
+              <Input value={apresentacao} onChange={(e) => setApresentacao(e.target.value)} placeholder="Ex: WhatsApp, reunião, e-mail…" />
             </div>
             <div className="grid gap-1.5">
-              <Label>Observação</Label>
-              <Textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="O que o cliente pediu, o que mudou nesta revisão…" rows={3} />
+              <Label>O que mudou nesta revisão</Label>
+              <Textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Ex: cliente pediu retirada de item, nova condição, desconto, alteração de prazo…" rows={3} />
             </div>
             <div className="grid gap-1.5">
-              <Label>Documentos anexados</Label>
+              <Label>Documentos desta rodada</Label>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -274,12 +335,11 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId }: { leadId: st
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>Cancelar</Button>
-            <Button disabled={saving} onClick={save}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Salvar</Button>
+            <Button disabled={saving} onClick={save}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Salvar revisão</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Visualizador rápido de anexos (fora do modo de edição) */}
       <Dialog open={!!viewerAnexos} onOpenChange={(open) => !open && setViewerAnexos(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
