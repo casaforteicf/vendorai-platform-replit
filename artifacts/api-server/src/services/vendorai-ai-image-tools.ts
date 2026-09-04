@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { toFile } from "openai";
-import { db, mediaAssetsTable } from "@workspace/db";
+import { db, mediaAssetsTable, pool } from "@workspace/db";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { createMediaJob, updateMediaJob } from "./media-jobs.js";
@@ -21,11 +21,26 @@ export type AiImageOperation =
   | "image_outpaint";
 export type VendorAiImageSize = "1024x1024" | "1024x1536" | "1536x1024";
 
+type DubleVisualReferenceType = "scenario" | "outfit" | "environment";
+type DubleVisualReference = {
+  assetId: string;
+  type: DubleVisualReferenceType;
+  label: string;
+  buffer: Buffer;
+  mimeType: string | null;
+};
+
 export class AiImageToolValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "AiImageToolValidationError";
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 function extractBuffer(result: { data?: Array<{ b64_json?: string | null }> | null }): Buffer {
@@ -55,20 +70,111 @@ async function resolveSource(tenantId: string, assetId: string) {
   return { asset, buffer };
 }
 
+async function resolveDubleVisualReferences(tenantId: string, faceAssetId: string): Promise<DubleVisualReference[]> {
+  const identityResult = await pool.query(
+    `SELECT id
+       FROM media_identities
+      WHERE tenant_id = $1
+        AND face_reference_asset_id = $2
+        AND status = 'active'
+      LIMIT 1`,
+    [tenantId, faceAssetId],
+  );
+  const identityId = identityResult.rows[0]?.id ? String(identityResult.rows[0].id) : "";
+  if (!identityId) return [];
+
+  const referenceResult = await pool.query(
+    `SELECT id, metadata, created_at
+       FROM media_assets
+      WHERE tenant_id = $1
+        AND type = 'image'
+        AND metadata->>'usage' = 'duble_style_visual_reference'
+        AND metadata->>'identityId' = $2
+      ORDER BY created_at DESC
+      LIMIT 100`,
+    [tenantId, identityId],
+  );
+
+  const rows = referenceResult.rows as Array<{ id: string; metadata?: unknown }>;
+  const selected: Array<{ assetId: string; type: DubleVisualReferenceType; label: string }> = [];
+  const typeOrder: DubleVisualReferenceType[] = ["environment", "scenario", "outfit"];
+
+  for (const type of typeOrder) {
+    const row = rows.find((candidate) => {
+      const metadata = asRecord(candidate.metadata);
+      return metadata["referenceType"] === type
+        && metadata["active"] !== false
+        && metadata["approvedForGeneration"] !== false;
+    });
+    if (!row) continue;
+    const metadata = asRecord(row.metadata);
+    selected.push({
+      assetId: String(row.id),
+      type,
+      label: String(metadata["label"] ?? metadata["referenceType"] ?? type),
+    });
+  }
+
+  const resolved: DubleVisualReference[] = [];
+  for (const item of selected) {
+    try {
+      const source = await resolveSource(tenantId, item.assetId);
+      resolved.push({
+        ...item,
+        buffer: source.buffer,
+        mimeType: source.asset.mimeType ?? null,
+      });
+    } catch {
+      // A referência visual é complementar. Uma imagem removida/corrompida
+      // não pode impedir o Dublê de usar a referência facial principal.
+    }
+  }
+  return resolved;
+}
+
+function buildDubleVisualReferenceInstructions(references: DubleVisualReference[]): string {
+  if (!references.length) return "";
+  const descriptions = references.map((reference, index) => {
+    const imageNumber = index + 2;
+    if (reference.type === "environment") {
+      return `Image ${imageNumber} is the REAL ENVIRONMENT reference named \"${reference.label}\". Reproduce its architecture, materials, color relationships, spatial character and believable atmosphere as closely as possible while adapting perspective to the spokesperson shot.`;
+    }
+    if (reference.type === "scenario") {
+      return `Image ${imageNumber} is a SCENARIO STYLE reference named \"${reference.label}\". Use it to guide background composition, décor, depth, palette and visual mood.`;
+    }
+    return `Image ${imageNumber} is a WARDROBE reference named \"${reference.label}\". Apply the garment style, cut, material impression and overall clothing composition to the authorized person, adapting fit naturally to their body.`;
+  });
+
+  return [
+    "MULTI-IMAGE REFERENCE RULES:",
+    "Image 1 is the ONLY identity source. Preserve the face, skin, age, hair and recognizable identity from Image 1. Never copy or blend faces, bodies, skin, tattoos, accessories or identity traits from the other images.",
+    ...descriptions,
+    "Visual references have priority over generic scene or wardrobe wording when they conflict. For the background, a real environment reference has priority over a scenario-style reference. Use wardrobe references only for clothing, never for identity.",
+    "Do not copy people, readable text, logos, watermarks, badges or protected brand marks from any style reference. The result must remain a photorealistic photograph of the authorized person in a coherent, physically plausible setting.",
+  ].join(" ");
+}
+
 async function editImage(input: {
   tenantId: string;
   source: Buffer;
+  sourceMimeType?: string | null;
+  referenceSources?: Array<{ buffer: Buffer; mimeType?: string | null; name: string }>;
   prompt: string;
   size: VendorAiImageSize;
   transparent?: boolean;
 }) {
   const openai = await getOpenAIForTenant(input.tenantId);
-  const sourceFile = await toFile(input.source, "source-image.png", { type: "image/png" });
+  const normalizeMime = (value: string | null | undefined) => value?.startsWith("image/") ? value : "image/png";
+  const sourceFile = await toFile(input.source, "identity-source.png", { type: normalizeMime(input.sourceMimeType) });
+  const referenceFiles = await Promise.all((input.referenceSources ?? []).map((reference, index) =>
+    toFile(reference.buffer, `style-reference-${index + 1}.png`, { type: normalizeMime(reference.mimeType) }),
+  ));
+  const imageInput = referenceFiles.length ? [sourceFile, ...referenceFiles] : sourceFile;
   const preferredModel = process.env["VENDORAI_IMAGE_MODEL"]?.trim() || "gpt-image-2";
   const call = async (model: string) => {
     const result = await openai.images.edit({
       model,
-      image: sourceFile,
+      image: imageInput as any,
       prompt: input.prompt,
       n: 1,
       size: input.size,
@@ -90,6 +196,11 @@ async function editImage(input: {
  * It intentionally does not create a Media Project or asset. Callers that
  * compose higher-level workflows (such as Dublê Digital) own registration,
  * metadata and consent semantics for the generated output.
+ *
+ * For the Dublê style workflow this function also discovers, tenant-scoped,
+ * the active visual references uploaded in the Style Library. Those files are
+ * sent as additional image inputs so environment and wardrobe are grounded in
+ * real references instead of depending only on text prompts.
  */
 export async function editVendorAiImageReference(input: {
   tenantId: string;
@@ -98,13 +209,27 @@ export async function editVendorAiImageReference(input: {
   size?: VendorAiImageSize;
 }) {
   const { asset, buffer } = await resolveSource(input.tenantId, input.assetId);
+  const visualReferences = await resolveDubleVisualReferences(input.tenantId, input.assetId);
+  const visualInstructions = buildDubleVisualReferenceInstructions(visualReferences);
+  const prompt = visualInstructions ? `${input.prompt} ${visualInstructions}` : input.prompt;
   const result = await editImage({
     tenantId: input.tenantId,
     source: buffer,
-    prompt: input.prompt,
+    sourceMimeType: asset.mimeType ?? null,
+    referenceSources: visualReferences.map((reference) => ({
+      buffer: reference.buffer,
+      mimeType: reference.mimeType,
+      name: reference.label,
+    })),
+    prompt,
     size: input.size ?? "1024x1536",
   });
-  return { sourceAsset: asset, buffer: result.buffer, model: result.model };
+  return {
+    sourceAsset: asset,
+    buffer: result.buffer,
+    model: result.model,
+    visualReferences: visualReferences.map(({ buffer: _buffer, mimeType: _mimeType, ...reference }) => reference),
+  };
 }
 
 function buildPrompt(operation: AiImageOperation, instruction: string): string {
@@ -167,6 +292,7 @@ export async function startVendorAiAiImageTool(input: {
         const result = await editImage({
           tenantId: input.tenantId,
           source: buffer,
+          sourceMimeType: asset.mimeType ?? null,
           prompt: count > 1 ? `${prompt} Variation ${index + 1} of ${count}; make the composition meaningfully distinct from the other variations.` : prompt,
           size,
           transparent: input.operation === "image_remove_background",
