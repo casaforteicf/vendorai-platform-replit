@@ -23,6 +23,7 @@ import UnifiedLpRouter from "@/pages/lp/UnifiedLpRouter";
 import MacrosegmentHub from "@/pages/lp/MacrosegmentHub";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import NicheVisualShowcase from "@/components/NicheVisualShowcase";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
 import {
@@ -58,6 +59,15 @@ function FloatingActions() {
   );
 }
 
+function HomeWithNicheVisuals() {
+  return (
+    <>
+      <Home />
+      <NicheVisualShowcase />
+    </>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -73,7 +83,7 @@ function Router() {
           <Navbar />
           <main className="min-w-0 flex-1">
             <Switch>
-              <Route path="/" component={Home} />
+              <Route path="/" component={HomeWithNicheVisuals} />
               <Route path="/funcionalidades/:slug" component={RecursoDetalhe} />
               <Route path="/funcionalidades" component={Funcionalidades} />
               <Route path="/agentes/:slug" component={AgenteDetalhe} />
