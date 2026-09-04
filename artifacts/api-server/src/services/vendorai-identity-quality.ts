@@ -225,6 +225,16 @@ function latestEvaluation(metadata: JsonRecord): { average?: number | null } | n
     : null;
 }
 
+async function hasDeepFidelityConsent(tenantId: string, identityId: string): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT
+       media_identity_has_active_consent($1, $2, 'face_use') AS "faceUse",
+       media_identity_has_active_consent($1, $2, 'ai_generation') AS "aiGeneration"`,
+    [tenantId, identityId],
+  );
+  return result.rows[0]?.faceUse === true && result.rows[0]?.aiGeneration === true;
+}
+
 export async function analyzeVendorAiIdentityReferences(params: {
   tenantId: string;
   identityId: string;
@@ -256,6 +266,7 @@ export async function analyzeVendorAiIdentityReferences(params: {
   const videoAssetId = typeof videoCapture["referenceAssetId"] === "string" ? videoCapture["referenceAssetId"] : null;
   const voiceAssetId = voice?.reference_asset_id ? String(voice.reference_asset_id) : null;
   const faceAssetId = identity.face_reference_asset_id ? String(identity.face_reference_asset_id) : null;
+  const deepConsentReady = await hasDeepFidelityConsent(tenantId, identityId);
 
   let audioAnalysis: Awaited<ReturnType<typeof analyzeAudioPath>> | null = null;
   let videoAnalysis: Awaited<ReturnType<typeof analyzeVideoPath>> | null = null;
@@ -273,7 +284,7 @@ export async function analyzeVendorAiIdentityReferences(params: {
       const video = await materializeAsset(tenantId, videoAssetId, "video");
       cleanupPaths.push(video.path);
       videoAnalysis = await analyzeVideoPath(video.path);
-      if (faceAssetId && videoAnalysis.durationSeconds > 0) {
+      if (faceAssetId && videoAnalysis.durationSeconds > 0 && deepConsentReady) {
         try {
           deepFidelity = await analyzeVendorAiDeepFidelity({
             tenantId,
@@ -284,6 +295,8 @@ export async function analyzeVendorAiIdentityReferences(params: {
         } catch (error) {
           deepFidelityError = error instanceof Error ? error.message : "Não foi possível executar a fidelidade profunda";
         }
+      } else if (faceAssetId && videoAnalysis.durationSeconds > 0 && !deepConsentReady) {
+        deepFidelityError = "Consentimentos face_use e ai_generation são obrigatórios para a análise visual profunda";
       }
     }
   } finally {
@@ -324,7 +337,7 @@ export async function analyzeVendorAiIdentityReferences(params: {
     faceReferenceReady: faceReady,
     voice: audioAnalysis,
     video: videoAnalysis,
-    deepFidelityStatus: deepFidelity ? "complete" : deepFidelityError ? "unavailable" : "pending",
+    deepFidelityStatus: deepFidelity ? "complete" : !deepConsentReady && faceReady && videoAnalysis ? "consent_required" : deepFidelityError ? "unavailable" : "pending",
     deepFidelityError,
     deepFidelity,
     deepChecksPending: fidelity.pendingChecks,
