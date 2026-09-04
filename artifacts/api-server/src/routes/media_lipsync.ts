@@ -21,6 +21,10 @@ import {
   analyzeMediaImage,
   ImageAdvisorValidationError,
 } from "../services/vendorai-image-advisor.js";
+import {
+  analyzeVendorAiIdentityReferences,
+  saveVendorAiDubleEvaluation,
+} from "../services/vendorai-identity-quality.js";
 
 const router: IRouter = Router();
 
@@ -163,6 +167,43 @@ router.post("/tenants/:tenantId/media-engine/images/:assetId/analyze", async (re
       return;
     }
     throw error;
+  }
+});
+
+router.post("/tenants/:tenantId/media-engine/identities/:identityId/analyze-references", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const identityId = String(req.params["identityId"]);
+  try {
+    const analysis = await analyzeVendorAiIdentityReferences({ tenantId, identityId });
+    res.json({ provider: "vendorai", operation: "identity_reference_analysis", analysis });
+  } catch (error) {
+    req.log.warn({ err: error, tenantId, identityId }, "identity-quality: reference analysis failed");
+    const message = error instanceof Error ? error.message : "Não foi possível analisar as referências";
+    const lower = message.toLowerCase();
+    const status = lower.includes("não encontrada") || lower.includes("não encontrado") ? 404 : lower.includes("ffmpeg") || lower.includes("ffprobe") ? 503 : 422;
+    res.status(status).json({ error: message, code: "IDENTITY_REFERENCE_ANALYSIS_FAILED" });
+  }
+});
+
+router.post("/tenants/:tenantId/media-engine/identities/:identityId/duble-evaluations", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const identityId = String(req.params["identityId"]);
+  const ratings = asRecord(req.body?.ratings);
+  const testAssetId = nonEmptyString(req.body?.testAssetId);
+  const notes = nonEmptyString(req.body?.notes);
+  try {
+    const evaluation = await saveVendorAiDubleEvaluation({
+      tenantId,
+      identityId,
+      testAssetId,
+      ratings: Object.fromEntries(Object.entries(ratings).map(([key, value]) => [key, Number(value)])),
+      notes,
+      userId: req.user?.sub ?? null,
+    });
+    res.status(201).json({ provider: "vendorai", operation: "duble_evaluation", evaluation });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível salvar a avaliação";
+    res.status(message.toLowerCase().includes("não encontrada") ? 404 : 422).json({ error: message, code: "DUBLE_EVALUATION_INVALID" });
   }
 });
 
