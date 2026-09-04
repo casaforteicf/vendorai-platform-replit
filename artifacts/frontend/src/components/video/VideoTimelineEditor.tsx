@@ -146,6 +146,7 @@ type VideoClip = {
   transitionOut?: TransitionType;
   transitionDuration?: number;
   motion?: ClipMotion;
+  beatLocked?: boolean;
 };
 
 type EditorSnapshot = {
@@ -217,7 +218,19 @@ type MusicRecommendation = {
 };
 
 type BeatStep = 1 | 2 | 4;
+type BeatSyncStrength = "light" | "balanced" | "aggressive";
 type AudioMixPreset = "voice" | "balanced" | "institutional" | "music";
+
+type BeatCutPreview = {
+  clipId: string;
+  nextClipId: string;
+  index: number;
+  boundary: number;
+  target: number;
+  delta: number;
+  downbeat: boolean;
+  manual: boolean;
+};
 
 type MusicVolumePoint = {
   id: string;
@@ -232,6 +245,7 @@ type BeatAnalysis = {
   confidence: number;
   source: "audio" | "metadata";
   waveform: number[];
+  downbeatIndex: number;
 };
 
 type LocatedClip = {
@@ -905,12 +919,29 @@ function analyzeAudioBufferBeats(buffer: AudioBuffer, bpmHint?: number | null): 
     }
   }
 
+  const beatBuckets = [0, 0, 0, 0];
+  const beatCounts = [0, 0, 0, 0];
+  let beatOrdinal = 0;
+  for (let time = bestOffset; time < duration; time += period) {
+    const index = Math.min(energies.length - 1, Math.max(0, Math.round(time / windowDuration)));
+    const bucket = beatOrdinal % 4;
+    beatBuckets[bucket] += Math.max(0, (energies[index] ?? 0) - mean);
+    beatCounts[bucket] += 1;
+    beatOrdinal += 1;
+  }
+  let downbeatIndex = 0;
+  let downbeatScore = Number.NEGATIVE_INFINITY;
+  for (let bucket = 0; bucket < 4; bucket += 1) {
+    const score = beatBuckets[bucket] / Math.max(1, beatCounts[bucket]);
+    if (score > downbeatScore) { downbeatScore = score; downbeatIndex = bucket; }
+  }
   return {
     bpm: Math.round(bpm * 10) / 10,
     offset: Math.round(bestOffset * 1000) / 1000,
     confidence: Math.round(clamp(correlationConfidence, 0.2, 0.98) * 100) / 100,
     source: "audio",
     waveform: buildWaveformSamples(buffer),
+    downbeatIndex,
   };
 }
 
@@ -1097,6 +1128,9 @@ export default function VideoTimelineEditor() {
   const [beatAnalyzing, setBeatAnalyzing] = useState(false);
   const [beatStep, setBeatStep] = useState<BeatStep>(2);
   const [showBeatMarkers, setShowBeatMarkers] = useState(true);
+  const [beatSyncStrength, setBeatSyncStrength] = useState<BeatSyncStrength>("balanced");
+  const [manualBeatMarkers, setManualBeatMarkers] = useState<number[]>([]);
+  const [syncVisualAccents, setSyncVisualAccents] = useState(true);
   const [duckingEnabled, setDuckingEnabled] = useState(true);
   const [duckingReduction, setDuckingReduction] = useState(62);
   const [duckingThresholdPct, setDuckingThresholdPct] = useState(5);
@@ -1154,14 +1188,62 @@ export default function VideoTimelineEditor() {
     setMusicVolumePoints((current) => [...current.filter((point) => Math.abs(point.time - time) > 0.08), { id: uid("music-volume"), time, value: musicVolume }].sort((a, b) => a.time - b.time));
   }, [musicEnd, musicStart, musicVolume, timelineTime]);
 
-  const beatTimes = useMemo(() => {
+  const rawBeatTimes = useMemo(() => {
     if (!activeBeatAnalysis || musicMode === "none") return [];
     const sourceDuration = Math.max(0.1, musicEnd - musicStart, realProjectDuration - musicStart);
     return buildBeatTimes(activeBeatAnalysis.bpm, activeBeatAnalysis.offset, sourceDuration)
-      .filter((_, index) => index % beatStep === 0)
       .map((time) => musicStart + time)
       .filter((time) => time >= 0 && time <= realProjectDuration + 0.001 && time <= musicEnd + 0.001);
-  }, [activeBeatAnalysis, beatStep, musicEnd, musicMode, musicStart, realProjectDuration]);
+  }, [activeBeatAnalysis, musicEnd, musicMode, musicStart, realProjectDuration]);
+  const beatTimes = useMemo(() => rawBeatTimes.filter((_, index) => index % beatStep === 0), [beatStep, rawBeatTimes]);
+  const downbeatTimes = useMemo(() => activeBeatAnalysis ? rawBeatTimes.filter((_, index) => index % 4 === activeBeatAnalysis.downbeatIndex) : [], [activeBeatAnalysis, rawBeatTimes]);
+  const effectiveBeatCandidates = useMemo(() => {
+    const values = [...beatTimes, ...downbeatTimes, ...manualBeatMarkers]
+      .filter((time) => time >= 0 && time <= realProjectDuration)
+      .sort((a, b) => a - b);
+    return values.filter((time, index) => index === 0 || Math.abs(time - values[index - 1]!) > 0.012);
+  }, [beatTimes, downbeatTimes, manualBeatMarkers, realProjectDuration]);
+  const beatCutPreview = useMemo<BeatCutPreview[]>(() => {
+    if (!activeBeatAnalysis || effectiveBeatCandidates.length === 0 || clips.length < 2) return [];
+    const working = clips.map((clip) => ({ ...clip }));
+    const period = 60 / activeBeatAnalysis.bpm;
+    const config = beatSyncStrength === "light"
+      ? { cap: 0.18, factor: 0.24 }
+      : beatSyncStrength === "aggressive"
+        ? { cap: 0.5, factor: 0.62 }
+        : { cap: 0.34, factor: 0.42 };
+    const tolerance = Math.min(config.cap, period * beatStep * config.factor);
+    const preview: BeatCutPreview[] = [];
+    for (let index = 0; index < working.length - 1; index += 1) {
+      const previous = working[index];
+      const nextClip = working[index + 1];
+      if (!previous || !nextClip || previous.beatLocked || nextClip.beatLocked) continue;
+      const boundary = clipStartAt(index + 1, working);
+      let target = effectiveBeatCandidates[0] ?? boundary;
+      let distance = Math.abs(target - boundary);
+      for (const candidate of effectiveBeatCandidates) {
+        const candidateDistance = Math.abs(candidate - boundary);
+        if (candidateDistance < distance) { target = candidate; distance = candidateDistance; }
+      }
+      if (distance > tolerance) continue;
+      const proposedTrimOut = clamp(previous.trimOut + (target - boundary), previous.trimIn + 0.25, previous.sourceDuration);
+      const delta = proposedTrimOut - previous.trimOut;
+      if (Math.abs(delta) < 0.015) continue;
+      const appliedTarget = boundary + delta;
+      preview.push({
+        clipId: previous.id,
+        nextClipId: nextClip.id,
+        index,
+        boundary,
+        target: appliedTarget,
+        delta,
+        downbeat: downbeatTimes.some((time) => Math.abs(time - target) < 0.025),
+        manual: manualBeatMarkers.some((time) => Math.abs(time - target) < 0.025),
+      });
+      working[index] = { ...previous, trimOut: proposedTrimOut };
+    }
+    return preview;
+  }, [activeBeatAnalysis, beatStep, beatSyncStrength, clips, downbeatTimes, effectiveBeatCandidates, manualBeatMarkers]);
   const musicRecommendationProfile = useMemo(
     () => buildMusicRecommendationProfile(channel, projectTitle, layers),
     [channel, layers, projectTitle],
