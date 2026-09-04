@@ -1,0 +1,21 @@
+/*
+ * VendorAI compact page titles.
+ *
+ * Keep authenticated screens on the same title scale. Dashboard had a
+ * dedicated responsive override while other pages inherited the larger h1
+ * token, which made Dashboard, Central de Trabalho and Prospector feel visually
+ * larger than the rest of the product.
+ */
+main.vendor-scrollbar .vendor-page-canvas h1,
+main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl {
+  font-size: 1.375rem !important; /* 22px */
+  line-height: 1.25 !important;
+}
+
+@media (max-width: 767px) {
+  main.vendor-scrollbar .vendor-page-canvas h1,
+  main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl {
+    font-size: 1.25rem !important; /* 20px */
+    line-height: 1.25 !important;
+  }
+}
