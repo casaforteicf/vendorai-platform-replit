@@ -7,8 +7,9 @@ const ALLOWED_PROJECT_KINDS = new Set(["video", "reel", "story", "feed", "audio"
  * existente. O tipo funcional mais rico (site/ad/message) fica em context.executorKind,
  * enquanto o projeto é persistido como kind=mixed sem migration paralela.
  *
- * Também remove o botão legado de lote parcial (que só produzia formatos orgânicos)
- * para não coexistir com o novo fluxo "Produzir plano completo".
+ * Também remove o lote legado parcial e impede que "Abrir executor" navegue
+ * para uma tela vazia: no modo Plano ele abre o painel Produção real, que conhece
+ * o rascunho/job efetivamente materializado e oferece o link correto.
  */
 export function MediaPlanProductionCompatibilityBridge() {
   useEffect(() => {
@@ -47,9 +48,13 @@ export function MediaPlanProductionCompatibilityBridge() {
 
     window.fetch = guardedFetch;
 
-    const syncLegacyBatchButton = () => {
+    const isPlanQueue = () => {
       const params = new URLSearchParams(window.location.search);
-      const onPlanQueue = window.location.pathname === "/content" && params.get("mode") !== "avulso";
+      return window.location.pathname === "/content" && params.get("mode") !== "avulso";
+    };
+
+    const syncLegacyBatchButton = () => {
+      const onPlanQueue = isPlanQueue();
       document.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
         const label = (button.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
         const isLegacyBatch = label.startsWith("produzir automaticamente") || /^\d+\/\d+$/.test(label);
@@ -63,15 +68,34 @@ export function MediaPlanProductionCompatibilityBridge() {
       });
     };
 
+    const redirectLegacyExecutor = (event: MouseEvent) => {
+      if (!isPlanQueue()) return;
+      const target = event.target instanceof Element ? event.target.closest("button") as HTMLButtonElement | null : null;
+      if (!target) return;
+      const label = (target.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+      if (label !== "abrir executor") return;
+
+      const productionButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+        .find((button) => (button.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase().startsWith("produção real"));
+      if (!productionButton) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      productionButton.click();
+    };
+
     syncLegacyBatchButton();
     const observer = new MutationObserver(syncLegacyBatchButton);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     const timer = window.setInterval(syncLegacyBatchButton, 700);
+    document.addEventListener("click", redirectLegacyExecutor, true);
 
     return () => {
       if (window.fetch === guardedFetch) window.fetch = previousFetch;
       observer.disconnect();
       window.clearInterval(timer);
+      document.removeEventListener("click", redirectLegacyExecutor, true);
       document.querySelectorAll<HTMLButtonElement>("button[data-vendorai-legacy-batch-hidden='true']").forEach((button) => {
         button.style.removeProperty("display");
         delete button.dataset.vendoraiLegacyBatchHidden;
