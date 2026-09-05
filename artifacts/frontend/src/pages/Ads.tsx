@@ -1429,7 +1429,7 @@ export default function Ads() {
       <Dialog open={!!reservationDecision} onOpenChange={(value) => !value && setReservationDecision(null)}>
         <DialogContent><DialogHeader><DialogTitle>Atualizar negociação do veículo</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div><Label>Decisão</Label><Select value={decision} onValueChange={(v) => setDecision(v as typeof v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manter">Manter nesta etapa por mais 48h</SelectItem><SelectItem value="avancar">Avançar para proposta</SelectItem><SelectItem value="perdido">Marcar como perdido e liberar veículo</SelectItem></SelectContent></Select></div>
+            <div><Label>Decisão</Label><Select value={decision} onValueChange={(v) => setDecision(v as typeof decision)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manter">Manter nesta etapa por mais 48h</SelectItem><SelectItem value="avancar">Avançar para proposta</SelectItem><SelectItem value="perdido">Marcar como perdido e liberar veículo</SelectItem></SelectContent></Select></div>
             <div><Label>Justificativa obrigatória</Label><Textarea value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="Descreva o contato, o retorno do cliente e o próximo passo..." /></div>
             <Button className="w-full" disabled={justification.trim().length < 10 || decidirReserva.isPending} onClick={() => decidirReserva.mutate()}>Registrar decisão</Button>
           </div>
