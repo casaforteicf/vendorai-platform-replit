@@ -66,6 +66,8 @@ export { MarketingPageContextSource, toMarketingAgentRuntimeContext } from './ma
 export type { MarketingPageContext } from './marketing-context'
 export { calculateDesignQaScore, validateCreativeBrief } from './creative-design'
 export type { BrandProfile, CreativeBrief, DesignQaResult } from './creative-design'
+export { buildWebCreativeRuntime, getWebCreativeGuidance } from './web-runtime'
+export type { WebSurface, WebCreativeGuidance, WebCreativeRuntime } from './web-runtime'
 export { routeSignal, routeSignals } from './intelligence-routing'
 export type { BusinessSignal, SignalDomain, OpportunityTarget, RoutedOpportunity } from './intelligence-routing'
 
