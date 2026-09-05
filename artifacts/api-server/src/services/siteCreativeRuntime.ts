@@ -51,8 +51,6 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
     productName: input.productName ?? null,
   });
 
-  // Learning de mídia paga é orientação, não dependência operacional.
-  // Falhas em Ads/CRM nunca devem bloquear a geração de Site/LP.
   let paidMediaLearning = '';
   try {
     paidMediaLearning = await buildPaidMediaLearningPromptBlock(input.tenantId);
@@ -60,10 +58,7 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
     paidMediaLearning = '';
   }
 
-  return {
-    ...runtime,
-    promptContext: runtime.promptContext + paidMediaLearning,
-  };
+  return { ...runtime, promptContext: runtime.promptContext + paidMediaLearning };
 }
 
 export function enrichSiteGeneratorServicesContext(existingServices: unknown, promptContext: string): string {
