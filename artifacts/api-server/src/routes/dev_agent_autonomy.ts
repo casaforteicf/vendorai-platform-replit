@@ -31,7 +31,12 @@ const CRITICAL_PATH_PATTERNS = [
   /terraform/i,
   /docker/i,
   /rls/i,
+  /(^|\/)\.env/i,
 ];
+
+const CREATABLE_TEXT_EXTENSIONS = new Set([
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".css", ".json", ".md", ".txt", ".html", ".svg",
+]);
 
 const VENDORAI_VERCEL_CONTEXTS = new Set([
   "vendorai-platform-replit-frontend",
@@ -54,7 +59,8 @@ REGRAS OBRIGATÓRIAS:
 - O PARECER DO CONSELHO DE ESPECIALISTAS recebido também é obrigatório e deve orientar riscos e validação.
 - Trabalhe somente no repositório configurado do VendorAI.
 - Nunca altere main/master diretamente.
-- Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, altere apenas o necessário, crie PR e verifique o status.
+- Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, altere apenas o necessário, revise o diff da branch, crie PR e verifique o status.
+- Antes de criar arquivo novo, procure se já existe fluxo/componente equivalente. Só crie arquivo quando o plano realmente exigir e não houver alternativa coerente existente.
 - Faça mudanças pequenas, reversíveis e coerentes com a arquitetura existente.
 - Não crie módulos paralelos quando já existir fluxo equivalente.
 - Nunca delete arquivos ou dados.
@@ -85,7 +91,7 @@ async function gh(path: string, init?: RequestInit) {
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Agent/2.0",
+      "User-Agent": "VendorAI-Dev-Agent/3.0",
       ...(init?.headers ?? {}),
     },
   });
@@ -106,12 +112,28 @@ function normalizeBranch(input: string) {
   return branch;
 }
 
+function assertSafePath(path: string, allowRoot = false) {
+  if ((!allowRoot && !path) || path.startsWith("/") || path.includes("..")) throw new Error("Caminho inválido");
+}
+
 function assertEditablePath(path: string) {
-  if (!path || path.startsWith("/") || path.includes("..")) throw new Error("Caminho inválido");
+  assertSafePath(path);
   if (CRITICAL_PATH_PATTERNS.some((pattern) => pattern.test(path))) {
     const error = new Error(`approval_required: alteração crítica bloqueada em ${path}`);
     (error as any).code = "APPROVAL_REQUIRED";
     throw error;
+  }
+}
+
+function assertCreatablePath(path: string) {
+  assertEditablePath(path);
+  const slash = path.lastIndexOf("/");
+  const filename = slash >= 0 ? path.slice(slash + 1) : path;
+  if (!filename || filename.startsWith(".")) throw new Error("Criação autônoma de arquivo oculto não é permitida");
+  const dot = filename.lastIndexOf(".");
+  const extension = dot >= 0 ? filename.slice(dot).toLowerCase() : "";
+  if (!CREATABLE_TEXT_EXTENSIONS.has(extension)) {
+    throw new Error(`Extensão não permitida para criação autônoma: ${extension || "sem extensão"}`);
   }
 }
 
@@ -152,11 +174,31 @@ async function searchCode(query: string) {
 
 async function getFile(path: string, ref = "main") {
   const { owner, repo } = githubConfig();
+  assertSafePath(path);
   const data = await gh(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path).replace(/%2F/g, "/")}?ref=${encodeURIComponent(ref)}`);
   if (data.type !== "file" || typeof data.content !== "string") throw new Error("Arquivo não encontrado ou não é arquivo de texto");
   const content = Buffer.from(data.content.replace(/\n/g, ""), "base64").toString("utf8");
   if (content.length > 120000) throw new Error("Arquivo grande demais para edição autônoma");
   return { path, ref, sha: data.sha, content };
+}
+
+async function listDirectory(path = "", ref = "main") {
+  const { owner, repo } = githubConfig();
+  assertSafePath(path, true);
+  const encodedPath = path ? `/${encodeURIComponent(path).replace(/%2F/g, "/")}` : "";
+  const data = await gh(`/repos/${owner}/${repo}/contents${encodedPath}?ref=${encodeURIComponent(ref)}`);
+  if (!Array.isArray(data)) throw new Error("Caminho não é um diretório");
+  return {
+    path: path || "/",
+    ref,
+    items: data.slice(0, 100).map((item: any) => ({
+      type: item.type,
+      name: item.name,
+      path: item.path,
+      size: Number(item.size ?? 0),
+    })),
+    truncated: data.length > 100,
+  };
 }
 
 async function createBranch(branchInput: string) {
@@ -192,12 +234,60 @@ async function updateFile(args: { path: string; content: string; branch: string;
       branch,
     }),
   });
-  return { path: args.path, branch, commitSha: data.commit?.sha, contentSha: data.content?.sha };
+  return { path: args.path, branch, commitSha: data.commit?.sha, contentSha: data.content?.sha, created: false };
+}
+
+async function createFile(args: { path: string; content: string; branch: string; message: string }) {
+  const { owner, repo } = githubConfig();
+  const branch = normalizeBranch(args.branch);
+  assertCreatablePath(args.path);
+  if (args.content.length > 120000) throw new Error("Conteúdo grande demais para criação autônoma");
+
+  try {
+    await getFile(args.path, branch);
+    throw new Error("Arquivo já existe; use update_file em vez de create_file");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/not found|arquivo não encontrado/i.test(message)) throw error;
+  }
+
+  const data = await gh(`/repos/${owner}/${repo}/contents/${encodeURIComponent(args.path).replace(/%2F/g, "/")}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      message: args.message.slice(0, 120),
+      content: Buffer.from(args.content, "utf8").toString("base64"),
+      branch,
+    }),
+  });
+  return { path: args.path, branch, commitSha: data.commit?.sha, contentSha: data.content?.sha, created: true };
+}
+
+async function compareBranch(branchInput: string) {
+  const { owner, repo } = githubConfig();
+  const branch = normalizeBranch(branchInput);
+  const data = await gh(`/repos/${owner}/${repo}/compare/main...${encodeURIComponent(branch).replace(/%2F/g, "/")}`);
+  return {
+    branch,
+    status: String(data.status ?? "unknown"),
+    aheadBy: Number(data.ahead_by ?? 0),
+    behindBy: Number(data.behind_by ?? 0),
+    totalCommits: Number(data.total_commits ?? 0),
+    files: (data.files ?? []).slice(0, 50).map((file: any) => ({
+      path: String(file.filename ?? ""),
+      status: String(file.status ?? "modified"),
+      additions: Number(file.additions ?? 0),
+      deletions: Number(file.deletions ?? 0),
+      changes: Number(file.changes ?? 0),
+      patch: typeof file.patch === "string" ? file.patch.slice(0, 5000) : undefined,
+    })),
+  };
 }
 
 async function createPullRequest(args: { title: string; body: string; head: string }) {
   const { owner, repo } = githubConfig();
   const head = normalizeBranch(args.head);
+  const diff = await compareBranch(head);
+  if (!diff.files.length || diff.aheadBy < 1) throw new Error("Branch sem mudanças para abrir PR");
   const data = await gh(`/repos/${owner}/${repo}/pulls`, {
     method: "POST",
     body: JSON.stringify({
@@ -208,7 +298,7 @@ async function createPullRequest(args: { title: string; body: string; head: stri
       draft: false,
     }),
   });
-  return { number: data.number, url: data.html_url, headSha: data.head?.sha, mergeable: data.mergeable };
+  return { number: data.number, url: data.html_url, headSha: data.head?.sha, mergeable: data.mergeable, changedFiles: diff.files.map((file: any) => file.path) };
 }
 
 async function getPullRequest(number: number) {
@@ -307,6 +397,14 @@ const tools: any[] = [
   {
     type: "function",
     function: {
+      name: "list_directory",
+      description: "Lista arquivos e subdiretórios de um caminho do repositório para entender a arquitetura antes de editar.",
+      parameters: { type: "object", properties: { path: { type: "string" }, ref: { type: "string" } }, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "create_branch",
       description: "Cria branch de trabalho a partir de main. O nome deve começar com dev-ia/.",
       parameters: { type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false },
@@ -333,8 +431,34 @@ const tools: any[] = [
   {
     type: "function",
     function: {
+      name: "create_file",
+      description: "Cria um novo arquivo textual numa branch dev-ia/ somente em caminho não crítico. Use apenas quando não existir fluxo equivalente.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          content: { type: "string" },
+          branch: { type: "string" },
+          message: { type: "string" },
+        },
+        required: ["path", "content", "branch", "message"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "compare_branch",
+      description: "Compara uma branch dev-ia/ com main e retorna arquivos, estatísticas e patches resumidos. Deve ser usado antes de abrir PR.",
+      parameters: { type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "create_pr",
-      description: "Abre PR de uma branch dev-ia/ para main.",
+      description: "Abre PR de uma branch dev-ia/ para main somente quando a branch realmente contém mudanças.",
       parameters: {
         type: "object",
         properties: { title: { type: "string" }, body: { type: "string" }, head: { type: "string" } },
@@ -365,8 +489,11 @@ async function runTool(name: string, args: any) {
   switch (name) {
     case "search_code": return searchCode(String(args.query ?? ""));
     case "get_file": return getFile(String(args.path ?? ""), String(args.ref ?? "main"));
+    case "list_directory": return listDirectory(String(args.path ?? ""), String(args.ref ?? "main"));
     case "create_branch": return createBranch(String(args.branch ?? ""));
     case "update_file": return updateFile({ path: String(args.path ?? ""), content: String(args.content ?? ""), branch: String(args.branch ?? ""), message: String(args.message ?? "Dev IA update") });
+    case "create_file": return createFile({ path: String(args.path ?? ""), content: String(args.content ?? ""), branch: String(args.branch ?? ""), message: String(args.message ?? "Dev IA create file") });
+    case "compare_branch": return compareBranch(String(args.branch ?? ""));
     case "create_pr": return createPullRequest({ title: String(args.title ?? "Dev IA change"), body: String(args.body ?? ""), head: String(args.head ?? "") });
     case "get_pr": return getPullRequest(Number(args.number));
     case "merge_pr": return mergePullRequest(Number(args.number));
@@ -475,7 +602,12 @@ router.post("/support/dev/execute", async (req, res) => {
         try { args = JSON.parse(call.function?.arguments ?? "{}"); } catch { args = {}; }
         try {
           const result = await runTool(name, args);
-          actions.push({ tool: name, ok: true, detail: name === "get_file" ? { path: result.path, ref: result.ref, sha: result.sha } : result });
+          const compactDetail = name === "get_file"
+            ? { path: result.path, ref: result.ref, sha: result.sha }
+            : name === "compare_branch"
+              ? { branch: result.branch, status: result.status, aheadBy: result.aheadBy, behindBy: result.behindBy, totalCommits: result.totalCommits, files: result.files.map((file: any) => ({ path: file.path, status: file.status, additions: file.additions, deletions: file.deletions, changes: file.changes })) }
+              : result;
+          actions.push({ tool: name, ok: true, detail: compactDetail });
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
         } catch (error) {
           const messageText = error instanceof Error ? error.message : "Erro desconhecido";
