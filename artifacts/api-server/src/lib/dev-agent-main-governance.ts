@@ -45,6 +45,20 @@ export function classifyGithubHttpFailure(status: number) {
   return `GITHUB_HTTP_${status}`;
 }
 
+export function githubGovernanceReadinessReason(lastError: string | null | undefined) {
+  const error = String(lastError ?? "").trim();
+  if (error === "GITHUB_CREDENTIAL_INVALID") {
+    return "Credencial GitHub inválida ou expirada: renove GITHUB_DEV_TOKEN ou GITHUB_PERSONAL_ACCESS_TOKEN no Railway antes de liberar execução autônoma.";
+  }
+  if (error === "GITHUB_DEV_TOKEN_MISSING") {
+    return "Credencial GitHub ausente: configure GITHUB_DEV_TOKEN ou GITHUB_PERSONAL_ACCESS_TOKEN no Railway antes de liberar execução autônoma.";
+  }
+  if (error) {
+    return `GitHub indisponível (${error}): o agente não pode investigar ou alterar o repositório com segurança.`;
+  }
+  return "GitHub indisponível: o agente não pode investigar ou alterar o repositório com segurança.";
+}
+
 async function gh(path: string) {
   const { token } = githubConfig();
   const response = await fetch(`https://api.github.com${path}`, {
