@@ -27,20 +27,22 @@ export interface MarketingAgentPlan {
   guardrails: string[];
 }
 
+const DEFAULT_MARKETING_CHANNELS: ChannelId[] = ["meta", "instagram", "google-search", "whatsapp", "email"];
 const dedupe = <T,>(values: T[]): T[] => [...new Set(values)];
+const isChannelId = (value: string): value is ChannelId => value in CHANNEL_REGISTRY;
+const isSkillId = (value: string): value is SkillId => value in SKILL_REGISTRY;
 
 export function resolveMarketingAgentPlan(context: MarketingAgentRuntimeContext): MarketingAgentPlan {
   const agent = AGENT_REGISTRY.marketing;
   const vertical = context.verticalId ? getVerticalBlueprint(context.verticalId) : undefined;
-  const channels = dedupe(
-    context.selectedChannels?.length
-      ? context.selectedChannels
-      : vertical?.marketing.recommendedChannels ?? ["meta", "instagram", "google-search", "whatsapp", "email"],
+  const recommendedChannels = (vertical?.marketing.recommendedChannels ?? DEFAULT_MARKETING_CHANNELS).filter(isChannelId);
+  const channels: ChannelId[] = dedupe(
+    context.selectedChannels?.length ? context.selectedChannels : recommendedChannels,
   );
 
-  const channelSkills = channels.flatMap((channel) => CHANNEL_REGISTRY[channel]?.skillIds ?? []);
-  const verticalSkills = vertical?.marketing.skillIds ?? [];
-  const skills = dedupe([...agent.skillIds, ...verticalSkills, ...channelSkills]).filter((skillId) => Boolean(SKILL_REGISTRY[skillId]));
+  const channelSkills: SkillId[] = channels.flatMap((channel) => CHANNEL_REGISTRY[channel].skillIds);
+  const verticalSkills = (vertical?.marketing.skillIds ?? []).filter(isSkillId);
+  const skills: SkillId[] = dedupe<SkillId>([...agent.skillIds, ...verticalSkills, ...channelSkills]).filter(isSkillId);
 
   const autonomy: MarketingAgentAutonomy = {
     ...DEFAULT_MARKETING_AGENT_AUTONOMY,
