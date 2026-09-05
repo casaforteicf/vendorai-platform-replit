@@ -66,6 +66,17 @@ type MemoryEntry = {
   confidence: number;
 };
 
+type ExecutionMemoryEntry = {
+  requestId: string;
+  route: string;
+  recordedAt: string;
+  status: string;
+  summary: string;
+  mergeSha?: string;
+  failures: string[];
+  evidence: string[];
+};
+
 type Props = {
   active: boolean;
   authHeaders: () => { "Content-Type": string; Authorization?: string };
@@ -83,6 +94,7 @@ const layers = [
   "Validador Pós-Deploy",
   "Sentinela de Produção",
   "Watchdog 24h",
+  "Memória de Incidentes",
 ];
 
 function shortSha(value: string | null | undefined) {
@@ -110,10 +122,21 @@ function severityClass(severity: EngineeringAlert["severity"]) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function incidentStatus(entry: ExecutionMemoryEntry) {
+  return entry.status === "production_recovered" ? "Recuperado" : "Incidente";
+}
+
+function incidentClass(entry: ExecutionMemoryEntry) {
+  return entry.status === "production_recovered"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+    : "border-red-200 bg-red-50 text-red-900";
+}
+
 export default function DevEngineeringCenterTab({ active, authHeaders }: Props) {
   const [context, setContext] = useState<OperationalContext | null>(null);
   const [validation, setValidation] = useState<ProductionValidation | null>(null);
   const [memory, setMemory] = useState<MemoryEntry[]>([]);
+  const [incidents, setIncidents] = useState<ExecutionMemoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,6 +165,15 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
       setContext(contextData?.context ?? null);
       setValidation(validationData ?? null);
       setMemory(Array.isArray(memoryData?.memory) ? memoryData.memory.slice().reverse().slice(0, 8) : []);
+      setIncidents(
+        Array.isArray(memoryData?.executionMemory)
+          ? memoryData.executionMemory
+              .filter((item: ExecutionMemoryEntry) => item?.status === "production_incident" || item?.status === "production_recovered")
+              .slice()
+              .reverse()
+              .slice(0, 8)
+          : [],
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar Centro de Engenharia");
     } finally {
@@ -285,6 +317,30 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
           </div>
         </section>
       ) : null}
+
+      <section className="mt-4 rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2"><Siren className="h-4 w-4 text-slate-700" /><h4 className="text-sm font-semibold text-slate-900">Timeline de incidentes</h4></div>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{incidents.length} recentes</span>
+        </div>
+        <div className="mt-3 space-y-2">
+          {incidents.length === 0 ? (
+            <p className="text-xs text-slate-500">Nenhum incidente confirmado foi registrado pela Sentinela.</p>
+          ) : incidents.map((item) => (
+            <div key={`${item.requestId}-${item.status}-${item.recordedAt}`} className={`rounded-xl border p-3 ${incidentClass(item)}`}>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide">{incidentStatus(item)}</span>
+                <span className="text-[10px] opacity-60">{new Date(item.recordedAt).toLocaleString("pt-BR")}</span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed">{item.summary}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] opacity-70">
+                {item.mergeSha ? <span>main {shortSha(item.mergeSha)}</span> : null}
+                {item.failures?.slice(0, 3).map((failure) => <span key={failure}>· {failure}</span>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="mt-4 rounded-2xl border bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-600" /><h4 className="text-sm font-semibold text-slate-900">Memória recente</h4></div>
