@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startServerRuntimeSentinel } from "./lib/dev-agent-server-runtime.js";
 import { startScheduler } from "./jobs/scheduler.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
 import { runBehaviorIntentSync } from "./jobs/behaviorIntentSync.js";
@@ -51,6 +52,7 @@ async function start() {
     startMediaVideoBatchRunner(logger);
     startMediaVideoGenerateRunner(logger);
     startProductionSentinel(logger);
+    startServerRuntimeSentinel(logger);
 
     // Lifecycle de aquisição, trial e assinatura: primeiro reconcilia sinais
     // financeiros já persistidos, depois converge CRM/assinatura e só então
