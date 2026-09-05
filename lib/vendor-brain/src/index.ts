@@ -70,6 +70,7 @@ export type {
   VerticalIntelligenceBlueprint,
 } from './vertical-blueprint'
 
+// Marketing runtime / UI / channels
 export { resolveMarketingAgentPlan, getMarketingContextDescription } from './marketing-agent'
 export type { MarketingAgentRuntimeContext, MarketingAgentPlan } from './marketing-agent'
 export { MarketingPageContextSource, toMarketingAgentRuntimeContext } from './marketing-context'
@@ -80,12 +81,16 @@ export { inferMarketingSurface, buildMarketingAgentUiCard } from './marketing-ag
 export type { MarketingSurface, MarketingAgentUiCard } from './marketing-agent-ui'
 export { getChannelAdaptation, getChannelAdaptations } from './channel-adapters'
 export type { ChannelAdaptation, ChannelCampaignInput } from './channel-adapters'
+
+// Creative / Web
 export { calculateDesignQaScore, validateCreativeBrief } from './creative-design'
 export type { BrandProfile, CreativeBrief, DesignQaResult } from './creative-design'
 export { resolveBrandProfileFromBusinessSource, buildCreativeExecutionPlan, finalizeDesignQa } from './creative-runtime'
 export type { BusinessBrandSource, CreativeExecutionPlan, DesignQaInput } from './creative-runtime'
 export { buildWebCreativeRuntime, getWebCreativeGuidance } from './web-runtime'
 export type { WebSurface, WebCreativeGuidance, WebCreativeRuntime } from './web-runtime'
+
+// Intelligence / Observer / Business Agent
 export { routeSignal, routeSignals } from './intelligence-routing'
 export type { BusinessSignal, SignalDomain, OpportunityTarget, RoutedOpportunity } from './intelligence-routing'
 export { revenueScoutOpportunityToSignal, resolveRevenueScoutDecision } from './revenue-scout-bridge'
