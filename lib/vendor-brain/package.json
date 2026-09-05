@@ -11,6 +11,7 @@
     "./platform-foundation": "./src/platform-foundation.ts",
     "./vertical-blueprint": "./src/vertical-blueprint.ts",
     "./marketing-agent": "./src/marketing-agent.ts",
+    "./marketing-context": "./src/marketing-context.ts",
     "./creative-design": "./src/creative-design.ts",
     "./intelligence-routing": "./src/intelligence-routing.ts",
     "./engines/*": "./src/engines/*.ts",
