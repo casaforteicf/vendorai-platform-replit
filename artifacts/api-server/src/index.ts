@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { getServerRuntimeSnapshot, startServerRuntimeSentinel } from "./lib/dev-agent-server-runtime.js";
+import { getMainGovernanceSnapshot, startMainGovernanceGuard } from "./lib/dev-agent-main-governance.js";
 import { authenticate, requireRole } from "./middlewares/auth.js";
 import { startScheduler } from "./jobs/scheduler.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
@@ -39,6 +40,15 @@ app.get(
   },
 );
 
+app.get(
+  "/api/support/dev/main-governance",
+  authenticate,
+  requireRole("super_admin"),
+  (_req, res) => {
+    res.json({ success: true, mainGovernance: getMainGovernanceSnapshot() });
+  },
+);
+
 async function runStartupMigrations() {
   const result = await applyPendingMigrations(logger);
   if (result.applied.length > 0) {
@@ -63,6 +73,7 @@ async function start() {
     startMediaVideoBatchRunner(logger);
     startMediaVideoGenerateRunner(logger);
     startProductionSentinel(logger);
+    startMainGovernanceGuard(logger);
     startServerRuntimeSentinel(logger);
     startDevAgentSupportHandoff(logger);
 
