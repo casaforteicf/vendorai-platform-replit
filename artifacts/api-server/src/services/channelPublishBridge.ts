@@ -8,6 +8,7 @@ import { publishCampaignToMetaAds } from './meta-ads-campaign-publish';
 import { publishCampaignToGoogleAds } from './google-ads-campaign-publish';
 import { publishCampaignToGooglePmax } from './google-ads-pmax-publish';
 import { resolveGoogleCampaignFormat } from './google-ads-format';
+import { ensurePmaxCreativeImage } from './pmaxCreativeEnrichment';
 import { buildAdCreativeDesignQa } from './adCreativeQa';
 import { resolveMarketingAgentAutonomyPolicy } from './marketingAgentAutonomyPolicy';
 
@@ -60,6 +61,15 @@ async function resolveVerifiedCampaign(context: ChannelPublishContext) {
   return { campaign, effectiveChannel };
 }
 
+async function preparePerformanceMaxCreative(tenantId: string, campaignId: string, campaign: typeof adCampaignsTable.$inferSelect) {
+  const [creative] = await db.select().from(adCreativesTable).where(and(
+    eq(adCreativesTable.campaignId, campaignId),
+    eq(adCreativesTable.status, 'aprovado'),
+  )).orderBy(desc(adCreativesTable.geradoEm)).limit(1);
+  if (!creative) throw new Error('Aprove o criativo antes de publicar Performance Max.');
+  return ensurePmaxCreativeImage(tenantId, campaign, creative);
+}
+
 async function resolveCampaignDesignQa(context: ChannelPublishContext): Promise<DesignQaResult | null> {
   if (context.designQa) return context.designQa;
   const [creative] = await db.select().from(adCreativesTable).where(eq(adCreativesTable.campaignId, context.campaignId))
@@ -69,10 +79,15 @@ async function resolveCampaignDesignQa(context: ChannelPublishContext): Promise<
 }
 
 export async function publishCampaignThroughChannelRegistry<T extends ChannelPublishContext>(context: T) {
-  const { effectiveChannel } = await resolveVerifiedCampaign(context);
+  const { campaign, effectiveChannel } = await resolveVerifiedCampaign(context);
   const readiness = getChannelPublishReadiness(effectiveChannel);
   assertChannelCanPublish(effectiveChannel);
   if (readiness.definition.status !== 'active') throw new Error(`Canal ${readiness.definition.name} ainda não está ativo para publicação.`);
+
+  if (effectiveChannel === 'google-pmax') {
+    await preparePerformanceMaxCreative(context.tenantId, context.campaignId, campaign);
+  }
+
   const designQa = await resolveCampaignDesignQa({ ...context, channel: effectiveChannel });
   const autonomyPolicy = await assertPublishAuthorization(context, designQa);
 
