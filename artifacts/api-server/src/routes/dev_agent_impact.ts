@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { z } from "zod/v4";
+import validationRouter from "./dev_agent_validation";
 
 const router = Router();
+router.use(validationRouter);
 
 const impactSchema = z.object({
   requestId: z.string().min(1).max(120),
