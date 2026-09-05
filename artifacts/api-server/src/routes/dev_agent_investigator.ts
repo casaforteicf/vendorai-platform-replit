@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { getPlatformContext } from "./dev_agent_platform_context";
+import type { ExecutionMemoryEntry } from "./dev_agent_memory";
 
 const router = Router();
 
@@ -21,6 +22,16 @@ const investigateSchema = z.object({
 
 type CodeEvidence = { path: string; url?: string; excerpt: string };
 
+type PlaybookMatch = {
+  applicable: boolean;
+  requestId: string | null;
+  status: string | null;
+  confidence: number;
+  why: string;
+  reusableEvidence: string[];
+  mustRevalidate: string[];
+};
+
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
   const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
@@ -37,7 +48,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Investigator/2.1",
+      "User-Agent": "VendorAI-Dev-Investigator/2.2",
     },
   });
   const text = await response.text();
@@ -65,6 +76,52 @@ function requestTerms(request: string) {
     .split(/[^a-z0-9_-]+/)
     .filter((word) => word.length >= 4 && !stop.has(word))
     .slice(0, 4);
+}
+
+function normalizeOutcome(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s_-]+/g, " ");
+}
+
+function isProvenOutcome(entry: ExecutionMemoryEntry) {
+  return /recover|validat|success|complete|conclu|deploy/.test(normalizeOutcome(entry.status));
+}
+
+function noPlaybookMatch(why = "Nenhum playbook anterior comprovado foi validado para este caso."): PlaybookMatch {
+  return {
+    applicable: false,
+    requestId: null,
+    status: null,
+    confidence: 0,
+    why,
+    reusableEvidence: [],
+    mustRevalidate: [],
+  };
+}
+
+function normalizePlaybookMatch(value: any, candidates: ExecutionMemoryEntry[]): PlaybookMatch {
+  if (!value?.applicable) return noPlaybookMatch(String(value?.why ?? "Nenhum playbook foi considerado suficientemente semelhante.").slice(0, 1200));
+
+  const requestedId = String(value?.requestId ?? "").trim();
+  const candidate = candidates.find((entry) => entry.requestId === requestedId);
+  if (!candidate || !isProvenOutcome(candidate)) {
+    return noPlaybookMatch("O playbook sugerido pelo modelo não corresponde a uma execução anterior comprovada e foi descartado pelo backend.");
+  }
+
+  return {
+    applicable: true,
+    requestId: candidate.requestId,
+    status: candidate.status,
+    confidence: Math.max(0, Math.min(1, Number(value?.confidence ?? 0.5))),
+    why: String(value?.why ?? "Há semelhança com uma execução anterior validada.").slice(0, 1600),
+    reusableEvidence: candidate.evidence.slice(0, 6).map((item) => String(item).slice(0, 500)),
+    mustRevalidate: Array.isArray(value?.mustRevalidate)
+      ? value.mustRevalidate.slice(0, 8).map((item: unknown) => String(item).slice(0, 700))
+      : ["Confirmar no código atual que a causa e as dependências continuam equivalentes."],
+  };
 }
 
 async function searchPaths(query: string) {
@@ -97,6 +154,7 @@ Objetivos:
 - identificar quais arquivos realmente parecem relacionados ao pedido e à rota;
 - encontrar causa provável, dependências e riscos;
 - usar alterações recentes, PRs abertos, memória técnica e resultados reais de execuções anteriores para detectar regressões, trabalho duplicado ou decisões que já falharam;
+- avaliar explicitamente se existe um playbook anterior comprovado que realmente seja aplicável ao caso atual;
 - separar fato observado de hipótese;
 - indicar o que ainda precisa ser verificado;
 - não inventar logs, testes ou comportamento não presente nas evidências.
@@ -105,7 +163,9 @@ REGRAS:
 - platformContext.codeCandidates são pistas priorizadas; fatos de implementação vêm dos arquivos efetivamente lidos em files.
 - recentChanges pode explicar regressão recente, mas não prova causalidade sozinho.
 - relevantMemory é histórico técnico, não verdade absoluta; código atual prevalece.
-- relevantExecutionMemory registra resultados estruturados de execuções anteriores. Use falhas, arquivos alterados, PR/merge e motores usados como experiência operacional, nunca como prova de que o estado atual é idêntico.
+- relevantExecutionMemory vem ordenado para priorizar execuções anteriores comprovadas, seguido por lições de falha. Um playbook só pode ser considerado aplicável se você escolher exatamente um requestId presente nessa lista e o desfecho dele for positivo/validado/recuperado.
+- Mesmo quando houver playbook aplicável, nunca assuma que a implementação atual é idêntica. Liste em mustRevalidate o que precisa ser confirmado no código, testes, integrações ou runtime atual antes de reutilizar a solução.
+- Não copie automaticamente uma correção antiga. Reaproveite apenas evidências, padrões e validações que continuam compatíveis.
 - openRelatedPrs devem ser considerados para evitar criar correção paralela ou duplicada.
 
 Retorne SOMENTE JSON válido:
@@ -116,7 +176,14 @@ Retorne SOMENTE JSON válido:
   "relevantFiles": ["path"],
   "evidence": [{"path":"path","finding":"o que foi observado"}],
   "unknowns": ["o que ainda não sabemos"],
-  "recommendedNextStep": "próxima ação concreta"
+  "recommendedNextStep": "próxima ação concreta",
+  "playbookMatch": {
+    "applicable": false,
+    "requestId": null,
+    "confidence": 0.0,
+    "why": "por que é ou não aplicável",
+    "mustRevalidate": ["verificação obrigatória antes de reutilizar"]
+  }
 }`;
 
 function parseJson(text: string) {
@@ -177,6 +244,7 @@ router.post("/support/dev/investigate", async (req, res) => {
           evidence: [],
           unknowns: ["É necessário ampliar a busca no repositório ou inspecionar logs/APIs da tela."],
           recommendedNextStep: "Ampliar investigação antes de editar código.",
+          playbookMatch: noPlaybookMatch("Sem evidência atual de código, um histórico anterior não pode ser promovido a playbook aplicável."),
         },
         queries,
         platformContext,
@@ -203,7 +271,7 @@ router.post("/support/dev/investigate", async (req, res) => {
     try {
       const message = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 3000,
+        max_tokens: 3400,
         temperature: 0,
         system: INVESTIGATOR_PROMPT,
         messages: [{ role: "user", content: JSON.stringify(context) }],
@@ -216,7 +284,7 @@ router.post("/support/dev/investigate", async (req, res) => {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         temperature: 0,
-        max_tokens: 3000,
+        max_tokens: 3400,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: INVESTIGATOR_PROMPT },
@@ -227,6 +295,7 @@ router.post("/support/dev/investigate", async (req, res) => {
     }
 
     const analysis = parseJson(raw);
+    const playbookMatch = normalizePlaybookMatch(analysis?.playbookMatch, platformContext?.relevantExecutionMemory ?? []);
     const investigation = {
       summary: String(analysis?.summary ?? "Investigação concluída.").slice(0, 4000),
       likelyCause: String(analysis?.likelyCause ?? "indeterminada").slice(0, 3000),
@@ -235,6 +304,7 @@ router.post("/support/dev/investigate", async (req, res) => {
       evidence: Array.isArray(analysis?.evidence) ? analysis.evidence.slice(0, 14) : [],
       unknowns: Array.isArray(analysis?.unknowns) ? analysis.unknowns.slice(0, 10).map(String) : [],
       recommendedNextStep: String(analysis?.recommendedNextStep ?? "Revisar os achados antes de executar.").slice(0, 3000),
+      playbookMatch,
     };
 
     return res.json({ success: true, investigation, queries, engine, platformContext });
