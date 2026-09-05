@@ -1,9 +1,13 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { bugReportsTable, db } from "@workspace/db";
 import { executeDevAutonomousWork } from "../routes/dev_agent_autonomy.js";
+import { recordExecutionMemory } from "../routes/dev_agent_memory.js";
+import { validateProductionRevision } from "../routes/dev_agent_validation.js";
 
 const SUPPORT_HANDOFF_INTERVAL_MS = 30_000;
 const SUPPORT_HANDOFF_BATCH_SIZE = 3;
+const SUPPORT_VALIDATION_BATCH_SIZE = 5;
+const REVISION_MARKER = "DEV_IA_EXPECTED_REVISION=";
 
 let handoffTimer: NodeJS.Timeout | null = null;
 let handoffRunning = false;
@@ -43,21 +47,77 @@ async function claimTicket(id: string) {
 }
 
 function actionDetail(result: any, tool: string) {
-  const action = Array.isArray(result?.actions)
-    ? result.actions.find((item: any) => item?.tool === tool && item?.ok)
-    : null;
+  const actions = Array.isArray(result?.actions) ? result.actions : [];
+  const action = [...actions].reverse().find((item: any) => item?.tool === tool && item?.ok);
   return action?.detail ?? null;
+}
+
+function executionChangedFiles(result: any) {
+  const pr = actionDetail(result, "create_pr");
+  if (Array.isArray(pr?.changedFiles)) return pr.changedFiles.slice(0, 20).map((path: unknown) => String(path).slice(0, 300));
+
+  const compare = actionDetail(result, "compare_branch");
+  if (Array.isArray(compare?.files)) {
+    return compare.files.slice(0, 20).map((file: any) => String(file?.path ?? "").slice(0, 300)).filter(Boolean);
+  }
+
+  const writes = Array.isArray(result?.writeEvidence) ? result.writeEvidence : [];
+  return writes.slice(0, 20).map((item: any) => String(item?.path ?? "").slice(0, 300)).filter(Boolean);
+}
+
+function executionFailures(result: any) {
+  const failures = Array.isArray(result?.actions)
+    ? result.actions
+        .filter((action: any) => action?.ok === false)
+        .slice(-8)
+        .map((action: any) => sanitizeTechnicalText(`${String(action?.tool ?? "tool")}: ${String(action?.detail?.error ?? "falhou")}`).slice(0, 500))
+    : [];
+  if (result?.success === false && result?.error) failures.push(sanitizeTechnicalText(result.error).slice(0, 500));
+  return failures.slice(0, 8);
+}
+
+async function persistExecutorOutcome(report: typeof bugReportsTable.$inferSelect, result: any, route: string) {
+  const pr = actionDetail(result, "create_pr");
+  const merge = actionDetail(result, "merge_pr");
+  const changedFiles = executionChangedFiles(result);
+  const evidence = [
+    "source=support_handoff",
+    pr?.number ? `pr=${Number(pr.number)}` : "",
+    merge?.sha ? `merge=${String(merge.sha).slice(0, 12)}` : "",
+    merge?.postMergeValidation?.runtime ? `validation_runtime=${String(merge.postMergeValidation.runtime)}` : "",
+  ].filter(Boolean);
+
+  await recordExecutionMemory({
+    requestId: report.id,
+    route: route.slice(0, 500),
+    recordedAt: new Date().toISOString(),
+    status: String(result?.status ?? (result?.success === false ? "failed" : "completed")).slice(0, 60),
+    summary: sanitizeTechnicalText(result?.summary ?? result?.error ?? "Execução do chamado concluída sem resumo.").slice(0, 1200),
+    ...(pr?.number ? { pullRequestNumber: Number(pr.number) } : {}),
+    ...(merge?.sha ? { mergeSha: String(merge.sha).slice(0, 64) } : {}),
+    changedFiles,
+    engines: Array.isArray(result?.executor?.engines) ? result.executor.engines.slice(0, 5).map((engine: unknown) => String(engine).slice(0, 80)) : [],
+    failures: executionFailures(result),
+    evidence: evidence.slice(0, 8),
+  });
+}
+
+function expectedRevisionFromDiagnostic(value: unknown) {
+  const match = String(value ?? "").match(/DEV_IA_EXPECTED_REVISION=([0-9a-f]{7,64})/i);
+  return match?.[1]?.toLowerCase() ?? null;
 }
 
 function buildExecutionDiagnostic(result: any) {
   const pr = actionDetail(result, "create_pr");
   const merge = actionDetail(result, "merge_pr");
+  const expectedRevision = merge?.merged && merge?.sha ? String(merge.sha).toLowerCase() : "";
   const lines = [
     "Dev IA assumiu automaticamente este chamado e usou o executor técnico oficial da plataforma.",
     `Estado do executor: ${String(result?.status ?? "unknown")}`,
     result?.summary ? `Resumo: ${sanitizeTechnicalText(result.summary)}` : "",
     pr?.number ? `PR criado: #${pr.number}${pr.url ? ` ${pr.url}` : ""}` : "",
     merge?.merged ? `Merge realizado: ${String(merge.sha ?? "").slice(0, 12)}` : "",
+    expectedRevision ? `${REVISION_MARKER}${expectedRevision}` : "",
     merge?.postMergeValidation?.required
       ? `Produção: aguardando validação ${merge.postMergeValidation.runtime ?? "runtime"} do SHA ${String(merge.postMergeValidation.expectedRevision ?? "").slice(0, 12)}`
       : "",
@@ -74,7 +134,6 @@ async function processTicket(report: typeof bugReportsTable.$inferSelect, logger
   if (!claimed) return;
 
   const route = claimed.rotaAfetada?.trim() || "/support";
-  // O conteúdo que sai do banco do tenant para modelos/GitHub é redigido.
   const request = sanitizeTechnicalText(ticketRequest(claimed));
   const diagnosis = sanitizeTechnicalText([
     "Origem: chamado do Agente de Suporte",
@@ -89,6 +148,10 @@ async function processTicket(report: typeof bugReportsTable.$inferSelect, logger
       diagnosis,
       route: sanitizeTechnicalText(route) || "/support",
       source: "support_handoff",
+    });
+
+    await persistExecutorOutcome(claimed, result, route).catch((error) => {
+      logger.warn({ err: error, bugReportId: claimed.id }, "support handoff: execution memory persistence failed");
     });
 
     await db.update(bugReportsTable).set({
@@ -115,6 +178,79 @@ async function processTicket(report: typeof bugReportsTable.$inferSelect, logger
   }
 }
 
+async function validatePendingSupportDeployments(logger: HandoffLogger) {
+  const reports = await db
+    .select()
+    .from(bugReportsTable)
+    .where(and(
+      eq(bugReportsTable.status, "em_analise"),
+      eq(bugReportsTable.resolvidoPor, "dev_ia"),
+      isNotNull(bugReportsTable.erroTecnico),
+    ))
+    .orderBy(asc(bugReportsTable.updatedAt))
+    .limit(SUPPORT_VALIDATION_BATCH_SIZE);
+
+  for (const report of reports) {
+    const expectedRevision = expectedRevisionFromDiagnostic(report.erroTecnico);
+    if (!expectedRevision) continue;
+
+    try {
+      const validation = await validateProductionRevision(expectedRevision);
+      if (validation.state !== "validated") {
+        logger.info({ bugReportId: report.id, expectedRevision: expectedRevision.slice(0, 12), state: validation.state }, "support handoff: production validation pending");
+        continue;
+      }
+
+      const changedFiles = Array.isArray(validation.evidence?.changedFiles)
+        ? validation.evidence.changedFiles.slice(0, 20).map((path: unknown) => String(path).slice(0, 300))
+        : [];
+
+      await recordExecutionMemory({
+        requestId: report.id,
+        route: (report.rotaAfetada?.trim() || "/support").slice(0, 500),
+        recordedAt: new Date().toISOString(),
+        status: "production_validated",
+        summary: `Produção validada automaticamente pelo Dev IA para a revisão ${expectedRevision.slice(0, 12)} após chamado do Suporte.`,
+        mergeSha: expectedRevision,
+        changedFiles,
+        engines: ["support-post-deploy-validator"],
+        failures: [],
+        evidence: [
+          "source=support_handoff",
+          `runtime=${validation.runtime}`,
+          `expected=${expectedRevision.slice(0, 12)}`,
+          validation.observedRevision ? `observed=${validation.observedRevision.slice(0, 12)}` : "",
+          validation.mainRevision ? `main=${validation.mainRevision.slice(0, 12)}` : "",
+        ].filter(Boolean).slice(0, 8),
+      }).catch((error) => {
+        logger.warn({ err: error, bugReportId: report.id }, "support handoff: production memory persistence failed");
+      });
+
+      const currentDiagnostic = String(report.erroTecnico ?? "").slice(0, 10500);
+      const completedDiagnostic = [
+        currentDiagnostic,
+        "",
+        `Produção validada: ${new Date().toISOString()}`,
+        `Runtime: ${validation.runtime}`,
+        `Revisão validada: ${expectedRevision.slice(0, 12)}`,
+        "Chamado encerrado automaticamente somente após evidência real de produção.",
+      ].join("\n").slice(0, 12000);
+
+      await db.update(bugReportsTable).set({
+        erroTecnico: completedDiagnostic,
+        status: "resolvido",
+        resolvidoPor: "dev_ia",
+        resolvidoAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(eq(bugReportsTable.id, report.id), eq(bugReportsTable.status, "em_analise")));
+
+      logger.info({ bugReportId: report.id, expectedRevision: expectedRevision.slice(0, 12), runtime: validation.runtime }, "support handoff: production validated and ticket resolved");
+    } catch (error) {
+      logger.warn({ err: error, bugReportId: report.id }, "support handoff: production validation cycle failed");
+    }
+  }
+}
+
 async function runSupportHandoffCycle(logger: HandoffLogger) {
   if (handoffRunning) return;
   handoffRunning = true;
@@ -131,6 +267,7 @@ async function runSupportHandoffCycle(logger: HandoffLogger) {
       .limit(SUPPORT_HANDOFF_BATCH_SIZE);
 
     for (const ticket of tickets) await processTicket(ticket, logger);
+    await validatePendingSupportDeployments(logger);
   } catch (error) {
     logger.error({ err: error }, "support handoff: cycle failed");
   } finally {
