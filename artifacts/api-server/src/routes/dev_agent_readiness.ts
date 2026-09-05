@@ -1,4 +1,8 @@
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import {
+  getMainGovernanceSnapshot,
+  githubGovernanceReadinessReason,
+} from "../lib/dev-agent-main-governance.js";
 
 export type DevAgentReadinessState = "ready" | "degraded" | "blocked";
 
@@ -163,6 +167,7 @@ export async function getDevAgentReadiness(args: {
 }): Promise<DevAgentReadiness> {
   const executor = await getExecutorReadiness();
   const reasons: string[] = [];
+  const governance = getMainGovernanceSnapshot();
 
   const github: CheckState = args.githubAvailable ? "ready" : "blocked";
   const executorState: CheckState = executor.available ? (executor.mode === "primary" ? "ready" : "degraded") : "blocked";
@@ -170,7 +175,7 @@ export async function getDevAgentReadiness(args: {
   const runtime: CheckState = args.observedRevision ? "ready" : "degraded";
   const production: CheckState = args.productionState === "aligned" ? "ready" : "degraded";
 
-  if (github === "blocked") reasons.push("GitHub indisponível: o agente não pode investigar ou alterar o repositório com segurança.");
+  if (github === "blocked") reasons.push(githubGovernanceReadinessReason(governance.lastError));
   if (executorState === "blocked") reasons.push("Executor principal e fallback indisponíveis.");
   if (executor.mode === "fallback") reasons.push(`Executor principal indisponível; operando com fallback ${executor.fallbackModel}.`);
   if (memory === "degraded") reasons.push("Memória técnica indisponível nesta leitura; execução perde contexto histórico.");
