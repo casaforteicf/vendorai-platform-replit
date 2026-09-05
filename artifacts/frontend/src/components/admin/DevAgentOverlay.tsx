@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot,
   BrainCircuit,
   Bug,
   CheckCircle2,
@@ -34,6 +33,15 @@ type Cognition = {
   investigationPlan: string[];
   executionDirective?: string;
 };
+type Investigation = {
+  summary: string;
+  likelyCause: string;
+  confidence: number;
+  relevantFiles: string[];
+  evidence: Array<{ path?: string; finding?: string }>;
+  unknowns: string[];
+  recommendedNextStep: string;
+};
 type DevRequest = {
   id: string;
   text: string;
@@ -42,6 +50,7 @@ type DevRequest = {
   status: DevStatus;
   diagnosis?: string;
   cognition?: Cognition;
+  investigation?: Investigation;
   executionSummary?: string;
   issueNumber?: number;
   issueUrl?: string;
@@ -57,7 +66,8 @@ const DEV_BOOTSTRAP = `MODO DEV IA DO SUPER ADMIN.
 Você é o desenvolvedor residente da plataforma VendorAI.
 Responda em português brasileiro e aja como engenheiro responsável pela plataforma.
 Preserve arquitetura e fluxos existentes, não crie módulos paralelos sem necessidade, diagnostique antes de alterar e nunca afirme conclusão sem evidência real.
-Converse naturalmente quando o pedido for conversa ou dúvida. Não diga que iniciou execução sem evidência real de que o executor foi acionado.`;
+Converse naturalmente quando o pedido for conversa ou dúvida. Não diga que iniciou execução sem evidência real de que o executor foi acionado.
+Quando houver INVESTIGAÇÃO REAL DO REPOSITÓRIO no contexto, use-a como evidência primária e diferencie fatos observados de hipóteses.`;
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -186,6 +196,32 @@ export default function DevAgentOverlay() {
     }
   }
 
+  async function investigate(request: DevRequest, cognition: Cognition): Promise<Investigation | null> {
+    try {
+      const response = await fetch("/api/support/dev/investigate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          requestId: request.id,
+          request: request.text,
+          route: request.route,
+          cognition: {
+            intent: cognition.intent,
+            objective: cognition.objective,
+            risk: cognition.risk,
+            cognitiveEffort: cognition.cognitiveEffort,
+            investigationPlan: cognition.investigationPlan,
+          },
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.investigation) return null;
+      return data.investigation as Investigation;
+    } catch {
+      return null;
+    }
+  }
+
   async function createGithubTask(request: DevRequest) {
     if (!request.diagnosis || workingId) return;
     setWorkingId(request.id);
@@ -214,7 +250,10 @@ export default function DevAgentOverlay() {
 
     try {
       const directive = request.cognition?.executionDirective;
-      const executionContext = directive ? `${diagnosis}\n\nDIRETRIZ DO CÉREBRO EXECUTIVO:\n${directive}` : diagnosis;
+      const evidenceContext = request.investigation
+        ? `\n\nEVIDÊNCIA DO INVESTIGADOR:\n${JSON.stringify(request.investigation)}`
+        : "";
+      const executionContext = `${diagnosis}${evidenceContext}${directive ? `\n\nDIRETRIZ DO CÉREBRO EXECUTIVO:\n${directive}` : ""}`;
       const response = await fetch("/api/support/dev/execute", {
         method: "POST",
         headers: authHeaders(),
@@ -253,9 +292,32 @@ export default function DevAgentOverlay() {
     setSending(true);
 
     try {
+      const cognition = await decide(request, prior);
+      if (!cognition) {
+        throw new Error("Cérebro Executivo indisponível; nenhuma ação foi executada");
+      }
+
+      setRequests((current) => current.map((item) => item.id === requestId ? { ...item, cognition } : item));
+
+      let investigation: Investigation | null = null;
+      if (cognition.shouldInspectCode) {
+        investigation = await investigate(request, cognition);
+      }
+
+      const enrichedRequest: DevRequest = {
+        ...request,
+        cognition,
+        ...(investigation ? { investigation } : {}),
+      };
+      setRequests((current) => current.map((item) => item.id === requestId ? enrichedRequest : item));
+
+      const evidenceBlock = investigation
+        ? `\n\nINVESTIGAÇÃO REAL DO REPOSITÓRIO:\n${JSON.stringify(investigation)}`
+        : "";
+      const cognitionBlock = `\n\nDECISÃO DO CÉREBRO EXECUTIVO:\n${JSON.stringify(cognition)}`;
       const contextMessage: ChatMessage = {
         role: "user",
-        content: `${DEV_BOOTSTRAP}\n\nCONTEXTO ATUAL:\n- rota: ${route}\n- usuário: Super Admin\n- requestId: ${requestId}\n- modo autônomo: ${autonomous ? "ATIVO" : "DESATIVADO"}\n\nPEDIDO:\n${text}`,
+        content: `${DEV_BOOTSTRAP}\n\nCONTEXTO ATUAL:\n- rota: ${route}\n- usuário: Super Admin\n- requestId: ${requestId}\n- modo autônomo: ${autonomous ? "ATIVO" : "DESATIVADO"}${cognitionBlock}${evidenceBlock}\n\nPEDIDO:\n${text}`,
       };
       const response = await fetch("/api/support/dev/chat", {
         method: "POST",
@@ -293,17 +355,13 @@ export default function DevAgentOverlay() {
       }
 
       if (!assistant.trim()) throw new Error("Resposta vazia do serviço de IA");
-      const cognition = await decide(request, prior);
-      const diagnosed: DevRequest = { ...request, status: "diagnosticado", diagnosis: assistant, ...(cognition ? { cognition } : {}) };
-
-      if (cognition?.needsApproval) diagnosed.status = "approval_required";
+      const diagnosed: DevRequest = {
+        ...enrichedRequest,
+        status: cognition.needsApproval ? "approval_required" : "diagnosticado",
+        diagnosis: assistant,
+      };
       setRequests((current) => current.map((item) => item.id === requestId ? diagnosed : item));
       setSending(false);
-
-      if (!cognition) {
-        setMessages((current) => [...current, { role: "assistant", content: "O Cérebro Executivo não conseguiu classificar a ação com segurança. Mantive apenas o diagnóstico e não executei mudanças." }]);
-        return;
-      }
 
       if (cognition.needsApproval) {
         setMessages((current) => [...current, { role: "assistant", content: `Ação classificada como ${cognition.risk.toUpperCase()} (esforço cognitivo ${cognition.cognitiveEffort}/10). Não executei automaticamente porque exige aprovação.` }]);
@@ -339,12 +397,12 @@ export default function DevAgentOverlay() {
                 <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 hover:bg-white/10" aria-label="Fechar"><X className="h-5 w-5" /></button>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-white/10 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs"><PlayCircle className="h-4 w-4" /><span className="font-semibold">Autonomia cognitiva</span><span className="text-slate-300">entender → decidir → investigar → executar</span></div>
+                <div className="flex items-center gap-2 text-xs"><PlayCircle className="h-4 w-4" /><span className="font-semibold">Autonomia cognitiva</span><span className="text-slate-300">entender → investigar → decidir → executar</span></div>
                 <button type="button" onClick={() => setAutonomous((value) => !value)} className={`relative h-6 w-11 rounded-full transition ${autonomous ? "bg-emerald-500" : "bg-slate-600"}`} aria-label="Alternar modo autônomo"><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${autonomous ? "left-6" : "left-1"}`} /></button>
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-300">
                 <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> risco crítico exige aprovação</span>
-                <span className="inline-flex items-center gap-1"><GitBranch className="h-3 w-3" /> nunca escreve direto na main</span>
+                <span className="inline-flex items-center gap-1"><GitBranch className="h-3 w-3" /> evidência real antes de editar</span>
               </div>
             </header>
 
@@ -358,16 +416,16 @@ export default function DevAgentOverlay() {
               <>
                 <div className="border-b bg-slate-50 px-4 py-3"><div className="flex gap-2 overflow-x-auto pb-1">{["Auditar esta tela", "Reportar bug", "Melhorar esta tela"].map((label) => <button key={label} onClick={() => void sendMessage(quickPrompt(label, pathname))} disabled={sending || Boolean(workingId)} className="shrink-0 rounded-full border bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50">{label === "Reportar bug" ? <Bug className="mr-1 inline h-3 w-3" /> : <Sparkles className="mr-1 inline h-3 w-3" />}{label}</button>)}</div></div>
                 <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
-                  {messages.length === 0 && <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700"><p className="font-semibold text-slate-900">Cérebro Executivo {autonomous ? "ativo" : "em modo consultivo"}.</p><p className="mt-2">Conversa simples não vira execução. Pedidos técnicos são classificados por intenção, risco, confiança e esforço cognitivo antes de qualquer mudança no código.</p></div>}
+                  {messages.length === 0 && <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700"><p className="font-semibold text-slate-900">Cérebro Executivo {autonomous ? "ativo" : "em modo consultivo"}.</p><p className="mt-2">Conversa simples não vira execução. Quando o pedido exige evidência, o Investigador lê o código real da rota antes da resposta.</p></div>}
                   {messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[92%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "bg-slate-950 text-white" : "border bg-white text-slate-800"}`}>{message.content || (sending ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> analisando...</span> : "")}</div></div>)}
-                  {(sending || workingId) && <div className="text-xs text-slate-500"><Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />{workingId ? "Dev IA executando trabalho autorizado..." : "Cérebro Executivo analisando intenção e contexto..."}</div>}
+                  {(sending || workingId) && <div className="text-xs text-slate-500"><Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />{workingId ? "Dev IA executando trabalho autorizado..." : "Cérebro Executivo classificando e coletando evidências..."}</div>}
                   <div ref={endRef} />
                 </div>
                 <form className="border-t bg-white p-3" onSubmit={(e) => { e.preventDefault(); void sendMessage(input); }}><div className="flex items-end gap-2 rounded-2xl border bg-slate-50 p-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); } }} rows={2} placeholder="Converse, investigue, audite ou peça uma execução..." className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none" /><button type="submit" disabled={!input.trim() || sending || Boolean(workingId)} className="rounded-xl bg-slate-950 p-2.5 text-white disabled:opacity-40"><Send className="h-4 w-4" /></button></div></form>
               </>
             ) : (
               <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
-                {requests.length === 0 ? <div className="rounded-2xl border bg-white p-5 text-sm text-slate-600">Nenhum pedido técnico registrado.</div> : <div className="space-y-3">{requests.map((request) => <article key={request.id} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="line-clamp-2 text-sm font-medium text-slate-900">{request.text}</p><p className="mt-1 truncate text-[11px] text-slate-500">{request.route}</p></div><span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-700">{statusLabel(request.status)}</span></div><div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> {new Date(request.createdAt).toLocaleString("pt-BR")}</span>{request.cognition && <><span className="rounded-full bg-indigo-50 px-2 py-1 text-indigo-700">{intentLabel(request.cognition.intent)}</span><span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Risco {request.cognition.risk}</span><span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Esforço {request.cognition.cognitiveEffort}/10</span><span>{Math.round(request.cognition.confidence * 100)}% confiança</span></>}</div>{request.cognition?.objective && <p className="mt-3 rounded-xl bg-indigo-50/60 p-3 text-xs leading-relaxed text-slate-700"><span className="font-semibold">Objetivo:</span> {request.cognition.objective}</p>}{request.executionSummary && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">{request.executionSummary}</p>}<div className="mt-3 flex flex-wrap gap-2">{request.status === "diagnosticado" && request.diagnosis && !request.cognition?.needsApproval && <button onClick={() => void executeRequest(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"><PlayCircle className="h-3.5 w-3.5" /> Executar agora</button>}{request.status === "diagnosticado" && request.diagnosis && <button onClick={() => void createGithubTask(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><GitBranch className="h-3.5 w-3.5" /> Criar tarefa</button>}{request.issueUrl && <a href={request.issueUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><CheckCircle2 className="h-3.5 w-3.5" /> Issue #{request.issueNumber}<ExternalLink className="h-3 w-3" /></a>}</div></article>)}</div>}
+                {requests.length === 0 ? <div className="rounded-2xl border bg-white p-5 text-sm text-slate-600">Nenhum pedido técnico registrado.</div> : <div className="space-y-3">{requests.map((request) => <article key={request.id} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="line-clamp-2 text-sm font-medium text-slate-900">{request.text}</p><p className="mt-1 truncate text-[11px] text-slate-500">{request.route}</p></div><span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-700">{statusLabel(request.status)}</span></div><div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> {new Date(request.createdAt).toLocaleString("pt-BR")}</span>{request.cognition && <><span className="rounded-full bg-indigo-50 px-2 py-1 text-indigo-700">{intentLabel(request.cognition.intent)}</span><span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Risco {request.cognition.risk}</span><span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Esforço {request.cognition.cognitiveEffort}/10</span><span>{Math.round(request.cognition.confidence * 100)}% confiança</span></>}</div>{request.cognition?.objective && <p className="mt-3 rounded-xl bg-indigo-50/60 p-3 text-xs leading-relaxed text-slate-700"><span className="font-semibold">Objetivo:</span> {request.cognition.objective}</p>}{request.investigation && <div className="mt-3 rounded-xl bg-emerald-50/60 p-3 text-xs leading-relaxed text-slate-700"><p><span className="font-semibold">Investigação:</span> {request.investigation.summary}</p><p className="mt-1"><span className="font-semibold">Causa provável:</span> {request.investigation.likelyCause}</p>{request.investigation.relevantFiles.length > 0 && <p className="mt-1 break-words"><span className="font-semibold">Arquivos:</span> {request.investigation.relevantFiles.join(", ")}</p>}</div>}{request.executionSummary && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">{request.executionSummary}</p>}<div className="mt-3 flex flex-wrap gap-2">{request.status === "diagnosticado" && request.diagnosis && !request.cognition?.needsApproval && <button onClick={() => void executeRequest(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"><PlayCircle className="h-3.5 w-3.5" /> Executar agora</button>}{request.status === "diagnosticado" && request.diagnosis && <button onClick={() => void createGithubTask(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><GitBranch className="h-3.5 w-3.5" /> Criar tarefa</button>}{request.issueUrl && <a href={request.issueUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><CheckCircle2 className="h-3.5 w-3.5" /> Issue #{request.issueNumber}<ExternalLink className="h-3 w-3" /></a>}</div></article>)}</div>}
               </div>
             )}
           </section>
