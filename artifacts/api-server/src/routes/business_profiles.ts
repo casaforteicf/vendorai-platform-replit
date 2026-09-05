@@ -8,6 +8,9 @@ import {
   insertBusinessProfileSchema,
   updateBusinessProfileSchema,
 } from "@workspace/db";
+import { resolveMarketingRuntime } from "@workspace/vendor-brain/marketing-runtime";
+import type { ChannelId } from "@workspace/vendor-brain/platform-foundation";
+import { resolveTenantCreativePlan } from "../services/creativeDesignBridge";
 
 const router: IRouter = Router();
 
@@ -87,6 +90,70 @@ router.get("/tenants/:tenantId/business-profile", async (req, res) => {
   if (degraded) req.log?.warn({ tenantId }, "business-profile: served with fallback sources");
   res.setHeader("Cache-Control", "no-store");
   res.status(200).json(mergedProfile);
+});
+
+/**
+ * Read-only Marketing Agent runtime resolver.
+ * It consumes the existing campaign/MarketingContextSelector context and the
+ * canonical tenant Brand Profile. No campaign, brand or agent state is persisted.
+ */
+router.post("/tenants/:tenantId/marketing-agent/runtime", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as {
+    verticalId?: string | null;
+    campaignId?: string | null;
+    campaignName?: string | null;
+    page?: string | null;
+    objective?: string | null;
+    audience?: string | null;
+    productIds?: string[];
+    productNames?: string[];
+    selectedChannels?: ChannelId[];
+    creative?: {
+      channel?: string;
+      format?: string;
+      offer?: string | null;
+      message?: string | null;
+      cta?: string | null;
+      visualDirection?: string | null;
+      assetIds?: string[];
+    };
+  };
+
+  const runtime = resolveMarketingRuntime({
+    tenantId,
+    verticalId: body.verticalId ?? null,
+    campaignId: body.campaignId ?? null,
+    campaignName: body.campaignName ?? null,
+    page: body.page ?? null,
+    objective: body.objective ?? null,
+    audience: body.audience ?? null,
+    productIds: Array.isArray(body.productIds) ? body.productIds : [],
+    productNames: Array.isArray(body.productNames) ? body.productNames : [],
+    selectedChannels: Array.isArray(body.selectedChannels) ? body.selectedChannels : undefined,
+  }, body.creative);
+
+  let creativePlan = null;
+  if (runtime.creativeBrief && runtime.creativeBriefErrors.length === 0) {
+    try {
+      creativePlan = await resolveTenantCreativePlan(tenantId, runtime.creativeBrief);
+    } catch (error) {
+      req.log?.warn({ error, tenantId }, "marketing-agent: creative plan unavailable");
+    }
+  }
+
+  res.setHeader("Cache-Control", "no-store");
+  res.status(200).json({
+    agentPlan: runtime.agentPlan,
+    creativeBrief: runtime.creativeBrief ?? null,
+    creativeBriefErrors: runtime.creativeBriefErrors,
+    creativePlan,
+  });
 });
 
 router.get("/business-profiles/:id", async (req, res) => {
