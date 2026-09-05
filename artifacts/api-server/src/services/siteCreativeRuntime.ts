@@ -67,23 +67,15 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
 }
 
 /**
- * Hook único para o executor oficial do Site Generator. Mantém o prompt atual
- * intacto e apenas o precede com direção criativa/brand/learning do tenant.
- * Se o runtime falhar, devolve o prompt base e a geração continua normalmente.
+ * Mantém o Site Generator oficial como executor. Esta função só acrescenta a
+ * direção criativa/learning ao campo textual que o prompt canônico já consome.
+ * É idempotente para evitar duplicação quando middlewares são reexecutados.
  */
-export async function enrichSiteGeneratorPrompt(input: {
-  basePrompt: string;
-  runtime: SiteCreativeRuntimeInput;
-}): Promise<{ prompt: string; runtimeApplied: boolean }> {
-  try {
-    const creativeRuntime = await resolveSiteCreativeRuntime(input.runtime);
-    return {
-      prompt: `${creativeRuntime.promptContext}\n\n${input.basePrompt}`,
-      runtimeApplied: true,
-    };
-  } catch {
-    return { prompt: input.basePrompt, runtimeApplied: false };
-  }
+export function enrichSiteGeneratorServicesContext(existingServices: unknown, promptContext: string): string {
+  const current = typeof existingServices === 'string' ? existingServices.trim() : '';
+  const marker = 'DIREÇÃO CRIATIVA WEB OFICIAL DO VENDORAI';
+  if (!promptContext.trim() || current.includes(marker)) return current;
+  return [current, promptContext.trim()].filter(Boolean).join('\n\n');
 }
 
 export function inspectGeneratedSite(input: {
