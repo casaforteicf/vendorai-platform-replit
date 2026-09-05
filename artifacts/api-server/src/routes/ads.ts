@@ -27,8 +27,9 @@ import { buildResumoItem } from "../lib/adItemSummary.js";
 import { decideVehicleReservation, reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { decideItemReservation, reserveUniqueItem } from "../services/item-reservation.js";
 import { enrichAdsSegmentacao } from "../services/ad-audience-plan.js";
-import { publishCampaignToGoogleAds, setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
-import { publishCampaignToMetaAds, setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
+import { setGoogleAdsCampaignStatus, syncGoogleAdsReviewStatus, GoogleAdsPublishError } from "../services/google-ads-campaign-publish.js";
+import { setMetaAdsCampaignStatus, syncMetaAdsReviewStatus, MetaAdsPublishError } from "../services/meta-ads-campaign-publish.js";
+import { publishCampaignThroughChannelRegistry } from "../services/channelPublishBridge.js";
 import { getAdsOverview, recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 
 const router: IRouter = Router();
@@ -119,7 +120,6 @@ async function buildResumoLivreOuLandingPage(campanha: AdCampaign, tenantId: str
     ? partes.join("\n")
     : `Campanha institucional/landing page, segmento: ${campanha.vertical}`;
 }
-
 
 class AdAutomationError extends Error {
   constructor(message: string, readonly status = 422) {
@@ -256,9 +256,15 @@ async function executeSponsoredContentAutonomously(tenantId: string, campanha: A
     });
   }
 
-  const published = campanha.plataforma === "google"
-    ? await publishCampaignToGoogleAds(tenantId, campanha.id)
-    : await publishCampaignToMetaAds(tenantId, campanha.id);
+  const publication = await publishCampaignThroughChannelRegistry({
+    tenantId,
+    campaignId: campanha.id,
+    channel: campanha.plataforma === "google" ? "google-search" : "meta",
+    authorization: "agent-autonomous",
+    allowPublishAds: true,
+    requireDesignQa: true,
+  });
+  const published = publication.result;
 
   await recordAdCampaignEvent({
     tenantId,
@@ -266,7 +272,7 @@ async function executeSponsoredContentAutonomously(tenantId: string, campanha: A
     eventType: "auto_published",
     severity: "success",
     message: "Marketing IA publicou a campanha na plataforma usando os limites configurados.",
-    metadata: { actor: "marketing_ai", plataforma: campanha.plataforma, creativeId: creative.id },
+    metadata: { actor: "marketing_ai", plataforma: campanha.plataforma, creativeId: creative.id, designQa: publication.designQa },
   });
 
   try {
@@ -280,7 +286,7 @@ async function executeSponsoredContentAutonomously(tenantId: string, campanha: A
       message: "Marketing IA ativou o patrocínio dentro do orçamento e período configurados.",
       metadata: { actor: "marketing_ai", plataforma: campanha.plataforma, dailyBudget: campanha.orcamentoDiario, totalBudget: campanha.segmentacao?.campaignControl?.totalBudget },
     });
-    return { attempted: true, executed: true, published: true, activated: true, creativeId: creative.id, platformResult: published };
+    return { attempted: true, executed: true, published: true, activated: true, creativeId: creative.id, designQa: publication.designQa, platformResult: published };
   } catch (error) {
     const warning = error instanceof Error ? error.message : "A campanha foi publicada, mas a plataforma não aceitou a ativação imediata.";
     await recordAdCampaignEvent({
@@ -291,7 +297,7 @@ async function executeSponsoredContentAutonomously(tenantId: string, campanha: A
       message: warning,
       metadata: { actor: "marketing_ai", plataforma: campanha.plataforma },
     }).catch(() => null);
-    return { attempted: true, executed: true, published: true, activated: false, creativeId: creative.id, warning, platformResult: published };
+    return { attempted: true, executed: true, published: true, activated: false, creativeId: creative.id, designQa: publication.designQa, warning, platformResult: published };
   }
 }
 
@@ -390,8 +396,6 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
     }
   }
 
-  // Código curto e único pra usar como utm_campaign em qualquer link de
-  // divulgação dessa campanha (ver adAttribution.ts).
   const control = (segmentacao as any)?.campaignControl;
   if (!control) {
     return res.status(422).json({ error: "Defina objetivo, período, orçamento total e medição antes de criar a campanha." });
@@ -464,9 +468,6 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   return res.status(201).json({ ...row, latestCreative: importedCreative, autonomousExecution });
 });
 
-// Cria uma nova versão segura de uma campanha reprovada. A campanha externa
-// original permanece registrada (e pode ser pausada); a nova volta como
-// rascunho, sem IDs externos e carregando o motivo para orientar a IA.
 router.post("/tenants/:tenantId/ads/campaigns/:id/retry", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -505,8 +506,6 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/retry", async (req, res) => {
   return res.status(201).json(retry);
 });
 
-// Transforma uma recomendação em um novo rascunho seguro. Nenhuma ação
-// aumenta gasto automaticamente: o usuário revisa e publica a nova versão.
 router.post("/tenants/:tenantId/ads/campaigns/:id/prepare-recommendation", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -561,9 +560,6 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/prepare-recommendation", async
   return res.status(201).json({ campaign: draft, guidance });
 });
 
-// Chamado pelo canal que confirmou o interesse (WhatsApp, formulário ou ação
-// manual). Para veículo único, pausa a mídia, reserva o estoque e abre/vincula
-// o negócio ao vendedor com SLA configurável (48h por padrão).
 router.post("/tenants/:tenantId/ads/campaigns/:id/vehicle-interest", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -608,7 +604,6 @@ router.post("/tenants/:tenantId/ads/vehicle-reservations/:id/decision", async (r
   }
 });
 
-// Reserva genérica para campanhas de item único (imóvel, produto, landing page ou livre).
 router.post("/tenants/:tenantId/ads/campaigns/:id/item-interest", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -692,17 +687,6 @@ router.post("/tenants/:tenantId/ads/creatives/:id/aprovar", async (req, res) => 
   return res.json(row);
 });
 
-// ─── Publicação real na API do Google Ads ──────────────────────────────────
-//
-// publicar: cria campanha+orçamento+grupo+anúncio na conta real do
-// tenant, TUDO pausado (não gasta nada ainda) — o "rascunho aprovado"
-// vira estrutura de verdade na plataforma, esperando revisão.
-// ativar/pausar: única ação que de fato liga/desliga veiculação real.
-// As rotas manuais continuam disponíveis; no modo Automático o Marketing IA pode usar os mesmos motores sem aprovação por etapa, sempre dentro dos limites já configurados.
-//
-// As 3 rotas abaixo despacham pro serviço certo (Google ou Meta) de
-// acordo com ad_campaigns.plataforma — mesmo contrato de rota pros dois,
-// só troca o motor por baixo.
 async function getCampanhaPlataforma(tenantId: string, campaignId: string): Promise<"google" | "meta" | "tiktok" | "linkedin" | null> {
   const [row] = await db
     .select({ plataforma: adCampaignsTable.plataforma })
@@ -722,13 +706,18 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/publicar", async (req, res) =>
   }
 
   try {
-    const result = plataforma === "google"
-      ? await publishCampaignToGoogleAds(tenantId, campaignId)
-      : await publishCampaignToMetaAds(tenantId, campaignId);
+    const publication = await publishCampaignThroughChannelRegistry({
+      tenantId,
+      campaignId,
+      channel: plataforma === "google" ? "google-search" : "meta",
+      authorization: "human-approved",
+      requireDesignQa: false,
+    });
+    const result = publication.result;
 
-    logger.info({ tenantId, campaignId, plataforma, activateNow: false }, "ads: campanha publicada via rota");
-    await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: "published", severity: "success", message: "Campanha publicada em modo pausado.", metadata: { plataforma } });
-    return res.status(201).json({ ...result, activated: false });
+    logger.info({ tenantId, campaignId, plataforma, activateNow: false }, "ads: campanha publicada via channel bridge");
+    await recordAdCampaignEvent({ tenantId, campaignId, userId: (req as any).user?.sub, eventType: "published", severity: "success", message: "Campanha publicada em modo pausado.", metadata: { plataforma, designQa: publication.designQa } });
+    return res.status(201).json({ ...result, activated: false, designQa: publication.designQa });
   } catch (err) {
     const failureMessage = err instanceof Error ? err.message : "Falha não identificada ao publicar.";
     await recordAdCampaignEvent({
@@ -821,14 +810,6 @@ router.post("/tenants/:tenantId/ads/campaigns/:id/pausar", async (req, res) => {
 
 export default router;
 
-// ─── Performance / atribuição ──────────────────────────────────────────────
-//
-// Combina o que a própria plataforma reporta (impressões/cliques/custo —
-// só existe depois que o job de coleta rodar, que depende do developer
-// token aprovado) com o que a GENTE sabe de verdade: quantos leads e
-// negócios ganhos vieram de cada campanha (via leads.ad_campaign_id).
-// Isso é mais confiável que CTR/CPC isolado — mostra se a campanha trouxe
-// venda de verdade, não só clique.
 router.get("/tenants/:tenantId/ads/campaigns/:id/performance", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -881,11 +862,6 @@ router.get("/tenants/:tenantId/ads/campaigns/:id/performance", async (req, res) 
   });
 });
 
-// ─── Feed do Google Shopping (Merchant Center) ────────────────────────────────
-//
-// Endpoint AUTENTICADO: devolve a URL assinada do feed (o Merchant Center
-// não autentica com JWT, então o feed em si fica atrás de um token HMAC na
-// própria URL — mesmo princípio do secret usado no webhook do WhatsApp).
 router.get("/tenants/:tenantId/ads/shopping-feed/url", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -895,10 +871,6 @@ router.get("/tenants/:tenantId/ads/shopping-feed/url", async (req, res) => {
   return res.json({ feedUrl: `${base}/api/public/ads/shopping-feed/${tenantId}.xml?token=${token}` });
 });
 
-// Endpoint PÚBLICO (sem middleware de autenticação — precisa ser
-// registrado antes do `authenticate` global, mesmo padrão de
-// publicSiteRouter/fretesPublicRouter): é isso que o Google Merchant
-// Center de fato busca periodicamente.
 export const adsPublicRouter: IRouter = Router();
 adsPublicRouter.get("/public/ads/shopping-feed/:tenantId.xml", async (req, res) => {
   const tenantId = req.params.tenantId as string;

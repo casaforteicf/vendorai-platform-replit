@@ -27,6 +27,7 @@ import {
   registerPublishedPost,
 } from "./content-performance.js";
 import { buildReferencePatternsPromptBlock } from "./content-reference-creators.js";
+import { buildGenerationDesignQa } from "./contentCreativeRuntime.js";
 import {
   assertMediaAudioRightsForUsage,
   MediaRightsEnforcementError,
@@ -48,6 +49,91 @@ export class SocialPublicationError extends Error {
     super(message);
     this.name = "SocialPublicationError";
   }
+}
+
+async function ensureDesignQaApproved(params: {
+  tenantId: string;
+  contentId: string;
+  type: string;
+  theme: string;
+  result: any;
+  variation: FeedVariation | StoriesVariation | ReelsVariation;
+}) {
+  const persisted = params.result?.designQa as { approved?: boolean; overallScore?: number } | undefined;
+  if (persisted) {
+    if (!persisted.approved) {
+      throw new SocialPublicationError(
+        `Design QA reprovou esta peça${typeof persisted.overallScore === "number" ? ` (${persisted.overallScore}/100)` : ""}. Corrija os alertas antes de publicar.`,
+        409,
+      );
+    }
+    return persisted;
+  }
+
+  const [profile] = await db
+    .select({ id: businessProfilesTable.id })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, params.tenantId))
+    .limit(1);
+
+  const variation = params.variation as any;
+  const imageUrls: string[] = Array.isArray(variation.imageUrls)
+    ? variation.imageUrls.filter((value: unknown): value is string => typeof value === "string" && Boolean(value))
+    : variation.imageUrl ? [variation.imageUrl] : [];
+  const videoUrl = typeof variation.videoUrl === "string" ? variation.videoUrl : "";
+  const text = [
+    params.theme,
+    variation.caption,
+    variation.text,
+    variation.title,
+    variation.cta,
+    ...(Array.isArray(variation.hashtags) ? variation.hashtags : []),
+  ].filter(Boolean).join(" ");
+  const hasCta = /fale|saiba|compre|chame|acesse|solicite|agora|cadastre|reserve|peça|peca/i.test(text);
+  const hasRequiredMedia = params.type === "reels" ? Boolean(videoUrl) : imageUrls.length > 0;
+
+  const designQa = buildGenerationDesignQa({
+    brandScore: profile ? 92 : 76,
+    readabilityScore: text.length > 20 ? 90 : 70,
+    compositionScore: hasRequiredMedia ? 92 : 58,
+    channelFitScore: 90,
+    ctaScore: hasCta ? 94 : 70,
+    technicalScore: hasRequiredMedia ? 96 : 55,
+    warnings: [
+      ...(!profile ? ["Perfil da empresa incompleto para validação de marca."] : []),
+      ...(!hasCta ? ["CTA pouco explícito na peça."] : []),
+      ...(!hasRequiredMedia ? [params.type === "reels" ? "Vídeo ausente para Reel." : "Imagem ausente para publicação social."] : []),
+    ],
+    recommendations: [
+      ...(!hasCta ? ["Reforçar uma chamada para ação coerente com o objetivo comercial."] : []),
+      ...(!hasRequiredMedia ? ["Adicionar a mídia obrigatória antes de publicar."] : []),
+    ],
+  });
+  const reviewedAt = new Date().toISOString();
+  const nextResult = {
+    ...params.result,
+    designQa,
+    qaReviewedAt: reviewedAt,
+    qaApprovedAt: designQa.approved ? reviewedAt : null,
+    qaSource: "manual-review" as const,
+  };
+
+  await db
+    .update(contentGenerationsTable)
+    .set({ result: nextResult })
+    .where(and(
+      eq(contentGenerationsTable.id, params.contentId),
+      eq(contentGenerationsTable.tenantId, params.tenantId),
+    ));
+
+  if (!designQa.approved) {
+    throw new SocialPublicationError(
+      `Design QA reprovou esta peça (${designQa.overallScore}/100). Corrija os alertas antes de publicar.`,
+      409,
+    );
+  }
+
+  return designQa;
 }
 
 async function resolveInstagramMediaUrl(rawUrl: string): Promise<string> {
@@ -140,6 +226,15 @@ export async function publishContentGenerationToInstagram(params: {
   if (!variation) {
     throw new SocialPublicationError("Este conteúdo não possui uma variação publicável.", 400);
   }
+
+  await ensureDesignQaApproved({
+    tenantId: params.tenantId,
+    contentId: gen.id,
+    type: gen.type,
+    theme: gen.theme,
+    result: gen.result,
+    variation,
+  });
 
   const { accessToken, accountId } = await getPublishingCredentials(params.tenantId);
   let postId: string;
@@ -295,6 +390,23 @@ export async function createAndPublishAutonomousFeed(params: {
   }
   variations[0] = { ...variations[0], imageUrl };
 
+  const first = variations[0] as { caption?: string; hashtags?: string[] };
+  const qaText = [first.caption, ...(first.hashtags ?? [])].filter(Boolean).join(" ");
+  const designQa = buildGenerationDesignQa({
+    brandScore: profile ? 92 : 76,
+    readabilityScore: qaText.length > 20 ? 90 : 72,
+    compositionScore: imageUrl ? 94 : 60,
+    channelFitScore: 92,
+    ctaScore: /fale|saiba|compre|chame|acesse|solicite|agora/i.test(qaText) ? 94 : 72,
+    technicalScore: imageUrl ? 96 : 60,
+    warnings: [
+      ...(!profile ? ["Perfil da empresa incompleto para validação de marca."] : []),
+      ...(!/fale|saiba|compre|chame|acesse|solicite|agora/i.test(qaText) ? ["CTA pouco explícito na peça automática."] : []),
+    ],
+    recommendations: [],
+  });
+  const reviewedAt = new Date().toISOString();
+
   const [saved] = await db
     .insert(contentGenerationsTable)
     .values({
@@ -303,7 +415,13 @@ export async function createAndPublishAutonomousFeed(params: {
       theme: params.theme,
       contentFormat: "feed_square",
       aspectRatio: "1:1",
-      result: { variations } as any,
+      result: {
+        variations,
+        designQa,
+        qaReviewedAt: reviewedAt,
+        qaApprovedAt: designQa.approved ? reviewedAt : null,
+        qaSource: "autopilot",
+      } as any,
       tokensUsed: generated.tokensUsed,
     })
     .returning();
@@ -314,6 +432,15 @@ export async function createAndPublishAutonomousFeed(params: {
     .update(agentConfigsTable)
     .set({ contentGenerationsThisMonth: allowance.used + 1 })
     .where(eq(agentConfigsTable.id, allowance.configId));
+
+  if (!designQa.approved) {
+    return {
+      contentGenerationId: saved.id,
+      published: false,
+      postId: null,
+      warning: `Conteúdo gerado, mas bloqueado pelo Design QA (${designQa.overallScore}/100).`,
+    };
+  }
 
   try {
     const published = await publishContentGenerationToInstagram({

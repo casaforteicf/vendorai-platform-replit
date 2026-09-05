@@ -19,6 +19,87 @@ export { INTENT_TYPES, AGENT_TYPES } from './types'
 export { resolveBrainVerticalProfile } from './vertical-profiles'
 export type { BrainVerticalProfile } from './vertical-profiles'
 
+// Platform foundation — modules, agents, skills, channels and vertical blueprints
+export {
+  MODULE_REGISTRY,
+  AGENT_REGISTRY,
+  SKILL_REGISTRY,
+  CHANNEL_REGISTRY,
+  DEFAULT_MARKETING_AGENT_AUTONOMY,
+  getModuleDefinition,
+  getAgentDefinition,
+  getChannelDefinition,
+} from './platform-foundation'
+export type {
+  CapabilityStatus,
+  ModuleId,
+  ModuleDefinition,
+  SkillId,
+  SkillDefinition,
+  ChannelId,
+  ChannelDefinition,
+  AgentId,
+  AgentDefinition,
+  MarketingAgentContext,
+  MarketingAgentAutonomy,
+} from './platform-foundation'
+
+export {
+  CHANNEL_PUBLICATION_CAPABILITIES,
+  getChannelPublicationCapability,
+  assertChannelCanPublish,
+} from './channel-publication'
+export type {
+  ChannelPublicationMode,
+  ChannelPublicationCapability,
+} from './channel-publication'
+
+export {
+  VERTICAL_BLUEPRINT_REGISTRY,
+  DISTRIBUTOR_BLUEPRINT,
+  CONSTRUCTION_BLUEPRINT,
+  defineVerticalBlueprint,
+  mergeVerticalBlueprint,
+  getVerticalBlueprint,
+} from './vertical-blueprint'
+export type {
+  VerticalBlueprint,
+  VerticalNavigationItem,
+  VerticalKpiDefinition,
+  VerticalMarketingBlueprint,
+  VerticalIntelligenceBlueprint,
+} from './vertical-blueprint'
+
+// Marketing runtime / UI / channels
+export { resolveMarketingAgentPlan, getMarketingContextDescription } from './marketing-agent'
+export type { MarketingAgentRuntimeContext, MarketingAgentPlan } from './marketing-agent'
+export { MarketingPageContextSource, toMarketingAgentRuntimeContext } from './marketing-context'
+export type { MarketingPageContext } from './marketing-context'
+export { resolveMarketingRuntime, resolveMarketingSignalDecision } from './marketing-runtime'
+export type { MarketingCampaignContextInput, MarketingRuntimeResolution, MarketingSignalDecision } from './marketing-runtime'
+export { inferMarketingSurface, buildMarketingAgentUiCard } from './marketing-agent-ui'
+export type { MarketingSurface, MarketingAgentUiCard } from './marketing-agent-ui'
+export { getChannelAdaptation, getChannelAdaptations } from './channel-adapters'
+export type { ChannelAdaptation, ChannelCampaignInput } from './channel-adapters'
+
+// Creative / Web
+export { calculateDesignQaScore, validateCreativeBrief } from './creative-design'
+export type { BrandProfile, CreativeBrief, DesignQaResult } from './creative-design'
+export { resolveBrandProfileFromBusinessSource, buildCreativeExecutionPlan, finalizeDesignQa } from './creative-runtime'
+export type { BusinessBrandSource, CreativeExecutionPlan, DesignQaInput } from './creative-runtime'
+export { buildWebCreativeRuntime, getWebCreativeGuidance } from './web-runtime'
+export type { WebSurface, WebCreativeGuidance, WebCreativeRuntime } from './web-runtime'
+
+// Intelligence / Observer / Business Agent
+export { routeSignal, routeSignals } from './intelligence-routing'
+export type { BusinessSignal, SignalDomain, OpportunityTarget, RoutedOpportunity } from './intelligence-routing'
+export { revenueScoutOpportunityToSignal, resolveRevenueScoutDecision } from './revenue-scout-bridge'
+export type { RevenueScoutSignalKind, RevenueScoutOpportunityLike } from './revenue-scout-bridge'
+export { buildBusinessObserverSnapshot } from './business-observer'
+export type { BusinessObserverSnapshot } from './business-observer'
+export { buildBusinessAgentExecutiveBrief } from './business-agent'
+export type { ExecutivePriority, BusinessAgentExecutiveBrief } from './business-agent'
+
 // Schemas
 export {
   IntentTypeSchema, AgentTypeSchema,

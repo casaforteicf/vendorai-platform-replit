@@ -15,8 +15,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Megaphone, Plus, Loader2, Sparkles, Check, Copy, Search, HelpCircle, Trash2, RefreshCw, AlertTriangle, Eye } from "lucide-react";
 import { MarketingContextSelector, type MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
-// Label com ícone de ajuda (?) — explicação em linguagem simples pro lojista,
-// sem jargão de marketing. Texto validado no doc de mudanças (seção 4).
 function LabelTip({ children, tip }: { children: React.ReactNode; tip: string }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -33,10 +31,6 @@ function LabelTip({ children, tip }: { children: React.ReactNode; tip: string })
   );
 }
 
-// Seção recolhível — usada nas 3 partes avançadas/opcionais do
-// formulário de campanha, que juntas eram ~15 campos numa rolagem só.
-// Fica fechada por padrão; mostra quantos valores já foram preenchidos
-// mesmo fechada, pra não esconder que algo já foi configurado ali.
 function CollapsibleSection({ title, hint, count, children }: {
   title: string;
   hint: string;
@@ -66,11 +60,6 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-// Seleção múltipla em chips — usada tanto pra campos de opções fechadas
-// (com "options", vira checklist pra clicar) quanto campos livres (sem
-// "options", vira "digite e Enter pra adicionar chip") — nos dois casos
-// troca digitar uma string separada por vírgula por algo clicável/
-// removível, que é o pedido real (selecionar, não digitar tudo à mão).
 function MultiSelectChips({ value, onChange, options, placeholder }: {
   value: string[];
   onChange: (next: string[]) => void;
@@ -103,7 +92,6 @@ function MultiSelectChips({ value, onChange, options, placeholder }: {
         </div>
       )}
       {options ? (
-        // Opções fechadas (idade, gênero etc) — checklist clicável, sem digitação nenhuma.
         <div className="flex flex-wrap gap-1.5">
           {options.filter((o) => !value.includes(o)).map((o) => (
             <button key={o} type="button" onClick={() => addValue(o)}
@@ -113,7 +101,6 @@ function MultiSelectChips({ value, onChange, options, placeholder }: {
           ))}
         </div>
       ) : (
-        // Campo livre (afinidade, sites etc) — digita e Enter vira chip.
         <div className="relative">
           <Input
             placeholder={placeholder ?? "Digite e pressione Enter..."}
@@ -229,6 +216,15 @@ interface RevenueScoutAdsDraft {
   description?: string;
 }
 
+type ActiveMarketingBriefing = {
+  tenantId?: string;
+  campaignId?: string;
+  campaignName?: string;
+  marketingContext?: MarketingContextValue;
+};
+
+const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
+
 const STATUS_LABEL: Record<string, string> = {
   rascunho: "Rascunho",
   aguardando_conexao_plataforma: "Aguardando conexão",
@@ -268,12 +264,10 @@ const EMPTY_FORM = {
   autoPauseNoResults: true,
   spendWithoutResultLimit: "",
   pausarAoInteresse: true, slaNegociacaoHoras: "48",
-  imagemEscolhidaUrl: "" as string, // vazio = gera com IA; preenchido = usa essa foto real do item
+  imagemEscolhidaUrl: "" as string,
   contentGenerationId: "" as string,
 };
 
-// Taxonomia real do Google Ads pra segmentação demográfica — conjunto
-// fechado, por isso vira multi-select clicável em vez de campo livre.
 const OPCOES_IDADE = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+", "Desconhecida"];
 const OPCOES_GENERO = ["Feminino", "Masculino", "Desconhecido"];
 const OPCOES_STATUS_PARENTAL = ["Com filhos", "Sem filhos", "Desconhecido"];
@@ -309,6 +303,68 @@ export default function Ads() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const source = params.get("from");
+
+    if (source === "media-plan") {
+      try {
+        const raw = sessionStorage.getItem(ACTIVE_BRIEFING_KEY);
+        const stored = raw ? JSON.parse(raw) as ActiveMarketingBriefing : null;
+        const requestedCampaignId = params.get("campaignId")?.trim() ?? "";
+        const storedMatchesTenant = !tenantId || stored?.tenantId === tenantId;
+        const storedMatchesCampaign = !requestedCampaignId || stored?.campaignId === requestedCampaignId;
+        const context = storedMatchesTenant && storedMatchesCampaign ? stored?.marketingContext : undefined;
+
+        setSourceDraft(null);
+        setAutoGenerateAfterCreate(false);
+
+        if (context) {
+          const hydratedContext: MarketingContextValue = {
+            ...context,
+            campaignId: stored?.campaignId || context.campaignId,
+            campaignName: stored?.campaignName || context.campaignName,
+          };
+          const location = [hydratedContext.locationCity, hydratedContext.locationState, hydratedContext.locationRegion]
+            .filter((value): value is string => Boolean(value?.trim()))
+            .join(", ");
+          const primaryOffer = hydratedContext.productNames[0] || hydratedContext.campaignName || hydratedContext.projectName || "Campanha do Plano de Mídia";
+
+          setMarketingContext(hydratedContext);
+          setForm({
+            ...EMPTY_FORM,
+            itemTipo: "livre",
+            itemLabel: primaryOffer,
+            destinoClique: "whatsapp",
+            vertical: hydratedContext.businessVertical || hydratedContext.audienceNiche || "",
+            locais: location,
+            termosPesquisa: [hydratedContext.audienceNiche, primaryOffer].filter((value): value is string => Boolean(value?.trim())),
+            objective: "lead",
+          });
+          toast({
+            title: "Plano de Mídia carregado",
+            description: "Campanha, oferta, público e região foram reaproveitados. Revise plataforma, período e orçamento antes de criar o rascunho.",
+          });
+        } else {
+          setForm({ ...EMPTY_FORM, itemTipo: "livre", destinoClique: "whatsapp", objective: "lead" });
+          toast({
+            title: "Abrindo mídia paga",
+            description: "O briefing da campanha não pôde ser confirmado. Revise os campos antes de criar o rascunho.",
+            variant: "destructive",
+          });
+        }
+
+        setOpen(true);
+      } catch {
+        setSourceDraft(null);
+        setAutoGenerateAfterCreate(false);
+        setForm({ ...EMPTY_FORM, itemTipo: "livre", destinoClique: "whatsapp", objective: "lead" });
+        setOpen(true);
+        toast({
+          title: "Abrindo mídia paga",
+          description: "O briefing salvo está inválido. Revise os campos antes de criar o rascunho.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
 
     if (source === "revenue-scout") {
       try {
@@ -371,7 +427,7 @@ export default function Ads() {
     } catch {
       sessionStorage.removeItem("vendorai_ads_content_draft_v1");
     }
-  }, []); // Executa só ao entrar em Anúncios por um handoff de Marketing/Revenue Scout.
+  }, []);
 
   const { data: campaigns = [], isLoading } = useQuery<AdCampaign[]>({
     queryKey: ["ad-campaigns", tenantId],
@@ -438,16 +494,12 @@ export default function Ads() {
     enabled: !!tenantId,
   });
 
-  // Busca de item conforme o tipo escolhido — reaproveita as listagens já
-  // existentes de cada módulo, sem endpoint novo.
   const { data: itensDisponiveis = [] } = useQuery<ItemBusca[]>({
     queryKey: ["ads-item-search", tenantId, form.itemTipo, itemSearch],
     queryFn: async () => {
       if (form.itemTipo === "produto") {
         const r = await fetch(`/api/tenants/${tenantId}/produtos-catalogo`, { headers: authHeaders() });
         const data = r.ok ? await r.json() : [];
-        // Produtos pendentes de revisão (auto-cadastro via IA) e inativos
-        // não devem aparecer pra anunciar — mesma regra de site/feed.
         return data.filter((p: any) => p.ativo !== false).map((p: any) => ({
           id: p.id, label: `${p.nome} — R$ ${p.precoBase}`,
           imagens: [p.imagemUrl, ...(Array.isArray(p.imagens) ? p.imagens : [])].filter(Boolean),
@@ -530,11 +582,6 @@ export default function Ads() {
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
-        // .flatten() do Zod separa erros gerais (formErrors) dos erros por
-        // campo (fieldErrors) — só pegava formErrors antes, então um erro
-        // de validação num campo específico (o caso mais comum) caía
-        // silenciosamente no genérico "Falha ao criar campanha", sem dizer
-        // qual campo nem por quê.
         const fieldMsgs = data?.error?.fieldErrors
           ? Object.entries(data.error.fieldErrors).flatMap(([campo, msgs]) => (msgs as string[]).map((m) => `${campo}: ${m}`))
           : [];
@@ -651,8 +698,6 @@ export default function Ads() {
     },
   });
 
-  // Publicar cria a estrutura real na plataforma sempre em modo pausado.
-  // Somente a ação separada "Ativar" pode iniciar gasto real.
   const publicarCampanha = useMutation({
     mutationFn: async (campaignId: string) => {
       const r = await fetch(`/api/tenants/${tenantId}/ads/campaigns/${campaignId}/publicar`, {
@@ -965,42 +1010,40 @@ export default function Ads() {
                             </Button>
                           </div>
 
-                          {(
-                            <div className="border-t pt-2 mt-1">
-                              {!c.externalCampaignId ? (
-                                <Button size="sm" onClick={() => {
-                                  if (window.confirm(`Publicar esta campanha em modo pausado? Nenhum gasto começa agora. Depois da publicação, use Ativar quando quiser iniciar a veiculação de até R$ ${c.orcamentoDiario} por dia.`)) {
-                                    publicarCampanha.mutate(c.id);
-                                  }
-                                }} disabled={publicarCampanha.isPending || creative.status !== "aprovado"}>
-                                  {publicarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Megaphone className="h-4 w-4 mr-1" />}
-                                  Publicar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
+                          <div className="border-t pt-2 mt-1">
+                            {!c.externalCampaignId ? (
+                              <Button size="sm" onClick={() => {
+                                if (window.confirm(`Publicar esta campanha em modo pausado? Nenhum gasto começa agora. Depois da publicação, use Ativar quando quiser iniciar a veiculação de até R$ ${c.orcamentoDiario} por dia.`)) {
+                                  publicarCampanha.mutate(c.id);
+                                }
+                              }} disabled={publicarCampanha.isPending || creative.status !== "aprovado"}>
+                                {publicarCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Megaphone className="h-4 w-4 mr-1" />}
+                                Publicar no {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"}
+                              </Button>
+                            ) : (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-xs text-muted-foreground">Publicada na conta {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"} (ID {c.externalCampaignId}).</p>
+                                <Button size="sm" variant="ghost" onClick={() => sincronizarSituacao.mutate(c.id)} disabled={sincronizarSituacao.isPending}>
+                                  {sincronizarSituacao.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+                                  Atualizar análise
                                 </Button>
-                              ) : (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-xs text-muted-foreground">Publicada na conta {c.plataforma === "meta" ? "Meta Ads" : "Google Ads"} (ID {c.externalCampaignId}).</p>
-                                  <Button size="sm" variant="ghost" onClick={() => sincronizarSituacao.mutate(c.id)} disabled={sincronizarSituacao.isPending}>
-                                    {sincronizarSituacao.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
-                                    Atualizar análise
+                                {c.status === "ativo" ? (
+                                  <Button size="sm" variant="outline" onClick={() => alterarStatusCampanha.mutate({ campaignId: c.id, ativar: false })} disabled={alterarStatusCampanha.isPending}>
+                                    Pausar
                                   </Button>
-                                  {c.status === "ativo" ? (
-                                    <Button size="sm" variant="outline" onClick={() => alterarStatusCampanha.mutate({ campaignId: c.id, ativar: false })} disabled={alterarStatusCampanha.isPending}>
-                                      Pausar
-                                    </Button>
-                                  ) : (
-                                    <Button size="sm" onClick={() => {
-                                      if (window.confirm(`Ativar esta campanha agora? O gasto real de até R$ ${c.orcamentoDiario} por dia começará na plataforma.`)) {
-                                        alterarStatusCampanha.mutate({ campaignId: c.id, ativar: true });
-                                      }
-                                    }} disabled={alterarStatusCampanha.isPending}>
-                                      {alterarStatusCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
-                                      Ativar (liga o gasto real)
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
+                                ) : (
+                                  <Button size="sm" onClick={() => {
+                                    if (window.confirm(`Ativar esta campanha agora? O gasto real de até R$ ${c.orcamentoDiario} por dia começará na plataforma.`)) {
+                                      alterarStatusCampanha.mutate({ campaignId: c.id, ativar: true });
+                                    }
+                                  }} disabled={alterarStatusCampanha.isPending}>
+                                    {alterarStatusCampanha.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+                                    Ativar (liga o gasto real)
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1045,9 +1088,6 @@ export default function Ads() {
               <Select value={form.plataforma} onValueChange={(v) => setForm((f) => ({
                 ...f,
                 plataforma: v as "google" | "meta",
-                // Cada plataforma só tem 1 formato com publicação real
-                // implementada hoje — troca o padrão junto pra não deixar
-                // uma combinação sem caminho de publicação.
                 tipoAnuncio: v === "meta" ? "imagem" : "rsa_pmax",
               }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1062,7 +1102,6 @@ export default function Ads() {
               <LabelTip tip="Sobre o que é o anúncio: veículo do estoque, imóvel, produto do catálogo, uma landing page gerada, ou livre (sem vínculo com item específico — institucional, campanha de marca).">Tipo de item</LabelTip>
               <Select value={form.itemTipo} onValueChange={(v) => {
                 const itemTipo = v as ItemTipo;
-                // Destino do clique padrão muda de acordo com a origem escolhida.
                 const destinoClique: DestinoClique = itemTipo === "landing_page" ? "landing_page" : itemTipo === "livre" ? "whatsapp" : "produto";
                 setSourceDraft(null);
                 setForm((f) => ({ ...f, itemTipo, itemId: "", itemLabel: "", destinoClique, contentGenerationId: "" }));
