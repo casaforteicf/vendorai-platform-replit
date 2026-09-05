@@ -51,6 +51,23 @@ function isCachedSuperAdmin() {
   }
 }
 
+function createUuidV4() {
+  const bytes = new Uint8Array(16);
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      crypto.getRandomValues(bytes);
+    } else {
+      for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+    }
+  } catch {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+}
+
 function ensureMobileDomCompatibility() {
   if (typeof window === "undefined" || typeof Element === "undefined") return;
   const proto = Element.prototype as Element & { scrollIntoView?: (options?: ScrollIntoViewOptions | boolean) => void };
@@ -61,27 +78,67 @@ function ensureMobileDomCompatibility() {
       value: () => undefined,
     });
   }
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID !== "function") {
+      Object.defineProperty(crypto, "randomUUID", {
+        configurable: true,
+        writable: true,
+        value: () => createUuidV4(),
+      });
+    }
+  } catch {
+    // O Dev IA ainda sanitiza IDs antigos abaixo.
+  }
 }
 
 function sanitizeDevAgentHistory() {
   if (typeof window === "undefined") return;
-  const key = "vendorai_dev_ia_messages_v1";
+  const messageKey = "vendorai_dev_ia_messages_v1";
+  const requestKey = "vendorai_dev_ia_requests_v1";
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      window.localStorage.removeItem(key);
-      return;
+    const raw = window.localStorage.getItem(messageKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        window.localStorage.removeItem(messageKey);
+      } else {
+        const cleaned = parsed.filter((item) => {
+          if (!item || (item.role !== "user" && item.role !== "assistant")) return false;
+          return typeof item.content === "string" && item.content.trim().length > 0;
+        });
+        window.localStorage.setItem(messageKey, JSON.stringify(cleaned.slice(-100)));
+      }
     }
-    const cleaned = parsed.filter((item) => {
-      if (!item || (item.role !== "user" && item.role !== "assistant")) return false;
-      return typeof item.content === "string" && item.content.trim().length > 0;
-    });
-    window.localStorage.setItem(key, JSON.stringify(cleaned.slice(-100)));
   } catch {
     try {
-      window.localStorage.removeItem(key);
+      window.localStorage.removeItem(messageKey);
+    } catch {
+      // Histórico inválido nunca pode impedir o Dev IA de abrir.
+    }
+  }
+
+  try {
+    const raw = window.localStorage.getItem(requestKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        window.localStorage.removeItem(requestKey);
+      } else {
+        const cleaned = parsed
+          .filter((item) => item && typeof item === "object")
+          .map((item) => ({
+            ...item,
+            id: typeof item.id === "string" && uuidPattern.test(item.id) ? item.id : createUuidV4(),
+          }))
+          .slice(0, 100);
+        window.localStorage.setItem(requestKey, JSON.stringify(cleaned));
+      }
+    }
+  } catch {
+    try {
+      window.localStorage.removeItem(requestKey);
     } catch {
       // Histórico inválido nunca pode impedir o Dev IA de abrir.
     }
