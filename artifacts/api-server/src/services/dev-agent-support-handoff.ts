@@ -8,6 +8,7 @@ const SUPPORT_HANDOFF_INTERVAL_MS = 30_000;
 const SUPPORT_HANDOFF_BATCH_SIZE = 3;
 const SUPPORT_VALIDATION_BATCH_SIZE = 5;
 const REVISION_MARKER = "DEV_IA_EXPECTED_REVISION=";
+const CUSTOMER_RESOLUTION_MESSAGE = "Identificamos e corrigimos o problema relatado. A correção já foi validada em produção.";
 
 let handoffTimer: NodeJS.Timeout | null = null;
 let handoffRunning = false;
@@ -105,6 +106,13 @@ async function persistExecutorOutcome(report: typeof bugReportsTable.$inferSelec
 function expectedRevisionFromDiagnostic(value: unknown) {
   const match = String(value ?? "").match(/DEV_IA_EXPECTED_REVISION=([0-9a-f]{7,64})/i);
   return match?.[1]?.toLowerCase() ?? null;
+}
+
+function buildCustomerResolutionResponse(value: unknown) {
+  const current = String(value ?? "").trim();
+  if (!current) return CUSTOMER_RESOLUTION_MESSAGE;
+  if (current.includes(CUSTOMER_RESOLUTION_MESSAGE)) return current.slice(0, 12000);
+  return `${current}\n\n${CUSTOMER_RESOLUTION_MESSAGE}`.slice(0, 12000);
 }
 
 function buildExecutionDiagnostic(result: any) {
@@ -238,6 +246,7 @@ async function validatePendingSupportDeployments(logger: HandoffLogger) {
 
       await db.update(bugReportsTable).set({
         erroTecnico: completedDiagnostic,
+        respostaSuporte: buildCustomerResolutionResponse(report.respostaSuporte),
         status: "resolvido",
         resolvidoPor: "dev_ia",
         resolvidoAt: new Date(),
