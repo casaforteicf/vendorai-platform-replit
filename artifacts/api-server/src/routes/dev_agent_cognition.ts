@@ -178,6 +178,30 @@ router.get("/support/dev/readiness", async (req, res) => {
   }
 });
 
+// Hard gate for direct /execute calls. This router is mounted before the executor
+// route, so callers cannot bypass the cognitive preflight by invoking the endpoint directly.
+router.post("/support/dev/execute", async (req, res, next) => {
+  if (req.user?.platformRole !== "super_admin") return next();
+  try {
+    const operationalContext = await getOperationalContext().catch(() => null);
+    const readiness = await buildReadiness(operationalContext);
+    if (readiness.state === "blocked") {
+      return res.status(503).json({
+        status: "readiness_blocked",
+        error: readiness.reasons[0] ?? "Dev IA bloqueado pelo preflight de prontidão.",
+        readiness,
+      });
+    }
+    return next();
+  } catch (error) {
+    req.log?.error({ err: error }, "dev-ia execute preflight failed");
+    return res.status(503).json({
+      status: "readiness_unavailable",
+      error: "Não foi possível confirmar a prontidão do Dev IA antes da execução.",
+    });
+  }
+});
+
 router.post("/support/dev/cognition", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") {
     return res.status(403).json({ error: "Somente Super Admin pode usar o cérebro do Dev IA." });
