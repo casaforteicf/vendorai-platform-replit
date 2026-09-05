@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import { db, socialConnectionsTable, socialPublicationsTable } from "@workspace/db";
+import { db, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import type { SocialProvider } from "./social-platforms.js";
+import { resolveValidSocialConnection } from "./social-token-runtime.js";
 
 const LINKEDIN_VERSION = process.env["LINKEDIN_API_VERSION"] || "202608";
 const MAX_REMOTE_MEDIA_BYTES = 150 * 1024 * 1024;
@@ -125,6 +126,7 @@ async function publishLinkedIn(
   accountId: string,
   input: { text?: string | null; mediaUrl?: string | null; contentType: string },
 ): Promise<PublishResult> {
+  if (!accountId) throw new SocialPublishError("linkedin_account_id_missing");
   const author = `urn:li:person:${accountId}`;
   let mediaUrn: string | undefined;
   if (input.mediaUrl && input.contentType === "image") mediaUrn = await uploadLinkedInImage(token, author, input.mediaUrl);
@@ -247,13 +249,12 @@ export async function publishSocialPublication(tenantId: string, publicationId: 
   if (!(["youtube", "linkedin", "tiktok"] as string[]).includes(provider)) {
     throw new SocialPublishError(`provider_not_supported:${publication.provider}`);
   }
-  const [connection] = await db.select().from(socialConnectionsTable).where(and(
-    eq(socialConnectionsTable.id, publication.connectionId || ""),
-    eq(socialConnectionsTable.tenantId, tenantId),
-    eq(socialConnectionsTable.provider, provider),
-    eq(socialConnectionsTable.status, "active"),
-  )).limit(1);
-  if (!connection) throw new SocialPublishError("connection_not_found");
+  if (!publication.connectionId) throw new SocialPublishError("connection_not_found");
+
+  const connection = await resolveValidSocialConnection(tenantId, provider, publication.connectionId);
+  if (provider === "linkedin" && !connection.externalAccountId) {
+    throw new SocialPublishError("linkedin_account_id_missing");
+  }
 
   await db.update(socialPublicationsTable).set({ status: "publishing", updatedAt: new Date() })
     .where(and(eq(socialPublicationsTable.id, publication.id), eq(socialPublicationsTable.tenantId, tenantId)));
@@ -265,7 +266,6 @@ export async function publishSocialPublication(tenantId: string, publicationId: 
       : provider === "linkedin"
         ? await publishLinkedIn(connection.accessToken, connection.externalAccountId || "", input)
         : await publishTikTok(connection.accessToken, input);
-    if (provider === "linkedin" && !connection.externalAccountId) throw new SocialPublishError("linkedin_account_id_missing");
 
     const [updated] = await db.update(socialPublicationsTable).set({
       externalId: result.externalId,
