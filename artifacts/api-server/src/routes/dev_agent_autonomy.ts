@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { z } from "zod/v4";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import cognitionRouter from "./dev_agent_cognition";
 
 const router = Router();
+router.use(cognitionRouter);
 
 const executeSchema = z.object({
   requestId: z.string().uuid(),
-  request: z.string().min(3).max(12000),
+  request: z.string().min(1).max(12000),
   diagnosis: z.string().max(20000).optional().default(""),
   route: z.string().min(1).max(500),
 });
