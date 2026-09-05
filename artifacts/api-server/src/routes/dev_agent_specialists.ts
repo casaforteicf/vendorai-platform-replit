@@ -4,10 +4,12 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import memoryRouter, { loadEngineeringMemory, recordEngineeringMemory } from "./dev_agent_memory";
 import impactRouter, { analyzeChangeImpact } from "./dev_agent_impact";
+import recoveryRouter from "./dev_agent_recovery";
 
 const router = Router();
 router.use(memoryRouter);
 router.use(impactRouter);
+router.use(recoveryRouter);
 
 const councilSchema = z.object({
   requestId: z.string().min(1).max(120),
