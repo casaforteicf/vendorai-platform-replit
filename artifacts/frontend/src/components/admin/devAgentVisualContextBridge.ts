@@ -14,6 +14,7 @@ type SemanticPageSnapshot = {
 const DEV_ENDPOINTS = new Set([
   "/api/support/dev/cognition",
   "/api/support/dev/investigate",
+  "/api/support/dev/execute",
 ]);
 
 const originalFetch = typeof window !== "undefined" ? window.fetch.bind(window) : null;
@@ -23,8 +24,8 @@ function compact(value: string, max = 120) {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-function maskSensitiveText(value: string) {
-  return compact(value, 180)
+function maskSensitiveText(value: string, max = 180) {
+  return compact(value, max)
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
     .replace(/\+?\d[\d\s().-]{7,}\d/g, "[telefone]")
     .replace(/\b[a-f0-9]{24,}\b/gi, "[id]")
@@ -183,6 +184,63 @@ function endpointPath(input: RequestInfo | URL) {
   }
 }
 
+function actionDetail(action: any) {
+  return action?.detail && typeof action.detail === "object" ? action.detail : {};
+}
+
+function executionOutcome(payload: any, data: any, responseStatus: number) {
+  const actions = Array.isArray(data?.actions) ? data.actions : [];
+  const prAction = [...actions].reverse().find((action: any) => action?.tool === "create_pr" && action?.ok);
+  const mergeAction = [...actions].reverse().find((action: any) => action?.tool === "merge_pr" && action?.ok && actionDetail(action)?.merged);
+  const compareAction = [...actions].reverse().find((action: any) => action?.tool === "compare_branch" && action?.ok);
+  const prDetail = actionDetail(prAction);
+  const mergeDetail = actionDetail(mergeAction);
+  const compareDetail = actionDetail(compareAction);
+
+  const changedFiles = Array.isArray(prDetail.changedFiles)
+    ? prDetail.changedFiles
+    : Array.isArray(compareDetail.files)
+      ? compareDetail.files.map((file: any) => file?.path).filter(Boolean)
+      : [];
+  const failures = actions
+    .filter((action: any) => action?.ok === false)
+    .slice(-8)
+    .map((action: any) => maskSensitiveText(`${String(action?.tool ?? "tool")}: ${String(actionDetail(action)?.error ?? "falhou")}`, 500));
+  const evidence = [
+    prDetail.number ? `PR #${Number(prDetail.number)} criado` : "",
+    mergeDetail.sha ? `merge ${String(mergeDetail.sha).slice(0, 12)}` : "",
+    mergeDetail.postMergeValidation?.runtime ? `validação pendente em ${String(mergeDetail.postMergeValidation.runtime)}` : "",
+  ].filter(Boolean);
+
+  return {
+    requestId: String(payload?.requestId ?? "").slice(0, 120),
+    route: String(payload?.route ?? `${window.location.pathname}${window.location.search}`).slice(0, 500),
+    status: String(data?.status ?? (responseStatus >= 400 ? `http_${responseStatus}` : "completed")).slice(0, 60),
+    summary: maskSensitiveText(String(data?.summary ?? data?.error ?? "Execução sem resumo textual."), 1200),
+    ...(prDetail.number ? { pullRequestNumber: Number(prDetail.number) } : {}),
+    ...(mergeDetail.sha ? { mergeSha: String(mergeDetail.sha).slice(0, 64) } : {}),
+    changedFiles: changedFiles.slice(0, 20).map((path: unknown) => String(path).slice(0, 300)),
+    engines: Array.isArray(data?.executor?.engines) ? data.executor.engines.slice(0, 5).map((engine: unknown) => String(engine).slice(0, 80)) : [],
+    failures,
+    evidence,
+  };
+}
+
+async function persistExecutionOutcome(payload: any, data: any, responseStatus: number, headers?: HeadersInit) {
+  const outcome = executionOutcome(payload, data, responseStatus);
+  if (!outcome.requestId) return;
+  try {
+    await originalFetch?.("/api/support/dev/execution-memory", {
+      method: "POST",
+      headers: headers ?? { "Content-Type": "application/json" },
+      body: JSON.stringify(outcome),
+      keepalive: true,
+    });
+  } catch {
+    // Memória operacional é best-effort e nunca deve bloquear a execução principal.
+  }
+}
+
 function installBridge() {
   if (installed || !originalFetch || typeof window === "undefined") return;
   installed = true;
@@ -196,6 +254,18 @@ function installBridge() {
 
     try {
       const payload = JSON.parse(init.body);
+
+      if (path.endsWith("/execute")) {
+        const response = await originalFetch(input, init);
+        try {
+          const data = await response.clone().json();
+          void persistExecutionOutcome(payload, data, response.status, init?.headers);
+        } catch {
+          // Resposta sem JSON não interfere na execução principal.
+        }
+        return response;
+      }
+
       const snapshot = collectSemanticPageSnapshot();
 
       if (path.endsWith("/cognition")) {
