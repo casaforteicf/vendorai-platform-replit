@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { startServerRuntimeSentinel } from "./lib/dev-agent-server-runtime.js";
+import { getServerRuntimeSnapshot, startServerRuntimeSentinel } from "./lib/dev-agent-server-runtime.js";
+import { authenticate, requireRole } from "./middlewares/auth.js";
 import { startScheduler } from "./jobs/scheduler.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
 import { runBehaviorIntentSync } from "./jobs/behaviorIntentSync.js";
@@ -27,6 +28,15 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+app.get(
+  "/api/support/dev/server-runtime",
+  authenticate,
+  requireRole("super_admin"),
+  (_req, res) => {
+    res.json({ success: true, serverRuntime: getServerRuntimeSnapshot(12) });
+  },
+);
 
 async function runStartupMigrations() {
   const result = await applyPendingMigrations(logger);

@@ -101,6 +101,31 @@ type ExecutionMemoryEntry = {
   evidence: string[];
 };
 
+type ServerRuntimeSignal = {
+  kind: "server_error" | "slow_server";
+  method: string;
+  path: string;
+  status: number;
+  count: number;
+  avgDurationMs: number;
+  maxDurationMs: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+};
+
+type ServerRuntimeSnapshot = {
+  windowHours: number;
+  aggregationMinutes: number;
+  slowThresholdMs: number;
+  totalSignals24h: number;
+  serverErrors24h: number;
+  slowRequests24h: number;
+  serverErrors15m: number;
+  slowRequests15m: number;
+  topSignals: ServerRuntimeSignal[];
+  checkedAt: string;
+};
+
 type Props = {
   active: boolean;
   authHeaders: () => { "Content-Type": string; Authorization?: string };
@@ -180,11 +205,13 @@ function checkLabel(value: "ready" | "degraded" | "blocked") {
 }
 
 function incidentStatus(entry: ExecutionMemoryEntry) {
+  if (entry.status === "server_runtime_recovered") return "Backend recuperado";
+  if (entry.status === "server_runtime_incident") return "Backend · incidente";
   return entry.status === "production_recovered" ? "Recuperado" : "Incidente";
 }
 
 function incidentClass(entry: ExecutionMemoryEntry) {
-  return entry.status === "production_recovered"
+  return entry.status.endsWith("_recovered")
     ? "border-emerald-200 bg-emerald-50 text-emerald-900"
     : "border-red-200 bg-red-50 text-red-900";
 }
@@ -193,6 +220,7 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
   const [context, setContext] = useState<OperationalContext | null>(null);
   const [validation, setValidation] = useState<ProductionValidation | null>(null);
   const [readiness, setReadiness] = useState<DevAgentReadiness | null>(null);
+  const [serverRuntime, setServerRuntime] = useState<ServerRuntimeSnapshot | null>(null);
   const [memory, setMemory] = useState<MemoryEntry[]>([]);
   const [playbooks, setPlaybooks] = useState<ExecutionMemoryEntry[]>([]);
   const [incidents, setIncidents] = useState<ExecutionMemoryEntry[]>([]);
@@ -204,7 +232,7 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
     setError(null);
     try {
       const headers = authHeaders();
-      const [contextResponse, validationResponse, readinessResponse, memoryResponse] = await Promise.all([
+      const [contextResponse, validationResponse, readinessResponse, runtimeResponse, memoryResponse] = await Promise.all([
         fetch("/api/support/dev/operational-context", { headers }),
         fetch("/api/support/dev/validate-production", {
           method: "POST",
@@ -212,27 +240,31 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
           body: JSON.stringify({}),
         }),
         fetch("/api/support/dev/readiness", { headers }),
+        fetch("/api/support/dev/server-runtime", { headers }),
         fetch("/api/support/dev/memory", { headers }),
       ]);
 
       const contextData = await contextResponse.json().catch(() => ({}));
       const validationData = await validationResponse.json().catch(() => ({}));
       const readinessData = await readinessResponse.json().catch(() => ({}));
+      const runtimeData = await runtimeResponse.json().catch(() => ({}));
       const memoryData = await memoryResponse.json().catch(() => ({}));
 
       if (!contextResponse.ok) throw new Error(contextData?.error ?? "Falha ao carregar contexto operacional");
       if (!validationResponse.ok) throw new Error(validationData?.error ?? "Falha ao validar produção");
       if (!readinessResponse.ok) throw new Error(readinessData?.error ?? "Falha ao verificar prontidão do Dev IA");
+      if (!runtimeResponse.ok) throw new Error(runtimeData?.error ?? "Falha ao carregar runtime do backend");
 
       const executionMemory: ExecutionMemoryEntry[] = Array.isArray(memoryData?.executionMemory) ? memoryData.executionMemory : [];
       setContext(contextData?.context ?? null);
       setValidation(validationData ?? null);
       setReadiness(readinessData?.readiness ?? null);
+      setServerRuntime(runtimeData?.serverRuntime ?? null);
       setMemory(Array.isArray(memoryData?.memory) ? memoryData.memory.slice().reverse().slice(0, 8) : []);
       setPlaybooks(executionMemory.filter(isProvenPlaybook).slice().reverse().slice(0, 8));
       setIncidents(
         executionMemory
-          .filter((item) => item?.status === "production_incident" || item?.status === "production_recovered")
+          .filter((item) => ["production_incident", "production_recovered", "server_runtime_incident", "server_runtime_recovered"].includes(item?.status))
           .slice()
           .reverse()
           .slice(0, 8),
@@ -357,6 +389,60 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
           ))}
         </section>
       )}
+
+      <section className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <Server className="mt-0.5 h-4 w-4 text-slate-700" />
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Runtime do Backend</h4>
+              <p className="mt-1 text-[11px] text-slate-500">5xx e respostas lentas agregados e sanitizados; sem payload, headers, usuário ou tenant.</p>
+            </div>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+            {serverRuntime ? `lento ≥ ${serverRuntime.slowThresholdMs}ms` : "coletando"}
+          </span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl bg-red-50 p-3">
+            <p className="text-lg font-semibold text-red-800">{serverRuntime?.serverErrors15m ?? 0}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600">5xx · 15 min</p>
+          </div>
+          <div className="rounded-xl bg-amber-50 p-3">
+            <p className="text-lg font-semibold text-amber-800">{serverRuntime?.slowRequests15m ?? 0}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Lentos · 15 min</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-lg font-semibold text-slate-900">{serverRuntime?.serverErrors24h ?? 0}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">5xx · 24 h</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-lg font-semibold text-slate-900">{serverRuntime?.slowRequests24h ?? 0}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Lentos · 24 h</p>
+          </div>
+        </div>
+        <div className="mt-3 space-y-2">
+          {!serverRuntime?.topSignals?.length ? (
+            <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">Nenhum 5xx ou gargalo acima do limiar foi agregado neste processo.</p>
+          ) : serverRuntime.topSignals.slice(0, 6).map((signal) => (
+            <div key={`${signal.kind}-${signal.method}-${signal.path}-${signal.status}`} className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 p-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
+                  <span className={signal.kind === "server_error" ? "text-red-700" : "text-amber-700"}>{signal.kind === "server_error" ? "5xx" : "Lento"}</span>
+                  <span className="text-slate-400">{signal.method} · status {signal.status}</span>
+                </div>
+                <p className="mt-1 truncate text-xs font-medium text-slate-800">{signal.path}</p>
+              </div>
+              <div className="shrink-0 text-right text-[10px] text-slate-500">
+                <p className="font-semibold text-slate-700">{signal.count}x</p>
+                <p>média {signal.avgDurationMs}ms</p>
+                <p>pico {signal.maxDurationMs}ms</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        {serverRuntime?.checkedAt ? <p className="mt-2 text-[10px] text-slate-400">Snapshot {new Date(serverRuntime.checkedAt).toLocaleString("pt-BR")} · agregado em janelas de {serverRuntime.aggregationMinutes} min</p> : null}
+      </section>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
