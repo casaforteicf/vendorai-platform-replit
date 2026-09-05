@@ -30,6 +30,18 @@ export type DevExecutionPlan = {
   confidence: number;
 };
 
+export type PreMortemSimulation = {
+  verdict: "proceed" | "revise" | "needs_human_review";
+  risk: "low" | "medium" | "high" | "critical";
+  confidence: number;
+  scenarios: Array<{ name: string; probability: "low" | "medium" | "high"; impact: "low" | "medium" | "high" | "critical"; detail: string }>;
+  failureModes: string[];
+  requiredGuards: string[];
+  rollbackTriggers: string[];
+  validationFocus: string[];
+  reasoningSummary: string;
+};
+
 export type AdversarialReview = {
   verdict: "approve" | "request_changes" | "needs_human_review";
   confidence: number;
@@ -98,6 +110,41 @@ Retorne SOMENTE JSON:
   "confidence":0.0
 }`;
 
+const PREMORTEM_PROMPT = `Você é o Simulador Pré-Mortem do Dev IA.
+Assuma que o plano de engenharia falhou em produção e tente explicar como isso poderia ter acontecido ANTES que qualquer arquivo seja alterado.
+
+Você recebe contexto real de investigação, memória, impacto, especialistas e o plano proposto.
+Não alegue que testes foram executados. Não invente logs, métricas ou efeitos observados.
+Procure principalmente:
+- regressões indiretas por imports/referências;
+- mistura de tenants e quebra de isolamento;
+- estados assíncronos e concorrência;
+- incompatibilidade frontend/backend;
+- mobile/responsividade;
+- integrações externas e webhooks;
+- auth/permissões;
+- dados, schema e operações destrutivas;
+- rollback inviável;
+- ausência de critérios de aceitação ou validação proporcional ao risco.
+
+Política:
+- risco high/critical sem mitigação clara => needs_human_review;
+- plano incompleto mas não crítico => revise;
+- proceed somente quando os riscos estiverem cobertos por guardas, validação e rollback coerentes.
+
+Retorne SOMENTE JSON:
+{
+  "verdict":"proceed|revise|needs_human_review",
+  "risk":"low|medium|high|critical",
+  "confidence":0.0,
+  "scenarios":[{"name":"...","probability":"low|medium|high","impact":"low|medium|high|critical","detail":"..."}],
+  "failureModes":[],
+  "requiredGuards":[],
+  "rollbackTriggers":[],
+  "validationFocus":[],
+  "reasoningSummary":"..."
+}`;
+
 const REVIEWER_PROMPT = `Você é o Revisor Adversarial Independente do VendorAI.
 Sua missão NÃO é aprovar o código. Sua missão é tentar provar que o PR está errado antes que ele chegue à main.
 
@@ -144,6 +191,33 @@ function normalizePlan(value: any): DevExecutionPlan {
   };
 }
 
+function normalizeSimulation(value: any): PreMortemSimulation {
+  const verdicts = new Set(["proceed", "revise", "needs_human_review"]);
+  const risks = new Set(["low", "medium", "high", "critical"]);
+  const probabilities = new Set(["low", "medium", "high"]);
+  const impacts = new Set(["low", "medium", "high", "critical"]);
+  const scenarios = Array.isArray(value?.scenarios) ? value.scenarios.slice(0, 10).map((item: any) => ({
+    name: String(item?.name ?? "Cenário de falha").slice(0, 300),
+    probability: probabilities.has(item?.probability) ? item.probability : "medium",
+    impact: impacts.has(item?.impact) ? item.impact : "medium",
+    detail: String(item?.detail ?? "").slice(0, 1800),
+  })) : [];
+  let verdict = verdicts.has(value?.verdict) ? value.verdict : "revise";
+  const risk = risks.has(value?.risk) ? value.risk : "medium";
+  if ((risk === "high" || risk === "critical") && verdict === "proceed") verdict = "needs_human_review";
+  return {
+    verdict,
+    risk,
+    confidence: Math.max(0, Math.min(1, Number(value?.confidence ?? 0.5))),
+    scenarios,
+    failureModes: Array.isArray(value?.failureModes) ? value.failureModes.slice(0, 12).map((v: unknown) => String(v).slice(0, 1000)) : [],
+    requiredGuards: Array.isArray(value?.requiredGuards) ? value.requiredGuards.slice(0, 12).map((v: unknown) => String(v).slice(0, 1000)) : [],
+    rollbackTriggers: Array.isArray(value?.rollbackTriggers) ? value.rollbackTriggers.slice(0, 10).map((v: unknown) => String(v).slice(0, 1000)) : [],
+    validationFocus: Array.isArray(value?.validationFocus) ? value.validationFocus.slice(0, 12).map((v: unknown) => String(v).slice(0, 1000)) : [],
+    reasoningSummary: String(value?.reasoningSummary ?? "Pré-mortem conservador do plano.").slice(0, 3000),
+  };
+}
+
 function normalizeReview(value: any): AdversarialReview {
   const verdicts = new Set(["approve", "request_changes", "needs_human_review"]);
   const risks = new Set(["low", "medium", "high", "critical"]);
@@ -166,7 +240,78 @@ function normalizeReview(value: any): AdversarialReview {
   };
 }
 
-export async function createExecutionPlan(context: PlannerInput): Promise<{ plan: DevExecutionPlan; engine: string }> {
+async function simulatePlan(context: PlannerInput, plan: DevExecutionPlan): Promise<{ simulation: PreMortemSimulation; engine: string }> {
+  const payload = { context, plan };
+  let raw = "";
+  let engine = "claude-sonnet-4-6";
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 3000,
+      temperature: 0,
+      system: PREMORTEM_PROMPT,
+      messages: [{ role: "user", content: JSON.stringify(payload) }],
+    });
+    raw = message.content.filter((block: any) => block.type === "text").map((block: any) => block.text).join("");
+  } catch {
+    engine = "gpt-4o-mini-fallback";
+    const openai = await getOpenAIForTenant("");
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 3000,
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: PREMORTEM_PROMPT }, { role: "user", content: JSON.stringify(payload) }],
+    });
+    raw = completion.choices[0]?.message?.content ?? "{}";
+  }
+  return { simulation: normalizeSimulation(parseJson(raw)), engine };
+}
+
+function applySimulationToPlan(plan: DevExecutionPlan, simulation: PreMortemSimulation): DevExecutionPlan {
+  const mergedRisks = Array.from(new Set([...plan.risks, ...simulation.failureModes])).slice(0, 12);
+  const mergedTests = Array.from(new Set([...plan.tests, ...simulation.validationFocus])).slice(0, 14);
+  const mergedRollback = Array.from(new Set([...plan.rollback, ...simulation.rollbackTriggers])).slice(0, 10);
+  const mergedAcceptance = Array.from(new Set([...plan.acceptanceCriteria, ...simulation.requiredGuards])).slice(0, 14);
+
+  if (simulation.verdict === "needs_human_review") {
+    return {
+      ...plan,
+      risks: mergedRisks,
+      tests: mergedTests,
+      rollback: mergedRollback,
+      acceptanceCriteria: mergedAcceptance,
+      shouldExecute: false,
+      needsApproval: true,
+      confidence: Math.min(plan.confidence, simulation.confidence),
+      approach: `${plan.approach}\nPré-mortem bloqueou execução automática: ${simulation.reasoningSummary}`.slice(0, 4000),
+    };
+  }
+
+  if (simulation.verdict === "revise") {
+    return {
+      ...plan,
+      risks: mergedRisks,
+      tests: mergedTests,
+      rollback: mergedRollback,
+      acceptanceCriteria: mergedAcceptance,
+      shouldExecute: false,
+      confidence: Math.min(plan.confidence, simulation.confidence),
+      approach: `${plan.approach}\nPré-mortem exige revisão do plano antes de editar: ${simulation.reasoningSummary}`.slice(0, 4000),
+    };
+  }
+
+  return {
+    ...plan,
+    risks: mergedRisks,
+    tests: mergedTests,
+    rollback: mergedRollback,
+    acceptanceCriteria: mergedAcceptance,
+    confidence: Math.min(1, (plan.confidence + simulation.confidence) / 2),
+  };
+}
+
+export async function createExecutionPlan(context: PlannerInput): Promise<{ plan: DevExecutionPlan; engine: string; simulation: PreMortemSimulation; simulationEngine: string }> {
   let raw = "";
   let engine = "claude-sonnet-4-6";
   try {
@@ -190,7 +335,11 @@ export async function createExecutionPlan(context: PlannerInput): Promise<{ plan
     });
     raw = completion.choices[0]?.message?.content ?? "{}";
   }
-  return { plan: normalizePlan(parseJson(raw)), engine };
+
+  const initialPlan = normalizePlan(parseJson(raw));
+  const { simulation, engine: simulationEngine } = await simulatePlan(context, initialPlan);
+  const plan = applySimulationToPlan(initialPlan, simulation);
+  return { plan, engine, simulation, simulationEngine };
 }
 
 router.post("/support/dev/plan", async (req, res) => {
