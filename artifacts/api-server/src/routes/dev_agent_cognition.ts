@@ -3,9 +3,11 @@ import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import investigatorRouter from "./dev_agent_investigator";
+import operationalContextRouter, { getOperationalContext } from "./dev_agent_operational_context";
 
 const router = Router();
 router.use(investigatorRouter);
+router.use(operationalContextRouter);
 
 const cognitionSchema = z.object({
   requestId: z.string().min(1).max(120),
@@ -37,6 +39,7 @@ const COGNITION_SYSTEM_PROMPT = `Você é o Cérebro Executivo de Engenharia do 
 Você NÃO executa código. Você entende profundamente a intenção do Super Admin e decide o próximo passo técnico.
 
 Atue simultaneamente como CTO, arquiteto de software, SRE, engenheiro de produto e revisor de segurança.
+Você pode receber operationalContext com o SHA atualmente em produção, SHA da main, estado aligned/stale, PRs Dev IA abertos e volume de memória técnica. Use isso para evitar decisões baseadas em estado desatualizado. Não invente estado operacional quando algum campo estiver ausente.
 
 Classifique UMA intenção:
 - conversation: saudação, confirmação, agradecimento ou conversa casual;
@@ -62,7 +65,9 @@ REGRAS:
 6. Preserve arquitetura e não crie módulos paralelos.
 7. Segurança, autenticação, billing, pagamentos, schema/migrations, RLS, secrets, infraestrutura, alteração global ou destrutiva exigem aprovação.
 8. Quanto menor a confiança, mais investigação deve preceder execução.
-9. Responda SOMENTE JSON válido, sem markdown e sem cadeia de pensamento privada.`;
+9. Se operationalContext.productionState for stale, considere investigar/validar o deploy antes de assumir que o código da main já está em produção.
+10. PRs Dev IA já abertos podem representar trabalho em andamento; evite criar execução duplicada sem investigar.
+11. Responda SOMENTE JSON válido, sem markdown e sem cadeia de pensamento privada.`;
 
 const CRITICAL_TERMS = /\b(auth|autentica[cç][aã]o|login global|billing|pagamento|payment|subscription|assinatura|rls|row level security|migration|migra[cç][aã]o|schema|secret|token de produ[cç][aã]o|credencial|railway|vercel|terraform|infraestrutura|excluir tenant|apagar banco|drop table|force push)\b/i;
 const CASUAL_ONLY = /^(oi+|ol[aá]|opa|e aí|eai|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|ok|okay|certo|beleza|show|entendi|sim|não|nao)[!.? ]*$/i;
@@ -148,11 +153,19 @@ router.post("/support/dev/cognition", async (req, res) => {
     return res.json({ success: true, cognition, engine: "fast-path" });
   }
 
+  let operationalContext: Awaited<ReturnType<typeof getOperationalContext>> | null = null;
+  try {
+    operationalContext = await getOperationalContext();
+  } catch {
+    operationalContext = null;
+  }
+
   const context = {
     requestId: parsed.data.requestId,
     route: parsed.data.route,
     request: requestText,
     recentMessages: parsed.data.recentMessages,
+    operationalContext,
   };
 
   try {
@@ -185,7 +198,7 @@ router.post("/support/dev/cognition", async (req, res) => {
     }
 
     const cognition = applyStructuralPolicy(requestText, normalizeCognition(parseJsonObject(raw)));
-    return res.json({ success: true, cognition, engine });
+    return res.json({ success: true, cognition, engine, operationalContext });
   } catch (error) {
     req.log?.error({ err: error }, "dev-ia cognition failed");
     return res.status(500).json({ error: "Falha no cérebro cognitivo do Dev IA" });
