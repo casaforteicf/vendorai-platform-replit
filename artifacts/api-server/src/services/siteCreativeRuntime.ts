@@ -2,6 +2,7 @@ import { buildWebCreativeRuntime, type WebSurface } from '@workspace/vendor-brai
 import type { CreativeBrief } from '@workspace/vendor-brain/creative-design';
 import { resolveContentAutopilotBrandContext } from './contentAutopilotCreativeBridge';
 import { buildGenerationDesignQa } from './contentCreativeRuntime';
+import { buildPaidMediaLearningPromptBlock } from './paidMediaLearning';
 
 export interface SiteCreativeRuntimeInput {
   tenantId: string;
@@ -42,13 +43,27 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
     assetIds: input.assetIds ?? [],
   };
 
-  return buildWebCreativeRuntime({
+  const runtime = buildWebCreativeRuntime({
     brief,
     brand,
     surface: input.surface,
     businessName: input.businessName ?? input.campaignName ?? null,
     productName: input.productName ?? null,
   });
+
+  // O learning usa o Ads Intelligence/CRM oficial do tenant e apenas orienta
+  // a próxima página. Falha de analytics nunca deve bloquear Site/LP.
+  let paidMediaLearning = '';
+  try {
+    paidMediaLearning = await buildPaidMediaLearningPromptBlock(input.tenantId);
+  } catch {
+    paidMediaLearning = '';
+  }
+
+  return {
+    ...runtime,
+    promptContext: runtime.promptContext + paidMediaLearning,
+  };
 }
 
 export function inspectGeneratedSite(input: {
