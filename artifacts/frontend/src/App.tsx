@@ -1,7 +1,32 @@
+import * as React from "react";
 import AppLegacy from "./AppLegacy";
 import AppRuntimeShell from "@/pages/app-runtime/AppRuntimeShell";
-import DevAgentOverlay from "@/components/admin/DevAgentOverlay";
 import "./dev-agent-mobile.css";
+
+const DevAgentOverlay = React.lazy(() => import("@/components/admin/DevAgentOverlay"));
+
+class DevAgentIsolationBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("Dev IA isolado após erro de runtime:", error);
+  }
+
+  render() {
+    if (this.state.failed) return null;
+    return this.props.children;
+  }
+}
 
 function runtimeAppId(pathname: string): string | null {
   const match = pathname.match(/^\/apps\/([^/?#]+)\/?$/);
@@ -19,7 +44,11 @@ export default function App() {
   return (
     <>
       <AppLegacy />
-      <DevAgentOverlay />
+      <DevAgentIsolationBoundary>
+        <React.Suspense fallback={null}>
+          <DevAgentOverlay />
+        </React.Suspense>
+      </DevAgentIsolationBoundary>
     </>
   );
 }
