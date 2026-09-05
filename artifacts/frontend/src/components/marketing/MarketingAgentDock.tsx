@@ -237,7 +237,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
         body: JSON.stringify({
           kind: surface === "video" ? "video" : "content",
           text,
-          channel: "instagram",
+          channel: surface === "video" ? "instagram" : "instagram",
           format: latest.type || surface,
           objective: context?.campaignGoal || `revisar ${surface === "video" ? "vídeo" : "conteúdo"}`,
           campaignId: active?.campaignId ?? null,
