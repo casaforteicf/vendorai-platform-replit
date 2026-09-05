@@ -10,10 +10,12 @@ import {
   type SocialProvider,
 } from "../services/social-platforms.js";
 import { publishSocialPublication } from "../services/social-publication-publisher.js";
+import { startSocialPublicationWorker } from "../services/social-publication-worker.js";
 
 const router: IRouter = Router();
 const callbackRouter: IRouter = Router();
 const providers = new Set<SocialProvider>(["youtube", "linkedin", "tiktok"]);
+startSocialPublicationWorker();
 
 function provider(value: unknown): SocialProvider | null {
   const candidate = String(value || "") as SocialProvider;
