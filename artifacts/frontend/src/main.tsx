@@ -22,6 +22,7 @@ import { MediaPlanAutoProductionBridge } from "./components/marketing/MediaPlanA
 import { MediaPlanProductionRuntimeBridge } from "./components/marketing/MediaPlanProductionRuntimeBridge";
 import { AdsCreativePreviewBridge } from "./components/marketing/AdsCreativePreviewBridge";
 import { VideoRouteThemeSync } from "./components/video/VideoRouteThemeSync";
+import "./components/admin/devAgentVisualContextBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 import "./ui-standard.css";
