@@ -87,13 +87,15 @@ export function inferMarketingSurface(pathname: string): MarketingSurface {
   const path = pathname.toLowerCase();
   if (path.includes('planej') || path.includes('media-plan')) return 'planner';
   if (path.includes('campanh')) return 'campaigns';
+  // Video routes often live under /content-studio/video, so video must be
+  // resolved before the generic content check.
+  if (path.includes('video')) return 'video';
   if (path.includes('content') || path.includes('conteudo')) return 'content';
   if (path.includes('media') || path.includes('midia')) return 'media';
   if (path.includes('ads') || path.includes('anuncio')) return 'ads';
   if (path.includes('calendar') || path.includes('calendario')) return 'calendar';
   if (path.includes('performance') || path.includes('analytics')) return 'performance';
   if (path.includes('site') || path.includes('landing') || path.includes('lp')) return 'site';
-  if (path.includes('video')) return 'video';
   return 'unknown';
 }
 
