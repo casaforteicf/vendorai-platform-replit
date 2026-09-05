@@ -85,6 +85,19 @@ function configForApi(config: PlanningConfig) {
   };
 }
 
+function weeksForConfiguredWindow(config: PlanningConfig): number | null {
+  if (config.semDataFinal) return 13;
+  if (!config.inicioEm || !config.fimEm) return null;
+  const start = new Date(config.inicioEm);
+  const end = new Date(config.fimEm);
+  const diff = end.getTime() - start.getTime();
+  if (!Number.isFinite(diff) || diff <= 0) return null;
+  const days = Math.max(1, Math.ceil(diff / 86_400_000));
+  // O calendário operacional trabalha em janela rolante de até 13 semanas;
+  // o período completo permanece salvo no plano e pode ser replanejado por fases.
+  return Math.min(13, Math.max(1, Math.ceil(days / 7)));
+}
+
 function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
 }
@@ -140,8 +153,9 @@ export default function PlanoMidia() {
           : input.url;
       const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
       const isPlanGeneration = method === "POST" && rawUrl.includes(`/api/tenants/${tenantId}/media-plan/gerar`);
+      const isCalendarGeneration = method === "POST" && rawUrl.includes(`/api/tenants/${tenantId}/content-calendar/gerar`);
 
-      if (!isPlanGeneration) return nativeFetch(input, init);
+      if (!isPlanGeneration && !isCalendarGeneration) return nativeFetch(input, init);
 
       let body: Record<string, unknown> = {};
       try {
@@ -151,7 +165,14 @@ export default function PlanoMidia() {
         body = {};
       }
 
-      body["configuracao"] = configForApi(configRef.current);
+      if (isPlanGeneration) {
+        body["configuracao"] = configForApi(configRef.current);
+      }
+      if (isCalendarGeneration) {
+        const configuredWeeks = weeksForConfiguredWindow(configRef.current);
+        if (configuredWeeks) body["semanas"] = configuredWeeks;
+      }
+
       const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
       if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
