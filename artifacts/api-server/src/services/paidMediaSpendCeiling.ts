@@ -29,7 +29,7 @@ export function evaluatePaidMediaSpendCeiling(input: PaidMediaSpendCeilingInput)
   const activeDailyBudgetTotal = floorCurrency(input.activeDailyBudgetTotal);
   const guardIntervalMinutes = Number.isFinite(input.guardIntervalMinutes)
     ? Math.min(60, Math.max(1, Number(input.guardIntervalMinutes)))
-    : 15;
+    : 60;
 
   if (planBudgetTotal <= 0) {
     throw new Error('Teto total inválido para proteção de mídia paga.');
