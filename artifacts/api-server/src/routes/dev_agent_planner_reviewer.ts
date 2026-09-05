@@ -76,7 +76,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Review/1.0",
+      "User-Agent": "VendorAI-Dev-Review/1.1",
     },
   });
   const text = await response.text();
@@ -103,6 +103,16 @@ Nunca invente arquivos, testes executados ou fatos não presentes no contexto. S
 Preserve arquitetura existente e não crie módulos paralelos.
 Mudanças em auth, billing, pagamentos, schema/migrations, RLS, secrets, CI/CD ou infraestrutura devem marcar needsApproval=true.
 Se investigation.playbookMatch.applicable=true, trate esse histórico apenas como experiência reutilizável: incorpore no plano somente padrões compatíveis com a investigação atual e mantenha explícitas as revalidações exigidas. Um playbook nunca reduz risco, nunca concede autorização e nunca substitui validação do código/runtime atual.
+
+CONTRATO DE VALIDAÇÃO:
+- Toda mudança de código deve ter pelo menos um teste específico do comportamento alterado e um teste de regressão do fluxo existente.
+- TypeScript/React/Node exige typecheck proporcional ao pacote alterado.
+- Frontend exige validação de preview real e, quando a UI for afetada, desktop + mobile da rota alterada.
+- Backend exige testes do api-server e validação Railway pós-merge; merge não equivale a deploy concluído.
+- Código relacionado a tenant/dados deve incluir auditoria de isolamento quando aplicável.
+- Integrações/webhooks/OAuth exigem validação de falha/timeout e confirmação de que nenhum segredo será exposto.
+- O plano deve declarar gatilhos objetivos de rollback; não use apenas “reverter se der erro”.
+- Nunca alegue que um teste foi executado; apenas planeje a evidência que deverá ser obtida.
 
 Retorne SOMENTE JSON:
 {
@@ -191,10 +201,10 @@ function normalizePlan(value: any): DevExecutionPlan {
     filesToInspect: Array.isArray(value?.filesToInspect) ? value.filesToInspect.slice(0, 12).map(String) : [],
     filesLikelyToChange: Array.isArray(value?.filesLikelyToChange) ? value.filesLikelyToChange.slice(0, 12).map(String) : [],
     steps: Array.isArray(value?.steps) ? value.steps.slice(0, 12).map(String) : [],
-    tests: Array.isArray(value?.tests) ? value.tests.slice(0, 12).map(String) : [],
-    rollback: Array.isArray(value?.rollback) ? value.rollback.slice(0, 8).map(String) : [],
+    tests: Array.isArray(value?.tests) ? value.tests.slice(0, 16).map(String) : [],
+    rollback: Array.isArray(value?.rollback) ? value.rollback.slice(0, 12).map(String) : [],
     risks: Array.isArray(value?.risks) ? value.risks.slice(0, 10).map(String) : [],
-    acceptanceCriteria: Array.isArray(value?.acceptanceCriteria) ? value.acceptanceCriteria.slice(0, 10).map(String) : [],
+    acceptanceCriteria: Array.isArray(value?.acceptanceCriteria) ? value.acceptanceCriteria.slice(0, 14).map(String) : [],
     shouldExecute: Boolean(value?.shouldExecute),
     needsApproval: Boolean(value?.needsApproval),
     confidence: Math.max(0, Math.min(1, Number(value?.confidence ?? 0.5))),
@@ -216,7 +226,7 @@ function applyLearnedPlaybook(plan: DevExecutionPlan, context: PlannerInput): De
   const why = String(match?.why ?? "Execução anterior validada considerada relevante pelo Investigador.").slice(0, 1600);
   const confidence = Math.max(0, Math.min(1, Number(match?.confidence ?? 0.5)));
 
-  const tests = Array.from(new Set([...plan.tests, ...revalidationSteps])).slice(0, 14);
+  const tests = Array.from(new Set([...plan.tests, ...revalidationSteps])).slice(0, 16);
   const acceptanceCriteria = Array.from(new Set([
     ...plan.acceptanceCriteria,
     ...revalidationSteps.map((step: string) => `Playbook revalidado no estado atual: ${step}`),
@@ -318,8 +328,8 @@ async function simulatePlan(context: PlannerInput, plan: DevExecutionPlan): Prom
 
 function applySimulationToPlan(plan: DevExecutionPlan, simulation: PreMortemSimulation): DevExecutionPlan {
   const mergedRisks = Array.from(new Set([...plan.risks, ...simulation.failureModes])).slice(0, 12);
-  const mergedTests = Array.from(new Set([...plan.tests, ...simulation.validationFocus])).slice(0, 14);
-  const mergedRollback = Array.from(new Set([...plan.rollback, ...simulation.rollbackTriggers])).slice(0, 10);
+  const mergedTests = Array.from(new Set([...plan.tests, ...simulation.validationFocus])).slice(0, 16);
+  const mergedRollback = Array.from(new Set([...plan.rollback, ...simulation.rollbackTriggers])).slice(0, 12);
   const mergedAcceptance = Array.from(new Set([...plan.acceptanceCriteria, ...simulation.requiredGuards])).slice(0, 14);
 
   if (simulation.verdict === "needs_human_review") {
@@ -359,6 +369,65 @@ function applySimulationToPlan(plan: DevExecutionPlan, simulation: PreMortemSimu
   };
 }
 
+function applyValidationContract(plan: DevExecutionPlan, context: PlannerInput): DevExecutionPlan {
+  if (!plan.shouldExecute) return plan;
+
+  const files = [...plan.filesLikelyToChange, ...plan.filesToInspect].map((file) => file.toLowerCase());
+  const contextText = `${context.request} ${context.route} ${JSON.stringify(context.investigation ?? {})}`.toLowerCase();
+  const frontend = files.some((file) => file.includes("artifacts/frontend/") || /\.(tsx|jsx|css)$/.test(file));
+  const backend = files.some((file) => file.includes("artifacts/api-server/") || file.includes("backend/"));
+  const typed = files.some((file) => /\.(ts|tsx)$/.test(file));
+  const dataOrTenant = files.some((file) => /db\/|drizzle|tenant|schema|rls/.test(file)) || /tenant|multi-tenant|multitenant|banco|database|drizzle|rls/.test(contextText);
+  const integration = /webhook|oauth|integra[cç][aã]o|integration|whatsapp|instagram|meta|google|smtp|n8n|typebot/.test(contextText);
+
+  const requiredTests: string[] = [
+    "Revisar o diff real da branch contra main e confirmar que somente o escopo planejado foi alterado.",
+    "Criar ou atualizar teste automatizado específico para a lógica alterada quando houver comportamento testável; não considerar apenas build como teste funcional.",
+    "Executar pelo menos um teste de regressão do fluxo existente diretamente relacionado à alteração.",
+  ];
+  const acceptance: string[] = [
+    "Nenhum gate relevante do VendorAI pode permanecer em failure/error antes do merge.",
+    "A evidência final deve distinguir claramente PR/merge de validação real em produção.",
+  ];
+  const rollback: string[] = [
+    "Preparar reversão se a mudança causar regressão reproduzível no fluxo alterado após deploy.",
+    "Preparar reversão se a produção ficar desalinhada com a main ou surgir novo sinal crítico diretamente correlacionado ao SHA publicado.",
+  ];
+
+  if (typed) requiredTests.push("Executar typecheck do pacote alterado e registrar somente o resultado real do gate.");
+  if (frontend) {
+    requiredTests.push("Validar o preview Vercel da rota alterada antes do merge.");
+    requiredTests.push("Quando houver mudança visual/interativa, validar a rota em desktop e mobile e o estado vazio/erro/carregamento relevante.");
+    acceptance.push("Preview Vercel relevante publicado sem regressão visual/funcional observada na rota alterada.");
+  }
+  if (backend) {
+    requiredTests.push("Executar a suíte relevante de @workspace/api-server e garantir que o plano cubra o contrato da rota alterada.");
+    requiredTests.push("Após merge, exigir ci:railway + runtime saudável antes de classificar a execução como production_validated.");
+    acceptance.push("Railway deve concluir build/deploy e o runtime deve iniciar saudável no SHA esperado.");
+    rollback.push("Preparar reversão se o ci:railway falhar ou o runtime não iniciar no SHA esperado.");
+  }
+  if (dataOrTenant) {
+    requiredTests.push("Executar auditoria de isolamento de tenant aplicável e verificar que nenhum caminho novo mistura tenantId/escopo de dados.");
+    acceptance.push("Nenhuma regressão de isolamento multi-tenant ou ampliação indevida de acesso a dados.");
+  }
+  if (integration) {
+    requiredTests.push("Validar ao menos um cenário de falha/timeout da integração e confirmar tratamento sem loop, duplicação ou falso sucesso.");
+    acceptance.push("Nenhum segredo, token, cookie, body sensível ou credencial deve aparecer em logs/evidências do Dev IA.");
+  }
+
+  const tests = Array.from(new Set([...plan.tests, ...requiredTests])).slice(0, 20);
+  const rollbackPlan = Array.from(new Set([...plan.rollback, ...rollback])).slice(0, 14);
+  const acceptanceCriteria = Array.from(new Set([...plan.acceptanceCriteria, ...acceptance])).slice(0, 18);
+
+  return {
+    ...plan,
+    tests,
+    rollback: rollbackPlan,
+    acceptanceCriteria,
+    approach: `${plan.approach}\nContrato de validação obrigatório aplicado automaticamente conforme o tipo de mudança detectado.`.slice(0, 4000),
+  };
+}
+
 export async function createExecutionPlan(context: PlannerInput): Promise<{ plan: DevExecutionPlan; engine: string; simulation: PreMortemSimulation; simulationEngine: string }> {
   let raw = "";
   let engine = "claude-sonnet-4-6";
@@ -386,7 +455,8 @@ export async function createExecutionPlan(context: PlannerInput): Promise<{ plan
 
   const initialPlan = applyLearnedPlaybook(normalizePlan(parseJson(raw)), context);
   const { simulation, engine: simulationEngine } = await simulatePlan(context, initialPlan);
-  const plan = applySimulationToPlan(initialPlan, simulation);
+  const simulatedPlan = applySimulationToPlan(initialPlan, simulation);
+  const plan = applyValidationContract(simulatedPlan, context);
   return { plan, engine, simulation, simulationEngine };
 }
 
