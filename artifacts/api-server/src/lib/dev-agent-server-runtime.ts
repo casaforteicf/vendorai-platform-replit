@@ -1,3 +1,5 @@
+import { recordExecutionMemory } from "../routes/dev_agent_memory.js";
+
 export type ServerRuntimeSignalKind = "server_error" | "slow_server";
 
 export type ServerRuntimeSignal = {
@@ -38,12 +40,26 @@ type RuntimeBucket = {
   lastSeenMs: number;
 };
 
+type SentinelLogger = {
+  info: (...args: any[]) => void;
+  warn: (...args: any[]) => void;
+  error: (...args: any[]) => void;
+};
+
 const RUNTIME_WINDOW_MS = 24 * 60 * 60 * 1000;
 const RECENT_WINDOW_MS = 15 * 60 * 1000;
 const AGGREGATION_WINDOW_MS = 5 * 60 * 1000;
 const SLOW_SERVER_MS = 2500;
 const MAX_BUCKETS = 600;
+const SERVER_SENTINEL_INTERVAL_MS = 5 * 60 * 1000;
+const SERVER_ERROR_INCIDENT_THRESHOLD = 3;
+const SLOW_REQUEST_INCIDENT_THRESHOLD = 8;
 const buckets = new Map<string, RuntimeBucket>();
+
+let sentinelTimer: NodeJS.Timeout | null = null;
+let consecutiveIncidentChecks = 0;
+let activeIncidentKey: string | null = null;
+let activeIncidentPersisted = false;
 
 function sanitizePath(value: string) {
   let path = String(value || "/").split("?", 1)[0] || "/";
@@ -205,4 +221,104 @@ export function getServerRuntimeSnapshot(limit = 10): ServerRuntimeSnapshot {
     topSignals,
     checkedAt: new Date(now).toISOString(),
   };
+}
+
+function hasActiveIncident(snapshot: ServerRuntimeSnapshot) {
+  return snapshot.serverErrors15m >= SERVER_ERROR_INCIDENT_THRESHOLD || snapshot.slowRequests15m >= SLOW_REQUEST_INCIDENT_THRESHOLD;
+}
+
+function buildIncidentKey(snapshot: ServerRuntimeSnapshot) {
+  const revision = String(
+    process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.RAILWAY_DEPLOYMENT_COMMIT_SHA ?? process.env.GIT_COMMIT_SHA ?? "runtime",
+  ).slice(0, 12);
+  const dominant = snapshot.topSignals
+    .slice(0, 3)
+    .map((signal) => `${signal.kind}:${signal.method}:${signal.path}:${signal.status}`)
+    .join("|")
+    .replace(/[^a-zA-Z0-9_:/|[\].-]+/g, "-")
+    .slice(0, 72);
+  return `server-runtime-${revision}-${dominant || "incident"}`.slice(0, 120);
+}
+
+async function persistRuntimeIncident(snapshot: ServerRuntimeSnapshot, status: "server_runtime_incident" | "server_runtime_recovered", requestId: string, logger: SentinelLogger) {
+  const top = snapshot.topSignals.slice(0, 5);
+  try {
+    await recordExecutionMemory({
+      requestId,
+      route: "/admin/dev-engineering",
+      recordedAt: new Date().toISOString(),
+      status,
+      summary: status === "server_runtime_incident"
+        ? `Watchdog server-side confirmou incidente após ${consecutiveIncidentChecks} ciclos: ${snapshot.serverErrors15m} erros 5xx e ${snapshot.slowRequests15m} respostas lentas nos últimos 15 minutos.`
+        : `Watchdog server-side confirmou recuperação: ${snapshot.serverErrors15m} erros 5xx e ${snapshot.slowRequests15m} respostas lentas nos últimos 15 minutos.`,
+      changedFiles: [],
+      engines: ["server-runtime-sentinel"],
+      failures: status === "server_runtime_incident"
+        ? top.filter((signal) => signal.kind === "server_error").map((signal) => `${signal.method} ${signal.path} -> ${signal.status} x${signal.count}`).slice(0, 8)
+        : [],
+      evidence: [
+        `server_errors_15m=${snapshot.serverErrors15m}`,
+        `slow_requests_15m=${snapshot.slowRequests15m}`,
+        `server_errors_24h=${snapshot.serverErrors24h}`,
+        `slow_requests_24h=${snapshot.slowRequests24h}`,
+        ...top.map((signal) => `${signal.kind}:${signal.method}:${signal.path}:status=${signal.status}:count=${signal.count}:avg=${signal.avgDurationMs}ms:max=${signal.maxDurationMs}ms`),
+      ].slice(0, 8),
+    });
+    logger.info({ requestId, status }, "dev-ia server runtime: incident memory persisted");
+    return true;
+  } catch (error) {
+    logger.warn({ err: error, requestId, status }, "dev-ia server runtime: failed to persist incident memory");
+    return false;
+  }
+}
+
+async function runServerRuntimeSentinel(logger: SentinelLogger) {
+  const snapshot = getServerRuntimeSnapshot(8);
+  const incident = hasActiveIncident(snapshot);
+
+  if (incident) {
+    consecutiveIncidentChecks += 1;
+    const key = buildIncidentKey(snapshot);
+    if (activeIncidentKey !== key) {
+      activeIncidentKey = key;
+      activeIncidentPersisted = false;
+    }
+    if (consecutiveIncidentChecks >= 2 && !activeIncidentPersisted) {
+      activeIncidentPersisted = await persistRuntimeIncident(snapshot, "server_runtime_incident", key, logger);
+    }
+    logger.warn({
+      serverErrors15m: snapshot.serverErrors15m,
+      slowRequests15m: snapshot.slowRequests15m,
+      totalSignals24h: snapshot.totalSignals24h,
+      consecutiveIncidentChecks,
+    }, "dev-ia server runtime: backend needs attention");
+    return;
+  }
+
+  consecutiveIncidentChecks = 0;
+  if (activeIncidentKey && activeIncidentPersisted) {
+    const recovered = await persistRuntimeIncident(snapshot, "server_runtime_recovered", activeIncidentKey, logger);
+    if (recovered) {
+      activeIncidentKey = null;
+      activeIncidentPersisted = false;
+    }
+  } else {
+    activeIncidentKey = null;
+    activeIncidentPersisted = false;
+  }
+}
+
+export function startServerRuntimeSentinel(logger: SentinelLogger) {
+  if (sentinelTimer) return;
+  void runServerRuntimeSentinel(logger);
+  sentinelTimer = setInterval(() => {
+    void runServerRuntimeSentinel(logger);
+  }, SERVER_SENTINEL_INTERVAL_MS);
+  sentinelTimer.unref();
+  logger.info({
+    intervalMs: SERVER_SENTINEL_INTERVAL_MS,
+    errorThreshold15m: SERVER_ERROR_INCIDENT_THRESHOLD,
+    slowThreshold15m: SLOW_REQUEST_INCIDENT_THRESHOLD,
+    slowRequestMs: SLOW_SERVER_MS,
+  }, "dev-ia server runtime: watchdog started");
 }
