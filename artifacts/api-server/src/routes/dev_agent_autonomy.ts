@@ -100,7 +100,7 @@ async function gh(path: string, init?: RequestInit) {
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Agent/3.4",
+      "User-Agent": "VendorAI-Dev-Agent/3.5",
       ...(init?.headers ?? {}),
     },
   });
@@ -395,7 +395,22 @@ async function mergePullRequest(number: number) {
     (error as any).review = review;
     throw error;
   }
-  const data = await gh(`/repos/${owner}/${repo}/pulls/${number}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "squash" }) });
+
+  const latest = await gh(`/repos/${owner}/${repo}/pulls/${number}`);
+  const latestHeadSha = String(latest.head?.sha ?? "");
+  if (!pr.headSha || !latestHeadSha || latestHeadSha !== pr.headSha) {
+    throw new Error("merge_race_detected: o SHA do PR mudou após os gates/revisão; reexecute a revisão sobre o novo head antes do merge.");
+  }
+  if (latest.state !== "open" || latest.draft || latest.mergeable === false) {
+    throw new Error("merge_race_detected: o estado de mergeabilidade do PR mudou após a revisão; reavalie antes de incorporar.");
+  }
+  const finalComparison = await gh(`/repos/${owner}/${repo}/compare/main...${encodeURIComponent(pr.head).replace(/%2F/g, "/")}`);
+  const finalBehindBy = Number(finalComparison?.behind_by ?? 0);
+  if (finalBehindBy > 0) {
+    throw new Error(`merge_race_detected: a main avançou e a branch ficou ${finalBehindBy} commit(s) atrás após a revisão; atualize a branch e repita os gates.`);
+  }
+
+  const data = await gh(`/repos/${owner}/${repo}/pulls/${number}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "squash", sha: pr.headSha }) });
   const merged = Boolean(data.merged);
   return {
     merged,
@@ -403,6 +418,7 @@ async function mergePullRequest(number: number) {
     message: data.message,
     review,
     releaseGate: pr.releaseGate,
+    mergeGuard: { reviewedHeadSha: pr.headSha, latestHeadSha, behindByAtMerge: finalBehindBy },
     postMergeValidation: merged ? { required: true, state: "awaiting_production", runtime: pr.backendTouched ? "railway" : "vercel", expectedRevision: data.sha, backendGate: pr.backendTouched ? "ci:railway" : null } : null,
   };
 }
@@ -431,7 +447,7 @@ const tools: any[] = [
   { type: "function", function: { name: "preflight_branch", description: "Valida deterministicamente a branch dev-ia/ antes do PR: branch atualizada, tamanho seguro, conflitos, JSON válido e sintaxe TS/TSX/JS/JSX. Corrija todos os achados antes de create_pr.", parameters: { type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false } } },
   { type: "function", function: { name: "create_pr", description: "Abre PR de uma branch dev-ia/ para main somente quando a branch contém mudanças e passa pelo preflight determinístico obrigatório.", parameters: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, head: { type: "string" } }, required: ["title", "body", "head"], additionalProperties: false } } },
   { type: "function", function: { name: "get_pr", description: "Consulta PR, arquivos alterados e gates relevantes do VendorAI.", parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false } } },
-  { type: "function", function: { name: "merge_pr", description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável, gates Vercel relevantes verdes e aprovado por revisor adversarial. Depois do merge exige validação real de produção; backend passa pelo ci:railway.", parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false } } },
+  { type: "function", function: { name: "merge_pr", description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável, gates Vercel relevantes verdes, aprovado por revisor adversarial e ainda estiver no mesmo SHA/atualizado contra main imediatamente antes do merge. Depois exige validação real de produção; backend passa pelo ci:railway.", parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false } } },
 ];
 
 async function runTool(name: string, args: any) {
