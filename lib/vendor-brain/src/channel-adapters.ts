@@ -36,7 +36,7 @@ const CHANNEL_GUIDANCE: Record<ChannelId, Omit<ChannelAdaptation, 'channel'>> = 
     metricFocus: ['CTR', 'CPC', 'conversion rate', 'CPA', 'search terms'],
     executionNotes: ['Match user intent and landing-page promise; avoid social-style storytelling.'],
   },
-  'performance-max': {
+  'google-pmax': {
     language: ['offer-consistent', 'asset-diverse', 'conversion-oriented'],
     formatGuidance: ['headlines', 'descriptions', 'images', 'logos', 'video'],
     metricFocus: ['conversions', 'CPA', 'ROAS', 'asset group performance'],
