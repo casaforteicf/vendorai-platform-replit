@@ -5,9 +5,11 @@ import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "./MediaA
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
 const STORAGE_KEY = "vendorai_ads_media_asset_v1";
+const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
 
 type CachedUser = { tenantId?: string | null };
 type CachedOverride = { id?: string | null };
+type GoogleFormat = "search" | "performance_max";
 
 function currentTenantId(): string {
   try {
@@ -41,6 +43,17 @@ function readStoredAsset(): MediaPickerAsset | null {
   }
 }
 
+function readInitialGoogleFormat(): GoogleFormat {
+  try {
+    const raw = sessionStorage.getItem(ACTIVE_BRIEFING_KEY);
+    if (!raw) return "search";
+    const briefing = JSON.parse(raw) as { marketingContext?: { googleFormat?: string } };
+    return briefing.marketingContext?.googleFormat === "performance_max" ? "performance_max" : "search";
+  } catch {
+    return "search";
+  }
+}
+
 function absolutePublicMediaUrl(asset: MediaPickerAsset): string {
   return new URL(mediaAssetUrl(asset.storageUrl), window.location.origin).toString();
 }
@@ -49,23 +62,13 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-function enablePerformanceMaxOption(root: ParentNode = document) {
-  const candidates = Array.from(root.querySelectorAll<HTMLElement>("[role='option'], [data-radix-collection-item]"));
-  for (const option of candidates) {
-    if (!option.textContent?.includes("Performance Max completa")) continue;
-    option.removeAttribute("data-disabled");
-    option.removeAttribute("aria-disabled");
-    option.removeAttribute("disabled");
-    option.style.pointerEvents = "auto";
-    option.textContent = "Performance Max (ativos multiformato)";
-  }
-}
-
 export function MediaAdsBridge() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [asset, setAsset] = useState<MediaPickerAsset | null>(readStoredAsset);
+  const [googleFormat, setGoogleFormat] = useState<GoogleFormat>(readInitialGoogleFormat);
   const assetRef = useRef<MediaPickerAsset | null>(asset);
+  const googleFormatRef = useRef<GoogleFormat>(googleFormat);
   const tenantId = currentTenantId();
   const onAds = pathname === "/ads" || pathname.startsWith("/ads/");
 
@@ -76,6 +79,10 @@ export function MediaAdsBridge() {
   }, [asset]);
 
   useEffect(() => {
+    googleFormatRef.current = googleFormat;
+  }, [googleFormat]);
+
+  useEffect(() => {
     const updatePath = () => setPathname(window.location.pathname);
     window.addEventListener("popstate", updatePath);
     const timer = window.setInterval(updatePath, 400);
@@ -84,23 +91,6 @@ export function MediaAdsBridge() {
       window.clearInterval(timer);
     };
   }, []);
-
-  useEffect(() => {
-    if (!onAds) return;
-    enablePerformanceMaxOption();
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of Array.from(mutation.addedNodes)) {
-          if (node instanceof HTMLElement) {
-            enablePerformanceMaxOption(node);
-            if (node.matches("[role='option'], [data-radix-collection-item]")) enablePerformanceMaxOption(node.parentElement ?? document);
-          }
-        }
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [onAds]);
 
   useEffect(() => {
     const previousFetch = window.fetch.bind(window);
@@ -115,27 +105,39 @@ export function MediaAdsBridge() {
 
         if (method === "POST" && isCampaignCreate && typeof init.body === "string") {
           const body = JSON.parse(init.body) as Record<string, unknown>;
+          const segmentacao = asRecord(body["segmentacao"]);
+          const marketingContext = asRecord(segmentacao["marketingContext"]);
+          const storedFormat = marketingContext["googleFormat"];
+          const effectiveGoogleFormat: GoogleFormat = storedFormat === "performance_max"
+            ? "performance_max"
+            : storedFormat === "search"
+              ? "search"
+              : googleFormatRef.current;
+          const isGoogleRsa = body["plataforma"] === "google" && body["tipoAnuncio"] === "rsa_pmax";
+          const isPmax = isGoogleRsa && effectiveGoogleFormat === "performance_max";
           let changed = false;
 
-          if (body["plataforma"] === "google" && body["tipoAnuncio"] === "pmax_future") {
-            body["tipoAnuncio"] = "rsa_pmax";
-            const segmentacao = asRecord(body["segmentacao"]);
-            const marketingContext = asRecord(segmentacao["marketingContext"]);
+          if (isGoogleRsa) {
             body["segmentacao"] = {
               ...segmentacao,
               marketingContext: {
                 ...marketingContext,
-                googleFormat: "performance_max",
+                googleFormat: effectiveGoogleFormat,
               },
             };
             changed = true;
           }
 
-          if (selected && body["tipoAnuncio"] === "imagem") {
+          if (isPmax && (body["destinoClique"] === "whatsapp" || body["destinoClique"] === "formulario_lead")) {
+            body["destinoClique"] = body["itemTipo"] === "landing_page" ? "landing_page" : "produto";
+            changed = true;
+          }
+
+          if (selected && (body["tipoAnuncio"] === "imagem" || isPmax)) {
             body["imagemEscolhidaUrl"] = absolutePublicMediaUrl(selected);
-            const segmentacao = asRecord(body["segmentacao"]);
+            const nextSegmentacao = asRecord(body["segmentacao"]);
             body["segmentacao"] = {
-              ...segmentacao,
+              ...nextSegmentacao,
               mediaSource: {
                 assetId: selected.id,
                 source: "media_library",
@@ -147,7 +149,7 @@ export function MediaAdsBridge() {
 
           if (changed) {
             const response = await previousFetch(input, { ...init, body: JSON.stringify(body) });
-            if (response.ok && selected && body["tipoAnuncio"] === "imagem") {
+            if (response.ok && selected && (body["tipoAnuncio"] === "imagem" || isPmax)) {
               window.setTimeout(() => setAsset(null), 0);
             }
             return response;
@@ -170,7 +172,35 @@ export function MediaAdsBridge() {
   return (
     <>
       <div className="fixed bottom-5 right-5 z-[80] w-[min(360px,calc(100vw-2rem))] rounded-2xl border bg-background/95 p-3 shadow-xl backdrop-blur">
-        <div className="flex items-start gap-3">
+        <div className="space-y-2 border-b pb-3">
+          <div>
+            <p className="text-xs font-semibold">Formato Google</p>
+            <p className="text-[10px] text-muted-foreground">Escolha como campanhas Google de IA serão preparadas.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => setGoogleFormat("search")}
+              className={`rounded-lg px-2 py-2 text-xs font-medium transition ${googleFormat === "search" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Google Search
+            </button>
+            <button
+              type="button"
+              onClick={() => setGoogleFormat("performance_max")}
+              className={`rounded-lg px-2 py-2 text-xs font-medium transition ${googleFormat === "performance_max" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Performance Max
+            </button>
+          </div>
+          {googleFormat === "performance_max" && (
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              PMax usa site/landing page como destino e combina títulos, descrições, imagem e logo do tenant. A publicação continua pausada até a ativação autorizada.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3 flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
             {asset ? (
               <img src={mediaAssetUrl(asset.storageUrl)} alt={asset.originalFilename || "Mídia escolhida"} className="h-full w-full object-cover" />
@@ -181,7 +211,7 @@ export function MediaAdsBridge() {
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold">Imagem do anúncio</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {asset?.originalFilename || "Use uma imagem existente da Central de Mídias"}
+              {asset?.originalFilename || "Opcional: escolha na Central de Mídias"}
             </p>
           </div>
           {asset && (
@@ -199,7 +229,7 @@ export function MediaAdsBridge() {
           {asset ? "Trocar imagem da Biblioteca" : "Escolher da Biblioteca"}
         </button>
         <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-          Biblioteca aplicada em campanhas Meta de imagem. Google Search e Performance Max usam seus fluxos oficiais de criativo e publicação.
+          A imagem selecionada é usada em Meta Imagem e em Performance Max. Se PMax não receber imagem, o VendorAI gera uma antes do Design QA.
         </p>
       </div>
 
