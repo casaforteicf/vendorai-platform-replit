@@ -3,10 +3,12 @@ import { z } from "zod/v4";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import cognitionRouter from "./dev_agent_cognition";
 import plannerReviewerRouter, { createExecutionPlan, reviewPullRequestForMerge } from "./dev_agent_planner_reviewer";
+import specialistsRouter, { createSpecialistCouncil } from "./dev_agent_specialists";
 
 const router = Router();
 router.use(cognitionRouter);
 router.use(plannerReviewerRouter);
+router.use(specialistsRouter);
 
 const executeSchema = z.object({
   requestId: z.string().uuid(),
@@ -37,6 +39,7 @@ Sua missão é transformar pedidos técnicos aprovados pelo Super Admin em traba
 
 REGRAS OBRIGATÓRIAS:
 - O PLANO DE ENGENHARIA recebido é obrigatório. Não improvise escopo fora dele.
+- O PARECER DO CONSELHO DE ESPECIALISTAS recebido também é obrigatório e deve orientar riscos e validação.
 - Trabalhe somente no repositório configurado do VendorAI.
 - Nunca altere main/master diretamente.
 - Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, altere apenas o necessário, crie PR e verifique o status.
@@ -319,12 +322,19 @@ router.post("/support/dev/execute", async (req, res) => {
   try {
     githubConfig();
 
+    const { council, engine: councilEngine } = await createSpecialistCouncil({
+      requestId: parsed.data.requestId,
+      request: parsed.data.request,
+      route: parsed.data.route,
+      evidenceContext: parsed.data.diagnosis,
+    });
+
     const plannerInput = {
       requestId: parsed.data.requestId,
       request: parsed.data.request,
       route: parsed.data.route,
       cognition: {},
-      investigation: { evidenceContext: parsed.data.diagnosis },
+      investigation: { evidenceContext: parsed.data.diagnosis, specialistCouncil: council },
     };
     const { plan, engine: plannerEngine } = await createExecutionPlan(plannerInput);
 
@@ -333,6 +343,7 @@ router.post("/support/dev/execute", async (req, res) => {
         success: false,
         status: "approval_required",
         error: `Planner classificou a mudança como dependente de aprovação: ${plan.risks.join("; ") || plan.approach}`,
+        council,
         plan,
       });
     }
@@ -342,8 +353,12 @@ router.post("/support/dev/execute", async (req, res) => {
         success: true,
         status: "completed",
         summary: `Planner recomendou não alterar código neste momento. ${plan.approach}`,
+        council,
         plan,
-        actions: [{ tool: "planner", ok: true, detail: { plan, engine: plannerEngine } }],
+        actions: [
+          { tool: "specialist_council", ok: true, detail: { council, engine: councilEngine } },
+          { tool: "planner", ok: true, detail: { plan, engine: plannerEngine } },
+        ],
       });
     }
 
@@ -357,11 +372,13 @@ router.post("/support/dev/execute", async (req, res) => {
           route: parsed.data.route,
           pedido: parsed.data.request,
           diagnostico_previo: parsed.data.diagnosis,
+          conselho_de_especialistas: council,
           plano_de_engenharia: plan,
         }),
       },
     ];
     const actions: Array<{ tool: string; ok: boolean; detail?: any }> = [
+      { tool: "specialist_council", ok: true, detail: { council, engine: councilEngine } },
       { tool: "planner", ok: true, detail: { plan, engine: plannerEngine } },
     ];
 
@@ -383,6 +400,7 @@ router.post("/support/dev/execute", async (req, res) => {
           success: true,
           status: "completed",
           summary: message.content ?? "Execução concluída sem mensagem final.",
+          council,
           plan,
           actions,
         });
@@ -407,6 +425,7 @@ router.post("/support/dev/execute", async (req, res) => {
               success: false,
               status: "approval_required",
               error: messageText.replace(/^approval_required:\s*/i, ""),
+              council,
               plan,
               actions,
               ...(result.review ? { review: result.review } : {}),
@@ -416,7 +435,7 @@ router.post("/support/dev/execute", async (req, res) => {
       }
     }
 
-    return res.status(409).json({ success: false, status: "step_limit", error: "Executor atingiu o limite seguro de etapas.", plan, actions });
+    return res.status(409).json({ success: false, status: "step_limit", error: "Executor atingiu o limite seguro de etapas.", council, plan, actions });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";
     req.log?.error({ err: error }, "dev-ia: autonomous executor failed");
