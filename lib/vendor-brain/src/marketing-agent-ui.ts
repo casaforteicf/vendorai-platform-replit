@@ -85,10 +85,25 @@ const SURFACE_CARDS: Record<MarketingSurface, Omit<MarketingAgentUiCard, 'surfac
 
 export function inferMarketingSurface(pathname: string): MarketingSurface {
   const path = pathname.toLowerCase();
-  // The canonical planner route is /marketing/plano-de-midia. Resolve it
-  // before the generic media/midia rule so the Marketing Agent receives the
-  // strategic planner context instead of the asset-library context.
-  if (path.includes('planej') || path.includes('media-plan') || path.includes('plano-de-midia')) return 'planner';
+
+  // Site/LP lives inside ContentHub as /content?tab=campanhas&view=lp, so it
+  // must be resolved before the generic campaign/content checks.
+  if (
+    path.includes('view=lp') ||
+    path.includes('view=site') ||
+    path.includes('view=landing') ||
+    path.includes('site-generator')
+  ) return 'site';
+
+  // The canonical planner route is /marketing/plano-de-midia and the planner
+  // also lives as the planejamento tab inside ContentHub.
+  if (
+    path.includes('planej') ||
+    path.includes('media-plan') ||
+    path.includes('plano-de-midia') ||
+    path.includes('tab=planejamento')
+  ) return 'planner';
+
   if (path.includes('campanh')) return 'campaigns';
   // Video routes often live under /content-studio/video, so video must be
   // resolved before the generic content check.
