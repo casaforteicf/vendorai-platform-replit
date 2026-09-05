@@ -17,6 +17,23 @@ type ValidationState =
 
 type Runtime = "railway" | "vercel";
 
+export type ProductionValidationResult = {
+  success: boolean;
+  state: ValidationState;
+  runtime: Runtime;
+  observedRevision: string;
+  expectedRevision: string | null;
+  mainRevision: string | null;
+  githubAvailable: boolean;
+  checkedAt: string;
+  evidence: Record<string, any>;
+  expectedIncludedInMain?: boolean;
+  expectedMatchesObserved?: boolean;
+  expectedIncludedInObserved?: boolean;
+  mainMatchesObserved?: boolean;
+  uptimeSeconds?: number;
+};
+
 const BACKEND_PATH_PATTERNS = [
   /^artifacts\/api-server\//i,
   /^lib\/db\//i,
@@ -48,7 +65,7 @@ async function githubJson(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Validation/2.0",
+      "User-Agent": "VendorAI-Dev-Validation/2.1",
     },
   });
   if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
@@ -135,7 +152,7 @@ async function checkFrontendReachability() {
       method: "GET",
       redirect: "follow",
       signal: AbortSignal.timeout(8000),
-      headers: { "User-Agent": "VendorAI-Dev-Validation/2.0" },
+      headers: { "User-Agent": "VendorAI-Dev-Validation/2.1" },
     });
     return { url, reachable: response.status >= 200 && response.status < 400, status: response.status };
   } catch (error) {
@@ -148,15 +165,8 @@ async function checkFrontendReachability() {
   }
 }
 
-router.post("/support/dev/validate-production", async (req, res) => {
-  if (req.user?.platformRole !== "super_admin") {
-    return res.status(403).json({ error: "Somente Super Admin pode validar produção pelo Dev IA." });
-  }
-
-  const parsed = validationSchema.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: "Payload inválido", details: parsed.error.flatten() });
-
-  const expectedRevision = normalizeRevision(parsed.data.expectedRevision);
+export async function validateProductionRevision(expectedRevisionInput?: string | null): Promise<ProductionValidationResult> {
+  const expectedRevision = normalizeRevision(expectedRevisionInput);
   let mainRevision = "unknown";
   let githubAvailable = true;
   let commitEvidence: Awaited<ReturnType<typeof getCommitEvidence>> | null = null;
@@ -164,9 +174,8 @@ router.post("/support/dev/validate-production", async (req, res) => {
   try {
     mainRevision = normalizeRevision(await getMainRevision());
     if (expectedRevision !== "unknown") commitEvidence = await getCommitEvidence(expectedRevision);
-  } catch (error) {
+  } catch {
     githubAvailable = false;
-    req.log?.warn({ err: error }, "dev-ia production validation: GitHub evidence unavailable");
   }
 
   const runtime: Runtime = expectedRevision !== "unknown" && commitEvidence && !commitEvidence.backendTouched
@@ -187,7 +196,7 @@ router.post("/support/dev/validate-production", async (req, res) => {
     else if (!frontend.reachable) state = "frontend_unreachable";
     else state = "validated";
 
-    return res.json({
+    return {
       success: state === "validated",
       state,
       runtime,
@@ -203,7 +212,7 @@ router.post("/support/dev/validate-production", async (req, res) => {
         vercel,
         frontend,
       },
-    });
+    };
   }
 
   const observedRevision = normalizeRevision(
@@ -227,7 +236,7 @@ router.post("/support/dev/validate-production", async (req, res) => {
     state = mainMatchesObserved ? "validated" : "stale";
   }
 
-  return res.json({
+  return {
     success: state === "validated",
     state,
     runtime,
@@ -247,7 +256,25 @@ router.post("/support/dev/validate-production", async (req, res) => {
       changedFiles: commitEvidence?.changedFiles ?? [],
       backendGate: "ci:railway",
     },
-  });
+  };
+}
+
+router.post("/support/dev/validate-production", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin") {
+    return res.status(403).json({ error: "Somente Super Admin pode validar produção pelo Dev IA." });
+  }
+
+  const parsed = validationSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Payload inválido", details: parsed.error.flatten() });
+
+  try {
+    const result = await validateProductionRevision(parsed.data.expectedRevision);
+    if (!result.githubAvailable) req.log?.warn("dev-ia production validation: GitHub evidence unavailable");
+    return res.json(result);
+  } catch (error) {
+    req.log?.error({ err: error }, "dev-ia production validation failed");
+    return res.status(500).json({ error: "Falha ao validar produção pelo Dev IA" });
+  }
 });
 
 export default router;
