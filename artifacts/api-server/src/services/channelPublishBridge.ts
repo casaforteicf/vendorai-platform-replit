@@ -32,6 +32,11 @@ type MediaPlanLink = {
 type MediaPlanDraftMeta = {
   source?: string;
   requiresBudgetBeforePublish?: boolean;
+  planBudgetTotal?: number;
+  allocatedTotalBudget?: number;
+  allocationWeight?: number;
+  allocationWeightTotal?: number;
+  budgetResolvedAt?: string;
 };
 
 async function assertPublishAuthorization(context: ChannelPublishContext, designQa: DesignQaResult | null) {
@@ -150,21 +155,42 @@ async function enforceMediaPlanBudget(
   }
 
   const tenantCampaigns = await db.select().from(adCampaignsTable).where(eq(adCampaignsTable.tenantId, tenantId));
-  const linkedCampaigns = tenantCampaigns.filter((entry) => readMediaPlanLink(entry).link.mediaPlanId === link.mediaPlanId);
+  const linkedCampaigns = tenantCampaigns.filter((entry) => {
+    if (entry.plataforma !== 'meta' && entry.plataforma !== 'google') return false;
+    return readMediaPlanLink(entry).link.mediaPlanId === link.mediaPlanId;
+  });
   const weighted = linkedCampaigns.map((entry) => ({
     campaign: entry,
     channel: resolveEffectivePaidChannel(entry),
+    draft: readMediaPlanLink(entry).draft,
   })).map((entry) => ({
     ...entry,
     weight: allocationWeight(plan, entry.campaign, entry.channel),
+    allocated: floorCurrency(Number(entry.draft.allocatedTotalBudget ?? 0)),
   }));
-  const totalWeight = weighted.reduce((sum, entry) => sum + entry.weight, 0);
-  const currentWeight = weighted.find((entry) => entry.campaign.id === campaign.id)?.weight ?? allocationWeight(plan, campaign, effectiveChannel);
-  if (totalWeight <= 0 || currentWeight <= 0) throw new Error('Publicação bloqueada: não foi possível resolver a alocação de orçamento do Plano de Mídia.');
 
   const planTotal = floorCurrency(Number(budget.valor));
-  const allocatedTotal = floorCurrency(planTotal * (currentWeight / totalWeight));
-  if (allocatedTotal <= 0) throw new Error('Publicação bloqueada: a parcela calculada para esta campanha ficou sem orçamento disponível.');
+  const reservedByOthers = floorCurrency(weighted
+    .filter((entry) => entry.campaign.id !== campaign.id && entry.allocated > 0)
+    .reduce((sum, entry) => sum + entry.allocated, 0));
+  const existingAllocation = floorCurrency(Number(draft.allocatedTotalBudget ?? 0));
+  if (reservedByOthers > planTotal || reservedByOthers + existingAllocation > planTotal) {
+    throw new Error('Publicação bloqueada: as parcelas já reservadas excedem o teto humano do Plano de Mídia. Revise o orçamento antes de publicar.');
+  }
+
+  const unresolved = weighted.filter((entry) => entry.campaign.id === campaign.id || entry.allocated <= 0);
+  const unresolvedWeightTotal = unresolved.reduce((sum, entry) => sum + entry.weight, 0);
+  const currentWeight = unresolved.find((entry) => entry.campaign.id === campaign.id)?.weight ?? allocationWeight(plan, campaign, effectiveChannel);
+  if (unresolvedWeightTotal <= 0 || currentWeight <= 0) throw new Error('Publicação bloqueada: não foi possível resolver a alocação de orçamento do Plano de Mídia.');
+
+  const remainingBudget = floorCurrency(planTotal - reservedByOthers);
+  const allocatedTotal = existingAllocation > 0
+    ? existingAllocation
+    : floorCurrency(remainingBudget * (currentWeight / unresolvedWeightTotal));
+  if (allocatedTotal <= 0 || reservedByOthers + allocatedTotal > planTotal) {
+    throw new Error('Publicação bloqueada: a parcela calculada ultrapassa o saldo disponível do orçamento humano.');
+  }
+
   const durationDays = campaignDurationDays(campaign);
   const dailyBudget = floorCurrency(allocatedTotal / durationDays);
   if (dailyBudget <= 0) throw new Error('Publicação bloqueada: orçamento diário calculado abaixo do mínimo operacional.');
@@ -189,7 +215,7 @@ async function enforceMediaPlanBudget(
       planBudgetTotal: planTotal,
       allocatedTotalBudget: allocatedTotal,
       allocationWeight: currentWeight,
-      allocationWeightTotal: totalWeight,
+      allocationWeightTotal: unresolvedWeightTotal,
       budgetResolvedAt: new Date().toISOString(),
     },
   };
@@ -206,11 +232,13 @@ async function enforceMediaPlanBudget(
   return {
     mediaPlanId: plan.id,
     planBudgetTotal: planTotal,
+    reservedByOthers,
+    remainingBudget,
     allocatedTotalBudget: allocatedTotal,
     dailyBudget,
     durationDays,
     allocationWeight: currentWeight,
-    allocationWeightTotal: totalWeight,
+    allocationWeightTotal: unresolvedWeightTotal,
     allowBudgetIncrease: false as const,
   };
 }
