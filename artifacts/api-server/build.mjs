@@ -9,6 +9,19 @@ import { rm } from "node:fs/promises";
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+const vendorBrainSrcDir = path.resolve(artifactDir, "../../lib/vendor-brain/src");
+
+const workspaceVendorBrainPlugin = {
+  name: "workspace-vendor-brain",
+  setup(build) {
+    build.onResolve({ filter: /^@workspace\/vendor-brain(?:\/(.+))?$/ }, (args) => {
+      const prefix = "@workspace/vendor-brain";
+      const subpath = args.path.slice(prefix.length).replace(/^\//, "");
+      const relativeFile = subpath ? `${subpath}.ts` : "index.ts";
+      return { path: path.resolve(vendorBrainSrcDir, relativeFile) };
+    });
+  },
+};
 
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
@@ -103,6 +116,7 @@ async function buildAll() {
     ],
     sourcemap: "linked",
     plugins: [
+      workspaceVendorBrainPlugin,
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })
     ],
