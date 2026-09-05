@@ -17,6 +17,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import DevEngineeringCenterTab from "./DevEngineeringCenterTab";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type DevStatus = "analisando" | "diagnosticado" | "executando" | "concluido" | "approval_required" | "github_task" | "erro";
@@ -139,7 +140,7 @@ function shortTitle(text: string) {
 
 export default function DevAgentOverlay() {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"chat" | "history">("chat");
+  const [tab, setTab] = useState<"chat" | "history" | "engineering">("chat");
   const [messages, setMessages] = useState<ChatMessage[]>(() => readJson(STORAGE_MESSAGES, []));
   const [requests, setRequests] = useState<DevRequest[]>(() => readJson(STORAGE_REQUESTS, []));
   const [input, setInput] = useState("");
@@ -397,7 +398,7 @@ export default function DevAgentOverlay() {
                 <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 hover:bg-white/10" aria-label="Fechar"><X className="h-5 w-5" /></button>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-white/10 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs"><PlayCircle className="h-4 w-4" /><span className="font-semibold">Autonomia cognitiva</span><span className="text-slate-300">entender → investigar → decidir → executar</span></div>
+                <div className="flex items-center gap-2 text-xs"><PlayCircle className="h-4 w-4" /><span className="font-semibold">Autonomia cognitiva</span><span className="text-slate-300">entender → investigar → simular → revisar → validar</span></div>
                 <button type="button" onClick={() => setAutonomous((value) => !value)} className={`relative h-6 w-11 rounded-full transition ${autonomous ? "bg-emerald-500" : "bg-slate-600"}`} aria-label="Alternar modo autônomo"><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${autonomous ? "left-6" : "left-1"}`} /></button>
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-300">
@@ -409,6 +410,7 @@ export default function DevAgentOverlay() {
             <div className="flex items-center gap-1 border-b bg-white px-3 py-2">
               <button onClick={() => setTab("chat")} className={`rounded-lg px-3 py-2 text-xs font-medium ${tab === "chat" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}><MessageSquare className="mr-1 inline h-3.5 w-3.5" /> Conversa</button>
               <button onClick={() => setTab("history")} className={`rounded-lg px-3 py-2 text-xs font-medium ${tab === "history" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}><History className="mr-1 inline h-3.5 w-3.5" /> Histórico {requests.length ? `(${requests.length})` : ""}</button>
+              <button onClick={() => setTab("engineering")} className={`rounded-lg px-3 py-2 text-xs font-medium ${tab === "engineering" ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}><ShieldCheck className="mr-1 inline h-3.5 w-3.5" /> Engenharia</button>
               <button onClick={clearHistory} className="ml-auto rounded-lg p-2 text-slate-400 hover:bg-slate-100" title="Limpar histórico"><RotateCcw className="h-3.5 w-3.5" /></button>
             </div>
 
@@ -416,17 +418,19 @@ export default function DevAgentOverlay() {
               <>
                 <div className="border-b bg-slate-50 px-4 py-3"><div className="flex gap-2 overflow-x-auto pb-1">{["Auditar esta tela", "Reportar bug", "Melhorar esta tela"].map((label) => <button key={label} onClick={() => void sendMessage(quickPrompt(label, pathname))} disabled={sending || Boolean(workingId)} className="shrink-0 rounded-full border bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50">{label === "Reportar bug" ? <Bug className="mr-1 inline h-3 w-3" /> : <Sparkles className="mr-1 inline h-3 w-3" />}{label}</button>)}</div></div>
                 <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
-                  {messages.length === 0 && <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700"><p className="font-semibold text-slate-900">Cérebro Executivo {autonomous ? "ativo" : "em modo consultivo"}.</p><p className="mt-2">Conversa simples não vira execução. Quando o pedido exige evidência, o Investigador lê o código real da rota antes da resposta.</p></div>}
+                  {messages.length === 0 && <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700"><p className="font-semibold text-slate-900">Cérebro Executivo {autonomous ? "ativo" : "em modo consultivo"}.</p><p className="mt-2">Conversa simples não vira execução. Pedidos técnicos passam por evidência, impacto, especialistas, planejamento, pré-mortem e revisão antes de uma mudança autônoma.</p></div>}
                   {messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[92%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "bg-slate-950 text-white" : "border bg-white text-slate-800"}`}>{message.content || (sending ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> analisando...</span> : "")}</div></div>)}
                   {(sending || workingId) && <div className="text-xs text-slate-500"><Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />{workingId ? "Dev IA executando trabalho autorizado..." : "Cérebro Executivo classificando e coletando evidências..."}</div>}
                   <div ref={endRef} />
                 </div>
                 <form className="border-t bg-white p-3" onSubmit={(e) => { e.preventDefault(); void sendMessage(input); }}><div className="flex items-end gap-2 rounded-2xl border bg-slate-50 p-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); } }} rows={2} placeholder="Converse, investigue, audite ou peça uma execução..." className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none" /><button type="submit" disabled={!input.trim() || sending || Boolean(workingId)} className="rounded-xl bg-slate-950 p-2.5 text-white disabled:opacity-40"><Send className="h-4 w-4" /></button></div></form>
               </>
-            ) : (
+            ) : tab === "history" ? (
               <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
                 {requests.length === 0 ? <div className="rounded-2xl border bg-white p-5 text-sm text-slate-600">Nenhum pedido técnico registrado.</div> : <div className="space-y-3">{requests.map((request) => <article key={request.id} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="line-clamp-2 text-sm font-medium text-slate-900">{request.text}</p><p className="mt-1 truncate text-[11px] text-slate-500">{request.route}</p></div><span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-700">{statusLabel(request.status)}</span></div><div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> {new Date(request.createdAt).toLocaleString("pt-BR")}</span>{request.cognition && <><span className="rounded-full bg-indigo-50 px-2 py-1 text-indigo-700">{intentLabel(request.cognition.intent)}</span><span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Risco {request.cognition.risk}</span><span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Esforço {request.cognition.cognitiveEffort}/10</span><span>{Math.round(request.cognition.confidence * 100)}% confiança</span></>}</div>{request.cognition?.objective && <p className="mt-3 rounded-xl bg-indigo-50/60 p-3 text-xs leading-relaxed text-slate-700"><span className="font-semibold">Objetivo:</span> {request.cognition.objective}</p>}{request.investigation && <div className="mt-3 rounded-xl bg-emerald-50/60 p-3 text-xs leading-relaxed text-slate-700"><p><span className="font-semibold">Investigação:</span> {request.investigation.summary}</p><p className="mt-1"><span className="font-semibold">Causa provável:</span> {request.investigation.likelyCause}</p>{request.investigation.relevantFiles.length > 0 && <p className="mt-1 break-words"><span className="font-semibold">Arquivos:</span> {request.investigation.relevantFiles.join(", ")}</p>}</div>}{request.executionSummary && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">{request.executionSummary}</p>}<div className="mt-3 flex flex-wrap gap-2">{request.status === "diagnosticado" && request.diagnosis && !request.cognition?.needsApproval && <button onClick={() => void executeRequest(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"><PlayCircle className="h-3.5 w-3.5" /> Executar agora</button>}{request.status === "diagnosticado" && request.diagnosis && <button onClick={() => void createGithubTask(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><GitBranch className="h-3.5 w-3.5" /> Criar tarefa</button>}{request.issueUrl && <a href={request.issueUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><CheckCircle2 className="h-3.5 w-3.5" /> Issue #{request.issueNumber}<ExternalLink className="h-3 w-3" /></a>}</div></article>)}</div>}
               </div>
+            ) : (
+              <DevEngineeringCenterTab active={tab === "engineering"} authHeaders={authHeaders} />
             )}
           </section>
         </div>
