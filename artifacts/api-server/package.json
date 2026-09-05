@@ -13,7 +13,7 @@
     "audit:tenant": "tsx ./src/scripts/audit-tenant-isolation.ts",
     "audit:tenant:strict": "tsx ./src/scripts/audit-tenant-isolation.ts --strict",
     "audit:tenant:baseline": "tsx ./src/scripts/audit-tenant-isolation.ts --baseline-high=738",
-    "ci:railway": "tsc -p tsconfig.launch-ci.json --noEmit && vitest run src/lib/dev-agent-check-evidence.test.ts src/lib/dev-agent-main-governance.test.ts src/lib/dev-agent-playbook-policy.test.ts src/lib/onboarding-implementation.test.ts src/lib/paid-media-budget-execution.test.ts src/lib/paid-media-budget-optimizer.test.ts src/lib/trial-tenant-resolution.test.ts src/lib/vendorai-subscription-lifecycle.test.ts src/lib/vendorai-subscription-rules.test.ts && pnpm run audit:tenant:baseline && pnpm run build",
+    "ci:railway": "tsc -p tsconfig.launch-ci.json --noEmit && vitest run src/lib/dev-agent-check-evidence.test.ts src/lib/dev-agent-main-governance.test.ts src/lib/dev-agent-playbook-policy.test.ts src/lib/onboarding-implementation.test.ts src/lib/paid-media-budget-execution.test.ts src/lib/paid-media-budget-optimizer.test.ts src/lib/paid-media-spend-ceiling.test.ts src/lib/trial-tenant-resolution.test.ts src/lib/vendorai-subscription-lifecycle.test.ts src/lib/vendorai-subscription-rules.test.ts && pnpm run audit:tenant:baseline && pnpm run build",
     "seed-segment-templates": "tsx ./src/seed-segment-templates.ts"
   },
   "dependencies": {
