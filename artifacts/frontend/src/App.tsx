@@ -63,6 +63,31 @@ function ensureMobileDomCompatibility() {
   }
 }
 
+function sanitizeDevAgentHistory() {
+  if (typeof window === "undefined") return;
+  const key = "vendorai_dev_ia_messages_v1";
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    const cleaned = parsed.filter((item) => {
+      if (!item || (item.role !== "user" && item.role !== "assistant")) return false;
+      return typeof item.content === "string" && item.content.trim().length > 0;
+    });
+    window.localStorage.setItem(key, JSON.stringify(cleaned.slice(-100)));
+  } catch {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Histórico inválido nunca pode impedir o Dev IA de abrir.
+    }
+  }
+}
+
 export default function App() {
   const appId = typeof window !== "undefined" ? runtimeAppId(window.location.pathname) : null;
   const [devRequested, setDevRequested] = React.useState(false);
@@ -99,6 +124,7 @@ export default function App() {
 
   const openDevAgent = () => {
     ensureMobileDomCompatibility();
+    sanitizeDevAgentHistory();
     setDevFailed(false);
     setDevRequested(true);
   };
