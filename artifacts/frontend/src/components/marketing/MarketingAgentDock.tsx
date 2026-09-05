@@ -187,6 +187,8 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             kind: "site",
+            artifactId: site.id,
+            persist: true,
             text: site.html,
             channel: "google-search",
             format: site.siteType || "landing",
@@ -235,7 +237,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
         body: JSON.stringify({
           kind: surface === "video" ? "video" : "content",
           text,
-          channel: surface === "video" ? "instagram" : "instagram",
+          channel: "instagram",
           format: latest.type || surface,
           objective: context?.campaignGoal || `revisar ${surface === "video" ? "vídeo" : "conteúdo"}`,
           campaignId: active?.campaignId ?? null,
