@@ -29,3 +29,7 @@ A primeira etapa inclui:
 - Channel Intelligence catalog
 
 A implementação inicial é deliberadamente aditiva e sem alteração destrutiva de fluxos existentes. A migração dos módulos atuais para consumo desses registries deve ocorrer incrementalmente.
+
+## Validação externa
+
+Quando o GitHub Actions não consegue atribuir runner ao job, a PR pode ser validada por builds isolados vinculados ao SHA da própria branch. A evidência só é aceita quando o provedor informa explicitamente a branch e o commit avaliados; builds de `main` ou snapshots reutilizados não substituem essa validação.
