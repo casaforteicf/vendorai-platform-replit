@@ -2,9 +2,11 @@ import { Router } from "express";
 import { z } from "zod/v4";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import cognitionRouter from "./dev_agent_cognition";
+import plannerReviewerRouter, { createExecutionPlan, reviewPullRequestForMerge } from "./dev_agent_planner_reviewer";
 
 const router = Router();
 router.use(cognitionRouter);
+router.use(plannerReviewerRouter);
 
 const executeSchema = z.object({
   requestId: z.string().uuid(),
@@ -34,6 +36,7 @@ const AUTONOMY_SYSTEM_PROMPT = `Você é o executor autônomo do Dev IA da plata
 Sua missão é transformar pedidos técnicos aprovados pelo Super Admin em trabalho real no repositório, usando as ferramentas disponíveis.
 
 REGRAS OBRIGATÓRIAS:
+- O PLANO DE ENGENHARIA recebido é obrigatório. Não improvise escopo fora dele.
 - Trabalhe somente no repositório configurado do VendorAI.
 - Nunca altere main/master diretamente.
 - Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, altere apenas o necessário, crie PR e verifique o status.
@@ -42,7 +45,7 @@ REGRAS OBRIGATÓRIAS:
 - Nunca delete arquivos ou dados.
 - Não tente contornar bloqueios de segurança retornados pelas ferramentas.
 - Mudanças em autenticação, billing/pagamentos, migrations/schema/RLS, segredos, workflows CI/CD ou infraestrutura são consideradas críticas e devem parar em approval_required.
-- Só faça merge automático quando a ferramenta permitir e os checks estiverem verdes.
+- Só faça merge automático quando a ferramenta permitir, os checks estiverem verdes E a revisão adversarial independente aprovar.
 - Nunca diga que algo foi publicado/validado se não houver evidência.
 - Se a solicitação for apenas pergunta, auditoria ou diagnóstico sem necessidade de código, não faça alteração.
 
@@ -201,11 +204,21 @@ async function mergePullRequest(number: number) {
   if (pr.draft || pr.state !== "open") throw new Error("PR não está pronto para merge");
   if (pr.mergeable === false) throw new Error("PR não é mergeável");
   if (pr.status !== "success") throw new Error(`Checks ainda não estão verdes: ${pr.status}`);
+
+  const review = await reviewPullRequestForMerge(number);
+  if (review.verdict !== "approve") {
+    const topFindings = review.findings.slice(0, 5).map((item) => `${item.severity}: ${item.title}`).join("; ");
+    const error = new Error(`approval_required: revisão adversarial bloqueou o merge (${review.verdict}, risco ${review.risk}). ${topFindings || review.reasoningSummary}`);
+    (error as any).code = "APPROVAL_REQUIRED";
+    (error as any).review = review;
+    throw error;
+  }
+
   const data = await gh(`/repos/${owner}/${repo}/pulls/${number}/merge`, {
     method: "PUT",
     body: JSON.stringify({ merge_method: "squash" }),
   });
-  return { merged: Boolean(data.merged), sha: data.sha, message: data.message };
+  return { merged: Boolean(data.merged), sha: data.sha, message: data.message, review };
 }
 
 const tools: any[] = [
@@ -276,7 +289,7 @@ const tools: any[] = [
     type: "function",
     function: {
       name: "merge_pr",
-      description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável e estiver com checks verdes.",
+      description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável, checks verdes e aprovado por revisor adversarial independente.",
       parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false },
     },
   },
@@ -305,6 +318,35 @@ router.post("/support/dev/execute", async (req, res) => {
 
   try {
     githubConfig();
+
+    const plannerInput = {
+      requestId: parsed.data.requestId,
+      request: parsed.data.request,
+      route: parsed.data.route,
+      cognition: {},
+      investigation: { evidenceContext: parsed.data.diagnosis },
+    };
+    const { plan, engine: plannerEngine } = await createExecutionPlan(plannerInput);
+
+    if (plan.needsApproval) {
+      return res.status(409).json({
+        success: false,
+        status: "approval_required",
+        error: `Planner classificou a mudança como dependente de aprovação: ${plan.risks.join("; ") || plan.approach}`,
+        plan,
+      });
+    }
+
+    if (!plan.shouldExecute) {
+      return res.json({
+        success: true,
+        status: "completed",
+        summary: `Planner recomendou não alterar código neste momento. ${plan.approach}`,
+        plan,
+        actions: [{ tool: "planner", ok: true, detail: { plan, engine: plannerEngine } }],
+      });
+    }
+
     const openai = await getOpenAIForTenant("");
     const messages: any[] = [
       { role: "system", content: AUTONOMY_SYSTEM_PROMPT },
@@ -315,10 +357,13 @@ router.post("/support/dev/execute", async (req, res) => {
           route: parsed.data.route,
           pedido: parsed.data.request,
           diagnostico_previo: parsed.data.diagnosis,
+          plano_de_engenharia: plan,
         }),
       },
     ];
-    const actions: Array<{ tool: string; ok: boolean; detail?: any }> = [];
+    const actions: Array<{ tool: string; ok: boolean; detail?: any }> = [
+      { tool: "planner", ok: true, detail: { plan, engine: plannerEngine } },
+    ];
 
     for (let step = 0; step < 12; step += 1) {
       const completion = await openai.chat.completions.create({
@@ -338,6 +383,7 @@ router.post("/support/dev/execute", async (req, res) => {
           success: true,
           status: "completed",
           summary: message.content ?? "Execução concluída sem mensagem final.",
+          plan,
           actions,
         });
       }
@@ -353,7 +399,7 @@ router.post("/support/dev/execute", async (req, res) => {
         } catch (error) {
           const messageText = error instanceof Error ? error.message : "Erro desconhecido";
           const approvalRequired = messageText.startsWith("approval_required:") || (error as any)?.code === "APPROVAL_REQUIRED";
-          const result = { ok: false, error: messageText, approval_required: approvalRequired };
+          const result = { ok: false, error: messageText, approval_required: approvalRequired, ...(approvalRequired && (error as any)?.review ? { review: (error as any).review } : {}) };
           actions.push({ tool: name, ok: false, detail: result });
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
           if (approvalRequired) {
@@ -361,14 +407,16 @@ router.post("/support/dev/execute", async (req, res) => {
               success: false,
               status: "approval_required",
               error: messageText.replace(/^approval_required:\s*/i, ""),
+              plan,
               actions,
+              ...(result.review ? { review: result.review } : {}),
             });
           }
         }
       }
     }
 
-    return res.status(409).json({ success: false, status: "step_limit", error: "Executor atingiu o limite seguro de etapas.", actions });
+    return res.status(409).json({ success: false, status: "step_limit", error: "Executor atingiu o limite seguro de etapas.", plan, actions });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";
     req.log?.error({ err: error }, "dev-ia: autonomous executor failed");
