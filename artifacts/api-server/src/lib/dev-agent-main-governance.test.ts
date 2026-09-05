@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateMainGovernance } from "./dev-agent-main-governance.js";
+import { classifyGithubHttpFailure, evaluateMainGovernance } from "./dev-agent-main-governance.js";
 
 describe("evaluateMainGovernance", () => {
   const sha = "333ac489c813da0d87cf890ad7f9fae391169a74";
@@ -24,5 +24,16 @@ describe("evaluateMainGovernance", () => {
 
   it("returns unknown when main revision is unavailable", () => {
     expect(evaluateMainGovernance(null, [])).toEqual({ status: "unknown", prNumber: null });
+  });
+});
+
+describe("classifyGithubHttpFailure", () => {
+  it("classifies authentication and authorization failures as invalid credential", () => {
+    expect(classifyGithubHttpFailure(401)).toBe("GITHUB_CREDENTIAL_INVALID");
+    expect(classifyGithubHttpFailure(403)).toBe("GITHUB_CREDENTIAL_INVALID");
+  });
+
+  it("keeps other GitHub HTTP failures distinguishable", () => {
+    expect(classifyGithubHttpFailure(500)).toBe("GITHUB_HTTP_500");
   });
 });

@@ -40,6 +40,11 @@ function githubConfig() {
   return { token, owner, repo };
 }
 
+export function classifyGithubHttpFailure(status: number) {
+  if (status === 401 || status === 403) return "GITHUB_CREDENTIAL_INVALID";
+  return `GITHUB_HTTP_${status}`;
+}
+
 async function gh(path: string) {
   const { token } = githubConfig();
   const response = await fetch(`https://api.github.com${path}`, {
@@ -50,7 +55,7 @@ async function gh(path: string) {
       "User-Agent": "VendorAI-Main-Governance/1.0",
     },
   });
-  if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
+  if (!response.ok) throw new Error(classifyGithubHttpFailure(response.status));
   return response.json() as Promise<any>;
 }
 
