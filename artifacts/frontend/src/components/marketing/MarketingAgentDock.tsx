@@ -57,6 +57,16 @@ type RuntimeResponse = {
 
 type SiteSummary = { id: string; name?: string; updatedAt?: string };
 type SiteDetail = { id: string; html?: string; name?: string; siteType?: string };
+type ContentItem = {
+  id: string;
+  type?: string;
+  theme?: string;
+  productName?: string | null;
+  result?: {
+    variations?: Array<Record<string, unknown>>;
+    designQa?: DesignQaResult;
+  } | null;
+};
 
 function readActiveBriefing(tenantId: string): ActiveBriefing | null {
   if (typeof window === "undefined") return null;
@@ -71,7 +81,28 @@ function readActiveBriefing(tenantId: string): ActiveBriefing | null {
 }
 
 function isWebSurface(surface: string) {
-  return surface === "site-lp" || surface === "site" || surface === "landing-page" || surface === "landing";
+  return surface === "site";
+}
+
+function isCreativeQaSurface(surface: string) {
+  return surface === "site" || surface === "content" || surface === "video";
+}
+
+function contentText(item: ContentItem) {
+  const variation = item.result?.variations?.[0] ?? {};
+  return [
+    item.theme,
+    item.productName,
+    variation.caption,
+    variation.text,
+    variation.title,
+    variation.cta,
+    variation.descricao,
+    variation.titulo,
+    Array.isArray(variation.hashtags) ? variation.hashtags.join(" ") : null,
+    Array.isArray(variation.scenes) ? JSON.stringify(variation.scenes) : null,
+    Array.isArray(variation.roteiro) ? JSON.stringify(variation.roteiro) : null,
+  ].filter(Boolean).join("\n");
 }
 
 export function MarketingAgentDock({ pathname }: { pathname: string }) {
@@ -121,7 +152,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
   }, [open, visible, tenantId, token, pathname, surface, tenantVertical]);
 
   useEffect(() => {
-    if (!open || !visible || !tenantId || !token || !isWebSurface(surface)) {
+    if (!open || !visible || !tenantId || !token || !isCreativeQaSurface(surface)) {
       setDesignQa(null);
       setQaArtifactName(null);
       return;
@@ -133,43 +164,93 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
     setLoadingQa(true);
 
     (async () => {
-      const listResponse = await fetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, {
+      if (isWebSurface(surface)) {
+        const listResponse = await fetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (!listResponse.ok) throw new Error(`sites ${listResponse.status}`);
+        const rows = await listResponse.json() as SiteSummary[];
+        const latest = Array.isArray(rows) ? rows[0] : null;
+        if (!latest?.id) return;
+
+        const detailResponse = await fetch(`/api/tenants/${tenantId}/site-generator/${latest.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (!detailResponse.ok) throw new Error(`site ${detailResponse.status}`);
+        const site = await detailResponse.json() as SiteDetail;
+        if (!site?.html) return;
+
+        const qaResponse = await fetch(`/api/tenants/${tenantId}/marketing-agent/design-qa`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "site",
+            text: site.html,
+            channel: "google-search",
+            format: site.siteType || "landing",
+            objective: context?.campaignGoal || "converter visitantes em contatos qualificados",
+            campaignId: active?.campaignId ?? null,
+            audience: context?.audienceNiche || context?.audienceSegment || context?.nicheName || null,
+            cta: null,
+            technicalValid: true,
+          }),
+        });
+        if (!qaResponse.ok) throw new Error(`qa ${qaResponse.status}`);
+        const qa = await qaResponse.json() as { designQa?: DesignQaResult };
+        if (!cancelled) {
+          setDesignQa(qa.designQa ?? null);
+          setQaArtifactName(site.name || latest.name || "Site/LP");
+        }
+        return;
+      }
+
+      const contentResponse = await fetch(`/api/tenants/${tenantId}/content`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
-      if (!listResponse.ok) throw new Error(`sites ${listResponse.status}`);
-      const rows = await listResponse.json() as SiteSummary[];
-      const latest = Array.isArray(rows) ? rows[0] : null;
-      if (!latest?.id) return;
+      if (!contentResponse.ok) throw new Error(`content ${contentResponse.status}`);
+      const payload = await contentResponse.json() as { items?: ContentItem[] };
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      const latest = surface === "video"
+        ? items.find((item) => item.type === "reels" || item.type === "youtube")
+        : items.find((item) => item.type !== "reels" && item.type !== "youtube") ?? items[0];
+      if (!latest) return;
 
-      const detailResponse = await fetch(`/api/tenants/${tenantId}/site-generator/${latest.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-      if (!detailResponse.ok) throw new Error(`site ${detailResponse.status}`);
-      const site = await detailResponse.json() as SiteDetail;
-      if (!site?.html) return;
+      if (latest.result?.designQa) {
+        if (!cancelled) {
+          setDesignQa(latest.result.designQa);
+          setQaArtifactName(latest.theme || (surface === "video" ? "Vídeo" : "Conteúdo"));
+        }
+        return;
+      }
 
+      const text = contentText(latest);
+      if (!text) return;
+      const variation = latest.result?.variations?.[0] ?? {};
       const qaResponse = await fetch(`/api/tenants/${tenantId}/marketing-agent/design-qa`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          kind: "site",
-          text: site.html,
-          channel: "google-search",
-          format: site.siteType || "landing",
-          objective: context?.campaignGoal || "converter visitantes em contatos qualificados",
+          kind: surface === "video" ? "video" : "content",
+          text,
+          channel: surface === "video" ? "instagram" : "instagram",
+          format: latest.type || surface,
+          objective: context?.campaignGoal || `revisar ${surface === "video" ? "vídeo" : "conteúdo"}`,
           campaignId: active?.campaignId ?? null,
           audience: context?.audienceNiche || context?.audienceSegment || context?.nicheName || null,
-          cta: null,
-          technicalValid: true,
+          cta: typeof variation.cta === "string" ? variation.cta : null,
+          technicalValid: surface === "video"
+            ? Boolean(variation.videoUrl || variation.scenes || variation.roteiro)
+            : true,
         }),
       });
       if (!qaResponse.ok) throw new Error(`qa ${qaResponse.status}`);
       const qa = await qaResponse.json() as { designQa?: DesignQaResult };
       if (!cancelled) {
         setDesignQa(qa.designQa ?? null);
-        setQaArtifactName(site.name || latest.name || "Site/LP");
+        setQaArtifactName(latest.theme || (surface === "video" ? "Vídeo" : "Conteúdo"));
       }
     })()
       .catch(() => {
@@ -216,14 +297,14 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
               {loadingRuntime && <Badge variant="outline"><Loader2 className="mr-1 h-3 w-3 animate-spin" />contexto</Badge>}
             </div>
 
-            {isWebSurface(surface) && (
+            {isCreativeQaSurface(surface) && (
               <div className="rounded-lg border bg-muted/20 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs font-medium">
-                    <Gauge className="h-3.5 w-3.5 text-primary" />
-                    Design QA {qaArtifactName ? `· ${qaArtifactName}` : ""}
+                  <div className="flex min-w-0 items-center gap-2 text-xs font-medium">
+                    <Gauge className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span className="truncate">Design QA {qaArtifactName ? `· ${qaArtifactName}` : ""}</span>
                   </div>
-                  {loadingQa && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                  {loadingQa && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
                 </div>
                 {designQa ? (
                   <div className="space-y-2">
@@ -245,7 +326,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
                     )}
                   </div>
                 ) : !loadingQa ? (
-                  <p className="text-[11px] text-muted-foreground">Gere ou salve um Site/LP para executar a revisão automática.</p>
+                  <p className="text-[11px] text-muted-foreground">Gere ou salve um artefato para executar a revisão automática.</p>
                 ) : null}
               </div>
             )}
@@ -282,7 +363,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
             </div>
 
             <p className="text-[11px] leading-4 text-muted-foreground">
-              O agente resolve ao vivo a campanha ativa, vertical, tenant e dados da tela. Brand Profile e tom aprendido continuam vindo das fontes oficiais. Publicação e alteração de verba permanecem protegidas por permissão e autonomia.
+              O agente resolve ao vivo a campanha ativa, vertical, tenant e dados da tela. Brand Profile e tom aprendido continuam vindo das fontes oficiais. Publicação automática exige Design QA aprovado quando aplicável e alterações de verba continuam protegidas por permissão/autonomia.
             </p>
           </CardContent>
         </Card>
