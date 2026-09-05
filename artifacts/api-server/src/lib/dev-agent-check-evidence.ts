@@ -18,6 +18,18 @@ export type DevAgentRegressionTestEvidence = {
   checkedDirectories: string[];
 };
 
+export type RegressionTestContractInput = {
+  productionFiles: string[];
+  changedTestFiles: string[];
+  directoriesWithConvention: string[];
+};
+
+export type RegressionTestContractDecision = {
+  required: boolean;
+  conventionDetected: boolean;
+  satisfied: boolean;
+};
+
 export type DevAgentCheckEvidence = {
   available: boolean;
   total: number;
@@ -46,7 +58,7 @@ async function githubJson(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Check-Evidence/1.1",
+      "User-Agent": "VendorAI-Dev-Check-Evidence/1.2",
     },
   });
   const text = await response.text();
@@ -97,6 +109,22 @@ function isTestableProductionFile(path: string) {
 function dirname(path: string) {
   const index = path.lastIndexOf("/");
   return index > 0 ? path.slice(0, index) : "";
+}
+
+export function evaluateRegressionTestContract(input: RegressionTestContractInput): RegressionTestContractDecision {
+  const directoriesWithConvention = new Set(input.directoriesWithConvention.filter(Boolean));
+  const conventionDetected = directoriesWithConvention.size > 0;
+  const required = input.productionFiles.length > 0 && conventionDetected;
+  const changedTestInConvention = input.changedTestFiles.some((path) => {
+    const testDirectory = dirname(path);
+    return directoriesWithConvention.has(testDirectory) || directoriesWithConvention.has(dirname(testDirectory));
+  });
+
+  return {
+    required,
+    conventionDetected,
+    satisfied: !required || changedTestInConvention,
+  };
 }
 
 async function testsInDirectory(path: string) {
@@ -150,14 +178,14 @@ async function collectRegressionTestEvidence(headSha: string): Promise<DevAgentR
     nearbyTestFiles.push(...tests);
   }
 
-  const conventionDetected = directoriesWithConvention.size > 0;
-  const changedTestInConvention = changedTestFiles.some((path) => directoriesWithConvention.has(dirname(path)) || directoriesWithConvention.has(dirname(dirname(path))));
-  const required = productionFiles.length > 0 && conventionDetected;
+  const decision = evaluateRegressionTestContract({
+    productionFiles,
+    changedTestFiles,
+    directoriesWithConvention: [...directoriesWithConvention],
+  });
 
   return {
-    required,
-    conventionDetected,
-    satisfied: !required || changedTestInConvention,
+    ...decision,
     productionFiles,
     changedTestFiles,
     nearbyTestFiles: Array.from(new Set(nearbyTestFiles)).slice(0, 30),
