@@ -6,7 +6,7 @@ import { fetchMetaAdsCampaignPerformance, setMetaAdsCampaignStatus } from "../se
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { evaluatePaidMediaSpendCeiling } from "../services/paidMediaSpendCeiling.js";
 
-const GUARD_INTERVAL_MINUTES = 15;
+const GUARD_INTERVAL_MINUTES = 60;
 
 type CampaignRow = typeof adCampaignsTable.$inferSelect;
 
