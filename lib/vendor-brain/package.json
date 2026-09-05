@@ -15,6 +15,7 @@
     "./marketing-agent-ui": "./src/marketing-agent-ui.ts",
     "./channel-adapters": "./src/channel-adapters.ts",
     "./creative-design": "./src/creative-design.ts",
+    "./creative-runtime": "./src/creative-runtime.ts",
     "./intelligence-routing": "./src/intelligence-routing.ts",
     "./revenue-scout-bridge": "./src/revenue-scout-bridge.ts",
     "./engines/*": "./src/engines/*.ts",
