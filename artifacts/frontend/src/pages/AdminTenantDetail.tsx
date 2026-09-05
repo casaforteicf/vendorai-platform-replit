@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { AccessLicenseAdminCard } from "@/components/billing/AccessLicenseAdminCard";
 import { TenantInternationalProfileCard } from "@/components/admin/TenantInternationalProfileCard";
+import { TenantImplementationStatusCard } from "@/components/admin/TenantImplementationStatusCard";
 import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Building2, Shield, ShieldOff, Mail, Loader2, Zap, Bot,
@@ -910,6 +911,8 @@ export default function AdminTenantDetail() {
           </CardContent>
         </Card>
       </div>
+
+      <TenantImplementationStatusCard tenantId={id} />
 
       <AccessLicenseAdminCard tenantId={id} />
 

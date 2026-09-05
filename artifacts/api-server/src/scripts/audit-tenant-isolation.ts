@@ -78,11 +78,18 @@ for (const filePath of walk(root)) {
       relativeFile === "routes/business_profiles.ts" &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
       /if\s*\(!canAccessTenant\(req,\s*tenantId\)\)/.test(guardWindow);
+    // The implementation status route is intentionally cross-tenant only for Super Admin.
+    // Keep this exception exact so ordinary tenant routes remain covered by the audit.
+    const guardedImplementationSuperAdminTenant =
+      relativeFile === "routes/onboarding_implementation.ts" &&
+      /router\.get\("\/superadmin\/tenants\/:tenantId\/implementation",\s*requireRole\("super_admin"\)/.test(previousLine) &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line);
 
     if (
       line.includes("tenant-audit: reviewed") ||
       previousLine.includes("tenant-audit: reviewed") ||
-      guardedMarketingTenant
+      guardedMarketingTenant ||
+      guardedImplementationSuperAdminTenant
     ) {
       return;
     }

@@ -48,6 +48,7 @@ import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
 import invitesRouter, { invitesProtectedRouter } from "./invites";
 import onboardingRouter from "./onboarding";
+import onboardingImplementationRouter from "./onboarding_implementation";
 import contentRouter from "./content";
 import contentReferenceCreatorsRouter from "./content_reference_creators.js";
 import contentPerformanceRouter from "./content_performance.js";
@@ -334,6 +335,7 @@ router.use(invitesProtectedRouter);
 
 // Onboarding Hub
 router.use(onboardingRouter);
+router.use(onboardingImplementationRouter);
 
 // Content Generation Hub
 router.use(contentRouter);
