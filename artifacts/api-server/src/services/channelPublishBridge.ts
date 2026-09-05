@@ -40,6 +40,11 @@ async function assertPublishAuthorization(context: ChannelPublishContext, design
         `Publicação automática bloqueada: Design QA ${designQa.overallScore}/100 abaixo do mínimo aprovado.`,
       );
     }
+    if (designQa.brandScore <= 0) {
+      throw new Error(
+        'Publicação automática bloqueada: compliance de marca ainda não foi comprovado por evidência observável.',
+      );
+    }
   }
 
   return autonomyPolicy;
