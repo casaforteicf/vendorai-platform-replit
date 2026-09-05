@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod/v4";
+import * as ts from "typescript";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import cognitionRouter from "./dev_agent_cognition";
 import plannerReviewerRouter, { createExecutionPlan, reviewPullRequestForMerge } from "./dev_agent_planner_reviewer";
@@ -62,7 +63,7 @@ REGRAS OBRIGATÓRIAS:
 - O PARECER DO CONSELHO DE ESPECIALISTAS recebido também é obrigatório e deve orientar riscos e validação.
 - Trabalhe somente no repositório configurado do VendorAI.
 - Nunca altere main/master diretamente.
-- Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, ESCREVA o código necessário com patch_file/update_file/create_file, revise o diff da branch, crie PR e verifique o status.
+- Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, ESCREVA o código necessário com patch_file/update_file/create_file, revise o diff da branch, execute preflight_branch, corrija todos os achados determinísticos e só então crie PR e verifique o status.
 - Prefira patch_file para uma alteração local e inequívoca; use update_file quando a transformação exigir o arquivo completo; use create_file somente quando não existir fluxo equivalente.
 - Se plan.shouldExecute=true, pesquisar, diagnosticar ou explicar NÃO conta como execução concluída. Você deve efetivamente escrever código quando a mudança autorizada exigir código.
 - Uma execução de código só pode ser considerada concluída depois de ao menos uma escrita bem-sucedida e da abertura de um PR da branch dev-ia/ para main.
@@ -99,7 +100,7 @@ async function gh(path: string, init?: RequestInit) {
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Agent/3.3",
+      "User-Agent": "VendorAI-Dev-Agent/3.4",
       ...(init?.headers ?? {}),
     },
   });
@@ -267,13 +268,96 @@ async function compareBranch(branchInput: string) {
   };
 }
 
+function preflightDiagnosticText(diagnostic: ts.Diagnostic) {
+  const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, " ").slice(0, 500);
+  if (!diagnostic.file || typeof diagnostic.start !== "number") return message;
+  const pos = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
+  return `linha ${pos.line + 1}, coluna ${pos.character + 1}: ${message}`;
+}
+
+async function preflightBranch(branchInput: string) {
+  const branch = normalizeBranch(branchInput);
+  const diff = await compareBranch(branch);
+  const findings: Array<{ severity: "high"; title: string; detail: string; file?: string }> = [];
+
+  if (!diff.files.length || diff.aheadBy < 1) {
+    findings.push({ severity: "high", title: "Branch sem mudanças", detail: "A branch precisa conter pelo menos um commit com alterações antes do preflight." });
+  }
+  if (diff.behindBy > 0) {
+    findings.push({ severity: "high", title: "Branch atrasada em relação à main", detail: `A branch está ${diff.behindBy} commit(s) atrás da main e deve ser reaplicada antes de abrir PR.` });
+  }
+  if (diff.files.length > 30) {
+    findings.push({ severity: "high", title: "Mudança grande demais para PR autônomo", detail: `A branch altera ${diff.files.length} arquivos; o limite seguro do Dev IA é 30.` });
+  }
+
+  for (const file of diff.files.filter((item: any) => item.status !== "removed")) {
+    if (findings.length >= 12) break;
+    const path = String(file.path ?? "");
+    if (!/\.(ts|tsx|js|jsx|mjs|cjs|json)$/i.test(path)) continue;
+
+    let content = "";
+    try {
+      content = (await getFile(path, branch)).content;
+    } catch (error) {
+      findings.push({ severity: "high", title: "Arquivo não pôde ser validado", detail: error instanceof Error ? error.message.slice(0, 500) : "falha de leitura", file: path });
+      continue;
+    }
+
+    if (/^(<{7}|={7}|>{7})/m.test(content)) {
+      findings.push({ severity: "high", title: "Marcador de conflito encontrado", detail: "O arquivo contém marcador de conflito Git e deve ser corrigido antes do PR.", file: path });
+      continue;
+    }
+
+    if (/\.json$/i.test(path)) {
+      try {
+        JSON.parse(content);
+      } catch (error) {
+        findings.push({ severity: "high", title: "JSON inválido", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha de parse JSON", file: path });
+      }
+      continue;
+    }
+
+    const transpiled = ts.transpileModule(content, {
+      fileName: path,
+      reportDiagnostics: true,
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+        jsx: ts.JsxEmit.Preserve,
+        allowJs: true,
+      },
+    });
+    const errors = (transpiled.diagnostics ?? []).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error).slice(0, 4);
+    for (const diagnostic of errors) {
+      findings.push({ severity: "high", title: "Erro sintático detectado", detail: preflightDiagnosticText(diagnostic), file: path });
+      if (findings.length >= 12) break;
+    }
+  }
+
+  return {
+    branch,
+    passed: findings.length === 0,
+    findings,
+    aheadBy: diff.aheadBy,
+    behindBy: diff.behindBy,
+    totalCommits: diff.totalCommits,
+    changedFiles: diff.files.map((file: any) => file.path),
+  };
+}
+
 async function createPullRequest(args: { title: string; body: string; head: string }) {
   const { owner, repo } = githubConfig();
   const head = normalizeBranch(args.head);
-  const diff = await compareBranch(head);
-  if (!diff.files.length || diff.aheadBy < 1) throw new Error("Branch sem mudanças para abrir PR");
+  const preflight = await preflightBranch(head);
+  if (!preflight.passed) {
+    const summary = preflight.findings.slice(0, 6).map((item) => `${item.title}${item.file ? ` (${item.file})` : ""}: ${item.detail}`).join("; ");
+    const error = new Error(`pre_pr_preflight_failed: ${summary || "A branch não passou pelo preflight determinístico."}`);
+    (error as any).code = "PRE_PR_PREFLIGHT_FAILED";
+    (error as any).preflight = preflight;
+    throw error;
+  }
   const data = await gh(`/repos/${owner}/${repo}/pulls`, { method: "POST", body: JSON.stringify({ title: args.title.slice(0, 120), body: args.body.slice(0, 12000), head, base: "main", draft: false }) });
-  return { number: data.number, url: data.html_url, headSha: data.head?.sha, mergeable: data.mergeable, changedFiles: diff.files.map((file: any) => file.path) };
+  return { number: data.number, url: data.html_url, headSha: data.head?.sha, mergeable: data.mergeable, changedFiles: preflight.changedFiles, preflight: { passed: true, checkedAt: new Date().toISOString() } };
 }
 
 async function getPullRequest(number: number) {
@@ -344,7 +428,8 @@ const tools: any[] = [
   { type: "function", function: { name: "update_file", description: "ESCREVE/substitui um arquivo existente numa branch dev-ia/. Use quando a transformação exigir o conteúdo completo. Não pode editar main nem caminhos críticos.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, branch: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "branch", "message"], additionalProperties: false } } },
   { type: "function", function: { name: "create_file", description: "ESCREVE/cria novo arquivo textual numa branch dev-ia/ somente em caminho não crítico. Use apenas quando não existir fluxo equivalente.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, branch: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "branch", "message"], additionalProperties: false } } },
   { type: "function", function: { name: "compare_branch", description: "Compara uma branch dev-ia/ com main e retorna arquivos, estatísticas e patches resumidos. Deve ser usado antes de abrir PR.", parameters: { type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false } } },
-  { type: "function", function: { name: "create_pr", description: "Abre PR de uma branch dev-ia/ para main somente quando a branch realmente contém mudanças.", parameters: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, head: { type: "string" } }, required: ["title", "body", "head"], additionalProperties: false } } },
+  { type: "function", function: { name: "preflight_branch", description: "Valida deterministicamente a branch dev-ia/ antes do PR: branch atualizada, tamanho seguro, conflitos, JSON válido e sintaxe TS/TSX/JS/JSX. Corrija todos os achados antes de create_pr.", parameters: { type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false } } },
+  { type: "function", function: { name: "create_pr", description: "Abre PR de uma branch dev-ia/ para main somente quando a branch contém mudanças e passa pelo preflight determinístico obrigatório.", parameters: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, head: { type: "string" } }, required: ["title", "body", "head"], additionalProperties: false } } },
   { type: "function", function: { name: "get_pr", description: "Consulta PR, arquivos alterados e gates relevantes do VendorAI.", parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false } } },
   { type: "function", function: { name: "merge_pr", description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável, gates Vercel relevantes verdes e aprovado por revisor adversarial. Depois do merge exige validação real de produção; backend passa pelo ci:railway.", parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false } } },
 ];
@@ -359,6 +444,7 @@ async function runTool(name: string, args: any) {
     case "update_file": return updateFile({ path: String(args.path ?? ""), content: String(args.content ?? ""), branch: String(args.branch ?? ""), message: String(args.message ?? "Dev IA update") });
     case "create_file": return createFile({ path: String(args.path ?? ""), content: String(args.content ?? ""), branch: String(args.branch ?? ""), message: String(args.message ?? "Dev IA create file") });
     case "compare_branch": return compareBranch(String(args.branch ?? ""));
+    case "preflight_branch": return preflightBranch(String(args.branch ?? ""));
     case "create_pr": return createPullRequest({ title: String(args.title ?? "Dev IA change"), body: String(args.body ?? ""), head: String(args.head ?? "") });
     case "get_pr": return getPullRequest(Number(args.number));
     case "merge_pr": return mergePullRequest(Number(args.number));
