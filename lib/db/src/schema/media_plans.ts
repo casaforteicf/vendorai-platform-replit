@@ -43,6 +43,22 @@ export interface MediaPlanCampaign {
   status: "planejada" | "em_revisao" | "aprovada" | "em_producao" | "ativa" | "encerrada";
 }
 
+export interface MediaPlanBudget {
+  valor: number;
+  tipo: "total" | "diario" | "semanal" | "mensal";
+  moeda: "BRL";
+  gestao: "ia_autonoma";
+  limiteRigido: true;
+}
+
+export interface MediaPlanPeriod {
+  inicioEm?: string;
+  fimEm?: string | null;
+  aberto?: boolean;
+  duracaoValor?: number;
+  duracaoUnidade?: "horas" | "dias";
+}
+
 export interface MediaPlanConteudo {
   diagnostico: string;
   pontosFortesAtuais: string[];
@@ -52,7 +68,12 @@ export interface MediaPlanConteudo {
   acoesImediatas: string[];
   concorrentesEncontrados?: Array<{ dominio: string; titulo: string; url: string }>;
   keywordsRelevantes?: Array<{ termo: string; volumeBusca: number | null }>;
-  periodoDias?: 30 | 60 | 90;
+  // Mantido por compatibilidade com planos existentes e calendários baseados em dias.
+  periodoDias?: number;
+  periodo?: MediaPlanPeriod;
+  nomeCampanha?: string;
+  ofertaCampanha?: string;
+  orcamento?: MediaPlanBudget;
   campanhas?: MediaPlanCampaign[];
   totalAcoesPlanejadas?: number;
   statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
