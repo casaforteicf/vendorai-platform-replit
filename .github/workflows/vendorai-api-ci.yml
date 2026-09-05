@@ -53,6 +53,9 @@ jobs:
           src/lib/vendorai-subscription-lifecycle.test.ts
           src/lib/vendorai-subscription-rules.test.ts
 
+      - name: Tenant isolation audit
+        run: pnpm --filter @workspace/api-server audit:tenant:strict
+
       # Keep repository-wide TypeScript debt visible without allowing unrelated
       # legacy modules (PraçaAI, Access License, agents, stories, etc.) to hide
       # the launch-specific gate above. Anthropic is built first to avoid false
