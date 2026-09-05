@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Logger } from "pino";
-import { adCampaignsTable, adPerformanceSnapshotsTable, db, dealsTable, leadsTable } from "@workspace/db";
+import { adCampaignsTable, adPerformanceSnapshotsTable, db, dealsTable, leadsTable, mediaPlansTable } from "@workspace/db";
 import { fetchGoogleAdsCampaignPerformance, setGoogleAdsCampaignStatus } from "../services/google-ads-campaign-publish.js";
 import { fetchMetaAdsCampaignPerformance, setMetaAdsCampaignStatus } from "../services/meta-ads-campaign-publish.js";
 import { setPlatformCampaignDailyBudget } from "../services/adBudgetControl.js";
@@ -17,6 +17,138 @@ function lastBudgetAdjustmentAt(campaign: typeof adCampaignsTable.$inferSelect):
   const value = (campaign.segmentacao as any)?.campaignControl?.automation?.lastBudgetAdjustment?.at;
   const time = typeof value === "string" ? new Date(value).getTime() : 0;
   return Number.isFinite(time) ? time : 0;
+}
+
+function daysBetween(startDate: string | undefined, endDate: string | undefined): number {
+  if (!startDate || !endDate) return 1;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59`);
+  const diff = end.getTime() - start.getTime();
+  return Number.isFinite(diff) && diff > 0 ? Math.max(1, Math.ceil(diff / 86_400_000)) : 1;
+}
+
+function budgetForWindow(value: number, type: string, days: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  if (type === "diario") return value * days;
+  if (type === "semanal") return (value / 7) * days;
+  if (type === "mensal") return (value / 30) * days;
+  return value;
+}
+
+function platformWeight(plan: typeof mediaPlansTable.$inferSelect, platform: string): number {
+  const campaigns = plan.conteudo?.campanhas ?? [];
+  let total = 0;
+  for (const campaign of campaigns) {
+    for (const channel of campaign.canais ?? []) {
+      const name = channel.canal.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const matches = platform === "meta"
+        ? name.includes("meta ads") || name.includes("facebook ads") || name.includes("instagram ads")
+        : name.includes("google search") || name.includes("google display") || name.includes("performance max") || name.includes("google ads");
+      if (matches) total += Math.max(0, Number(channel.percentualOrcamento ?? 0));
+    }
+  }
+  return total;
+}
+
+/**
+ * Faz o handoff financeiro do Planejador para os rascunhos reais de Ads.
+ * O usuário informa um único orçamento no plano; a IA materializa limites
+ * por campanha sem aumentar o teto. Nenhuma plataforma é ativada aqui.
+ */
+async function hydrateMediaPlanDraftBudgets(log: Logger): Promise<void> {
+  const drafts = await db.select().from(adCampaignsTable)
+    .where(eq(adCampaignsTable.status, "rascunho"))
+    .limit(500);
+
+  const groups = new Map<string, typeof drafts>();
+  for (const draft of drafts) {
+    const planId = mediaPlanId(draft);
+    const control = (draft.segmentacao as any)?.campaignControl;
+    const needsBudget = Number(draft.orcamentoDiario) <= 0 || Number(control?.totalBudget ?? 0) <= 0 || Boolean((draft.segmentacao as any)?.mediaPlanDraft?.requiresBudgetBeforePublish);
+    if (!planId || !control || !needsBudget || (draft.plataforma !== "google" && draft.plataforma !== "meta")) continue;
+    const list = groups.get(planId) ?? [];
+    list.push(draft);
+    groups.set(planId, list);
+  }
+
+  for (const [planId, group] of groups) {
+    try {
+      const [plan] = await db.select().from(mediaPlansTable)
+        .where(eq(mediaPlansTable.id, planId))
+        .limit(1);
+      if (!plan || plan.tenantId !== group[0]?.tenantId || plan.conteudo?.statusPlanejamento !== "aprovado") continue;
+
+      const planBudget = plan.conteudo?.orcamento;
+      const value = Number(planBudget?.valor ?? 0);
+      if (!planBudget || !Number.isFinite(value) || value <= 0) continue;
+
+      const rawWeights = group.map((draft) => platformWeight(plan, draft.plataforma));
+      const totalWeight = rawWeights.reduce((sum, weight) => sum + weight, 0);
+      const fallbackWeight = group.length > 0 ? 1 / group.length : 0;
+
+      const allocations = group.map((draft, index) => {
+        const control = (draft.segmentacao as any).campaignControl;
+        const days = daysBetween(control.startDate, control.endDate);
+        const windowBudget = budgetForWindow(value, planBudget.tipo, days);
+        const weight = totalWeight > 0 ? rawWeights[index]! / totalWeight : fallbackWeight;
+        const totalBudget = Math.round(windowBudget * weight * 100) / 100;
+        const dailyBudget = Math.round(Math.max(1, totalBudget / days) * 100) / 100;
+        return { draft, control, days, totalBudget, dailyBudget, weight };
+      });
+
+      const allocatedTotal = allocations.reduce((sum, item) => sum + item.totalBudget, 0);
+      const referenceDays = Math.max(1, ...allocations.map((item) => item.days));
+      const expectedTotal = budgetForWindow(value, planBudget.tipo, referenceDays);
+      if (allocatedTotal > expectedTotal + 0.05 && planBudget.tipo === "total") {
+        throw new Error(`Alocação calculada (${allocatedTotal.toFixed(2)}) ultrapassa o teto do plano (${expectedTotal.toFixed(2)}).`);
+      }
+
+      for (const item of allocations) {
+        if (item.totalBudget <= 0 || item.dailyBudget <= 0) continue;
+        const mediaPlanDraft = {
+          ...((item.draft.segmentacao as any)?.mediaPlanDraft ?? {}),
+          source: "media-plan",
+          requiresBudgetBeforePublish: false,
+          budgetHydratedAt: new Date().toISOString(),
+          budgetSource: {
+            mediaPlanId: plan.id,
+            type: planBudget.tipo,
+            planValue: value,
+            allocationWeight: Number((item.weight * 100).toFixed(2)),
+          },
+        };
+        const segmentacao = {
+          ...(item.draft.segmentacao as any),
+          campaignControl: {
+            ...item.control,
+            totalBudget: item.totalBudget,
+            automation: {
+              ...(item.control.automation ?? {}),
+              autoPauseNoResults: true,
+              allowBudgetIncrease: false,
+              spendWithoutResultLimit: item.control.automation?.spendWithoutResultLimit ?? Math.max(10, Math.round(item.dailyBudget * 2 * 100) / 100),
+            },
+          },
+          mediaPlanDraft,
+        };
+        await db.update(adCampaignsTable)
+          .set({ orcamentoDiario: item.dailyBudget.toFixed(2), segmentacao, updatedAt: new Date() })
+          .where(and(eq(adCampaignsTable.id, item.draft.id), eq(adCampaignsTable.tenantId, item.draft.tenantId)));
+        await recordAdCampaignEvent({
+          tenantId: item.draft.tenantId,
+          campaignId: item.draft.id,
+          eventType: "media_plan_budget_handoff",
+          severity: "success",
+          message: `Planejador IA atribuiu R$ ${item.totalBudget.toFixed(2)} de teto e R$ ${item.dailyBudget.toFixed(2)}/dia a este rascunho.`,
+          dedupeKey: `media-plan-budget:${plan.id}:${item.draft.id}`,
+          metadata: { mediaPlanId: plan.id, planBudgetType: planBudget.tipo, planBudgetValue: value, totalBudget: item.totalBudget, dailyBudget: item.dailyBudget, allocationWeight: item.weight },
+        });
+      }
+      log.info({ planId, drafts: allocations.length, planBudgetType: planBudget.tipo, planBudgetValue: value }, "scheduler/media-plan-budget-handoff: budgets hydrated");
+    } catch (err) {
+      log.error({ err, planId }, "scheduler/media-plan-budget-handoff: group failed (non-fatal)");
+    }
+  }
 }
 
 async function campaignMetrics(campaign: typeof adCampaignsTable.$inferSelect) {
@@ -177,6 +309,8 @@ async function runBudgetRedistribution(log: Logger): Promise<void> {
 }
 
 export async function runAdsWasteGuard(log: Logger): Promise<void> {
+  await hydrateMediaPlanDraftBudgets(log);
+
   const campaigns = await db.select().from(adCampaignsTable)
     .where(eq(adCampaignsTable.status, "ativo"))
     .limit(500);
