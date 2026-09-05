@@ -66,6 +66,26 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
   };
 }
 
+/**
+ * Hook único para o executor oficial do Site Generator. Mantém o prompt atual
+ * intacto e apenas o precede com direção criativa/brand/learning do tenant.
+ * Se o runtime falhar, devolve o prompt base e a geração continua normalmente.
+ */
+export async function enrichSiteGeneratorPrompt(input: {
+  basePrompt: string;
+  runtime: SiteCreativeRuntimeInput;
+}): Promise<{ prompt: string; runtimeApplied: boolean }> {
+  try {
+    const creativeRuntime = await resolveSiteCreativeRuntime(input.runtime);
+    return {
+      prompt: `${creativeRuntime.promptContext}\n\n${input.basePrompt}`,
+      runtimeApplied: true,
+    };
+  } catch {
+    return { prompt: input.basePrompt, runtimeApplied: false };
+  }
+}
+
 export function inspectGeneratedSite(input: {
   html: string;
   hasBrandContext: boolean;
