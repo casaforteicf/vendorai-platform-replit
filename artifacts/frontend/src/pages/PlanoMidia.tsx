@@ -5,12 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Activity,
+  BarChart3,
   Check,
   ChevronDown,
   ChevronUp,
+  CircleDollarSign,
+  RefreshCw,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
+  Target,
+  TrendingUp,
   WalletCards,
 } from "lucide-react";
 import PlanoMidiaCore from "@/pages/PlanoMidiaCore";
@@ -36,6 +42,49 @@ type PlanWithContext = {
   contextoUsado?: {
     configuracaoPlanejamento?: StoredPlanningConfig | null;
   } | null;
+};
+
+type AdsOverviewCampaign = {
+  campaignId: string;
+  label: string;
+  plataforma: string;
+  status: string;
+  plannedBudget: number;
+  dailyBudget: number;
+  spend: number;
+  leads: number;
+  sales: number;
+  revenue: number;
+  roas: number | null;
+  recommendation?: {
+    title: string;
+    reason: string;
+    action: string;
+    requiresApproval: boolean;
+  } | null;
+};
+
+type AdsOverview = {
+  totals: {
+    plannedBudget: number;
+    spend: number;
+    impressions: number;
+    clicks: number;
+    leads: number;
+    sales: number;
+    revenue: number;
+    activeCampaigns: number;
+    unresolvedAlerts: number;
+  };
+  campaigns: AdsOverviewCampaign[];
+  launchCommandCenter?: {
+    metrics?: {
+      costPerLead?: number | null;
+      cac?: number | null;
+      roas?: number | null;
+      leadToSaleRate?: number | null;
+    };
+  };
 };
 
 function emptyConfig(): PlanningConfig {
@@ -93,8 +142,6 @@ function weeksForConfiguredWindow(config: PlanningConfig): number | null {
   const diff = end.getTime() - start.getTime();
   if (!Number.isFinite(diff) || diff <= 0) return null;
   const days = Math.max(1, Math.ceil(diff / 86_400_000));
-  // O calendário operacional trabalha em janela rolante de até 13 semanas;
-  // o período completo permanece salvo no plano e pode ser replanejado por fases.
   return Math.min(13, Math.max(1, Math.ceil(days / 7)));
 }
 
@@ -111,17 +158,44 @@ function fieldLabel(title: string, description?: string) {
   );
 }
 
+function money(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number.isFinite(value) ? value : 0);
+}
+
+function metric(value: number | null | undefined, suffix = "") {
+  return value == null || !Number.isFinite(value) ? "—" : `${value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}${suffix}`;
+}
+
 export default function PlanoMidia() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [configOpen, setConfigOpen] = useState(true);
   const [config, setConfig] = useState<PlanningConfig>(() => emptyConfig());
+  const [adsOverview, setAdsOverview] = useState<AdsOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewUpdatedAt, setOverviewUpdatedAt] = useState<Date | null>(null);
   const configRef = useRef(config);
   const hydratedTenantRef = useRef("");
 
   useEffect(() => {
     configRef.current = config;
   }, [config]);
+
+  async function loadAdsOverview() {
+    if (!tenantId) return;
+    setOverviewLoading(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/ads/overview`, { headers: authHeaders() });
+      if (!response.ok) return;
+      const data = await response.json() as AdsOverview;
+      setAdsOverview(data);
+      setOverviewUpdatedAt(new Date());
+    } catch {
+      // O painel continua funcional mesmo se as plataformas de mídia ainda não estiverem conectadas.
+    } finally {
+      setOverviewLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!tenantId || hydratedTenantRef.current === tenantId) return;
@@ -138,7 +212,12 @@ export default function PlanoMidia() {
       })
       .catch(() => undefined);
 
-    return () => { cancelled = true; };
+    void loadAdsOverview();
+    const timer = window.setInterval(() => void loadAdsOverview(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [tenantId]);
 
   useEffect(() => {
@@ -165,9 +244,7 @@ export default function PlanoMidia() {
         body = {};
       }
 
-      if (isPlanGeneration) {
-        body["configuracao"] = configForApi(configRef.current);
-      }
+      if (isPlanGeneration) body["configuracao"] = configForApi(configRef.current);
       if (isCalendarGeneration) {
         const configuredWeeks = weeksForConfiguredWindow(configRef.current);
         if (configuredWeeks) body["semanas"] = configuredWeeks;
@@ -176,12 +253,14 @@ export default function PlanoMidia() {
       const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
       if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
-      return nativeFetch(input, {
+      const response = await nativeFetch(input, {
         ...init,
         method,
         headers,
         body: JSON.stringify(body),
       });
+      if (isPlanGeneration && response.ok) window.setTimeout(() => void loadAdsOverview(), 500);
+      return response;
     };
 
     window.fetch = wrappedFetch;
@@ -212,6 +291,14 @@ export default function PlanoMidia() {
     return `${Math.round((diffHours / 24) * 10) / 10} dia(s)`;
   }, [config.inicioEm, config.fimEm, config.semDataFinal]);
 
+  const operationalBudget = config.orcamentoValor > 0 ? config.orcamentoValor : (adsOverview?.totals.plannedBudget ?? 0);
+  const spend = adsOverview?.totals.spend ?? 0;
+  const balance = operationalBudget > 0 ? Math.max(0, operationalBudget - spend) : null;
+  const budgetUsePercent = operationalBudget > 0 ? Math.min(100, (spend / operationalBudget) * 100) : 0;
+  const activeCampaigns = adsOverview?.campaigns.filter((campaign) => campaign.status === "ativo") ?? [];
+  const visibleCampaigns = (activeCampaigns.length > 0 ? activeCampaigns : adsOverview?.campaigns ?? []).slice(0, 6);
+  const totalVisibleSpend = visibleCampaigns.reduce((sum, campaign) => sum + campaign.spend, 0);
+
   function resetConfig() {
     const next = emptyConfig();
     configRef.current = next;
@@ -235,7 +322,7 @@ export default function PlanoMidia() {
               {!configOpen && configuredCount > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {config.nomeCampanha && <Badge variant="secondary" className="text-[10px]">{config.nomeCampanha}</Badge>}
-                  {config.orcamentoValor > 0 && <Badge variant="secondary" className="text-[10px]">R$ {config.orcamentoValor.toLocaleString("pt-BR")} · {config.orcamentoTipo}</Badge>}
+                  {config.orcamentoValor > 0 && <Badge variant="secondary" className="text-[10px]">{money(config.orcamentoValor)} · {config.orcamentoTipo}</Badge>}
                   {config.inicioEm && <Badge variant="secondary" className="text-[10px]">{periodSummary}</Badge>}
                 </div>
               )}
@@ -274,21 +361,11 @@ export default function PlanoMidia() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-3 items-end">
                   <div>
                     <p className="mb-1 text-[11px] text-muted-foreground">Início</p>
-                    <Input
-                      type="datetime-local"
-                      value={config.inicioEm}
-                      onChange={(event) => setConfig((current) => ({ ...current, inicioEm: event.target.value }))}
-                    />
+                    <Input type="datetime-local" value={config.inicioEm} onChange={(event) => setConfig((current) => ({ ...current, inicioEm: event.target.value }))} />
                   </div>
                   <div>
                     <p className="mb-1 text-[11px] text-muted-foreground">Fim</p>
-                    <Input
-                      type="datetime-local"
-                      value={config.fimEm}
-                      disabled={config.semDataFinal}
-                      min={config.inicioEm || undefined}
-                      onChange={(event) => setConfig((current) => ({ ...current, fimEm: event.target.value }))}
-                    />
+                    <Input type="datetime-local" value={config.fimEm} disabled={config.semDataFinal} min={config.inicioEm || undefined} onChange={(event) => setConfig((current) => ({ ...current, fimEm: event.target.value }))} />
                   </div>
                   <label className="min-h-10 flex items-center gap-2 rounded-md border bg-background px-3 text-xs cursor-pointer">
                     <input
@@ -311,21 +388,9 @@ export default function PlanoMidia() {
                 <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px] gap-3 max-w-2xl">
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">R$</span>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="pl-10"
-                      value={config.orcamentoValor || ""}
-                      onChange={(event) => setConfig((current) => ({ ...current, orcamentoValor: Number(event.target.value) || 0 }))}
-                      placeholder="0,00"
-                    />
+                    <Input type="number" min={0} step="0.01" className="pl-10" value={config.orcamentoValor || ""} onChange={(event) => setConfig((current) => ({ ...current, orcamentoValor: Number(event.target.value) || 0 }))} placeholder="0,00" />
                   </div>
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={config.orcamentoTipo}
-                    onChange={(event) => setConfig((current) => ({ ...current, orcamentoTipo: event.target.value as BudgetType }))}
-                  >
+                  <select className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" value={config.orcamentoTipo} onChange={(event) => setConfig((current) => ({ ...current, orcamentoTipo: event.target.value as BudgetType }))}>
                     <option value="total">Total da campanha</option>
                     <option value="diario">Máximo por dia</option>
                     <option value="semanal">Máximo por semana</option>
@@ -362,6 +427,87 @@ export default function PlanoMidia() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <CardContent className="py-4 space-y-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <p className="text-sm font-semibold">Comando de orçamento da IA</p>
+                <Badge variant="outline" className="text-[10px]">dinâmico</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Leitura real de mídia + CRM. A IA deve privilegiar resultado comercial, não apenas clique ou CPL.
+              </p>
+            </div>
+            <Button type="button" size="sm" variant="ghost" onClick={() => void loadAdsOverview()} disabled={overviewLoading}>
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${overviewLoading ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-2.5">
+            <div className="rounded-lg border p-3"><div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground"><WalletCards className="h-3.5 w-3.5" />Limite</div><p className="mt-1 text-lg font-semibold">{operationalBudget > 0 ? money(operationalBudget) : "—"}</p><p className="text-[10px] text-muted-foreground">{config.orcamentoTipo}</p></div>
+            <div className="rounded-lg border p-3"><div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground"><CircleDollarSign className="h-3.5 w-3.5" />Gasto</div><p className="mt-1 text-lg font-semibold">{money(spend)}</p><p className="text-[10px] text-muted-foreground">{budgetUsePercent.toFixed(1)}% do limite</p></div>
+            <div className="rounded-lg border p-3"><div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground"><Target className="h-3.5 w-3.5" />Saldo</div><p className="mt-1 text-lg font-semibold">{balance == null ? "—" : money(balance)}</p><p className="text-[10px] text-muted-foreground">protegido pelo teto</p></div>
+            <div className="rounded-lg border p-3"><div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" />Receita</div><p className="mt-1 text-lg font-semibold">{money(adsOverview?.totals.revenue ?? 0)}</p><p className="text-[10px] text-muted-foreground">vendas atribuídas</p></div>
+            <div className="rounded-lg border p-3"><div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground"><BarChart3 className="h-3.5 w-3.5" />ROAS</div><p className="mt-1 text-lg font-semibold">{metric(adsOverview?.launchCommandCenter?.metrics?.roas, "x")}</p><p className="text-[10px] text-muted-foreground">receita ÷ mídia</p></div>
+            <div className="rounded-lg border p-3"><div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground"><Sparkles className="h-3.5 w-3.5" />Vendas</div><p className="mt-1 text-lg font-semibold">{adsOverview?.totals.sales ?? 0}</p><p className="text-[10px] text-muted-foreground">{adsOverview?.totals.leads ?? 0} leads</p></div>
+          </div>
+
+          {operationalBudget > 0 && (
+            <div>
+              <div className="mb-1 flex justify-between text-[10px] text-muted-foreground"><span>Consumo do orçamento</span><span>{budgetUsePercent.toFixed(1)}%</span></div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full bg-primary transition-all" style={{ width: `${budgetUsePercent}%` }} /></div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_0.75fr] gap-3">
+            <div className="rounded-lg border overflow-hidden">
+              <div className="px-3 py-2 border-b bg-muted/30"><p className="text-xs font-semibold">Distribuição atual e resultado por canal/campanha</p><p className="text-[10px] text-muted-foreground">Percentuais mudam conforme desempenho real.</p></div>
+              {visibleCampaigns.length === 0 ? (
+                <div className="p-4 text-xs text-muted-foreground">Ainda não há campanhas publicadas com métricas de plataforma. O planejamento pode ser criado normalmente; este quadro passa a refletir gasto real assim que a mídia estiver ativa.</div>
+              ) : (
+                <div className="divide-y">
+                  {visibleCampaigns.map((campaign) => {
+                    const allocation = totalVisibleSpend > 0 ? (campaign.spend / totalVisibleSpend) * 100 : 0;
+                    return (
+                      <div key={campaign.campaignId} className="p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0"><p className="text-xs font-medium truncate">{campaign.label}</p><p className="text-[10px] uppercase text-muted-foreground">{campaign.plataforma} · {campaign.status}</p></div>
+                          <div className="text-right shrink-0"><p className="text-xs font-semibold">{money(campaign.spend)}</p><p className="text-[10px] text-muted-foreground">{allocation.toFixed(1)}% do gasto atual</p></div>
+                        </div>
+                        <div className="mt-2 grid grid-cols-4 gap-2 text-[10px]">
+                          <div><span className="text-muted-foreground">Leads</span><p className="font-medium">{campaign.leads}</p></div>
+                          <div><span className="text-muted-foreground">Vendas</span><p className="font-medium">{campaign.sales}</p></div>
+                          <div><span className="text-muted-foreground">Receita</span><p className="font-medium">{money(campaign.revenue)}</p></div>
+                          <div><span className="text-muted-foreground">ROAS</span><p className="font-medium">{metric(campaign.roas, "x")}</p></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <div><p className="text-xs font-semibold">Próxima decisão da IA</p><p className="text-[10px] text-muted-foreground">Recomendação calculada com mídia + funil comercial.</p></div>
+              {visibleCampaigns.find((campaign) => campaign.recommendation)?.recommendation ? (
+                (() => {
+                  const recommendation = visibleCampaigns.find((campaign) => campaign.recommendation)!.recommendation!;
+                  return <div className="rounded-md bg-muted/40 p-3"><p className="text-xs font-medium">{recommendation.title}</p><p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">{recommendation.reason}</p><Badge variant="outline" className="mt-2 text-[10px]">{recommendation.requiresApproval ? "requer aprovação" : "IA pode otimizar"}</Badge></div>;
+                })()
+              ) : (
+                <div className="rounded-md bg-muted/40 p-3 text-[11px] text-muted-foreground">Sem mudança recomendada neste momento. A IA continua coletando sinais de gasto, leads, vendas e receita.</div>
+              )}
+              <div className="border-t pt-3 text-[10px] text-muted-foreground">
+                Última leitura: {overviewUpdatedAt ? overviewUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "aguardando dados"}. Atualização automática a cada 60 segundos enquanto esta tela estiver aberta.
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
