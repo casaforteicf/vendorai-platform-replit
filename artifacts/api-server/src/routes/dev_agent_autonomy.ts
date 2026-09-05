@@ -2,9 +2,11 @@ import { Router } from "express";
 import { z } from "zod/v4";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import cognitionRouter from "./dev_agent_cognition";
+import plannerReviewerRouter, { reviewPullRequestForMerge } from "./dev_agent_planner_reviewer";
 
 const router = Router();
 router.use(cognitionRouter);
+router.use(plannerReviewerRouter);
 
 const executeSchema = z.object({
   requestId: z.string().uuid(),
@@ -42,7 +44,7 @@ REGRAS OBRIGATÓRIAS:
 - Nunca delete arquivos ou dados.
 - Não tente contornar bloqueios de segurança retornados pelas ferramentas.
 - Mudanças em autenticação, billing/pagamentos, migrations/schema/RLS, segredos, workflows CI/CD ou infraestrutura são consideradas críticas e devem parar em approval_required.
-- Só faça merge automático quando a ferramenta permitir e os checks estiverem verdes.
+- Só faça merge automático quando a ferramenta permitir, os checks estiverem verdes E a revisão adversarial independente aprovar.
 - Nunca diga que algo foi publicado/validado se não houver evidência.
 - Se a solicitação for apenas pergunta, auditoria ou diagnóstico sem necessidade de código, não faça alteração.
 
@@ -201,11 +203,21 @@ async function mergePullRequest(number: number) {
   if (pr.draft || pr.state !== "open") throw new Error("PR não está pronto para merge");
   if (pr.mergeable === false) throw new Error("PR não é mergeável");
   if (pr.status !== "success") throw new Error(`Checks ainda não estão verdes: ${pr.status}`);
+
+  const review = await reviewPullRequestForMerge(number);
+  if (review.verdict !== "approve") {
+    const topFindings = review.findings.slice(0, 5).map((item) => `${item.severity}: ${item.title}`).join("; ");
+    const error = new Error(`approval_required: revisão adversarial bloqueou o merge (${review.verdict}, risco ${review.risk}). ${topFindings || review.reasoningSummary}`);
+    (error as any).code = "APPROVAL_REQUIRED";
+    (error as any).review = review;
+    throw error;
+  }
+
   const data = await gh(`/repos/${owner}/${repo}/pulls/${number}/merge`, {
     method: "PUT",
     body: JSON.stringify({ merge_method: "squash" }),
   });
-  return { merged: Boolean(data.merged), sha: data.sha, message: data.message };
+  return { merged: Boolean(data.merged), sha: data.sha, message: data.message, review };
 }
 
 const tools: any[] = [
@@ -276,7 +288,7 @@ const tools: any[] = [
     type: "function",
     function: {
       name: "merge_pr",
-      description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável e estiver com checks verdes.",
+      description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável, checks verdes e aprovado por revisor adversarial independente.",
       parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false },
     },
   },
@@ -353,7 +365,7 @@ router.post("/support/dev/execute", async (req, res) => {
         } catch (error) {
           const messageText = error instanceof Error ? error.message : "Erro desconhecido";
           const approvalRequired = messageText.startsWith("approval_required:") || (error as any)?.code === "APPROVAL_REQUIRED";
-          const result = { ok: false, error: messageText, approval_required: approvalRequired };
+          const result = { ok: false, error: messageText, approval_required: approvalRequired, ...(approvalRequired && (error as any)?.review ? { review: (error as any).review } : {}) };
           actions.push({ tool: name, ok: false, detail: result });
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
           if (approvalRequired) {
@@ -362,6 +374,7 @@ router.post("/support/dev/execute", async (req, res) => {
               status: "approval_required",
               error: messageText.replace(/^approval_required:\s*/i, ""),
               actions,
+              ...(result.review ? { review: result.review } : {}),
             });
           }
         }
