@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import * as ts from "typescript";
 
 const router = Router();
 
@@ -60,6 +61,8 @@ export type AdversarialReview = {
   reasoningSummary: string;
 };
 
+type StaticFinding = AdversarialReview["findings"][number];
+
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
   const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
@@ -76,7 +79,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Review/1.1",
+      "User-Agent": "VendorAI-Dev-Review/1.2",
     },
   });
   const text = await response.text();
@@ -94,6 +97,100 @@ function parseJson(text: string) {
     if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1));
     throw new Error("Resposta JSON inválida");
   }
+}
+
+async function readTextAtRef(path: string, ref: string) {
+  const { owner, repo } = githubConfig();
+  const encoded = encodeURIComponent(path).replace(/%2F/g, "/");
+  const data = await gh(`/repos/${owner}/${repo}/contents/${encoded}?ref=${encodeURIComponent(ref)}`);
+  if (data.type !== "file" || typeof data.content !== "string") throw new Error("arquivo não textual");
+  const content = Buffer.from(data.content.replace(/\n/g, ""), "base64").toString("utf8");
+  if (content.length > 180000) throw new Error("arquivo excede limite do preflight");
+  return content;
+}
+
+function diagnosticText(diagnostic: ts.Diagnostic) {
+  const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, " ").slice(0, 500);
+  if (!diagnostic.file || typeof diagnostic.start !== "number") return message;
+  const pos = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
+  return `linha ${pos.line + 1}, coluna ${pos.character + 1}: ${message}`;
+}
+
+async function runStaticPrPreflight(pr: any, files: any[]): Promise<StaticFinding[]> {
+  const { owner, repo } = githubConfig();
+  const findings: StaticFinding[] = [];
+  const head = String(pr?.head?.ref ?? "");
+
+  if (!head.startsWith("dev-ia/")) {
+    findings.push({ severity: "high", title: "Branch fora do namespace do Dev IA", detail: "O preflight automático só aceita branches dev-ia/." });
+    return findings;
+  }
+
+  if (pr?.mergeable === false || String(pr?.mergeable_state ?? "") === "dirty") {
+    findings.push({ severity: "high", title: "PR com conflito de merge", detail: "A branch precisa ser reconciliada com main antes da revisão automática." });
+  }
+
+  try {
+    const comparison = await gh(`/repos/${owner}/${repo}/compare/main...${encodeURIComponent(head).replace(/%2F/g, "/")}`);
+    const behindBy = Number(comparison?.behind_by ?? 0);
+    if (behindBy > 0) {
+      findings.push({ severity: "high", title: "Branch atrasada em relação à main", detail: `A branch está ${behindBy} commit(s) atrás da main e deve ser reaplicada antes do merge.` });
+    }
+  } catch {
+    findings.push({ severity: "high", title: "Não foi possível comparar branch com main", detail: "O merge automático foi bloqueado porque o estado de atualização da branch não pôde ser comprovado." });
+  }
+
+  const changed = (files ?? []).filter((file: any) => String(file?.status ?? "") !== "removed");
+  if (changed.length > 30) {
+    findings.push({ severity: "high", title: "PR grande demais para preflight automático", detail: `O PR altera ${changed.length} arquivos; o limite seguro do Dev IA é 30 arquivos por revisão automática.` });
+    return findings.slice(0, 12);
+  }
+
+  for (const file of changed) {
+    if (findings.length >= 12) break;
+    const path = String(file?.filename ?? "");
+    if (!/\.(ts|tsx|js|jsx|mjs|cjs|json)$/i.test(path)) continue;
+
+    let content = "";
+    try {
+      content = await readTextAtRef(path, head);
+    } catch (error) {
+      findings.push({ severity: "high", title: "Arquivo não pôde ser validado", detail: error instanceof Error ? error.message.slice(0, 500) : "falha de leitura", file: path });
+      continue;
+    }
+
+    if (/^(<{7}|={7}|>{7})/m.test(content)) {
+      findings.push({ severity: "high", title: "Marcador de conflito encontrado", detail: "O arquivo contém marcador de conflito Git e não pode ser incorporado.", file: path });
+      continue;
+    }
+
+    if (/\.json$/i.test(path)) {
+      try {
+        JSON.parse(content);
+      } catch (error) {
+        findings.push({ severity: "high", title: "JSON inválido", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha de parse JSON", file: path });
+      }
+      continue;
+    }
+
+    const transpiled = ts.transpileModule(content, {
+      fileName: path,
+      reportDiagnostics: true,
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+        jsx: ts.JsxEmit.Preserve,
+        allowJs: true,
+      },
+    });
+    const errors = (transpiled.diagnostics ?? []).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error).slice(0, 4);
+    for (const diagnostic of errors) {
+      findings.push({ severity: "high", title: "Erro sintático detectado", detail: diagnosticText(diagnostic), file: path });
+      if (findings.length >= 12) break;
+    }
+  }
+
+  return findings;
 }
 
 const PLANNER_PROMPT = `Você é o Planner de Engenharia do VendorAI.
@@ -488,6 +585,22 @@ export async function reviewPullRequestForMerge(number: number): Promise<Adversa
       findings: criticalFiles.map((file: string) => ({ severity: "critical", title: "Arquivo crítico alterado", detail: "Merge automático bloqueado por política estrutural.", file })),
       regressionsToTest: [],
       reasoningSummary: "O PR toca arquivos críticos e exige aprovação humana independentemente da análise do modelo.",
+    };
+  }
+
+  const staticFindings = await runStaticPrPreflight(pr, files).catch((error) => [{
+    severity: "high" as const,
+    title: "Preflight estático indisponível",
+    detail: error instanceof Error ? error.message.slice(0, 700) : "O preflight determinístico falhou.",
+  }]);
+  if (staticFindings.length) {
+    return {
+      verdict: "request_changes",
+      confidence: 1,
+      risk: "high",
+      findings: staticFindings,
+      regressionsToTest: ["Corrigir todos os achados determinísticos e repetir o preflight antes de nova tentativa de merge."],
+      reasoningSummary: "O merge foi bloqueado por um preflight determinístico anterior à revisão por IA.",
     };
   }
 
