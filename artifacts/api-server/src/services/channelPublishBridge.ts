@@ -1,33 +1,40 @@
+import { desc, eq } from 'drizzle-orm';
+import { adCampaignsTable, adCreativesTable, db } from '@workspace/db';
 import { getChannelDefinition, type ChannelId } from '@workspace/vendor-brain/platform-foundation';
 import { getChannelAdaptation } from '@workspace/vendor-brain/channel-adapters';
 import { assertChannelCanPublish, getChannelPublicationCapability } from '@workspace/vendor-brain/channel-publication';
 import type { DesignQaResult } from '@workspace/vendor-brain/creative-design';
 import { publishCampaignToMetaAds } from './meta-ads-campaign-publish';
 import { publishCampaignToGoogleAds } from './google-ads-campaign-publish';
+import { buildAdCreativeDesignQa } from './adCreativeQa';
 
 export type PaidPublishChannel = 'meta' | 'google-search';
+export type PaidPublishAuthorization = 'human-approved' | 'agent-autonomous';
 
 export interface ChannelPublishContext {
   tenantId: string;
   campaignId: string;
   channel: ChannelId;
-  allowPublishAds: boolean;
+  authorization: PaidPublishAuthorization;
+  allowPublishAds?: boolean;
   designQa?: DesignQaResult | null;
   requireDesignQa?: boolean;
 }
 
-function assertAutonomousPublishSafety(context: ChannelPublishContext) {
+function assertPublishAuthorization(context: ChannelPublishContext, designQa: DesignQaResult | null) {
+  if (context.authorization === 'human-approved') return;
+
   if (!context.allowPublishAds) {
     throw new Error('Marketing Agent sem autorização para publicar anúncios.');
   }
 
   if (context.requireDesignQa !== false) {
-    if (!context.designQa) {
+    if (!designQa) {
       throw new Error('Publicação automática bloqueada: Design QA ainda não foi executado para o criativo.');
     }
-    if (!context.designQa.approved) {
+    if (!designQa.approved) {
       throw new Error(
-        `Publicação automática bloqueada: Design QA ${context.designQa.overallScore}/100 abaixo do mínimo aprovado.`,
+        `Publicação automática bloqueada: Design QA ${designQa.overallScore}/100 abaixo do mínimo aprovado.`,
       );
     }
   }
@@ -46,26 +53,52 @@ export function getChannelPublishReadiness(channel: ChannelId) {
   };
 }
 
-export async function publishCampaignThroughChannelRegistry(context: ChannelPublishContext) {
-  assertAutonomousPublishSafety(context);
+async function resolveCampaignDesignQa(context: ChannelPublishContext): Promise<DesignQaResult | null> {
+  if (context.designQa) return context.designQa;
+  if (context.channel !== 'meta' && context.channel !== 'google-search') return null;
 
+  const [campaign] = await db
+    .select({ plataforma: adCampaignsTable.plataforma })
+    .from(adCampaignsTable)
+    .where(eq(adCampaignsTable.id, context.campaignId))
+    .limit(1);
+  if (!campaign) return null;
+
+  const [creative] = await db
+    .select()
+    .from(adCreativesTable)
+    .where(eq(adCreativesTable.campaignId, context.campaignId))
+    .orderBy(desc(adCreativesTable.geradoEm))
+    .limit(1);
+  if (!creative || creative.status !== 'aprovado') return null;
+
+  return buildAdCreativeDesignQa({
+    creative,
+    platform: context.channel === 'meta' ? 'meta' : 'google',
+  });
+}
+
+export async function publishCampaignThroughChannelRegistry(context: ChannelPublishContext) {
   const readiness = getChannelPublishReadiness(context.channel);
   assertChannelCanPublish(context.channel);
   if (readiness.definition.status !== 'active') {
     throw new Error(`Canal ${readiness.definition.name} ainda não está ativo para publicação.`);
   }
 
+  if (context.channel !== 'meta' && context.channel !== 'google-search') {
+    throw new Error(
+      `Canal ${readiness.definition.name} possui execução em outro fluxo oficial ou está em modo prepare-only; não deve ser publicado pelo bridge de mídia paga.`,
+    );
+  }
+
+  const designQa = await resolveCampaignDesignQa(context);
+  assertPublishAuthorization(context, designQa);
+
   if (context.channel === 'meta') {
     const result = await publishCampaignToMetaAds(context.tenantId, context.campaignId);
-    return { ...readiness, designQa: context.designQa ?? null, result };
+    return { ...readiness, authorization: context.authorization, designQa, result };
   }
 
-  if (context.channel === 'google-search') {
-    const result = await publishCampaignToGoogleAds(context.tenantId, context.campaignId);
-    return { ...readiness, designQa: context.designQa ?? null, result };
-  }
-
-  throw new Error(
-    `Canal ${readiness.definition.name} possui execução em outro fluxo oficial ou está em modo prepare-only; não deve ser publicado pelo bridge de mídia paga.`,
-  );
+  const result = await publishCampaignToGoogleAds(context.tenantId, context.campaignId);
+  return { ...readiness, authorization: context.authorization, designQa, result };
 }
