@@ -28,6 +28,15 @@ export type DevExecutionPlan = {
   shouldExecute: boolean;
   needsApproval: boolean;
   confidence: number;
+  playbookUsage?: {
+    used: true;
+    requestId: string;
+    status: string | null;
+    confidence: number;
+    why: string;
+    reusedEvidence: string[];
+    revalidationSteps: string[];
+  };
 };
 
 export type PreMortemSimulation = {
@@ -93,6 +102,7 @@ Transforme a intenção do Cérebro Executivo e a investigação baseada em cód
 Nunca invente arquivos, testes executados ou fatos não presentes no contexto. Se a evidência for insuficiente, shouldExecute=false.
 Preserve arquitetura existente e não crie módulos paralelos.
 Mudanças em auth, billing, pagamentos, schema/migrations, RLS, secrets, CI/CD ou infraestrutura devem marcar needsApproval=true.
+Se investigation.playbookMatch.applicable=true, trate esse histórico apenas como experiência reutilizável: incorpore no plano somente padrões compatíveis com a investigação atual e mantenha explícitas as revalidações exigidas. Um playbook nunca reduz risco, nunca concede autorização e nunca substitui validação do código/runtime atual.
 
 Retorne SOMENTE JSON:
 {
@@ -188,6 +198,44 @@ function normalizePlan(value: any): DevExecutionPlan {
     shouldExecute: Boolean(value?.shouldExecute),
     needsApproval: Boolean(value?.needsApproval),
     confidence: Math.max(0, Math.min(1, Number(value?.confidence ?? 0.5))),
+  };
+}
+
+function applyLearnedPlaybook(plan: DevExecutionPlan, context: PlannerInput): DevExecutionPlan {
+  const match = context.investigation?.playbookMatch;
+  const requestId = typeof match?.requestId === "string" ? match.requestId.trim() : "";
+  if (!match?.applicable || !requestId) return plan;
+
+  const reusedEvidence = Array.isArray(match?.reusableEvidence)
+    ? match.reusableEvidence.slice(0, 6).map((item: unknown) => String(item).slice(0, 500))
+    : [];
+  const revalidationSteps = Array.isArray(match?.mustRevalidate)
+    ? match.mustRevalidate.slice(0, 8).map((item: unknown) => String(item).slice(0, 700))
+    : ["Confirmar no código e runtime atuais que a causa e as dependências continuam equivalentes."];
+  const status = typeof match?.status === "string" ? match.status.slice(0, 80) : null;
+  const why = String(match?.why ?? "Execução anterior validada considerada relevante pelo Investigador.").slice(0, 1600);
+  const confidence = Math.max(0, Math.min(1, Number(match?.confidence ?? 0.5)));
+
+  const tests = Array.from(new Set([...plan.tests, ...revalidationSteps])).slice(0, 14);
+  const acceptanceCriteria = Array.from(new Set([
+    ...plan.acceptanceCriteria,
+    ...revalidationSteps.map((step: string) => `Playbook revalidado no estado atual: ${step}`),
+  ])).slice(0, 14);
+
+  return {
+    ...plan,
+    tests,
+    acceptanceCriteria,
+    approach: `${plan.approach}\nPlaybook aprendido ${requestId} usado somente como referência comprovada; todas as diferenças do estado atual devem ser revalidadas antes da execução.`.slice(0, 4000),
+    playbookUsage: {
+      used: true,
+      requestId: requestId.slice(0, 120),
+      status,
+      confidence,
+      why,
+      reusedEvidence,
+      revalidationSteps,
+    },
   };
 }
 
@@ -336,7 +384,7 @@ export async function createExecutionPlan(context: PlannerInput): Promise<{ plan
     raw = completion.choices[0]?.message?.content ?? "{}";
   }
 
-  const initialPlan = normalizePlan(parseJson(raw));
+  const initialPlan = applyLearnedPlaybook(normalizePlan(parseJson(raw)), context);
   const { simulation, engine: simulationEngine } = await simulatePlan(context, initialPlan);
   const plan = applySimulationToPlan(initialPlan, simulation);
   return { plan, engine, simulation, simulationEngine };
