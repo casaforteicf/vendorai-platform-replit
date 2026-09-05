@@ -20,7 +20,27 @@ export type LinkedInVariation = { hook: string; caption: string; hashtags: strin
 export type YouTubeScriptBlock = { bloco: string; conteudo: string };
 export type YouTubeVariation = { titulo: string; descricao: string; tags: string[]; roteiro: YouTubeScriptBlock[] };
 export type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation | LinkedInVariation | YouTubeVariation;
-export type ContentGenerationResult = { variations: ContentVariation[] };
+
+export type PersistedDesignQa = {
+  brandScore: number;
+  readabilityScore: number;
+  compositionScore: number;
+  channelFitScore: number;
+  ctaScore: number;
+  technicalScore: number;
+  overallScore: number;
+  approved: boolean;
+  warnings: string[];
+  recommendations: string[];
+};
+
+export type ContentGenerationResult = {
+  variations: ContentVariation[];
+  designQa?: PersistedDesignQa;
+  qaReviewedAt?: string;
+  qaApprovedAt?: string | null;
+  qaSource?: "generation" | "manual-review" | "autopilot";
+};
 
 export const CONTENT_FORMATS = ["feed_square", "feed_portrait", "stories", "reels"] as const;
 export type ContentFormat = (typeof CONTENT_FORMATS)[number];
