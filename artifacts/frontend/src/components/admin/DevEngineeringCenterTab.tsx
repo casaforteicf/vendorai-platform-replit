@@ -97,6 +97,7 @@ type ExecutionMemoryEntry = {
   status: string;
   summary: string;
   mergeSha?: string;
+  changedFiles?: string[];
   failures: string[];
   evidence: string[];
 };
@@ -161,7 +162,9 @@ function normalizeStatus(value: string) {
 }
 
 function isProvenPlaybook(entry: ExecutionMemoryEntry) {
-  return /recover|validat|success|complete|conclu|deploy/.test(normalizeStatus(entry.status));
+  return normalizeStatus(entry.status) === "production validated"
+    && (entry.changedFiles?.length ?? 0) > 0
+    && (entry.failures?.length ?? 0) === 0;
 }
 
 function productionLabel(state?: ProductionValidation["state"]) {
