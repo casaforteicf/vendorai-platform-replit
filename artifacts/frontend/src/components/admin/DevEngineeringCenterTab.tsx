@@ -22,6 +22,18 @@ type EngineeringAlert = {
   source: "railway" | "vercel" | "github" | "runtime" | "pull_request";
 };
 
+type SentinelWatchdog = {
+  running: boolean;
+  intervalMs: number;
+  lastCheckedAt: string | null;
+  lastHealthScore: number | null;
+  lastCriticalCount: number;
+  lastWarningCount: number;
+  consecutiveCritical: number;
+  lastTransitionAt: string | null;
+  lastError: string | null;
+};
+
 type OperationalContext = {
   observedRevision: string | null;
   mainRevision: string | null;
@@ -31,6 +43,7 @@ type OperationalContext = {
   healthScore?: number;
   alerts?: EngineeringAlert[];
   checks?: Array<{ context: string; state: string; targetUrl: string | null }>;
+  watchdog?: SentinelWatchdog;
   checkedAt: string;
 };
 
@@ -69,6 +82,7 @@ const layers = [
   "Revisor Adversarial",
   "Validador Pós-Deploy",
   "Sentinela de Produção",
+  "Watchdog 24h",
 ];
 
 function shortSha(value: string | null | undefined) {
@@ -149,6 +163,7 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
   const criticalCount = alerts.filter((alert) => alert.severity === "critical").length;
   const warningCount = alerts.filter((alert) => alert.severity === "warning").length;
   const healthScore = context?.healthScore ?? (aligned ? 100 : 70);
+  const watchdog = context?.watchdog;
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
@@ -175,7 +190,9 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
             <Siren className={`h-4 w-4 ${criticalCount ? "text-red-600" : warningCount ? "text-amber-600" : "text-emerald-600"}`} />
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Sentinela de Produção</h4>
-              <p className="text-[11px] text-slate-500">Reavalia automaticamente a cada 60 segundos enquanto esta aba estiver aberta.</p>
+              <p className="text-[11px] text-slate-500">
+                {watchdog?.running ? "Watchdog server-side ativo 24h · ciclo de 5 minutos." : "Monitor server-side iniciando; painel revalida a cada 60 segundos."}
+              </p>
             </div>
           </div>
           <div className="text-right">
@@ -183,11 +200,21 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
             <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{scoreLabel(healthScore)}</p>
           </div>
         </div>
-        <div className="mt-3 flex gap-2 text-[11px]">
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
           <span className="rounded-full bg-red-50 px-2.5 py-1 font-semibold text-red-700">{criticalCount} críticos</span>
           <span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">{warningCount} avisos</span>
           <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">{alerts.length} sinais</span>
+          <span className={`rounded-full px-2.5 py-1 font-semibold ${watchdog?.running ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+            {watchdog?.running ? "24h ativo" : "24h iniciando"}
+          </span>
         </div>
+        {watchdog?.lastCheckedAt && (
+          <p className="mt-2 text-[10px] text-slate-400">
+            Última checagem server-side: {new Date(watchdog.lastCheckedAt).toLocaleString("pt-BR")}
+            {watchdog.consecutiveCritical > 0 ? ` · ${watchdog.consecutiveCritical} ciclos críticos consecutivos` : ""}
+          </p>
+        )}
+        {watchdog?.lastError && <p className="mt-2 text-[10px] font-medium text-amber-700">Última falha do watchdog: {watchdog.lastError}</p>}
       </section>
 
       {alerts.length > 0 && (
