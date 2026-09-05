@@ -8,6 +8,16 @@ export type DevAgentCheckEvidenceItem = {
   executedSteps: number | null;
 };
 
+export type DevAgentRegressionTestEvidence = {
+  required: boolean;
+  conventionDetected: boolean;
+  satisfied: boolean;
+  productionFiles: string[];
+  changedTestFiles: string[];
+  nearbyTestFiles: string[];
+  checkedDirectories: string[];
+};
+
 export type DevAgentCheckEvidence = {
   available: boolean;
   total: number;
@@ -16,6 +26,7 @@ export type DevAgentCheckEvidence = {
   infrastructureFailures: DevAgentCheckEvidenceItem[];
   externalFailures: DevAgentCheckEvidenceItem[];
   pending: DevAgentCheckEvidenceItem[];
+  regressionTestEvidence: DevAgentRegressionTestEvidence;
   checkedAt: string;
 };
 
@@ -35,7 +46,7 @@ async function githubJson(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Check-Evidence/1.0",
+      "User-Agent": "VendorAI-Dev-Check-Evidence/1.1",
     },
   });
   const text = await response.text();
@@ -69,6 +80,91 @@ async function executedGithubActionSteps(run: any) {
   }
 }
 
+const TEST_FILE_PATTERN = /(?:^|\/)(?:__tests__\/.*|[^/]+\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs|cjs))$/i;
+const TESTABLE_CODE_PATTERN = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/i;
+
+function isTestFile(path: string) {
+  return TEST_FILE_PATTERN.test(path);
+}
+
+function isTestableProductionFile(path: string) {
+  if (!TESTABLE_CODE_PATTERN.test(path) || isTestFile(path)) return false;
+  if (/\.d\.ts$/i.test(path) || /\.(?:stories|config)\.(?:ts|tsx|js|jsx|mjs|cjs)$/i.test(path)) return false;
+  if (/(?:^|\/)(?:generated|dist|build|scripts?)\//i.test(path)) return false;
+  return /^(?:artifacts\/(?:api-server|frontend)\/src\/|lib\/)/i.test(path);
+}
+
+function dirname(path: string) {
+  const index = path.lastIndexOf("/");
+  return index > 0 ? path.slice(0, index) : "";
+}
+
+async function testsInDirectory(path: string) {
+  if (!path) return [] as string[];
+  const { owner, repo } = githubConfig();
+  const encoded = encodeURIComponent(path).replace(/%2F/g, "/");
+  try {
+    const items = await githubJson(`/repos/${owner}/${repo}/contents/${encoded}?ref=main`);
+    if (!Array.isArray(items)) return [];
+    const tests = items
+      .filter((item: any) => item?.type === "file" && isTestFile(String(item?.path ?? "")))
+      .map((item: any) => String(item.path));
+    const testDirs = items.filter((item: any) => item?.type === "dir" && String(item?.name ?? "") === "__tests__").slice(0, 1);
+    for (const testDir of testDirs) {
+      try {
+        const nestedPath = String(testDir.path ?? "");
+        const nestedEncoded = encodeURIComponent(nestedPath).replace(/%2F/g, "/");
+        const nested = await githubJson(`/repos/${owner}/${repo}/contents/${nestedEncoded}?ref=main`);
+        if (Array.isArray(nested)) {
+          tests.push(...nested.filter((item: any) => item?.type === "file" && isTestFile(String(item?.path ?? ""))).map((item: any) => String(item.path)));
+        }
+      } catch {
+        // Convenção não comprovada: falha segura sem inventar obrigação.
+      }
+    }
+    return Array.from(new Set(tests)).slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+async function collectRegressionTestEvidence(headSha: string): Promise<DevAgentRegressionTestEvidence> {
+  const { owner, repo } = githubConfig();
+  const pulls = await githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(headSha)}/pulls?per_page=10`).catch(() => []);
+  const pull = Array.isArray(pulls) ? pulls.find((item: any) => String(item?.head?.sha ?? "") === headSha) ?? pulls[0] : null;
+  if (!pull?.number) {
+    return { required: false, conventionDetected: false, satisfied: true, productionFiles: [], changedTestFiles: [], nearbyTestFiles: [], checkedDirectories: [] };
+  }
+
+  const files = await githubJson(`/repos/${owner}/${repo}/pulls/${Number(pull.number)}/files?per_page=100`);
+  const changedPaths = Array.isArray(files) ? files.map((file: any) => String(file?.filename ?? "")).filter(Boolean) : [];
+  const productionFiles = changedPaths.filter(isTestableProductionFile).slice(0, 30);
+  const changedTestFiles = changedPaths.filter(isTestFile).slice(0, 30);
+  const checkedDirectories = Array.from(new Set(productionFiles.map(dirname).filter(Boolean))).slice(0, 8);
+
+  const nearbyTestFiles: string[] = [];
+  const directoriesWithConvention = new Set<string>();
+  for (const directory of checkedDirectories) {
+    const tests = await testsInDirectory(directory);
+    if (tests.length) directoriesWithConvention.add(directory);
+    nearbyTestFiles.push(...tests);
+  }
+
+  const conventionDetected = directoriesWithConvention.size > 0;
+  const changedTestInConvention = changedTestFiles.some((path) => directoriesWithConvention.has(dirname(path)) || directoriesWithConvention.has(dirname(dirname(path))));
+  const required = productionFiles.length > 0 && conventionDetected;
+
+  return {
+    required,
+    conventionDetected,
+    satisfied: !required || changedTestInConvention,
+    productionFiles,
+    changedTestFiles,
+    nearbyTestFiles: Array.from(new Set(nearbyTestFiles)).slice(0, 30),
+    checkedDirectories,
+  };
+}
+
 const NEGATIVE_CONCLUSIONS = new Set(["failure", "cancelled", "timed_out", "action_required", "startup_failure"]);
 
 export async function collectDevAgentCheckEvidence(headSha: string): Promise<DevAgentCheckEvidence> {
@@ -76,7 +172,10 @@ export async function collectDevAgentCheckEvidence(headSha: string): Promise<Dev
   const sha = String(headSha ?? "").trim();
   if (!/^[0-9a-f]{7,64}$/i.test(sha)) throw new Error("HEAD_SHA_INVALID");
 
-  const data = await githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`);
+  const [data, regressionTestEvidence] = await Promise.all([
+    githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`),
+    collectRegressionTestEvidence(sha),
+  ]);
   const runs = Array.isArray(data?.check_runs) ? data.check_runs.slice(0, 50) : [];
 
   const successes: DevAgentCheckEvidenceItem[] = [];
@@ -115,14 +214,37 @@ export async function collectDevAgentCheckEvidence(headSha: string): Promise<Dev
     externalFailures.push(normalizeRun(run, null));
   }
 
+  if (!regressionTestEvidence.satisfied) {
+    codeFailures.push({
+      id: -1,
+      name: "regression-test-contract",
+      status: "completed",
+      conclusion: "failure",
+      app: "vendorai-dev-policy",
+      detailsUrl: null,
+      executedSteps: 1,
+    });
+  } else if (regressionTestEvidence.required) {
+    successes.push({
+      id: -2,
+      name: "regression-test-contract",
+      status: "completed",
+      conclusion: "success",
+      app: "vendorai-dev-policy",
+      detailsUrl: null,
+      executedSteps: 1,
+    });
+  }
+
   return {
     available: true,
-    total: runs.length,
+    total: runs.length + (regressionTestEvidence.required ? 1 : 0),
     successes: successes.slice(0, 20),
     codeFailures: codeFailures.slice(0, 12),
     infrastructureFailures: infrastructureFailures.slice(0, 12),
     externalFailures: externalFailures.slice(0, 12),
     pending: pending.slice(0, 20),
+    regressionTestEvidence,
     checkedAt: new Date().toISOString(),
   };
 }
