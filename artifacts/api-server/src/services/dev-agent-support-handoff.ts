@@ -15,6 +15,16 @@ type HandoffLogger = {
   error: (...args: any[]) => void;
 };
 
+function sanitizeTechnicalText(value: unknown) {
+  return String(value ?? "")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
+    .replace(/(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?(?:9\s*)?\d{4}[-\s]?\d{4}\b/g, "[telefone]")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi, "[uuid]")
+    .replace(/\b(?:sk-|ghp_|github_pat_|eyJ)[A-Za-z0-9._-]{16,}\b/g, "[credencial]")
+    .replace(/\b[A-Za-z0-9_-]{48,}\b/g, "[valor-redigido]")
+    .slice(0, 12000);
+}
+
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
   const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
@@ -38,21 +48,22 @@ async function createTechnicalTask(args: {
     "## Origem",
     "Chamado técnico criado automaticamente pelo Agente de Suporte do VendorAI.",
     "",
-    `- Dev IA requestId: \`${args.requestId}\``,
-    `- Rota afetada: \`${args.route}\``,
+    `- Dev IA requestId: \`${sanitizeTechnicalText(args.requestId)}\``,
+    `- Rota afetada: \`${sanitizeTechnicalText(args.route)}\``,
     "- Fluxo: Suporte → Dev IA",
+    "- Dados pessoais e credenciais são redigidos antes de sair do banco do tenant.",
     "",
     "## Chamado",
-    args.request,
+    sanitizeTechnicalText(args.request),
     "",
     "## Diagnóstico recebido do suporte",
-    args.diagnosis || "Sem diagnóstico adicional do suporte.",
+    sanitizeTechnicalText(args.diagnosis) || "Sem diagnóstico adicional do suporte.",
     "",
     "## Conselho de Especialistas",
-    JSON.stringify(args.council, null, 2).slice(0, 8000),
+    sanitizeTechnicalText(JSON.stringify(args.council, null, 2)).slice(0, 8000),
     "",
     "## Plano de Engenharia",
-    JSON.stringify(args.plan, null, 2).slice(0, 8000),
+    sanitizeTechnicalText(JSON.stringify(args.plan, null, 2)).slice(0, 8000),
     "",
     "## Guardrails",
     "- preservar o fluxo existente e evitar módulos paralelos;",
@@ -72,7 +83,7 @@ async function createTechnicalTask(args: {
       "User-Agent": "VendorAI-Support-Dev-Handoff/1.0",
     },
     body: JSON.stringify({
-      title: `[Suporte → Dev IA] ${args.title}`.slice(0, 120),
+      title: `[Suporte → Dev IA] ${sanitizeTechnicalText(args.title)}`.slice(0, 120),
       body,
     }),
   });
@@ -113,8 +124,7 @@ async function processTicket(report: typeof bugReportsTable.$inferSelect, logger
   const request = ticketRequest(claimed);
   const route = claimed.rotaAfetada?.trim() || "/support";
   const evidenceContext = [
-    `Origem: chamado do Agente de Suporte`,
-    `Tenant: ${claimed.tenantId}`,
+    "Origem: chamado do Agente de Suporte",
     `Protocolo técnico: ${claimed.id}`,
     claimed.respostaSuporte ? `Resposta inicial do suporte: ${claimed.respostaSuporte}` : "",
   ].filter(Boolean).join("\n");
@@ -205,7 +215,7 @@ async function processTicket(report: typeof bugReportsTable.$inferSelect, logger
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";
     await db.update(bugReportsTable).set({
-      erroTecnico: `Dev IA tentou assumir automaticamente este chamado, mas a triagem técnica falhou: ${message}`.slice(0, 12000),
+      erroTecnico: `Dev IA tentou assumir automaticamente este chamado, mas a triagem técnica falhou: ${sanitizeTechnicalText(message)}`.slice(0, 12000),
       status: "em_analise",
       resolvidoPor: "dev_ia",
       updatedAt: new Date(),
