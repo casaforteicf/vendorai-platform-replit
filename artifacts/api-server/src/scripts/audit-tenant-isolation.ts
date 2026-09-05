@@ -64,6 +64,24 @@ function walk(directory: string): string[] {
   });
 }
 
+function hasImmediateTenantGuard(lines: string[], index: number): boolean {
+  const line = lines[index] ?? "";
+  if (!/\bconst\s+tenantId\s*=\s*String\(req\.params\.tenantId\)\s*;?/.test(line)) return false;
+
+  const lookahead = lines.slice(index + 1, index + 4);
+  const guardIndex = lookahead.findIndex((candidate) =>
+    /if\s*\(\s*!canAccessTenant\(req,\s*tenantId\)\s*\)/.test(candidate),
+  );
+  if (guardIndex < 0) return false;
+
+  return lookahead.slice(0, guardIndex).every((candidate) => {
+    const trimmed = candidate.trim();
+    return !trimmed ||
+      trimmed.startsWith("//") ||
+      /^const\s+[A-Za-z_$][\w$]*\s*=\s*String\(req\.params\.[A-Za-z_$][\w$]*\)\s*;?$/.test(trimmed);
+  });
+}
+
 for (const filePath of walk(root)) {
   const relativeFile = path.relative(root, filePath).replaceAll(path.sep, "/");
   const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
@@ -72,7 +90,8 @@ for (const filePath of walk(root)) {
     const previousLine = lines[index - 1] ?? "";
     if (
       line.includes("tenant-audit: reviewed") ||
-      previousLine.includes("tenant-audit: reviewed")
+      previousLine.includes("tenant-audit: reviewed") ||
+      hasImmediateTenantGuard(lines, index)
     ) {
       return;
     }
