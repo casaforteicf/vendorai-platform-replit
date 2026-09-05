@@ -11,67 +11,77 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
+  WalletCards,
 } from "lucide-react";
 import PlanoMidiaCore from "@/pages/PlanoMidiaCore";
 
+type BudgetType = "total" | "diario" | "semanal" | "mensal";
+
 type PlanningConfig = {
-  objetivoPrincipal: string;
-  produtoServicoPrioritario: string;
-  publicoPrioritario: string;
-  regiao: string;
+  nomeCampanha: string;
   ofertaPrincipal: string;
-  canaisPreferidos: string[];
-  observacoes: string;
+  inicioEm: string;
+  fimEm: string;
+  semDataFinal: boolean;
+  orcamentoValor: number;
+  orcamentoTipo: BudgetType;
+};
+
+type StoredPlanningConfig = Partial<PlanningConfig> & {
+  inicioEm?: string;
+  fimEm?: string | null;
 };
 
 type PlanWithContext = {
   contextoUsado?: {
-    configuracaoPlanejamento?: Partial<PlanningConfig> | null;
+    configuracaoPlanejamento?: StoredPlanningConfig | null;
   } | null;
 };
 
-const AVAILABLE_CHANNELS = [
-  "Instagram",
-  "Facebook",
-  "Meta Ads",
-  "Google Search",
-  "Google Display",
-  "Performance Max",
-  "YouTube",
-  "TikTok",
-  "LinkedIn",
-  "WhatsApp",
-  "E-mail",
-  "Blog/SEO",
-  "Site",
-  "Landing Page",
-] as const;
-
 function emptyConfig(): PlanningConfig {
   return {
-    objetivoPrincipal: "",
-    produtoServicoPrioritario: "",
-    publicoPrioritario: "",
-    regiao: "",
+    nomeCampanha: "",
     ofertaPrincipal: "",
-    canaisPreferidos: [],
-    observacoes: "",
+    inicioEm: "",
+    fimEm: "",
+    semDataFinal: false,
+    orcamentoValor: 0,
+    orcamentoTipo: "total",
   };
 }
 
-function normalizeConfig(source: Partial<PlanningConfig> | null | undefined): PlanningConfig {
+function toDatetimeLocal(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 16);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function normalizeConfig(source: StoredPlanningConfig | null | undefined): PlanningConfig {
   const base = emptyConfig();
   if (!source) return base;
+  const type = source.orcamentoTipo;
   return {
-    objetivoPrincipal: typeof source.objetivoPrincipal === "string" ? source.objetivoPrincipal : "",
-    produtoServicoPrioritario: typeof source.produtoServicoPrioritario === "string" ? source.produtoServicoPrioritario : "",
-    publicoPrioritario: typeof source.publicoPrioritario === "string" ? source.publicoPrioritario : "",
-    regiao: typeof source.regiao === "string" ? source.regiao : "",
+    nomeCampanha: typeof source.nomeCampanha === "string" ? source.nomeCampanha : "",
     ofertaPrincipal: typeof source.ofertaPrincipal === "string" ? source.ofertaPrincipal : "",
-    canaisPreferidos: Array.isArray(source.canaisPreferidos)
-      ? source.canaisPreferidos.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
-      : [],
-    observacoes: typeof source.observacoes === "string" ? source.observacoes : "",
+    inicioEm: toDatetimeLocal(source.inicioEm),
+    fimEm: toDatetimeLocal(source.fimEm),
+    semDataFinal: source.semDataFinal === true,
+    orcamentoValor: typeof source.orcamentoValor === "number" && Number.isFinite(source.orcamentoValor)
+      ? source.orcamentoValor
+      : 0,
+    orcamentoTipo: type === "diario" || type === "semanal" || type === "mensal" ? type : "total",
+  };
+}
+
+function configForApi(config: PlanningConfig) {
+  const inicio = config.inicioEm ? new Date(config.inicioEm) : null;
+  const fim = !config.semDataFinal && config.fimEm ? new Date(config.fimEm) : null;
+  return {
+    ...config,
+    inicioEm: inicio && !Number.isNaN(inicio.getTime()) ? inicio.toISOString() : "",
+    fimEm: fim && !Number.isNaN(fim.getTime()) ? fim.toISOString() : "",
   };
 }
 
@@ -91,7 +101,7 @@ function fieldLabel(title: string, description?: string) {
 export default function PlanoMidia() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
-  const [configOpen, setConfigOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(true);
   const [config, setConfig] = useState<PlanningConfig>(() => emptyConfig());
   const configRef = useRef(config);
   const hydratedTenantRef = useRef("");
@@ -141,7 +151,7 @@ export default function PlanoMidia() {
         body = {};
       }
 
-      body["configuracao"] = configRef.current;
+      body["configuracao"] = configForApi(configRef.current);
       const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
       if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
@@ -161,23 +171,30 @@ export default function PlanoMidia() {
 
   const configuredCount = useMemo(() => {
     return [
-      config.objetivoPrincipal,
-      config.produtoServicoPrioritario,
-      config.publicoPrioritario,
-      config.regiao,
+      config.nomeCampanha,
       config.ofertaPrincipal,
-      config.observacoes,
-      config.canaisPreferidos.length > 0 ? "canais" : "",
+      config.inicioEm,
+      config.semDataFinal ? "aberta" : config.fimEm,
+      config.orcamentoValor > 0 ? "orcamento" : "",
     ].filter(Boolean).length;
   }, [config]);
 
-  function toggleChannel(channel: string) {
-    setConfig((current) => ({
-      ...current,
-      canaisPreferidos: current.canaisPreferidos.includes(channel)
-        ? current.canaisPreferidos.filter((item) => item !== channel)
-        : [...current.canaisPreferidos, channel],
-    }));
+  const periodSummary = useMemo(() => {
+    if (!config.inicioEm) return "Defina início e fim livremente — inclusive campanhas de horas, dias, meses ou anos.";
+    if (config.semDataFinal) return `A partir de ${new Date(config.inicioEm).toLocaleString("pt-BR")} · sem data final`;
+    if (!config.fimEm) return "Defina quando a campanha termina.";
+    const start = new Date(config.inicioEm);
+    const end = new Date(config.fimEm);
+    const diffHours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
+    if (!Number.isFinite(diffHours)) return "Período personalizado";
+    if (diffHours < 48) return `${Math.round(diffHours * 10) / 10} hora(s)`;
+    return `${Math.round((diffHours / 24) * 10) / 10} dia(s)`;
+  }, [config.inicioEm, config.fimEm, config.semDataFinal]);
+
+  function resetConfig() {
+    const next = emptyConfig();
+    configRef.current = next;
+    setConfig(next);
   }
 
   return (
@@ -188,123 +205,137 @@ export default function PlanoMidia() {
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <SlidersHorizontal className="h-4 w-4 text-primary" />
-                <p className="text-sm font-semibold">Configurar antes de gerar ou replanejar</p>
-                {configuredCount > 0 && <Badge variant="outline" className="text-[10px]">{configuredCount} diretriz(es)</Badge>}
+                <p className="text-sm font-semibold">Defina a campanha; a IA opera a mídia</p>
+                {configuredCount > 0 && <Badge variant="outline" className="text-[10px]">{configuredCount}/5 definido(s)</Badge>}
               </div>
               <p className="mt-1 text-xs text-muted-foreground max-w-3xl">
-                Estes campos são opcionais. Se você não preencher nada, a IA decide automaticamente como hoje. O que for definido aqui passa a orientar o próximo plano e fica salvo junto com ele.
+                Você informa somente a intenção comercial, o período e o limite financeiro. A IA escolhe canais, públicos, formatos, frequência e distribuição do orçamento, podendo redistribuir a verba pelo desempenho sem ultrapassar o limite definido.
               </p>
               {!configOpen && configuredCount > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {config.objetivoPrincipal && <Badge variant="secondary" className="text-[10px]">Objetivo: {config.objetivoPrincipal}</Badge>}
-                  {config.produtoServicoPrioritario && <Badge variant="secondary" className="text-[10px]">Prioridade: {config.produtoServicoPrioritario}</Badge>}
-                  {config.regiao && <Badge variant="secondary" className="text-[10px]">Região: {config.regiao}</Badge>}
-                  {config.canaisPreferidos.length > 0 && <Badge variant="secondary" className="text-[10px]">{config.canaisPreferidos.length} canal(is) priorizado(s)</Badge>}
+                  {config.nomeCampanha && <Badge variant="secondary" className="text-[10px]">{config.nomeCampanha}</Badge>}
+                  {config.orcamentoValor > 0 && <Badge variant="secondary" className="text-[10px]">R$ {config.orcamentoValor.toLocaleString("pt-BR")} · {config.orcamentoTipo}</Badge>}
+                  {config.inicioEm && <Badge variant="secondary" className="text-[10px]">{periodSummary}</Badge>}
                 </div>
               )}
             </div>
             <Button type="button" size="sm" variant={configOpen ? "secondary" : "outline"} onClick={() => setConfigOpen((open) => !open)}>
               {configOpen ? <ChevronUp className="h-3.5 w-3.5 mr-1.5" /> : <ChevronDown className="h-3.5 w-3.5 mr-1.5" />}
-              {configOpen ? "Fechar configuração" : "Configurar planejamento"}
+              {configOpen ? "Fechar" : "Editar campanha"}
             </Button>
           </div>
 
           {configOpen && (
-            <div className="border-t pt-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="border-t pt-4 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  {fieldLabel("Objetivo principal do período", "Ex.: gerar leads, vender um lançamento, aumentar recorrência.")}
+                  {fieldLabel("Título / tema da campanha", "Ex.: Semana da Piscina, Black Friday, Lançamento Linha X.")}
                   <Input
-                    value={config.objetivoPrincipal}
-                    onChange={(event) => setConfig((current) => ({ ...current, objetivoPrincipal: event.target.value }))}
-                    placeholder="IA decide automaticamente"
+                    value={config.nomeCampanha}
+                    onChange={(event) => setConfig((current) => ({ ...current, nomeCampanha: event.target.value }))}
+                    placeholder="Nome ou tema da campanha"
                     maxLength={300}
                   />
                 </div>
                 <div>
-                  {fieldLabel("Produto ou serviço prioritário", "A IA continua podendo usar o restante do portfólio quando fizer sentido.")}
-                  <Input
-                    value={config.produtoServicoPrioritario}
-                    onChange={(event) => setConfig((current) => ({ ...current, produtoServicoPrioritario: event.target.value }))}
-                    placeholder="Ex.: Plano Pró, consultoria, linha X"
-                    maxLength={300}
-                  />
-                </div>
-                <div>
-                  {fieldLabel("Público prioritário", "Defina apenas se quiser restringir ou refinar o público já cadastrado.")}
-                  <Input
-                    value={config.publicoPrioritario}
-                    onChange={(event) => setConfig((current) => ({ ...current, publicoPrioritario: event.target.value }))}
-                    placeholder="Ex.: PMEs de 10 a 50 funcionários"
-                    maxLength={500}
-                  />
-                </div>
-                <div>
-                  {fieldLabel("Região / área de atuação", "Serve para segmentação; não obriga a IA a repetir o local em todos os materiais.")}
-                  <Input
-                    value={config.regiao}
-                    onChange={(event) => setConfig((current) => ({ ...current, regiao: event.target.value }))}
-                    placeholder="Ex.: Brasil, SC, Chapecó e região"
-                    maxLength={250}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  {fieldLabel("Oferta ou CTA principal", "O próximo passo comercial que deve orientar conversão e campanhas.")}
+                  {fieldLabel("Oferta ou promoção", "Pode ser uma promoção, condição especial ou simplesmente o CTA da campanha.")}
                   <Input
                     value={config.ofertaPrincipal}
                     onChange={(event) => setConfig((current) => ({ ...current, ofertaPrincipal: event.target.value }))}
-                    placeholder="Ex.: solicitar demonstração, orçamento, teste grátis"
+                    placeholder="Ex.: 15% de desconto, orçamento grátis, demonstração"
                     maxLength={500}
                   />
                 </div>
               </div>
 
               <div>
-                {fieldLabel("Canais que quero priorizar", "A IA continua responsável por completar o mix necessário para o funil; estes canais recebem prioridade explícita.")}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 gap-2">
-                  {AVAILABLE_CHANNELS.map((channel) => {
-                    const selected = config.canaisPreferidos.includes(channel);
-                    return (
-                      <button
-                        key={channel}
-                        type="button"
-                        onClick={() => toggleChannel(channel)}
-                        className={`min-h-9 rounded-md border px-2 py-1.5 text-xs text-left transition-colors ${selected ? "border-primary bg-primary/10 text-primary" : "bg-background hover:bg-muted"}`}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <span className={`h-3.5 w-3.5 shrink-0 rounded border flex items-center justify-center ${selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
-                            {selected && <Check className="h-2.5 w-2.5" />}
-                          </span>
-                          <span>{channel}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
+                {fieldLabel("Período da campanha", "Livre: pode durar 12 horas, 1 dia, 45 dias, 1 ano ou ficar sem data final.")}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                  <div>
+                    <p className="mb-1 text-[11px] text-muted-foreground">Início</p>
+                    <Input
+                      type="datetime-local"
+                      value={config.inicioEm}
+                      onChange={(event) => setConfig((current) => ({ ...current, inicioEm: event.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[11px] text-muted-foreground">Fim</p>
+                    <Input
+                      type="datetime-local"
+                      value={config.fimEm}
+                      disabled={config.semDataFinal}
+                      min={config.inicioEm || undefined}
+                      onChange={(event) => setConfig((current) => ({ ...current, fimEm: event.target.value }))}
+                    />
+                  </div>
+                  <label className="min-h-10 flex items-center gap-2 rounded-md border bg-background px-3 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={config.semDataFinal}
+                      onChange={(event) => setConfig((current) => ({
+                        ...current,
+                        semDataFinal: event.target.checked,
+                        orcamentoTipo: event.target.checked && current.orcamentoTipo === "total" ? "mensal" : current.orcamentoTipo,
+                      }))}
+                    />
+                    Sem data final
+                  </label>
                 </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">{periodSummary}</p>
               </div>
 
               <div>
-                {fieldLabel("Observações e restrições para a IA", "Use para registrar nuances do ciclo sem precisar editar campanha por campanha depois.")}
-                <textarea
-                  className="w-full min-h-24 rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  value={config.observacoes}
-                  onChange={(event) => setConfig((current) => ({ ...current, observacoes: event.target.value }))}
-                  placeholder="Ex.: comunicação mais sutil, evitar repetir a cidade em todas as peças, priorizar prova e demonstração, não usar desconto..."
-                  maxLength={1500}
-                />
+                {fieldLabel("Orçamento", "Este é o limite financeiro. A IA pode mover verba entre canais e anúncios, mas nunca ultrapassar esse limite.")}
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px] gap-3 max-w-2xl">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">R$</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="pl-10"
+                      value={config.orcamentoValor || ""}
+                      onChange={(event) => setConfig((current) => ({ ...current, orcamentoValor: Number(event.target.value) || 0 }))}
+                      placeholder="0,00"
+                    />
+                  </div>
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={config.orcamentoTipo}
+                    onChange={(event) => setConfig((current) => ({ ...current, orcamentoTipo: event.target.value as BudgetType }))}
+                  >
+                    <option value="total">Total da campanha</option>
+                    <option value="diario">Máximo por dia</option>
+                    <option value="semanal">Máximo por semana</option>
+                    <option value="mensal">Máximo por mês</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-background/70 p-3">
+                <div className="flex items-start gap-2">
+                  <WalletCards className="h-4 w-4 text-primary mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold">Gestão autônoma de mídia pela IA</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      Canais, públicos, formatos, horários, frequência, testes, remarketing e distribuição da verba são decisões da IA. O orçamento definido acima funciona como limite rígido; a distribuição exibida no plano é dinâmica e pode mudar conforme leads, oportunidades, vendas, receita e margem.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  Ao clicar em Planejar/Replanejar com IA, estas diretrizes serão enviadas automaticamente.
+                  Ao Planejar/Replanejar, estas quatro decisões humanas orientam toda a estratégia da IA.
                 </div>
                 <div className="flex gap-2">
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setConfig(emptyConfig())} disabled={configuredCount === 0}>
-                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Deixar IA decidir tudo
+                  <Button type="button" size="sm" variant="ghost" onClick={resetConfig} disabled={configuredCount === 0}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Limpar
                   </Button>
                   <Button type="button" size="sm" onClick={() => setConfigOpen(false)}>
-                    <Check className="h-3.5 w-3.5 mr-1.5" />Usar estas configurações
+                    <Check className="h-3.5 w-3.5 mr-1.5" />Usar esta campanha
                   </Button>
                 </div>
               </div>
