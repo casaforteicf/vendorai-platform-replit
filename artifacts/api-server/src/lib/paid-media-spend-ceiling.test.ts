@@ -7,7 +7,7 @@ describe('paid media spend ceiling', () => {
       planBudgetTotal: 1000,
       spend: 1000,
       activeDailyBudgetTotal: 240,
-      guardIntervalMinutes: 15,
+      guardIntervalMinutes: 60,
     });
 
     expect(result.shouldPause).toBe(true);
@@ -15,30 +15,42 @@ describe('paid media spend ceiling', () => {
     expect(result.remainingBudget).toBe(0);
   });
 
-  it('pauses proactively when remaining budget fits inside the next guard interval reserve', () => {
+  it('pauses proactively when remaining budget fits inside the next hourly guard reserve', () => {
     const result = evaluatePaidMediaSpendCeiling({
       planBudgetTotal: 1000,
       spend: 995,
       activeDailyBudgetTotal: 960,
-      guardIntervalMinutes: 15,
+      guardIntervalMinutes: 60,
+    });
+
+    expect(result.projectedIntervalSpend).toBe(40);
+    expect(result.shouldPause).toBe(true);
+    expect(result.reason).toBe('safety_reserve_reached');
+  });
+
+  it('keeps delivery running while the approved balance safely exceeds the hourly reserve', () => {
+    const result = evaluatePaidMediaSpendCeiling({
+      planBudgetTotal: 1000,
+      spend: 900,
+      activeDailyBudgetTotal: 96,
+      guardIntervalMinutes: 60,
+    });
+
+    expect(result.projectedIntervalSpend).toBe(4);
+    expect(result.shouldPause).toBe(false);
+    expect(result.reason).toBe('within_ceiling');
+  });
+
+  it('uses the real hourly guard interval by default', () => {
+    const result = evaluatePaidMediaSpendCeiling({
+      planBudgetTotal: 1000,
+      spend: 995,
+      activeDailyBudgetTotal: 240,
     });
 
     expect(result.projectedIntervalSpend).toBe(10);
     expect(result.shouldPause).toBe(true);
     expect(result.reason).toBe('safety_reserve_reached');
-  });
-
-  it('keeps delivery running while the approved balance safely exceeds the interval reserve', () => {
-    const result = evaluatePaidMediaSpendCeiling({
-      planBudgetTotal: 1000,
-      spend: 900,
-      activeDailyBudgetTotal: 96,
-      guardIntervalMinutes: 15,
-    });
-
-    expect(result.projectedIntervalSpend).toBe(1);
-    expect(result.shouldPause).toBe(false);
-    expect(result.reason).toBe('within_ceiling');
   });
 
   it('rejects an invalid human ceiling', () => {
