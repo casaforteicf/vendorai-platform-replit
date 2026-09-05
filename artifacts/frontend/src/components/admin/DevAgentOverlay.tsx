@@ -20,7 +20,7 @@ import {
 import DevEngineeringCenterTab from "./DevEngineeringCenterTab";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
-type DevStatus = "analisando" | "diagnosticado" | "executando" | "concluido" | "approval_required" | "github_task" | "erro";
+type DevStatus = "analisando" | "diagnosticado" | "executando" | "pr_open" | "deploy_pending" | "concluido" | "approval_required" | "github_task" | "erro";
 type Cognition = {
   intent: "conversation" | "question" | "diagnose" | "audit" | "improve" | "build" | "execute";
   shouldExecute: boolean;
@@ -55,6 +55,9 @@ type DevRequest = {
   executionSummary?: string;
   issueNumber?: number;
   issueUrl?: string;
+  pullRequestNumber?: number;
+  pullRequestUrl?: string;
+  targetRevision?: string;
 };
 
 type CachedUser = { platformRole?: string | null; name?: string | null; email?: string | null };
@@ -113,6 +116,8 @@ function statusLabel(status: DevStatus) {
   if (status === "analisando") return "Analisando";
   if (status === "diagnosticado") return "Diagnosticado";
   if (status === "executando") return "Executando";
+  if (status === "pr_open") return "PR aberto";
+  if (status === "deploy_pending") return "Aguardando produção";
   if (status === "concluido") return "Concluído";
   if (status === "approval_required") return "Aprovação necessária";
   if (status === "github_task") return "Tarefa criada";
@@ -242,6 +247,37 @@ export default function DevAgentOverlay() {
     } finally { setWorkingId(null); }
   }
 
+  async function validateProduction(request: DevRequest) {
+    if (!request.targetRevision || workingId) return;
+    setWorkingId(request.id);
+    try {
+      const response = await fetch("/api/support/dev/validate-production", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ expectedRevision: request.targetRevision }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error ?? `Falha ao validar produção (${response.status})`);
+
+      if (data?.state === "validated") {
+        const validationText = `Produção validada no SHA ${String(data.observedRevision ?? request.targetRevision).slice(0, 9)}.`;
+        setRequests((current) => current.map((item) => item.id === request.id ? {
+          ...item,
+          status: "concluido",
+          executionSummary: `${item.executionSummary ?? ""}\n${validationText}`.trim(),
+        } : item));
+        setMessages((current) => [...current, { role: "assistant", content: validationText }]);
+      } else {
+        setMessages((current) => [...current, { role: "assistant", content: `O merge já existe, mas a produção ainda não está no SHA esperado. Estado atual: ${data?.state ?? "desconhecido"}.` }]);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      setMessages((current) => [...current, { role: "assistant", content: `Não consegui validar produção: ${message}` }]);
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
   async function executeRequest(request: DevRequest, diagnosisOverride?: string) {
     const diagnosis = diagnosisOverride ?? request.diagnosis ?? "";
     if (workingId) return;
@@ -269,9 +305,32 @@ export default function DevAgentOverlay() {
         return;
       }
       if (!response.ok) throw new Error(data?.error ?? `Falha na execução (${response.status})`);
+
+      const actions = Array.isArray(data?.actions) ? data.actions : [];
+      const mergeAction = [...actions].reverse().find((action: any) => action?.tool === "merge_pr" && action?.ok && action?.detail?.merged);
+      const prAction = [...actions].reverse().find((action: any) => action?.tool === "create_pr" && action?.ok && action?.detail?.number);
       const summary = data?.summary ?? "Execução finalizada.";
-      setRequests((current) => current.map((item) => item.id === request.id ? { ...item, status: "concluido", executionSummary: summary } : item));
-      setMessages((current) => [...current, { role: "assistant", content: `Execução autônoma:\n${summary}` }]);
+      const targetRevision = mergeAction?.detail?.sha ? String(mergeAction.detail.sha) : undefined;
+      const pullRequestNumber = prAction?.detail?.number ? Number(prAction.detail.number) : undefined;
+      const pullRequestUrl = prAction?.detail?.url ? String(prAction.detail.url) : undefined;
+      const finalStatus: DevStatus = mergeAction ? "deploy_pending" : prAction ? "pr_open" : "concluido";
+
+      setRequests((current) => current.map((item) => item.id === request.id ? {
+        ...item,
+        status: finalStatus,
+        executionSummary: summary,
+        targetRevision,
+        pullRequestNumber,
+        pullRequestUrl,
+      } : item));
+
+      if (mergeAction) {
+        setMessages((current) => [...current, { role: "assistant", content: `Merge concluído no SHA ${String(targetRevision).slice(0, 9)}. Ainda não marquei como concluído: falta validar esse SHA em produção.` }]);
+      } else if (prAction) {
+        setMessages((current) => [...current, { role: "assistant", content: `PR #${pullRequestNumber} aberto. O trabalho ainda não foi marcado como concluído porque não houve merge e validação em produção.` }]);
+      } else {
+        setMessages((current) => [...current, { role: "assistant", content: `Execução autônoma:\n${summary}` }]);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro desconhecido";
       setRequests((current) => current.map((item) => item.id === request.id ? { ...item, status: "erro" } : item));
@@ -420,14 +479,14 @@ export default function DevAgentOverlay() {
                 <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
                   {messages.length === 0 && <div className="rounded-2xl border bg-white p-4 text-sm text-slate-700"><p className="font-semibold text-slate-900">Cérebro Executivo {autonomous ? "ativo" : "em modo consultivo"}.</p><p className="mt-2">Conversa simples não vira execução. Pedidos técnicos passam por evidência, impacto, especialistas, planejamento, pré-mortem e revisão antes de uma mudança autônoma.</p></div>}
                   {messages.map((message, index) => <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[92%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "bg-slate-950 text-white" : "border bg-white text-slate-800"}`}>{message.content || (sending ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> analisando...</span> : "")}</div></div>)}
-                  {(sending || workingId) && <div className="text-xs text-slate-500"><Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />{workingId ? "Dev IA executando trabalho autorizado..." : "Cérebro Executivo classificando e coletando evidências..."}</div>}
+                  {(sending || workingId) && <div className="text-xs text-slate-500"><Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />{workingId ? "Dev IA executando ou validando trabalho autorizado..." : "Cérebro Executivo classificando e coletando evidências..."}</div>}
                   <div ref={endRef} />
                 </div>
                 <form className="border-t bg-white p-3" onSubmit={(e) => { e.preventDefault(); void sendMessage(input); }}><div className="flex items-end gap-2 rounded-2xl border bg-slate-50 p-2"><textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); } }} rows={2} placeholder="Converse, investigue, audite ou peça uma execução..." className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none" /><button type="submit" disabled={!input.trim() || sending || Boolean(workingId)} className="rounded-xl bg-slate-950 p-2.5 text-white disabled:opacity-40"><Send className="h-4 w-4" /></button></div></form>
               </>
             ) : tab === "history" ? (
               <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
-                {requests.length === 0 ? <div className="rounded-2xl border bg-white p-5 text-sm text-slate-600">Nenhum pedido técnico registrado.</div> : <div className="space-y-3">{requests.map((request) => <article key={request.id} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="line-clamp-2 text-sm font-medium text-slate-900">{request.text}</p><p className="mt-1 truncate text-[11px] text-slate-500">{request.route}</p></div><span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-700">{statusLabel(request.status)}</span></div><div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> {new Date(request.createdAt).toLocaleString("pt-BR")}</span>{request.cognition && <><span className="rounded-full bg-indigo-50 px-2 py-1 text-indigo-700">{intentLabel(request.cognition.intent)}</span><span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Risco {request.cognition.risk}</span><span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Esforço {request.cognition.cognitiveEffort}/10</span><span>{Math.round(request.cognition.confidence * 100)}% confiança</span></>}</div>{request.cognition?.objective && <p className="mt-3 rounded-xl bg-indigo-50/60 p-3 text-xs leading-relaxed text-slate-700"><span className="font-semibold">Objetivo:</span> {request.cognition.objective}</p>}{request.investigation && <div className="mt-3 rounded-xl bg-emerald-50/60 p-3 text-xs leading-relaxed text-slate-700"><p><span className="font-semibold">Investigação:</span> {request.investigation.summary}</p><p className="mt-1"><span className="font-semibold">Causa provável:</span> {request.investigation.likelyCause}</p>{request.investigation.relevantFiles.length > 0 && <p className="mt-1 break-words"><span className="font-semibold">Arquivos:</span> {request.investigation.relevantFiles.join(", ")}</p>}</div>}{request.executionSummary && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">{request.executionSummary}</p>}<div className="mt-3 flex flex-wrap gap-2">{request.status === "diagnosticado" && request.diagnosis && !request.cognition?.needsApproval && <button onClick={() => void executeRequest(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"><PlayCircle className="h-3.5 w-3.5" /> Executar agora</button>}{request.status === "diagnosticado" && request.diagnosis && <button onClick={() => void createGithubTask(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><GitBranch className="h-3.5 w-3.5" /> Criar tarefa</button>}{request.issueUrl && <a href={request.issueUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><CheckCircle2 className="h-3.5 w-3.5" /> Issue #{request.issueNumber}<ExternalLink className="h-3 w-3" /></a>}</div></article>)}</div>}
+                {requests.length === 0 ? <div className="rounded-2xl border bg-white p-5 text-sm text-slate-600">Nenhum pedido técnico registrado.</div> : <div className="space-y-3">{requests.map((request) => <article key={request.id} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="line-clamp-2 text-sm font-medium text-slate-900">{request.text}</p><p className="mt-1 truncate text-[11px] text-slate-500">{request.route}</p></div><span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-700">{statusLabel(request.status)}</span></div><div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> {new Date(request.createdAt).toLocaleString("pt-BR")}</span>{request.cognition && <><span className="rounded-full bg-indigo-50 px-2 py-1 text-indigo-700">{intentLabel(request.cognition.intent)}</span><span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Risco {request.cognition.risk}</span><span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Esforço {request.cognition.cognitiveEffort}/10</span><span>{Math.round(request.cognition.confidence * 100)}% confiança</span></>}</div>{request.cognition?.objective && <p className="mt-3 rounded-xl bg-indigo-50/60 p-3 text-xs leading-relaxed text-slate-700"><span className="font-semibold">Objetivo:</span> {request.cognition.objective}</p>}{request.investigation && <div className="mt-3 rounded-xl bg-emerald-50/60 p-3 text-xs leading-relaxed text-slate-700"><p><span className="font-semibold">Investigação:</span> {request.investigation.summary}</p><p className="mt-1"><span className="font-semibold">Causa provável:</span> {request.investigation.likelyCause}</p>{request.investigation.relevantFiles.length > 0 && <p className="mt-1 break-words"><span className="font-semibold">Arquivos:</span> {request.investigation.relevantFiles.join(", ")}</p>}</div>}{request.executionSummary && <p className="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">{request.executionSummary}</p>}<div className="mt-3 flex flex-wrap gap-2">{request.status === "diagnosticado" && request.diagnosis && !request.cognition?.needsApproval && <button onClick={() => void executeRequest(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white"><PlayCircle className="h-3.5 w-3.5" /> Executar agora</button>}{request.status === "diagnosticado" && request.diagnosis && <button onClick={() => void createGithubTask(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><GitBranch className="h-3.5 w-3.5" /> Criar tarefa</button>}{request.status === "deploy_pending" && request.targetRevision && <button onClick={() => void validateProduction(request)} disabled={Boolean(workingId)} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"><CheckCircle2 className="h-3.5 w-3.5" /> Validar produção</button>}{request.pullRequestUrl && <a href={request.pullRequestUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><GitBranch className="h-3.5 w-3.5" /> PR #{request.pullRequestNumber}<ExternalLink className="h-3 w-3" /></a>}{request.issueUrl && <a href={request.issueUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700"><CheckCircle2 className="h-3.5 w-3.5" /> Issue #{request.issueNumber}<ExternalLink className="h-3 w-3" /></a>}</div></article>)}</div>}
               </div>
             ) : (
               <DevEngineeringCenterTab active={tab === "engineering"} authHeaders={authHeaders} />
