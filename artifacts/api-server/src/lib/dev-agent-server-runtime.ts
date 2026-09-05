@@ -1,5 +1,3 @@
-import type { NextFunction, Request, Response } from "express";
-
 export type ServerRuntimeSignalKind = "server_error" | "slow_server";
 
 export type ServerRuntimeSignal = {
@@ -121,26 +119,25 @@ function recordMetric(args: { method: string; path: string; status: number; dura
   });
 }
 
-export function serverRuntimeTelemetryMiddleware(req: Request, res: Response, next: NextFunction) {
-  const path = sanitizePath(req.originalUrl || req.url || req.path || "/");
-  if (!shouldObserve(path)) return next();
+export function captureServerRuntimeFromPinoArgs(args: readonly unknown[]) {
+  for (const candidate of args) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const value = candidate as {
+      req?: { method?: unknown; url?: unknown; originalUrl?: unknown };
+      res?: { statusCode?: unknown; status?: unknown };
+      responseTime?: unknown;
+      responseTimeMs?: unknown;
+    };
 
-  const startedAt = Date.now();
-  let recorded = false;
-  const record = () => {
-    if (recorded) return;
-    recorded = true;
-    recordMetric({
-      method: req.method,
-      path,
-      status: res.statusCode,
-      durationMs: Date.now() - startedAt,
-    });
-  };
+    const method = String(value.req?.method ?? "");
+    const path = String(value.req?.originalUrl ?? value.req?.url ?? "");
+    const status = Number(value.res?.statusCode ?? value.res?.status);
+    const durationMs = Number(value.responseTime ?? value.responseTimeMs);
+    if (!method || !path || !Number.isInteger(status) || !Number.isFinite(durationMs) || durationMs < 0) continue;
 
-  res.once("finish", record);
-  res.once("close", record);
-  next();
+    recordMetric({ method, path, status, durationMs });
+    break;
+  }
 }
 
 export function getServerRuntimeSnapshot(limit = 10): ServerRuntimeSnapshot {
