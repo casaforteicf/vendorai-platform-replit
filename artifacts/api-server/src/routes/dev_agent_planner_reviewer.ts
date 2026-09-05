@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import * as ts from "typescript";
+import { collectDevAgentCheckEvidence } from "../lib/dev-agent-check-evidence.js";
 
 const router = Router();
 
@@ -79,7 +80,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Review/1.2",
+      "User-Agent": "VendorAI-Dev-Review/1.3",
     },
   });
   const text = await response.text();
@@ -276,6 +277,12 @@ Analise o diff real e procure especialmente:
 - tratamento incompleto de erro/estado assíncrono;
 - risco de apagar/alterar dados;
 - ausência de rollback/testes essenciais.
+
+EVIDÊNCIA DE CHECKS:
+- payload.testEvidence.codeFailures contém checks GitHub Actions que realmente executaram uma ou mais etapas e terminaram negativamente; isso é evidência de teste/build falho e exige request_changes.
+- payload.testEvidence.infrastructureFailures contém jobs GitHub Actions que terminaram negativamente sem executar nenhuma etapa; trate como runner/infra indisponível, nunca como teste falho e nunca como teste aprovado.
+- payload.testEvidence.pending significa que a evidência ainda não concluiu; não invente sucesso.
+- payload.testEvidence.externalFailures deve ser analisado junto dos gates oficiais; não transforme falha externa não classificada em conclusão de código sem evidência.
 
 Se houver finding high/critical, verdict deve ser request_changes ou needs_human_review.
 Se o diff tocar auth, billing, pagamentos, migrations/schema/RLS, secrets, workflow/infra, verdict deve ser needs_human_review.
@@ -604,6 +611,32 @@ export async function reviewPullRequestForMerge(number: number): Promise<Adversa
     };
   }
 
+  const testEvidence = await collectDevAgentCheckEvidence(String(pr?.head?.sha ?? "")).catch(() => ({
+    available: false,
+    total: 0,
+    successes: [],
+    codeFailures: [],
+    infrastructureFailures: [],
+    externalFailures: [],
+    pending: [],
+    checkedAt: new Date().toISOString(),
+  }));
+
+  if (testEvidence.codeFailures.length) {
+    return {
+      verdict: "request_changes",
+      confidence: 1,
+      risk: "high",
+      findings: testEvidence.codeFailures.slice(0, 10).map((check) => ({
+        severity: "high" as const,
+        title: `Check executado falhou: ${check.name}`,
+        detail: `O check executou ${check.executedSteps ?? 0} etapa(s) e terminou com conclusão ${check.conclusion ?? "failure"}. Corrija antes do merge.`,
+      })),
+      regressionsToTest: ["Reexecutar os checks que realmente executaram etapas e falharam até obter evidência conclusiva de sucesso."],
+      reasoningSummary: "O merge foi bloqueado por evidência objetiva de check executado com falha.",
+    };
+  }
+
   const diff = (files ?? []).map((file: any) => ({
     filename: file.filename,
     status: file.status,
@@ -619,6 +652,7 @@ export async function reviewPullRequestForMerge(number: number): Promise<Adversa
     head: pr.head?.ref,
     base: pr.base?.ref,
     changedFiles: diff,
+    testEvidence,
   };
 
   try {
