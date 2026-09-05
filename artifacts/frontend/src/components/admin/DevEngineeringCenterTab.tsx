@@ -43,7 +43,7 @@ type MemoryEntry = {
 
 type Props = {
   active: boolean;
-  authHeaders: () => Record<string, string>;
+  authHeaders: () => { "Content-Type": string; Authorization?: string };
 };
 
 const layers = [
