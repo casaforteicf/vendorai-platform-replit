@@ -11,6 +11,7 @@ import {
 import { resolveMarketingRuntime } from "@workspace/vendor-brain/marketing-runtime";
 import type { ChannelId } from "@workspace/vendor-brain/platform-foundation";
 import { resolveTenantCreativePlan } from "../services/creativeDesignBridge";
+import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
 
 const router: IRouter = Router();
 
@@ -154,6 +155,88 @@ router.post("/tenants/:tenantId/marketing-agent/runtime", async (req, res) => {
     creativeBriefErrors: runtime.creativeBriefErrors,
     creativePlan,
   });
+});
+
+/**
+ * Shared deterministic QA inspector used by content, site/LP, video and ad
+ * surfaces. It does not publish or persist anything; it only returns the
+ * normalized DesignQaResult contract used by the publication gate.
+ */
+router.post("/tenants/:tenantId/marketing-agent/design-qa", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as {
+    kind?: "content" | "site" | "video" | "ad";
+    text?: string;
+    channel?: string;
+    format?: string;
+    objective?: string;
+    cta?: string | null;
+    campaignId?: string | null;
+    audience?: string | null;
+    productId?: string | null;
+    technicalValid?: boolean;
+    visualChecks?: {
+      readability?: number;
+      composition?: number;
+      channelFit?: number;
+    };
+  };
+
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  const channel = typeof body.channel === "string" && body.channel.trim() ? body.channel.trim() : "instagram";
+  const format = typeof body.format === "string" && body.format.trim() ? body.format.trim() : body.kind || "content";
+  const objective = typeof body.objective === "string" && body.objective.trim() ? body.objective.trim() : `revisar ${body.kind || "conteúdo"}`;
+
+  let hasBrandContext = false;
+  try {
+    const plan = await resolveTenantCreativePlan(tenantId, {
+      tenantId,
+      campaignId: body.campaignId ?? null,
+      objective,
+      audience: body.audience ?? null,
+      productId: body.productId ?? null,
+      channel,
+      format,
+      cta: body.cta ?? null,
+    });
+    hasBrandContext = Boolean(plan.brand.logoUrl || plan.brand.tone?.length || plan.brand.colors?.length);
+  } catch (error) {
+    req.log?.warn({ error, tenantId }, "marketing-agent: design QA brand context unavailable");
+  }
+
+  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+  const hasCta = body.cta?.trim()
+    ? text.toLowerCase().includes(body.cta.trim().toLowerCase()) || /\bcta\b|fale|saiba|compre|chame|acesse|solicite/i.test(text)
+    : /\bcta\b|fale|saiba|compre|chame|acesse|solicite/i.test(text);
+  const hasStructure = body.kind === "site"
+    ? /<h1|<main|<section|cta|button|form/i.test(text)
+    : /gancho|cta|benef[ií]cio|visual|legenda|headline|oferta/i.test(text);
+
+  const designQa = buildGenerationDesignQa({
+    brandScore: hasBrandContext ? 92 : 76,
+    readabilityScore: body.visualChecks?.readability ?? (wordCount > 0 && wordCount < 5_000 ? 90 : 75),
+    compositionScore: body.visualChecks?.composition ?? (hasStructure ? 92 : 78),
+    channelFitScore: body.visualChecks?.channelFit ?? 88,
+    ctaScore: hasCta ? 94 : 68,
+    technicalScore: body.technicalValid === false ? 60 : 94,
+    warnings: [
+      ...(!hasBrandContext ? ["Contexto de marca incompleto para revisão criativa."] : []),
+      ...(!hasCta ? ["CTA não foi identificado com clareza."] : []),
+      ...(body.technicalValid === false ? ["Saída não passou na validação técnica do pipeline."] : []),
+    ],
+    recommendations: [
+      ...(!hasCta ? ["Adicionar ou reforçar CTA alinhado ao objetivo da campanha."] : []),
+      ...(!hasBrandContext ? ["Completar identidade/tom no Perfil da Empresa para elevar consistência de marca."] : []),
+    ],
+  });
+
+  res.setHeader("Cache-Control", "no-store");
+  res.status(200).json({ designQa });
 });
 
 router.get("/business-profiles/:id", async (req, res) => {
