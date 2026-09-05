@@ -1,5 +1,5 @@
-import { getChannelAdaptation } from './channel-adapters';
-import type { ChannelId } from './platform-foundation';
+import { getChannelAdaptation, type ChannelAdaptation } from './channel-adapters';
+import { CHANNEL_REGISTRY, type ChannelId } from './platform-foundation';
 import { calculateDesignQaScore, validateCreativeBrief, type BrandProfile, type CreativeBrief, type DesignQaResult } from './creative-design';
 
 export interface BusinessBrandSource {
@@ -15,7 +15,7 @@ export interface BusinessBrandSource {
 export interface CreativeExecutionPlan {
   brief: CreativeBrief;
   brand: BrandProfile;
-  channel: ReturnType<typeof getChannelAdaptation>;
+  channel: ChannelAdaptation | null;
   requiredChecks: Array<'brand' | 'readability' | 'composition' | 'channel-fit' | 'cta' | 'technical'>;
   allowedToPublish: false;
   validationErrors: string[];
@@ -43,8 +43,14 @@ export function buildCreativeExecutionPlan(
   brand: BrandProfile,
 ): CreativeExecutionPlan {
   const validationErrors = validateCreativeBrief(brief);
-  const channel = getChannelAdaptation(brief.channel as ChannelId);
+  const requestedChannel = brief.channel?.trim() as ChannelId;
+  const channel = requestedChannel && CHANNEL_REGISTRY[requestedChannel]
+    ? getChannelAdaptation(requestedChannel)
+    : null;
 
+  if (!channel && brief.channel?.trim()) {
+    validationErrors.push(`unsupported marketing channel: ${brief.channel}`);
+  }
   if (brand.tenantId !== brief.tenantId) {
     validationErrors.push('brand tenant does not match creative tenant');
   }
