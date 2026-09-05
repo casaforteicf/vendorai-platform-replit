@@ -74,6 +74,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
   const card = useMemo(() => buildMarketingAgentUiCard(pathname, runtime?.agentPlan), [pathname, runtime]);
   const surface = useMemo(() => inferMarketingSurface(pathname), [pathname]);
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
+  const tenantVertical = (user as { tenantVertical?: string | null } | null)?.tenantVertical ?? null;
 
   useEffect(() => {
     if (!open || !visible || !tenantId || !token) return;
@@ -86,7 +87,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        verticalId: context?.businessVerticalSlug || context?.businessVertical || user?.tenantVertical || null,
+        verticalId: context?.businessVerticalSlug || context?.businessVertical || tenantVertical || null,
         campaignId: active?.campaignId ?? null,
         campaignName: active?.campaignName ?? null,
         page: surface,
@@ -105,7 +106,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
       .finally(() => { if (!cancelled) setLoadingRuntime(false); });
 
     return () => { cancelled = true; };
-  }, [open, visible, tenantId, token, pathname, surface, user?.tenantVertical]);
+  }, [open, visible, tenantId, token, pathname, surface, tenantVertical]);
 
   if (!visible) return null;
 
