@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles, X, ShieldCheck, BrainCircuit, Layers3, Loader2 } from "lucide-react";
+import { Sparkles, X, ShieldCheck, BrainCircuit, Layers3, Loader2, Gauge } from "lucide-react";
 import { buildMarketingAgentUiCard, inferMarketingSurface } from "@workspace/vendor-brain/marketing-agent-ui";
 import type { MarketingAgentPlan } from "@workspace/vendor-brain/marketing-agent";
+import type { DesignQaResult } from "@workspace/vendor-brain/creative-design";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
 
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
@@ -53,6 +55,9 @@ type RuntimeResponse = {
   agentPlan?: MarketingAgentPlan;
 };
 
+type SiteSummary = { id: string; name?: string; updatedAt?: string };
+type SiteDetail = { id: string; html?: string; name?: string; siteType?: string };
+
 function readActiveBriefing(tenantId: string): ActiveBriefing | null {
   if (typeof window === "undefined") return null;
   try {
@@ -65,11 +70,18 @@ function readActiveBriefing(tenantId: string): ActiveBriefing | null {
   }
 }
 
+function isWebSurface(surface: string) {
+  return surface === "site-lp" || surface === "site" || surface === "landing-page" || surface === "landing";
+}
+
 export function MarketingAgentDock({ pathname }: { pathname: string }) {
   const { user, tenantOverride, token } = useAuth();
   const [open, setOpen] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeResponse | null>(null);
   const [loadingRuntime, setLoadingRuntime] = useState(false);
+  const [designQa, setDesignQa] = useState<DesignQaResult | null>(null);
+  const [qaArtifactName, setQaArtifactName] = useState<string | null>(null);
+  const [loadingQa, setLoadingQa] = useState(false);
   const visible = isMarketingPath(pathname);
   const card = useMemo(() => buildMarketingAgentUiCard(pathname, runtime?.agentPlan), [pathname, runtime]);
   const surface = useMemo(() => inferMarketingSurface(pathname), [pathname]);
@@ -108,6 +120,69 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
     return () => { cancelled = true; };
   }, [open, visible, tenantId, token, pathname, surface, tenantVertical]);
 
+  useEffect(() => {
+    if (!open || !visible || !tenantId || !token || !isWebSurface(surface)) {
+      setDesignQa(null);
+      setQaArtifactName(null);
+      return;
+    }
+
+    let cancelled = false;
+    const active = readActiveBriefing(tenantId);
+    const context = active?.marketingContext;
+    setLoadingQa(true);
+
+    (async () => {
+      const listResponse = await fetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!listResponse.ok) throw new Error(`sites ${listResponse.status}`);
+      const rows = await listResponse.json() as SiteSummary[];
+      const latest = Array.isArray(rows) ? rows[0] : null;
+      if (!latest?.id) return;
+
+      const detailResponse = await fetch(`/api/tenants/${tenantId}/site-generator/${latest.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!detailResponse.ok) throw new Error(`site ${detailResponse.status}`);
+      const site = await detailResponse.json() as SiteDetail;
+      if (!site?.html) return;
+
+      const qaResponse = await fetch(`/api/tenants/${tenantId}/marketing-agent/design-qa`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "site",
+          text: site.html,
+          channel: "google-search",
+          format: site.siteType || "landing",
+          objective: context?.campaignGoal || "converter visitantes em contatos qualificados",
+          campaignId: active?.campaignId ?? null,
+          audience: context?.audienceNiche || context?.audienceSegment || context?.nicheName || null,
+          cta: null,
+          technicalValid: true,
+        }),
+      });
+      if (!qaResponse.ok) throw new Error(`qa ${qaResponse.status}`);
+      const qa = await qaResponse.json() as { designQa?: DesignQaResult };
+      if (!cancelled) {
+        setDesignQa(qa.designQa ?? null);
+        setQaArtifactName(site.name || latest.name || "Site/LP");
+      }
+    })()
+      .catch(() => {
+        if (!cancelled) {
+          setDesignQa(null);
+          setQaArtifactName(null);
+        }
+      })
+      .finally(() => { if (!cancelled) setLoadingQa(false); });
+
+    return () => { cancelled = true; };
+  }, [open, visible, tenantId, token, surface]);
+
   if (!visible) return null;
 
   const skills = runtime?.agentPlan?.skills ?? [];
@@ -140,6 +215,40 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
               </Badge>
               {loadingRuntime && <Badge variant="outline"><Loader2 className="mr-1 h-3 w-3 animate-spin" />contexto</Badge>}
             </div>
+
+            {isWebSurface(surface) && (
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-medium">
+                    <Gauge className="h-3.5 w-3.5 text-primary" />
+                    Design QA {qaArtifactName ? `· ${qaArtifactName}` : ""}
+                  </div>
+                  {loadingQa && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                </div>
+                {designQa ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span>Score geral</span>
+                      <Badge variant={designQa.approved ? "secondary" : "destructive"}>{designQa.overallScore}/100</Badge>
+                    </div>
+                    <Progress value={designQa.overallScore} />
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                      <span>Marca {designQa.brandScore}</span>
+                      <span>Leitura {designQa.readabilityScore}</span>
+                      <span>Composição {designQa.compositionScore}</span>
+                      <span>Canal {designQa.channelFitScore}</span>
+                      <span>CTA {designQa.ctaScore}</span>
+                      <span>Técnico {designQa.technicalScore}</span>
+                    </div>
+                    {designQa.warnings.length > 0 && (
+                      <p className="text-[11px] leading-4 text-amber-600">{designQa.warnings[0]}</p>
+                    )}
+                  </div>
+                ) : !loadingQa ? (
+                  <p className="text-[11px] text-muted-foreground">Gere ou salve um Site/LP para executar a revisão automática.</p>
+                ) : null}
+              </div>
+            )}
 
             {channels.length > 0 && (
               <div>
