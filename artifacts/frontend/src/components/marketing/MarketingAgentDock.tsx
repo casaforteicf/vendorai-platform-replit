@@ -111,8 +111,9 @@ function channelCapabilityLabel(channel: ChannelId) {
   const capability = getChannelPublicationCapability(channel);
   switch (capability.mode) {
     case "paid-native":
+      return "publica anúncio";
     case "organic-native":
-      return "publica";
+      return "publica conteúdo";
     case "messaging-native":
       return "envia";
     case "prepare-only":
@@ -381,7 +382,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
                   })}
                 </div>
                 <p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">
-                  “Publica” e “envia” significam que existe fluxo nativo. “Prepara” significa que a IA cria a peça, mas não publica nesse canal ainda.
+                  “Publica anúncio” e “publica conteúdo” indicam publisher nativo. “Envia” usa os fluxos oficiais de mensagem. “Prepara” cria a peça, mas não publica nesse canal ainda.
                 </p>
               </div>
             )}
