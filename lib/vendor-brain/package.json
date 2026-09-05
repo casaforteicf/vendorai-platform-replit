@@ -16,6 +16,7 @@
     "./channel-adapters": "./src/channel-adapters.ts",
     "./creative-design": "./src/creative-design.ts",
     "./intelligence-routing": "./src/intelligence-routing.ts",
+    "./revenue-scout-bridge": "./src/revenue-scout-bridge.ts",
     "./engines/*": "./src/engines/*.ts",
     "./policies": "./src/policies/index.ts"
   },
