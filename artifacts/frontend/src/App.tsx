@@ -51,6 +51,18 @@ function isCachedSuperAdmin() {
   }
 }
 
+function ensureMobileDomCompatibility() {
+  if (typeof window === "undefined" || typeof Element === "undefined") return;
+  const proto = Element.prototype as Element & { scrollIntoView?: (options?: ScrollIntoViewOptions | boolean) => void };
+  if (typeof proto.scrollIntoView !== "function") {
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: () => undefined,
+    });
+  }
+}
+
 export default function App() {
   const appId = typeof window !== "undefined" ? runtimeAppId(window.location.pathname) : null;
   const [devRequested, setDevRequested] = React.useState(false);
@@ -86,6 +98,7 @@ export default function App() {
   if (appId) return <AppRuntimeShell appId={appId} />;
 
   const openDevAgent = () => {
+    ensureMobileDomCompatibility();
     setDevFailed(false);
     setDevRequested(true);
   };
