@@ -3,6 +3,8 @@ import { Sparkles, X, ShieldCheck, BrainCircuit, Layers3, Loader2, Gauge } from 
 import { buildMarketingAgentUiCard, inferMarketingSurface } from "@workspace/vendor-brain/marketing-agent-ui";
 import type { MarketingAgentPlan } from "@workspace/vendor-brain/marketing-agent";
 import type { DesignQaResult } from "@workspace/vendor-brain/creative-design";
+import { getChannelPublicationCapability } from "@workspace/vendor-brain/channel-publication";
+import type { ChannelId } from "@workspace/vendor-brain/platform-foundation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -103,6 +105,35 @@ function contentText(item: ContentItem) {
     Array.isArray(variation.scenes) ? JSON.stringify(variation.scenes) : null,
     Array.isArray(variation.roteiro) ? JSON.stringify(variation.roteiro) : null,
   ].filter(Boolean).join("\n");
+}
+
+function channelCapabilityLabel(channel: ChannelId) {
+  const capability = getChannelPublicationCapability(channel);
+  switch (capability.mode) {
+    case "paid-native":
+    case "organic-native":
+      return "publica";
+    case "messaging-native":
+      return "envia";
+    case "prepare-only":
+    default:
+      return "prepara";
+  }
+}
+
+function channelDisplayName(channel: string) {
+  const names: Record<string, string> = {
+    meta: "Meta",
+    instagram: "Instagram",
+    "google-search": "Google Search",
+    "google-pmax": "Google PMax",
+    tiktok: "TikTok",
+    youtube: "YouTube",
+    linkedin: "LinkedIn",
+    whatsapp: "WhatsApp",
+    email: "Email",
+  };
+  return names[channel] ?? channel;
 }
 
 export function MarketingAgentDock({ pathname }: { pathname: string }) {
@@ -237,7 +268,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
         body: JSON.stringify({
           kind: surface === "video" ? "video" : "content",
           text,
-          channel: surface === "video" ? "instagram" : "instagram",
+          channel: "instagram",
           format: latest.type || surface,
           objective: context?.campaignGoal || `revisar ${surface === "video" ? "vídeo" : "conteúdo"}`,
           campaignId: active?.campaignId ?? null,
@@ -335,10 +366,23 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
 
             {channels.length > 0 && (
               <div>
-                <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Canais considerados</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {channels.map((channel) => <Badge key={channel} variant="secondary">{channel}</Badge>)}
+                <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Capacidade por canal</p>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {channels.map((channel) => {
+                    const typedChannel = channel as ChannelId;
+                    const capability = getChannelPublicationCapability(typedChannel);
+                    const action = channelCapabilityLabel(typedChannel);
+                    return (
+                      <div key={channel} className="flex items-center justify-between gap-2 rounded-md border bg-background/60 px-2.5 py-2 text-[11px]">
+                        <span className="truncate font-medium">{channelDisplayName(channel)}</span>
+                        <Badge variant={capability.canPublish ? "secondary" : "outline"}>{action}</Badge>
+                      </div>
+                    );
+                  })}
                 </div>
+                <p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">
+                  “Publica” e “envia” significam que existe fluxo nativo. “Prepara” significa que a IA cria a peça, mas não publica nesse canal ainda.
+                </p>
               </div>
             )}
 
@@ -365,7 +409,7 @@ export function MarketingAgentDock({ pathname }: { pathname: string }) {
             </div>
 
             <p className="text-[11px] leading-4 text-muted-foreground">
-              O agente resolve ao vivo a campanha ativa, vertical, tenant e dados da tela. Brand Profile e tom aprendido continuam vindo das fontes oficiais. Publicação automática exige Design QA aprovado quando aplicável e alterações de verba continuam protegidas por permissão/autonomia.
+              O agente resolve ao vivo a campanha ativa, vertical, tenant e dados da tela. Brand Profile e tom aprendido continuam vindo das fontes oficiais. Publicação automática exige Design QA aprovado quando aplicável e autorização server-side; alterações de verba continuam protegidas por limites e autonomia.
             </p>
           </CardContent>
         </Card>
