@@ -14,6 +14,14 @@ describe("Performance Max creative requirements", () => {
     expect(result.longHeadline.length).toBeLessThanOrEqual(90);
   });
 
+  it("accepts one prepared campaign image as the minimum visual set", () => {
+    expect(() => validatePmaxCreative({
+      headlines: ["Título A", "Título B", "Título C"],
+      descriptions: ["Descrição curta", "Descrição longa e completa para a campanha"],
+      images: ["https://example.com/prepared-pmax-image.jpg"],
+    })).not.toThrow();
+  });
+
   it("blocks incomplete PMax assets before any Google Ads write", () => {
     expect(() => validatePmaxCreative({
       headlines: ["Só um título"],
