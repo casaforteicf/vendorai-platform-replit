@@ -145,10 +145,86 @@ function sanitizeDevAgentHistory() {
   }
 }
 
+type StoredDevRequest = {
+  id?: string;
+  status?: string;
+  targetRevision?: string;
+  executionSummary?: string;
+  [key: string]: unknown;
+};
+
+async function reconcilePendingDevRequests() {
+  if (typeof window === "undefined") return;
+  const requestKey = "vendorai_dev_ia_requests_v1";
+
+  let requests: StoredDevRequest[] = [];
+  try {
+    const raw = window.localStorage.getItem(requestKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return;
+    requests = parsed;
+  } catch {
+    return;
+  }
+
+  const pending = requests
+    .filter((item) => item?.status === "deploy_pending" && typeof item?.targetRevision === "string" && item.targetRevision.trim())
+    .slice(0, 10);
+  if (pending.length === 0) return;
+
+  let token: string | null = null;
+  try { token = window.localStorage.getItem("vendorai_token"); } catch { token = null; }
+  if (!token) return;
+
+  const validated = new Map<string, { revision: string; runtime?: string }>();
+
+  for (const item of pending) {
+    try {
+      const response = await fetch("/api/support/dev/validate-production", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ expectedRevision: item.targetRevision }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.state !== "validated") continue;
+      validated.set(String(item.id ?? item.targetRevision), {
+        revision: String(data?.observedRevision ?? item.targetRevision),
+        runtime: typeof data?.runtime === "string" ? data.runtime : undefined,
+      });
+    } catch {
+      // Reconciliação é best-effort e nunca pode impedir o painel de abrir.
+    }
+  }
+
+  if (validated.size === 0) return;
+
+  const next = requests.map((item) => {
+    const evidence = validated.get(String(item.id ?? item.targetRevision));
+    if (!evidence) return item;
+    const runtimeLabel = evidence.runtime === "vercel" ? "Vercel" : evidence.runtime === "railway" ? "Railway" : "produção";
+    const validationText = `Produção validada automaticamente em ${runtimeLabel} no SHA ${evidence.revision.slice(0, 9)}.`;
+    return {
+      ...item,
+      status: "concluido",
+      executionSummary: `${typeof item.executionSummary === "string" ? item.executionSummary : ""}\n${validationText}`.trim(),
+    };
+  });
+
+  try {
+    window.localStorage.setItem(requestKey, JSON.stringify(next.slice(0, 100)));
+  } catch {
+    // Persistência auxiliar não pode impedir o uso do sistema.
+  }
+}
+
 export default function App() {
   const appId = typeof window !== "undefined" ? runtimeAppId(window.location.pathname) : null;
   const [devRequested, setDevRequested] = React.useState(false);
   const [devFailed, setDevFailed] = React.useState(false);
+  const [devLoading, setDevLoading] = React.useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = React.useState(isCachedSuperAdmin);
 
   React.useEffect(() => {
@@ -179,11 +255,15 @@ export default function App() {
 
   if (appId) return <AppRuntimeShell appId={appId} />;
 
-  const openDevAgent = () => {
+  const openDevAgent = async () => {
+    if (devLoading) return;
+    setDevLoading(true);
     ensureMobileDomCompatibility();
     sanitizeDevAgentHistory();
+    await reconcilePendingDevRequests();
     setDevFailed(false);
     setDevRequested(true);
+    setDevLoading(false);
   };
 
   return (
@@ -193,22 +273,24 @@ export default function App() {
       {isSuperAdmin && !devRequested && (
         <button
           type="button"
-          onClick={openDevAgent}
-          className="fixed bottom-24 right-5 z-[90] rounded-full bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-2xl"
+          onClick={() => void openDevAgent()}
+          disabled={devLoading}
+          className="fixed bottom-24 right-5 z-[90] rounded-full bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-2xl disabled:opacity-70"
           aria-label="Carregar Dev IA"
         >
-          Dev IA
+          {devLoading ? "Validando..." : "Dev IA"}
         </button>
       )}
 
       {isSuperAdmin && devFailed && (
         <button
           type="button"
-          onClick={openDevAgent}
-          className="fixed bottom-24 right-5 z-[90] rounded-full bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-2xl"
+          onClick={() => void openDevAgent()}
+          disabled={devLoading}
+          className="fixed bottom-24 right-5 z-[90] rounded-full bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-2xl disabled:opacity-70"
           aria-label="Tentar Dev IA novamente"
         >
-          Tentar Dev IA
+          {devLoading ? "Validando..." : "Tentar Dev IA"}
         </button>
       )}
 
