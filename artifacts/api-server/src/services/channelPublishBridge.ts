@@ -7,6 +7,7 @@ import type { DesignQaResult } from '@workspace/vendor-brain/creative-design';
 import { publishCampaignToMetaAds } from './meta-ads-campaign-publish';
 import { publishCampaignToGoogleAds } from './google-ads-campaign-publish';
 import { buildAdCreativeDesignQa } from './adCreativeQa';
+import { resolveMarketingAgentAutonomyPolicy } from './marketingAgentAutonomyPolicy';
 
 export type PaidPublishChannel = 'meta' | 'google-search';
 export type PaidPublishAuthorization = 'human-approved' | 'agent-autonomous';
@@ -16,16 +17,18 @@ export interface ChannelPublishContext {
   campaignId: string;
   channel: ChannelId;
   authorization: PaidPublishAuthorization;
+  /** @deprecated Autonomous permission is resolved server-side and caller values are ignored. */
   allowPublishAds?: boolean;
   designQa?: DesignQaResult | null;
   requireDesignQa?: boolean;
 }
 
-function assertPublishAuthorization(context: ChannelPublishContext, designQa: DesignQaResult | null) {
-  if (context.authorization === 'human-approved') return;
+async function assertPublishAuthorization(context: ChannelPublishContext, designQa: DesignQaResult | null) {
+  if (context.authorization === 'human-approved') return null;
 
-  if (!context.allowPublishAds) {
-    throw new Error('Marketing Agent sem autorização para publicar anúncios.');
+  const autonomyPolicy = await resolveMarketingAgentAutonomyPolicy(context.tenantId);
+  if (!autonomyPolicy.allowed) {
+    throw new Error(`Marketing Agent sem autorização autônoma para publicar anúncios: ${autonomyPolicy.reason}`);
   }
 
   if (context.requireDesignQa !== false) {
@@ -38,6 +41,8 @@ function assertPublishAuthorization(context: ChannelPublishContext, designQa: De
       );
     }
   }
+
+  return autonomyPolicy;
 }
 
 export function getChannelPublishReadiness(channel: ChannelId) {
@@ -92,13 +97,13 @@ export async function publishCampaignThroughChannelRegistry(context: ChannelPubl
   }
 
   const designQa = await resolveCampaignDesignQa(context);
-  assertPublishAuthorization(context, designQa);
+  const autonomyPolicy = await assertPublishAuthorization(context, designQa);
 
   if (context.channel === 'meta') {
     const result = await publishCampaignToMetaAds(context.tenantId, context.campaignId);
-    return { ...readiness, authorization: context.authorization, designQa, result };
+    return { ...readiness, authorization: context.authorization, autonomyPolicy, designQa, result };
   }
 
   const result = await publishCampaignToGoogleAds(context.tenantId, context.campaignId);
-  return { ...readiness, authorization: context.authorization, designQa, result };
+  return { ...readiness, authorization: context.authorization, autonomyPolicy, designQa, result };
 }
