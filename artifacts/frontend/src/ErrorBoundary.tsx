@@ -4,6 +4,8 @@ const CHUNK_ERROR_PATTERN =
   /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html/i;
 const STALE_LAZY_MODULE_PATTERN =
   /Cannot read properties of undefined \(reading ["']default["']\)/i;
+const STALE_MINIFIED_RUNTIME_PATTERN =
+  /^[A-Za-z_$][\w$]* is not a function$/;
 
 const RELOAD_FLAG_PREFIX = "vendorai_error_boundary_recovered_bundle";
 const RECOVERY_AT_KEY = "vendorai_stale_asset_recovery_at";
@@ -71,9 +73,12 @@ async function carregarVersaoAtual(force = false) {
 // versão recém-carregada falhar de novo, paramos e mostramos o erro em vez de
 // criar um loop de recarregamento.
 function tentarRecuperarDeVersaoAntiga(error: Error): boolean {
-  if (!CHUNK_ERROR_PATTERN.test(error.message) && !STALE_LAZY_MODULE_PATTERN.test(error.message)) {
-    return false;
-  }
+  const recoverable =
+    CHUNK_ERROR_PATTERN.test(error.message) ||
+    STALE_LAZY_MODULE_PATTERN.test(error.message) ||
+    STALE_MINIFIED_RUNTIME_PATTERN.test(error.message.trim());
+
+  if (!recoverable) return false;
   if (wasRecoveredRecently()) return false;
   void carregarVersaoAtual(false);
   return true;
