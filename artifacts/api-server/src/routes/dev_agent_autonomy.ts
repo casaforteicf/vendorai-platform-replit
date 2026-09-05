@@ -50,6 +50,9 @@ const BACKEND_PATH_PATTERNS = [
   /^backend\//i,
 ];
 
+const EXECUTOR_PRIMARY_MODEL = process.env["DEV_IA_EXECUTOR_MODEL"]?.trim() || "gpt-5.6-terra";
+const EXECUTOR_FALLBACK_MODEL = process.env["DEV_IA_EXECUTOR_FALLBACK_MODEL"]?.trim() || "gpt-4o-mini";
+
 const AUTONOMY_SYSTEM_PROMPT = `Você é o executor autônomo do Dev IA da plataforma VendorAI.
 
 Sua missão é transformar pedidos técnicos aprovados pelo Super Admin em trabalho real no repositório, usando as ferramentas disponíveis.
@@ -68,6 +71,7 @@ REGRAS OBRIGATÓRIAS:
 - Mudanças em autenticação, billing/pagamentos, migrations/schema/RLS, segredos, workflows CI/CD ou infraestrutura são consideradas críticas e devem parar em approval_required.
 - Para merge automático, considere somente os gates relevantes do VendorAI: Vercel para frontend/previews e revisão adversarial independente. O GitHub-hosted API CI não é autoridade enquanto estiver sem runner.
 - Mudanças de backend, após merge, obrigatoriamente ficam em aguardando validação Railway até o SHA publicado ser comprovado. Nunca chame merge de deploy concluído.
+- Quando o Planner autorizou execução, a primeira etapa deve usar uma ferramenta real do repositório. Não encerre como concluído sem evidência de ação ou uma justificativa técnica explícita baseada nas ferramentas.
 - Nunca diga que algo foi publicado/validado se não houver evidência.
 - Se a solicitação for apenas pergunta, auditoria ou diagnóstico sem necessidade de código, não faça alteração.
 
@@ -91,7 +95,7 @@ async function gh(path: string, init?: RequestInit) {
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Agent/3.0",
+      "User-Agent": "VendorAI-Dev-Agent/3.1",
       ...(init?.headers ?? {}),
     },
   });
@@ -377,6 +381,32 @@ async function mergePullRequest(number: number) {
   };
 }
 
+async function createExecutorCompletion(openai: any, messages: any[], requireTool: boolean) {
+  const toolChoice = requireTool ? "required" : "auto";
+  try {
+    const completion = await openai.chat.completions.create({
+      model: EXECUTOR_PRIMARY_MODEL,
+      max_completion_tokens: 8000,
+      reasoning_effort: "medium",
+      messages,
+      tools,
+      tool_choice: toolChoice,
+    } as any);
+    return { completion, engine: EXECUTOR_PRIMARY_MODEL, fallbackReason: null as string | null };
+  } catch (primaryError) {
+    const fallbackReason = primaryError instanceof Error ? primaryError.message.slice(0, 500) : "primary_executor_failed";
+    const completion = await openai.chat.completions.create({
+      model: EXECUTOR_FALLBACK_MODEL,
+      temperature: 0.1,
+      max_tokens: 5000,
+      messages,
+      tools,
+      tool_choice: toolChoice,
+    } as any);
+    return { completion, engine: EXECUTOR_FALLBACK_MODEL, fallbackReason };
+  }
+}
+
 const tools: any[] = [
   {
     type: "function",
@@ -571,27 +601,28 @@ router.post("/support/dev/execute", async (req, res) => {
       { tool: "specialist_council", ok: true, detail: { council, engine: councilEngine } },
       { tool: "planner", ok: true, detail: { plan, engine: plannerEngine } },
     ];
+    const executorEngines = new Set<string>();
+    const executorFallbacks: string[] = [];
 
     for (let step = 0; step < 12; step += 1) {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0.1,
-        messages,
-        tools,
-        tool_choice: "auto",
-      } as any);
-      const message: any = completion.choices[0]?.message;
+      const execution = await createExecutorCompletion(openai, messages, step === 0);
+      executorEngines.add(execution.engine);
+      if (execution.fallbackReason) executorFallbacks.push(execution.fallbackReason);
+
+      const message: any = execution.completion.choices[0]?.message;
       if (!message) throw new Error("Executor não retornou mensagem");
       messages.push(message);
 
       const toolCalls = message.tool_calls ?? [];
       if (!toolCalls.length) {
+        const executor = { engines: [...executorEngines], fallbackReasons: executorFallbacks.slice(0, 3) };
         return res.json({
           success: true,
           status: "completed",
           summary: message.content ?? "Execução concluída sem mensagem final.",
           council,
           plan,
+          executor,
           actions,
         });
       }
@@ -622,6 +653,7 @@ router.post("/support/dev/execute", async (req, res) => {
               error: messageText.replace(/^approval_required:\s*/i, ""),
               council,
               plan,
+              executor: { engines: [...executorEngines], fallbackReasons: executorFallbacks.slice(0, 3) },
               actions,
               ...(result.review ? { review: result.review } : {}),
             });
@@ -630,7 +662,15 @@ router.post("/support/dev/execute", async (req, res) => {
       }
     }
 
-    return res.status(409).json({ success: false, status: "step_limit", error: "Executor atingiu o limite seguro de etapas.", council, plan, actions });
+    return res.status(409).json({
+      success: false,
+      status: "step_limit",
+      error: "Executor atingiu o limite seguro de etapas.",
+      council,
+      plan,
+      executor: { engines: [...executorEngines], fallbackReasons: executorFallbacks.slice(0, 3) },
+      actions,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";
     req.log?.error({ err: error }, "dev-ia: autonomous executor failed");
