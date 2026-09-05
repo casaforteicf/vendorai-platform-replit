@@ -68,6 +68,8 @@ function sanitizePath(value: string) {
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, "[id]")
     .replace(/\b[a-f0-9]{24,}\b/gi, "[id]")
     .replace(/\/(\d{6,})(?=\/|$)/g, "/[id]")
+    .replace(/\/[^/]*@[^/]+(?=\/|$)/g, "/[value]")
+    .replace(/\/[A-Za-z0-9_-]{40,}(?=\/|$)/g, "/[id]")
     .slice(0, 260);
 }
 
@@ -235,7 +237,7 @@ function buildIncidentKey(snapshot: ServerRuntimeSnapshot) {
     .slice(0, 3)
     .map((signal) => `${signal.kind}:${signal.method}:${signal.path}:${signal.status}`)
     .join("|")
-    .replace(/[^a-zA-Z0-9_:/|[\].-]+/g, "-")
+    .replace(/[^a-zA-Z0-9_:/|.\[\]-]+/g, "-")
     .slice(0, 72);
   return `server-runtime-${revision}-${dominant || "incident"}`.slice(0, 120);
 }
@@ -277,11 +279,13 @@ async function runServerRuntimeSentinel(logger: SentinelLogger) {
   const incident = hasActiveIncident(snapshot);
 
   if (incident) {
-    consecutiveIncidentChecks += 1;
     const key = buildIncidentKey(snapshot);
     if (activeIncidentKey !== key) {
       activeIncidentKey = key;
       activeIncidentPersisted = false;
+      consecutiveIncidentChecks = 1;
+    } else {
+      consecutiveIncidentChecks += 1;
     }
     if (consecutiveIncidentChecks >= 2 && !activeIncidentPersisted) {
       activeIncidentPersisted = await persistRuntimeIncident(snapshot, "server_runtime_incident", key, logger);
