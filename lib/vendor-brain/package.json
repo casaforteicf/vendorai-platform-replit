@@ -8,6 +8,11 @@
     "./types": "./src/types.ts",
     "./marketing-verticals": "./src/marketing-verticals.ts",
     "./marketing-verticals-localization": "./src/marketing-verticals-localization.ts",
+    "./platform-foundation": "./src/platform-foundation.ts",
+    "./vertical-blueprint": "./src/vertical-blueprint.ts",
+    "./marketing-agent": "./src/marketing-agent.ts",
+    "./creative-design": "./src/creative-design.ts",
+    "./intelligence-routing": "./src/intelligence-routing.ts",
     "./engines/*": "./src/engines/*.ts",
     "./policies": "./src/policies/index.ts"
   },
