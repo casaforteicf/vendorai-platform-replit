@@ -71,6 +71,8 @@ for (const filePath of walk(root)) {
   lines.forEach((line, index) => {
     const previousLine = lines[index - 1] ?? "";
     const nextLine = lines[index + 1] ?? "";
+    // These marketing/site middlewares read the route tenant only to compare it
+    // immediately against the authenticated tenant before touching tenant data.
     const guardedMarketingTenant =
       relativeFile === "routes/business_profiles.ts" &&
       /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
