@@ -51,8 +51,6 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
     productName: input.productName ?? null,
   });
 
-  // O learning usa o Ads Intelligence/CRM oficial do tenant e apenas orienta
-  // a próxima página. Falha de analytics nunca deve bloquear Site/LP.
   let paidMediaLearning = '';
   try {
     paidMediaLearning = await buildPaidMediaLearningPromptBlock(input.tenantId);
@@ -66,12 +64,6 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
   };
 }
 
-/**
- * O pre-generation middleware montado antes do Site Generator oficial usa este
- * contrato para anexar a direção criativa ao campo `servicos`, que já faz parte
- * do `buildGeneratePrompt()` canônico. A função é idempotente para retomadas e
- * reexecuções do mesmo job.
- */
 export function enrichSiteGeneratorServicesContext(existingServices: unknown, promptContext: string): string {
   const current = typeof existingServices === 'string' ? existingServices.trim() : '';
   const marker = 'DIREÇÃO CRIATIVA WEB OFICIAL DO VENDORAI';
