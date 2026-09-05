@@ -67,9 +67,10 @@ export async function resolveSiteCreativeRuntime(input: SiteCreativeRuntimeInput
 }
 
 /**
- * Mantém o Site Generator oficial como executor. Esta função só acrescenta a
- * direção criativa/learning ao campo textual que o prompt canônico já consome.
- * É idempotente para evitar duplicação quando middlewares são reexecutados.
+ * O pre-generation middleware montado antes do Site Generator oficial usa este
+ * contrato para anexar a direção criativa ao campo `servicos`, que já faz parte
+ * do `buildGeneratePrompt()` canônico. A função é idempotente para retomadas e
+ * reexecuções do mesmo job.
  */
 export function enrichSiteGeneratorServicesContext(existingServices: unknown, promptContext: string): string {
   const current = typeof existingServices === 'string' ? existingServices.trim() : '';
