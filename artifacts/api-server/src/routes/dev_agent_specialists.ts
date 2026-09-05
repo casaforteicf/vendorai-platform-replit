@@ -6,12 +6,14 @@ import memoryRouter, { loadEngineeringMemory, recordEngineeringMemory } from "./
 import impactRouter, { analyzeChangeImpact } from "./dev_agent_impact";
 import recoveryRouter from "./dev_agent_recovery";
 import diagnosticsRouter from "./dev_agent_diagnostics";
+import qualityRouter from "./dev_agent_quality";
 
 const router = Router();
 router.use(memoryRouter);
 router.use(impactRouter);
 router.use(recoveryRouter);
 router.use(diagnosticsRouter);
+router.use(qualityRouter);
 
 const councilSchema = z.object({
   requestId: z.string().min(1).max(120),
