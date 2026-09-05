@@ -20,6 +20,7 @@
     "src/lib/trial-tenant-resolution.ts",
     "src/lib/vendorai-subscription-lifecycle.ts",
     "src/lib/vendorai-subscription-rules.ts",
+    "src/middlewares/auth.ts",
     "src/routes/launch_command_center.ts",
     "src/routes/vendorai_subscription_webhook.ts",
     "src/services/launchCommandCenter.ts",
