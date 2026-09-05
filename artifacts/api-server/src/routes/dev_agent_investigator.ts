@@ -4,6 +4,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { getServerRuntimeSnapshot } from "../lib/dev-agent-server-runtime.js";
 import { getPlatformContext } from "./dev_agent_platform_context";
+import { getPlatformDiagnostics } from "./dev_agent_diagnostics";
 import type { ExecutionMemoryEntry } from "./dev_agent_memory";
 
 const router = Router();
@@ -49,7 +50,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Investigator/2.3",
+      "User-Agent": "VendorAI-Dev-Investigator/2.4",
     },
   });
   const text = await response.text();
@@ -84,11 +85,22 @@ function normalizeOutcome(value: unknown) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[\s_-]+/g, " ");
+    .replace(/[\s_-]+/g, " ")
+    .trim();
+}
+
+function isSystemExecutionMemory(entry: ExecutionMemoryEntry) {
+  const status = normalizeOutcome(entry.status);
+  const engines = entry.engines.map((engine) => normalizeOutcome(engine));
+  return /incident|recovered|recovery/.test(status)
+    || engines.some((engine) => /sentinel|server runtime/.test(engine));
 }
 
 function isProvenOutcome(entry: ExecutionMemoryEntry) {
-  return /recover|validat|success|complete|conclu|deploy/.test(normalizeOutcome(entry.status));
+  return !isSystemExecutionMemory(entry)
+    && normalizeOutcome(entry.status) === "production validated"
+    && entry.changedFiles.length > 0
+    && entry.failures.length === 0;
 }
 
 function noPlaybookMatch(why = "Nenhum playbook anterior comprovado foi validado para este caso."): PlaybookMatch {
@@ -109,7 +121,7 @@ function normalizePlaybookMatch(value: any, candidates: ExecutionMemoryEntry[]):
   const requestedId = String(value?.requestId ?? "").trim();
   const candidate = candidates.find((entry) => entry.requestId === requestedId);
   if (!candidate || !isProvenOutcome(candidate)) {
-    return noPlaybookMatch("O playbook sugerido pelo modelo não corresponde a uma execução anterior comprovada e foi descartado pelo backend.");
+    return noPlaybookMatch("O playbook sugerido não corresponde a uma execução com production_validated, arquivos alterados e zero falhas; foi descartado pelo backend.");
   }
 
   return {
@@ -117,11 +129,11 @@ function normalizePlaybookMatch(value: any, candidates: ExecutionMemoryEntry[]):
     requestId: candidate.requestId,
     status: candidate.status,
     confidence: Math.max(0, Math.min(1, Number(value?.confidence ?? 0.5))),
-    why: String(value?.why ?? "Há semelhança com uma execução anterior validada.").slice(0, 1600),
+    why: String(value?.why ?? "Há semelhança com uma execução validada em produção.").slice(0, 1600),
     reusableEvidence: candidate.evidence.slice(0, 6).map((item) => String(item).slice(0, 500)),
     mustRevalidate: Array.isArray(value?.mustRevalidate)
       ? value.mustRevalidate.slice(0, 8).map((item: unknown) => String(item).slice(0, 700))
-      : ["Confirmar no código atual que a causa e as dependências continuam equivalentes."],
+      : ["Confirmar no código e runtime atuais que a causa, dependências e validações continuam equivalentes."],
   };
 }
 
@@ -149,13 +161,13 @@ async function readEvidence(path: string, url?: string): Promise<CodeEvidence | 
 }
 
 const INVESTIGATOR_PROMPT = `Você é o Investigador Técnico do VendorAI.
-Você recebe código REAL coletado do repositório, um mapa vivo de contexto da plataforma e um snapshot agregado do runtime server-side. Analise somente o que as evidências permitem concluir.
+Você recebe código REAL coletado do repositório, um mapa vivo de contexto da plataforma, diagnóstico read-only de PostgreSQL/integrações e runtime server-side agregado. Analise somente o que as evidências permitem concluir.
 
 Objetivos:
 - identificar quais arquivos realmente parecem relacionados ao pedido e à rota;
 - encontrar causa provável, dependências e riscos;
 - usar alterações recentes, PRs abertos, memória técnica e resultados reais de execuções anteriores para detectar regressões, trabalho duplicado ou decisões que já falharam;
-- cruzar sinais reais do frontend com 5xx/lentidão observados no backend quando houver correspondência relevante;
+- cruzar sinais reais do frontend com 5xx/lentidão observados no backend, PostgreSQL e integrações quando houver correspondência relevante;
 - avaliar explicitamente se existe um playbook anterior comprovado que realmente seja aplicável ao caso atual;
 - separar fato observado de hipótese;
 - indicar o que ainda precisa ser verificado;
@@ -163,13 +175,16 @@ Objetivos:
 
 REGRAS:
 - platformContext.codeCandidates são pistas priorizadas; fatos de implementação vêm dos arquivos efetivamente lidos em files.
+- platformDiagnostics.database contém somente reachability, latência e agregados de pg_stat_activity/pg_locks; não contém SQL text nem dados de tenant.
+- platformDiagnostics.integrations deriva somente sinais sanitizados do runtime agrupados por família; não lê tokens nem chama provedores externos.
+- Uma degradação de banco ou integração é evidência operacional, não prova causalidade. Só relacione ao pedido quando houver vínculo plausível com rota, arquivos ou sintomas.
 - serverRuntime contém somente agregados sanitizados por endpoint/status em janelas de 5 minutos; não contém body, headers, usuário ou tenant.
 - Um 5xx/lentidão em serverRuntime é evidência operacional, não prova causalidade. Priorize sinais cujo endpoint tenha relação plausível com a rota/pedido atual e declare quando a relação ainda for hipótese.
-- Contagens globais de serverRuntime podem indicar degradação ampla, mas não devem ser atribuídas automaticamente à tela atual.
+- Contagens globais podem indicar degradação ampla, mas não devem ser atribuídas automaticamente à tela atual.
 - recentChanges pode explicar regressão recente, mas não prova causalidade sozinho.
 - relevantMemory é histórico técnico, não verdade absoluta; código atual prevalece.
-- relevantExecutionMemory vem ordenado para priorizar execuções anteriores comprovadas, seguido por lições de falha. Um playbook só pode ser considerado aplicável se você escolher exatamente um requestId presente nessa lista e o desfecho dele for positivo/validado/recuperado.
-- Mesmo quando houver playbook aplicável, nunca assuma que a implementação atual é idêntica. Liste em mustRevalidate o que precisa ser confirmado no código, testes, integrações ou runtime atual antes de reutilizar a solução.
+- relevantExecutionMemory contém resultados anteriores. Playbook só pode ser aplicado quando o requestId escolhido corresponde a uma entrada production_validated, com arquivos alterados e zero falhas. Incidentes, recovered/Sentinela, completed, merged ou pending são apenas histórico operacional, nunca playbook comprovado.
+- Mesmo quando houver playbook aplicável, nunca assuma que a implementação atual é idêntica. Liste em mustRevalidate o que precisa ser confirmado no código, testes, integrações, banco ou runtime atual antes de reutilizar a solução.
 - Não copie automaticamente uma correção antiga. Reaproveite apenas evidências, padrões e validações que continuam compatíveis.
 - openRelatedPrs devem ser considerados para evitar criar correção paralela ou duplicada.
 
@@ -211,8 +226,13 @@ router.post("/support/dev/investigate", async (req, res) => {
 
   try {
     githubConfig();
-    const platformContext = await getPlatformContext({ route: parsed.data.route, request: parsed.data.request }).catch(() => null);
-    const serverRuntime = getServerRuntimeSnapshot(8);
+    const [platformResult, diagnosticsResult] = await Promise.allSettled([
+      getPlatformContext({ route: parsed.data.route, request: parsed.data.request }),
+      getPlatformDiagnostics(),
+    ]);
+    const platformContext = platformResult.status === "fulfilled" ? platformResult.value : null;
+    const platformDiagnostics = diagnosticsResult.status === "fulfilled" ? diagnosticsResult.value : null;
+    const serverRuntime = platformDiagnostics?.runtime ?? getServerRuntimeSnapshot(8);
     const terms = [...new Set([
       ...(platformContext?.routeTerms ?? routeTerms(parsed.data.route)),
       ...(platformContext?.requestTerms ?? requestTerms(parsed.data.request)),
@@ -240,6 +260,13 @@ router.post("/support/dev/investigate", async (req, res) => {
       .filter((item): item is CodeEvidence => Boolean(item));
 
     if (!evidence.length) {
+      const diagnosticEvidence = [
+        ...(platformDiagnostics?.database.warnings ?? []).slice(0, 3).map((warning) => ({ path: "database", finding: warning })),
+        ...serverRuntime.topSignals.slice(0, 4).map((signal) => ({
+          path: "runtime",
+          finding: `${signal.kind}: ${signal.method} ${signal.path} status ${signal.status}, ${signal.count} ocorrências, média ${signal.avgDurationMs}ms.`,
+        })),
+      ];
       return res.json({
         success: true,
         investigation: {
@@ -247,16 +274,14 @@ router.post("/support/dev/investigate", async (req, res) => {
           likelyCause: "indeterminada",
           confidence: 0.2,
           relevantFiles: [],
-          evidence: serverRuntime.topSignals.slice(0, 4).map((signal) => ({
-            path: "runtime",
-            finding: `${signal.kind}: ${signal.method} ${signal.path} status ${signal.status}, ${signal.count} ocorrências, média ${signal.avgDurationMs}ms.`,
-          })),
-          unknowns: ["É necessário ampliar a busca no repositório e correlacionar os sinais de runtime com a implementação atual."],
+          evidence: diagnosticEvidence,
+          unknowns: ["É necessário ampliar a busca no repositório e correlacionar os sinais operacionais com a implementação atual."],
           recommendedNextStep: "Ampliar investigação antes de editar código.",
           playbookMatch: noPlaybookMatch("Sem evidência atual de código, um histórico anterior não pode ser promovido a playbook aplicável."),
         },
         queries,
         platformContext,
+        platformDiagnostics,
         serverRuntime,
       });
     }
@@ -266,6 +291,12 @@ router.post("/support/dev/investigate", async (req, res) => {
       request: parsed.data.request,
       cognition: parsed.data.cognition,
       serverRuntime,
+      platformDiagnostics: platformDiagnostics ? {
+        database: platformDiagnostics.database,
+        integrations: platformDiagnostics.integrations,
+        privacy: platformDiagnostics.privacy,
+        checkedAt: platformDiagnostics.checkedAt,
+      } : null,
       platformContext: platformContext ? {
         confidence: platformContext.confidence,
         recentChanges: platformContext.recentChanges,
@@ -282,7 +313,7 @@ router.post("/support/dev/investigate", async (req, res) => {
     try {
       const message = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 3400,
+        max_tokens: 3600,
         temperature: 0,
         system: INVESTIGATOR_PROMPT,
         messages: [{ role: "user", content: JSON.stringify(context) }],
@@ -295,7 +326,7 @@ router.post("/support/dev/investigate", async (req, res) => {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         temperature: 0,
-        max_tokens: 3400,
+        max_tokens: 3600,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: INVESTIGATOR_PROMPT },
@@ -312,13 +343,13 @@ router.post("/support/dev/investigate", async (req, res) => {
       likelyCause: String(analysis?.likelyCause ?? "indeterminada").slice(0, 3000),
       confidence: Math.max(0, Math.min(1, Number(analysis?.confidence ?? 0.5))),
       relevantFiles: Array.isArray(analysis?.relevantFiles) ? analysis.relevantFiles.slice(0, 10).map(String) : evidence.map((item) => item.path),
-      evidence: Array.isArray(analysis?.evidence) ? analysis.evidence.slice(0, 14) : [],
+      evidence: Array.isArray(analysis?.evidence) ? analysis.evidence.slice(0, 16) : [],
       unknowns: Array.isArray(analysis?.unknowns) ? analysis.unknowns.slice(0, 10).map(String) : [],
       recommendedNextStep: String(analysis?.recommendedNextStep ?? "Revisar os achados antes de executar.").slice(0, 3000),
       playbookMatch,
     };
 
-    return res.json({ success: true, investigation, queries, engine, platformContext, serverRuntime });
+    return res.json({ success: true, investigation, queries, engine, platformContext, platformDiagnostics, serverRuntime });
   } catch (error) {
     req.log?.error({ err: error }, "dev-ia investigator failed");
     return res.status(500).json({ error: "Falha na investigação técnica do Dev IA" });
