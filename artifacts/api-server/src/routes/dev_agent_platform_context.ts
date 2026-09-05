@@ -68,7 +68,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Platform-Context/1.1",
+      "User-Agent": "VendorAI-Dev-Platform-Context/1.2",
     },
   });
   const text = await response.text();
@@ -212,13 +212,26 @@ function memoryScore(entry: EngineeringMemoryEntry, routeInput: string[], reques
   return score;
 }
 
+function executionOutcomeWeight(entry: ExecutionMemoryEntry) {
+  const status = normalizeText(entry.status).replace(/[\s_-]+/g, " ");
+  if (/recover|validat|success|complete|conclu|deploy/.test(status)) return 8;
+  if (/incident|fail|error|stale|block|rollback|reprov/.test(status)) return -6;
+  return 0;
+}
+
 function executionMemoryScore(entry: ExecutionMemoryEntry, routeInput: string[], requestInput: string[]) {
-  const haystack = normalizeText(`${entry.route} ${entry.summary} ${entry.changedFiles.join(" ")} ${entry.failures.join(" ")}`);
+  const haystack = normalizeText(
+    `${entry.route} ${entry.summary} ${entry.changedFiles.join(" ")} ${entry.failures.join(" ")} ${entry.evidence.join(" ")}`,
+  );
   let score = 0;
   for (const term of routeInput) if (haystack.includes(term)) score += 5;
   for (const term of requestInput) if (haystack.includes(term)) score += 2;
-  if (entry.mergeSha) score += 1;
-  if (entry.failures.length) score += 1;
+
+  score += executionOutcomeWeight(entry);
+  if (entry.mergeSha) score += 2;
+  if (entry.changedFiles.length) score += 2;
+  if (entry.evidence.length) score += 2;
+  if (entry.failures.length) score -= Math.min(4, entry.failures.length);
   return score;
 }
 
@@ -239,12 +252,14 @@ async function collectRelevantMemory(routeInput: string[], requestInput: string[
 async function collectRelevantExecutionMemory(routeInput: string[], requestInput: string[]) {
   try {
     const memory = await loadExecutionMemory(25);
-    return memory
-      .map((entry) => ({ entry, score: executionMemoryScore(entry, routeInput, requestInput) }))
+    const ranked = memory
+      .map((entry) => ({ entry, score: executionMemoryScore(entry, routeInput, requestInput), outcome: executionOutcomeWeight(entry) }))
       .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score || b.entry.recordedAt.localeCompare(a.entry.recordedAt))
-      .slice(0, 6)
-      .map((item) => item.entry);
+      .sort((a, b) => b.score - a.score || b.entry.recordedAt.localeCompare(a.entry.recordedAt));
+
+    const provenPlaybooks = ranked.filter((item) => item.outcome > 0).slice(0, 4);
+    const operationalLessons = ranked.filter((item) => item.outcome <= 0).slice(0, 2);
+    return [...provenPlaybooks, ...operationalLessons].map((item) => item.entry);
   } catch {
     return [];
   }
