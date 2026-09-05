@@ -9,6 +9,7 @@ import {
   listSocialComments, replyToSocialComment,
   type SocialProvider,
 } from "../services/social-platforms.js";
+import { publishSocialPublication } from "../services/social-publication-publisher.js";
 
 const router: IRouter = Router();
 const callbackRouter: IRouter = Router();
@@ -95,10 +96,31 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
   const parsed = publicationSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_publication", details: parsed.error.flatten() });
   try {
-    return res.status(202).json({ publication: await createSocialPublication(tenantId, selected, parsed.data) });
+    const publication = await createSocialPublication(tenantId, selected, parsed.data);
+    // Railway executa como servidor persistente; despachamos sem manter a requisição
+    // aberta durante upload de mídia. O status fica persistido e a rota de retry
+    // abaixo permite retomar falhas transitórias com a mesma publicação.
+    void publishSocialPublication(tenantId, publication.id).catch((error) => {
+      logger.error({ error, tenantId, publicationId: publication.id, provider: selected }, "Falha assíncrona na publicação social");
+    });
+    return res.status(202).json({ publication, publishing: true });
   } catch (error) {
     if (error instanceof Error && error.message === "connection_not_found") return res.status(409).json({ error: error.message });
     throw error;
+  }
+});
+
+router.post("/tenants/:tenantId/social-publications/:publicationId/retry", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    const publication = await publishSocialPublication(tenantId, String(req.params.publicationId));
+    return res.json({ publication });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "publication_failed";
+    if (message === "publication_not_found") return res.status(404).json({ error: message });
+    if (message === "connection_not_found") return res.status(409).json({ error: message });
+    return res.status(422).json({ error: "publication_failed", detail: message });
   }
 });
 
