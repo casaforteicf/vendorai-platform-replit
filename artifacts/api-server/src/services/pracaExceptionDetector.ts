@@ -89,7 +89,7 @@ export async function runPracaExceptionScan(log?:Logger,tenantIdFilter?:string):
           WHERE a.tenant_id=$1 AND a.action_type='full_refund' AND a.status='provider_accepted'
             AND a.provider_accepted_at<now()-make_interval(mins=>$5)
           UNION ALL
-         SELECT 'notificacao_falhou','notificacao',n.id,n.pedido_id,'media','Notificação ao cliente falhou',
+         SELECT 'notificacao_falhou','notificacao',n.id::text,n.pedido_id,'media','Notificação ao cliente falhou',
                 'Uma atualização operacional não foi entregue ao WhatsApp do cliente.',
                 jsonb_build_object('template',n.template,'status',n.status),n.created_at+make_interval(mins=>$6)
            FROM praca_entrega_notificacoes n
