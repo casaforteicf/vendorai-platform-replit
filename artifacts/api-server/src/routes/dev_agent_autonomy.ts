@@ -33,6 +33,18 @@ const CRITICAL_PATH_PATTERNS = [
   /rls/i,
 ];
 
+const VENDORAI_VERCEL_CONTEXTS = new Set([
+  "vendorai-platform-replit-frontend",
+  "vendorai-platform-replit-website",
+  "tad-vendorai",
+]);
+
+const BACKEND_PATH_PATTERNS = [
+  /^artifacts\/api-server\//i,
+  /^lib\/db\//i,
+  /^backend\//i,
+];
+
 const AUTONOMY_SYSTEM_PROMPT = `Você é o executor autônomo do Dev IA da plataforma VendorAI.
 
 Sua missão é transformar pedidos técnicos aprovados pelo Super Admin em trabalho real no repositório, usando as ferramentas disponíveis.
@@ -48,11 +60,12 @@ REGRAS OBRIGATÓRIAS:
 - Nunca delete arquivos ou dados.
 - Não tente contornar bloqueios de segurança retornados pelas ferramentas.
 - Mudanças em autenticação, billing/pagamentos, migrations/schema/RLS, segredos, workflows CI/CD ou infraestrutura são consideradas críticas e devem parar em approval_required.
-- Só faça merge automático quando a ferramenta permitir, os checks estiverem verdes E a revisão adversarial independente aprovar.
+- Para merge automático, considere somente os gates relevantes do VendorAI: Vercel para frontend/previews e revisão adversarial independente. O GitHub-hosted API CI não é autoridade enquanto estiver sem runner.
+- Mudanças de backend, após merge, obrigatoriamente ficam em aguardando validação Railway até o SHA publicado ser comprovado. Nunca chame merge de deploy concluído.
 - Nunca diga que algo foi publicado/validado se não houver evidência.
 - Se a solicitação for apenas pergunta, auditoria ou diagnóstico sem necessidade de código, não faça alteração.
 
-Ao terminar, responda de forma curta com: o que encontrou, o que alterou, branch/PR se criados, estado dos checks e qualquer bloqueio.`;
+Ao terminar, responda de forma curta com: o que encontrou, o que alterou, branch/PR se criados, estado dos gates relevantes e qualquer bloqueio.`;
 
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
@@ -100,6 +113,31 @@ function assertEditablePath(path: string) {
     (error as any).code = "APPROVAL_REQUIRED";
     throw error;
   }
+}
+
+function isBackendPath(path: string) {
+  return BACKEND_PATH_PATTERNS.some((pattern) => pattern.test(path));
+}
+
+function normalizeVercelContext(value: unknown) {
+  return String(value ?? "").replace(/^Vercel\s*[–-]\s*/i, "").trim();
+}
+
+function evaluateVendorAiReleaseGate(statuses: any[]) {
+  const checks = (statuses ?? []).map((item: any) => ({
+    context: normalizeVercelContext(item?.context),
+    rawContext: String(item?.context ?? ""),
+    state: String(item?.state ?? "pending"),
+    targetUrl: item?.target_url ?? null,
+  }));
+  const relevant = checks.filter((item) => VENDORAI_VERCEL_CONTEXTS.has(item.context));
+  const blocking = relevant.filter((item) => item.state !== "success");
+  return {
+    state: relevant.length > 0 && blocking.length === 0 ? "success" : "pending",
+    relevant,
+    blocking,
+    ignored: checks.filter((item) => !VENDORAI_VERCEL_CONTEXTS.has(item.context)),
+  };
 }
 
 async function searchCode(query: string) {
@@ -178,7 +216,10 @@ async function getPullRequest(number: number) {
   const pr = await gh(`/repos/${owner}/${repo}/pulls/${number}`);
   const files = await gh(`/repos/${owner}/${repo}/pulls/${number}/files?per_page=100`);
   const status = await gh(`/repos/${owner}/${repo}/commits/${pr.head.sha}/status`);
-  const criticalFiles = (files ?? []).map((file: any) => file.filename).filter((path: string) => CRITICAL_PATH_PATTERNS.some((pattern) => pattern.test(path)));
+  const changedFiles = (files ?? []).map((file: any) => String(file.filename));
+  const criticalFiles = changedFiles.filter((path: string) => CRITICAL_PATH_PATTERNS.some((pattern) => pattern.test(path)));
+  const releaseGate = evaluateVendorAiReleaseGate(status.statuses ?? []);
+  const backendTouched = changedFiles.some(isBackendPath);
   return {
     number: pr.number,
     url: pr.html_url,
@@ -188,10 +229,13 @@ async function getPullRequest(number: number) {
     mergeableState: pr.mergeable_state,
     head: pr.head?.ref,
     headSha: pr.head?.sha,
-    changedFiles: (files ?? []).map((file: any) => file.filename),
+    changedFiles,
     criticalFiles,
-    status: status.state,
-    checks: (status.statuses ?? []).map((item: any) => ({ context: item.context, state: item.state })),
+    backendTouched,
+    status: releaseGate.state,
+    checks: releaseGate.relevant,
+    releaseGate,
+    githubCombinedStatus: status.state,
   };
 }
 
@@ -206,7 +250,10 @@ async function mergePullRequest(number: number) {
   }
   if (pr.draft || pr.state !== "open") throw new Error("PR não está pronto para merge");
   if (pr.mergeable === false) throw new Error("PR não é mergeável");
-  if (pr.status !== "success") throw new Error(`Checks ainda não estão verdes: ${pr.status}`);
+  if (pr.releaseGate.state !== "success") {
+    const pending = pr.releaseGate.blocking.map((item: any) => `${item.context}:${item.state}`).join(", ");
+    throw new Error(`Gates Vercel do VendorAI ainda não estão verdes${pending ? `: ${pending}` : ". Nenhum gate relevante foi confirmado ainda."}`);
+  }
 
   const review = await reviewPullRequestForMerge(number);
   if (review.verdict !== "approve") {
@@ -221,7 +268,23 @@ async function mergePullRequest(number: number) {
     method: "PUT",
     body: JSON.stringify({ merge_method: "squash" }),
   });
-  return { merged: Boolean(data.merged), sha: data.sha, message: data.message, review };
+  const merged = Boolean(data.merged);
+  return {
+    merged,
+    sha: data.sha,
+    message: data.message,
+    review,
+    releaseGate: pr.releaseGate,
+    postMergeValidation: merged
+      ? {
+          required: true,
+          state: "awaiting_production",
+          runtime: pr.backendTouched ? "railway" : "vercel",
+          expectedRevision: data.sha,
+          backendGate: pr.backendTouched ? "ci:railway" : null,
+        }
+      : null,
+  };
 }
 
 const tools: any[] = [
@@ -284,7 +347,7 @@ const tools: any[] = [
     type: "function",
     function: {
       name: "get_pr",
-      description: "Consulta PR, arquivos alterados e status/checks.",
+      description: "Consulta PR, arquivos alterados e gates relevantes do VendorAI.",
       parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false },
     },
   },
@@ -292,7 +355,7 @@ const tools: any[] = [
     type: "function",
     function: {
       name: "merge_pr",
-      description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável, checks verdes e aprovado por revisor adversarial independente.",
+      description: "Faz squash merge apenas se PR dev-ia/ for não crítico, mergeável, gates Vercel relevantes verdes e aprovado por revisor adversarial. Depois do merge exige validação real de produção; backend passa pelo ci:railway.",
       parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false },
     },
   },
