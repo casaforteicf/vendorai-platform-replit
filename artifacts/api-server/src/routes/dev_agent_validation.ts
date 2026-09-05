@@ -169,7 +169,9 @@ router.post("/support/dev/validate-production", async (req, res) => {
     req.log?.warn({ err: error }, "dev-ia production validation: GitHub evidence unavailable");
   }
 
-  const runtime: Runtime = commitEvidence?.backendTouched ? "railway" : "vercel";
+  const runtime: Runtime = expectedRevision !== "unknown" && commitEvidence && !commitEvidence.backendTouched
+    ? "vercel"
+    : "railway";
 
   if (runtime === "vercel" && expectedRevision !== "unknown" && commitEvidence) {
     const vercel = evaluateVercel(commitEvidence.statuses);
