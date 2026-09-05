@@ -9,9 +9,10 @@ describe('channel publication capabilities', () => {
     expect(capability.requiresHumanApproval).toBe(true);
   });
 
-  it('keeps Performance Max prepare-only until the asset-group publisher is completed', () => {
+  it('publishes Performance Max through the governed paid-native bridge', () => {
     const capability = getChannelPublicationCapability('google-pmax');
-    expect(capability.mode).toBe('prepare-only');
-    expect(capability.canPublish).toBe(false);
+    expect(capability.mode).toBe('paid-native');
+    expect(capability.canPublish).toBe(true);
+    expect(capability.requiresHumanApproval).toBe(true);
   });
 });
