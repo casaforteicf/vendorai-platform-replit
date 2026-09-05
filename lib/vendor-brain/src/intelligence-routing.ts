@@ -27,6 +27,10 @@ export interface RoutedOpportunity {
 const MARKETING_SIGNAL_ROUTES: Record<string, Pick<RoutedOpportunity, "target" | "opportunityType" | "recommendedAction">> = {
   "customer.repurchase_window": { target: "marketing", opportunityType: "repurchase", recommendedAction: "prepare-campaign" },
   "customer.inactive": { target: "marketing", opportunityType: "reactivation", recommendedAction: "prepare-reactivation" },
+  "customer.cross_sell": { target: "marketing", opportunityType: "cross-sell", recommendedAction: "prepare-cross-sell" },
+  "customer.upgrade": { target: "marketing", opportunityType: "upgrade", recommendedAction: "prepare-upgrade-offer" },
+  "customer.anniversary": { target: "marketing", opportunityType: "relationship-moment", recommendedAction: "prepare-relationship-message" },
+  "customer.product_sequence": { target: "marketing", opportunityType: "next-product", recommendedAction: "prepare-next-product-offer" },
   "product.stock_excess": { target: "marketing", opportunityType: "inventory-activation", recommendedAction: "prepare-campaign" },
   "region.sales_growth": { target: "marketing", opportunityType: "regional-growth", recommendedAction: "prepare-regional-campaign" },
   "campaign.performance_drop": { target: "marketing", opportunityType: "campaign-optimization", recommendedAction: "review-campaign" },
