@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod/v4";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import cognitionRouter from "./dev_agent_cognition";
-import plannerReviewerRouter, { reviewPullRequestForMerge } from "./dev_agent_planner_reviewer";
+import plannerReviewerRouter, { createExecutionPlan, reviewPullRequestForMerge } from "./dev_agent_planner_reviewer";
 
 const router = Router();
 router.use(cognitionRouter);
@@ -36,6 +36,7 @@ const AUTONOMY_SYSTEM_PROMPT = `Você é o executor autônomo do Dev IA da plata
 Sua missão é transformar pedidos técnicos aprovados pelo Super Admin em trabalho real no repositório, usando as ferramentas disponíveis.
 
 REGRAS OBRIGATÓRIAS:
+- O PLANO DE ENGENHARIA recebido é obrigatório. Não improvise escopo fora dele.
 - Trabalhe somente no repositório configurado do VendorAI.
 - Nunca altere main/master diretamente.
 - Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, altere apenas o necessário, crie PR e verifique o status.
@@ -317,6 +318,35 @@ router.post("/support/dev/execute", async (req, res) => {
 
   try {
     githubConfig();
+
+    const plannerInput = {
+      requestId: parsed.data.requestId,
+      request: parsed.data.request,
+      route: parsed.data.route,
+      cognition: {},
+      investigation: { evidenceContext: parsed.data.diagnosis },
+    };
+    const { plan, engine: plannerEngine } = await createExecutionPlan(plannerInput);
+
+    if (plan.needsApproval) {
+      return res.status(409).json({
+        success: false,
+        status: "approval_required",
+        error: `Planner classificou a mudança como dependente de aprovação: ${plan.risks.join("; ") || plan.approach}`,
+        plan,
+      });
+    }
+
+    if (!plan.shouldExecute) {
+      return res.json({
+        success: true,
+        status: "completed",
+        summary: `Planner recomendou não alterar código neste momento. ${plan.approach}`,
+        plan,
+        actions: [{ tool: "planner", ok: true, detail: { plan, engine: plannerEngine } }],
+      });
+    }
+
     const openai = await getOpenAIForTenant("");
     const messages: any[] = [
       { role: "system", content: AUTONOMY_SYSTEM_PROMPT },
@@ -327,10 +357,13 @@ router.post("/support/dev/execute", async (req, res) => {
           route: parsed.data.route,
           pedido: parsed.data.request,
           diagnostico_previo: parsed.data.diagnosis,
+          plano_de_engenharia: plan,
         }),
       },
     ];
-    const actions: Array<{ tool: string; ok: boolean; detail?: any }> = [];
+    const actions: Array<{ tool: string; ok: boolean; detail?: any }> = [
+      { tool: "planner", ok: true, detail: { plan, engine: plannerEngine } },
+    ];
 
     for (let step = 0; step < 12; step += 1) {
       const completion = await openai.chat.completions.create({
@@ -350,6 +383,7 @@ router.post("/support/dev/execute", async (req, res) => {
           success: true,
           status: "completed",
           summary: message.content ?? "Execução concluída sem mensagem final.",
+          plan,
           actions,
         });
       }
@@ -373,6 +407,7 @@ router.post("/support/dev/execute", async (req, res) => {
               success: false,
               status: "approval_required",
               error: messageText.replace(/^approval_required:\s*/i, ""),
+              plan,
               actions,
               ...(result.review ? { review: result.review } : {}),
             });
@@ -381,7 +416,7 @@ router.post("/support/dev/execute", async (req, res) => {
       }
     }
 
-    return res.status(409).json({ success: false, status: "step_limit", error: "Executor atingiu o limite seguro de etapas.", actions });
+    return res.status(409).json({ success: false, status: "step_limit", error: "Executor atingiu o limite seguro de etapas.", plan, actions });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";
     req.log?.error({ err: error }, "dev-ia: autonomous executor failed");
