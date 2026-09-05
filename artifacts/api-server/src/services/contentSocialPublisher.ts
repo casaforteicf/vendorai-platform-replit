@@ -34,7 +34,7 @@ import {
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 20,
-  growth: 50,
+  growth: 150,
   enterprise: 200,
 };
 
