@@ -37,7 +37,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Investigator/2.0",
+      "User-Agent": "VendorAI-Dev-Investigator/2.1",
     },
   });
   const text = await response.text();
@@ -96,7 +96,7 @@ Você recebe código REAL coletado do repositório e um mapa vivo de contexto da
 Objetivos:
 - identificar quais arquivos realmente parecem relacionados ao pedido e à rota;
 - encontrar causa provável, dependências e riscos;
-- usar alterações recentes, PRs abertos e memória técnica relevante para detectar regressões, trabalho duplicado ou decisões anteriores;
+- usar alterações recentes, PRs abertos, memória técnica e resultados reais de execuções anteriores para detectar regressões, trabalho duplicado ou decisões que já falharam;
 - separar fato observado de hipótese;
 - indicar o que ainda precisa ser verificado;
 - não inventar logs, testes ou comportamento não presente nas evidências.
@@ -105,6 +105,7 @@ REGRAS:
 - platformContext.codeCandidates são pistas priorizadas; fatos de implementação vêm dos arquivos efetivamente lidos em files.
 - recentChanges pode explicar regressão recente, mas não prova causalidade sozinho.
 - relevantMemory é histórico técnico, não verdade absoluta; código atual prevalece.
+- relevantExecutionMemory registra resultados estruturados de execuções anteriores. Use falhas, arquivos alterados, PR/merge e motores usados como experiência operacional, nunca como prova de que o estado atual é idêntico.
 - openRelatedPrs devem ser considerados para evitar criar correção paralela ou duplicada.
 
 Retorne SOMENTE JSON válido:
@@ -191,6 +192,7 @@ router.post("/support/dev/investigate", async (req, res) => {
         recentChanges: platformContext.recentChanges,
         openRelatedPrs: platformContext.openRelatedPrs,
         relevantMemory: platformContext.relevantMemory,
+        relevantExecutionMemory: platformContext.relevantExecutionMemory,
         codeCandidates: platformContext.codeCandidates.map((item) => ({ path: item.path, score: item.score, matchedBy: item.matchedBy })),
       } : null,
       files: evidence.map((item) => ({ path: item.path, excerpt: item.excerpt })),

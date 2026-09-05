@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 const router = Router();
 const MEMORY_ISSUE_TITLE = "[Dev IA] Memória de Engenharia";
 const MEMORY_MARKER = "DEV_IA_MEMORY_V1";
+const EXECUTION_MARKER = "DEV_IA_EXECUTION_V1";
 
 export type EngineeringMemoryEntry = {
   requestId: string;
@@ -15,6 +16,20 @@ export type EngineeringMemoryEntry = {
   conflicts: string[];
   validation: string[];
   confidence: number;
+};
+
+export type ExecutionMemoryEntry = {
+  requestId: string;
+  route: string;
+  recordedAt: string;
+  status: string;
+  summary: string;
+  pullRequestNumber?: number;
+  mergeSha?: string;
+  changedFiles: string[];
+  engines: string[];
+  failures: string[];
+  evidence: string[];
 };
 
 function githubConfig() {
@@ -35,7 +50,7 @@ async function gh(path: string, init?: RequestInit) {
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Memory/1.0",
+      "User-Agent": "VendorAI-Dev-Memory/2.0",
       ...(init?.headers ?? {}),
     },
   });
@@ -63,8 +78,8 @@ async function ensureMemoryIssue() {
       body: [
         "Ledger interno e persistente do Dev IA.",
         "",
-        "Guarda somente resumos técnicos estruturados e não deve armazenar prompts brutos, tokens, credenciais ou segredos.",
-        "Os registros são usados como memória de decisões anteriores pelo Conselho de Especialistas.",
+        "Guarda somente resumos técnicos estruturados e resultados de execução; não armazena prompts brutos, tokens, credenciais ou segredos.",
+        "Os registros são usados como memória de decisões anteriores e evidência operacional para futuras investigações.",
       ].join("\n"),
     }),
   });
@@ -91,15 +106,53 @@ function parseMemoryComment(body: unknown): EngineeringMemoryEntry | null {
   }
 }
 
-export async function loadEngineeringMemory(limit = 12): Promise<EngineeringMemoryEntry[]> {
+function parseExecutionComment(body: unknown): ExecutionMemoryEntry | null {
+  if (typeof body !== "string" || !body.startsWith(`${EXECUTION_MARKER}\n`)) return null;
+  try {
+    const parsed = JSON.parse(body.slice(EXECUTION_MARKER.length + 1));
+    if (!parsed?.requestId || !parsed?.recordedAt) return null;
+    const pullRequestNumber = Number(parsed.pullRequestNumber);
+    const mergeSha = String(parsed.mergeSha ?? "").trim();
+    return {
+      requestId: String(parsed.requestId).slice(0, 120),
+      route: String(parsed.route ?? "/").slice(0, 500),
+      recordedAt: String(parsed.recordedAt),
+      status: String(parsed.status ?? "unknown").slice(0, 60),
+      summary: String(parsed.summary ?? "").slice(0, 1200),
+      ...(Number.isInteger(pullRequestNumber) && pullRequestNumber > 0 ? { pullRequestNumber } : {}),
+      ...(mergeSha ? { mergeSha: mergeSha.slice(0, 64) } : {}),
+      changedFiles: Array.isArray(parsed.changedFiles) ? parsed.changedFiles.slice(0, 20).map((v: unknown) => String(v).slice(0, 300)) : [],
+      engines: Array.isArray(parsed.engines) ? parsed.engines.slice(0, 5).map((v: unknown) => String(v).slice(0, 80)) : [],
+      failures: Array.isArray(parsed.failures) ? parsed.failures.slice(0, 8).map((v: unknown) => String(v).slice(0, 500)) : [],
+      evidence: Array.isArray(parsed.evidence) ? parsed.evidence.slice(0, 8).map((v: unknown) => String(v).slice(0, 500)) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadMemoryComments() {
   const issue = await findMemoryIssue();
   if (!issue) return [];
   const { owner, repo } = githubConfig();
   const comments = await gh(`/repos/${owner}/${repo}/issues/${issue.number}/comments?per_page=100`);
-  return (comments ?? [])
+  return Array.isArray(comments) ? comments : [];
+}
+
+export async function loadEngineeringMemory(limit = 12): Promise<EngineeringMemoryEntry[]> {
+  const comments = await loadMemoryComments();
+  return comments
     .map((comment: any) => parseMemoryComment(comment.body))
     .filter(Boolean)
     .slice(-Math.max(1, Math.min(25, limit))) as EngineeringMemoryEntry[];
+}
+
+export async function loadExecutionMemory(limit = 12): Promise<ExecutionMemoryEntry[]> {
+  const comments = await loadMemoryComments();
+  return comments
+    .map((comment: any) => parseExecutionComment(comment.body))
+    .filter(Boolean)
+    .slice(-Math.max(1, Math.min(25, limit))) as ExecutionMemoryEntry[];
 }
 
 export async function recordEngineeringMemory(entry: EngineeringMemoryEntry) {
@@ -127,6 +180,35 @@ export async function recordEngineeringMemory(entry: EngineeringMemoryEntry) {
   return { skipped: false, issueNumber: issue.number, commentId: comment.id };
 }
 
+export async function recordExecutionMemory(entry: ExecutionMemoryEntry) {
+  const issue = await ensureMemoryIssue();
+  const existing = await loadExecutionMemory(25);
+  const signature = `${entry.requestId}:${entry.status}:${entry.mergeSha ?? ""}:${entry.pullRequestNumber ?? ""}`;
+  const duplicate = existing.some((item) => `${item.requestId}:${item.status}:${item.mergeSha ?? ""}:${item.pullRequestNumber ?? ""}` === signature);
+  if (duplicate) return { skipped: true, reason: "duplicate_execution_outcome" };
+
+  const safeEntry: ExecutionMemoryEntry = {
+    requestId: String(entry.requestId).slice(0, 120),
+    route: String(entry.route || "/").slice(0, 500),
+    recordedAt: new Date(entry.recordedAt).toISOString(),
+    status: String(entry.status || "unknown").slice(0, 60),
+    summary: String(entry.summary || "").slice(0, 1200),
+    ...(entry.pullRequestNumber && entry.pullRequestNumber > 0 ? { pullRequestNumber: Math.trunc(entry.pullRequestNumber) } : {}),
+    ...(entry.mergeSha ? { mergeSha: String(entry.mergeSha).slice(0, 64) } : {}),
+    changedFiles: entry.changedFiles.slice(0, 20).map((v) => String(v).slice(0, 300)),
+    engines: entry.engines.slice(0, 5).map((v) => String(v).slice(0, 80)),
+    failures: entry.failures.slice(0, 8).map((v) => String(v).slice(0, 500)),
+    evidence: entry.evidence.slice(0, 8).map((v) => String(v).slice(0, 500)),
+  };
+
+  const { owner, repo } = githubConfig();
+  const comment = await gh(`/repos/${owner}/${repo}/issues/${issue.number}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body: `${EXECUTION_MARKER}\n${JSON.stringify(safeEntry)}` }),
+  });
+  return { skipped: false, issueNumber: issue.number, commentId: comment.id };
+}
+
 const appendSchema = z.object({
   requestId: z.string().min(1).max(120),
   route: z.string().min(1).max(500),
@@ -138,11 +220,24 @@ const appendSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
+const executionSchema = z.object({
+  requestId: z.string().min(1).max(120),
+  route: z.string().min(1).max(500),
+  status: z.string().min(1).max(60),
+  summary: z.string().max(1200).default(""),
+  pullRequestNumber: z.number().int().positive().optional(),
+  mergeSha: z.string().max(64).optional(),
+  changedFiles: z.array(z.string().max(300)).max(20).default([]),
+  engines: z.array(z.string().max(80)).max(5).default([]),
+  failures: z.array(z.string().max(500)).max(8).default([]),
+  evidence: z.array(z.string().max(500)).max(8).default([]),
+});
+
 router.get("/support/dev/memory", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Somente Super Admin pode consultar a memória técnica." });
   try {
-    const memory = await loadEngineeringMemory(20);
-    return res.json({ success: true, memory });
+    const [memory, executionMemory] = await Promise.all([loadEngineeringMemory(20), loadExecutionMemory(20)]);
+    return res.json({ success: true, memory, executionMemory });
   } catch (error) {
     req.log?.error({ err: error }, "dev-ia memory load failed");
     return res.status(500).json({ error: "Falha ao carregar memória técnica" });
@@ -159,6 +254,19 @@ router.post("/support/dev/memory", async (req, res) => {
   } catch (error) {
     req.log?.error({ err: error }, "dev-ia memory append failed");
     return res.status(500).json({ error: "Falha ao gravar memória técnica" });
+  }
+});
+
+router.post("/support/dev/execution-memory", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Somente Super Admin pode gravar resultados de execução." });
+  const parsed = executionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Payload inválido", details: parsed.error.flatten() });
+  try {
+    const result = await recordExecutionMemory({ ...parsed.data, recordedAt: new Date().toISOString() });
+    return res.json({ success: true, result });
+  } catch (error) {
+    req.log?.error({ err: error }, "dev-ia execution memory append failed");
+    return res.status(500).json({ error: "Falha ao gravar resultado da execução" });
   }
 });
 

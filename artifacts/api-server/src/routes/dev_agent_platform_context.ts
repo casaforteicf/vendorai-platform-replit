@@ -1,4 +1,9 @@
-import { loadEngineeringMemory, type EngineeringMemoryEntry } from "./dev_agent_memory";
+import {
+  loadEngineeringMemory,
+  loadExecutionMemory,
+  type EngineeringMemoryEntry,
+  type ExecutionMemoryEntry,
+} from "./dev_agent_memory";
 
 type CodeCandidate = {
   path: string;
@@ -33,6 +38,7 @@ export type PlatformContext = {
   recentChanges: RecentChange[];
   openRelatedPrs: RelatedPullRequest[];
   relevantMemory: EngineeringMemoryEntry[];
+  relevantExecutionMemory: ExecutionMemoryEntry[];
   confidence: number;
   checkedAt: string;
 };
@@ -62,7 +68,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Platform-Context/1.0",
+      "User-Agent": "VendorAI-Dev-Platform-Context/1.1",
     },
   });
   const text = await response.text();
@@ -206,11 +212,35 @@ function memoryScore(entry: EngineeringMemoryEntry, routeInput: string[], reques
   return score;
 }
 
+function executionMemoryScore(entry: ExecutionMemoryEntry, routeInput: string[], requestInput: string[]) {
+  const haystack = normalizeText(`${entry.route} ${entry.summary} ${entry.changedFiles.join(" ")} ${entry.failures.join(" ")}`);
+  let score = 0;
+  for (const term of routeInput) if (haystack.includes(term)) score += 5;
+  for (const term of requestInput) if (haystack.includes(term)) score += 2;
+  if (entry.mergeSha) score += 1;
+  if (entry.failures.length) score += 1;
+  return score;
+}
+
 async function collectRelevantMemory(routeInput: string[], requestInput: string[]) {
   try {
     const memory = await loadEngineeringMemory(25);
     return memory
       .map((entry) => ({ entry, score: memoryScore(entry, routeInput, requestInput) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || b.entry.recordedAt.localeCompare(a.entry.recordedAt))
+      .slice(0, 6)
+      .map((item) => item.entry);
+  } catch {
+    return [];
+  }
+}
+
+async function collectRelevantExecutionMemory(routeInput: string[], requestInput: string[]) {
+  try {
+    const memory = await loadExecutionMemory(25);
+    return memory
+      .map((entry) => ({ entry, score: executionMemoryScore(entry, routeInput, requestInput) }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score || b.entry.recordedAt.localeCompare(a.entry.recordedAt))
       .slice(0, 6)
@@ -228,13 +258,21 @@ export async function getPlatformContext(input: { route: string; request: string
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
   const codeCandidates = await collectCodeCandidates(routeInput, requestInput);
-  const [recentChanges, openRelatedPrs, relevantMemory] = await Promise.all([
+  const [recentChanges, openRelatedPrs, relevantMemory, relevantExecutionMemory] = await Promise.all([
     collectRecentChanges(codeCandidates.map((item) => item.path)),
     collectOpenRelatedPrs([...routeInput, ...requestInput]),
     collectRelevantMemory(routeInput, requestInput),
+    collectRelevantExecutionMemory(routeInput, requestInput),
   ]);
 
-  const evidenceSignals = Math.min(1, (codeCandidates.length / 6) * 0.55 + (recentChanges.length / 3) * 0.2 + (relevantMemory.length / 3) * 0.15 + (openRelatedPrs.length > 0 ? 0.1 : 0));
+  const evidenceSignals = Math.min(
+    1,
+    (codeCandidates.length / 6) * 0.5 +
+      (recentChanges.length / 3) * 0.18 +
+      (relevantMemory.length / 3) * 0.12 +
+      (relevantExecutionMemory.length / 3) * 0.1 +
+      (openRelatedPrs.length > 0 ? 0.1 : 0),
+  );
   const value: PlatformContext = {
     route: input.route,
     routeTerms: routeInput,
@@ -243,6 +281,7 @@ export async function getPlatformContext(input: { route: string; request: string
     recentChanges,
     openRelatedPrs,
     relevantMemory,
+    relevantExecutionMemory,
     confidence: Number(evidenceSignals.toFixed(2)),
     checkedAt: new Date().toISOString(),
   };
