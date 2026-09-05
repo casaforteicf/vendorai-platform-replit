@@ -2,8 +2,10 @@ import { Router } from "express";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import memoryRouter, { loadEngineeringMemory, recordEngineeringMemory } from "./dev_agent_memory";
 
 const router = Router();
+router.use(memoryRouter);
 
 const councilSchema = z.object({
   requestId: z.string().min(1).max(120),
@@ -42,6 +44,7 @@ Há cinco especialistas independentes:
 4. integrations_devops — webhooks, OAuth, terceiros, deploy e runtime;
 5. security_reliability — auth, permissões, segredos, abuso, rollback e resiliência.
 
+Você também pode receber engineeringMemory: registros resumidos de decisões anteriores do Dev IA. Use-os como contexto histórico, nunca como verdade absoluta. Evidência atual prevalece sobre memória antiga.
 Cada especialista deve dizer se é relevante. Não invente fatos, arquivos, logs ou testes executados.
 Quando a evidência não sustentar uma conclusão, registre a incerteza.
 Preserve arquitetura existente e não proponha módulos paralelos.
@@ -121,7 +124,15 @@ function normalizeCouncil(value: any): SpecialistCouncil {
   };
 }
 
-export async function createSpecialistCouncil(input: z.infer<typeof councilSchema>): Promise<{ council: SpecialistCouncil; engine: string }> {
+export async function createSpecialistCouncil(input: z.infer<typeof councilSchema>): Promise<{ council: SpecialistCouncil; engine: string; memoryCount: number }> {
+  let engineeringMemory: Awaited<ReturnType<typeof loadEngineeringMemory>> = [];
+  try {
+    engineeringMemory = await loadEngineeringMemory(12);
+  } catch {
+    engineeringMemory = [];
+  }
+
+  const context = { ...input, engineeringMemory };
   let raw = "";
   let engine = "claude-sonnet-4-6";
   try {
@@ -130,7 +141,7 @@ export async function createSpecialistCouncil(input: z.infer<typeof councilSchem
       max_tokens: 3200,
       temperature: 0,
       system: COUNCIL_PROMPT,
-      messages: [{ role: "user", content: JSON.stringify(input) }],
+      messages: [{ role: "user", content: JSON.stringify(context) }],
     });
     raw = message.content.filter((block: any) => block.type === "text").map((block: any) => block.text).join("");
   } catch {
@@ -141,11 +152,29 @@ export async function createSpecialistCouncil(input: z.infer<typeof councilSchem
       temperature: 0,
       max_tokens: 3200,
       response_format: { type: "json_object" },
-      messages: [{ role: "system", content: COUNCIL_PROMPT }, { role: "user", content: JSON.stringify(input) }],
+      messages: [{ role: "system", content: COUNCIL_PROMPT }, { role: "user", content: JSON.stringify(context) }],
     });
     raw = completion.choices[0]?.message?.content ?? "{}";
   }
-  return { council: normalizeCouncil(parseJson(raw)), engine };
+
+  const council = normalizeCouncil(parseJson(raw));
+  try {
+    await recordEngineeringMemory({
+      requestId: input.requestId,
+      route: input.route,
+      recordedAt: new Date().toISOString(),
+      primary: council.primary,
+      consulted: council.consulted,
+      consensus: council.consensus,
+      conflicts: council.conflicts,
+      validation: council.recommendedValidationCommands,
+      confidence: council.confidence,
+    });
+  } catch {
+    // memória é best-effort: uma falha de persistência não deve derrubar a análise técnica atual
+  }
+
+  return { council, engine, memoryCount: engineeringMemory.length };
 }
 
 router.post("/support/dev/specialists", async (req, res) => {
