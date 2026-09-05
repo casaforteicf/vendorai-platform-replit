@@ -16,8 +16,21 @@ export interface SiteGeneratorProduct {
   tags?: string[];
 }
 
+export interface SiteGeneratorDesignQa {
+  brandScore: number;
+  readabilityScore: number;
+  compositionScore: number;
+  channelFitScore: number;
+  ctaScore: number;
+  technicalScore: number;
+  overallScore: number;
+  approved: boolean;
+  warnings: string[];
+  recommendations: string[];
+}
+
 export interface SiteGeneratorConfig {
-  type: "landing" | "ecommerce" | "institutional";
+  type: "landing" | "ecommerce" | "institutional" | "product";
   name: string;
   sector?: string;
   desc: string;
@@ -30,19 +43,21 @@ export interface SiteGeneratorConfig {
   whatsapp?: string;
   instagram?: string;
   images?: string[];
-  // Título/H1 sugerido pelo lojista para esta página específica (usado no
-  // fluxo de gerar várias LPs de uma vez, uma por nicho/produto/serviço) —
-  // quando ausente, a IA escreve o headline como sempre fez.
   headline?: string;
-  // URLs de vídeo — link do YouTube/Vimeo (embutido via iframe) ou URL
-  // direta de arquivo .mp4 (embutido via <video>). O site guarda só a
-  // URL, sem upload/hospedagem própria de vídeo.
   videos?: string[];
   servicos?: string;
   nicheId?: string;
   nicheName?: string;
   productIds?: string[];
   productNames?: string[];
+  campaignId?: string;
+  campaignName?: string;
+  marketingContext?: Record<string, unknown>;
+  creativeRuntimeContext?: string;
+  designQa?: SiteGeneratorDesignQa;
+  qaReviewedAt?: string;
+  qaApprovedAt?: string | null;
+  qaSource?: "generation" | "refine" | "manual" | "publish-gate" | "marketing-agent";
 }
 
 export interface SiteSeoChecklist {
@@ -67,9 +82,6 @@ export const generatedSitesTable = pgTable("generated_sites", {
   config: jsonb("config").$type<SiteGeneratorConfig>().notNull(),
   html: text("html").notNull(),
   published: boolean("published").notNull().default(false),
-  // D-005: análise de SEO/legibilidade/qualidade -- mesmo espírito do
-  // checklist do Content Autopilot (Otimizador), adaptado pra HTML de
-  // página em vez de markdown de artigo de blog.
   seoScore: integer("seo_score"),
   seoChecklist: jsonb("seo_checklist").$type<SiteSeoChecklist>(),
   analisadoEm: timestamp("analisado_em"),
