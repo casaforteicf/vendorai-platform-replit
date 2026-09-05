@@ -5,6 +5,7 @@ import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import investigatorRouter from "./dev_agent_investigator";
 import operationalContextRouter, { getOperationalContext } from "./dev_agent_operational_context";
 import { getPlatformContext } from "./dev_agent_platform_context";
+import { getDevAgentReadiness, type DevAgentReadiness } from "./dev_agent_readiness";
 
 const router = Router();
 router.use(investigatorRouter);
@@ -41,6 +42,7 @@ Você NÃO executa código. Você entende profundamente a intenção do Super Ad
 
 Atue simultaneamente como CTO, arquiteto de software, SRE, engenheiro de produto e revisor de segurança.
 Você pode receber operationalContext com o SHA atualmente em produção, SHA da main, estado aligned/stale, PRs Dev IA abertos e volume de memória técnica. Use isso para evitar decisões baseadas em estado desatualizado. Não invente estado operacional quando algum campo estiver ausente.
+Você também pode receber readiness, o preflight do próprio Dev IA. readiness.state=ready significa que os recursos mínimos estão operacionais; degraded permite análise e execução cautelosa quando o Cérebro considerar seguro; blocked significa que execução de código deve permanecer desabilitada até o recurso bloqueante voltar.
 Você também pode receber platformContext, um mapa vivo e somente-leitura da área atual da plataforma. Ele contém candidatos de código relacionados à rota/pedido, alterações recentes nesses arquivos, PRs abertos relacionados e memória técnica relevante. Use esse contexto para entender referências vagas como “esta tela”, “isso”, “aqui” e “o que mudamos”, mas trate candidatos como pistas — não como prova de comportamento até o Investigador ler o código real.
 
 Classifique UMA intenção:
@@ -71,7 +73,8 @@ REGRAS:
 10. PRs Dev IA já abertos podem representar trabalho em andamento; evite criar execução duplicada sem investigar.
 11. Se platformContext tiver PR aberto ou alteração recente claramente relacionada, inclua isso no plano de investigação antes de propor novo trabalho.
 12. Se platformContext.confidence for baixa ou codeCandidates estiver vazio, não finja conhecer a implementação; amplie a investigação.
-13. Responda SOMENTE JSON válido, sem markdown e sem cadeia de pensamento privada.`;
+13. Se readiness.state for blocked, nunca autorize execução de código; análise e diagnóstico podem continuar.
+14. Responda SOMENTE JSON válido, sem markdown e sem cadeia de pensamento privada.`;
 
 const CRITICAL_TERMS = /\b(auth|autentica[cç][aã]o|login global|billing|pagamento|payment|subscription|assinatura|rls|row level security|migration|migra[cç][aã]o|schema|secret|token de produ[cç][aã]o|credencial|railway|vercel|terraform|infraestrutura|excluir tenant|apagar banco|drop table|force push)\b/i;
 const CASUAL_ONLY = /^(oi+|ol[aá]|opa|e aí|eai|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|ok|okay|certo|beleza|show|entendi|sim|não|nao)[!.? ]*$/i;
@@ -132,6 +135,49 @@ function applyStructuralPolicy(request: string, cognition: Cognition): Cognition
   return cognition;
 }
 
+function applyReadinessPolicy(cognition: Cognition, readiness: DevAgentReadiness): Cognition {
+  if (readiness.state === "blocked" && cognition.shouldExecute) {
+    const reason = readiness.reasons[0] ?? "preflight bloqueado";
+    return {
+      ...cognition,
+      shouldExecute: false,
+      shouldInspectCode: true,
+      reasoningSummary: `${cognition.reasoningSummary} Preflight do Dev IA bloqueou execução: ${reason}`.slice(0, 2000),
+    };
+  }
+  if (readiness.state === "degraded" && cognition.shouldExecute) {
+    const reason = readiness.reasons[0] ?? "operação degradada";
+    return {
+      ...cognition,
+      reasoningSummary: `${cognition.reasoningSummary} Preflight degradado: ${reason}`.slice(0, 2000),
+    };
+  }
+  return cognition;
+}
+
+async function buildReadiness(operationalContext: Awaited<ReturnType<typeof getOperationalContext>> | null) {
+  return getDevAgentReadiness({
+    githubAvailable: Boolean(operationalContext?.mainRevision),
+    memoryAvailable: operationalContext !== null,
+    observedRevision: operationalContext?.observedRevision ?? null,
+    productionState: operationalContext?.productionState ?? "unknown",
+  });
+}
+
+router.get("/support/dev/readiness", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin") {
+    return res.status(403).json({ error: "Somente Super Admin pode consultar a prontidão do Dev IA." });
+  }
+  try {
+    const operationalContext = await getOperationalContext().catch(() => null);
+    const readiness = await buildReadiness(operationalContext);
+    return res.json({ success: true, readiness });
+  } catch (error) {
+    req.log?.error({ err: error }, "dev-ia readiness failed");
+    return res.status(500).json({ error: "Falha no preflight de prontidão do Dev IA" });
+  }
+});
+
 router.post("/support/dev/cognition", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") {
     return res.status(403).json({ error: "Somente Super Admin pode usar o cérebro do Dev IA." });
@@ -165,6 +211,7 @@ router.post("/support/dev/cognition", async (req, res) => {
   ]);
   if (operationalResult.status === "fulfilled") operationalContext = operationalResult.value;
   if (platformResult.status === "fulfilled") platformContext = platformResult.value;
+  const readiness = await buildReadiness(operationalContext);
 
   const context = {
     requestId: parsed.data.requestId,
@@ -172,6 +219,7 @@ router.post("/support/dev/cognition", async (req, res) => {
     request: requestText,
     recentMessages: parsed.data.recentMessages,
     operationalContext,
+    readiness,
     platformContext,
   };
 
@@ -204,8 +252,9 @@ router.post("/support/dev/cognition", async (req, res) => {
       raw = completion.choices[0]?.message?.content ?? "{}";
     }
 
-    const cognition = applyStructuralPolicy(requestText, normalizeCognition(parseJsonObject(raw)));
-    return res.json({ success: true, cognition, engine, operationalContext, platformContext });
+    const structural = applyStructuralPolicy(requestText, normalizeCognition(parseJsonObject(raw)));
+    const cognition = applyReadinessPolicy(structural, readiness);
+    return res.json({ success: true, cognition, engine, operationalContext, readiness, platformContext });
   } catch (error) {
     req.log?.error({ err: error }, "dev-ia cognition failed");
     return res.status(500).json({ error: "Falha no cérebro cognitivo do Dev IA" });
