@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarLayout as SidebarLayoutLegacy } from "./SidebarLayoutLegacy";
+import { MarketingAgentDock } from "@/components/marketing/MarketingAgentDock";
 import { getGetBusinessProfileByTenantQueryKey, useGetBusinessProfileByTenant } from "@workspace/api-client-react";
 
 type TenantNavModule = {
@@ -353,5 +354,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
   }, [companyLogoUrl, companyName, tenantOverride, user]);
 
-  return <SidebarLayoutLegacy>{children}</SidebarLayoutLegacy>;
+  const pathname = location.split("?")[0];
+
+  return (
+    <SidebarLayoutLegacy>
+      {children}
+      <MarketingAgentDock pathname={pathname} />
+    </SidebarLayoutLegacy>
+  );
 }
