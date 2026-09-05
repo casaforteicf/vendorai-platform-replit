@@ -10,8 +10,17 @@ import {
   RefreshCw,
   Server,
   ShieldCheck,
+  Siren,
   TriangleAlert,
 } from "lucide-react";
+
+type EngineeringAlert = {
+  id: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  detail: string;
+  source: "railway" | "vercel" | "github" | "runtime" | "pull_request";
+};
 
 type OperationalContext = {
   observedRevision: string | null;
@@ -19,15 +28,18 @@ type OperationalContext = {
   productionState: "aligned" | "stale" | "unknown";
   openDevPrs: Array<{ number: number; title: string; head: string; updatedAt: string }>;
   memoryCount: number;
+  healthScore?: number;
+  alerts?: EngineeringAlert[];
+  checks?: Array<{ context: string; state: string; targetUrl: string | null }>;
   checkedAt: string;
 };
 
 type ProductionValidation = {
   success: boolean;
-  state: "validated" | "stale" | "unknown_revision" | "github_unavailable";
+  state: "validated" | "stale" | "unknown_revision" | "github_unavailable" | "vercel_pending" | "frontend_unreachable";
   observedRevision: string | null;
   mainRevision: string | null;
-  uptimeSeconds: number;
+  uptimeSeconds?: number;
   checkedAt: string;
 };
 
@@ -56,6 +68,7 @@ const layers = [
   "Simulador Pré-Mortem",
   "Revisor Adversarial",
   "Validador Pós-Deploy",
+  "Sentinela de Produção",
 ];
 
 function shortSha(value: string | null | undefined) {
@@ -66,7 +79,21 @@ function productionLabel(state?: ProductionValidation["state"]) {
   if (state === "validated") return "Produção alinhada";
   if (state === "stale") return "Produção atrasada";
   if (state === "github_unavailable") return "GitHub indisponível";
+  if (state === "vercel_pending") return "Vercel pendente";
+  if (state === "frontend_unreachable") return "Frontend indisponível";
   return "Revisão não confirmada";
+}
+
+function scoreLabel(score: number) {
+  if (score >= 90) return "Saudável";
+  if (score >= 70) return "Atenção";
+  return "Crítico";
+}
+
+function severityClass(severity: EngineeringAlert["severity"]) {
+  if (severity === "critical") return "border-red-200 bg-red-50 text-red-900";
+  if (severity === "warning") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
 export default function DevEngineeringCenterTab({ active, authHeaders }: Props) {
@@ -76,8 +103,8 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function refresh() {
-    setLoading(true);
+  async function refresh(options?: { silent?: boolean }) {
+    if (!options?.silent) setLoading(true);
     setError(null);
     try {
       const headers = authHeaders();
@@ -104,24 +131,31 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar Centro de Engenharia");
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (active) void refresh();
+    if (!active) return;
+    void refresh();
+    const timer = window.setInterval(() => void refresh({ silent: true }), 60_000);
+    return () => window.clearInterval(timer);
   }, [active]);
 
   if (!active) return null;
 
   const aligned = validation?.state === "validated";
+  const alerts = context?.alerts ?? [];
+  const criticalCount = alerts.filter((alert) => alert.severity === "critical").length;
+  const warningCount = alerts.filter((alert) => alert.severity === "warning").length;
+  const healthScore = context?.healthScore ?? (aligned ? 100 : 70);
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50/60 p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-950">Centro de Engenharia</h3>
-          <p className="mt-1 text-xs text-slate-500">Estado técnico da plataforma e das camadas cognitivas do Dev IA.</p>
+          <p className="mt-1 text-xs text-slate-500">Estado técnico da plataforma, Sentinela de Produção e camadas cognitivas do Dev IA.</p>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Atualizar
@@ -133,6 +167,44 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
+      )}
+
+      <section className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Siren className={`h-4 w-4 ${criticalCount ? "text-red-600" : warningCount ? "text-amber-600" : "text-emerald-600"}`} />
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Sentinela de Produção</h4>
+              <p className="text-[11px] text-slate-500">Reavalia automaticamente a cada 60 segundos enquanto esta aba estiver aberta.</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-semibold text-slate-950">{healthScore}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{scoreLabel(healthScore)}</p>
+          </div>
+        </div>
+        <div className="mt-3 flex gap-2 text-[11px]">
+          <span className="rounded-full bg-red-50 px-2.5 py-1 font-semibold text-red-700">{criticalCount} críticos</span>
+          <span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">{warningCount} avisos</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">{alerts.length} sinais</span>
+        </div>
+      </section>
+
+      {alerts.length > 0 && (
+        <section className="mb-4 space-y-2">
+          {alerts.slice(0, 8).map((alert) => (
+            <div key={alert.id} className={`rounded-2xl border p-3 text-xs ${severityClass(alert.severity)}`}>
+              <div className="flex items-start gap-2">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">{alert.title}</p>
+                  <p className="mt-1 leading-relaxed opacity-80">{alert.detail}</p>
+                  <p className="mt-1 text-[10px] font-semibold uppercase opacity-60">{alert.source}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </section>
       )}
 
       <div className="grid grid-cols-2 gap-3">
