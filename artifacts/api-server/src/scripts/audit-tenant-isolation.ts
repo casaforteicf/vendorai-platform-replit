@@ -13,6 +13,14 @@ interface Finding {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const strict = process.argv.includes("--strict");
+const baselineArg = process.argv.find((arg) => arg.startsWith("--baseline-high="));
+const baselineHigh = baselineArg ? Number.parseInt(baselineArg.split("=")[1] ?? "", 10) : null;
+
+if (baselineArg && (!Number.isInteger(baselineHigh) || (baselineHigh ?? -1) < 0)) {
+  console.error("Invalid --baseline-high value. Expected a non-negative integer.");
+  process.exit(2);
+}
+
 const findings: Finding[] = [];
 
 const rules: Array<{
@@ -93,6 +101,9 @@ const counts = findings.reduce(
 console.log("\nVendorAI tenant-isolation audit");
 console.log("================================");
 console.log(`High: ${counts.high} | Medium: ${counts.medium} | Info: ${counts.info}`);
+if (baselineHigh !== null) {
+  console.log(`Baseline high-risk candidates: ${baselineHigh}`);
+}
 
 for (const finding of findings) {
   console.log(
@@ -111,4 +122,20 @@ console.log(
 if (strict && counts.high > 0) {
   console.error(`\nTenant audit failed with ${counts.high} high-risk candidate(s).`);
   process.exit(1);
+}
+
+if (baselineHigh !== null && counts.high > baselineHigh) {
+  console.error(
+    `\nTenant audit regression: ${counts.high} high-risk candidate(s), baseline is ${baselineHigh}.`,
+  );
+  process.exit(1);
+}
+
+if (baselineHigh !== null) {
+  const delta = counts.high - baselineHigh;
+  console.log(
+    delta < 0
+      ? `\nTenant audit improved by ${Math.abs(delta)} high-risk candidate(s). Update the baseline downward.`
+      : "\nTenant audit baseline respected: no new high-risk candidates by count.",
+  );
 }
