@@ -8,11 +8,13 @@ import {
   type DesignQaInput,
 } from '@workspace/vendor-brain/creative-runtime';
 import type { CreativeBrief, DesignQaResult } from '@workspace/vendor-brain/creative-design';
+import { enrichBrandProfileWithContentAutopilot } from './contentAutopilotCreativeBridge';
 
 /**
  * Loads the canonical tenant/business identity already used by VendorAI and
  * adapts it to the shared Creative/Design runtime. No parallel brand profile is
- * persisted here.
+ * persisted here. The learned Content Autopilot tone is read as an enrichment,
+ * while Perfil da Empresa / tenant remain the canonical identity source.
  */
 export async function resolveTenantCreativePlan(
   tenantId: string,
@@ -29,10 +31,11 @@ export async function resolveTenantCreativePlan(
 
   const business = businessRows[0];
   const tenant = tenantRows[0];
-  const brand = resolveBrandProfileFromBusinessSource({
+  const baseBrand = resolveBrandProfileFromBusinessSource({
     tenantId,
     logoUrl: business?.logoUrl || tenant?.logoUrl || null,
   });
+  const brand = await enrichBrandProfileWithContentAutopilot(baseBrand);
 
   return buildCreativeExecutionPlan({ ...brief, tenantId }, brand);
 }
