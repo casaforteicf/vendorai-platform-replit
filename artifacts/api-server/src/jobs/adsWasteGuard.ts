@@ -1,6 +1,16 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Logger } from "pino";
-import { adCampaignsTable, adPerformanceSnapshotsTable, db, dealsTable, leadsTable, mediaPlansTable } from "@workspace/db";
+import {
+  adCampaignsTable,
+  adPerformanceSnapshotsTable,
+  businessProfilesTable,
+  db,
+  dealsTable,
+  generatedSitesTable,
+  leadsTable,
+  mediaPlansTable,
+  tenantsTable,
+} from "@workspace/db";
 import { fetchGoogleAdsCampaignPerformance, setGoogleAdsCampaignStatus } from "../services/google-ads-campaign-publish.js";
 import { fetchMetaAdsCampaignPerformance, setMetaAdsCampaignStatus } from "../services/meta-ads-campaign-publish.js";
 import { setPlatformCampaignDailyBudget } from "../services/adBudgetControl.js";
@@ -17,6 +27,14 @@ function lastBudgetAdjustmentAt(campaign: typeof adCampaignsTable.$inferSelect):
   const value = (campaign.segmentacao as any)?.campaignControl?.automation?.lastBudgetAdjustment?.at;
   const time = typeof value === "string" ? new Date(value).getTime() : 0;
   return Number.isFinite(time) ? time : 0;
+}
+
+function normalize(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 }
 
 function daysBetween(startDate: string | undefined, endDate: string | undefined): number {
@@ -40,7 +58,7 @@ function platformWeight(plan: typeof mediaPlansTable.$inferSelect, platform: str
   let total = 0;
   for (const campaign of campaigns) {
     for (const channel of campaign.canais ?? []) {
-      const name = channel.canal.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const name = normalize(channel.canal);
       const matches = platform === "meta"
         ? name.includes("meta ads") || name.includes("facebook ads") || name.includes("instagram ads")
         : name.includes("google search") || name.includes("google display") || name.includes("performance max") || name.includes("google ads");
@@ -50,10 +68,126 @@ function platformWeight(plan: typeof mediaPlansTable.$inferSelect, platform: str
   return total;
 }
 
+type DestinationContext = {
+  whatsappAvailable: boolean;
+  tenantSiteAvailable: boolean;
+  landingPages: Array<{
+    id: string;
+    name: string;
+    siteSlug: string | null;
+    config: { nicheId?: string; name?: string } | null;
+  }>;
+};
+
+async function loadDestinationContext(tenantId: string): Promise<DestinationContext> {
+  const [[profile], [tenant], sites] = await Promise.all([
+    db.select({ telefone: businessProfilesTable.telefone })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1),
+    db.select({ subdomainSlug: tenantsTable.subdomainSlug })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1),
+    db.select({
+      id: generatedSitesTable.id,
+      name: generatedSitesTable.name,
+      siteSlug: generatedSitesTable.siteSlug,
+      config: generatedSitesTable.config,
+    })
+      .from(generatedSitesTable)
+      .where(and(eq(generatedSitesTable.tenantId, tenantId), eq(generatedSitesTable.published, true)))
+      .orderBy(desc(generatedSitesTable.updatedAt))
+      .limit(60),
+  ]);
+
+  return {
+    whatsappAvailable: Boolean(profile?.telefone?.replace(/\D/g, "")),
+    tenantSiteAvailable: Boolean(tenant?.subdomainSlug),
+    landingPages: sites.filter((site) => Boolean(site.siteSlug)),
+  };
+}
+
+function decideMediaPlanDestination(
+  draft: typeof adCampaignsTable.$inferSelect,
+  context: DestinationContext,
+): {
+  destinoClique: "landing_page" | "whatsapp" | "produto";
+  itemTipo: "landing_page" | "livre";
+  landingPageId: string | null;
+  reason: string;
+} | null {
+  const marketing = (draft.segmentacao as any)?.marketingContext ?? {};
+  const campaignId = typeof marketing.campaignId === "string" ? marketing.campaignId : "";
+  const campaignName = typeof marketing.campaignName === "string" ? marketing.campaignName : "";
+  const intent = normalize([
+    marketing.campaignGoal,
+    marketing.specificDetails,
+    marketing.primaryKpi,
+    campaignName,
+    draft.itemLabel,
+  ].filter(Boolean).join(" "));
+
+  const exactLanding = context.landingPages.find((site) =>
+    campaignId && site.config?.nicheId === `media-plan:${campaignId}`,
+  );
+  const namedLanding = context.landingPages.find((site) => {
+    if (!campaignName) return false;
+    const expected = normalize(campaignName);
+    return normalize(site.name).includes(expected) || normalize(site.config?.name).includes(expected);
+  });
+  const landing = exactLanding ?? namedLanding ?? null;
+
+  const wantsConversation = /whatsapp|conversa|falar|contato|orcamento|orcamento|agendar|demonstracao|mensagem/.test(intent);
+  const wantsPage = /landing|pagina|site|catalogo|produto|saiba mais|visita|conteudo/.test(intent);
+
+  if (wantsConversation && context.whatsappAvailable) {
+    return {
+      destinoClique: "whatsapp",
+      itemTipo: "livre",
+      landingPageId: null,
+      reason: "Objetivo pede conversa/contato e o WhatsApp do negócio está disponível.",
+    };
+  }
+  if (landing && (wantsPage || !context.whatsappAvailable)) {
+    return {
+      destinoClique: "landing_page",
+      itemTipo: "landing_page",
+      landingPageId: landing.id,
+      reason: "Existe uma Landing Page publicada vinculada à campanha do Plano de Mídia.",
+    };
+  }
+  if (context.whatsappAvailable) {
+    return {
+      destinoClique: "whatsapp",
+      itemTipo: "livre",
+      landingPageId: null,
+      reason: "Sem Landing Page específica confiável; WhatsApp é o destino executável com melhor capacidade de conversão.",
+    };
+  }
+  if (landing) {
+    return {
+      destinoClique: "landing_page",
+      itemTipo: "landing_page",
+      landingPageId: landing.id,
+      reason: "WhatsApp indisponível; foi usada a Landing Page publicada da própria campanha.",
+    };
+  }
+  if (context.tenantSiteAvailable) {
+    return {
+      destinoClique: "produto",
+      itemTipo: "livre",
+      landingPageId: null,
+      reason: "Sem WhatsApp ou Landing Page específica; a campanha aponta para o site publicado do tenant.",
+    };
+  }
+  return null;
+}
+
 /**
- * Faz o handoff financeiro do Planejador para os rascunhos reais de Ads.
- * O usuário informa um único orçamento no plano; a IA materializa limites
- * por campanha sem aumentar o teto. Nenhuma plataforma é ativada aqui.
+ * Faz o handoff financeiro e operacional do Planejador para os rascunhos reais de Ads.
+ * O usuário informa um único orçamento no plano; a IA materializa limites e escolhe
+ * um destino que os publicadores reais suportam. Nenhuma plataforma é ativada aqui.
  */
 async function hydrateMediaPlanDraftBudgets(log: Logger): Promise<void> {
   const drafts = await db.select().from(adCampaignsTable)
@@ -64,8 +198,10 @@ async function hydrateMediaPlanDraftBudgets(log: Logger): Promise<void> {
   for (const draft of drafts) {
     const planId = mediaPlanId(draft);
     const control = (draft.segmentacao as any)?.campaignControl;
-    const needsBudget = Number(draft.orcamentoDiario) <= 0 || Number(control?.totalBudget ?? 0) <= 0 || Boolean((draft.segmentacao as any)?.mediaPlanDraft?.requiresBudgetBeforePublish);
-    if (!planId || !control || !needsBudget || (draft.plataforma !== "google" && draft.plataforma !== "meta")) continue;
+    const planDraft = (draft.segmentacao as any)?.mediaPlanDraft;
+    const needsBudget = Number(draft.orcamentoDiario) <= 0 || Number(control?.totalBudget ?? 0) <= 0 || Boolean(planDraft?.requiresBudgetBeforePublish);
+    const needsDestination = draft.destinoClique === "formulario_lead" || Boolean(planDraft?.requiresDestinationBeforePublish);
+    if (!planId || !control || (!needsBudget && !needsDestination) || (draft.plataforma !== "google" && draft.plataforma !== "meta")) continue;
     const list = groups.get(planId) ?? [];
     list.push(draft);
     groups.set(planId, list);
@@ -82,6 +218,7 @@ async function hydrateMediaPlanDraftBudgets(log: Logger): Promise<void> {
       const value = Number(planBudget?.valor ?? 0);
       if (!planBudget || !Number.isFinite(value) || value <= 0) continue;
 
+      const destinationContext = await loadDestinationContext(plan.tenantId);
       const rawWeights = group.map((draft) => platformWeight(plan, draft.plataforma));
       const totalWeight = rawWeights.reduce((sum, weight) => sum + weight, 0);
       const fallbackWeight = group.length > 0 ? 1 / group.length : 0;
@@ -93,7 +230,8 @@ async function hydrateMediaPlanDraftBudgets(log: Logger): Promise<void> {
         const weight = totalWeight > 0 ? rawWeights[index]! / totalWeight : fallbackWeight;
         const totalBudget = Math.round(windowBudget * weight * 100) / 100;
         const dailyBudget = Math.round(Math.max(1, totalBudget / days) * 100) / 100;
-        return { draft, control, days, totalBudget, dailyBudget, weight };
+        const destination = decideMediaPlanDestination(draft, destinationContext);
+        return { draft, control, days, totalBudget, dailyBudget, weight, destination };
       });
 
       const allocatedTotal = allocations.reduce((sum, item) => sum + item.totalBudget, 0);
@@ -105,11 +243,25 @@ async function hydrateMediaPlanDraftBudgets(log: Logger): Promise<void> {
 
       for (const item of allocations) {
         if (item.totalBudget <= 0 || item.dailyBudget <= 0) continue;
+        const now = new Date().toISOString();
         const mediaPlanDraft = {
           ...((item.draft.segmentacao as any)?.mediaPlanDraft ?? {}),
           source: "media-plan",
           requiresBudgetBeforePublish: false,
-          budgetHydratedAt: new Date().toISOString(),
+          requiresDestinationBeforePublish: !item.destination,
+          budgetHydratedAt: now,
+          destinationDecidedAt: item.destination ? now : undefined,
+          destinationDecision: item.destination
+            ? {
+                destinoClique: item.destination.destinoClique,
+                landingPageId: item.destination.landingPageId,
+                reason: item.destination.reason,
+              }
+            : {
+                destinoClique: null,
+                landingPageId: null,
+                reason: "Nenhum destino executável disponível: conecte WhatsApp ou publique Site/Landing Page antes da veiculação.",
+              },
           budgetSource: {
             mediaPlanId: plan.id,
             type: planBudget.tipo,
@@ -131,9 +283,20 @@ async function hydrateMediaPlanDraftBudgets(log: Logger): Promise<void> {
           },
           mediaPlanDraft,
         };
+
         await db.update(adCampaignsTable)
-          .set({ orcamentoDiario: item.dailyBudget.toFixed(2), segmentacao, updatedAt: new Date() })
+          .set({
+            orcamentoDiario: item.dailyBudget.toFixed(2),
+            segmentacao,
+            ...(item.destination ? {
+              destinoClique: item.destination.destinoClique,
+              itemTipo: item.destination.itemTipo,
+              landingPageId: item.destination.landingPageId,
+            } : {}),
+            updatedAt: new Date(),
+          })
           .where(and(eq(adCampaignsTable.id, item.draft.id), eq(adCampaignsTable.tenantId, item.draft.tenantId)));
+
         await recordAdCampaignEvent({
           tenantId: item.draft.tenantId,
           campaignId: item.draft.id,
@@ -143,10 +306,32 @@ async function hydrateMediaPlanDraftBudgets(log: Logger): Promise<void> {
           dedupeKey: `media-plan-budget:${plan.id}:${item.draft.id}`,
           metadata: { mediaPlanId: plan.id, planBudgetType: planBudget.tipo, planBudgetValue: value, totalBudget: item.totalBudget, dailyBudget: item.dailyBudget, allocationWeight: item.weight },
         });
+
+        if (item.destination) {
+          await recordAdCampaignEvent({
+            tenantId: item.draft.tenantId,
+            campaignId: item.draft.id,
+            eventType: "media_plan_destination_decided",
+            severity: "success",
+            message: `IA definiu ${item.destination.destinoClique === "whatsapp" ? "WhatsApp" : item.destination.destinoClique === "landing_page" ? "Landing Page" : "Site"} como destino de conversão executável.`,
+            dedupeKey: `media-plan-destination:${plan.id}:${item.draft.id}`,
+            metadata: { mediaPlanId: plan.id, destinoClique: item.destination.destinoClique, landingPageId: item.destination.landingPageId, reason: item.destination.reason },
+          });
+        } else {
+          await recordAdCampaignEvent({
+            tenantId: item.draft.tenantId,
+            campaignId: item.draft.id,
+            eventType: "media_plan_destination_blocked",
+            severity: "warning",
+            message: "A IA não encontrou um destino publicável. O rascunho foi preservado sem veicular mídia.",
+            dedupeKey: `media-plan-destination-blocked:${plan.id}:${item.draft.id}`,
+            metadata: { mediaPlanId: plan.id },
+          });
+        }
       }
-      log.info({ planId, drafts: allocations.length, planBudgetType: planBudget.tipo, planBudgetValue: value }, "scheduler/media-plan-budget-handoff: budgets hydrated");
+      log.info({ planId, drafts: allocations.length, planBudgetType: planBudget.tipo, planBudgetValue: value }, "scheduler/media-plan-handoff: budgets and destinations hydrated");
     } catch (err) {
-      log.error({ err, planId }, "scheduler/media-plan-budget-handoff: group failed (non-fatal)");
+      log.error({ err, planId }, "scheduler/media-plan-handoff: group failed (non-fatal)");
     }
   }
 }
