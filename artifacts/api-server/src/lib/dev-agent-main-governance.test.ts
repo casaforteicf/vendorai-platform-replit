@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { classifyGithubHttpFailure, evaluateMainGovernance } from "./dev-agent-main-governance.js";
+import {
+  classifyGithubHttpFailure,
+  evaluateMainGovernance,
+  githubGovernanceReadinessReason,
+} from "./dev-agent-main-governance.js";
 
 describe("evaluateMainGovernance", () => {
   const sha = "333ac489c813da0d87cf890ad7f9fae391169a74";
@@ -35,5 +39,17 @@ describe("classifyGithubHttpFailure", () => {
 
   it("keeps other GitHub HTTP failures distinguishable", () => {
     expect(classifyGithubHttpFailure(500)).toBe("GITHUB_HTTP_500");
+  });
+});
+
+describe("githubGovernanceReadinessReason", () => {
+  it("explains how to recover from an invalid or expired GitHub credential", () => {
+    expect(githubGovernanceReadinessReason("GITHUB_CREDENTIAL_INVALID")).toContain("Credencial GitHub inválida ou expirada");
+    expect(githubGovernanceReadinessReason("GITHUB_CREDENTIAL_INVALID")).toContain("GITHUB_PERSONAL_ACCESS_TOKEN");
+  });
+
+  it("distinguishes a missing credential from a generic GitHub outage", () => {
+    expect(githubGovernanceReadinessReason("GITHUB_DEV_TOKEN_MISSING")).toContain("Credencial GitHub ausente");
+    expect(githubGovernanceReadinessReason("GITHUB_HTTP_500")).toContain("GITHUB_HTTP_500");
   });
 });
