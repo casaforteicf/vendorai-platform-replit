@@ -2,11 +2,11 @@
 // Dalea AI ("metrics turn into learning: what worked, where to improve,
 // what's worth trying again"). Diferente dos criadores de referência
 // (Business Discovery, API mais nova e incerta), isso usa a API de
-// Insights padrão do Instagram Graph pra dados do PRÓPRIO tenant — API
-// "me and mine" oficial e estável, sem a mesma incerteza técnica.
+// Insights padrão do Instagram Graph pra dados do PRÓPRIO tenant.
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import {
   db,
+  contentGenerationsTable,
   contentPublishedPostsTable,
   contentPerformanceInsightsTable,
   agentConfigsTable,
@@ -17,8 +17,6 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger.js";
 
 const GRAPH_BASE = "https://graph.instagram.com/v26.0";
-// Insights do Instagram só estabiliza depois de um tempo publicado —
-// buscar antes disso retorna número parcial/enganoso.
 const MIN_AGE_BEFORE_METRICS_HOURS = 24;
 const MIN_POSTS_FOR_ANALYSIS = 4;
 
@@ -53,10 +51,6 @@ export async function listPublishedPosts(tenantId: string) {
 }
 
 async function fetchMediaMetrics(mediaId: string, accessToken: string, contentType: string): Promise<PostMetricas> {
-  // Métricas disponíveis variam por tipo de mídia na API do Instagram —
-  // Stories não tem 'saved', por exemplo. Pede um conjunto amplo e
-  // ignora as que a própria API rejeitar pra esse media, em vez de
-  // falhar a coleta inteira por causa de 1 métrica indisponível.
   const metricSet = contentType === "stories" ? "reach,replies" : "reach,likes,comments,saved,shares";
   const url = new URL(`${GRAPH_BASE}/${mediaId}/insights`);
   url.searchParams.set("metric", metricSet);
@@ -81,9 +75,6 @@ async function fetchMediaMetrics(mediaId: string, accessToken: string, contentTy
   return metricas;
 }
 
-// Roda sob demanda (botão "Atualizar métricas") — busca métricas só dos
-// posts publicados há mais de 24h que ainda não têm coleta bem-sucedida
-// nas últimas 24h, pra não bater na API à toa.
 export async function refreshPendingMetrics(tenantId: string): Promise<{ atualizados: number; erros: number }> {
   const [config] = await db
     .select({ token: agentConfigsTable.instagramPageAccessToken })
@@ -138,7 +129,7 @@ sem markdown, no formato exato:
   "formatoQueMaisEngaja": string (ex: "Reels com gancho de pergunta", "Feed com prova social"),
   "observacoes": string (1-2 frases com o principal aprendizado acionável)
 }
-Compare relativamente entre os posts fornecidos (não existe "número bom" absoluto). Nunca invente dado que não esteja na lista.`;
+Compare relativamente entre os posts fornecidos. Nunca invente dado que não esteja na lista.`;
 
 export async function getPerformanceInsights(tenantId: string) {
   const [row] = await db
@@ -148,9 +139,6 @@ export async function getPerformanceInsights(tenantId: string) {
   return row ?? null;
 }
 
-// Roda sob demanda (botão "Atualizar aprendizados") — precisa de pelo
-// menos MIN_POSTS_FOR_ANALYSIS posts com métricas coletadas, senão a
-// comparação relativa não tem base nenhuma.
 export async function refreshPerformanceInsights(tenantId: string) {
   const posts = await listPublishedPosts(tenantId);
   const comMetricas = posts.filter((p) => p.metricas && Object.keys(p.metricas).length > 0);
@@ -194,13 +182,68 @@ export async function refreshPerformanceInsights(tenantId: string) {
   return saved!;
 }
 
-// Monta o bloco de texto injetado no prompt de geração de conteúdo — só
-// usa se já existir análise (não bloqueia geração enquanto não há dados
-// suficientes, só não adiciona esse contexto extra).
-export async function buildOwnPerformancePromptBlock(tenantId: string): Promise<string> {
-  const insight = await getPerformanceInsights(tenantId);
-  if (!insight?.aprendizados) return "";
-  const a = insight.aprendizados;
+type QaSnapshot = {
+  overallScore?: number;
+  brandScore?: number;
+  readabilityScore?: number;
+  compositionScore?: number;
+  channelFitScore?: number;
+  ctaScore?: number;
+  technicalScore?: number;
+  approved?: boolean;
+  warnings?: string[];
+};
 
-  return `\n## Aprendizados dos posts publicados desta marca (dados reais de desempenho, baseado em ${insight.baseadoEmPosts} posts)\nTemas que funcionam melhor: ${a.temasQueFuncionam.join(", ")}.${a.temasQueNaoFuncionam.length ? ` Temas com engajamento mais fraco (evite ou reformule): ${a.temasQueNaoFuncionam.join(", ")}.` : ""} Formato que mais engaja: ${a.formatoQueMaisEngaja}. ${a.observacoes}\n`;
+async function buildCreativeQaLearningBlock(tenantId: string): Promise<string> {
+  const rows = await db
+    .select({ result: contentGenerationsTable.result })
+    .from(contentGenerationsTable)
+    .where(eq(contentGenerationsTable.tenantId, tenantId));
+
+  const qas = rows
+    .map((row) => (row.result as { designQa?: QaSnapshot } | null)?.designQa)
+    .filter((qa): qa is QaSnapshot => Boolean(qa && typeof qa.overallScore === "number"));
+  if (qas.length === 0) return "";
+
+  const average = (key: keyof QaSnapshot) => {
+    const values = qas.map((qa) => qa[key]).filter((value): value is number => typeof value === "number");
+    return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
+  };
+
+  const dimensions = [
+    ["marca", average("brandScore")],
+    ["legibilidade", average("readabilityScore")],
+    ["composição", average("compositionScore")],
+    ["aderência ao canal", average("channelFitScore")],
+    ["CTA", average("ctaScore")],
+    ["técnico", average("technicalScore")],
+  ] as Array<[string, number | null]>;
+  const weakest = dimensions.filter((entry): entry is [string, number] => entry[1] !== null).sort((a, b) => a[1] - b[1]).slice(0, 2);
+
+  const warningCounts = new Map<string, number>();
+  for (const qa of qas) {
+    for (const warning of qa.warnings ?? []) warningCounts.set(warning, (warningCounts.get(warning) ?? 0) + 1);
+  }
+  const recurring = [...warningCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).filter(([, count]) => count >= 2);
+  const approved = qas.filter((qa) => qa.approved).length;
+  const overall = average("overallScore") ?? 0;
+
+  return `\n## Aprendizado de qualidade criativa do próprio tenant (Design QA, ${qas.length} peças avaliadas)\nScore médio: ${overall}/100; aprovação: ${approved}/${qas.length}. Pontos que mais precisam melhorar: ${weakest.map(([name, score]) => `${name} (${score}/100)`).join(", ") || "sem gargalo recorrente"}.${recurring.length ? ` Alertas recorrentes: ${recurring.map(([warning, count]) => `${warning} (${count}x)`).join(" | ")}.` : ""} Nas próximas peças, preserve o que funciona e corrija esses pontos sem sacrificar a identidade da marca.\n`;
+}
+
+// Fonte única do learning prompt: une performance real do canal + qualidade
+// criativa já medida. Nenhuma memória/tabela paralela é criada.
+export async function buildOwnPerformancePromptBlock(tenantId: string): Promise<string> {
+  const [insight, qaBlock] = await Promise.all([
+    getPerformanceInsights(tenantId),
+    buildCreativeQaLearningBlock(tenantId),
+  ]);
+
+  let performanceBlock = "";
+  if (insight?.aprendizados) {
+    const a = insight.aprendizados;
+    performanceBlock = `\n## Aprendizados dos posts publicados desta marca (dados reais de desempenho, baseado em ${insight.baseadoEmPosts} posts)\nTemas que funcionam melhor: ${a.temasQueFuncionam.join(", ")}.${a.temasQueNaoFuncionam.length ? ` Temas com engajamento mais fraco (evite ou reformule): ${a.temasQueNaoFuncionam.join(", ")}.` : ""} Formato que mais engaja: ${a.formatoQueMaisEngaja}. ${a.observacoes}\n`;
+  }
+
+  return performanceBlock + qaBlock;
 }
