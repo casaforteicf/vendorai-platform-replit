@@ -27,6 +27,7 @@ import {
   registerPublishedPost,
 } from "./content-performance.js";
 import { buildReferencePatternsPromptBlock } from "./content-reference-creators.js";
+import { buildGenerationDesignQa } from "./contentCreativeRuntime.js";
 import {
   assertMediaAudioRightsForUsage,
   MediaRightsEnforcementError,
@@ -47,6 +48,22 @@ export class SocialPublicationError extends Error {
   ) {
     super(message);
     this.name = "SocialPublicationError";
+  }
+}
+
+function assertDesignQaApproved(result: unknown) {
+  const qa = (result as { designQa?: { approved?: boolean; overallScore?: number } } | null)?.designQa;
+  if (!qa) {
+    throw new SocialPublicationError(
+      "Este conteúdo ainda não passou pelo Design QA. Revise e aprove a peça antes da publicação automática.",
+      409,
+    );
+  }
+  if (!qa.approved) {
+    throw new SocialPublicationError(
+      `Design QA reprovou esta peça${typeof qa.overallScore === "number" ? ` (${qa.overallScore}/100)` : ""}. Corrija os alertas antes de publicar.`,
+      409,
+    );
   }
 }
 
@@ -134,6 +151,8 @@ export async function publishContentGenerationToInstagram(params: {
   if (!["feed", "stories", "reels"].includes(gen.type)) {
     throw new SocialPublicationError("Este formato ainda não possui publicação automática para Instagram.", 400);
   }
+
+  assertDesignQaApproved(gen.result);
 
   const variations = Array.isArray(gen.result?.variations) ? gen.result.variations : [];
   const variation = variations[params.variationIndex] as FeedVariation | StoriesVariation | ReelsVariation | undefined;
@@ -295,6 +314,23 @@ export async function createAndPublishAutonomousFeed(params: {
   }
   variations[0] = { ...variations[0], imageUrl };
 
+  const first = variations[0] as { caption?: string; hashtags?: string[] };
+  const qaText = [first.caption, ...(first.hashtags ?? [])].filter(Boolean).join(" ");
+  const designQa = buildGenerationDesignQa({
+    brandScore: profile ? 92 : 76,
+    readabilityScore: qaText.length > 20 ? 90 : 72,
+    compositionScore: imageUrl ? 94 : 60,
+    channelFitScore: 92,
+    ctaScore: /fale|saiba|compre|chame|acesse|solicite|agora/i.test(qaText) ? 94 : 72,
+    technicalScore: imageUrl ? 96 : 60,
+    warnings: [
+      ...(!profile ? ["Perfil da empresa incompleto para validação de marca."] : []),
+      ...(!/fale|saiba|compre|chame|acesse|solicite|agora/i.test(qaText) ? ["CTA pouco explícito na peça automática."] : []),
+    ],
+    recommendations: [],
+  });
+  const reviewedAt = new Date().toISOString();
+
   const [saved] = await db
     .insert(contentGenerationsTable)
     .values({
@@ -303,7 +339,13 @@ export async function createAndPublishAutonomousFeed(params: {
       theme: params.theme,
       contentFormat: "feed_square",
       aspectRatio: "1:1",
-      result: { variations } as any,
+      result: {
+        variations,
+        designQa,
+        qaReviewedAt: reviewedAt,
+        qaApprovedAt: designQa.approved ? reviewedAt : null,
+        qaSource: "autopilot",
+      } as any,
       tokensUsed: generated.tokensUsed,
     })
     .returning();
@@ -314,6 +356,15 @@ export async function createAndPublishAutonomousFeed(params: {
     .update(agentConfigsTable)
     .set({ contentGenerationsThisMonth: allowance.used + 1 })
     .where(eq(agentConfigsTable.id, allowance.configId));
+
+  if (!designQa.approved) {
+    return {
+      contentGenerationId: saved.id,
+      published: false,
+      postId: null,
+      warning: `Conteúdo gerado, mas bloqueado pelo Design QA (${designQa.overallScore}/100).`,
+    };
+  }
 
   try {
     const published = await publishContentGenerationToInstagram({
