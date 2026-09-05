@@ -45,6 +45,16 @@ export type {
 } from './platform-foundation'
 
 export {
+  CHANNEL_PUBLICATION_CAPABILITIES,
+  getChannelPublicationCapability,
+  assertChannelCanPublish,
+} from './channel-publication'
+export type {
+  ChannelPublicationMode,
+  ChannelPublicationCapability,
+} from './channel-publication'
+
+export {
   VERTICAL_BLUEPRINT_REGISTRY,
   DISTRIBUTOR_BLUEPRINT,
   CONSTRUCTION_BLUEPRINT,
