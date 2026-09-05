@@ -45,6 +45,22 @@ function absolutePublicMediaUrl(asset: MediaPickerAsset): string {
   return new URL(mediaAssetUrl(asset.storageUrl), window.location.origin).toString();
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function enablePerformanceMaxOption(root: ParentNode = document) {
+  const candidates = Array.from(root.querySelectorAll<HTMLElement>("[role='option'], [data-radix-collection-item]"));
+  for (const option of candidates) {
+    if (!option.textContent?.includes("Performance Max completa")) continue;
+    option.removeAttribute("data-disabled");
+    option.removeAttribute("aria-disabled");
+    option.removeAttribute("disabled");
+    option.style.pointerEvents = "auto";
+    option.textContent = "Performance Max (ativos multiformato)";
+  }
+}
+
 export function MediaAdsBridge() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -70,6 +86,23 @@ export function MediaAdsBridge() {
   }, []);
 
   useEffect(() => {
+    if (!onAds) return;
+    enablePerformanceMaxOption();
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of Array.from(mutation.addedNodes)) {
+          if (node instanceof HTMLElement) {
+            enablePerformanceMaxOption(node);
+            if (node.matches("[role='option'], [data-radix-collection-item]")) enablePerformanceMaxOption(node.parentElement ?? document);
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [onAds]);
+
+  useEffect(() => {
     const previousFetch = window.fetch.bind(window);
 
     const mediaAwareFetch: typeof window.fetch = async (input, init = {}) => {
@@ -80,20 +113,41 @@ export function MediaAdsBridge() {
         const selected = assetRef.current;
         const isCampaignCreate = /^\/api\/tenants\/[^/]+\/ads\/campaigns\/?$/.test(url.pathname);
 
-        if (selected && method === "POST" && isCampaignCreate && typeof init.body === "string") {
+        if (method === "POST" && isCampaignCreate && typeof init.body === "string") {
           const body = JSON.parse(init.body) as Record<string, unknown>;
-          if (body["tipoAnuncio"] === "imagem") {
-            body["imagemEscolhidaUrl"] = absolutePublicMediaUrl(selected);
+          let changed = false;
+
+          if (body["plataforma"] === "google" && body["tipoAnuncio"] === "pmax_future") {
+            body["tipoAnuncio"] = "rsa_pmax";
+            const segmentacao = asRecord(body["segmentacao"]);
+            const marketingContext = asRecord(segmentacao["marketingContext"]);
             body["segmentacao"] = {
-              ...((body["segmentacao"] && typeof body["segmentacao"] === "object" && !Array.isArray(body["segmentacao"])) ? body["segmentacao"] as Record<string, unknown> : {}),
+              ...segmentacao,
+              marketingContext: {
+                ...marketingContext,
+                googleFormat: "performance_max",
+              },
+            };
+            changed = true;
+          }
+
+          if (selected && body["tipoAnuncio"] === "imagem") {
+            body["imagemEscolhidaUrl"] = absolutePublicMediaUrl(selected);
+            const segmentacao = asRecord(body["segmentacao"]);
+            body["segmentacao"] = {
+              ...segmentacao,
               mediaSource: {
                 assetId: selected.id,
                 source: "media_library",
                 originalFilename: selected.originalFilename ?? null,
               },
             };
+            changed = true;
+          }
+
+          if (changed) {
             const response = await previousFetch(input, { ...init, body: JSON.stringify(body) });
-            if (response.ok) {
+            if (response.ok && selected && body["tipoAnuncio"] === "imagem") {
               window.setTimeout(() => setAsset(null), 0);
             }
             return response;
@@ -145,7 +199,7 @@ export function MediaAdsBridge() {
           {asset ? "Trocar imagem da Biblioteca" : "Escolher da Biblioteca"}
         </button>
         <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-          Aplicada somente em campanhas Meta do tipo Imagem. Search e Shopping permanecem inalterados.
+          Biblioteca aplicada em campanhas Meta de imagem. Google Search e Performance Max usam seus fluxos oficiais de criativo e publicação.
         </p>
       </div>
 
