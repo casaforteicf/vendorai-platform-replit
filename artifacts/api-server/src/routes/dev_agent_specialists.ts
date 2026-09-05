@@ -3,9 +3,11 @@ import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import memoryRouter, { loadEngineeringMemory, recordEngineeringMemory } from "./dev_agent_memory";
+import impactRouter, { analyzeChangeImpact } from "./dev_agent_impact";
 
 const router = Router();
 router.use(memoryRouter);
+router.use(impactRouter);
 
 const councilSchema = z.object({
   requestId: z.string().min(1).max(120),
@@ -44,7 +46,8 @@ Há cinco especialistas independentes:
 4. integrations_devops — webhooks, OAuth, terceiros, deploy e runtime;
 5. security_reliability — auth, permissões, segredos, abuso, rollback e resiliência.
 
-Você também pode receber engineeringMemory: registros resumidos de decisões anteriores do Dev IA. Use-os como contexto histórico, nunca como verdade absoluta. Evidência atual prevalece sobre memória antiga.
+Você pode receber engineeringMemory: decisões anteriores resumidas. Use como histórico, nunca como verdade absoluta; evidência atual prevalece.
+Você também recebe impactGraph quando disponível: arquivos-semente, imports, referências, domínios afetados, blast radius e sinais de risco. Trate-o como evidência estrutural do repositório.
 Cada especialista deve dizer se é relevante. Não invente fatos, arquivos, logs ou testes executados.
 Quando a evidência não sustentar uma conclusão, registre a incerteza.
 Preserve arquitetura existente e não proponha módulos paralelos.
@@ -124,7 +127,7 @@ function normalizeCouncil(value: any): SpecialistCouncil {
   };
 }
 
-export async function createSpecialistCouncil(input: z.infer<typeof councilSchema>): Promise<{ council: SpecialistCouncil; engine: string; memoryCount: number }> {
+export async function createSpecialistCouncil(input: z.infer<typeof councilSchema>): Promise<{ council: SpecialistCouncil; engine: string; memoryCount: number; impact: Awaited<ReturnType<typeof analyzeChangeImpact>> }> {
   let engineeringMemory: Awaited<ReturnType<typeof loadEngineeringMemory>> = [];
   try {
     engineeringMemory = await loadEngineeringMemory(12);
@@ -132,7 +135,22 @@ export async function createSpecialistCouncil(input: z.infer<typeof councilSchem
     engineeringMemory = [];
   }
 
-  const context = { ...input, engineeringMemory };
+  let impact: Awaited<ReturnType<typeof analyzeChangeImpact>>;
+  try {
+    impact = await analyzeChangeImpact(input);
+  } catch {
+    impact = {
+      seedPaths: [],
+      nodes: [],
+      affectedDomains: [],
+      blastRadius: 0,
+      risk: "low",
+      reasons: ["Mapa de impacto indisponível nesta análise."],
+      confidence: 0,
+    };
+  }
+
+  const context = { ...input, engineeringMemory, impactGraph: impact };
   let raw = "";
   let engine = "claude-sonnet-4-6";
   try {
@@ -174,7 +192,7 @@ export async function createSpecialistCouncil(input: z.infer<typeof councilSchem
     // memória é best-effort: uma falha de persistência não deve derrubar a análise técnica atual
   }
 
-  return { council, engine, memoryCount: engineeringMemory.length };
+  return { council, engine, memoryCount: engineeringMemory.length, impact };
 }
 
 router.post("/support/dev/specialists", async (req, res) => {
