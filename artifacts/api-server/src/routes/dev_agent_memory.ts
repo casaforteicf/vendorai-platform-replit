@@ -32,33 +32,6 @@ export type ExecutionMemoryEntry = {
   evidence: string[];
 };
 
-export type DevQualityMetrics = {
-  executions: number;
-  validated: number;
-  failed: number;
-  rolledBack: number;
-  pending: number;
-  validationRate: number;
-  failureRate: number;
-  rollbackRate: number;
-  qualityScore: number;
-  provenPlaybooks: number;
-  lastEvaluatedAt: string;
-};
-
-export type DevModuleProfile = {
-  module: string;
-  executions: number;
-  validated: number;
-  failed: number;
-  rolledBack: number;
-  pending: number;
-  qualityScore: number;
-  provenPlaybooks: number;
-  lastSeenAt: string;
-  topFiles: string[];
-};
-
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
   const repository = process.env["GITHUB_DEV_REPOSITORY"] ?? "casaforteicf/vendorai-platform-replit";
@@ -77,7 +50,7 @@ async function gh(path: string, init?: RequestInit) {
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Memory/2.1",
+      "User-Agent": "VendorAI-Dev-Memory/2.0",
       ...(init?.headers ?? {}),
     },
   });
@@ -182,135 +155,6 @@ export async function loadExecutionMemory(limit = 12): Promise<ExecutionMemoryEn
     .slice(-Math.max(1, Math.min(25, limit))) as ExecutionMemoryEntry[];
 }
 
-export function isSystemExecutionMemory(entry: ExecutionMemoryEntry) {
-  const status = entry.status.toLowerCase();
-  const engines = entry.engines.map((engine) => engine.toLowerCase());
-  return status.includes("incident") || status.includes("recovered") || engines.some((engine) => engine.includes("sentinel") || engine.includes("server-runtime"));
-}
-
-export function isProvenExecutionOutcome(entry: ExecutionMemoryEntry) {
-  if (isSystemExecutionMemory(entry)) return false;
-  const status = entry.status.toLowerCase();
-  return /production_validated|deploy_validated|validated_success|production_success/.test(status)
-    && entry.changedFiles.length > 0
-    && entry.failures.length === 0;
-}
-
-function executionOutcome(entry: ExecutionMemoryEntry): "validated" | "failed" | "rolled_back" | "pending" {
-  const status = entry.status.toLowerCase();
-  if (/rollback|rolled_back|reverted|revert/.test(status)) return "rolled_back";
-  if (/failed|failure|error|blocked|step_limit|unreachable/.test(status)) return "failed";
-  if (isProvenExecutionOutcome(entry)) return "validated";
-  return "pending";
-}
-
-function normalizeRouteModule(route: string) {
-  const clean = route.split("?")[0].split("#")[0].replace(/^\/+|\/+$/g, "").toLowerCase();
-  if (!clean) return "platform/root";
-  const parts = clean.split("/").filter(Boolean).filter((part) => part !== "api" && part !== "support");
-  if (!parts.length) return "platform/root";
-  if (parts[0] === "admin" && parts[1]) return `admin/${parts[1]}`;
-  return parts.slice(0, 2).join("/");
-}
-
-function inferFileModule(files: string[]) {
-  for (const path of files) {
-    const normalized = path.toLowerCase();
-    const pageMatch = normalized.match(/artifacts\/frontend\/src\/pages\/([^/.]+)/);
-    if (pageMatch?.[1]) return `frontend/${pageMatch[1]}`;
-    const routeMatch = normalized.match(/artifacts\/api-server\/src\/routes\/([^/.]+)/);
-    if (routeMatch?.[1]) return `backend/${routeMatch[1].replace(/^dev_agent_/, "dev-ia-")}`;
-  }
-  return null;
-}
-
-export function executionModuleKey(entry: ExecutionMemoryEntry) {
-  const routeModule = normalizeRouteModule(entry.route);
-  if (routeModule !== "platform/root") return routeModule;
-  return inferFileModule(entry.changedFiles) ?? routeModule;
-}
-
-function latestExecutionPerRequest(memory: ExecutionMemoryEntry[]) {
-  const grouped = new Map<string, ExecutionMemoryEntry[]>();
-  for (const entry of memory.filter((item) => !isSystemExecutionMemory(item))) {
-    const list = grouped.get(entry.requestId) ?? [];
-    list.push(entry);
-    grouped.set(entry.requestId, list);
-  }
-  return [...grouped.values()].map((entries) => {
-    const sorted = [...entries].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
-    const proven = entries.find(isProvenExecutionOutcome);
-    const rollback = entries.find((entry) => executionOutcome(entry) === "rolled_back");
-    const failure = entries.find((entry) => executionOutcome(entry) === "failed");
-    if (rollback) return rollback;
-    if (proven) return proven;
-    if (failure) return failure;
-    return sorted[0];
-  });
-}
-
-function scoreFromCounts(validated: number, failed: number, rolledBack: number, pending: number) {
-  const total = validated + failed + rolledBack + pending;
-  if (!total) return 100;
-  const weighted = validated * 100 + pending * 55 + failed * 15 + rolledBack * 5;
-  return Math.max(0, Math.min(100, Math.round(weighted / total)));
-}
-
-export function buildDevQualitySnapshot(memory: ExecutionMemoryEntry[]) {
-  const outcomes = latestExecutionPerRequest(memory);
-  const counts = { validated: 0, failed: 0, rolledBack: 0, pending: 0 };
-  for (const entry of outcomes) counts[executionOutcome(entry)] += 1;
-  const executions = outcomes.length;
-  const provenPlaybooks = memory.filter(isProvenExecutionOutcome).length;
-  const metrics: DevQualityMetrics = {
-    executions,
-    validated: counts.validated,
-    failed: counts.failed,
-    rolledBack: counts.rolledBack,
-    pending: counts.pending,
-    validationRate: executions ? Number((counts.validated / executions).toFixed(3)) : 0,
-    failureRate: executions ? Number((counts.failed / executions).toFixed(3)) : 0,
-    rollbackRate: executions ? Number((counts.rolledBack / executions).toFixed(3)) : 0,
-    qualityScore: scoreFromCounts(counts.validated, counts.failed, counts.rolledBack, counts.pending),
-    provenPlaybooks,
-    lastEvaluatedAt: new Date().toISOString(),
-  };
-
-  const modules = new Map<string, {
-    executions: ExecutionMemoryEntry[];
-    files: Map<string, number>;
-  }>();
-  for (const entry of outcomes) {
-    const module = executionModuleKey(entry);
-    const bucket = modules.get(module) ?? { executions: [], files: new Map<string, number>() };
-    bucket.executions.push(entry);
-    for (const file of entry.changedFiles) bucket.files.set(file, (bucket.files.get(file) ?? 0) + 1);
-    modules.set(module, bucket);
-  }
-
-  const profiles: DevModuleProfile[] = [...modules.entries()].map(([module, bucket]) => {
-    const moduleCounts = { validated: 0, failed: 0, rolledBack: 0, pending: 0 };
-    for (const entry of bucket.executions) moduleCounts[executionOutcome(entry)] += 1;
-    const topFiles = [...bucket.files.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([file]) => file);
-    const requestIds = new Set(bucket.executions.map((entry) => entry.requestId));
-    const modulePlaybooks = memory.filter((entry) => requestIds.has(entry.requestId) && isProvenExecutionOutcome(entry)).length;
-    return {
-      module,
-      executions: bucket.executions.length,
-      validated: moduleCounts.validated,
-      failed: moduleCounts.failed,
-      rolledBack: moduleCounts.rolledBack,
-      pending: moduleCounts.pending,
-      qualityScore: scoreFromCounts(moduleCounts.validated, moduleCounts.failed, moduleCounts.rolledBack, moduleCounts.pending),
-      provenPlaybooks: modulePlaybooks,
-      lastSeenAt: bucket.executions.map((entry) => entry.recordedAt).sort().at(-1) ?? new Date(0).toISOString(),
-      topFiles,
-    };
-  }).sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
-
-  return { metrics, modules: profiles };
-}
-
 export async function recordEngineeringMemory(entry: EngineeringMemoryEntry) {
   const issue = await ensureMemoryIssue();
   const existing = await loadEngineeringMemory(25);
@@ -392,24 +236,11 @@ const executionSchema = z.object({
 router.get("/support/dev/memory", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Somente Super Admin pode consultar a memória técnica." });
   try {
-    const [memory, executionMemory] = await Promise.all([loadEngineeringMemory(20), loadExecutionMemory(25)]);
-    const quality = buildDevQualitySnapshot(executionMemory);
-    return res.json({ success: true, memory, executionMemory, quality });
+    const [memory, executionMemory] = await Promise.all([loadEngineeringMemory(20), loadExecutionMemory(20)]);
+    return res.json({ success: true, memory, executionMemory });
   } catch (error) {
     req.log?.error({ err: error }, "dev-ia memory load failed");
     return res.status(500).json({ error: "Falha ao carregar memória técnica" });
-  }
-});
-
-router.get("/support/dev/quality", async (req, res) => {
-  if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Somente Super Admin pode consultar qualidade do Dev IA." });
-  try {
-    const executionMemory = await loadExecutionMemory(25);
-    const quality = buildDevQualitySnapshot(executionMemory);
-    return res.json({ success: true, ...quality });
-  } catch (error) {
-    req.log?.error({ err: error }, "dev-ia quality load failed");
-    return res.status(500).json({ error: "Falha ao avaliar qualidade do Dev IA" });
   }
 });
 
