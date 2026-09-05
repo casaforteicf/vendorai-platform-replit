@@ -52,6 +52,31 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+function writeJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Persistência é auxiliar: nunca pode derrubar o painel.
+  }
+}
+
+function removeStored(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Falha de storage não pode afetar a conversa.
+  }
+}
+
+function safeRequestId() {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  } catch {
+    // fallback abaixo
+  }
+  return `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function quickPrompt(label: string, route: string) {
   if (label === "Auditar esta tela") return `Audite a tela atual (${route}). Procure inconsistências de UX, bugs prováveis, duplicidades e riscos técnicos.`;
   if (label === "Reportar bug") return `Tenho um bug na tela atual (${route}). Diagnostique e corrija com a menor mudança segura possível.`;
@@ -88,23 +113,37 @@ export default function DevAgentOverlay() {
   const isSuperAdmin = user?.platformRole === "super_admin";
   const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
 
-  useEffect(() => localStorage.setItem(STORAGE_MESSAGES, JSON.stringify(messages.slice(-100))), [messages]);
-  useEffect(() => localStorage.setItem(STORAGE_REQUESTS, JSON.stringify(requests.slice(0, 100))), [requests]);
-  useEffect(() => localStorage.setItem(STORAGE_AUTONOMY, JSON.stringify(autonomous)), [autonomous]);
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, sending, tab]);
+  useEffect(() => { writeJson(STORAGE_MESSAGES, messages.slice(-100)); }, [messages]);
+  useEffect(() => { writeJson(STORAGE_REQUESTS, requests.slice(0, 100)); }, [requests]);
+  useEffect(() => { writeJson(STORAGE_AUTONOMY, autonomous); }, [autonomous]);
+  useEffect(() => {
+    try {
+      const element = endRef.current;
+      if (element && typeof element.scrollIntoView === "function") {
+        element.scrollIntoView({ block: "end" });
+      }
+    } catch {
+      // WebViews antigos podem não suportar scrollIntoView com opções.
+    }
+  }, [messages, sending, tab]);
 
   if (!isSuperAdmin) return null;
 
   function authHeaders() {
-    const token = localStorage.getItem("vendorai_token");
+    let token: string | null = null;
+    try {
+      token = localStorage.getItem("vendorai_token");
+    } catch {
+      token = null;
+    }
     return { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   }
 
   function clearHistory() {
     setMessages([]);
     setRequests([]);
-    localStorage.removeItem(STORAGE_MESSAGES);
-    localStorage.removeItem(STORAGE_REQUESTS);
+    removeStored(STORAGE_MESSAGES);
+    removeStored(STORAGE_REQUESTS);
   }
 
   async function createGithubTask(request: DevRequest) {
@@ -167,7 +206,7 @@ export default function DevAgentOverlay() {
     const text = raw.trim();
     if (!text || sending || workingId) return;
 
-    const requestId = crypto.randomUUID();
+    const requestId = safeRequestId();
     const route = `${window.location.pathname}${window.location.search}`;
     const request: DevRequest = { id: requestId, text, route, createdAt: new Date().toISOString(), status: "analisando" };
     const prior = messages;
@@ -238,7 +277,7 @@ export default function DevAgentOverlay() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-end bg-black/20 p-0 sm:p-5" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+        <div className="fixed inset-0 z-[100] flex items-end justify-end bg-black/20 p-0 sm:p-5">
           <section className="flex h-[92vh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-[84vh] sm:max-w-[600px] sm:rounded-2xl sm:border">
             <header className="border-b bg-slate-950 px-5 py-4 text-white">
               <div className="flex items-start justify-between gap-4">
