@@ -3,6 +3,28 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
+export type OnboardingImplementationMode = "guided" | "assisted" | "automatic";
+export type OnboardingImplementationState = {
+  version: 1;
+  mode: OnboardingImplementationMode;
+  manual: Record<string, boolean>;
+  timeline: Array<{
+    id: string;
+    type: string;
+    label: string;
+    at: string;
+    metadata?: Record<string, unknown>;
+  }>;
+  goLiveAt: string | null;
+  followupsCompleted: Partial<Record<"1" | "3" | "7" | "15" | "30", string>>;
+  safeActionsLastRunAt: string | null;
+  handoffs: {
+    customerSuccessAt: string | null;
+    devAt: string | null;
+    devTicketId: string | null;
+  };
+};
+
 export const onboardingProgressTable = pgTable("onboarding_progress", {
   id: text("id")
     .primaryKey()
@@ -21,6 +43,7 @@ export const onboardingProgressTable = pgTable("onboarding_progress", {
   dadosStep1:     jsonb("dados_step1").$type<Record<string, unknown>>(),
   dadosStep2:     jsonb("dados_step2").$type<Record<string, unknown>>(),
   dadosStep3:     jsonb("dados_step3").$type<Record<string, unknown>>(),
+  implementationState: jsonb("implementation_state").$type<OnboardingImplementationState | null>(),
   createdAt:      timestamp("created_at").notNull().defaultNow(),
   updatedAt:      timestamp("updated_at").notNull().defaultNow(),
 });

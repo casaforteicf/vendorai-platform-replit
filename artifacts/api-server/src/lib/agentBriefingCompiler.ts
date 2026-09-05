@@ -17,7 +17,7 @@ import { callOpenAI } from "./ai-gateway.js";
 
 export async function compileAgentBusinessBriefing(
   tenantId: string,
-  extraNotes: string | undefined,
+  extraNotes: string | undefined = undefined,
   log?: Logger,
 ): Promise<{ briefing: string; agentsUpdated: string[] }> {
   const [profile] = await db
