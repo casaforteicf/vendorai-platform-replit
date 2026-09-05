@@ -17,8 +17,6 @@ export interface ChannelPublishContext {
   campaignId: string;
   channel: ChannelId;
   authorization: PaidPublishAuthorization;
-  /** @deprecated Autonomous permission is resolved server-side and caller values are ignored. */
-  allowPublishAds?: boolean;
   designQa?: DesignQaResult | null;
   requireDesignQa?: boolean;
 }
@@ -83,7 +81,7 @@ async function resolveCampaignDesignQa(context: ChannelPublishContext): Promise<
   });
 }
 
-export async function publishCampaignThroughChannelRegistry(context: ChannelPublishContext) {
+export async function publishCampaignThroughChannelRegistry<T extends ChannelPublishContext>(context: T) {
   const readiness = getChannelPublishReadiness(context.channel);
   assertChannelCanPublish(context.channel);
   if (readiness.definition.status !== 'active') {
