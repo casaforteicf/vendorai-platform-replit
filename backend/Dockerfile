@@ -28,7 +28,7 @@ RUN corepack enable \
 COPY . .
 
 RUN pnpm install --frozen-lockfile \
-  && pnpm --filter @workspace/api-server run build
+  && pnpm --filter @workspace/api-server run ci:railway
 
 ENV NODE_ENV=production
 
