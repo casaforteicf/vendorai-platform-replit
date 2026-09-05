@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, contentCalendarItemsTable, mediaPlansTable, type MediaPlanConteudo } from "@workspace/db";
+import { db, contentCalendarItemsTable, mediaPlansTable, type MediaPlanConteudo, type MediaPlanPeriod } from "@workspace/db";
 import { generateMediaPlan, MediaPlanError } from "../services/media-plan.js";
 import { alignMediaFunctionsInContent, enrichMediaPlanForPeriod } from "../services/media-plan-period.js";
 import { MEDIA_FUNCTION_VERSION } from "../services/media-channel-functions.js";
@@ -12,7 +12,21 @@ function canAccess(req: import("express").Request, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
 
-const periodSchema = z.union([z.literal(30), z.literal(60), z.literal(90)]);
+const periodDaysSchema = z.number().finite().positive().max(3650);
+const flexiblePeriodSchema = z.object({
+  inicioEm: z.string().datetime().optional(),
+  fimEm: z.string().datetime().nullable().optional(),
+  aberto: z.boolean().optional().default(false),
+  duracaoValor: z.number().finite().positive().max(3650).optional(),
+  duracaoUnidade: z.enum(["horas", "dias"]).optional(),
+}).optional();
+const budgetSchema = z.object({
+  valor: z.number().finite().positive().max(1_000_000_000),
+  tipo: z.enum(["total", "diario", "semanal", "mensal"]).default("total"),
+  moeda: z.literal("BRL").default("BRL"),
+  gestao: z.literal("ia_autonoma").default("ia_autonoma"),
+  limiteRigido: z.literal(true).default(true),
+}).optional();
 const planningConfigSchema = z.object({
   objetivoPrincipal: z.string().trim().max(300).optional().default(""),
   produtoServicoPrioritario: z.string().trim().max(300).optional().default(""),
@@ -35,12 +49,41 @@ const EMPTY_PLANNING_CONFIG: PlanningConfig = {
 };
 
 const generateBodySchema = z.object({
-  periodoDias: periodSchema.default(30),
+  periodoDias: periodDaysSchema.optional().default(30),
+  periodo: flexiblePeriodSchema,
+  nomeCampanha: z.string().trim().max(200).optional(),
+  ofertaCampanha: z.string().trim().max(500).optional(),
+  orcamento: budgetSchema,
   configuracao: planningConfigSchema.optional().default(EMPTY_PLANNING_CONFIG),
 });
 
 function normalizedChannel(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+function operationalDays(periodoDias: number, periodo?: z.infer<typeof flexiblePeriodSchema>): number {
+  if (periodo?.duracaoValor && periodo.duracaoUnidade) {
+    return Math.max(1, Math.ceil(periodo.duracaoUnidade === "horas" ? periodo.duracaoValor / 24 : periodo.duracaoValor));
+  }
+  if (periodo?.inicioEm && periodo.fimEm) {
+    const start = Date.parse(periodo.inicioEm);
+    const end = Date.parse(periodo.fimEm);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      return Math.max(1, Math.ceil((end - start) / 86_400_000));
+    }
+  }
+  return Math.max(1, Math.ceil(periodoDias));
+}
+
+function normalizedPeriod(periodo?: z.infer<typeof flexiblePeriodSchema>): MediaPlanPeriod | undefined {
+  if (!periodo) return undefined;
+  return {
+    inicioEm: periodo.inicioEm,
+    fimEm: periodo.aberto ? null : periodo.fimEm,
+    aberto: Boolean(periodo.aberto),
+    duracaoValor: periodo.duracaoValor,
+    duracaoUnidade: periodo.duracaoUnidade,
+  };
 }
 
 function planningConfigLines(config: PlanningConfig): string[] {
@@ -97,7 +140,7 @@ function applyPlanningConfigurationToCampaigns(
     produtoServico: config.produtoServicoPrioritario || campaign.produtoServico,
     publico: config.publicoPrioritario || campaign.publico,
     regiao: config.regiao || campaign.regiao,
-    oferta: config.ofertaPrincipal || campaign.oferta,
+    oferta: config.ofertaPrincipal || conteudo.ofertaCampanha || campaign.oferta,
     metaPrincipal: config.objetivoPrincipal
       ? `${config.objetivoPrincipal} · ${campaign.metaPrincipal}`
       : campaign.metaPrincipal,
@@ -131,13 +174,24 @@ router.post("/tenants/:tenantId/media-plan/gerar", async (req, res) => {
   }
   try {
     const { plan } = await generateMediaPlan(tenantId, req.user?.sub ?? null);
-    const conteudoBase = applyPlanningConfigurationToBase(plan.conteudo, parsed.data.configuracao);
-    const enriched = await enrichMediaPlanForPeriod(tenantId, conteudoBase, parsed.data.periodoDias);
+    const diasOperacionais = operationalDays(parsed.data.periodoDias, parsed.data.periodo);
+    const configuredBase = applyPlanningConfigurationToBase(plan.conteudo, parsed.data.configuracao);
+    const conteudoBase: MediaPlanConteudo = {
+      ...configuredBase,
+      periodoDias: diasOperacionais,
+      periodo: normalizedPeriod(parsed.data.periodo),
+      nomeCampanha: parsed.data.nomeCampanha,
+      ofertaCampanha: parsed.data.ofertaCampanha,
+      orcamento: parsed.data.orcamento,
+    };
+    const enriched = await enrichMediaPlanForPeriod(tenantId, conteudoBase, diasOperacionais);
     const conteudo = applyPlanningConfigurationToCampaigns(enriched, parsed.data.configuracao);
     const contextoUsado = {
       ...(plan.contextoUsado ?? {}),
       configuracaoPlanejamento: parsed.data.configuracao,
       configuracaoResumo: planningConfigLines(parsed.data.configuracao),
+      periodoPlanejamento: conteudo.periodo ?? { duracaoValor: diasOperacionais, duracaoUnidade: "dias" },
+      orcamentoPlanejamento: conteudo.orcamento ?? null,
     };
     const [updated] = await db
       .update(mediaPlansTable)
@@ -173,8 +227,6 @@ router.get("/tenants/:tenantId/media-plan", async (req, res) => {
     return;
   }
 
-  // Adequa planos já salvos sem replanejar campanhas, trocar mensagens ou
-  // mexer no status de aprovação. Só corrige a função operacional de cada mídia.
   if ((latest.conteudo.campanhas?.length ?? 0) > 0 && latest.conteudo.versaoFuncoesMidia !== MEDIA_FUNCTION_VERSION) {
     const conteudo = alignMediaFunctionsInContent(latest.conteudo);
     const [updated] = await db
@@ -189,11 +241,8 @@ router.get("/tenants/:tenantId/media-plan", async (req, res) => {
   res.json(latest);
 });
 
-// Atualiza, no próprio registro, planos criados antes da estrutura 30/60/90
-// ou planos que a IA tenha deixado incompletos em termos de canais. Se o plano
-// já for multicanal, apenas adequa as funções oficiais sem replanejar a estratégia.
 const completeBodySchema = z.object({
-  periodoDias: periodSchema.optional(),
+  periodoDias: periodDaysSchema.optional(),
 });
 
 router.post("/tenants/:tenantId/media-plan/:planId/completar", async (req, res) => {
@@ -332,6 +381,8 @@ router.get("/tenants/:tenantId/media-plan/historico", async (req, res) => {
     id: row.id,
     createdAt: row.createdAt,
     periodoDias: row.conteudo.periodoDias ?? 30,
+    periodo: row.conteudo.periodo ?? null,
+    orcamento: row.conteudo.orcamento ?? null,
     campanhas: row.conteudo.campanhas?.length ?? 0,
     statusPlanejamento: row.conteudo.statusPlanejamento ?? "gerado",
   })));

@@ -17,14 +17,12 @@ function canAccess(req: import("express").Request, tenantId: string): boolean {
 }
 
 function weeksForPeriod(periodoDias: number): number {
-  if (periodoDias >= 90) return 13;
-  if (periodoDias >= 60) return 8;
-  return 4;
+  return Math.max(1, Math.min(53, Math.ceil(Math.max(1, periodoDias) / 7)));
 }
 
 const gerarBodySchema = z.object({
   mediaPlanId: z.string().min(1),
-  semanas: z.number().int().min(1).max(13).default(4),
+  semanas: z.number().int().min(1).max(53).default(4),
   substituirPlanejado: z.boolean().optional().default(false),
 });
 
@@ -75,10 +73,6 @@ router.get("/tenants/:tenantId/content-calendar", async (req, res) => {
     .where(and(...conditions))
     .orderBy(asc(contentCalendarItemsTable.dataAgendada));
 
-  // Recuperação automática do fluxo do Planejador: se o plano mais recente
-  // já possui campanhas, mas nenhuma linha do calendário foi persistida,
-  // distribui as ações de forma determinística. Isso cobre falhas/timeout da
-  // segunda etapa sem exigir que o usuário gere todo o plano novamente.
   if (typeof inicio !== "string" && typeof fim !== "string") {
     const [latestPlan] = await db
       .select()

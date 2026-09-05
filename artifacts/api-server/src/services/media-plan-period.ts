@@ -25,10 +25,14 @@ const AVAILABLE_CHANNELS = [
   "SMS",
 ] as const;
 
-function campaignCount(periodoDias: 30 | 60 | 90): number {
-  if (periodoDias === 30) return 3;
-  if (periodoDias === 60) return 5;
-  return 8;
+function campaignCount(periodoDias: number): number {
+  if (periodoDias <= 1) return 1;
+  if (periodoDias <= 7) return 2;
+  if (periodoDias <= 30) return 3;
+  if (periodoDias <= 60) return 5;
+  if (periodoDias <= 90) return 8;
+  if (periodoDias <= 180) return 10;
+  return 12;
 }
 
 function normalizeText(value: unknown, fallback: string): string {
@@ -93,9 +97,10 @@ function normalizeChannel(
   }, context);
 }
 
-function normalizeCampaign(raw: unknown, index: number, periodoDias: 30 | 60 | 90): MediaPlanCampaign | null {
+function normalizeCampaign(raw: unknown, index: number, periodoDias: number): MediaPlanCampaign | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const item = raw as Record<string, unknown>;
+  const count = campaignCount(periodoDias);
   const objective = normalizeText(item.objetivo, "Gerar oportunidades");
   const phase = normalizeText(item.fase, "aquisição");
   const canais = Array.isArray(item.canais)
@@ -105,7 +110,8 @@ function normalizeCampaign(raw: unknown, index: number, periodoDias: 30 | 60 | 9
           .filter((v): v is MediaPlanCampaignChannel => Boolean(v)),
       )
     : [];
-  const duracaoDefault = Math.max(14, Math.round(periodoDias / Math.max(2, campaignCount(periodoDias) / 2)));
+  const minDuration = periodoDias <= 1 ? 1 : Math.min(3, periodoDias);
+  const duracaoDefault = Math.max(minDuration, Math.round(periodoDias / Math.max(1, count / 2)));
   return {
     id: `camp-${index + 1}`,
     nome: normalizeText(item.nome, `Campanha ${index + 1}`),
@@ -116,8 +122,8 @@ function normalizeCampaign(raw: unknown, index: number, periodoDias: 30 | 60 | 9
     oferta: normalizeText(item.oferta, "Próximo passo comercial claro"),
     mensagemCentral: normalizeText(item.mensagemCentral, "Conectar uma dor real do público à solução oferecida"),
     fase: phase,
-    inicioOffsetDias: normalizeNumber(item.inicioOffsetDias, Math.min(periodoDias - 1, index * Math.max(5, Math.floor(periodoDias / campaignCount(periodoDias)))), 0, periodoDias - 1),
-    duracaoDias: normalizeNumber(item.duracaoDias, duracaoDefault, 3, periodoDias),
+    inicioOffsetDias: normalizeNumber(item.inicioOffsetDias, Math.min(periodoDias - 1, index * Math.max(1, Math.floor(periodoDias / count))), 0, Math.max(0, periodoDias - 1)),
+    duracaoDias: normalizeNumber(item.duracaoDias, duracaoDefault, minDuration, Math.max(minDuration, periodoDias)),
     intensidadeGeografica: normalizeIntensity(item.intensidadeGeografica),
     regraComunicacaoGeografica: normalizeText(
       item.regraComunicacaoGeografica,
@@ -169,7 +175,7 @@ function fallbackChannels(
   return dedupeChannels(aligned);
 }
 
-function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: 30 | 60 | 90): MediaPlanCampaign[] {
+function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: number): MediaPlanCampaign[] {
   const count = campaignCount(periodoDias);
   const pillars = conteudo.pilaresConteudo?.length ? conteudo.pilaresConteudo : ["Dor", "Educação", "Prova", "Oferta", "Conversão"];
   const objectives = [
@@ -193,18 +199,19 @@ function fallbackCampaigns(conteudo: MediaPlanConteudo, periodoDias: 30 | 60 | 9
           : "conversão";
     const canais = fallbackChannels(conteudo, index, { phase, objective });
     const inicio = Math.min(periodoDias - 1, Math.round((index * periodoDias) / count));
-    const duracao = Math.min(periodoDias - inicio, Math.max(14, Math.round(periodoDias / 2)));
+    const minDuration = periodoDias <= 1 ? 1 : Math.min(3, periodoDias);
+    const duracao = Math.min(periodoDias - inicio, Math.max(minDuration, Math.round(periodoDias / 2)));
     return {
       id: `camp-${index + 1}`,
-      nome: objective,
+      nome: count === 1 && conteudo.nomeCampanha ? conteudo.nomeCampanha : objective,
       objetivo: objective,
       produtoServico: "Produto ou serviço prioritário do período",
       publico: "Público prioritário definido no perfil do negócio",
-      oferta: "Oferta ou próximo passo comercial adequado à etapa",
+      oferta: conteudo.ofertaCampanha || "Oferta ou próximo passo comercial adequado à etapa",
       mensagemCentral: pillars[index % pillars.length] ?? "Mensagem principal da campanha",
       fase: phase,
-      inicioOffsetDias: inicio,
-      duracaoDias: Math.max(3, duracao),
+      inicioOffsetDias: Math.max(0, inicio),
+      duracaoDias: Math.max(minDuration, duracao),
       intensidadeGeografica: "baixa",
       regraComunicacaoGeografica: "Use a região principalmente na segmentação. Mencione-a explicitamente apenas quando aumentar intenção ou contexto (cerca de 20–30% das peças), evitando repetir o local em todo material.",
       canais,
@@ -265,9 +272,14 @@ function mergeChannelCoverage(aiCampaign: MediaPlanCampaign, fallbackCampaign: M
   };
 }
 
+function budgetPrompt(conteudo: MediaPlanConteudo): string {
+  if (!conteudo.orcamento) return "Sem orçamento financeiro informado; não invente valores.";
+  return `Orçamento humano: R$ ${conteudo.orcamento.valor.toFixed(2)} (${conteudo.orcamento.tipo}). A IA pode distribuir percentuais entre canais pagos e ajustar a alocação estratégica, mas a soma deve respeitar 100% do orçamento disponível e o valor informado é limite rígido; nunca autorize gasto acima dele.`;
+}
+
 const SYSTEM_PROMPT = `Você é o Planejador de Mídia do VendorAI. Sua função é DIREÇÃO ESTRATÉGICA; a execução ocorrerá depois no Gerador de Conteúdo.
 
-Crie campanhas completas para um período de 30, 60 ou 90 dias. Cada campanha deve agrupar todos os canais que fazem sentido para o mesmo objetivo; NÃO crie uma campanha separada por canal.
+Crie campanhas completas para qualquer período informado pelo usuário, de campanhas muito curtas até ciclos longos. Cada campanha deve agrupar todos os canais que fazem sentido para o mesmo objetivo; NÃO crie uma campanha separada por canal.
 
 Canais disponíveis no ecossistema: ${AVAILABLE_CHANNELS.join(", ")}.
 Escolha os canais relevantes para cada campanha. Cada canal e cada formato/mídia têm uma função própria no funil; não use todos como se fossem posts equivalentes e não copie a mesma mensagem literalmente entre plataformas.
@@ -281,28 +293,36 @@ REGRA GEOGRÁFICA IMPORTANTE: localização e bairro podem orientar a segmentaç
 
 Frequência: respeite a função oficial de cada canal. Mídia paga pode ficar contínua com renovação por fadiga/performance; WhatsApp/e-mail devem responder a comportamento e estágio; Site/LP são destinos e não devem receber uma falsa frequência de postagem; SMS é gatilho pontual, não mídia de descoberta.
 
-A quantidade de campanhas deve ser aproximadamente: 3 para 30 dias, 5 para 60 dias e 8 para 90 dias. Campanhas podem se sobrepor.
+A quantidade de campanhas deve ser proporcional ao período: 1 para até 1 dia, 2 para até 7 dias, cerca de 3 para 30 dias, 5 para 60, 8 para 90, até 12 para ciclos longos. Campanhas podem se sobrepor.
+
+Quando houver orçamento informado, distribua percentualOrcamento SOMENTE entre canais pagos. A soma dos canais pagos deve ser aproximadamente 100%. Canais orgânicos, próprios e diretos podem usar 0%. O orçamento é um limite humano rígido; o planejamento não autoriza publicação, ativação nem gasto.
 
 Retorne APENAS JSON válido, sem markdown, no formato {"campanhas":[...]}. Cada campanha precisa: nome, objetivo, produtoServico, publico, regiao opcional, oferta, mensagemCentral, fase, inicioOffsetDias, duracaoDias, intensidadeGeografica (baixa|media|alta), regraComunicacaoGeografica, canais, kpiPrincipal, metaPrincipal, materiaisPlanejados. Cada canal precisa: canal, funcao, etapaFunil, formatos[], frequencia, quantidadeMateriais, kpiPrincipal e percentualOrcamento opcional. A resposta da IA será normalizada pelas funções oficiais acima.`;
 
 export async function enrichMediaPlanForPeriod(
   tenantId: string,
   conteudoBase: MediaPlanConteudo,
-  periodoDias: 30 | 60 | 90,
+  periodoDias: number,
 ): Promise<MediaPlanConteudo> {
-  const fallback = fallbackCampaigns(conteudoBase, periodoDias);
+  const normalizedDays = Math.max(1, Math.ceil(periodoDias));
+  const fallback = fallbackCampaigns(conteudoBase, normalizedDays);
   let campanhas = fallback;
 
   try {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: periodoDias === 90 ? 7000 : 5000,
+      max_tokens: normalizedDays > 90 ? 7000 : 5000,
       system: SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
           content: JSON.stringify({
-            periodoDias,
+            periodoDias: normalizedDays,
+            periodo: conteudoBase.periodo,
+            nomeCampanha: conteudoBase.nomeCampanha,
+            ofertaCampanha: conteudoBase.ofertaCampanha,
+            orcamento: conteudoBase.orcamento,
+            regraOrcamento: budgetPrompt(conteudoBase),
             diagnostico: conteudoBase.diagnostico,
             oportunidades: conteudoBase.oportunidades,
             pilaresConteudo: conteudoBase.pilaresConteudo,
@@ -316,19 +336,19 @@ export async function enrichMediaPlanForPeriod(
     const raw = block && block.type === "text" ? block.text.trim() : "";
     const parsed = JSON.parse(raw.replace(/^```json\s*|```$/g, "").trim()) as { campanhas?: unknown[] };
     const normalized = Array.isArray(parsed.campanhas)
-      ? parsed.campanhas.map((item, index) => normalizeCampaign(item, index, periodoDias)).filter((item): item is MediaPlanCampaign => Boolean(item))
+      ? parsed.campanhas.map((item, index) => normalizeCampaign(item, index, normalizedDays)).filter((item): item is MediaPlanCampaign => Boolean(item))
       : [];
-    if (normalized.length >= 2) {
+    if (normalized.length >= 1) {
       campanhas = normalized.map((campaign, index) => mergeChannelCoverage(campaign, fallback[index % fallback.length]!));
     }
   } catch (err) {
-    logger.warn({ err, tenantId, periodoDias }, "media-plan-period: IA falhou; usando campanhas determinísticas");
+    logger.warn({ err, tenantId, periodoDias: normalizedDays }, "media-plan-period: IA falhou; usando campanhas determinísticas");
   }
 
   const totalAcoesPlanejadas = campanhas.reduce((acc, campanha) => acc + campanha.materiaisPlanejados, 0);
   return {
     ...conteudoBase,
-    periodoDias,
+    periodoDias: normalizedDays,
     campanhas,
     totalAcoesPlanejadas,
     statusPlanejamento: "em_revisao",
