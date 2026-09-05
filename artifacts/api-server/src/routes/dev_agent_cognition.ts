@@ -2,8 +2,10 @@ import { Router } from "express";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import investigatorRouter from "./dev_agent_investigator";
 
 const router = Router();
+router.use(investigatorRouter);
 
 const cognitionSchema = z.object({
   requestId: z.string().min(1).max(120),
