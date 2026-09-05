@@ -12,6 +12,7 @@
     "test": "vitest run",
     "audit:tenant": "tsx ./src/scripts/audit-tenant-isolation.ts",
     "audit:tenant:strict": "tsx ./src/scripts/audit-tenant-isolation.ts --strict",
+    "ci:railway": "tsc -p tsconfig.launch-ci.json --noEmit && vitest run src/lib/trial-tenant-resolution.test.ts src/lib/vendorai-subscription-lifecycle.test.ts src/lib/vendorai-subscription-rules.test.ts && pnpm run audit:tenant:strict && pnpm run build",
     "seed-segment-templates": "tsx ./src/seed-segment-templates.ts"
   },
   "dependencies": {
