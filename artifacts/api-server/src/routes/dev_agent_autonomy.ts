@@ -119,9 +119,14 @@ function isBackendPath(path: string) {
   return BACKEND_PATH_PATTERNS.some((pattern) => pattern.test(path));
 }
 
+function normalizeVercelContext(value: unknown) {
+  return String(value ?? "").replace(/^Vercel\s*[–-]\s*/i, "").trim();
+}
+
 function evaluateVendorAiReleaseGate(statuses: any[]) {
   const checks = (statuses ?? []).map((item: any) => ({
-    context: String(item?.context ?? ""),
+    context: normalizeVercelContext(item?.context),
+    rawContext: String(item?.context ?? ""),
     state: String(item?.state ?? "pending"),
     targetUrl: item?.target_url ?? null,
   }));
