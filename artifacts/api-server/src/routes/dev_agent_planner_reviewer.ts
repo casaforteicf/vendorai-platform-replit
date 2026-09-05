@@ -13,6 +13,8 @@ const planSchema = z.object({
   investigation: z.record(z.string(), z.any()).optional().default({}),
 });
 
+export type PlannerInput = z.infer<typeof planSchema>;
+
 export type DevExecutionPlan = {
   objective: string;
   approach: string;
@@ -164,39 +166,41 @@ function normalizeReview(value: any): AdversarialReview {
   };
 }
 
+export async function createExecutionPlan(context: PlannerInput): Promise<{ plan: DevExecutionPlan; engine: string }> {
+  let raw = "";
+  let engine = "claude-sonnet-4-6";
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2600,
+      temperature: 0,
+      system: PLANNER_PROMPT,
+      messages: [{ role: "user", content: JSON.stringify(context) }],
+    });
+    raw = message.content.filter((block: any) => block.type === "text").map((block: any) => block.text).join("");
+  } catch {
+    engine = "gpt-4o-mini-fallback";
+    const openai = await getOpenAIForTenant("");
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      max_tokens: 2600,
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: PLANNER_PROMPT }, { role: "user", content: JSON.stringify(context) }],
+    });
+    raw = completion.choices[0]?.message?.content ?? "{}";
+  }
+  return { plan: normalizePlan(parseJson(raw)), engine };
+}
+
 router.post("/support/dev/plan", async (req, res) => {
   if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Somente Super Admin pode usar o Planner do Dev IA." });
   const parsed = planSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Payload inválido", details: parsed.error.flatten() });
 
   try {
-    const context = parsed.data;
-    let raw = "";
-    let engine = "claude-sonnet-4-6";
-    try {
-      const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 2600,
-        temperature: 0,
-        system: PLANNER_PROMPT,
-        messages: [{ role: "user", content: JSON.stringify(context) }],
-      });
-      raw = message.content.filter((block: any) => block.type === "text").map((block: any) => block.text).join("");
-    } catch (anthropicError) {
-      req.log?.warn({ err: anthropicError }, "dev-ia planner: anthropic falhou, usando fallback");
-      engine = "gpt-4o-mini-fallback";
-      const openai = await getOpenAIForTenant("");
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0,
-        max_tokens: 2600,
-        response_format: { type: "json_object" },
-        messages: [{ role: "system", content: PLANNER_PROMPT }, { role: "user", content: JSON.stringify(context) }],
-      });
-      raw = completion.choices[0]?.message?.content ?? "{}";
-    }
-    const plan = normalizePlan(parseJson(raw));
-    return res.json({ success: true, plan, engine });
+    const result = await createExecutionPlan(parsed.data);
+    return res.json({ success: true, ...result });
   } catch (error) {
     req.log?.error({ err: error }, "dev-ia planner failed");
     return res.status(500).json({ error: "Falha no Planner do Dev IA" });
