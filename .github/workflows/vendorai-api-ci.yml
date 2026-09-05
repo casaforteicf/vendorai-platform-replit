@@ -8,9 +8,12 @@ on:
       - ".github/workflows/vendorai-api-ci.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   api:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
       # @workspace/db creates the pg Pool at module import time. These focused
@@ -52,6 +55,9 @@ jobs:
           src/lib/trial-tenant-resolution.test.ts
           src/lib/vendorai-subscription-lifecycle.test.ts
           src/lib/vendorai-subscription-rules.test.ts
+
+      - name: Tenant isolation audit
+        run: pnpm --filter @workspace/api-server audit:tenant:strict
 
       # Keep repository-wide TypeScript debt visible without allowing unrelated
       # legacy modules (PraçaAI, Access License, agents, stories, etc.) to hide
