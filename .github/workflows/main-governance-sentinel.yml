@@ -1,0 +1,71 @@
+name: Main Governance Sentinel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  verify-main-origin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify that main commit came from a merged PR
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo="${GITHUB_REPOSITORY}"
+          sha="${GITHUB_SHA}"
+          api="https://api.github.com/repos/${repo}/commits/${sha}/pulls"
+
+          response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}")"
+
+          matching_prs="$(jq --arg sha "${sha}" \
+            '[.[] | select(.merged_at != null and .merge_commit_sha == $sha)] | length' \
+            <<<"${response}")"
+
+          if [[ "${matching_prs}" -gt 0 ]]; then
+            echo "Main governance OK: ${sha} is the merge commit of a merged PR."
+            echo "violation=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "violation=true" >> "${GITHUB_OUTPUT}"
+          echo "Main governance violation: ${sha} is not the merge commit of a merged PR." >&2
+          exit 1
+
+      - name: Open governance incident
+        if: failure() && steps.verify.outputs.violation == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          short_sha="${GITHUB_SHA:0:7}"
+          title="[Governance] main recebeu commit sem PR: ${short_sha}"
+          body="A Main Governance Sentinel detectou que o commit ${GITHUB_SHA} chegou à branch main sem corresponder ao merge commit de um pull request mergeado.\n\nAção requerida: investigar a origem, validar o diff e decidir se a alteração deve ser revertida ou formalizada por PR.\n\nWorkflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          payload="$(jq -n --arg title "${title}" --arg body "${body}" '{title:$title, body:$body}')"
+
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues" \
+            -d "${payload}"
