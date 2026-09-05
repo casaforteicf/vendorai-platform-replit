@@ -111,6 +111,7 @@ const layers = [
   "Cérebro Executivo",
   "Investigador Técnico",
   "Memória Técnica",
+  "Playbooks Aprendidos",
   "Grafo Vivo de Impacto",
   "Conselho de Especialistas",
   "Planner",
@@ -124,6 +125,18 @@ const layers = [
 
 function shortSha(value: string | null | undefined) {
   return value ? value.slice(0, 9) : "indisponível";
+}
+
+function normalizeStatus(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s_-]+/g, " ");
+}
+
+function isProvenPlaybook(entry: ExecutionMemoryEntry) {
+  return /recover|validat|success|complete|conclu|deploy/.test(normalizeStatus(entry.status));
 }
 
 function productionLabel(state?: ProductionValidation["state"]) {
@@ -181,6 +194,7 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
   const [validation, setValidation] = useState<ProductionValidation | null>(null);
   const [readiness, setReadiness] = useState<DevAgentReadiness | null>(null);
   const [memory, setMemory] = useState<MemoryEntry[]>([]);
+  const [playbooks, setPlaybooks] = useState<ExecutionMemoryEntry[]>([]);
   const [incidents, setIncidents] = useState<ExecutionMemoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -210,18 +224,18 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
       if (!validationResponse.ok) throw new Error(validationData?.error ?? "Falha ao validar produção");
       if (!readinessResponse.ok) throw new Error(readinessData?.error ?? "Falha ao verificar prontidão do Dev IA");
 
+      const executionMemory: ExecutionMemoryEntry[] = Array.isArray(memoryData?.executionMemory) ? memoryData.executionMemory : [];
       setContext(contextData?.context ?? null);
       setValidation(validationData ?? null);
       setReadiness(readinessData?.readiness ?? null);
       setMemory(Array.isArray(memoryData?.memory) ? memoryData.memory.slice().reverse().slice(0, 8) : []);
+      setPlaybooks(executionMemory.filter(isProvenPlaybook).slice().reverse().slice(0, 8));
       setIncidents(
-        Array.isArray(memoryData?.executionMemory)
-          ? memoryData.executionMemory
-              .filter((item: ExecutionMemoryEntry) => item?.status === "production_incident" || item?.status === "production_recovered")
-              .slice()
-              .reverse()
-              .slice(0, 8)
-          : [],
+        executionMemory
+          .filter((item) => item?.status === "production_incident" || item?.status === "production_recovered")
+          .slice()
+          .reverse()
+          .slice(0, 8),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar Centro de Engenharia");
@@ -365,9 +379,9 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
         </div>
 
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Activity className="h-4 w-4" /> Estado operacional</div>
-          <p className="mt-2 text-sm font-semibold text-slate-950">{context?.productionState ?? "unknown"}</p>
-          <p className="mt-1 text-[11px] text-slate-500">checado {context?.checkedAt ? new Date(context.checkedAt).toLocaleTimeString("pt-BR") : "—"}</p>
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><ShieldCheck className="h-4 w-4" /> Playbooks</div>
+          <p className="mt-2 text-2xl font-semibold text-slate-950">{playbooks.length}</p>
+          <p className="text-[11px] text-slate-500">execuções comprovadas disponíveis</p>
         </div>
       </div>
 
@@ -396,11 +410,48 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
         </section>
       ) : null}
 
+      <section className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+            <div>
+              <h4 className="text-sm font-semibold text-emerald-950">Playbooks Aprendidos</h4>
+              <p className="mt-1 text-[11px] leading-relaxed text-emerald-800/80">Soluções anteriores com desfecho positivo confirmado. Servem como experiência reutilizável, nunca como autorização automática: código, runtime, risco e testes atuais continuam obrigatórios.</p>
+            </div>
+          </div>
+          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">{playbooks.length} comprovados</span>
+        </div>
+        <div className="mt-3 space-y-2">
+          {playbooks.length === 0 ? (
+            <p className="rounded-xl bg-white/70 p-3 text-xs text-emerald-900/70">Ainda não há execução histórica suficiente para promover um playbook comprovado.</p>
+          ) : playbooks.map((item) => (
+            <div key={`${item.requestId}-${item.status}-${item.recordedAt}`} className="rounded-xl border border-emerald-100 bg-white p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-800">Comprovado</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{item.status}</span>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-900">{item.summary}</p>
+                </div>
+                <span className="shrink-0 text-[10px] text-slate-400">{new Date(item.recordedAt).toLocaleString("pt-BR")}</span>
+              </div>
+              <p className="mt-2 truncate text-[10px] text-slate-500">Rota: {item.route || "não informada"}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
+                {item.mergeSha ? <span className="rounded-full bg-slate-100 px-2 py-1">main {shortSha(item.mergeSha)}</span> : null}
+                {item.evidence?.slice(0, 3).map((evidence) => <span key={evidence} className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-800">{evidence}</span>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="mt-4 rounded-2xl border bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2"><Siren className="h-4 w-4 text-slate-700" /><h4 className="text-sm font-semibold text-slate-900">Timeline de incidentes</h4></div>
+          <div className="flex items-center gap-2"><Siren className="h-4 w-4 text-slate-700" /><h4 className="text-sm font-semibold text-slate-900">Timeline de incidentes e lições</h4></div>
           <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{incidents.length} recentes</span>
         </div>
+        <p className="mt-1 text-[11px] text-slate-500">Falhas e recuperações permanecem visíveis para evitar repetir decisões ruins e contextualizar playbooks originados de incidentes.</p>
         <div className="mt-3 space-y-2">
           {incidents.length === 0 ? (
             <p className="text-xs text-slate-500">Nenhum incidente confirmado foi registrado pela Sentinela.</p>
