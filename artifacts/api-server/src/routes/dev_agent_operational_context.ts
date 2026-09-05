@@ -319,8 +319,10 @@ export async function getOperationalContext(): Promise<OperationalContext> {
       state: String(item?.state ?? "pending"),
       targetUrl: item?.target_url ? String(item.target_url) : null,
     }));
-  } catch {
+  } catch (error) {
     githubAvailable = false;
+    const message = error instanceof Error ? error.message : "unknown GitHub error";
+    console.warn("dev-ia sentinel: GitHub context unavailable", { error: message });
   }
 
   try {
