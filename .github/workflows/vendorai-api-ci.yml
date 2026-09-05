@@ -5,6 +5,7 @@ on:
     paths:
       - "artifacts/api-server/**"
       - "lib/db/**"
+      - "lib/vendor-brain/**"
       - ".github/workflows/vendorai-api-ci.yml"
   workflow_dispatch:
 
@@ -40,6 +41,9 @@ jobs:
         # third-party versions. Let pnpm reconcile workspace links in-run; all
         # resolved external versions still come from the committed lockfile.
         run: pnpm install --no-frozen-lockfile
+
+      - name: Vendor Brain foundation typecheck
+        run: pnpm --filter @workspace/vendor-brain typecheck
 
       # Blocking gate for every launch-critical lifecycle, billing and analytics
       # module touched by this PR, including Command Center and Revenue Scout.
