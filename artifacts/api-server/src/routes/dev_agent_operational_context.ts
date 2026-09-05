@@ -12,6 +12,18 @@ type EngineeringAlert = {
   source: "railway" | "vercel" | "github" | "runtime" | "pull_request";
 };
 
+type SentinelWatchdog = {
+  running: boolean;
+  intervalMs: number;
+  lastCheckedAt: string | null;
+  lastHealthScore: number | null;
+  lastCriticalCount: number;
+  lastWarningCount: number;
+  consecutiveCritical: number;
+  lastTransitionAt: string | null;
+  lastError: string | null;
+};
+
 type OperationalContext = {
   observedRevision: string | null;
   mainRevision: string | null;
@@ -21,13 +33,34 @@ type OperationalContext = {
   healthScore: number;
   alerts: EngineeringAlert[];
   checks: Array<{ context: string; state: string; targetUrl: string | null }>;
+  watchdog: SentinelWatchdog;
   checkedAt: string;
+};
+
+type SentinelLogger = {
+  info: (...args: any[]) => void;
+  warn: (...args: any[]) => void;
+  error: (...args: any[]) => void;
 };
 
 const REQUIRED_VERCEL_CONTEXTS = new Set([
   "vendorai-platform-replit-frontend",
   "tad-vendorai",
 ]);
+
+const SENTINEL_INTERVAL_MS = 5 * 60 * 1000;
+let sentinelTimer: NodeJS.Timeout | null = null;
+let watchdog: SentinelWatchdog = {
+  running: false,
+  intervalMs: SENTINEL_INTERVAL_MS,
+  lastCheckedAt: null,
+  lastHealthScore: null,
+  lastCriticalCount: 0,
+  lastWarningCount: 0,
+  consecutiveCritical: 0,
+  lastTransitionAt: null,
+  lastError: null,
+};
 
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
@@ -45,7 +78,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Operational-Context/2.0",
+      "User-Agent": "VendorAI-Dev-Operational-Context/3.0",
     },
   });
   if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
@@ -188,6 +221,10 @@ function calculateHealthScore(alerts: EngineeringAlert[]) {
   return Math.max(0, 100 - penalty);
 }
 
+function watchdogSnapshot(): SentinelWatchdog {
+  return { ...watchdog };
+}
+
 export async function getOperationalContext(): Promise<OperationalContext> {
   const observedRevision = normalizeRevision(
     process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.RAILWAY_DEPLOYMENT_COMMIT_SHA ?? process.env.GIT_COMMIT_SHA,
@@ -252,8 +289,71 @@ export async function getOperationalContext(): Promise<OperationalContext> {
     healthScore: calculateHealthScore(alerts),
     alerts,
     checks,
+    watchdog: watchdogSnapshot(),
     checkedAt: new Date().toISOString(),
   };
+}
+
+async function runSentinelWatchdog(logger: SentinelLogger) {
+  try {
+    const previousScore = watchdog.lastHealthScore;
+    const previousCritical = watchdog.lastCriticalCount;
+    const context = await getOperationalContext();
+    const criticalCount = context.alerts.filter((alert) => alert.severity === "critical").length;
+    const warningCount = context.alerts.filter((alert) => alert.severity === "warning").length;
+    const now = new Date().toISOString();
+    const changed = previousScore !== context.healthScore || previousCritical !== criticalCount;
+
+    watchdog = {
+      ...watchdog,
+      running: true,
+      lastCheckedAt: now,
+      lastHealthScore: context.healthScore,
+      lastCriticalCount: criticalCount,
+      lastWarningCount: warningCount,
+      consecutiveCritical: criticalCount > 0 ? watchdog.consecutiveCritical + 1 : 0,
+      lastTransitionAt: changed ? now : watchdog.lastTransitionAt,
+      lastError: null,
+    };
+
+    const logContext = {
+      healthScore: context.healthScore,
+      criticalCount,
+      warningCount,
+      productionState: context.productionState,
+      observedRevision: context.observedRevision?.slice(0, 9) ?? null,
+      mainRevision: context.mainRevision?.slice(0, 9) ?? null,
+      consecutiveCritical: watchdog.consecutiveCritical,
+    };
+
+    if (criticalCount > 0) {
+      logger.error(logContext, "dev-ia sentinel: critical production signal");
+    } else if (warningCount > 0) {
+      if (changed) logger.warn(logContext, "dev-ia sentinel: production needs attention");
+    } else if (changed || previousScore === null) {
+      logger.info(logContext, "dev-ia sentinel: production healthy");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown sentinel error";
+    watchdog = {
+      ...watchdog,
+      running: true,
+      lastCheckedAt: new Date().toISOString(),
+      lastError: message,
+    };
+    logger.warn({ err: error }, "dev-ia sentinel: watchdog check failed");
+  }
+}
+
+export function startProductionSentinel(logger: SentinelLogger) {
+  if (sentinelTimer) return;
+  watchdog = { ...watchdog, running: true };
+  void runSentinelWatchdog(logger);
+  sentinelTimer = setInterval(() => {
+    void runSentinelWatchdog(logger);
+  }, SENTINEL_INTERVAL_MS);
+  sentinelTimer.unref();
+  logger.info({ intervalMs: SENTINEL_INTERVAL_MS }, "dev-ia sentinel: watchdog started");
 }
 
 router.get("/support/dev/operational-context", async (req, res) => {
