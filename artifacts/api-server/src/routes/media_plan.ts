@@ -12,26 +12,27 @@ function canAccess(req: import("express").Request, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
 
-const periodSchema = z.union([z.literal(30), z.literal(60), z.literal(90)]);
+const periodSchema = z.number().int().min(1).max(3650);
+const budgetTypeSchema = z.enum(["total", "diario", "semanal", "mensal"]);
 const planningConfigSchema = z.object({
-  objetivoPrincipal: z.string().trim().max(300).optional().default(""),
-  produtoServicoPrioritario: z.string().trim().max(300).optional().default(""),
-  publicoPrioritario: z.string().trim().max(500).optional().default(""),
-  regiao: z.string().trim().max(250).optional().default(""),
+  nomeCampanha: z.string().trim().max(300).optional().default(""),
   ofertaPrincipal: z.string().trim().max(500).optional().default(""),
-  canaisPreferidos: z.array(z.string().trim().min(1).max(80)).max(15).optional().default([]),
-  observacoes: z.string().trim().max(1500).optional().default(""),
+  inicioEm: z.string().trim().max(80).optional().default(""),
+  fimEm: z.string().trim().max(80).optional().default(""),
+  semDataFinal: z.boolean().optional().default(false),
+  orcamentoValor: z.number().min(0).max(1_000_000_000).optional().default(0),
+  orcamentoTipo: budgetTypeSchema.optional().default("total"),
 });
 type PlanningConfig = z.infer<typeof planningConfigSchema>;
 
 const EMPTY_PLANNING_CONFIG: PlanningConfig = {
-  objetivoPrincipal: "",
-  produtoServicoPrioritario: "",
-  publicoPrioritario: "",
-  regiao: "",
+  nomeCampanha: "",
   ofertaPrincipal: "",
-  canaisPreferidos: [],
-  observacoes: "",
+  inicioEm: "",
+  fimEm: "",
+  semDataFinal: false,
+  orcamentoValor: 0,
+  orcamentoTipo: "total",
 };
 
 const generateBodySchema = z.object({
@@ -43,46 +44,62 @@ function normalizedChannel(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
 
+function validIso(value: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function resolvePlanningPeriod(config: PlanningConfig, fallbackDays: number): number {
+  const start = validIso(config.inicioEm);
+  const end = config.semDataFinal ? null : validIso(config.fimEm);
+  if (!start || !end) return Math.min(3650, Math.max(1, fallbackDays));
+  const diff = new Date(end).getTime() - new Date(start).getTime();
+  if (diff <= 0) return Math.min(3650, Math.max(1, fallbackDays));
+  return Math.min(3650, Math.max(1, Math.ceil(diff / 86_400_000)));
+}
+
 function planningConfigLines(config: PlanningConfig): string[] {
   return [
-    config.objetivoPrincipal && `Objetivo principal do período: ${config.objetivoPrincipal}`,
-    config.produtoServicoPrioritario && `Produto/serviço prioritário: ${config.produtoServicoPrioritario}`,
-    config.publicoPrioritario && `Público prioritário: ${config.publicoPrioritario}`,
-    config.regiao && `Região/área de atuação: ${config.regiao}`,
-    config.ofertaPrincipal && `Oferta/CTA principal: ${config.ofertaPrincipal}`,
-    config.canaisPreferidos.length > 0 && `Canais que o usuário pediu para priorizar: ${config.canaisPreferidos.join(", ")}`,
-    config.observacoes && `Orientações e restrições adicionais: ${config.observacoes}`,
+    config.nomeCampanha && `Título/tema definido pelo usuário: ${config.nomeCampanha}`,
+    config.ofertaPrincipal && `Oferta, promoção ou CTA definido pelo usuário: ${config.ofertaPrincipal}`,
+    config.inicioEm && `Início da campanha: ${config.inicioEm}`,
+    config.semDataFinal ? "Campanha sem data final definida" : config.fimEm && `Fim da campanha: ${config.fimEm}`,
+    config.orcamentoValor > 0 && `Limite financeiro: R$ ${config.orcamentoValor.toFixed(2)} (${config.orcamentoTipo})`,
+    "A IA decide canais, públicos, formatos, frequência, horários, testes e distribuição da verba sem ultrapassar o limite financeiro informado.",
   ].filter((value): value is string => Boolean(value));
 }
 
 function applyPlanningConfigurationToBase(
   conteudo: MediaPlanConteudo,
   config: PlanningConfig,
+  periodoDias: number,
 ): MediaPlanConteudo {
   const directions = planningConfigLines(config);
-  if (directions.length === 0) return conteudo;
-
-  const existingByChannel = new Map(
-    (conteudo.canais ?? []).map((channel) => [normalizedChannel(channel.canal), channel] as const),
-  );
-  const preferred = config.canaisPreferidos.map((canal) => {
-    const existing = existingByChannel.get(normalizedChannel(canal));
-    if (existing) return { ...existing, prioridade: "alta" as const };
-    return {
-      canal,
-      prioridade: "alta" as const,
-      motivo: "Canal priorizado manualmente na configuração deste planejamento.",
-      tiposCampanhaSugeridos: [],
-      percentualOrcamento: 0,
-    };
-  });
-  const preferredKeys = new Set(preferred.map((channel) => normalizedChannel(channel.canal)));
-  const remaining = (conteudo.canais ?? []).filter((channel) => !preferredKeys.has(normalizedChannel(channel.canal)));
+  const inicio = validIso(config.inicioEm) ?? undefined;
+  const fim = config.semDataFinal ? null : validIso(config.fimEm);
+  const orcamento = config.orcamentoValor > 0
+    ? {
+        valor: config.orcamentoValor,
+        tipo: config.orcamentoTipo,
+        moeda: "BRL" as const,
+        gestao: "ia_autonoma" as const,
+        limiteRigido: true as const,
+      }
+    : undefined;
 
   return {
     ...conteudo,
-    diagnostico: `${conteudo.diagnostico}\n\nDiretrizes definidas pelo usuário para este ciclo: ${directions.join(" | ")}`,
-    canais: [...preferred, ...remaining],
+    diagnostico: directions.length > 0
+      ? `${conteudo.diagnostico}\n\nDiretrizes humanas desta campanha: ${directions.join(" | ")}`
+      : conteudo.diagnostico,
+    periodoDias,
+    periodoInicioEm: inicio,
+    periodoFimEm: fim,
+    periodoAberto: config.semDataFinal,
+    nomeCampanha: config.nomeCampanha || undefined,
+    ofertaCampanha: config.ofertaPrincipal || undefined,
+    orcamento,
   };
 }
 
@@ -94,13 +111,8 @@ function applyPlanningConfigurationToCampaigns(
 
   const campanhas = conteudo.campanhas.map((campaign) => ({
     ...campaign,
-    produtoServico: config.produtoServicoPrioritario || campaign.produtoServico,
-    publico: config.publicoPrioritario || campaign.publico,
-    regiao: config.regiao || campaign.regiao,
+    nome: config.nomeCampanha ? `${config.nomeCampanha} · ${campaign.nome}` : campaign.nome,
     oferta: config.ofertaPrincipal || campaign.oferta,
-    metaPrincipal: config.objetivoPrincipal
-      ? `${config.objetivoPrincipal} · ${campaign.metaPrincipal}`
-      : campaign.metaPrincipal,
   }));
 
   return alignMediaFunctionsInContent({ ...conteudo, campanhas });
@@ -115,6 +127,10 @@ function hasRequiredMultichannelCoverage(conteudo: MediaPlanConteudo): boolean {
   const hasPaidSocial = values.some((channel) => channel.includes("meta ads") || channel.includes("facebook ads"));
   const hasDirect = values.some((channel) => channel.includes("whatsapp") || channel.includes("email") || channel.includes("e-mail"));
   const hasOwnedOrOrganic = values.some((channel) => channel.includes("instagram") || channel.includes("landing") || channel.includes("site") || channel.includes("blog") || channel.includes("seo"));
+
+  const days = conteudo.periodoDias ?? 30;
+  if (days <= 2) return channels.size >= 2 && (hasIntent || hasPaidSocial) && hasDirect;
+  if (days <= 7) return channels.size >= 3 && (hasIntent || hasPaidSocial) && (hasDirect || hasOwnedOrOrganic);
   return channels.size >= 4 && hasIntent && hasPaidSocial && hasDirect && hasOwnedOrOrganic;
 }
 
@@ -130,14 +146,24 @@ router.post("/tenants/:tenantId/media-plan/gerar", async (req, res) => {
     return;
   }
   try {
+    const periodoDias = resolvePlanningPeriod(parsed.data.configuracao, parsed.data.periodoDias);
     const { plan } = await generateMediaPlan(tenantId, req.user?.sub ?? null);
-    const conteudoBase = applyPlanningConfigurationToBase(plan.conteudo, parsed.data.configuracao);
-    const enriched = await enrichMediaPlanForPeriod(tenantId, conteudoBase, parsed.data.periodoDias);
+    const conteudoBase = applyPlanningConfigurationToBase(plan.conteudo, parsed.data.configuracao, periodoDias);
+    const enriched = await enrichMediaPlanForPeriod(tenantId, conteudoBase, periodoDias);
     const conteudo = applyPlanningConfigurationToCampaigns(enriched, parsed.data.configuracao);
     const contextoUsado = {
       ...(plan.contextoUsado ?? {}),
       configuracaoPlanejamento: parsed.data.configuracao,
       configuracaoResumo: planningConfigLines(parsed.data.configuracao),
+      autonomiaMidia: {
+        canais: true,
+        publicos: true,
+        formatos: true,
+        frequencia: true,
+        horarios: true,
+        redistribuicaoOrcamento: true,
+        limiteFinanceiroRigido: true,
+      },
     };
     const [updated] = await db
       .update(mediaPlansTable)
@@ -189,9 +215,8 @@ router.get("/tenants/:tenantId/media-plan", async (req, res) => {
   res.json(latest);
 });
 
-// Atualiza, no próprio registro, planos criados antes da estrutura 30/60/90
-// ou planos que a IA tenha deixado incompletos em termos de canais. Se o plano
-// já for multicanal, apenas adequa as funções oficiais sem replanejar a estratégia.
+// Atualiza, no próprio registro, planos anteriores ou planos que a IA tenha
+// deixado incompletos em termos de canais, sem criar um fluxo paralelo.
 const completeBodySchema = z.object({
   periodoDias: periodSchema.optional(),
 });
@@ -332,6 +357,11 @@ router.get("/tenants/:tenantId/media-plan/historico", async (req, res) => {
     id: row.id,
     createdAt: row.createdAt,
     periodoDias: row.conteudo.periodoDias ?? 30,
+    periodoInicioEm: row.conteudo.periodoInicioEm ?? null,
+    periodoFimEm: row.conteudo.periodoFimEm ?? null,
+    periodoAberto: row.conteudo.periodoAberto ?? false,
+    nomeCampanha: row.conteudo.nomeCampanha ?? null,
+    orcamento: row.conteudo.orcamento ?? null,
     campanhas: row.conteudo.campanhas?.length ?? 0,
     statusPlanejamento: row.conteudo.statusPlanejamento ?? "gerado",
   })));
