@@ -1,4 +1,6 @@
 import {
+  isProvenExecutionOutcome,
+  isSystemExecutionMemory,
   loadEngineeringMemory,
   loadExecutionMemory,
   type EngineeringMemoryEntry,
@@ -68,7 +70,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Platform-Context/1.2",
+      "User-Agent": "VendorAI-Dev-Platform-Context/1.3",
     },
   });
   const text = await response.text();
@@ -213,9 +215,11 @@ function memoryScore(entry: EngineeringMemoryEntry, routeInput: string[], reques
 }
 
 function executionOutcomeWeight(entry: ExecutionMemoryEntry) {
+  if (isProvenExecutionOutcome(entry)) return 8;
   const status = normalizeText(entry.status).replace(/[\s_-]+/g, " ");
-  if (/recover|validat|success|complete|conclu|deploy/.test(status)) return 8;
-  if (/incident|fail|error|stale|block|rollback|reprov/.test(status)) return -6;
+  if (isSystemExecutionMemory(entry)) return -2;
+  if (/incident|fail|error|stale|block|rollback|reprov|unreachable/.test(status)) return -6;
+  if (/complete|merged|awaiting|pending/.test(status)) return 1;
   return 0;
 }
 
@@ -253,12 +257,12 @@ async function collectRelevantExecutionMemory(routeInput: string[], requestInput
   try {
     const memory = await loadExecutionMemory(25);
     const ranked = memory
-      .map((entry) => ({ entry, score: executionMemoryScore(entry, routeInput, requestInput), outcome: executionOutcomeWeight(entry) }))
+      .map((entry) => ({ entry, score: executionMemoryScore(entry, routeInput, requestInput) }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score || b.entry.recordedAt.localeCompare(a.entry.recordedAt));
 
-    const provenPlaybooks = ranked.filter((item) => item.outcome > 0).slice(0, 4);
-    const operationalLessons = ranked.filter((item) => item.outcome <= 0).slice(0, 2);
+    const provenPlaybooks = ranked.filter((item) => isProvenExecutionOutcome(item.entry)).slice(0, 4);
+    const operationalLessons = ranked.filter((item) => !isProvenExecutionOutcome(item.entry)).slice(0, 2);
     return [...provenPlaybooks, ...operationalLessons].map((item) => item.entry);
   } catch {
     return [];
