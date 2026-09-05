@@ -43,6 +43,8 @@ export interface MediaPlanCampaign {
   status: "planejada" | "em_revisao" | "aprovada" | "em_producao" | "ativa" | "encerrada";
 }
 
+// Limite financeiro definido pelo humano. Este contrato orienta planejamento e
+// otimização; autorização de publicação/ativação continua em sua camada própria.
 export interface MediaPlanBudget {
   valor: number;
   tipo: "total" | "diario" | "semanal" | "mensal";
