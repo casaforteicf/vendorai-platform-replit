@@ -13,7 +13,7 @@ import { resolveMarketingRuntime } from "@workspace/vendor-brain/marketing-runti
 import type { ChannelId } from "@workspace/vendor-brain/platform-foundation";
 import { resolveTenantCreativePlan } from "../services/creativeDesignBridge";
 import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
-import { inspectGeneratedSite, resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
+import { enrichSiteGeneratorServicesContext, inspectGeneratedSite, resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
 
 const router: IRouter = Router();
 
@@ -255,11 +255,7 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res, next)
       assetIds: [],
     });
 
-    const marker = "DIREÇÃO CRIATIVA WEB OFICIAL DO VENDORAI";
-    const existingServices = typeof body.servicos === "string" ? body.servicos.trim() : "";
-    if (!existingServices.includes(marker)) {
-      body.servicos = [existingServices, runtime.promptContext].filter(Boolean).join("\n\n");
-    }
+    body.servicos = enrichSiteGeneratorServicesContext(body.servicos, runtime.promptContext);
     body.creativeRuntimeContext = runtime.promptContext;
     body.campaignId = marketing.campaignId || body.campaignId || undefined;
     body.campaignName = marketing.campaignName || body.campaignName || undefined;
