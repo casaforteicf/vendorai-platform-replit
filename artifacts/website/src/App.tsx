@@ -27,6 +27,7 @@ import ModernHomepageHero from "@/components/ModernHomepageHero";
 import NicheVisualShowcase from "@/components/NicheVisualShowcase";
 import { WhatsAppFloatButton } from "@/components/WhatsAppFloatButton";
 import { AgentSimulatorWidget } from "@/components/AgentSimulatorWidget";
+import { usePublicCountry } from "@/lib/publicCountry";
 import {
   captureLaunchAttribution,
   installPublicFormConsentBridge,
@@ -59,10 +60,12 @@ function FloatingActions() {
 }
 
 function HomeWithNicheVisuals() {
+  const { isSpanish } = usePublicCountry();
+
   return (
     <>
       <ModernHomepageHero />
-      <NicheVisualShowcase />
+      {!isSpanish && <NicheVisualShowcase />}
       <div className="[&>div>section:first-child]:hidden">
         <Home />
       </div>
