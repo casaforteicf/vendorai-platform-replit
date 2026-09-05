@@ -1,4 +1,5 @@
 type RuntimeHttpSignal = {
+  kind: "http_error" | "network_error" | "slow_http";
   method: string;
   path: string;
   status: number | "network_error";
@@ -20,6 +21,7 @@ const DEV_PATHS = new Set([
 
 const MAX_SIGNALS = 24;
 const SIGNAL_TTL_MS = 15 * 60 * 1000;
+const SLOW_HTTP_MS = 2500;
 const originalFetch = typeof window !== "undefined" ? window.fetch.bind(window) : null;
 let signals: RuntimeHttpSignal[] = [];
 let installed = false;
@@ -61,6 +63,7 @@ function recordSignal(signal: RuntimeHttpSignal) {
   const previous = signals[signals.length - 1];
   if (
     previous &&
+    previous.kind === signal.kind &&
     previous.method === signal.method &&
     previous.path === signal.path &&
     previous.status === signal.status &&
@@ -86,9 +89,10 @@ function runtimeEvidence() {
   if (!recent.length) return "";
   const text = recent.map((signal) => {
     const ageSeconds = Math.max(0, Math.round((now - signal.recordedAt) / 1000));
-    return `${signal.method} ${signal.path} → ${signal.status} (${signal.durationMs}ms, há ${ageSeconds}s)`;
+    const label = signal.kind === "slow_http" ? "LENTO" : signal.kind === "network_error" ? "REDE" : "ERRO";
+    return `${label} ${signal.method} ${signal.path} → ${signal.status} (${signal.durationMs}ms, há ${ageSeconds}s)`;
   }).join(" | ");
-  return `FALHAS HTTP REAIS DA TELA (sem payload/body/headers): ${text}`.slice(0, 430);
+  return `SINAIS HTTP REAIS DA TELA (sem payload/body/headers): ${text}`.slice(0, 430);
 }
 
 function injectRuntimeEvidence(path: string, init?: RequestInit) {
@@ -150,13 +154,15 @@ function installRuntimeHttpBridge() {
     const started = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
       const response = await originalFetch(input, init);
-      if (sameOriginApi && !response.ok) {
-        const ended = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const ended = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const durationMs = Math.max(0, Math.round(ended - started));
+      if (sameOriginApi && (!response.ok || durationMs >= SLOW_HTTP_MS)) {
         recordSignal({
+          kind: response.ok ? "slow_http" : "http_error",
           method,
           path,
           status: response.status,
-          durationMs: Math.max(0, Math.round(ended - started)),
+          durationMs,
           pageRoute: pageRoute(),
           recordedAt: Date.now(),
         });
@@ -166,6 +172,7 @@ function installRuntimeHttpBridge() {
       if (sameOriginApi) {
         const ended = typeof performance !== "undefined" ? performance.now() : Date.now();
         recordSignal({
+          kind: "network_error",
           method,
           path,
           status: "network_error",
