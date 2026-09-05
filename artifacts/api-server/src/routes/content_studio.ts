@@ -4,6 +4,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { contentGenerationsTable, db } from "@workspace/db";
 import { buildReferencePatternsPromptBlock } from "../services/content-reference-creators.js";
 import { buildOwnPerformancePromptBlock } from "../services/content-performance.js";
+import { buildContentCreativeRuntime, buildGenerationDesignQa } from "../services/contentCreativeRuntime.js";
 import {
   resolveProductVideoLibraryImages,
   startProductPhotoVideo,
@@ -18,14 +19,52 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100
 const TABS = ["workflow", "trends", "hooks", "script"] as const;
 type Tab = (typeof TABS)[number];
 
-function buildPrompt(tab: Tab, input: string, referencePatterns: string): string {
+type MarketingContextInput = {
+  campaignId?: string;
+  campaignName?: string;
+  campaignGoal?: string;
+  audienceSegment?: string;
+  audienceNiche?: string;
+  nicheName?: string;
+  productIds?: string[];
+  productNames?: string[];
+};
+
+function buildPrompt(tab: Tab, input: string, referencePatterns: string, creativeContext = ""): string {
   const prompts: Record<Tab, string> = {
     workflow: `Crie um fluxo de conteúdo para Instagram no nicho "${input}": 5 tópicos em alta, script, visual, legenda e 10 hashtags.`,
     trends:   `Liste 5 ângulos de conteúdo em alta no nicho "${input}" para Reels e vídeos curtos com IA.`,
     hooks:    `Crie 5 ganchos para parar a rolagem no nicho "${input}" nos primeiros 3 segundos. Use os gatilhos: surpresa, medo, ego, urgência e desejo.`,
     script:   `Escreva um script de Reel sobre "${input}" com: GANCHO (0-2s), DESENVOLVIMENTO (3-25s) e CTA (26-30s). Máximo 30 segundos.`,
   };
-  return prompts[tab] + referencePatterns;
+  return `${prompts[tab]}\n\nCONTEXTO CRIATIVO OFICIAL DO VENDORAI:\n${creativeContext || "Use o briefing informado pelo usuário."}\n\n${referencePatterns}`;
+}
+
+function scoreGeneratedText(result: string, input: { cta?: string | null; hasBrandContext: boolean; channel: string }) {
+  const normalized = result.trim();
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  const hasStructure = /gancho|cta|tela|benef[ií]cio|visual|legenda|desenvolvimento/i.test(normalized);
+  const requestedCta = input.cta?.trim();
+  const hasCta = requestedCta
+    ? normalized.toLowerCase().includes(requestedCta.toLowerCase()) || /\bcta\b|fale|saiba|compre|chame|acesse|solicite/i.test(normalized)
+    : /\bcta\b|fale|saiba|compre|chame|acesse|solicite/i.test(normalized);
+  const readable = wordCount >= 20 && wordCount <= 700;
+
+  return buildGenerationDesignQa({
+    brandScore: input.hasBrandContext ? 92 : 78,
+    readabilityScore: readable ? 92 : 76,
+    compositionScore: hasStructure ? 92 : 80,
+    channelFitScore: input.channel === "instagram" ? 94 : 88,
+    ctaScore: hasCta ? 94 : 68,
+    technicalScore: normalized.length > 20 ? 94 : 65,
+    warnings: [
+      ...(!hasCta ? ["CTA não ficou claro no resultado gerado."] : []),
+      ...(!hasStructure ? ["Estrutura criativa pouco explícita para o formato solicitado."] : []),
+    ],
+    recommendations: [
+      ...(!hasCta ? ["Reforçar uma chamada para ação compatível com a campanha."] : []),
+    ],
+  });
 }
 
 function parseImageAssetIds(value: unknown): string[] {
@@ -56,13 +95,29 @@ router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
     res.status(403).json({ error: "Acesso negado" }); return;
   }
 
-  const { tab, input } = req.body as { tab?: string; input?: string };
+  const { tab, input, marketingContext } = req.body as { tab?: string; input?: string; marketingContext?: MarketingContextInput };
   if (!input || typeof input !== "string" || input.trim().length < 2) {
     res.status(422).json({ error: "Campo 'input' é obrigatório (mín. 2 caracteres)" }); return;
   }
 
   const resolvedTab: Tab = TABS.includes(tab as Tab) ? (tab as Tab) : "script";
   try {
+    const audience = marketingContext?.audienceNiche || marketingContext?.audienceSegment || marketingContext?.nicheName || null;
+    const creativeRuntime = await buildContentCreativeRuntime({
+      tenantId,
+      context: {
+        campaignId: marketingContext?.campaignId ?? null,
+        campaignName: marketingContext?.campaignName ?? null,
+        objective: marketingContext?.campaignGoal || input.trim(),
+        audience,
+        productId: marketingContext?.productIds?.[0] ?? null,
+        productName: marketingContext?.productNames?.[0] ?? null,
+        channel: "instagram",
+        format: resolvedTab === "script" ? "reel" : resolvedTab,
+        message: input.trim(),
+      },
+    });
+
     const [referencePatterns, ownPerformance] = await Promise.all([
       buildReferencePatternsPromptBlock(tenantId),
       buildOwnPerformancePromptBlock(tenantId),
@@ -70,14 +125,19 @@ router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: "Você é um especialista em marketing digital para Instagram no Brasil. Responda sempre em português.",
-      messages: [{ role: "user", content: buildPrompt(resolvedTab, input.trim(), ownPerformance + referencePatterns) }],
+      system: "Você é um especialista em marketing digital para Instagram no Brasil. Responda sempre em português e respeite o contexto criativo oficial do tenant/campanha.",
+      messages: [{ role: "user", content: buildPrompt(resolvedTab, input.trim(), ownPerformance + referencePatterns, creativeRuntime.promptContext) }],
     });
     const result = message.content
       .filter((b) => b.type === "text")
       .map((b) => (b as { type: "text"; text: string }).text)
       .join("\n");
-    res.json({ result, tab: resolvedTab });
+    const designQa = scoreGeneratedText(result, {
+      cta: creativeRuntime.brief.cta,
+      hasBrandContext: Boolean(creativeRuntime.creativePlan.brand.logoUrl || creativeRuntime.creativePlan.brand.tone?.length),
+      channel: creativeRuntime.brief.channel,
+    });
+    res.json({ result, tab: resolvedTab, creativeBrief: creativeRuntime.brief, designQa });
   } catch (err) {
     req.log.error({ err }, "content-studio: generation failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Erro desconhecido" });
@@ -178,11 +238,31 @@ router.post(
       return;
     }
 
+    const creativeRuntime = await buildContentCreativeRuntime({
+      tenantId,
+      context: {
+        objective: `promover ${name.trim()}`,
+        audience: typeof req.body?.nicheId === "string" ? req.body.nicheId : null,
+        productId: parseImageAssetIds(req.body?.productIds)[0] ?? null,
+        productName: name.trim(),
+        offer: price.trim() || null,
+        channel: "instagram",
+        format: resolvedFormat,
+        cta: cta.trim() || "Compre agora",
+        message: description.trim() || null,
+        visualDirection: benefits.trim() || null,
+        assetIds: imageAssetIds,
+      },
+    });
+
     const formatLabel = resolvedFormat === "story"
       ? "Stories (9:16 vertical, 5 telas)"
       : "Reels (15-30 segundos, roteiro sequencial)";
 
     const textPrompt = `Você é um especialista em marketing de conteúdo para Instagram no Brasil.
+
+CONTEXTO CRIATIVO OFICIAL DO VENDORAI:
+${creativeRuntime.promptContext}
 
 Crie um storyboard completo para ${formatLabel} de um produto com as seguintes informações:
 
@@ -235,7 +315,7 @@ Não inclua instruções de edição nem próximos passos operacionais. O Vendor
       const message = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 2048,
-        system: "Você é o diretor criativo do VendorAI. Entregue somente conteúdo criativo que será usado diretamente na renderização. Responda em português claro e estruturado. Nunca recomende horários de postagem, músicas, artistas, bibliotecas de áudio, níveis de volume, CapCut, Adobe Premiere ou outras ferramentas externas; essas decisões são executadas pelo próprio VendorAI após o vídeo ficar pronto.",
+        system: "Você é o diretor criativo do VendorAI. Use o contexto de campanha, marca e canal recebido. Entregue somente conteúdo criativo que será usado diretamente na renderização. Responda em português claro e estruturado. Nunca recomende horários de postagem, músicas, artistas, bibliotecas de áudio, níveis de volume, CapCut, Adobe Premiere ou outras ferramentas externas; essas decisões são executadas pelo próprio VendorAI após o vídeo ficar pronto.",
         messages: [{
           role: "user",
           content: [
@@ -250,6 +330,11 @@ Não inclua instruções de edição nem próximos passos operacionais. O Vendor
         .map((b) => (b as { type: "text"; text: string }).text)
         .join("\n");
       const result = sanitizeProductStoryboard(rawResult);
+      const designQa = scoreGeneratedText(result, {
+        cta: creativeRuntime.brief.cta,
+        hasBrandContext: Boolean(creativeRuntime.creativePlan.brand.logoUrl || creativeRuntime.creativePlan.brand.tone?.length),
+        channel: creativeRuntime.brief.channel,
+      });
 
       let generationId: string | null = null;
       try {
@@ -273,7 +358,7 @@ Não inclua instruções de edição nem próximos passos operacionais. O Vendor
       }
 
       if (!shouldRender) {
-        res.json({ result, format: resolvedFormat, generationId });
+        res.json({ result, format: resolvedFormat, generationId, creativeBrief: creativeRuntime.brief, designQa });
         return;
       }
 
@@ -294,6 +379,8 @@ Não inclua instruções de edição nem próximos passos operacionais. O Vendor
         result,
         format: resolvedFormat,
         generationId,
+        creativeBrief: creativeRuntime.brief,
+        designQa,
         renderStarted: true,
         projectId: render.projectId,
         jobId: render.jobId,
@@ -410,7 +497,16 @@ router.post("/tenants/:tenantId/content-studio/video/ai-edit-plan", async (req, 
 
   const fallback = fallbackVideoEditPlan({ goal, duration, clips, captions });
   try {
-    const prompt = `Crie um plano de edição de vídeo NÃO DESTRUTIVO para o editor VendorAI.\n\nOBJETIVO: ${AI_EDIT_GOAL_LABELS[goal]}\nDIREÇÃO: ${AI_EDIT_GOAL_GUIDANCE[goal]}\nCANAL: ${String(input.channel ?? "reels")}\nFORMATO: ${String(input.ratio ?? "9:16")}\nDURAÇÃO: ${duration.toFixed(2)}s\nORIENTAÇÃO ADICIONAL: ${safeInstructions || "nenhuma"}\n\nCLIPES:\n${clipMap}\n\nTRANSCRIÇÃO SINCRONIZADA:\n${transcript}\n\nRetorne APENAS JSON válido, sem markdown, no formato:\n{\n  "summary": "resumo curto",\n  "suggestions": [\n    { "id":"s1", "type":"sticker", "start":1.2, "end":2.8, "emoji":"✨", "reason":"..." },\n    { "id":"s2", "type":"cta", "start":20, "end":24, "text":"texto curto", "reason":"..." },\n    { "id":"s3", "type":"caption_motion", "start":3, "end":5, "layerId":"id de legenda existente", "motion":"word-pop", "reason":"..." },\n    { "id":"s4", "type":"clip_motion", "start":5, "end":7, "clipId":"id de clipe existente", "motion":"zoom-in", "reason":"..." }\n  ]\n}\n\nREGRAS:\n- no máximo 8 sugestões; menos é melhor que exagerar;\n- use somente ids de clipes/legendas fornecidos;\n- caption_motion permitido: none, word-pop, word-bounce, pulse, karaoke;\n- clip_motion permitido: zoom-in, zoom-out, pan-left, pan-right;\n- stickers devem ser emojis simples e contextuais;\n- CTA deve usar apenas informação presente na fala/orientação. Se não houver CTA explícito, use uma chamada neutra como \"Fale com nossa equipe\";\n- nunca invente preço, desconto, prazo, garantia, prova social, telefone ou link;\n- não altere o conteúdo falado;\n- não aplique efeitos em todos os trechos: preserve respiro visual;\n- cada sugestão precisa explicar por que melhora retenção, clareza ou conversão.`;
+    const creativeRuntime = await buildContentCreativeRuntime({
+      tenantId,
+      context: {
+        objective: AI_EDIT_GOAL_LABELS[goal],
+        channel: String(input.channel ?? "instagram"),
+        format: String(input.ratio ?? "9:16"),
+        message: safeInstructions || null,
+      },
+    });
+    const prompt = `Crie um plano de edição de vídeo NÃO DESTRUTIVO para o editor VendorAI.\n\nCONTEXTO CRIATIVO OFICIAL:\n${creativeRuntime.promptContext}\n\nOBJETIVO: ${AI_EDIT_GOAL_LABELS[goal]}\nDIREÇÃO: ${AI_EDIT_GOAL_GUIDANCE[goal]}\nCANAL: ${String(input.channel ?? "reels")}\nFORMATO: ${String(input.ratio ?? "9:16")}\nDURAÇÃO: ${duration.toFixed(2)}s\nORIENTAÇÃO ADICIONAL: ${safeInstructions || "nenhuma"}\n\nCLIPES:\n${clipMap}\n\nTRANSCRIÇÃO SINCRONIZADA:\n${transcript}\n\nRetorne APENAS JSON válido, sem markdown, no formato:\n{\n  "summary": "resumo curto",\n  "suggestions": [\n    { "id":"s1", "type":"sticker", "start":1.2, "end":2.8, "emoji":"✨", "reason":"..." },\n    { "id":"s2", "type":"cta", "start":20, "end":24, "text":"texto curto", "reason":"..." },\n    { "id":"s3", "type":"caption_motion", "start":3, "end":5, "layerId":"id de legenda existente", "motion":"word-pop", "reason":"..." },\n    { "id":"s4", "type":"clip_motion", "start":5, "end":7, "clipId":"id de clipe existente", "motion":"zoom-in", "reason":"..." }\n  ]\n}\n\nREGRAS:\n- no máximo 8 sugestões; menos é melhor que exagerar;\n- use somente ids de clipes/legendas fornecidos;\n- caption_motion permitido: none, word-pop, word-bounce, pulse, karaoke;\n- clip_motion permitido: zoom-in, zoom-out, pan-left, pan-right;\n- stickers devem ser emojis simples e contextuais;\n- CTA deve usar apenas informação presente na fala/orientação. Se não houver CTA explícito, use uma chamada neutra como \"Fale com nossa equipe\";\n- nunca invente preço, desconto, prazo, garantia, prova social, telefone ou link;\n- não altere o conteúdo falado;\n- não aplique efeitos em todos os trechos: preserve respiro visual;\n- cada sugestão precisa explicar por que melhora retenção, clareza ou conversão.`;
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
@@ -460,7 +556,16 @@ router.post("/tenants/:tenantId/content-studio/video/ai-edit-plan", async (req, 
       res.json({ plan: fallback });
       return;
     }
-    res.json({ plan: { goal, summary: typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 320) : "Plano de edição criado a partir da fala e da timeline.", suggestions, source: "ai" } });
+    const designQa = buildGenerationDesignQa({
+      brandScore: creativeRuntime.creativePlan.brand.logoUrl || creativeRuntime.creativePlan.brand.tone?.length ? 90 : 78,
+      readabilityScore: 90,
+      compositionScore: suggestions.length <= 8 ? 92 : 72,
+      channelFitScore: 92,
+      ctaScore: suggestions.some((item) => item.type === "cta") ? 92 : 72,
+      technicalScore: 94,
+      warnings: suggestions.some((item) => item.type === "cta") ? [] : ["Plano de edição sem CTA explícito."],
+    });
+    res.json({ plan: { goal, summary: typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 320) : "Plano de edição criado a partir da fala e da timeline.", suggestions, source: "ai" }, creativeBrief: creativeRuntime.brief, designQa });
   } catch (err) {
     req.log.warn({ err, tenantId }, "content-studio: AI edit plan fell back to deterministic plan");
     res.json({ plan: fallback });
