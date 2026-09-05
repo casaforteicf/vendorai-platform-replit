@@ -509,119 +509,614 @@ export default function AdminTenantDetail() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
+
+      {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex items-start gap-3 flex-wrap">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/admin/tenants")} className="shrink-0 mt-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setLocation("/admin/tenants")}
+          className="shrink-0 mt-0.5"
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><Building2 className="h-6 w-6 shrink-0" /><span className="truncate">{tenant.name}</span></h1>
-            <Badge variant="outline" className={`text-xs shrink-0 ${STATUS_COLORS[tenant.status] ?? ""}`}>{tenant.status}</Badge>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Building2 className="h-6 w-6 shrink-0" />
+              <span className="truncate">{tenant.name}</span>
+            </h1>
+            <Badge
+              variant="outline"
+              className={`text-xs shrink-0 ${STATUS_COLORS[tenant.status] ?? ""}`}
+            >
+              {tenant.status}
+            </Badge>
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">{tenant.slug}{tenant.createdAt && ` · criado em ${fmt(tenant.createdAt)}`}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {tenant.slug}
+            {tenant.createdAt && ` · criado em ${fmt(tenant.createdAt)}`}
+          </p>
         </div>
+
+        {/* Quick actions */}
         <div className="flex gap-2 flex-wrap">
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void handleResend()} disabled={resending}>
-            {resending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />} Reenviar acesso
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => void handleResend()}
+            disabled={resending}
+          >
+            {resending
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Mail className="h-3.5 w-3.5" />}
+            Reenviar acesso
           </Button>
+
           {tenant.status === "active" ? (
-            <Button size="sm" variant="outline" className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50" onClick={() => void handleBlock("suspended")} disabled={blocking}>
-              {blocking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldOff className="h-3.5 w-3.5" />} Suspender
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50"
+              onClick={() => void handleBlock("suspended")}
+              disabled={blocking}
+            >
+              {blocking
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <ShieldOff className="h-3.5 w-3.5" />}
+              Suspender
             </Button>
           ) : (
-            <Button size="sm" variant="outline" className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50" onClick={() => void handleBlock("active")} disabled={blocking}>
-              {blocking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />} Reativar
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+              onClick={() => void handleBlock("active")}
+              disabled={blocking}
+            >
+              {blocking
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Shield className="h-3.5 w-3.5" />}
+              Reativar
             </Button>
           )}
         </div>
       </div>
 
+      {/* ── Grid ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Card 1 — Basic info */}
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Building2 className="h-4 w-4" /> Informações</CardTitle></CardHeader>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Building2 className="h-4 w-4" /> Informações
+            </CardTitle>
+          </CardHeader>
           <CardContent className="space-y-2.5">
-            <InfoRow label="Status" value={<Badge variant="outline" className={`text-xs ${STATUS_COLORS[tenant.status] ?? ""}`}>{tenant.status}</Badge>} />
-            <InfoRow label="Segmento" value={tenant.vertical ?? "—"} />
-            <InfoRow label="Origem" value={tenant.provisioningMethod ? (PROV_LABELS[tenant.provisioningMethod] ?? tenant.provisioningMethod) : "—"} />
+            <InfoRow
+              label="Status"
+              value={
+                <Badge variant="outline" className={`text-xs ${STATUS_COLORS[tenant.status] ?? ""}`}>
+                  {tenant.status}
+                </Badge>
+              }
+            />
+            <InfoRow label="Segmento"    value={tenant.vertical ?? "—"} />
+            <InfoRow
+              label="Origem"
+              value={tenant.provisioningMethod
+                ? (PROV_LABELS[tenant.provisioningMethod] ?? tenant.provisioningMethod)
+                : "—"}
+            />
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2 min-w-0">
                 <span className="text-xs text-muted-foreground shrink-0">Plano</span>
-                <div className="flex items-center gap-2 min-w-0"><span className="text-xs text-right truncate">{availablePlans.find((plan) => plan.id === tenant.planId)?.name ?? tenant.planId ?? "Sem plano"}</span><Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={startEditingPlan}>Editar</Button></div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-right truncate">
+                    {availablePlans.find((plan) => plan.id === tenant.planId)?.name ?? tenant.planId ?? "Sem plano"}
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={startEditingPlan}>
+                    Editar
+                  </Button>
+                </div>
               </div>
               {editingPlan && (
                 <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-                  <div className="space-y-1"><label htmlFor="tenant-plan" className="text-xs font-medium">Plano do cliente</label><select id="tenant-plan" value={selectedPlanId} onChange={(e) => setSelectedPlanId(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Selecione um plano</option>{availablePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></div>
-                  <div className="space-y-1"><label htmlFor="tenant-billing-cycle" className="text-xs font-medium">Ciclo de cobrança</label><select id="tenant-billing-cycle" value={selectedBillingCycle} onChange={(e) => setSelectedBillingCycle(e.target.value as "monthly" | "annual")} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="monthly">Mensal</option><option value="annual">Anual</option></select></div>
-                  <div className="flex justify-end gap-2"><Button type="button" variant="ghost" size="sm" onClick={() => setEditingPlan(false)} disabled={savingPlan}>Cancelar</Button><Button type="button" size="sm" onClick={handleSavePlan} disabled={savingPlan || !selectedPlanId}>{savingPlan && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar plano</Button></div>
+                  <div className="space-y-1">
+                    <label htmlFor="tenant-plan" className="text-xs font-medium">Plano do cliente</label>
+                    <select
+                      id="tenant-plan"
+                      value={selectedPlanId}
+                      onChange={(e) => setSelectedPlanId(e.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Selecione um plano</option>
+                      {availablePlans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>{plan.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label htmlFor="tenant-billing-cycle" className="text-xs font-medium">Ciclo de cobrança</label>
+                    <select
+                      id="tenant-billing-cycle"
+                      value={selectedBillingCycle}
+                      onChange={(e) => setSelectedBillingCycle(e.target.value as "monthly" | "annual")}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="monthly">Mensal</option>
+                      <option value="annual">Anual</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPlan(false)} disabled={savingPlan}>
+                      Cancelar
+                    </Button>
+                    <Button type="button" size="sm" onClick={handleSavePlan} disabled={savingPlan || !selectedPlanId}>
+                      {savingPlan && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Salvar plano
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
             <Separator />
-            <InfoRow label="Liberação Praça.ai" value={<div className="flex items-center gap-2"><Switch checked={!!tenant.vendeNoPracaAi} disabled={savingVendeNoPracaAi} onCheckedChange={handleToggleVendeNoPracaAi} /><span className="text-xs text-muted-foreground">{tenant.vendeNoPracaAi ? "Liberado pelo SuperAdmin — produtos marcados aparecem na vitrine pública" : "Aguardando liberação do SuperAdmin"}</span></div>} />
-            {tenant.vendeNoPracaAi && <><Separator /><InfoRow label="Comissão Praça.ai" value={editingComissao ? <div className="flex items-center gap-2"><Input type="text" value={comissaoInput} onChange={(e) => setComissaoInput(e.target.value)} className="h-8 w-20 text-right" placeholder="8.00" /><span className="text-xs text-muted-foreground">%</span><Button size="sm" onClick={handleSaveComissao} disabled={savingComissao}>{savingComissao ? <Loader2 className="h-3 w-3 animate-spin" /> : "Salvar"}</Button><Button size="sm" variant="ghost" onClick={() => setEditingComissao(false)}>Cancelar</Button></div> : <button className="flex items-center gap-2 hover:underline" onClick={() => { setComissaoInput(tenant.comissaoPracaAiPercentual ?? "8.00"); setEditingComissao(true); }}>{tenant.comissaoPracaAiPercentual ?? "8.00"}%<span className="text-xs text-muted-foreground">(editar)</span></button>} /></>}
+            <InfoRow
+              label="Liberação Praça.ai"
+              value={
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={!!tenant.vendeNoPracaAi}
+                    disabled={savingVendeNoPracaAi}
+                    onCheckedChange={handleToggleVendeNoPracaAi}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {tenant.vendeNoPracaAi ? "Liberado pelo SuperAdmin — produtos marcados aparecem na vitrine pública" : "Aguardando liberação do SuperAdmin"}
+                  </span>
+                </div>
+              }
+            />
+            {tenant.vendeNoPracaAi && (
+              <>
+                <Separator />
+                <InfoRow
+                  label="Comissão Praça.ai"
+                  value={
+                    editingComissao ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="text"
+                          value={comissaoInput}
+                          onChange={(e) => setComissaoInput(e.target.value)}
+                          className="h-8 w-20 text-right"
+                          placeholder="8.00"
+                        />
+                        <span className="text-xs text-muted-foreground">%</span>
+                        <Button size="sm" onClick={handleSaveComissao} disabled={savingComissao}>
+                          {savingComissao ? <Loader2 className="h-3 w-3 animate-spin" /> : "Salvar"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingComissao(false)}>Cancelar</Button>
+                      </div>
+                    ) : (
+                      <button
+                        className="flex items-center gap-2 hover:underline"
+                        onClick={() => { setComissaoInput(tenant.comissaoPracaAiPercentual ?? "8.00"); setEditingComissao(true); }}
+                      >
+                        {tenant.comissaoPracaAiPercentual ?? "8.00"}%
+                        <span className="text-xs text-muted-foreground">(editar)</span>
+                      </button>
+                    )
+                  }
+                />
+              </>
+            )}
             <Separator />
-            <InfoRow label="Primeiro acesso" value={tenant.firstLoginAt ? <span className="flex items-center gap-1 text-emerald-600"><UserCheck className="h-3 w-3" />{fmt(tenant.firstLoginAt)}</span> : <span className="flex items-center gap-1 text-muted-foreground"><Clock className="h-3 w-3" /> nunca</span>} />
+            <InfoRow
+              label="Primeiro acesso"
+              value={
+                tenant.firstLoginAt ? (
+                  <span className="flex items-center gap-1 text-emerald-600">
+                    <UserCheck className="h-3 w-3" />
+                    {fmt(tenant.firstLoginAt)}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <Clock className="h-3 w-3" /> nunca
+                  </span>
+                )
+              }
+            />
             <InfoRow label="Acesso enviado" value={fmt(tenant.accessSentAt)} />
-            <InfoRow label="Criado em" value={fmt(tenant.createdAt)} />
+            <InfoRow label="Criado em"      value={fmt(tenant.createdAt)} />
           </CardContent>
         </Card>
 
+        {/* Card 2 — AI Usage */}
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Zap className="h-4 w-4" /> Consumo de IA — mês atual</CardTitle></CardHeader>
-          <CardContent>{aiLoading ? <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> : <div className="space-y-3">
-            <div className="flex items-end justify-between"><span className="text-xs text-muted-foreground">Gasto no mês</span><span className="text-xl font-bold tabular-nums">${(aiUsage?.spentThisMonthUsd ?? 0).toFixed(4)}</span></div>
-            {aiUsage?.quotaUsd != null && <><div className="w-full bg-muted rounded-full h-1.5"><div className="bg-violet-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(100, ((aiUsage.spentThisMonthUsd ?? 0) / aiUsage.quotaUsd) * 100)}%` }} /></div><p className="text-xs text-muted-foreground">Cota do plano: ${aiUsage.quotaUsd.toFixed(2)} / mês</p></>}
-            {aiUsage?.aiCreditsUsd && Number(aiUsage.aiCreditsUsd) > 0 && <InfoRow label="Créditos avulsos" value={`$${Number(aiUsage.aiCreditsUsd).toFixed(4)}`} />}
-            <Separator />
-            <div className="space-y-1.5"><p className="text-xs font-medium text-muted-foreground mb-1">Por feature</p>{(aiUsage?.featureBreakdown ?? []).length === 0 ? <p className="text-xs text-muted-foreground italic">Sem uso registrado este mês</p> : (aiUsage?.featureBreakdown ?? []).slice(0, 6).map((f) => <div key={f.feature} className="flex items-center justify-between text-xs"><span className="text-muted-foreground capitalize">{f.feature.replace(/_/g, " ")}</span><span className="font-medium tabular-nums">${Number(f.total).toFixed(4)}</span></div>)}</div>
-            <Separator />
-            <div className="flex gap-3 flex-wrap"><div className="flex items-center gap-1.5 text-xs"><div className={`h-2 w-2 rounded-full ${aiUsage?.openaiKeyStatus === "valid" ? "bg-emerald-500" : "bg-muted-foreground/30"}`} /><span>OpenAI {aiUsage?.openaiKeyStatus === "valid" ? "(BYOK)" : "(plataforma)"}</span></div><div className="flex items-center gap-1.5 text-xs"><div className={`h-2 w-2 rounded-full ${aiUsage?.anthropicKeyStatus === "valid" ? "bg-emerald-500" : "bg-muted-foreground/30"}`} /><span>Anthropic {aiUsage?.anthropicKeyStatus === "valid" ? "(BYOK)" : "(plataforma)"}</span></div></div>
-          </div>}</CardContent>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Zap className="h-4 w-4" /> Consumo de IA — mês atual
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aiLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-end justify-between">
+                  <span className="text-xs text-muted-foreground">Gasto no mês</span>
+                  <span className="text-xl font-bold tabular-nums">
+                    ${(aiUsage?.spentThisMonthUsd ?? 0).toFixed(4)}
+                  </span>
+                </div>
+
+                {aiUsage?.quotaUsd != null && (
+                  <>
+                    <div className="w-full bg-muted rounded-full h-1.5">
+                      <div
+                        className="bg-violet-500 h-1.5 rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(100, ((aiUsage.spentThisMonthUsd ?? 0) / aiUsage.quotaUsd) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cota do plano: ${aiUsage.quotaUsd.toFixed(2)} / mês
+                    </p>
+                  </>
+                )}
+
+                {aiUsage?.aiCreditsUsd && Number(aiUsage.aiCreditsUsd) > 0 && (
+                  <InfoRow
+                    label="Créditos avulsos"
+                    value={`$${Number(aiUsage.aiCreditsUsd).toFixed(4)}`}
+                  />
+                )}
+
+                <Separator />
+
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Por feature</p>
+                  {(aiUsage?.featureBreakdown ?? []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">Sem uso registrado este mês</p>
+                  ) : (
+                    (aiUsage?.featureBreakdown ?? []).slice(0, 6).map((f) => (
+                      <div key={f.feature} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground capitalize">
+                          {f.feature.replace(/_/g, " ")}
+                        </span>
+                        <span className="font-medium tabular-nums">
+                          ${Number(f.total).toFixed(4)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="flex gap-3 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <div className={`h-2 w-2 rounded-full ${aiUsage?.openaiKeyStatus === "valid" ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+                    <span>OpenAI {aiUsage?.openaiKeyStatus === "valid" ? "(BYOK)" : "(plataforma)"}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <div className={`h-2 w-2 rounded-full ${aiUsage?.anthropicKeyStatus === "valid" ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+                    <span>Anthropic {aiUsage?.anthropicKeyStatus === "valid" ? "(BYOK)" : "(plataforma)"}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
         </Card>
 
+        {/* Card 3 — Agent Activity */}
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Bot className="h-4 w-4" /> Agentes — últimos 30 dias</CardTitle></CardHeader>
-          <CardContent>{analyticsLoading ? <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> : <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3"><div className="bg-muted/50 rounded-lg p-3 text-center"><p className="text-xl font-bold tabular-nums">{totalMsgs}</p><p className="text-xs text-muted-foreground mt-0.5">Mensagens</p></div><div className="bg-muted/50 rounded-lg p-3 text-center"><p className="text-xl font-bold tabular-nums">{totalActions}</p><p className="text-xs text-muted-foreground mt-0.5">Ações IA</p></div></div>
-            {activeAgents.length === 0 ? <p className="text-xs text-muted-foreground text-center py-2 italic">Nenhuma atividade registrada no período</p> : <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Agentes ativos</p>{activeAgents.map((a) => <div key={a.agentName} className="flex items-center justify-between gap-2 text-xs"><span className="text-foreground truncate">{AGENT_LABELS[a.agentName] ?? a.agentName}</span><div className="flex items-center gap-2 shrink-0"><span className="text-muted-foreground">{a.total}</span>{a.executed > 0 && <span className="flex items-center gap-0.5 text-emerald-600"><CheckCircle2 className="h-3 w-3" />{a.executed}</span>}{a.rejected > 0 && <span className="flex items-center gap-0.5 text-red-500"><XCircle className="h-3 w-3" />{a.rejected}</span>}</div></div>)}</div>}
-            {(analytics?.messagesByAgent ?? []).length > 0 && <><Separator /><div className="space-y-1.5"><p className="text-xs font-medium text-muted-foreground">Por canal</p>{analytics!.messagesByAgent.map((m) => <div key={m.canal} className="flex items-center justify-between text-xs"><span className="text-muted-foreground capitalize">{m.canal}</span><span className="font-medium flex items-center gap-1"><MessageSquare className="h-3 w-3" />{m.total}</span></div>)}</div></>}
-            {(analytics?.dealConversions ?? []).length > 0 && <><Separator /><div className="space-y-1.5"><p className="text-xs font-medium text-muted-foreground">Deals convertidos</p>{analytics!.dealConversions.slice(0, 4).map((d, i) => <div key={i} className="flex items-center justify-between text-xs"><span className="text-muted-foreground capitalize">{d.source ?? "direto"}</span><span className="font-medium">{d.total} deal{d.total !== 1 ? "s" : ""}</span></div>)}</div></>}
-          </div>}</CardContent>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Bot className="h-4 w-4" /> Agentes — últimos 30 dias
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {analyticsLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Summary counters */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-xl font-bold tabular-nums">{totalMsgs}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Mensagens</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-xl font-bold tabular-nums">{totalActions}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Ações IA</p>
+                  </div>
+                </div>
+
+                {/* Active agents */}
+                {activeAgents.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-2 italic">
+                    Nenhuma atividade registrada no período
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Agentes ativos</p>
+                    {activeAgents.map((a) => (
+                      <div key={a.agentName} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-foreground truncate">
+                          {AGENT_LABELS[a.agentName] ?? a.agentName}
+                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-muted-foreground">{a.total}</span>
+                          {a.executed > 0 && (
+                            <span className="flex items-center gap-0.5 text-emerald-600">
+                              <CheckCircle2 className="h-3 w-3" />{a.executed}
+                            </span>
+                          )}
+                          {a.rejected > 0 && (
+                            <span className="flex items-center gap-0.5 text-red-500">
+                              <XCircle className="h-3 w-3" />{a.rejected}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Messages by channel */}
+                {(analytics?.messagesByAgent ?? []).length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Por canal</p>
+                      {analytics!.messagesByAgent.map((m) => (
+                        <div key={m.canal} className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground capitalize">{m.canal}</span>
+                          <span className="font-medium flex items-center gap-1">
+                            <MessageSquare className="h-3 w-3" />
+                            {m.total}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Deal conversions */}
+                {(analytics?.dealConversions ?? []).length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Deals convertidos</p>
+                      {analytics!.dealConversions.slice(0, 4).map((d, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground capitalize">{d.source ?? "direto"}</span>
+                          <span className="font-medium">{d.total} deal{d.total !== 1 ? "s" : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </CardContent>
         </Card>
       </div>
 
       <TenantImplementationStatusCard tenantId={id} />
+
       <AccessLicenseAdminCard tenantId={id} />
+
       <TenantInternationalProfileCard tenantId={id} tenant={tenant} />
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base font-semibold flex items-center gap-2"><Wifi className="h-5 w-5" /> Integração WhatsApp — Z-API</CardTitle><p className="text-sm text-muted-foreground">Status e teste isolados para este tenant, sem exibir credenciais.</p></CardHeader>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Wifi className="h-5 w-5" /> Integração WhatsApp — Z-API
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">Status e teste isolados para este tenant, sem exibir credenciais.</p>
+        </CardHeader>
         <CardContent className="space-y-4">
-          {zapiStatusLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <div className="flex items-center gap-2 flex-wrap"><Badge variant="outline" className={zapiStatus?.configured ? "text-emerald-600 border-emerald-200" : "text-red-600 border-red-200"}>{zapiStatus?.configured ? "Credenciais completas" : "Credenciais incompletas"}</Badge><Badge variant="outline" className={zapiStatus?.connected ? "text-emerald-600 border-emerald-200" : "text-orange-600 border-orange-200"}>{zapiStatus?.connected ? "Instância conectada" : "Instância desconectada"}</Badge>{zapiStatus?.configured && !zapiStatus.connected && zapiStatus.providerStatus && <span className="text-xs text-muted-foreground">Z-API HTTP {zapiStatus.providerStatus}</span>}</div>}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2"><Input type="password" value={zapiInstanceId} onChange={(event) => setZapiInstanceId(event.target.value)} placeholder={zapiStatus?.credentials.instanceId ? "Instance ID configurado" : "Instance ID"} aria-label="Instance ID da Z-API" autoComplete="off" /><Input type="password" value={zapiToken} onChange={(event) => setZapiToken(event.target.value)} placeholder={zapiStatus?.credentials.token ? "Token configurado" : "Token"} aria-label="Token da Z-API" autoComplete="off" /><Input type="password" value={zapiClientToken} onChange={(event) => setZapiClientToken(event.target.value)} placeholder={zapiStatus?.credentials.clientToken ? "Client-Token configurado" : "Client-Token"} aria-label="Client-Token da Z-API" autoComplete="off" /></div>
-          <Button variant="outline" onClick={() => void saveZapiCredentials()} disabled={savingZapiCredentials || (!zapiInstanceId.trim() && !zapiToken.trim() && !zapiClientToken.trim())}>{savingZapiCredentials && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Salvar credenciais</Button>
+          {zapiStatusLoading ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className={zapiStatus?.configured ? "text-emerald-600 border-emerald-200" : "text-red-600 border-red-200"}>
+                {zapiStatus?.configured ? "Credenciais completas" : "Credenciais incompletas"}
+              </Badge>
+              <Badge variant="outline" className={zapiStatus?.connected ? "text-emerald-600 border-emerald-200" : "text-orange-600 border-orange-200"}>
+                {zapiStatus?.connected ? "Instância conectada" : "Instância desconectada"}
+              </Badge>
+              {zapiStatus?.configured && !zapiStatus.connected && zapiStatus.providerStatus && (
+                <span className="text-xs text-muted-foreground">Z-API HTTP {zapiStatus.providerStatus}</span>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <Input
+              type="password"
+              value={zapiInstanceId}
+              onChange={(event) => setZapiInstanceId(event.target.value)}
+              placeholder={zapiStatus?.credentials.instanceId ? "Instance ID configurado" : "Instance ID"}
+              aria-label="Instance ID da Z-API"
+              autoComplete="off"
+            />
+            <Input
+              type="password"
+              value={zapiToken}
+              onChange={(event) => setZapiToken(event.target.value)}
+              placeholder={zapiStatus?.credentials.token ? "Token configurado" : "Token"}
+              aria-label="Token da Z-API"
+              autoComplete="off"
+            />
+            <Input
+              type="password"
+              value={zapiClientToken}
+              onChange={(event) => setZapiClientToken(event.target.value)}
+              placeholder={zapiStatus?.credentials.clientToken ? "Client-Token configurado" : "Client-Token"}
+              aria-label="Client-Token da Z-API"
+              autoComplete="off"
+            />
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => void saveZapiCredentials()}
+            disabled={savingZapiCredentials || (!zapiInstanceId.trim() && !zapiToken.trim() && !zapiClientToken.trim())}
+          >
+            {savingZapiCredentials && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Salvar credenciais
+          </Button>
           <Separator />
-          <div className="flex flex-col sm:flex-row gap-2 max-w-xl"><Input value={testPhone} onChange={(event) => setTestPhone(event.target.value)} placeholder="Telefone com DDD, ex.: 49998089269" aria-label="Telefone para teste Z-API" /><Button onClick={() => void sendZapiTest()} disabled={sendingZapiTest || !zapiStatus?.connected || testPhone.replace(/\D/g, "").length < 10}>{sendingZapiTest ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}Enviar teste</Button></div>
-          {!zapiStatus?.configured && <p className="text-xs text-red-600">Cadastre Instance ID, Token e Client-Token nas configurações de integração deste tenant.</p>}
+          <div className="flex flex-col sm:flex-row gap-2 max-w-xl">
+            <Input
+              value={testPhone}
+              onChange={(event) => setTestPhone(event.target.value)}
+              placeholder="Telefone com DDD, ex.: 49998089269"
+              aria-label="Telefone para teste Z-API"
+            />
+            <Button onClick={() => void sendZapiTest()} disabled={sendingZapiTest || !zapiStatus?.connected || testPhone.replace(/\D/g, "").length < 10}>
+              {sendingZapiTest ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Enviar teste
+            </Button>
+          </div>
+          {!zapiStatus?.configured && (
+            <p className="text-xs text-red-600">Cadastre Instance ID, Token e Client-Token nas configurações de integração deste tenant.</p>
+          )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base font-semibold flex items-center gap-2"><Bot className="h-5 w-5" /> Agentes, prompts e arquivos</CardTitle><p className="text-sm text-muted-foreground">Visão administrativa das configurações de IA exclusivas deste tenant.</p></CardHeader>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Bot className="h-5 w-5" /> Agentes, prompts e arquivos
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Visão administrativa das configurações de IA exclusivas deste tenant.
+          </p>
+        </CardHeader>
         <CardContent>
-          {agentsOverviewLoading ? <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div> : !agentsOverview?.agents.length ? <p className="text-sm text-muted-foreground py-6 text-center">Nenhum agente disponível.</p> : <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{agentsOverview.agents.map((agent) => <details key={agent.agentKey} className="rounded-lg border bg-card group"><summary className="cursor-pointer list-none p-4 flex items-center justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{agent.nomePerfil || agent.nome}</span><Badge variant="outline" className={agent.ativo ? "text-emerald-600 border-emerald-200" : "text-muted-foreground"}>{agent.ativo ? "Ativo" : "Inativo"}</Badge><Badge variant="secondary">{agent.tom}</Badge></div><p className="text-xs text-muted-foreground mt-1 truncate">{agent.descricao || agent.agentKey}</p></div><span className="text-xs text-muted-foreground shrink-0">{agent.attachments.length} arquivo(s)</span></summary><div className="border-t p-4 space-y-4">
-            <div><p className="text-xs font-semibold mb-1.5">Prompt em uso</p><pre className="text-xs whitespace-pre-wrap break-words rounded-md bg-muted p-3 max-h-64 overflow-auto font-sans">{agent.systemPromptCustom?.trim() || agent.systemPromptBase}</pre>{!agent.systemPromptCustom?.trim() && <p className="text-[11px] text-muted-foreground mt-1">Usando prompt padrão da plataforma</p>}</div>
-            {agent.restricoes && <div><p className="text-xs font-semibold mb-1">Restrições</p><p className="text-xs text-muted-foreground whitespace-pre-wrap">{agent.restricoes}</p></div>}
-            <div><p className="text-xs font-semibold mb-2 flex items-center gap-1"><Paperclip className="h-3.5 w-3.5" /> Arquivos do agente</p>{agent.attachments.length ? <div className="space-y-1.5">{agent.attachments.map((file, index) => <div key={`${file.objectPath ?? file.name}-${index}`} className="text-xs rounded border px-3 py-2 flex justify-between gap-2"><span className="truncate">{file.name || "Arquivo sem nome"}</span><span className="text-muted-foreground shrink-0">{file.mimeType || "arquivo"}</span></div>)}</div> : <p className="text-xs text-muted-foreground">Nenhum arquivo anexado.</p>}</div>
-            <div><p className="text-xs font-semibold mb-2 flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Base de conhecimento vinculada</p>{agent.knowledgeItems.length ? <div className="space-y-1.5">{agent.knowledgeItems.map((item) => <div key={item.id} className="rounded border px-3 py-2"><div className="text-xs font-medium">{item.titulo}</div><div className="text-[11px] text-muted-foreground">{item.categoria} · {item.ativo ? "Ativo" : "Inativo"}</div></div>)}</div> : <p className="text-xs text-muted-foreground">Nenhum item vinculado especificamente.</p>}</div>
-          </div></details>)}</div>}
-          {!!agentsOverview?.knowledgeBase.length && <div className="mt-5 pt-4 border-t"><p className="text-sm font-medium mb-2">Base geral do tenant ({agentsOverview.knowledgeBase.length})</p><div className="flex flex-wrap gap-2">{agentsOverview.knowledgeBase.map((item) => <Badge key={item.id} variant="secondary">{item.titulo}</Badge>)}</div></div>}
+          {agentsOverviewLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : !agentsOverview?.agents.length ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">Nenhum agente disponível.</p>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {agentsOverview.agents.map((agent) => (
+                <details key={agent.agentKey} className="rounded-lg border bg-card group">
+                  <summary className="cursor-pointer list-none p-4 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">{agent.nomePerfil || agent.nome}</span>
+                        <Badge variant="outline" className={agent.ativo ? "text-emerald-600 border-emerald-200" : "text-muted-foreground"}>
+                          {agent.ativo ? "Ativo" : "Inativo"}
+                        </Badge>
+                        <Badge variant="secondary">{agent.tom}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 truncate">{agent.descricao || agent.agentKey}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {agent.attachments.length} arquivo(s)
+                    </span>
+                  </summary>
+                  <div className="border-t p-4 space-y-4">
+                    <div>
+                      <p className="text-xs font-semibold mb-1.5">Prompt em uso</p>
+                      <pre className="text-xs whitespace-pre-wrap break-words rounded-md bg-muted p-3 max-h-64 overflow-auto font-sans">
+                        {agent.systemPromptCustom?.trim() || agent.systemPromptBase}
+                      </pre>
+                      {!agent.systemPromptCustom?.trim() && <p className="text-[11px] text-muted-foreground mt-1">Usando prompt padrão da plataforma</p>}
+                    </div>
+                    {agent.restricoes && (
+                      <div><p className="text-xs font-semibold mb-1">Restrições</p><p className="text-xs text-muted-foreground whitespace-pre-wrap">{agent.restricoes}</p></div>
+                    )}
+                    <div>
+                      <p className="text-xs font-semibold mb-2 flex items-center gap-1"><Paperclip className="h-3.5 w-3.5" /> Arquivos do agente</p>
+                      {agent.attachments.length ? (
+                        <div className="space-y-1.5">{agent.attachments.map((file, index) => (
+                          <div key={`${file.objectPath ?? file.name}-${index}`} className="text-xs rounded border px-3 py-2 flex justify-between gap-2">
+                            <span className="truncate">{file.name || "Arquivo sem nome"}</span>
+                            <span className="text-muted-foreground shrink-0">{file.mimeType || "arquivo"}</span>
+                          </div>
+                        ))}</div>
+                      ) : <p className="text-xs text-muted-foreground">Nenhum arquivo anexado.</p>}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold mb-2 flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> Base de conhecimento vinculada</p>
+                      {agent.knowledgeItems.length ? (
+                        <div className="space-y-1.5">{agent.knowledgeItems.map((item) => (
+                          <div key={item.id} className="rounded border px-3 py-2">
+                            <div className="text-xs font-medium">{item.titulo}</div>
+                            <div className="text-[11px] text-muted-foreground">{item.categoria} · {item.ativo ? "Ativo" : "Inativo"}</div>
+                          </div>
+                        ))}</div>
+                      ) : <p className="text-xs text-muted-foreground">Nenhum item vinculado especificamente.</p>}
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+          {!!agentsOverview?.knowledgeBase.length && (
+            <div className="mt-5 pt-4 border-t">
+              <p className="text-sm font-medium mb-2">Base geral do tenant ({agentsOverview.knowledgeBase.length})</p>
+              <div className="flex flex-wrap gap-2">
+                {agentsOverview.knowledgeBase.map((item) => <Badge key={item.id} variant="secondary">{item.titulo}</Badge>)}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-3 flex flex-row items-start justify-between gap-4 space-y-0"><div><CardTitle className="text-base font-semibold flex items-center gap-2"><SlidersHorizontal className="h-4 w-4" /> Telas e módulos do tenant</CardTitle><p className="text-sm text-muted-foreground mt-1">Ative somente as telas necessárias para este segmento. A alteração aparece no menu imediatamente.</p></div><Button variant="outline" size="sm" onClick={() => void applyVerticalPreset()} disabled={applyingPreset || modulesLoading}>{applyingPreset && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}Aplicar recomendado para o segmento</Button></CardHeader>
-        <CardContent>{modulesLoading ? <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> : <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">{(navModules ?? []).map((module) => { const protectedModule = PROTECTED_MODULES.has(module.moduleKey); return <div key={module.moduleKey} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div className="min-w-0"><p className="text-sm font-medium">{module.moduleName}</p><p className="text-xs text-muted-foreground line-clamp-2">{module.description}</p>{protectedModule && <p className="text-[10px] text-primary mt-1">Módulo essencial</p>}</div><Switch checked={module.isEnabled || protectedModule} disabled={protectedModule || savingModule === module.moduleKey} onCheckedChange={(checked) => void toggleModule(module.moduleKey, checked)} aria-label={`${module.isEnabled ? "Desativar" : "Ativar"} ${module.moduleName}`} /></div>; })}</div>}</CardContent>
+        <CardHeader className="pb-3 flex flex-row items-start justify-between gap-4 space-y-0">
+          <div>
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4" /> Telas e módulos do tenant
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Ative somente as telas necessárias para este segmento. A alteração aparece no menu imediatamente.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void applyVerticalPreset()} disabled={applyingPreset || modulesLoading}>
+            {applyingPreset && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+            Aplicar recomendado para o segmento
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {modulesLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {(navModules ?? []).map((module) => {
+                const protectedModule = PROTECTED_MODULES.has(module.moduleKey);
+                return (
+                  <div key={module.moduleKey} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{module.moduleName}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{module.description}</p>
+                      {protectedModule && <p className="text-[10px] text-primary mt-1">Módulo essencial</p>}
+                    </div>
+                    <Switch
+                      checked={module.isEnabled || protectedModule}
+                      disabled={protectedModule || savingModule === module.moduleKey}
+                      onCheckedChange={(checked) => void toggleModule(module.moduleKey, checked)}
+                      aria-label={`${module.isEnabled ? "Desativar" : "Ativar"} ${module.moduleName}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
