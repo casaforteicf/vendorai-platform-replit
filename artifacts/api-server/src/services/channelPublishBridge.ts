@@ -24,6 +24,8 @@ export interface ChannelPublishContext {
 async function assertPublishAuthorization(context: ChannelPublishContext, designQa: DesignQaResult | null) {
   if (context.authorization === 'human-approved') return null;
 
+  // Autonomous authorization is always resolved from server-side tenant policy.
+  // No caller-supplied boolean can grant paid publish permission.
   const autonomyPolicy = await resolveMarketingAgentAutonomyPolicy(context.tenantId);
   if (!autonomyPolicy.allowed) {
     throw new Error(`Marketing Agent sem autorização autônoma para publicar anúncios: ${autonomyPolicy.reason}`);
