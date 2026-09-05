@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { getPlatformContext } from "./dev_agent_platform_context";
 
 const router = Router();
 
@@ -36,7 +37,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Investigator/1.0",
+      "User-Agent": "VendorAI-Dev-Investigator/2.0",
     },
   });
   const text = await response.text();
@@ -72,7 +73,7 @@ async function searchPaths(query: string) {
   const data = await gh(`/search/code?q=${q}&per_page=8`);
   return (data.items ?? [])
     .map((item: any) => ({ path: String(item.path ?? ""), url: item.html_url ? String(item.html_url) : undefined }))
-    .filter((item: { path: string }) => /\.(ts|tsx|js|jsx|mjs|sql|json)$/i.test(item.path));
+    .filter((item: { path: string }) => /\.(ts|tsx|js|jsx|mjs|sql|json|css)$/i.test(item.path));
 }
 
 async function readEvidence(path: string, url?: string): Promise<CodeEvidence | null> {
@@ -90,14 +91,21 @@ async function readEvidence(path: string, url?: string): Promise<CodeEvidence | 
 }
 
 const INVESTIGATOR_PROMPT = `Você é o Investigador Técnico do VendorAI.
-Você recebe código REAL coletado do repositório. Analise somente o que as evidências permitem concluir.
+Você recebe código REAL coletado do repositório e um mapa vivo de contexto da plataforma. Analise somente o que as evidências permitem concluir.
 
 Objetivos:
 - identificar quais arquivos realmente parecem relacionados ao pedido e à rota;
 - encontrar causa provável, dependências e riscos;
+- usar alterações recentes, PRs abertos e memória técnica relevante para detectar regressões, trabalho duplicado ou decisões anteriores;
 - separar fato observado de hipótese;
 - indicar o que ainda precisa ser verificado;
 - não inventar logs, testes ou comportamento não presente nas evidências.
+
+REGRAS:
+- platformContext.codeCandidates são pistas priorizadas; fatos de implementação vêm dos arquivos efetivamente lidos em files.
+- recentChanges pode explicar regressão recente, mas não prova causalidade sozinho.
+- relevantMemory é histórico técnico, não verdade absoluta; código atual prevalece.
+- openRelatedPrs devem ser considerados para evitar criar correção paralela ou duplicada.
 
 Retorne SOMENTE JSON válido:
 {
@@ -130,19 +138,31 @@ router.post("/support/dev/investigate", async (req, res) => {
 
   try {
     githubConfig();
-    const terms = [...new Set([...routeTerms(parsed.data.route), ...requestTerms(parsed.data.request)])];
-    const queries = terms.slice(0, 5);
-    const results = await Promise.all(queries.map((query) => searchPaths(query).catch(() => [])));
+    const platformContext = await getPlatformContext({ route: parsed.data.route, request: parsed.data.request }).catch(() => null);
+    const terms = [...new Set([
+      ...(platformContext?.routeTerms ?? routeTerms(parsed.data.route)),
+      ...(platformContext?.requestTerms ?? requestTerms(parsed.data.request)),
+    ])];
+    const queries = terms.slice(0, 6);
     const unique = new Map<string, { path: string; url?: string }>();
-    for (const group of results) {
-      for (const item of group) {
-        if (!unique.has(item.path)) unique.set(item.path, item);
-        if (unique.size >= 8) break;
-      }
-      if (unique.size >= 8) break;
+
+    for (const candidate of platformContext?.codeCandidates ?? []) {
+      if (!unique.has(candidate.path)) unique.set(candidate.path, { path: candidate.path, url: candidate.url });
+      if (unique.size >= 10) break;
     }
 
-    const evidence = (await Promise.all([...unique.values()].slice(0, 8).map((item) => readEvidence(item.path, item.url))))
+    if (unique.size < 10) {
+      const results = await Promise.all(queries.map((query) => searchPaths(query).catch(() => [])));
+      for (const group of results) {
+        for (const item of group) {
+          if (!unique.has(item.path)) unique.set(item.path, item);
+          if (unique.size >= 10) break;
+        }
+        if (unique.size >= 10) break;
+      }
+    }
+
+    const evidence = (await Promise.all([...unique.values()].slice(0, 10).map((item) => readEvidence(item.path, item.url))))
       .filter((item): item is CodeEvidence => Boolean(item));
 
     if (!evidence.length) {
@@ -158,6 +178,7 @@ router.post("/support/dev/investigate", async (req, res) => {
           recommendedNextStep: "Ampliar investigação antes de editar código.",
         },
         queries,
+        platformContext,
       });
     }
 
@@ -165,6 +186,13 @@ router.post("/support/dev/investigate", async (req, res) => {
       route: parsed.data.route,
       request: parsed.data.request,
       cognition: parsed.data.cognition,
+      platformContext: platformContext ? {
+        confidence: platformContext.confidence,
+        recentChanges: platformContext.recentChanges,
+        openRelatedPrs: platformContext.openRelatedPrs,
+        relevantMemory: platformContext.relevantMemory,
+        codeCandidates: platformContext.codeCandidates.map((item) => ({ path: item.path, score: item.score, matchedBy: item.matchedBy })),
+      } : null,
       files: evidence.map((item) => ({ path: item.path, excerpt: item.excerpt })),
     };
 
@@ -173,7 +201,7 @@ router.post("/support/dev/investigate", async (req, res) => {
     try {
       const message = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 2600,
+        max_tokens: 3000,
         temperature: 0,
         system: INVESTIGATOR_PROMPT,
         messages: [{ role: "user", content: JSON.stringify(context) }],
@@ -186,7 +214,7 @@ router.post("/support/dev/investigate", async (req, res) => {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         temperature: 0,
-        max_tokens: 2600,
+        max_tokens: 3000,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: INVESTIGATOR_PROMPT },
@@ -201,13 +229,13 @@ router.post("/support/dev/investigate", async (req, res) => {
       summary: String(analysis?.summary ?? "Investigação concluída.").slice(0, 4000),
       likelyCause: String(analysis?.likelyCause ?? "indeterminada").slice(0, 3000),
       confidence: Math.max(0, Math.min(1, Number(analysis?.confidence ?? 0.5))),
-      relevantFiles: Array.isArray(analysis?.relevantFiles) ? analysis.relevantFiles.slice(0, 8).map(String) : evidence.map((item) => item.path),
-      evidence: Array.isArray(analysis?.evidence) ? analysis.evidence.slice(0, 12) : [],
-      unknowns: Array.isArray(analysis?.unknowns) ? analysis.unknowns.slice(0, 8).map(String) : [],
+      relevantFiles: Array.isArray(analysis?.relevantFiles) ? analysis.relevantFiles.slice(0, 10).map(String) : evidence.map((item) => item.path),
+      evidence: Array.isArray(analysis?.evidence) ? analysis.evidence.slice(0, 14) : [],
+      unknowns: Array.isArray(analysis?.unknowns) ? analysis.unknowns.slice(0, 10).map(String) : [],
       recommendedNextStep: String(analysis?.recommendedNextStep ?? "Revisar os achados antes de executar.").slice(0, 3000),
     };
 
-    return res.json({ success: true, investigation, queries, engine });
+    return res.json({ success: true, investigation, queries, engine, platformContext });
   } catch (error) {
     req.log?.error({ err: error }, "dev-ia investigator failed");
     return res.status(500).json({ error: "Falha na investigação técnica do Dev IA" });
