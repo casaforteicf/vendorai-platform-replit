@@ -13,6 +13,7 @@
     "./marketing-agent": "./src/marketing-agent.ts",
     "./marketing-runtime": "./src/marketing-runtime.ts",
     "./marketing-agent-ui": "./src/marketing-agent-ui.ts",
+    "./channel-adapters": "./src/channel-adapters.ts",
     "./creative-design": "./src/creative-design.ts",
     "./intelligence-routing": "./src/intelligence-routing.ts",
     "./engines/*": "./src/engines/*.ts",
