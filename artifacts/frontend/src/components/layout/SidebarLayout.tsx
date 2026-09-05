@@ -354,12 +354,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     };
   }, [companyLogoUrl, companyName, tenantOverride, user]);
 
-  const pathname = location.split("?")[0];
-
   return (
     <SidebarLayoutLegacy>
       {children}
-      <MarketingAgentDock pathname={pathname} />
+      <MarketingAgentDock pathname={location} />
     </SidebarLayoutLegacy>
   );
 }
