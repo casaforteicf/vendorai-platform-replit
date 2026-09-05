@@ -56,6 +56,30 @@ type ProductionValidation = {
   checkedAt: string;
 };
 
+type DevAgentReadiness = {
+  state: "ready" | "degraded" | "blocked";
+  checkedAt: string;
+  reasons: string[];
+  checks: {
+    github: "ready" | "degraded" | "blocked";
+    executor: "ready" | "degraded" | "blocked";
+    memory: "ready" | "degraded" | "blocked";
+    runtime: "ready" | "degraded" | "blocked";
+    production: "ready" | "degraded" | "blocked";
+  };
+  executor: {
+    available: boolean;
+    mode: "primary" | "fallback" | "unavailable";
+    activeModel: string | null;
+    primaryModel: string;
+    fallbackModel: string;
+    primaryOk: boolean;
+    fallbackOk: boolean;
+    checkedAt: string;
+    expiresAt: string;
+  };
+};
+
 type MemoryEntry = {
   requestId: string;
   route: string;
@@ -72,6 +96,7 @@ type Props = {
 };
 
 const layers = [
+  "Preflight de Prontidão",
   "Cérebro Executivo",
   "Investigador Técnico",
   "Memória Técnica",
@@ -110,9 +135,29 @@ function severityClass(severity: EngineeringAlert["severity"]) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function readinessLabel(state?: DevAgentReadiness["state"]) {
+  if (state === "ready") return "Pronto";
+  if (state === "degraded") return "Degradado";
+  if (state === "blocked") return "Bloqueado";
+  return "Verificando";
+}
+
+function readinessClass(state?: DevAgentReadiness["state"]) {
+  if (state === "ready") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (state === "blocked") return "border-red-200 bg-red-50 text-red-900";
+  return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+function checkLabel(value: "ready" | "degraded" | "blocked") {
+  if (value === "ready") return "OK";
+  if (value === "blocked") return "Bloqueado";
+  return "Atenção";
+}
+
 export default function DevEngineeringCenterTab({ active, authHeaders }: Props) {
   const [context, setContext] = useState<OperationalContext | null>(null);
   const [validation, setValidation] = useState<ProductionValidation | null>(null);
+  const [readiness, setReadiness] = useState<DevAgentReadiness | null>(null);
   const [memory, setMemory] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,25 +167,29 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
     setError(null);
     try {
       const headers = authHeaders();
-      const [contextResponse, validationResponse, memoryResponse] = await Promise.all([
+      const [contextResponse, validationResponse, readinessResponse, memoryResponse] = await Promise.all([
         fetch("/api/support/dev/operational-context", { headers }),
         fetch("/api/support/dev/validate-production", {
           method: "POST",
           headers,
           body: JSON.stringify({}),
         }),
+        fetch("/api/support/dev/readiness", { headers }),
         fetch("/api/support/dev/memory", { headers }),
       ]);
 
       const contextData = await contextResponse.json().catch(() => ({}));
       const validationData = await validationResponse.json().catch(() => ({}));
+      const readinessData = await readinessResponse.json().catch(() => ({}));
       const memoryData = await memoryResponse.json().catch(() => ({}));
 
       if (!contextResponse.ok) throw new Error(contextData?.error ?? "Falha ao carregar contexto operacional");
       if (!validationResponse.ok) throw new Error(validationData?.error ?? "Falha ao validar produção");
+      if (!readinessResponse.ok) throw new Error(readinessData?.error ?? "Falha ao verificar prontidão do Dev IA");
 
       setContext(contextData?.context ?? null);
       setValidation(validationData ?? null);
+      setReadiness(readinessData?.readiness ?? null);
       setMemory(Array.isArray(memoryData?.memory) ? memoryData.memory.slice().reverse().slice(0, 8) : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar Centro de Engenharia");
@@ -170,7 +219,7 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-950">Centro de Engenharia</h3>
-          <p className="mt-1 text-xs text-slate-500">Estado técnico da plataforma, Sentinela de Produção e camadas cognitivas do Dev IA.</p>
+          <p className="mt-1 text-xs text-slate-500">Estado técnico da plataforma, prontidão do Dev IA, Sentinela de Produção e camadas cognitivas.</p>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Atualizar
@@ -183,6 +232,35 @@ export default function DevEngineeringCenterTab({ active, authHeaders }: Props) 
           <span>{error}</span>
         </div>
       )}
+
+      <section className={`mb-4 rounded-2xl border p-4 shadow-sm ${readinessClass(readiness?.state)}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <BrainCircuit className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <h4 className="text-sm font-semibold">Preflight do Dev IA</h4>
+              <p className="mt-1 text-[11px] opacity-75">Confirma se o agente consegue investigar e executar antes de aceitar uma mudança.</p>
+            </div>
+          </div>
+          <span className="rounded-full bg-white/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">{readinessLabel(readiness?.state)}</span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold">
+          {readiness ? Object.entries(readiness.checks).map(([name, value]) => (
+            <span key={name} className="rounded-full bg-white/70 px-2.5 py-1">{name}: {checkLabel(value)}</span>
+          )) : <span className="rounded-full bg-white/70 px-2.5 py-1">executando preflight...</span>}
+        </div>
+        {readiness?.executor && (
+          <p className="mt-2 text-[11px] opacity-80">
+            Executor: {readiness.executor.activeModel ?? "indisponível"} · modo {readiness.executor.mode}
+            {readiness.executor.mode === "fallback" ? ` · principal ${readiness.executor.primaryModel} indisponível` : ""}
+          </p>
+        )}
+        {readiness?.reasons?.length ? (
+          <div className="mt-2 space-y-1 text-[11px] opacity-80">
+            {readiness.reasons.slice(0, 3).map((reason) => <p key={reason}>• {reason}</p>)}
+          </div>
+        ) : null}
+      </section>
 
       <section className="mb-4 rounded-2xl border bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3">
