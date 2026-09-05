@@ -70,9 +70,19 @@ for (const filePath of walk(root)) {
 
   lines.forEach((line, index) => {
     const previousLine = lines[index - 1] ?? "";
+    const guardWindow = lines.slice(index + 1, index + 3).join(" ");
+    // These marketing/site middlewares read the route tenant only to compare it
+    // immediately against the authenticated tenant before touching tenant data.
+    // Allow one intervening resource-id declaration (e.g. siteId) before the guard.
+    const guardedMarketingTenant =
+      relativeFile === "routes/business_profiles.ts" &&
+      /const\s+tenantId\s*=\s*String\(req\.params\.tenantId\)/.test(line) &&
+      /if\s*\(!canAccessTenant\(req,\s*tenantId\)\)/.test(guardWindow);
+
     if (
       line.includes("tenant-audit: reviewed") ||
-      previousLine.includes("tenant-audit: reviewed")
+      previousLine.includes("tenant-audit: reviewed") ||
+      guardedMarketingTenant
     ) {
       return;
     }
