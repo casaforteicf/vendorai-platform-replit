@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { loadEngineeringMemory } from "./dev_agent_memory";
+import { loadEngineeringMemory, recordExecutionMemory } from "./dev_agent_memory";
 
 const router = Router();
 
@@ -50,6 +50,8 @@ const REQUIRED_VERCEL_CONTEXTS = new Set([
 
 const SENTINEL_INTERVAL_MS = 5 * 60 * 1000;
 let sentinelTimer: NodeJS.Timeout | null = null;
+let activeIncidentKey: string | null = null;
+let activeIncidentPersisted = false;
 let watchdog: SentinelWatchdog = {
   running: false,
   intervalMs: SENTINEL_INTERVAL_MS,
@@ -78,7 +80,7 @@ async function gh(path: string) {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Operational-Context/3.0",
+      "User-Agent": "VendorAI-Dev-Operational-Context/3.1",
     },
   });
   if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
@@ -225,6 +227,60 @@ function watchdogSnapshot(): SentinelWatchdog {
   return { ...watchdog };
 }
 
+function incidentKey(context: OperationalContext) {
+  const alertKey = context.alerts
+    .filter((alert) => alert.severity === "critical")
+    .map((alert) => alert.id)
+    .sort()
+    .join("-")
+    .slice(0, 56);
+  return [
+    "sentinel",
+    context.mainRevision?.slice(0, 12) ?? "main-unknown",
+    context.observedRevision?.slice(0, 12) ?? "runtime-unknown",
+    alertKey || "critical",
+  ].join("-").slice(0, 120);
+}
+
+async function persistIncidentMemory(
+  context: OperationalContext,
+  status: "production_incident" | "production_recovered",
+  requestId: string,
+  logger: SentinelLogger,
+) {
+  try {
+    const critical = context.alerts.filter((alert) => alert.severity === "critical");
+    const evidenceAlerts = (status === "production_recovered" ? context.alerts : critical).slice(0, 6);
+    const summary = status === "production_incident"
+      ? `Sentinela confirmou incidente de produção após ${watchdog.consecutiveCritical} ciclos críticos consecutivos. Score ${context.healthScore}; estado ${context.productionState}.`
+      : `Sentinela confirmou recuperação da produção. Score ${context.healthScore}; estado ${context.productionState}; nenhum sinal crítico permanece.`;
+
+    await recordExecutionMemory({
+      requestId,
+      route: "/admin/dev-engineering",
+      recordedAt: new Date().toISOString(),
+      status,
+      summary,
+      ...(context.mainRevision ? { mergeSha: context.mainRevision } : {}),
+      changedFiles: [],
+      engines: ["production-sentinel"],
+      failures: status === "production_incident" ? critical.map((alert) => alert.id).slice(0, 8) : [],
+      evidence: [
+        `health_score=${context.healthScore}`,
+        `production_state=${context.productionState}`,
+        context.mainRevision ? `main=${context.mainRevision.slice(0, 12)}` : "main=unknown",
+        context.observedRevision ? `runtime=${context.observedRevision.slice(0, 12)}` : "runtime=unknown",
+        ...evidenceAlerts.map((alert) => `${alert.source}:${alert.id}:${alert.title}`),
+      ].slice(0, 8),
+    });
+    logger.info({ requestId, status }, "dev-ia sentinel: incident memory persisted");
+    return true;
+  } catch (error) {
+    logger.warn({ err: error, requestId, status }, "dev-ia sentinel: incident memory persistence failed");
+    return false;
+  }
+}
+
 export async function getOperationalContext(): Promise<OperationalContext> {
   const observedRevision = normalizeRevision(
     process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.RAILWAY_DEPLOYMENT_COMMIT_SHA ?? process.env.GIT_COMMIT_SHA,
@@ -327,11 +383,32 @@ async function runSentinelWatchdog(logger: SentinelLogger) {
     };
 
     if (criticalCount > 0) {
+      const currentIncidentKey = incidentKey(context);
+      if (activeIncidentKey !== currentIncidentKey) {
+        activeIncidentKey = currentIncidentKey;
+        activeIncidentPersisted = false;
+      }
+      if (watchdog.consecutiveCritical >= 2 && !activeIncidentPersisted) {
+        activeIncidentPersisted = await persistIncidentMemory(context, "production_incident", currentIncidentKey, logger);
+      }
       logger.error(logContext, "dev-ia sentinel: critical production signal");
-    } else if (warningCount > 0) {
-      if (changed) logger.warn(logContext, "dev-ia sentinel: production needs attention");
-    } else if (changed || previousScore === null) {
-      logger.info(logContext, "dev-ia sentinel: production healthy");
+    } else {
+      if (activeIncidentKey && activeIncidentPersisted) {
+        const recovered = await persistIncidentMemory(context, "production_recovered", activeIncidentKey, logger);
+        if (recovered) {
+          activeIncidentKey = null;
+          activeIncidentPersisted = false;
+        }
+      } else if (activeIncidentKey) {
+        activeIncidentKey = null;
+        activeIncidentPersisted = false;
+      }
+
+      if (warningCount > 0) {
+        if (changed) logger.warn(logContext, "dev-ia sentinel: production needs attention");
+      } else if (changed || previousScore === null) {
+        logger.info(logContext, "dev-ia sentinel: production healthy");
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown sentinel error";
