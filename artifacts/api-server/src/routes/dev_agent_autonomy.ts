@@ -62,7 +62,10 @@ REGRAS OBRIGATÓRIAS:
 - O PARECER DO CONSELHO DE ESPECIALISTAS recebido também é obrigatório e deve orientar riscos e validação.
 - Trabalhe somente no repositório configurado do VendorAI.
 - Nunca altere main/master diretamente.
-- Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, altere apenas o necessário, revise o diff da branch, crie PR e verifique o status.
+- Para mudança de código: pesquise, leia os arquivos necessários, crie uma branch dev-ia/<slug>, ESCREVA o código necessário com patch_file/update_file/create_file, revise o diff da branch, crie PR e verifique o status.
+- Prefira patch_file para uma alteração local e inequívoca; use update_file quando a transformação exigir o arquivo completo; use create_file somente quando não existir fluxo equivalente.
+- Se plan.shouldExecute=true, pesquisar, diagnosticar ou explicar NÃO conta como execução concluída. Você deve efetivamente escrever código quando a mudança autorizada exigir código.
+- Uma execução de código só pode ser considerada concluída depois de ao menos uma escrita bem-sucedida e da abertura de um PR da branch dev-ia/ para main.
 - Antes de criar arquivo novo, procure se já existe fluxo/componente equivalente. Só crie arquivo quando o plano realmente exigir e não houver alternativa coerente existente.
 - Faça mudanças pequenas, reversíveis e coerentes com a arquitetura existente.
 - Não crie módulos paralelos quando já existir fluxo equivalente.
@@ -71,11 +74,12 @@ REGRAS OBRIGATÓRIAS:
 - Mudanças em autenticação, billing/pagamentos, migrations/schema/RLS, segredos, workflows CI/CD ou infraestrutura são consideradas críticas e devem parar em approval_required.
 - Para merge automático, considere somente os gates relevantes do VendorAI: Vercel para frontend/previews e revisão adversarial independente. O GitHub-hosted API CI não é autoridade enquanto estiver sem runner.
 - Mudanças de backend, após merge, obrigatoriamente ficam em aguardando validação Railway até o SHA publicado ser comprovado. Nunca chame merge de deploy concluído.
-- Quando o Planner autorizou execução, a primeira etapa deve usar uma ferramenta real do repositório. Não encerre como concluído sem evidência de ação ou uma justificativa técnica explícita baseada nas ferramentas.
+- Quando o Planner autorizou execução, a primeira etapa deve usar uma ferramenta real do repositório. Não encerre como concluído sem evidência de ação real.
+- Quando o plano pedir teste de regressão e houver padrão de testes existente no módulo, escreva ou ajuste o teste junto com o código antes do PR.
 - Nunca diga que algo foi publicado/validado se não houver evidência.
 - Se a solicitação for apenas pergunta, auditoria ou diagnóstico sem necessidade de código, não faça alteração.
 
-Ao terminar, responda de forma curta com: o que encontrou, o que alterou, branch/PR se criados, estado dos gates relevantes e qualquer bloqueio.`;
+Ao terminar, responda de forma curta com: o que encontrou, o que escreveu/alterou, branch/PR se criados, estado dos gates relevantes e qualquer bloqueio.`;
 
 function githubConfig() {
   const token = process.env["GITHUB_DEV_TOKEN"] ?? process.env["GITHUB_PERSONAL_ACCESS_TOKEN"] ?? process.env["GITHUB_TOKEN"];
@@ -95,7 +99,7 @@ async function gh(path: string, init?: RequestInit) {
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "VendorAI-Dev-Agent/3.2",
+      "User-Agent": "VendorAI-Dev-Agent/3.3",
       ...(init?.headers ?? {}),
     },
   });
@@ -213,6 +217,23 @@ async function updateFile(args: { path: string; content: string; branch: string;
   return { path: args.path, branch, commitSha: data.commit?.sha, contentSha: data.content?.sha, created: false };
 }
 
+async function patchFile(args: { path: string; oldText: string; newText: string; branch: string; message: string }) {
+  const { owner, repo } = githubConfig();
+  const branch = normalizeBranch(args.branch);
+  assertEditablePath(args.path);
+  if (!args.oldText) throw new Error("patch_file exige oldText não vazio");
+  const existing = await getFile(args.path, branch);
+  const occurrences = existing.content.split(args.oldText).length - 1;
+  if (occurrences !== 1) throw new Error(`patch_file exige correspondência única; encontrou ${occurrences} ocorrências. Refine oldText ou use update_file.`);
+  const content = existing.content.replace(args.oldText, args.newText);
+  if (content.length > 120000) throw new Error("Conteúdo resultante grande demais para edição autônoma");
+  const data = await gh(`/repos/${owner}/${repo}/contents/${encodeURIComponent(args.path).replace(/%2F/g, "/")}`, {
+    method: "PUT",
+    body: JSON.stringify({ message: args.message.slice(0, 120), content: Buffer.from(content, "utf8").toString("base64"), sha: existing.sha, branch }),
+  });
+  return { path: args.path, branch, commitSha: data.commit?.sha, contentSha: data.content?.sha, created: false, mode: "surgical_patch", replacedOccurrences: 1 };
+}
+
 async function createFile(args: { path: string; content: string; branch: string; message: string }) {
   const { owner, repo } = githubConfig();
   const branch = normalizeBranch(args.branch);
@@ -319,8 +340,9 @@ const tools: any[] = [
   { type: "function", function: { name: "get_file", description: "Lê um arquivo de texto do repositório em main ou numa branch dev-ia/.", parameters: { type: "object", properties: { path: { type: "string" }, ref: { type: "string" } }, required: ["path"], additionalProperties: false } } },
   { type: "function", function: { name: "list_directory", description: "Lista arquivos e subdiretórios de um caminho do repositório para entender a arquitetura antes de editar.", parameters: { type: "object", properties: { path: { type: "string" }, ref: { type: "string" } }, additionalProperties: false } } },
   { type: "function", function: { name: "create_branch", description: "Cria branch de trabalho a partir de main. O nome deve começar com dev-ia/.", parameters: { type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false } } },
-  { type: "function", function: { name: "update_file", description: "Substitui um arquivo existente numa branch dev-ia/. Não pode editar main nem caminhos críticos.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, branch: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "branch", "message"], additionalProperties: false } } },
-  { type: "function", function: { name: "create_file", description: "Cria um novo arquivo textual numa branch dev-ia/ somente em caminho não crítico. Use apenas quando não existir fluxo equivalente.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, branch: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "branch", "message"], additionalProperties: false } } },
+  { type: "function", function: { name: "patch_file", description: "ESCREVE uma alteração cirúrgica em arquivo existente de uma branch dev-ia/. oldText deve existir exatamente uma vez; zero ou múltiplas ocorrências bloqueiam a edição.", parameters: { type: "object", properties: { path: { type: "string" }, oldText: { type: "string" }, newText: { type: "string" }, branch: { type: "string" }, message: { type: "string" } }, required: ["path", "oldText", "newText", "branch", "message"], additionalProperties: false } } },
+  { type: "function", function: { name: "update_file", description: "ESCREVE/substitui um arquivo existente numa branch dev-ia/. Use quando a transformação exigir o conteúdo completo. Não pode editar main nem caminhos críticos.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, branch: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "branch", "message"], additionalProperties: false } } },
+  { type: "function", function: { name: "create_file", description: "ESCREVE/cria novo arquivo textual numa branch dev-ia/ somente em caminho não crítico. Use apenas quando não existir fluxo equivalente.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, branch: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "branch", "message"], additionalProperties: false } } },
   { type: "function", function: { name: "compare_branch", description: "Compara uma branch dev-ia/ com main e retorna arquivos, estatísticas e patches resumidos. Deve ser usado antes de abrir PR.", parameters: { type: "object", properties: { branch: { type: "string" } }, required: ["branch"], additionalProperties: false } } },
   { type: "function", function: { name: "create_pr", description: "Abre PR de uma branch dev-ia/ para main somente quando a branch realmente contém mudanças.", parameters: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, head: { type: "string" } }, required: ["title", "body", "head"], additionalProperties: false } } },
   { type: "function", function: { name: "get_pr", description: "Consulta PR, arquivos alterados e gates relevantes do VendorAI.", parameters: { type: "object", properties: { number: { type: "integer" } }, required: ["number"], additionalProperties: false } } },
@@ -333,6 +355,7 @@ async function runTool(name: string, args: any) {
     case "get_file": return getFile(String(args.path ?? ""), String(args.ref ?? "main"));
     case "list_directory": return listDirectory(String(args.path ?? ""), String(args.ref ?? "main"));
     case "create_branch": return createBranch(String(args.branch ?? ""));
+    case "patch_file": return patchFile({ path: String(args.path ?? ""), oldText: String(args.oldText ?? ""), newText: String(args.newText ?? ""), branch: String(args.branch ?? ""), message: String(args.message ?? "Dev IA patch") });
     case "update_file": return updateFile({ path: String(args.path ?? ""), content: String(args.content ?? ""), branch: String(args.branch ?? ""), message: String(args.message ?? "Dev IA update") });
     case "create_file": return createFile({ path: String(args.path ?? ""), content: String(args.content ?? ""), branch: String(args.branch ?? ""), message: String(args.message ?? "Dev IA create file") });
     case "compare_branch": return compareBranch(String(args.branch ?? ""));
@@ -390,7 +413,7 @@ export async function executeDevAutonomousWork(input: DevAutonomousExecutionInpu
   const executorEngines = new Set<string>();
   const executorFallbacks: string[] = [];
 
-  for (let step = 0; step < 12; step += 1) {
+  for (let step = 0; step < 18; step += 1) {
     const execution = await createExecutorCompletion(openai, messages, step === 0);
     executorEngines.add(execution.engine);
     if (execution.fallbackReason) executorFallbacks.push(execution.fallbackReason);
@@ -399,7 +422,35 @@ export async function executeDevAutonomousWork(input: DevAutonomousExecutionInpu
     messages.push(message);
     const toolCalls = message.tool_calls ?? [];
     if (!toolCalls.length) {
-      return { success: true, status: "completed", summary: message.content ?? "Execução concluída sem mensagem final.", council, plan, executor: { engines: [...executorEngines], fallbackReasons: executorFallbacks.slice(0, 3) }, actions };
+      const executor = { engines: [...executorEngines], fallbackReasons: executorFallbacks.slice(0, 3) };
+      const successfulWrites = actions.filter((action) => action.ok && (action.tool === "patch_file" || action.tool === "update_file" || action.tool === "create_file"));
+      const successfulPr = actions.find((action) => action.ok && action.tool === "create_pr");
+      if (!successfulWrites.length || !successfulPr) {
+        return {
+          success: false,
+          status: "execution_incomplete",
+          error: !successfulWrites.length
+            ? "Planner autorizou mudança de código, mas o executor tentou encerrar sem escrever nenhum arquivo."
+            : "O executor escreveu código, mas tentou encerrar sem abrir o PR obrigatório.",
+          summary: message.content ?? "Execução interrompida por ausência de evidência obrigatória.",
+          council,
+          plan,
+          executor,
+          writeEvidence: successfulWrites.map((action) => action.detail),
+          actions,
+        };
+      }
+      return {
+        success: true,
+        status: "completed",
+        summary: message.content ?? "Execução concluída sem mensagem final.",
+        council,
+        plan,
+        executor,
+        writeEvidence: successfulWrites.map((action) => action.detail),
+        pullRequest: successfulPr.detail,
+        actions,
+      };
     }
     for (const call of toolCalls) {
       const name = call.function?.name;
@@ -436,7 +487,7 @@ router.post("/support/dev/execute", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Payload inválido" });
   try {
     const result = await executeDevAutonomousWork({ ...parsed.data, source: "super_admin" });
-    const statusCode = result.status === "approval_required" || result.status === "step_limit" ? 409 : 200;
+    const statusCode = result.status === "approval_required" || result.status === "step_limit" || result.status === "execution_incomplete" ? 409 : 200;
     return res.status(statusCode).json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";
