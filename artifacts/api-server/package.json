@@ -13,7 +13,7 @@
     "audit:tenant": "tsx ./src/scripts/audit-tenant-isolation.ts",
     "audit:tenant:strict": "tsx ./src/scripts/audit-tenant-isolation.ts --strict",
     "audit:tenant:baseline": "tsx ./src/scripts/audit-tenant-isolation.ts --baseline-high=738",
-    "ci:railway": "tsc -p tsconfig.launch-ci.json --noEmit && vitest run src/lib/trial-tenant-resolution.test.ts src/lib/vendorai-subscription-lifecycle.test.ts src/lib/vendorai-subscription-rules.test.ts && pnpm run audit:tenant:baseline && pnpm run build",
+    "ci:railway": "tsc -p tsconfig.launch-ci.json --noEmit && vitest run src/lib/dev-agent-check-evidence.test.ts src/lib/trial-tenant-resolution.test.ts src/lib/vendorai-subscription-lifecycle.test.ts src/lib/vendorai-subscription-rules.test.ts && pnpm run audit:tenant:baseline && pnpm run build",
     "seed-segment-templates": "tsx ./src/seed-segment-templates.ts"
   },
   "dependencies": {
@@ -54,7 +54,6 @@
     "@types/bcryptjs": "^3.0.0",
     "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "catalog:",
