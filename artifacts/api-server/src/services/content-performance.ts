@@ -15,6 +15,7 @@ import {
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger.js";
+import { buildPaidMediaLearningPromptBlock } from "./paidMediaLearning.js";
 
 const GRAPH_BASE = "https://graph.instagram.com/v26.0";
 const MIN_AGE_BEFORE_METRICS_HOURS = 24;
@@ -231,12 +232,16 @@ async function buildCreativeQaLearningBlock(tenantId: string): Promise<string> {
   return `\n## Aprendizado de qualidade criativa do próprio tenant (Design QA, ${qas.length} peças avaliadas)\nScore médio: ${overall}/100; aprovação: ${approved}/${qas.length}. Pontos que mais precisam melhorar: ${weakest.map(([name, score]) => `${name} (${score}/100)`).join(", ") || "sem gargalo recorrente"}.${recurring.length ? ` Alertas recorrentes: ${recurring.map(([warning, count]) => `${warning} (${count}x)`).join(" | ")}.` : ""} Nas próximas peças, preserve o que funciona e corrija esses pontos sem sacrificar a identidade da marca.\n`;
 }
 
-// Fonte única do learning prompt: une performance real do canal + qualidade
-// criativa já medida. Nenhuma memória/tabela paralela é criada.
+// Fonte única do learning prompt: une performance real do canal, mídia paga e
+// qualidade criativa já medida. Nenhuma memória/tabela paralela é criada.
 export async function buildOwnPerformancePromptBlock(tenantId: string): Promise<string> {
-  const [insight, qaBlock] = await Promise.all([
+  const [insight, qaBlock, paidMediaBlock] = await Promise.all([
     getPerformanceInsights(tenantId),
     buildCreativeQaLearningBlock(tenantId),
+    buildPaidMediaLearningPromptBlock(tenantId).catch((error) => {
+      logger.warn({ error, tenantId }, "content-performance: paid media learning indisponível");
+      return "";
+    }),
   ]);
 
   let performanceBlock = "";
@@ -245,5 +250,5 @@ export async function buildOwnPerformancePromptBlock(tenantId: string): Promise<
     performanceBlock = `\n## Aprendizados dos posts publicados desta marca (dados reais de desempenho, baseado em ${insight.baseadoEmPosts} posts)\nTemas que funcionam melhor: ${a.temasQueFuncionam.join(", ")}.${a.temasQueNaoFuncionam.length ? ` Temas com engajamento mais fraco (evite ou reformule): ${a.temasQueNaoFuncionam.join(", ")}.` : ""} Formato que mais engaja: ${a.formatoQueMaisEngaja}. ${a.observacoes}\n`;
   }
 
-  return performanceBlock + qaBlock;
+  return performanceBlock + qaBlock + paidMediaBlock;
 }
