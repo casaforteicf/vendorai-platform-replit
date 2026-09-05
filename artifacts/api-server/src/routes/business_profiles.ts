@@ -12,6 +12,7 @@ import { resolveMarketingRuntime } from "@workspace/vendor-brain/marketing-runti
 import type { ChannelId } from "@workspace/vendor-brain/platform-foundation";
 import { resolveTenantCreativePlan } from "../services/creativeDesignBridge";
 import { buildGenerationDesignQa } from "../services/contentCreativeRuntime";
+import { resolveSiteCreativeRuntime } from "../services/siteCreativeRuntime";
 
 const router: IRouter = Router();
 
@@ -158,6 +159,69 @@ router.post("/tenants/:tenantId/marketing-agent/runtime", async (req, res) => {
 });
 
 /**
+ * Web-specific runtime for Site/LP generation. Web is intentionally modeled as
+ * an experience surface rather than pretending it is an ad channel.
+ */
+router.post("/tenants/:tenantId/marketing-agent/site-runtime", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as {
+    surface?: "institutional" | "landing" | "product" | "ecommerce";
+    campaignId?: string | null;
+    campaignName?: string | null;
+    businessName?: string | null;
+    productId?: string | null;
+    productName?: string | null;
+    objective?: string | null;
+    audience?: string | null;
+    offer?: string | null;
+    cta?: string | null;
+    visualDirection?: string | null;
+    assetIds?: string[];
+    brandColor?: string | null;
+  };
+
+  const [profile, tenant] = await Promise.all([
+    db.select({ logoUrl: businessProfilesTable.logoUrl, nomeFantasia: businessProfilesTable.nomeFantasia })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    db.select({ logoUrl: tenantsTable.logoUrl, name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  ]);
+
+  const surface = body.surface ?? "landing";
+  const runtime = await resolveSiteCreativeRuntime({
+    tenantId,
+    surface,
+    campaignId: body.campaignId ?? null,
+    campaignName: body.campaignName ?? null,
+    businessName: body.businessName || profile?.nomeFantasia || tenant?.nomeEmpresa || tenant?.name || null,
+    productId: body.productId ?? null,
+    productName: body.productName ?? null,
+    objective: body.objective?.trim() || (surface === "institutional" ? "apresentar a empresa e gerar contato qualificado" : "converter o público da campanha"),
+    audience: body.audience ?? null,
+    offer: body.offer ?? null,
+    cta: body.cta ?? null,
+    visualDirection: body.visualDirection ?? null,
+    logoUrl: profile?.logoUrl || tenant?.logoUrl || null,
+    brandColor: body.brandColor ?? null,
+    assetIds: Array.isArray(body.assetIds) ? body.assetIds : [],
+  });
+
+  res.setHeader("Cache-Control", "no-store");
+  res.status(200).json({ runtime });
+});
+
+/**
  * Shared deterministic QA inspector used by content, site/LP, video and ad
  * surfaces. It does not publish or persist anything; it only returns the
  * normalized DesignQaResult contract used by the publication gate.
@@ -281,9 +345,6 @@ router.patch("/business-profiles/:id", async (req, res) => {
     .where(eq(businessProfilesTable.id, existing.id))
     .returning();
 
-  // A navegação e os gates dos módulos especializados consultam a vertical
-  // do tenant. Mantém esse valor alinhado ao perfil comercial editável para
-  // que a troca de segmento passe a valer imediatamente em toda a aplicação.
   if (parsed.data.vertical !== undefined) {
     await db
       .update(tenantsTable)
