@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Mail, MessageCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ContentAutopilotMediaPlanBanner } from "@/components/marketing/ContentAutopilotMediaPlanBanner";
 
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
 const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
@@ -106,10 +107,17 @@ export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
 
   const params = useMemo(() => new URLSearchParams(pathname.includes("?") ? pathname.split("?")[1] : ""), [pathname]);
   const source = params.get("from") || params.get("source");
-  const isMessagingView = pathname.split("?")[0] === "/content"
+  const fromMediaPlan = source === "media-plan" || source === "media-calendar";
+  const route = pathname.split("?")[0];
+
+  if (route === "/content-autopilot" && fromMediaPlan) {
+    return <ContentAutopilotMediaPlanBanner pathname={pathname} />;
+  }
+
+  const isMessagingView = route === "/content"
     && params.get("tab") === "campanhas"
     && params.get("view") === "organicas";
-  const visible = isMessagingView && (source === "media-plan" || source === "media-calendar");
+  const visible = isMessagingView && fromMediaPlan;
 
   if (!visible) return null;
 
