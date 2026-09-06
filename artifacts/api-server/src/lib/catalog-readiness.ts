@@ -10,6 +10,12 @@ export type ActiveCatalogPreviewItem = {
   productType: string | null;
 };
 
+export type CatalogProductContractItem = {
+  nome: string;
+  descricao: string | null;
+  preco: number | null;
+};
+
 /**
  * Fonte única para critérios operacionais de readiness do Catálogo.
  * Somente itens ativos contam como catálogo configurado; a lista legada
@@ -55,8 +61,25 @@ export async function getActiveCatalogPreview(
       eq(produtosCatalogoTable.tenantId, tenantId),
       eq(produtosCatalogoTable.ativo, true),
     ))
-    .orderBy(asc(produtosCatalogoTable.nome))
+    .orderBy(asc(produtosCatalogoTable.nome), asc(produtosCatalogoTable.id))
     .limit(safeLimit);
+}
+
+/**
+ * Adapta o Catálogo oficial para contratos legados que ainda expõem
+ * { nome, descricao, preco }, sem reintroduzir uma segunda fonte de dados.
+ */
+export function toCatalogProductContract(
+  items: Array<Pick<ActiveCatalogPreviewItem, "nome" | "descricao" | "precoBase">>,
+): CatalogProductContractItem[] {
+  return items.map((item) => {
+    const parsedPrice = Number(item.precoBase);
+    return {
+      nome: item.nome,
+      descricao: item.descricao ?? null,
+      preco: Number.isFinite(parsedPrice) ? parsedPrice : null,
+    };
+  });
 }
 
 export function compactCatalogNames(
