@@ -32,6 +32,7 @@ import { generateSubdomainSlug } from "../lib/subdomain.js";
 import { encrypt } from "../lib/crypto.js";
 import { getGoogleAdsConnectionByTenantId } from "../services/google-ads-oauth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { getActiveCatalogCount } from "../lib/catalog-readiness.js";
 
 const router: IRouter = Router();
 
@@ -1120,14 +1121,14 @@ router.post("/onboarding/assistant", authenticate, async (req, res) => {
   const parsed = z.object({ message: z.string().trim().min(1).max(2000) }).safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: "Mensagem inválida" });
 
-  const [[tenant], [profile], [config], [leadCountRow]] = await Promise.all([
+  const [[tenant], [profile], [config], [leadCountRow], catalogCount] = await Promise.all([
     db.select({
       name: tenantsTable.name,
       isDemo: tenantsTable.isDemo,
       setupCompletedAt: tenantsTable.setupCompletedAt,
       onboardingConcluido: tenantsTable.onboardingConcluido,
     }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
-    db.select({ id: businessProfilesTable.id, produtos: businessProfilesTable.produtos })
+    db.select({ id: businessProfilesTable.id })
       .from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
     db.select({
       setupCompletedAt: agentConfigsTable.setupCompletedAt,
@@ -1140,18 +1141,19 @@ router.post("/onboarding/assistant", authenticate, async (req, res) => {
       webhookSecret: agentConfigsTable.webhookSecret,
     }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
     db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId)),
+    getActiveCatalogCount(tenantId),
   ]);
 
   if (!tenant) return res.status(404).json({ error: "Tenant não encontrado" });
 
-  const productsConfigured = Array.isArray(profile?.produtos) && profile.produtos.length > 0;
+  const productsConfigured = catalogCount > 0;
   const whatsappConnected = !!(
     (config?.metaPhoneNumberId && config?.metaAccessToken) || config?.evolutionConnected
   );
   const steps = [
     { key: "onboarding", label: "Concluir o onboarding inicial", done: !!(tenant.setupCompletedAt || tenant.onboardingConcluido), href: "/onboarding" },
     { key: "perfil", label: "Configurar o perfil da empresa", done: !!profile, href: "/configuracoes" },
-    { key: "produtos", label: "Cadastrar produtos ou serviços", done: productsConfigured, href: "/estoque" },
+    { key: "produtos", label: "Cadastrar produtos ou serviços", done: productsConfigured, href: "/catalogo" },
     { key: "agentes", label: "Configurar os agentes de IA", done: !!config?.setupCompletedAt, href: "/configuracoes" },
     { key: "whatsapp", label: "Conectar o WhatsApp", done: whatsappConnected, href: "/onboarding/integracoes" },
     { key: "webhook", label: "Ativar o webhook de entrada", done: !!config?.webhookSecret, href: "/configuracoes" },
