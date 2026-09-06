@@ -61,6 +61,14 @@ export interface MediaPlanPeriod {
   duracaoUnidade?: "horas" | "dias";
 }
 
+// A aprovação estratégica do plano não implica autorização para publicar.
+// Manual é o comportamento seguro/padrão; automático é opt-in explícito do usuário.
+export interface MediaPlanOrganicPublicationSettings {
+  modo: "manual" | "automatico";
+  horario: string; // HH:mm no fuso configurado
+  timezone: string; // IANA, ex.: America/Sao_Paulo
+}
+
 export interface MediaPlanConteudo {
   diagnostico: string;
   pontosFortesAtuais: string[];
@@ -81,6 +89,7 @@ export interface MediaPlanConteudo {
   statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
   aprovadoEm?: string | null;
   versaoPlanejamento?: number;
+  publicacaoOrganica?: MediaPlanOrganicPublicationSettings;
   // Versão do catálogo que define a função oficial de cada canal/mídia.
   // Fica dentro do JSON para permitir adequar planos antigos sem migration.
   versaoFuncoesMidia?: number;
