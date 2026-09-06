@@ -38,6 +38,7 @@ type FacebookCapability = {
 type PublishPreview = {
   text: string;
   mediaUrls: string[];
+  videoUrls: string[];
 };
 
 function normalize(value: string) {
@@ -47,13 +48,17 @@ function normalize(value: string) {
 function previewData(generation: ContentGeneration | undefined, variationIdx = 0): PublishPreview {
   const variations = Array.isArray(generation?.result?.variations) ? generation!.result!.variations! : [];
   const raw = variations[variationIdx] ?? variations[0];
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { text: "", mediaUrls: [] };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { text: "", mediaUrls: [], videoUrls: [] };
   const value = raw as Record<string, unknown>;
+  const videoUrls = [
+    ...(Array.isArray(value.videoUrls) ? value.videoUrls.filter((url): url is string => typeof url === "string") : []),
+    typeof value.videoUrl === "string" ? value.videoUrl : "",
+  ].filter(Boolean);
   const mediaUrls = [
     ...(Array.isArray(value.imageUrls) ? value.imageUrls.filter((url): url is string => typeof url === "string") : []),
     typeof value.imageUrl === "string" ? value.imageUrl : "",
     ...(Array.isArray(value.mediaUrls) ? value.mediaUrls.filter((url): url is string => typeof url === "string") : []),
-    typeof value.videoUrl === "string" ? value.videoUrl : "",
+    ...videoUrls,
   ].filter(Boolean);
   const text = [
     typeof value.hook === "string" ? value.hook : "",
@@ -62,7 +67,11 @@ function previewData(generation: ContentGeneration | undefined, variationIdx = 0
     typeof value.cta === "string" ? value.cta : "",
     Array.isArray(value.hashtags) ? value.hashtags.filter((tag): tag is string => typeof tag === "string").join(" ") : "",
   ].filter(Boolean).join("\n\n");
-  return { text, mediaUrls: Array.from(new Set(mediaUrls)) };
+  return {
+    text,
+    mediaUrls: Array.from(new Set(mediaUrls)),
+    videoUrls: Array.from(new Set(videoUrls)),
+  };
 }
 
 function readBriefing(): ActiveBriefing | null {
@@ -133,7 +142,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
     if (briefing?.campaignName && !normalize(item.pilar).includes(normalize(briefing.campaignName))) return false;
     const channel = normalize(item.canal);
     if (item.tipo === "linkedin_post") return channel.includes("linkedin");
-    if (channel.includes("facebook")) return ["feed", "carrossel"].includes(item.tipo);
+    if (channel.includes("facebook")) return ["feed", "carrossel", "stories", "reels"].includes(item.tipo);
     return ["feed", "stories", "carrossel"].includes(item.tipo) && channel.includes("instagram");
   }).slice(0, 12), [briefing?.campaignName, calendar]);
 
@@ -159,9 +168,19 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
     const channel = normalize(item.canal);
     const isLinkedIn = item.tipo === "linkedin_post" || channel.includes("linkedin");
     const isFacebook = channel.includes("facebook");
+    const isFacebookReel = isFacebook && item.tipo === "reels";
+    const isFacebookStory = isFacebook && item.tipo === "stories";
 
     if (isFacebook && !facebook?.ready) {
       toast({ title: "Facebook ainda não está pronto", description: facebookReason(facebook?.reason), variant: "destructive" });
+      return;
+    }
+    if (isFacebookReel && preview.videoUrls.length === 0) {
+      toast({ title: "Reel sem vídeo aprovado", description: "O Facebook Reel exige um vídeo aprovado. Gere ou aprove a peça de vídeo antes de publicar.", variant: "destructive" });
+      return;
+    }
+    if (isFacebookStory && preview.mediaUrls.length === 0) {
+      toast({ title: "Story sem mídia aprovada", description: "O Facebook Story exige uma imagem ou vídeo aprovado.", variant: "destructive" });
       return;
     }
     if (!isLinkedIn && !isFacebook && preview.mediaUrls.length === 0) {
@@ -175,20 +194,41 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
       const contentType = isLinkedIn
         ? (preview.mediaUrls.length ? "image" : "post")
         : isFacebook
-          ? item.tipo === "carrossel" ? "carousel" : preview.mediaUrls.length ? "image" : "post"
+          ? item.tipo === "carrossel"
+            ? "carousel"
+            : item.tipo === "stories"
+              ? "story"
+              : item.tipo === "reels"
+                ? "reel"
+                : preview.mediaUrls.length ? "image" : "post"
           : item.tipo === "stories"
             ? "story"
             : item.tipo === "carrossel"
               ? "carousel"
               : "image";
+
+      const facebookMediaUrl = isFacebookReel
+        ? preview.videoUrls[0]
+        : isFacebookStory
+          ? (preview.videoUrls[0] || preview.mediaUrls[0])
+          : preview.mediaUrls[0];
+      const facebookMediaKind = isFacebookReel || (isFacebookStory && preview.videoUrls.includes(facebookMediaUrl || ""))
+        ? "video"
+        : isFacebookStory
+          ? "image"
+          : undefined;
+
       const response = await fetch(`/api/tenants/${tenantId}/social-publications/${provider}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           text: preview.text || item.temaSugerido,
-          mediaUrl: preview.mediaUrls[0] || undefined,
-          mediaUrls: preview.mediaUrls.length > 1 ? preview.mediaUrls : undefined,
+          mediaUrl: isFacebook ? (facebookMediaUrl || undefined) : (preview.mediaUrls[0] || undefined),
+          mediaUrls: isFacebook && (isFacebookStory || isFacebookReel)
+            ? undefined
+            : preview.mediaUrls.length > 1 ? preview.mediaUrls : undefined,
           contentType,
+          mediaKind: isFacebook ? facebookMediaKind : undefined,
         }),
       });
       const body = await response.json().catch(() => ({})) as { error?: string };
@@ -236,7 +276,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
 
           {facebook?.ready && facebook.pageName && (
             <div className="rounded-md border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
-              Facebook pronto: <span className="font-semibold text-foreground">{facebook.pageName}</span> foi validada como a Page vinculada ao Instagram deste tenant.
+              Facebook pronto: <span className="font-semibold text-foreground">{facebook.pageName}</span> foi validada como a Page vinculada ao Instagram deste tenant. Feed, Carrossel, Stories e Reels usam publicação nativa.
             </div>
           )}
 
@@ -270,8 +310,8 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
             </div>
           )}
 
-          {hasFacebookPlanned && (
-            <p className="text-[11px] text-muted-foreground">Facebook Stories/Reels permanecem fora desta etapa até o executor dedicado ser validado; Feed e Carrossel usam publicação nativa da Page.</p>
+          {hasFacebookPlanned && facebook?.ready && (
+            <p className="text-[11px] text-muted-foreground">Facebook: Feed, Carrossel, Stories e Reels são enviados para a Page validada pela conexão Meta deste tenant. Reels exigem vídeo aprovado; Stories preservam o tipo de mídia da peça.</p>
           )}
         </CardContent>
       </Card>
