@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Link2, MapPin, Search, Target } from "lucide-react";
+import { CheckCircle2, Link2, MapPin, Search, Target } from "lucide-react";
 import type { MarketingContextValue } from "@/components/marketing/MarketingContextSelector";
 
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
@@ -219,9 +219,26 @@ export function CampaignSiteBriefingPicker({
 
   const context = value?.marketingContext;
   const location = [context?.locationCity, context?.locationState].filter(Boolean).join("/");
+  const params = new URLSearchParams(window.location.search);
+  const handoffSource = params.get("from") ?? params.get("source") ?? "";
+  const fromMediaPlan = handoffSource === "media-plan" || handoffSource === "media-calendar";
 
   return (
     <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-4 space-y-3">
+      {fromMediaPlan && value && (
+        <div className="rounded-lg border border-emerald-300/60 bg-emerald-50/70 px-3 py-2.5 text-emerald-900">
+          <div className="flex items-start gap-2">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            <div>
+              <p className="text-xs font-semibold">Executando a direção aprovada do Plano de Mídia</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-emerald-800/80">
+                Esta página está vinculada à campanha <strong>{value.campaignName}</strong>. Público, oferta, objetivo, KPI, SEO, tracking e restrições seguem o briefing compartilhado; ajustes aqui não criam uma campanha paralela.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold"><Link2 className="h-4 w-4 text-primary" />Briefing de campanha</p>
