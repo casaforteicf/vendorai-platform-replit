@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { db, businessProfilesTable, agentConfigsTable, tenantAgentConfigsTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { writeConfigurationAudit } from "../lib/configuration-audit";
 
 function isSuccessfulWrite(statusCode: number): boolean {
@@ -26,6 +26,19 @@ async function agentConfigSnapshot(id: string) {
     .where(eq(agentConfigsTable.id, id))
     .limit(1)
     .then((rows) => rows[0] ?? null);
+}
+
+async function documentConfigurationSnapshot(tenantId: string) {
+  const result = await db.execute(
+    sql`SELECT contract_template_html, contract_template_name, contract_settings FROM tenants WHERE id = ${tenantId}`,
+  );
+  const row = result.rows?.[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    templateHtml: row.contract_template_html ?? null,
+    templateName: row.contract_template_name ?? null,
+    settings: row.contract_settings ?? null,
+  };
 }
 
 async function auditBusinessProfile(req: any, res: any, next: () => void): Promise<boolean> {
@@ -218,6 +231,64 @@ async function auditAgentConfiguration(req: any, res: any, next: () => void): Pr
   return true;
 }
 
+async function auditDocumentConfiguration(req: any, res: any, next: () => void): Promise<boolean> {
+  const method = req.method.toUpperCase();
+  const match = req.path.match(/^\/tenants\/([^/]+)\/(contract-template(?:\/editor)?|contract-settings)$/);
+  if (!match) return false;
+
+  const tenantId = decodeURIComponent(match[1]);
+  const resource = match[2];
+  const isTemplateUpload = resource === "contract-template" && method === "POST";
+  const isTemplateDelete = resource === "contract-template" && method === "DELETE";
+  const isTemplateEditor = resource === "contract-template/editor" && method === "PUT";
+  const isSettingsUpdate = resource === "contract-settings" && method === "PUT";
+
+  if (!isTemplateUpload && !isTemplateDelete && !isTemplateEditor && !isSettingsUpdate) return false;
+
+  let before;
+  try {
+    before = await documentConfigurationSnapshot(tenantId);
+  } catch (error) {
+    req.log?.warn({ error, tenantId }, "configuracoes: snapshot inicial de Documentos indisponível");
+    next();
+    return true;
+  }
+
+  res.once("finish", () => {
+    if (!isSuccessfulWrite(res.statusCode)) return;
+
+    void (async () => {
+      const after = await documentConfigurationSnapshot(tenantId);
+      const isSettings = resource === "contract-settings";
+      const entity = isSettings ? "contract_settings" : "contract_template";
+      const beforeValue = isSettings
+        ? { settings: before?.settings ?? null }
+        : { templateName: before?.templateName ?? null, templateHtml: before?.templateHtml ?? null };
+      const afterValue = isSettings
+        ? { settings: after?.settings ?? null }
+        : { templateName: after?.templateName ?? null, templateHtml: after?.templateHtml ?? null };
+
+      const audited = await writeConfigurationAudit({
+        tenantId,
+        action: isTemplateDelete
+          ? "excluir"
+          : (!isSettings && !before?.templateHtml ? "criar" : "atualizar"),
+        entity,
+        entityId: tenantId,
+        before: isTemplateDelete ? beforeValue : beforeValue,
+        after: isTemplateDelete ? undefined : afterValue,
+        actor: actorFromRequest(req),
+      });
+      if (!audited) req.log?.warn({ tenantId, entity }, "configuracoes: falha ao auditar Documentos");
+    })().catch((error) => {
+      req.log?.warn({ error, tenantId }, "configuracoes: auditoria de Documentos indisponível");
+    });
+  });
+
+  next();
+  return true;
+}
+
 /**
  * Middleware único da trilha de Configurações. É montado antes dos routers
  * canônicos e observa apenas mutações configuracionais, sem substituir nem
@@ -226,5 +297,6 @@ async function auditAgentConfiguration(req: any, res: any, next: () => void): Pr
 export const configurationBusinessProfileAudit: RequestHandler = async (req, res, next) => {
   if (await auditBusinessProfile(req, res, next)) return;
   if (await auditAgentConfiguration(req, res, next)) return;
+  if (await auditDocumentConfiguration(req, res, next)) return;
   next();
 };
