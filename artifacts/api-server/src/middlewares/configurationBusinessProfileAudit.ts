@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
-import { db, businessProfilesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, businessProfilesTable, agentConfigsTable, tenantAgentConfigsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { writeConfigurationAudit } from "../lib/configuration-audit";
 
 function isSuccessfulWrite(statusCode: number): boolean {
@@ -14,22 +14,28 @@ function actorFromRequest(req: any) {
   };
 }
 
-/**
- * Audita somente mutações do Perfil/Empresa feitas pelas rotas canônicas de
- * business_profiles. Fica antes do router existente para não duplicar regras
- * de negócio nem alterar o contrato da API.
- */
-export const configurationBusinessProfileAudit: RequestHandler = async (req, res, next) => {
+async function tenantAgentSnapshot(tenantId: string, agentKey: string) {
+  return db.select().from(tenantAgentConfigsTable)
+    .where(and(eq(tenantAgentConfigsTable.tenantId, tenantId), eq(tenantAgentConfigsTable.agentKey, agentKey)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+}
+
+async function agentConfigSnapshot(id: string) {
+  return db.select().from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, id))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+}
+
+async function auditBusinessProfile(req: any, res: any, next: () => void): Promise<boolean> {
   const method = req.method.toUpperCase();
   const isCreate = method === "POST" && req.path === "/business-profiles";
   const match = req.path.match(/^\/business-profiles\/([^/]+)$/);
   const isUpdate = method === "PATCH" && Boolean(match);
   const isDelete = method === "DELETE" && Boolean(match);
 
-  if (!isCreate && !isUpdate && !isDelete) {
-    next();
-    return;
-  }
+  if (!isCreate && !isUpdate && !isDelete) return false;
 
   const profileId = match?.[1] ? decodeURIComponent(match[1]) : null;
   const before = profileId
@@ -93,5 +99,132 @@ export const configurationBusinessProfileAudit: RequestHandler = async (req, res
     });
   });
 
+  next();
+  return true;
+}
+
+async function auditAgentConfiguration(req: any, res: any, next: () => void): Promise<boolean> {
+  const method = req.method.toUpperCase();
+  const tenantId = req.user?.tenantId ?? (typeof req.body?.tenantId === "string" ? req.body.tenantId : null);
+  const isCreate = method === "POST" && req.path === "/agent-configs";
+  const direct = req.path.match(/^\/agent-configs\/([^/]+)$/);
+  const action = req.path.match(/^\/agent-configs\/([^/]+)\/(activate|deactivate|reset|complete-setup|regenerate-webhook-secret)$/);
+
+  const isDirectUpdate = method === "PATCH" && Boolean(direct);
+  const isDirectDelete = method === "DELETE" && Boolean(direct);
+  const isAgentAction = method === "POST" && Boolean(action);
+
+  if (!isCreate && !isDirectUpdate && !isDirectDelete && !isAgentAction) return false;
+
+  const segment = decodeURIComponent((direct?.[1] ?? action?.[1] ?? "").trim());
+  const actionName = action?.[2] ?? null;
+  const isTenantAgentAction = actionName === "activate" || actionName === "deactivate" || actionName === "reset";
+
+  let beforeGlobal = null;
+  let beforeTenant = null;
+
+  if (segment) {
+    if (isTenantAgentAction) {
+      if (tenantId) beforeTenant = await tenantAgentSnapshot(tenantId, segment);
+    } else if (isDirectUpdate) {
+      beforeGlobal = await agentConfigSnapshot(segment);
+      if (!beforeGlobal && tenantId) beforeTenant = await tenantAgentSnapshot(tenantId, segment);
+    } else {
+      beforeGlobal = await agentConfigSnapshot(segment);
+    }
+  }
+
+  res.once("finish", () => {
+    if (!isSuccessfulWrite(res.statusCode)) return;
+
+    void (async () => {
+      if (isCreate) {
+        if (!tenantId) return;
+        const after = await db.select().from(agentConfigsTable)
+          .where(eq(agentConfigsTable.tenantId, tenantId)).limit(1)
+          .then((rows) => rows[0] ?? null);
+        if (!after) return;
+        await writeConfigurationAudit({
+          tenantId,
+          action: "criar",
+          entity: "agent_config",
+          entityId: after.id,
+          after,
+          actor: actorFromRequest(req),
+        });
+        return;
+      }
+
+      if (beforeTenant && tenantId) {
+        const after = await tenantAgentSnapshot(tenantId, segment);
+        if (!after) return;
+        await writeConfigurationAudit({
+          tenantId,
+          action: "atualizar",
+          entity: "tenant_agent_config",
+          entityId: after.id,
+          before: beforeTenant,
+          after,
+          actor: actorFromRequest(req),
+        });
+        return;
+      }
+
+      if (!beforeGlobal) {
+        if (tenantId && (isDirectUpdate || isTenantAgentAction)) {
+          const after = await tenantAgentSnapshot(tenantId, segment);
+          if (!after) return;
+          await writeConfigurationAudit({
+            tenantId,
+            action: "criar",
+            entity: "tenant_agent_config",
+            entityId: after.id,
+            after,
+            actor: actorFromRequest(req),
+          });
+        }
+        return;
+      }
+
+      if (isDirectDelete) {
+        await writeConfigurationAudit({
+          tenantId: beforeGlobal.tenantId,
+          action: "excluir",
+          entity: "agent_config",
+          entityId: beforeGlobal.id,
+          before: beforeGlobal,
+          actor: actorFromRequest(req),
+        });
+        return;
+      }
+
+      const after = await agentConfigSnapshot(beforeGlobal.id);
+      if (!after) return;
+      await writeConfigurationAudit({
+        tenantId: beforeGlobal.tenantId,
+        action: "atualizar",
+        entity: "agent_config",
+        entityId: beforeGlobal.id,
+        before: beforeGlobal,
+        after,
+        actor: actorFromRequest(req),
+      });
+    })().catch((error) => {
+      req.log?.warn({ error, segment }, "configuracoes: auditoria de IA e Agentes indisponível");
+    });
+  });
+
+  next();
+  return true;
+}
+
+/**
+ * Middleware único da trilha de Configurações. É montado antes dos routers
+ * canônicos e observa apenas mutações configuracionais, sem substituir nem
+ * duplicar as regras de negócio desses routers.
+ */
+export const configurationBusinessProfileAudit: RequestHandler = async (req, res, next) => {
+  if (await auditBusinessProfile(req, res, next)) return;
+  if (await auditAgentConfiguration(req, res, next)) return;
   next();
 };
